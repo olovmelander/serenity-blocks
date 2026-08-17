@@ -53,6 +53,7 @@ import {
 } from 'three/tsl';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { ODYSSEY_WORLD_SUN } from './shared/chapter-profile.js';
+import { auroraSurfaceTerm, createPlanetAuroraCrown } from './odyssey-planet-aurora.js';
 
 // ── Nebula void dome — FBM galactic backdrop (-100 backstop; must NOT bloom) ──────
 
@@ -211,8 +212,12 @@ export function createAccretionDiskTSL(uTime, uEnergy) {
     intensity = intensity.add(innerLip.mul(doppler).mul(0.9)); // hot Doppler inner edge
     intensity = intensity.mul(energy.mul(0.55).add(1.0));
 
-    let color = mix(uHot, uMid, smoothstep(0.0, 0.4, t));
-    color = mix(color, uCool, smoothstep(0.4, 1.0, t));
+    // WAVE 4 (Space overhaul §5) — painterly banding: the radial hot→cool ramp becomes
+    // three FLAT rings with ~8%-wide soft edges (white-gold core / orange body / violet
+    // outskirts) instead of a continuous gradient, so the disc reads as painted rings.
+    // The Doppler asymmetry below stays — an authored brightness statement, not physics.
+    let color = mix(uHot, uMid, smoothstep(0.16, 0.26, t));
+    color = mix(color, uCool, smoothstep(0.52, 0.62, t));
     color = color.add(vec3(0.15, 0.18, 0.30).mul(doppler).mul(radial)); // blue-shift highlight
     color = color.add(uHot.mul(innerLip.mul(0.6))); // incandescent inner lip seats the core
 
@@ -358,7 +363,13 @@ export function createBlackHoleTSL(uTime, uEnergy) {
 
 // ── Gas-giant hero planet — latitudinal storm bands + day/night + atmosphere rim ──
 
-export function createHeroPlanetSurfaceTSL(uTime) {
+/**
+ * The hero sphere's radius. Named because the auroral crown has to be built on the same
+ * number — a mismatch does not error, it just floats the curtains off their oval.
+ */
+export const HERO_PLANET_RADIUS = 28;
+
+export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal } = {}) {
     const time = uTime ?? uniform(0);
     // Richer, higher-contrast gas-giant palette so the hero reads as a crisp
     // focal point against the deep void instead of a dim banded ball: warm
@@ -409,8 +420,22 @@ export function createHeroPlanetSurfaceTSL(uTime) {
     // a property of the planet rather than of where you happen to be standing. On a sphere
     // `normalWorld` is radial, hence spin-invariant: the belts rotate underneath a terminator
     // that stays put, which is what a planet actually does.
-    const diffuse = max(0.0, dot(normalize(normalWorld), normalize(uLightDir)));
-    color = color.mul(diffuse.mul(0.9).add(0.10)); // darker night side (in-game: earth moodier but still lit)
+    const dTerm = dot(normalize(normalWorld), normalize(uLightDir));
+    const diffuse = max(0.0, dTerm);
+    // WAVE 4 (Space overhaul §5) — the continuous diffuse ramp becomes THREE flat value
+    // bands with ~8% soft thresholds, plus a thin warm terminator line (the Ghibli
+    // sunset edge, authored width, not physical). Shade is a HUE statement: the night
+    // side shifts cool-indigo with saturation held and a non-black floor — never a
+    // plain multiply toward black (probe-verified paint, ch6-painted-cosmos).
+    const litBand = smoothstep(0.28, 0.40, dTerm);
+    const midBand = smoothstep(float(-0.18), float(-0.06), dTerm);
+    const nightShade = color.mul(vec3(0.20, 0.24, 0.55)).add(vec3(0.012, 0.014, 0.030));
+    const midShade = color.mul(vec3(0.52, 0.48, 0.66));
+    const litShade = color.mul(dTerm.mul(0.25).add(0.95));
+    color = mix(nightShade, mix(midShade, litShade, litBand), midBand);
+    const termLine = smoothstep(float(-0.16), float(-0.04), dTerm)
+        .mul(smoothstep(0.14, 0.02, dTerm));
+    color = color.add(vec3(1.0, 0.55, 0.24).mul(termLine.mul(0.35)));
 
     // Hot rim/limb light — a tight tangerine sunlit limb on the lit side so the
     // planet has a crisp 3D edge (the lead's "rim light"), feathered by fresnel.
@@ -422,10 +447,18 @@ export function createHeroPlanetSurfaceTSL(uTime) {
     const fresAtmo = pow(oneMinus(fresEdge), 2.4);
     color = color.add(vec3(0.26, 0.46, 0.9).mul(fresAtmo).mul(diffuse.mul(0.55).add(0.35)));
 
+    // WAVE 5 — THE AURORAL OVAL, SEATED ON THE DISC. The free half of the crown (the
+    // other half is the curtain mesh in createHeroPlanetTSL): zero extra draws, and it
+    // is what carries the read whenever the pole is edge-on to the camera, which on this
+    // hero's APPROACH march is most of the chapter. `n` is planet-fixed so the oval stays
+    // on the pole through the spin; `dTerm` is handed in rather than recomputed so the
+    // oval can never disagree with the terminator it is masked by.
+    if (aurora) color = color.add(auroraSurfaceTerm(n, dTerm, time, undefined, uAuroraReveal));
+
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
 
-    const geometry = new THREE.SphereGeometry(28, 48, 32);
+    const geometry = new THREE.SphereGeometry(HERO_PLANET_RADIUS, 48, 32);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'hero-planet-surface';
     return { mesh, material, geometry };
@@ -606,7 +639,7 @@ export function createNebulaPillarTSL(uTime, uApproach) {
 
 // ── Hero planet anchor — converted gas-giant surface + plain atmosphere/ring decor ─
 
-export function createHeroPlanetTSL(uTime) {
+export function createHeroPlanetTSL(uTime, { aurora = true } = {}) {
     const group = new THREE.Group();
     group.name = 'hero-planet-nebula-anchor';
     // Pull the gas giant in from the far-left edge so the forward-looking camera
@@ -614,10 +647,35 @@ export function createHeroPlanetTSL(uTime) {
     // right of and slightly nearer than the black hole rather than half-clipped.
     group.position.set(-62, 46, -640);
 
-    const planet = createHeroPlanetSurfaceTSL(uTime);
+    // ONE darkness gate for BOTH aurora halves (surface oval + standing crown): the
+    // chapter ticks this to its spaceReveal each frame, so no aurora can glow while
+    // the sky is still daylight (owner report 2026-08-16). Starts at 0 — the safe
+    // initial state — and the playground's standalone builders default to 1.
+    const uAuroraReveal = uniform(0);
+    const planet = createHeroPlanetSurfaceTSL(uTime, { aurora, uAuroraReveal });
     group.add(planet.mesh);
+    group.userData.uAuroraReveal = uAuroraReveal;
 
     const decor = [];
+
+    // WAVE 5 — THE AURORAL CROWN. The standing half of the aurora: four ribbon curtains
+    // (two rings on each pole) merged into ONE geometry sharing ONE material, so the
+    // whole crown is a single draw. It is what breaks the silhouette — the surface term
+    // folded into createHeroPlanetSurfaceTSL cannot leave the disc. Radius must match the
+    // hero sphere below (28) or the curtains will not stand on their own painted oval.
+    // Levered so gpu-split can price BOTH halves in one differential: the lever also
+    // drops the surface term above, because half a price is not a price.
+    if (aurora) {
+        const crown = createPlanetAuroraCrown(
+            HERO_PLANET_RADIUS,
+            uTime,
+            undefined,
+            undefined,
+            uAuroraReveal,
+        );
+        group.add(crown);
+        decor.push(crown);
+    }
 
     // Atmosphere halo — fresnel-shaped TSL glow shell so the rim reads as a soft
     // blue scattering ring hugging the limb (not a flat additive ball). Tagged

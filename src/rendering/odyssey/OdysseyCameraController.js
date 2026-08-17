@@ -568,7 +568,15 @@ export class OdysseyCameraController {
 
             // Look-ahead bias (anticipate path direction)
             lookAheadEnabled: true,
-            lookAheadDistance: 0.02, // How far ahead on path (0-1)
+            // ⚠️ THIS IS A PATH FRACTION, SO WAVE 1A's ASCENT CHANGED WHAT IT BUYS.
+            // `p` is arc-normalised over the whole curve; the ascent took the total
+            // 1767.65 -> 2393.89, so a fixed 0.02 started looking 35% FURTHER ahead in world
+            // terms everywhere in the journey — measured as a framing shift at the board's
+            // opening frame, where chapter 1's starting level slid to ndcY -1.02 against a
+            // -1.0 floor. Scaled by 0.7384 to keep the same world look-ahead it was tuned for.
+            // Note `followDistance` needs no such treatment: it is already in world units.
+            // RE-SCALED for Wave 1C's flyby (2393.89 -> 2532.66): 0.02 * 1767.65/2532.66.
+            lookAheadDistance: 0.01396, // world-equivalent of the pre-ascent 0.02
         };
 
         // Breathing animation state

@@ -549,10 +549,42 @@ async function capturePng(win, filename, metrics = {}) {
     await writeFile(path.join(ARTIFACT_DIR, filename), image.toPNG());
     await writeFile(
         path.join(ARTIFACT_DIR, filename.replace(/\.png$/, '.json')),
-        JSON.stringify(metrics, null, 2),
+        JSON.stringify({ ...metrics, ...frameLuma(image) }, null, 2),
         'utf8',
     );
     console.log(`[chapter-capture] wrote ${filename}`);
+}
+
+/**
+ * MEAN FRAME LUMA, recorded into every sidecar.
+ *
+ * The Act II -> Space transition is judged on how the frame's brightness travels across the
+ * seam (docs/ODYSSEY_ACT2_TO_SPACE_TRANSITION_PLAN_2026-08.md §1): the shipped defect is that
+ * 74% of the change lands in the final third of the window, ending in a single -89 luma step
+ * where the One World act gate flips. That is a property of the PIXELS, so it has to be
+ * measured from them — and the harness is the only place that already holds a decoded bitmap,
+ * which is why this lives here rather than in a separate analyser that would need a PNG
+ * decoder Node does not ship.
+ *
+ * Rec.709 luma on the raw BGRA bitmap, subsampled on a fixed stride: this is a curve-shape
+ * metric across frames, not a colourimetric measurement, and the stride keeps it free.
+ */
+function frameLuma(image) {
+    try {
+        const { width, height } = image.getSize();
+        if (!width || !height) return { meanLuma: null };
+        const buf = image.toBitmap(); // BGRA
+        const stride = 4 * 4; // every 4th pixel
+        let sum = 0;
+        let n = 0;
+        for (let i = 0; i + 3 < buf.length; i += stride) {
+            sum += 0.0722 * buf[i] + 0.7152 * buf[i + 1] + 0.2126 * buf[i + 2];
+            n += 1;
+        }
+        return { meanLuma: n ? Number((sum / n).toFixed(3)) : null, lumaSamples: n };
+    } catch (error) {
+        return { meanLuma: null, lumaError: String(error && error.message) };
+    }
 }
 
 async function collectMetrics(win, extra = {}) {
@@ -826,16 +858,37 @@ async function captureSeam(win, boot) {
     // pin an explicit position, settle it, shoot it. Deterministic, reproducible, and
     // independent of how slow a capture round-trip happens to be. Offsets are expressed
     // as PROGRESS values; `--offsets` still overrides them, now in p.
+    // ⚠️ THE WINDOW MUST COVER THE SYSTEMS BEING MEASURED, NOT JUST THE ECOTONE.
+    //
+    // These used to stop at boundary ±0.030, which is the ecotone's own half-width — and that
+    // silently invalidated a whole line of seam work. At the 5→6 seam the biggest contributor
+    // to the handover is the cloud bank, whose window runs to boundary ±0.060, so only half
+    // its exit was ever photographed. Every attempt to give that exit more room then "failed"
+    // the continuity metric, because the metric stopped looking while the bank was still on
+    // screen: the tool was marking down the fix. Widened to ±0.060 to cover it, and sampled
+    // finer through the middle where the change actually happens.
+    //
+    // The continuity metric normalises per 0.01 of progress precisely so this widening does
+    // not silently re-scale its scores — see scripts/odyssey-seam-luma.mjs.
     const defaultStations = [
-        boundary - 0.030, // the act gate opens here today (margin 0.03) — the leak point
-        boundary - 0.020,
-        boundary - 0.010,
+        boundary - 0.060, // the cloud bank's window opens here (5→6)
+        boundary - 0.050,
+        boundary - 0.040,
+        boundary - 0.030, // the act gate's margin — the old edge of this list
+        boundary - 0.024,
+        boundary - 0.018,
+        boundary - 0.012,
         boundary - 0.006, // quench plateau opens (~p 0.0874 for the 1→2 seam)
         boundary,
         boundary + 0.004, // quench plateau closes (~p 0.0970)
         boundary + 0.010,
-        boundary + 0.020,
+        boundary + 0.016,
+        boundary + 0.022,
         boundary + 0.030, // Earth Core's dissolve is still running out here
+        boundary + 0.038,
+        boundary + 0.046,
+        boundary + 0.054,
+        boundary + 0.060, // the cloud bank's window closes here
     ];
     const stations = String(args.offsets || process.env.ODYSSEY_CAPTURE_SEAM_OFFSETS || '')
         .split(',')

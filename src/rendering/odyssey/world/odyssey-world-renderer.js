@@ -8,6 +8,7 @@ import {
 } from 'three/tsl';
 
 import {
+    ODYSSEY_NORTH_LAKE,
     ODYSSEY_SEA_LEVEL,
     odysseyWorldDetailWeight,
     odysseyWorldMacro,
@@ -15,9 +16,24 @@ import {
 } from './odyssey-world-height.js';
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
 import { createTilingValueNoise } from './odyssey-tiling-noise.js';
+import {
+    GROUND_ATLAS_WORLD, bakeGroundAtlas, bakeGroundSunFields,
+} from './odyssey-ground-bakes.js';
+import {
+    ODYSSEY_GROUND_DISTANCE,
+    ODYSSEY_GROUND_DRYNESS,
+    ODYSSEY_GROUND_LUMA,
+    ODYSSEY_GROUND_MOISTURE,
+    ODYSSEY_GROUND_PALETTE,
+    ODYSSEY_GROUND_SHADE,
+    ODYSSEY_GROUND_STRATA,
+} from './odyssey-ground-palette.js';
 import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
 import { ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
+import { buildForestTreeGeometry } from './odyssey-forest-geometry.js';
+import { forestLodDistanceForTier, getForestSpecies } from './odyssey-forest-species.js';
+import { scatterZonedForest } from './odyssey-forest-scatter.js';
 import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import { snoise3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import {
@@ -87,6 +103,66 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
 });
 
 const RELIEF_EXTENT = 9000;
+
+// ── ground paint constants (ground plan §4) ──────────────────────────────────────
+// The measured palette, shadow models, strata and distance windows live in
+// odyssey-ground-palette.js; what follows is the handful of numbers that describe how those
+// tables are APPLIED here, kept beside the graph that reads them.
+
+/** Where atlas detail melts to pure macro paint. Aliased so the graph reads in one line. */
+const GROUND_MELT = ODYSSEY_GROUND_DISTANCE.detailMelt;
+/**
+ * Per-material mesostructure amplitude — a weighted sum, never one global grain.
+ *
+ * The bar records TWO grass grammars and they are not compatible: Firewatch alternates 2.5-3x
+ * inside a single patch (dark base, light tips), while Witness grass is FLAT to +-7 luma and
+ * gets all its interest from metre-scale patch hue variegation. The first cut ran the Firewatch
+ * amplitude on top of a patchy moisture field and got neither — the massif station read as
+ * mottled smudge. The Witness is the stated target, so the tooth is quiet and the patches speak.
+ * Paths and sand hills hold +-5..12 luma with no gravel noise anywhere in either game.
+ */
+const GROUND_TOOTH = Object.freeze({
+    grass: 0.18, rock: 0.12, sand: 0.10, snow: 0.08,
+});
+/** Regional temperature drift. Neither pole BRIGHTENS blue — the cool end pulls red down. */
+const GROUND_ZONE_WARM = Object.freeze([1.07, 1.00, 0.91]);
+const GROUND_ZONE_COOL = Object.freeze([0.93, 0.98, 1.00]);
+/** The painted contact lip where grass meets sand or rock: darker AND warmer, never grey. */
+const GROUND_EDGE_TINT = Object.freeze([0.80, 0.72, 0.55]);
+const GROUND_EDGE_AMT = 0.55;
+/** Wind-swept lighter bands. Deliberately small: this is a Ghibli stroke, not a strobe. */
+const GROUND_WIND_LIFT = 0.055;
+/**
+ * Snow's ice-blue shadow, from mountain-language.js — the ONE shadow colour here that is prior
+ * art rather than a measurement (no reference frame contains snow). Authored luma-neutral
+ * (0.2126/0.7152/0.0722 weights sum to 0.997) so it shifts hue only and cannot claim a second
+ * share of the value drop that `value` owns.
+ */
+const GROUND_SNOW_SHADE = Object.freeze([0.87, 1.01, 1.24]);
+/**
+ * How hard convex ground strips its own snow. Wind scours ribs and fills hollows, so a peak's
+ * structure shows as stone on the crests — the one cue that separates a snowy MOUNTAIN from a
+ * smooth white cone when the silhouette cannot help.
+ */
+const GROUND_SNOW_CREST_STRIP = 0.75;
+/**
+ * Must match the bake's floor, or `openness` never reaches 0 in the deepest hollow.
+ *
+ * (A `GROUND_AO_STRENGTH` multiply over the whole lit result lived beside this. It is gone:
+ * wide occlusion reaches the image through the per-material AMBIENT instead, which darkens the
+ * sky fill that occlusion actually blocks and leaves direct sun alone. The multiply was a
+ * second owner of the same measurement and drove a hollow in shadow to 0.195 against the
+ * measured 0.27-0.32 band.)
+ */
+const GROUND_AO_FLOOR = 0.56;
+/**
+ * Absolute brightness of full sun, chosen so the sunlit island lands where the shipped graph
+ * had it (`sunColour * 0.98 + shadowTint * 0.36`). It multiplies the whole value ramp, so the
+ * measured shade:lit ratio is unaffected — one owner, one number.
+ */
+const GROUND_LIT_GAIN = 1.16;
+/** How much of the journey's ambient HUE survives into ground shade. See the graph's note. */
+const GROUND_AMBIENT_CHROMA = 0.25;
 /**
  * Altitude of the one cloud deck, in world units. Chosen against the RAIL, not against a
  * chapter: the path leaves the shore at ~300, crosses 424 entering the ascent, tops Ch5's
@@ -110,6 +186,117 @@ const FIELD_CENTROID_BEND = 0.30;
 // create — the same term doing useful work before, and harm after.
 /** Quantised silver-lining strength. Deliberately small — the references show a rim, not a bloom. */
 const FIELD_MIE_GAIN = 0.10;
+
+/**
+ * THE NORTH LAKE'S WATER PALETTE (owner-directed colour pass 2026-08-16).
+ *
+ * Authored in the world's LINEAR working space, before `toOutput` (which multiplies by
+ * ONE_WORLD_OUTPUT_SCALE 0.82 and pulls saturation to 0.72) and before `applyAerial`.
+ * ⚠️ That stack costs roughly a fifth of the value and a quarter of the chroma, so these
+ * are deliberately DEEPER and MORE saturated than the pixel they are meant to produce —
+ * the same overshoot rule the theme work records for playground-vs-graded tuning.
+ *
+ * `shallowFrom/To` are water DEPTHS in world units, and they are set against MEASURED
+ * bathymetry, not taste: the arms run 4-11 u deep and the main basin 7-40 u, so a shore
+ * band wider than ~13 u tints the entire lake "shallow" and the depth read disappears.
+ *
+ * THE ARMS OF THE COMPARISON ARE KEPT. `?lakeTint=<name>` selects one in the playground
+ * AND through the graded capture harness (`--url-flag lakeTint=ocean`), which is the only
+ * honest way to judge a colour here — the playground is flat NoToneMapping, and requiring
+ * a tree edit per arm is what makes people compare across capture runs, which silently
+ * changes the CAMERA (sparse-station hysteresis) and invalidates the A/B.
+ *
+ * MEASURED, all four arms at p=0.640 from the same station list, sky luma 163.7:
+ *   mirror (incumbent)  luma 158.1  sat 19%   0.96x sky — reads as a hole, not water
+ *   tarn                luma 147.9  sat 34%
+ *   deepstill           luma 122.4  sat 36%   0.74x sky — deepest, coolest
+ *   alpine (SHIPPED)    luma 136.1  sat 35%   0.83x sky
+ * ⚠️ Judge colour at p 0.60-0.65 ONLY. The world's departure fade opens at p=0.6327 and
+ * is already 34% by p=0.68, lerping everything toward 0x05060f — an A/B taken at 0.67+
+ * measures the fade, not the palette.
+ */
+const LAKE_TINT_VARIANTS = {
+    // A — the incumbent sky mirror, kept as the control arm for the comparison.
+    mirror: {
+        shallow: [0.30, 0.40, 0.60],
+        deep: [0.20, 0.29, 0.52],
+        shallowFrom: 0,
+        shallowTo: 1,
+        skyLevel: 0.92,
+        grazeMax: 0.0,
+        grazePow: 5,
+        glintGain: 0.30,
+    },
+    // B — the world's OWN ocean family (uWaterShallow/Mid), so the island's water reads
+    // as one substance. Cool, fairly blue.
+    ocean: {
+        shallow: [0.29, 0.54, 0.69],
+        deep: [0.10, 0.29, 0.42],
+        shallowFrom: 0.5,
+        shallowTo: 13,
+        skyLevel: 0.85,
+        grazeMax: 0.35,
+        grazePow: 4,
+        glintGain: 0.16,
+    },
+    // C — alpine tarn: green-teal shallows over a deep blue body, the classic
+    // mountain-lake read and the one that separates most from the sky.
+    tarn: {
+        shallow: [0.30, 0.58, 0.55],
+        deep: [0.055, 0.20, 0.34],
+        shallowFrom: 0.5,
+        shallowTo: 13,
+        skyLevel: 0.85,
+        grazeMax: 0.35,
+        grazePow: 4,
+        glintGain: 0.16,
+    },
+    // D — Ghibli daylight lake: warmer, lighter, higher chroma, less depth contrast.
+    ghibli: {
+        shallow: [0.38, 0.66, 0.66],
+        deep: [0.12, 0.34, 0.50],
+        shallowFrom: 0.5,
+        shallowTo: 15,
+        skyLevel: 0.95,
+        grazeMax: 0.40,
+        grazePow: 3.5,
+        glintGain: 0.20,
+    },
+    // E — deep still water: minimal shore band, dark body, strong grazing sky. The most
+    // "mirror at the far shore, ink in the middle" of the set.
+    deepstill: {
+        shallow: [0.16, 0.34, 0.46],
+        deep: [0.035, 0.13, 0.26],
+        shallowFrom: 0.5,
+        shallowTo: 11,
+        skyLevel: 0.90,
+        grazeMax: 0.40,
+        grazePow: 3,
+        glintGain: 0.14,
+    },
+    // F — alpine (SHIPPED): deepstill's value ladder — measured 0.74x the sky's luma at
+    // the rail, where the incumbent mirror sat at 0.96x and read as a hole in the ground
+    // — carrying tarn's teal in the shallows so the shore band belongs to the island's
+    // greens rather than to the sky.
+    alpine: {
+        shallow: [0.24, 0.50, 0.50],
+        deep: [0.045, 0.16, 0.30],
+        shallowFrom: 0.5,
+        shallowTo: 12,
+        skyLevel: 0.88,
+        grazeMax: 0.38,
+        grazePow: 3.5,
+        glintGain: 0.15,
+    },
+};
+const LAKE_TINT_DEFAULT = 'alpine';
+/**
+ * ATMOSPHERIC THINNING (Wave 3 / F3): how much of each mass's body the full thin removes,
+ * as a fraction of its distance to the mass centre. 0.30 at the schedule's 0.85 cap means
+ * a mass ends the climb at ~74% of its authored size — visibly losing scale, still a cloud.
+ * The pull rides INSIDE cfOffset so the vertex position and the cfWorld varying agree.
+ */
+const FIELD_THIN_SHRINK = 0.30;
 /**
  * RIGID DRIFT (plan Wave 3). Amplitudes in world units and the period band in seconds.
  *
@@ -311,58 +498,6 @@ function bakeMacroTexture(res = 512) {
         }
     }
     const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
-    return tex;
-}
-
-function bakeSunVisibility(heightAt, shadowRes) {
-    const len = Math.hypot(...ODYSSEY_WORLD_SUN);
-    const [sx, sy, sz] = ODYSSEY_WORLD_SUN.map((v) => v / len);
-    const horiz = Math.hypot(sx, sz) || 1e-4;
-    const dirX = sx / horiz;
-    const dirZ = sz / horiz;
-    const rise = sy / horiz;
-    const step = RELIEF_EXTENT / shadowRes;
-    const origin = -RELIEF_EXTENT / 2;
-
-    const raw = new Float32Array(shadowRes * shadowRes);
-    for (let j = 0; j < shadowRes; j += 1) {
-        const z0 = origin + (j * step);
-        for (let i = 0; i < shadowRes; i += 1) {
-            const x0 = origin + (i * step);
-            const h0 = heightAt(x0, z0);
-            let shadow = 0;
-            let t = step * 1.5;
-            for (let k = 0; k < 42; k += 1) {
-                const terrain = heightAt(x0 + (dirX * t), z0 + (dirZ * t));
-                const ray = h0 + (rise * t);
-                if (terrain > ray) {
-                    shadow = Math.max(shadow, Math.min(1, ((terrain - ray) / (1 + (t * 0.05))) * 0.5));
-                    if (shadow >= 1) break;
-                }
-                t *= 1.115;
-            }
-            raw[(j * shadowRes) + i] = 1 - shadow;
-        }
-    }
-    const at = (i, j) => raw[(Math.max(0, Math.min(shadowRes - 1, j)) * shadowRes)
-        + Math.max(0, Math.min(shadowRes - 1, i))];
-    const data = new Uint16Array(shadowRes * shadowRes);
-    for (let j = 0; j < shadowRes; j += 1) {
-        for (let i = 0; i < shadowRes; i += 1) {
-            let sum = 0;
-            for (let dj = -1; dj <= 1; dj += 1) {
-                for (let di = -1; di <= 1; di += 1) sum += at(i + di, j + dj);
-            }
-            data[(j * shadowRes) + i] = THREE.DataUtils.toHalfFloat(sum / 9);
-        }
-    }
-    const tex = new THREE.DataTexture(data, shadowRes, shadowRes, THREE.RedFormat, THREE.HalfFloatType);
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.wrapS = THREE.ClampToEdgeWrapping;
@@ -664,7 +799,131 @@ function bakeDetailNormal(res = 256) {
 
 // ── vegetation ───────────────────────────────────────────────────────────────────
 
-function buildTreeGeometry() {
+/**
+ * THE PAINT PROBE (forest plan Wave 0b) — the cheapest possible falsifier of the whole
+ * overhaul, run on the INCUMBENT cone geometry so it costs no new geometry files.
+ *
+ * The research is unanimous that the painted-blob read is two things and neither is the mesh:
+ * normals transferred from an enclosing blob, and a 2-3 band ramp on a WRAPPED light term.
+ * If those two transform even a 30-triangle cone stack, the sculptor is funded; if they do
+ * not, the paint is redesigned before a single species is built. Owner decision D0.
+ *
+ * Every constant below is a MEASURED band from the plan's §1b (Wave 0c, sampled from the
+ * owner's five reference frames), not a taste setting — so a capture that misses the bar
+ * names the constant to move rather than starting an argument.
+ */
+// Where the crown's blob normals radiate FROM, in local tree units. The canopy spans y 0.9
+// (skirt) to 3.95 (apex) and a cone's mass is bottom-heavy, so the centre sits below the
+// midpoint. Vertices below it therefore get normals pointing DOWN, which is what hands the
+// underside its dark mass for free instead of needing a second term for it.
+const FOREST_BLOB_CENTRE_Y = 1.95;
+// "The leaves face outwards and upwards from the center of the tree" — the polycount/habrador
+// reproduction of the Witness normal transfer. Applied to the already-normalised direction and
+// renormalised, so it is a constant tilt rather than a distance-dependent one.
+const FOREST_BLOB_UP_BIAS = 0.30;
+// Wrap width: (dot(N,L) + w) / (1 + w). w=0.70 pushes the terminator far around the limb.
+// The references show a soft turn of form across the whole crown, and a hard dot(N,L)
+// terminator on a blob normal field cannot produce one at any threshold.
+const FOREST_WRAP = 0.70;
+// The band edges, placed ON the wrapped term so they land inside the soft falloff instead of
+// replacing it. Wide on purpose, like the cloud field's 0.42..0.62.
+// THREE STEPS. The lower pair turns shade into the mid tone across the crown's flank; the
+// upper pair is placed where canopy TOPS actually compute (wrap ~0.66 at the authored sun
+// angle), which is the only place a threshold can still do work when the camera looks down.
+const FOREST_BAND_LO = 0.34;
+const FOREST_BAND_MID = 0.52;
+const FOREST_BAND_HI_LO = 0.60;
+const FOREST_BAND_HI = 0.78;
+/** How far the mid tone sits from shade toward the lit albedo. */
+const FOREST_MID_TONE = 0.58;
+// ⚠️ THE MEASURED SHADOW LAW (§1b R3). Foliage shade goes DEEPER and MORE SATURATED along the
+// canopy's OWN hue axis: normalised blue FALLS and HSV saturation RISES in 14 of 15 measured
+// reference pairs. It does NOT go cool/blue — that was the community-recipe assumption this
+// plan carried until the pixels refuted it, and it survives only as the CLOUD law. Encoding
+// it as a saturation gain > 1 with a value scale < 1 on the albedo's own colour makes the law
+// STRUCTURAL: every crown hue authored later inherits a correct shade automatically, and no
+// future palette edit can quietly reintroduce a grey or blue shadow.
+const FOREST_SHADE_SAT = 1.30;
+// The value ratio, inside the measured workhorse band (0.43..0.78; §1b R2).
+//
+// ⚠️ IT IS PRODUCED IN EXACTLY ONE PLACE — the ambient light's magnitude relative to the sun's
+// — and the first cut of this probe got that wrong in a way the reference bar caught within
+// one capture. That version scaled the ALBEDO by this constant, then multiplied by a dim
+// ambient, then multiplied AGAIN by the occlusion floor; three compounding factors put the
+// measured shade at p10 = 0.0 (literal black, after the grade's crush) against an incumbent
+// that measured 66.9 and a target band of 0.43..0.78. The lesson is worth more than the fix:
+// the measured ratio is a FINAL-PIXEL ratio, so only one term in the chain may own it.
+const FOREST_SHADE_VALUE = 0.55;
+// Sky occlusion at the crown's base. Oga's dark interior mass is "blocked from the light of
+// the sky" — a height-in-crown term, NOT a second N.L, which is why this multiplies the band
+// result rather than joining it.
+// Raised from 0.62 after the first capture: this is a MODULATION on top of the band, not a
+// second darkening authority, and at 0.62 it was compounding into the black-shade defect.
+const FOREST_OCCLUSION_FLOOR = 0.80;
+// The edge of that mass, in crown height. Placed low so the dark belly is a skirt under a
+// large lit crown rather than half the tree.
+const FOREST_OCC_LO = 0.10;
+const FOREST_OCC_HI = 0.38;
+/**
+ * How far a tree's own band threshold may slide along the wrap ramp, per instance.
+ *
+ * The fix for "the forest reads as one flat sheet from above" — see the note at `fvBand`.
+ * Large enough that neighbouring crowns separate into distinct tones; small enough that no
+ * tree leaves the two authored tones, which is what §1b R1's "2-3 connected masses" requires.
+ */
+const FOREST_BAND_JITTER = 0.17;
+/**
+ * Where the band structure starts and finishes collapsing toward one tone, in world units.
+ * FLAT_NEAR sits past the hero tier (a hero crown keeps all three tones); FLAT_FAR is inside
+ * the 1450 u draw distance so the far half of the forest genuinely reads as massed colour.
+ */
+/** Saturation gain applied to the far tone BEFORE the aerial haze — see the note at use. */
+const FOREST_FAR_PRESAT = 2.0;
+const FOREST_FLAT_NEAR = 220;
+const FOREST_FLAT_FAR = 950;
+// The backlit gold: the Ghibli glow, and the half of §1b R7 that a near tree can show.
+const FOREST_BACKLIT_GAIN = 0.30;
+// Ambient = the colour script's shadow tint plus a little sky fill, so the shade band is a
+// LIT colour and not merely a darker albedo. Nodes, never copied numbers — the whole forest
+// re-tints with the journey's time of day for free.
+// These two are HUE contributions only; the ambient's MAGNITUDE comes from the sun term
+// scaled by FOREST_SHADE_VALUE, so the value ratio has exactly one owner.
+const FOREST_AMBIENT_TINT = 0.10;
+const FOREST_SKY_FILL = 0.08;
+// Eased from 0.95: the first capture measured the probe 35% brighter than the incumbent and
+// BELOW the references' saturation band, which is the wrong trade in a palette whose stated
+// rule is that saturation never collapses.
+const FOREST_SUN_GAIN = 0.88;
+// Two crown greens, varied per instance by the existing `aTint`: one dominant hue per tree
+// (§1b R5), and a preview of what Wave 2's zone field will drive properly.
+// ⚠️ RE-TUNED TWICE, AND THE SECOND TIME UNDID THE FIRST. The first pass deepened these
+// because the capture measured saturation 0.372 against the reference band of 0.46..0.75 —
+// but that capture was taken while every canopy triangle was WOUND INSIDE-OUT, so the
+// measurement described the far interior surface, not the tree. With the winding fixed the
+// same albedo measured 0.867, well ABOVE the band: the deepening had been compensating for a
+// bug. These are back near their authored values. The lesson is not about greens — it is that
+// a measurement is only as good as the geometry underneath it, and a tuning pass done on top
+// of a rendering defect encodes that defect into the palette.
+const FOREST_CROWN_A = [0.145, 0.248, 0.108];
+const FOREST_CROWN_B = [0.285, 0.415, 0.155];
+// Trunk. §1b R6 measured the opposition as HUE-first (Firewatch trunk normR 0.57 against a
+// canopy's 0.42), value-second — so this is a red-brown against the olive crowns, not a
+// darker green.
+const FOREST_TRUNK = [0.105, 0.055, 0.032];
+/**
+ * World scale for a roster tree. The sculptor authors at unit-ish size (a mature pine is ~4.5
+ * local units tall); the incumbent's instance scale ran 3.2-6.6 on a ~4 unit tree, giving
+ * 10.7-32.6 m. This lands the roster in the same band at 1 u = 1 m.
+ */
+const FOREST_V2_SCALE = 4.6;
+
+/**
+ * @param {boolean} [blobNormals] bake canopy normals radiating from the crown's blob centre
+ *   instead of the per-face outward normals. Wave 0b's half of the probe that lives in the
+ *   BAKE: it is vertex data only, costs nothing at runtime, and is the single change the
+ *   research ranks first.
+ */
+function buildTreeGeometry(blobNormals = false) {
     const positions = [];
     const normals = [];
     const shade = [];
@@ -678,8 +937,12 @@ function buildTreeGeometry() {
         const nz = Math.sin((a0 + a1) / 2);
         const p0 = [Math.cos(a0) * trunkR, Math.sin(a0) * trunkR];
         const p1 = [Math.cos(a1) * trunkR, Math.sin(a1) * trunkR];
-        [[p0[0], 0, p0[1], 0], [p1[0], 0, p1[1], 0], [p1[0], trunkH, p1[1], 0.2],
-            [p0[0], 0, p0[1], 0], [p1[0], trunkH, p1[1], 0.2], [p0[0], trunkH, p0[1], 0.2]]
+        // CCW-outward. See the winding note in odyssey-forest-geometry.js: this stack was
+        // emitted CW, so every triangle was back-face culled and the GPU shaded the far
+        // interior. Harmless while the normals were flat per-face; NOT harmless once the
+        // Wave 0b probe bakes blob normals and bands on them.
+        [[p0[0], 0, p0[1], 0], [p1[0], trunkH, p1[1], 0.2], [p1[0], 0, p1[1], 0],
+            [p0[0], 0, p0[1], 0], [p0[0], trunkH, p0[1], 0.2], [p1[0], trunkH, p1[1], 0.2]]
             .forEach(([x, y, z, sv]) => {
                 positions.push(x, y, z);
                 normals.push(nx, 0.1, nz);
@@ -696,11 +959,37 @@ function buildTreeGeometry() {
             const a1 = ((i + 1) / SIDES) * Math.PI * 2;
             const nx = Math.cos((a0 + a1) / 2);
             const nz = Math.sin((a0 + a1) / 2);
-            positions.push(Math.cos(a0) * radius, base, Math.sin(a0) * radius);
-            positions.push(Math.cos(a1) * radius, base, Math.sin(a1) * radius);
-            positions.push(0, top, 0);
-            for (let k = 0; k < 3; k += 1) normals.push(nx, 0.45, nz);
-            shade.push(0.15, 0.15, 1.0);
+            // rim0 -> apex -> rim1 is CCW seen from outside.
+            const tri = [
+                [Math.cos(a0) * radius, base, Math.sin(a0) * radius],
+                [0, top, 0],
+                [Math.cos(a1) * radius, base, Math.sin(a1) * radius],
+            ];
+            tri.forEach(([px, py, pz]) => positions.push(px, py, pz));
+            if (blobNormals) {
+                // PER-VERTEX, which is the entire point: three different normals across one
+                // triangle is what turns a flat facet into a slice of a smooth ball. The
+                // silhouette is untouched — the crown keeps its crisp cone edges and gains a
+                // soft interior, which is exactly the Witness combination.
+                tri.forEach(([px, py, pz]) => {
+                    const dy0 = py - FOREST_BLOB_CENTRE_Y;
+                    // Guarded: a zero-length normalize const-folds into a WGSL compile
+                    // failure rather than a warning (the winter theme's logged trap). No
+                    // canopy vertex sits at the blob centre, but the guard costs nothing and
+                    // the constant above is meant to be tuned.
+                    const l0 = Math.hypot(px, dy0, pz) || 1;
+                    const uy = (dy0 / l0) + FOREST_BLOB_UP_BIAS;
+                    const l1 = Math.hypot(px / l0, uy, pz / l0) || 1;
+                    normals.push((px / l0) / l1, uy / l1, (pz / l0) / l1);
+                });
+            } else {
+                for (let k = 0; k < 3; k += 1) normals.push(nx, 0.45, nz);
+            }
+            // ⚠️ ORDER FOLLOWS `tri`, which is now rim0 -> APEX -> rim1. Left as
+            // (0.15, 0.15, 1.0) after the winding swap this would have put the apex's bright
+            // value on a rim vertex and vice versa — a silent inversion of the incumbent's
+            // vertical gradient, on the exact attribute the shipped forest reads.
+            shade.push(0.15, 1.0, 0.15);
         }
     }
     const geo = new THREE.BufferGeometry();
@@ -814,6 +1103,17 @@ export function scatterTrees(heightAt, {
  *   had never been measured and no water work could be honestly funded. Skipping the BUILD
  *   (not just the draw) also prices its pipeline out of the cold-compile path. Same
  *   measurement-lever pattern as earth-core's ?earthCoreNoLake/NoHaze bisects.
+ * @param {boolean} [opts.forest] scatter and build the forest at all. A MEASUREMENT LEVER,
+ *   not a player setting (board flag `?odysseyWorldNoForest=1`, gpu-split configuration
+ *   `no-forest`), added 2026-08-14 for the forest plan's Wave 0a. Same reason as `water`, and
+ *   a starker case: the forest is the single biggest content system in this file — 15,427
+ *   trees / 40 InstancedMesh chunks / 462,810 triangles at high quality — and its cost had
+ *   NEVER been measured as a differential, because nothing in the tree could switch it off.
+ *   ADR-0016 is explicit that an unmeasured cost cannot fund a package, so this lever is the
+ *   prerequisite for every wave of docs/ODYSSEY_ACT2_FOREST_PLAN_2026-08.md. The ONE forest
+ *   number that exists today is a by-product: at p=0.16 submerged, 11 of 45 draws were
+ *   forest — measured while proving the underwater gate, not while pricing the system.
+ *   Skipping the BUILD (not just the draw) prices draws + fill + vertex + pipeline together.
  * @param {'lattice'|'alpha'|'grid'|'mult'|'flat'|null} [opts.cloudDebug] DIAGNOSTIC LEVER, default null
  *   (board flag `?odysseyWorldCloudDebug=lattice`). Re-shades the deck — same mesh, same
  *   geometry, same draw — to answer one question per mode:
@@ -839,7 +1139,33 @@ export function createOdysseyWorld({
     heroes = false,
     cloudField = true,
     cloudFieldCount = 0,
+    // REVIEW LEVER ONLY (playground `?lakeTint=`): pick a north-lake water palette from
+    // LAKE_TINT_VARIANTS. Unset ships LAKE_TINT_DEFAULT, so the game has exactly one
+    // answer and the comparison arms cannot leak into it.
+    lakeTint = '',
     water = true,
+    forest = true,
+    forestPaint = false,
+    // THE SHIPPED FOREST since the 2026-08-14 swap (owner decisions D0/D1/D2/D5 — the roster
+    // was accepted wave by wave through captures, and D5 fixed its price at the lean shape's
+    // measured 2.621 ms). The incumbent cone forest is RETAINED per ADR-0015 behind
+    // `?odysseyWorldForestV1=1`: builders, scatter and material all stay, one flag from
+    // restoration, so a failure of the new forest is attributable rather than unfalsifiable.
+    forestV2 = true,
+    // The rail-visibility cull: drop trees the journey's camera can never see. Ships ON — it
+    // was measured at 0.00% of pixels changed across four rail stations, for 0.20 ms p50 — and
+    // `?odysseyWorldNoVisCull=1` restores every tree (ADR-0015).
+    visibilityCull = true,
+    // EXPERIMENT: pin every tree to one LOD tier. `?odysseyForestLod=hero` is the "what would
+    // high-detail trees everywhere feel like" lever. Not a quality setting — it ignores
+    // distance entirely, so it costs ~18 ms of forest on the integrated lane.
+    forestLod = null,
+    /** Quality tier name — selects the forest's hero/mid LOD distances. */
+    qualityTier = null,
+    // MEASUREMENT ONLY (ground plan Wave 0a). Same geometry, same draws, same triangles —
+    // only the ground's fragment mesostructure is withheld, so `baseline - flat-ground`
+    // prices exactly the stack the overhaul spends against. Never shipped on.
+    flatGround = false,
     cloudDebug = null,
     skyRadius = null, railSamples = [],
 } = {}) {
@@ -847,7 +1173,14 @@ export function createOdysseyWorld({
     const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
     const relief = buildReliefBake(q.reliefRes);
-    const sunVisTex = bakeSunVisibility(relief.sample, q.shadowRes);
+    // The world plate: sun visibility (R, unchanged) plus the three fields that ARE the
+    // painting — wide occlusion, moisture, and the island's colour zone. Deciles are logged so
+    // a rebake cannot silently flatten a field the whole palette hangs off.
+    const sunFields = bakeGroundSunFields(relief.sample, q.shadowRes);
+    const sunVisTex = sunFields.tex;
+    const groundAtlas = bakeGroundAtlas();
+    const groundTex = groundAtlas.tex;
+    const atlasAvg = groundAtlas.avg;
     const detailTex = bakeDetailNormal();
     const macroTex = bakeMacroTexture();
     const heightTex = relief.tex;
@@ -970,11 +1303,45 @@ export function createOdysseyWorld({
     // overhead term entirely and move by <0.02 under the gamut pull, so they are left alone.)
     const skyColourSubmergedUp = uSkyZenith;
     const skyColourSubmergedGraze = mix(uSkyHorizon, uSkyZenith, float(0.88));
-    const applyAerial = (lit, wp) => {
+    /**
+     * How much of a distant surface the air is allowed to replace.
+     *
+     * 0.82 is the WATER's number and it earns it: the sea runs to the horizon, so its far
+     * fragments must converge on the same plate the sky dome converges on or the horizon carries
+     * a seam (the "ONE COLOUR AT INFINITY" note on the dome below). LAND never reaches that
+     * distance — this is an island, the ocean is what meets the sky — so the ceiling that
+     * prevents a seam for water only bleaches terrain for land.
+     *
+     * MEASURED from the air, which is the view that exposed it: the distant peak screened at
+     * chromaticity .309/.331/.360 against the reference's .282/.342/.377 and saturation 0.14
+     * against a 0.18-0.53 bar, and the very high aerials read as milk. At rail distance the mix
+     * is only 5-21% and this ceiling is never reached, so lowering it for the GROUND is
+     * surgical: it changes what is far away and nothing that is near.
+     */
+    const AERIAL_CEIL_WATER = 0.82;
+    const AERIAL_CEIL_LAND = 0.58;
+    /**
+     * ...and the CEILING was not the binding constraint, which is worth recording because it
+     * was the obvious lever and it did almost nothing. From 1,500 u up, the terrain below is
+     * 1,500-3,000 u away and the mix is 27-40% — far under either ceiling. What bleaches an
+     * aerial view is the RATE, not the cap. So land gets both: a lower cap for the far tail and
+     * a scaled rate for everything before it. Water keeps 1.0 on both, because its haze is
+     * doing a job (converging on the plate the sky converges on) that land's never has to.
+     *
+     * Held at 0.62 rather than lower on purpose. Sable's law is in this plan for a reason —
+     * with flat shading the distance gradient is nearly the only depth cue there is — so this
+     * trades some haze for colour and must not trade all of it.
+     */
+    const AERIAL_RATE_LAND = 0.62;
+    const applyAerial = (lit, wp, ceil = AERIAL_CEIL_WATER, rate = 1) => {
         const to = wp.sub(cameraPosition);
         const d = length(to);
         const dirY = to.div(max(d, float(0.001))).y;
-        const air = mix(lit, skyColourFor(dirY), clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.82));
+        const air = mix(
+            lit,
+            skyColourFor(dirY),
+            clamp(float(1).sub(exp(d.mul(uAerialK.negate()))).mul(float(rate)), 0, ceil),
+        );
         // PER-CHANNEL BEER-LAMBERT, so red dies first and distance reads as WATER rather than
         // as blue fog: one scalar became a vec3 whose red extinguishes ~3.5x faster than blue,
         // the one cue that separates "underwater" from "tinted air". The old 0.97 clamp is gone
@@ -1068,96 +1435,409 @@ export function createOdysseyWorld({
     const aux = texture(heightTex, vUv);
     const baseNormal = normalize(vec3(aux.g.mul(vWeight).add(vMDx).negate(), 1, aux.b.mul(vWeight).add(vMDz).negate()));
     const footprint = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)));
-    const detailScales = [{ world: 26, amp: 0.34 }, { world: 7.5, amp: 0.20 }]
-        .slice(0, q.detailScales);
-    let bump = vec2(0, 0);
-    detailScales.forEach(({ world: wl, amp }) => {
-        const gate = float(1).sub(smoothstep(float(wl / 6), float(wl / 1.5), footprint));
-        bump = bump.add(texture(detailTex, positionWorld.xz.div(wl)).rg.mul(amp).mul(gate));
-    });
-    // Curvature, on the same weight ramp as the relief it was baked from, so it fades out
-    // with the detail rather than surviving as shading over a lattice too coarse to show it.
-    const curvature = clamp(aux.a.mul(vWeight).mul(9.0), -1, 1);
-    const gully = max(curvature, 0);
-    const crest = max(curvature.negate(), 0);
-    const flatness = clamp(baseNormal.y, 0, 1);
-    const normal = normalize(baseNormal.add(vec3(bump.x, 0, bump.y).mul(flatness.mul(0.42))));
+    /**
+     * THE WORLD PLATE (ground plan Wave 1) — one fetch, four fields.
+     *
+     * This used to be a single-channel sun-visibility read. R still is, byte for byte and
+     * math for math, because the water material reads the same texture and a silent change
+     * there would be a second, quieter opinion about where the sun is. G, B and A were three
+     * unused channel slots on a fetch the ground fragment was ALREADY paying for, and they now
+     * carry the painting: wide-radius occlusion, the moisture field that places every material
+     * between its two palette poles, and the island's regional colour zone. Widening a texture
+     * that is already sampled is free per pixel — the same trick the relief bake's curvature
+     * channel used when it stopped being "a literal zero".
+     */
+    const plate = texture(sunVisTex, vUv).toVar();
+    const sunVis = plate.r;
+    const wideAo = plate.g;
+    const zone = plate.a;
 
-    const height = positionWorld.y;
-    // Biome follows the LANDFORM; only lighting sees the grain. Driving both from the detailed
-    // normal makes grass and rock track the surface noise, which reads as camouflage blotching.
-    const slope = clamp(float(1).sub(baseNormal.y), 0, 1);
-    const detailGate = float(1).sub(smoothstep(float(1.2), float(9), footprint))
-        .mul(float(1).sub(smoothstep(float(2), float(6), vSpacing)));
+    let groundColour;
+    if (flatGround) {
+        /**
+         * THE PRICING LEVER (ground plan Wave 0a) — `?odysseyWorldFlatGround=1`.
+         *
+         * The ground fragment stack had never been priced, for the same reason the water, the
+         * cloud deck and the forest each went unpriced until their own Wave 0: nothing in the
+         * tree could switch it off, and ADR-0016 says an unmeasured cost cannot fund a package.
+         * The ground cannot use the `no-water` shape (never built) — the clipmap IS the world,
+         * so removing it would remove the station's content and measure a different scene while
+         * the content-match guard still passed. So this takes the cloud DECK's asymmetric
+         * shape, moved to the fragment stage: identical geometry, identical positionNode,
+         * identical draws and triangles by construction, with only the disputed part withheld.
+         *
+         * What it withholds is exactly what an overhaul spends against — the detail bump
+         * octaves, the atlas fetch, the biome mixes, curvature, strata, the caustic web and
+         * the two-model shadow — leaving a constant albedo under the baked sun. Recorded
+         * caveat, same as the deck's: pipeline compile stays on both sides, so the number is a
+         * floor, not a ceiling.
+         */
+        const flatNdl = max(dot(baseNormal, uSunDir), 0);
+        groundColour = vec3(0.42, 0.41, 0.38)
+            .mul(uSunColour.mul(flatNdl.mul(sunVis).mul(0.92).add(0.06)));
+    } else {
+        /**
+         * ONE bump octave, not two — the overhaul's own de-duplication.
+         *
+         * The 7.5 u octave existed because the 26 u one alone left the near field smooth, and
+         * before this wave there was nothing else in the graph to fill that band. The atlas
+         * now does: it tiles every 22 u with marks down to ~2 u, per material, mean-transparent.
+         * Two systems describing the same frequencies is a second owner, and on this lane it is
+         * a second owner with a price — the fetch is paid on every ground fragment in the frame.
+         * MEASURED: dropping it is where a third of the overhaul's cost came back.
+         */
+        const detailScales = [{ world: 26, amp: 0.34 }].slice(0, q.detailScales);
+        let bump = vec2(0, 0);
+        detailScales.forEach(({ world: wl, amp }) => {
+            const gate = float(1).sub(smoothstep(float(wl / 6), float(wl / 1.5), footprint));
+            bump = bump.add(texture(detailTex, positionWorld.xz.div(wl)).rg.mul(amp).mul(gate));
+        });
+        // Curvature, on the same weight ramp as the relief it was baked from, so it fades out
+        // with the detail rather than surviving as shading over a lattice too coarse to show it.
+        const curvature = clamp(aux.a.mul(vWeight).mul(9.0), -1, 1);
+        const gully = max(curvature, 0);
+        const crest = max(curvature.negate(), 0);
+        const flatness = clamp(baseNormal.y, 0, 1);
+        const normal = normalize(baseNormal.add(vec3(bump.x, 0, bump.y).mul(flatness.mul(0.42))));
 
-    const wSand = float(1).sub(smoothstep(float(ODYSSEY_SEA_LEVEL - 2), float(ODYSSEY_SEA_LEVEL + 26), height));
-    // ALPINE SURFACE LANGUAGE (Ch4 port). The peaks survive suppression as terms in the
-    // height field, so the camera stares at them for all of Ch4 — but a generic biome ramp
-    // gives them a CLEAN HORIZONTAL snow band, which reads as a contour line on a map rather
-    // than a mountain. mountain-language.js broke that band with FBM jitter and gated snow by
-    // slope; both port directly here, the jitter riding a low-frequency read of the detail
-    // texture (one fetch) instead of procedural noise. The band is also tightened 620..790 ->
-    // 620..730 now that the jitter, not the ramp width, is what softens the boundary.
-    const snowJitter = texture(detailTex, positionWorld.xz.mul(0.0016)).b.sub(0.5).mul(92);
-    const snowHeight = height.add(snowJitter).toVar();
-    const wSnow = smoothstep(float(620), float(730), snowHeight)
-        .mul(float(1).sub(smoothstep(float(0.42), float(0.70), slope)));
-    const wRock = clamp(max(
-        smoothstep(float(0.17), float(0.40), slope),
-        smoothstep(float(470), float(640), snowHeight).mul(0.75),
-    ).add(crest.mul(uRidgeRock).mul(detailGate)), 0, 1);
-    let albedo = vec3(0.30, 0.44, 0.22);
-    albedo = mix(albedo, vec3(0.70, 0.64, 0.47), wSand);
-    albedo = mix(albedo, vec3(0.36, 0.34, 0.33), wRock);
-    albedo = mix(albedo, vec3(0.92, 0.95, 1.0), wSnow);
-    const grain = positionWorld.xz.mul(0.036);
-    albedo = albedo.mul(grain.x.sin().mul(grain.y.cos()).mul(0.5).add(0.5)
-        .mul(0.07)
-        .mul(detailGate)
-        .add(0.985));
+        const height = positionWorld.y;
+        // Biome follows the LANDFORM; only lighting sees the grain. Driving both from the
+        // detailed normal makes grass and rock track the surface noise, which reads as
+        // camouflage blotching.
+        const slope = clamp(float(1).sub(baseNormal.y), 0, 1);
+        const detailGate = float(1).sub(smoothstep(float(1.2), float(9), footprint))
+            .mul(float(1).sub(smoothstep(float(2), float(6), vSpacing)));
 
-    // CAUSTICS on the submerged shelf — ported from Ch2 (deep-ocean.tsl.js
-    // causticProjection): two counter-scrolling gradient noises sharpened to bright
-    // veins. World-space UVs, so the port is the term itself, unchanged. Gated to below
-    // the waterline and faded in over the first few metres of depth. A small, LOW-FAN-OUT
-    // graph — the codegen lesson applies: keep it a leaf term, .toVar() the result.
-    const causticUv = positionWorld.xz.mul(0.055);
-    // WAVE 4: min(), not add() — summed noises regress toward mid and pow() them into soft
-    // BLOBS; the MINIMUM of two counter-scrolling fields is bright only where BOTH are
-    // bright, which draws the sharp intersecting veins a caustic web actually has. And the
-    // web lands only on UP-FACES: projected surface light cannot paint a cliff wall or the
-    // underside of a ledge, which is where the old term striped.
-    const causticN1 = snoise3(vec3(causticUv.x, causticUv.y, uTime.mul(0.2)))
-        .mul(0.5).add(0.5);
-    const causticN2 = snoise3(vec3(causticUv.x.mul(1.4), causticUv.y.mul(1.4), uTime.mul(-0.15)))
-        .mul(0.5).add(0.5);
-    // smoothstep remap, not pow: min() of two fields peaks near ~0.8, so a bare pow buried
-    // the web (the first min() capture showed a FLAT shelf). The remap keeps ~20% coverage
-    // of crisp full-brightness veins.
-    const caustic = smoothstep(float(ODYSSEY_SEA_LEVEL), float(ODYSSEY_SEA_LEVEL - 7), height)
-        .mul(smoothstep(float(0.55), float(0.85), min(causticN1, causticN2)))
-        .mul(clamp(normal.y, 0, 1))
-        .toVar();
+        /**
+         * THE ATLAS (Wave 2) — one fetch, four material mesostructures, mean-transparent.
+         *
+         * `tile / avg` is the Wolfire division The Witness adopted for exactly this problem:
+         * the mean of the ratio is 1 by construction, so tiled detail can add texture to the
+         * painted colour and can never shift it. Everything below that reads the atlas reads
+         * it through that ratio — including the boundary breakup, so even the material borders
+         * are drawn by the same field that draws the grain.
+         */
+        const atlas = texture(groundTex, positionWorld.xz.div(float(GROUND_ATLAS_WORLD))).toVar();
+        // DISTANCE DISCIPLINE (rule 7). "From far away, the grain melts away and the structure
+        // is mostly a solid color, accented by lighting." The melt is a look requirement first;
+        // that it also caps the atlas's bandwidth to the near field is the bonus.
+        const detailMelt = float(1)
+            .sub(smoothstep(float(GROUND_MELT[0]), float(GROUND_MELT[1]), footprint)).toVar();
+        const tooth = atlas.a.div(float(atlasAvg[3])).toVar();
+        // Signed and mean-zero, so a boundary it perturbs wanders without drifting.
+        const edgeBreak = tooth.sub(1).toVar();
 
-    const sunVis = texture(sunVisTex, vUv).r;
-    const ndl = max(dot(normal, uSunDir), 0);
-    // Cavity occlusion: sunVis already knows what the massifs shadow, but it is baked at a
-    // resolution that cannot see a gully. This is the small-scale half of the same term.
-    const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(detailGate)), 0.62, 1.0);
-    const lit = albedo.mul(uSunColour.mul(ndl.mul(sunVis).mul(0.92).add(0.06))
-        .add(uShadowTint.mul(0.36))).mul(cavity)
-        .add(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5))
-        // ALPENGLOW: high snow that faces the sun takes a warm kiss. In mountain-language it
-        // is pow(ndl, 1.6) gated by height; here it rides the same wSnow the albedo uses, so
-        // it can never bleed onto rock or meadow, and it is multiplied by the baked sun
-        // visibility so a shadowed crown stays cold.
-        .add(uSunColour.mul(vec3(1.0, 0.72, 0.52))
-            .mul(wSnow.mul(ndl.pow(1.6)).mul(sunVis).mul(0.30)));
+        /**
+         * BIOME WEIGHTS, with AUTHORED BOUNDARIES rather than cross-fades.
+         *
+         * The playdough tell named by every reference read is `smoothstep(height)` producing a
+         * soft gradient smear between materials; real turf gives way to sand in lobed, wandering
+         * shapes with a semi-crisp edge, and biome A appears as discrete islands inside B near
+         * the border (the ecotone the Witness's landscape architects describe as "one or two
+         * dominant species from one landscape… overlapping another"). Perturbing each driver by
+         * the atlas produces both at once, for zero extra fetches.
+         *
+         * The swing stays SMALLER than the band it perturbs — the dissolve law this repo paid
+         * for once already: a band narrower than its own noise swing tears into confetti.
+         */
+        // The beach is a BAND, not a region. Measured on the first captures: with the shipped
+        // 24 u height ramp the whole shoreline plain came out half sand, which is why darkening
+        // the grass palette by 38% moved that plain's screen luma by 1.6% — it was barely grass.
+        // 11 u of height on this shore is a beach a person could walk across; the swing stays
+        // under the band width, per the dissolve law.
+        const wSand = float(1).sub(smoothstep(
+            float(ODYSSEY_SEA_LEVEL - 2),
+            float(ODYSSEY_SEA_LEVEL + 11),
+            height.add(edgeBreak.mul(4)),
+        ));
+        // ALPINE SURFACE LANGUAGE (Ch4 port). The peaks survive suppression as terms in the
+        // height field, so the camera stares at them for all of Ch4 — but a generic biome ramp
+        // gives them a CLEAN HORIZONTAL snow band, which reads as a contour line on a map rather
+        // than a mountain. mountain-language.js broke that band with FBM jitter and gated snow by
+        // slope; both port directly here, the jitter riding a low-frequency read of the detail
+        // texture (one fetch) instead of procedural noise. The band is also tightened 620..790 ->
+        // 620..730 now that the jitter, not the ramp width, is what softens the boundary.
+        const snowJitter = texture(detailTex, positionWorld.xz.mul(0.0016)).b.sub(0.5).mul(92);
+        const snowHeight = height.add(snowJitter).add(edgeBreak.mul(9)).toVar();
+        /**
+         * SNOW, MINUS THE RIBS. The summit read as a sand dune in the ascent capture, and the
+         * diagnosis was not the rock palette at all — measured, the pale cone screens at
+         * norm .351/.335/.314, which is the SNOW pole. It is a smooth, bright, near-uniform
+         * cone, and a heightfield cannot give it silhouette the way a sculpted peak would.
+         *
+         * What a real snowy peak has, and what the reference massif shows on its own ridges, is
+         * ROCK BREAKING THROUGH where the form is convex: wind strips the ribs and fills the
+         * hollows. `crest` is exactly that convexity and is already computed for the cavity
+         * term, so this costs one multiply and turns a blank cone into a ribbed one.
+         */
+        const wSnow = smoothstep(float(620), float(730), snowHeight)
+            .mul(float(1).sub(smoothstep(float(0.42), float(0.70), slope)))
+            .mul(float(1).sub(crest.mul(float(GROUND_SNOW_CREST_STRIP))));
+        const wRock = clamp(max(
+            smoothstep(float(0.17), float(0.40), slope.add(edgeBreak.mul(0.035))),
+            smoothstep(float(470), float(640), snowHeight).mul(0.75),
+        ).add(crest.mul(uRidgeRock).mul(detailGate)), 0, 1);
+
+        /**
+         * The four weights, made EXPLICIT. Algebraically identical to the sequential `mix`
+         * chain that shipped before — snow over rock over sand over grass — but addressable,
+         * which is what lets the paint, the mesostructure, the strata and the two shadow
+         * models all read the same numbers instead of each re-deriving its own opinion about
+         * what material a fragment is.
+         */
+        const kSnow = wSnow.toVar();
+        const kRock = wRock.mul(float(1).sub(kSnow)).toVar();
+        const kSand = wSand.mul(float(1).sub(wRock)).mul(float(1).sub(kSnow)).toVar();
+        const kGrass = clamp(float(1).sub(kSnow).sub(kRock).sub(kSand), 0, 1).toVar();
+
+        /**
+         * MOISTURE picks the point on each material's two-pole axis. The baked field carries
+         * the landscape logic (hollows collect, low ground is damp, the shore wets its margin,
+         * sun-facing slopes dry out); the WET BAND is the one term the bake cannot know,
+         * because it is a function of the drawn waterline rather than of the height field —
+         * ref3's waterline sand measures 0.7x the dry hill above it, and ref2's wet rock 0.5x.
+         * `max`, not a sum: the two are alternative sources of the same wetness, so one owner
+         * wins rather than both adding.
+         */
+        const wetBand = smoothstep(float(ODYSSEY_SEA_LEVEL + 11), float(ODYSSEY_SEA_LEVEL + 0.5), height);
+        const moist = clamp(max(plate.b, wetBand.mul(0.94)), 0, 1).toVar();
+        // SHAPED, not linear. A linear read put the whole shoreline plain on the golden pole,
+        // because the midpoint of a two-pole lerp is already half-way to gold and the midpoint
+        // is where most of the island sits. Ref1's lawn is GREEN with golden patches — so green
+        // is the default and gold arrives only where the field says the ground is truly dry.
+        const dryness = smoothstep(
+            float(ODYSSEY_GROUND_DRYNESS[0]),
+            float(ODYSSEY_GROUND_DRYNESS[1]),
+            moist,
+        ).toVar();
+        const poles = (mat) => mix(
+            vec3(...ODYSSEY_GROUND_PALETTE[mat].damp),
+            vec3(...ODYSSEY_GROUND_PALETTE[mat].dry),
+            dryness.mul(float(ODYSSEY_GROUND_MOISTURE[mat])),
+        );
+        let albedo = poles('grass').mul(kGrass)
+            .add(poles('sand').mul(kSand))
+            .add(poles('rock').mul(kRock))
+            .add(poles('snow').mul(kSnow));
+
+        // REGIONAL PERSONALITY. The Witness gave each area of the island its own palette and
+        // interpolated the light colour as the player walked between them; this is the cheap
+        // scalar version of that. Neither pole brightens blue — the cool end pulls RED down
+        // instead, which is the same relative shift without lifting a channel.
+        albedo = albedo.mul(mix(vec3(...GROUND_ZONE_COOL), vec3(...GROUND_ZONE_WARM), zone));
+
+        /**
+         * MESOSTRUCTURE, per material and at the measured AMOUNT.
+         *
+         * The grammar differs by family, which is the whole point of a four-channel atlas —
+         * and so does the amplitude, which the bar states in deciles: Firewatch grass
+         * alternates 2.5-3x inside a single patch (dark base, light tips), while paths and
+         * sand hills hold +-5..12 luma and show no gravel noise anywhere in either reference
+         * game. A single global grain amount cannot be right for both, so it is a weighted sum
+         * of four authored amounts. The `mix(1, ratio, t)` form keeps the Wolfire mean of 1 at
+         * every distance, so melting the detail away cannot brighten or darken the island.
+         */
+        const toothMat = atlas.r.div(float(atlasAvg[0])).mul(kGrass)
+            .add(atlas.g.div(float(atlasAvg[1])).mul(kRock))
+            .add(atlas.b.div(float(atlasAvg[2])).mul(kSand))
+            .add(tooth.mul(kSnow));
+        const toothAmt = float(GROUND_TOOTH.grass).mul(kGrass)
+            .add(float(GROUND_TOOTH.rock).mul(kRock))
+            .add(float(GROUND_TOOTH.sand).mul(kSand))
+            .add(float(GROUND_TOOTH.snow).mul(kSnow));
+        albedo = albedo.mul(mix(float(1), toothMat, detailMelt.mul(toothAmt)));
+
+        /**
+         * THE CONTACT BAND. Ghibli paints a darker, WARMER lip where grass meets a path or a
+         * beach — grass roots darken at contacts, and the edge is a painted occlusion band
+         * rather than a gradient. The product of two weights peaks exactly at the boundary and
+         * is zero in both interiors, so this needs no mask of its own.
+         */
+        const contact = clamp(kGrass.mul(kSand.add(kRock)).mul(4), 0, 1);
+        albedo = albedo.mul(mix(vec3(1), vec3(...GROUND_EDGE_TINT), contact.mul(GROUND_EDGE_AMT).mul(detailGate)));
+
+        /**
+         * WIND, at no cost. The Ghibli meadow signature is lighter stroke bands sweeping across
+         * a slope; the forest's travelling gust line proved the mechanism here — a static field
+         * plus a time-varying PHASE, so motion is a sine and not a second texture.
+         */
+        const gust = sin(uTime.mul(0.32).add(positionWorld.x.mul(0.0016)).add(positionWorld.z.mul(0.0011)));
+        const sweep = smoothstep(float(0.30), float(0.92), tooth.mul(0.52).add(gust.mul(0.5).add(0.5).mul(0.48)));
+        albedo = albedo.mul(sweep.mul(kGrass).mul(detailMelt).mul(GROUND_WIND_LIFT).add(1));
+
+        /**
+         * STRATA (Wave 3) — rock's shape language, shaded because a heightfield cannot sculpt it.
+         *
+         * The bar is numeric: a captured cliff face steps 132->203, 128->221, 122->218 in its
+         * deciles — two or three FLAT value bands per form, not a gradient. The Witness got that
+         * from hand-sculpted planes ("hard edges are not evil… faceting became a powerful tool
+         * to help define the form"); we get it from quantised world height, warped by the atlas
+         * so the strata wobble like sediment instead of drawing a contour map, and hashed per
+         * band so adjacent slabs differ in value AND temperature (brighter bands run warmer —
+         * the "top light, front mid, undercut dark" the reference ledges show).
+         *
+         * Its own distance gate, deliberately looser than `detailGate`: strata are a landform
+         * feature and must survive to the far massif, where the micro bump must not.
+         */
+        const strataFade = float(1).sub(smoothstep(float(6), float(18), footprint));
+        const strataAmt = smoothstep(
+            float(ODYSSEY_GROUND_STRATA.slope[0]),
+            float(ODYSSEY_GROUND_STRATA.slope[1]),
+            slope,
+        ).mul(kRock).mul(strataFade);
+        const strataCell = height.add(edgeBreak.mul(float(ODYSSEY_GROUND_STRATA.warp)))
+            .div(float(ODYSSEY_GROUND_STRATA.band));
+        const bandStep = fract(floor(strataCell).mul(0.1731).add(zone.mul(0.37))).sub(0.5)
+            .mul(float(ODYSSEY_GROUND_STRATA.step)).mul(strataAmt);
+        albedo = albedo.mul(vec3(
+            bandStep.mul(1.25).add(1),
+            bandStep.add(1),
+            bandStep.mul(0.7).add(1),
+        ));
+
+        // (Far pre-desaturation lived here. It measured NEGATIVE twice and is retired — see the
+        // palette's `presat` note. Distance discipline is owned by the detail melt above and by
+        // aerial perspective below, both of which measured positive.)
+
+        /**
+         * CAUSTICS on the submerged shelf — ported from Ch2 (deep-ocean.tsl.js
+         * causticProjection), and RE-CUT (Wave 4) to obey this file's own header law.
+         *
+         * It shipped as two `snoise3` evaluations per fragment: the only procedural noise left
+         * in the graph, paid on every land pixel in the frame to light a shelf most frames
+         * cannot see. "Detail comes from a TILED TEXTURE, not procedural noise: ~1 ALU against
+         * ~100, worth 6.5 ms" — so the two noises become ONE scrolled fetch, and the second
+         * decorrelated field comes from a different channel of the same fetch. The shape is
+         * preserved exactly where it matters: min(), not add(), because summed fields regress
+         * toward the mean and pow() them into soft blobs, while the MINIMUM of two fields is
+         * bright only where both are, which is what draws the sharp intersecting veins a caustic
+         * web actually has. The threshold breathes on a sine so a rigidly translating tile does
+         * not read as a sliding decal.
+         *
+         * The `.a` channel is the cloud silhouette, histogram-matched to a narrow 0.42..0.70
+         * band, so it is stretched back to full range before the minimum — an unstretched
+         * narrow field would win every min() and flatten the web.
+         */
+        const causticUv = positionWorld.xz.mul(0.055).add(vec2(uTime.mul(0.004), uTime.mul(-0.003)));
+        const causticTex = texture(detailTex, causticUv);
+        const causticWeb = min(causticTex.b, clamp(causticTex.a.sub(0.42).mul(3.57), 0, 1));
+        const caustic = smoothstep(float(ODYSSEY_SEA_LEVEL), float(ODYSSEY_SEA_LEVEL - 7), height)
+            .mul(smoothstep(sin(uTime.mul(0.7)).mul(0.04).add(0.52), float(0.80), causticWeb))
+            // Projected surface light cannot paint a cliff wall or the underside of a ledge.
+            .mul(clamp(normal.y, 0, 1))
+            .toVar();
+
+        /**
+         * THE TWO SHADOW MODELS (G1) — the bar's most load-bearing measurement, and the ground
+         * twin of the forest's foliage-shade law.
+         *
+         * Vegetation, soil and sand keep chromaticity and saturation EXACTLY and lose only
+         * value (ref2's leaf ground: sat 0.76 lit, 0.74 shaded, identical norms, luma x0.57);
+         * rock instead DESATURATES toward neutral (ref2's ledge 0.33 -> 0.06). Desaturating a
+         * warm colour raises its relative blue on its own, so `desat` OWNS the measured hue
+         * shift and no blue tint is added anywhere — the one-owner law. Snow is the documented
+         * exception: it takes mountain-language's ice-blue shadow, authored luma-neutral so it
+         * shifts hue without also claiming a second share of the value drop.
+         *
+         * Every colour term below is luma-preserving BY CONSTRUCTION, so the measured shade:lit
+         * RATIO is produced in exactly one place — `value`.
+         */
+        const ndl = max(dot(normal, uSunDir), 0);
+        // Lambert, S-shaped. The shoulders group the terminator into masses (the Ghibli law);
+        // the middle keeps the mid-tones a rolling landform needs. See the palette's terminator
+        // note for the two remaps that tried to replace Lambert and measured worse than it.
+        const lightAmt = smoothstep(
+            float(ODYSSEY_GROUND_SHADE.terminator[0]),
+            float(ODYSSEY_GROUND_SHADE.terminator[1]),
+            clamp(ndl.mul(sunVis), 0, 1),
+        ).toVar();
+        const albLuma = dot(albedo, vec3(...ODYSSEY_GROUND_LUMA)).toVar();
+        const mineralW = clamp(kRock.add(kSnow), 0, 1).toVar();
+        const shadeChroma = mix(albedo, vec3(albLuma), mineralW.mul(float(ODYSSEY_GROUND_SHADE.mineral.desat)));
+        const shadeIce = mix(shadeChroma, albLuma.mul(vec3(...GROUND_SNOW_SHADE)), kSnow.mul(0.8));
+        const shadeCol = shadeIce.mul(mix(vec3(...ODYSSEY_GROUND_SHADE.deepTint), vec3(1), lightAmt));
+        const surface = mix(shadeCol, albedo, lightAmt);
+
+        // Cavity occlusion: the baked plate's AO already knows what the landform shadows, but it
+        // is baked at a radius that cannot see a gully. This is the small-scale half of the same
+        // term, and the split is by RADIUS so neither owns the other's job.
+        const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(detailGate)), 0.62, 1.0);
+        // THE AMBIENT owns the floor — the one thing Lambert cannot supply and the one thing the
+        // shipped graph had wrong (0.06 against the references' 0.27-0.32). It is per-material
+        // (rock takes less sky than a meadow does) and deepens where the baked occlusion says
+        // the sky cannot see in, which is how a hollow in shadow reaches the measured deep band
+        // without a second darkening term fighting the first.
+        const openness = smoothstep(float(GROUND_AO_FLOOR), float(1), wideAo);
+        const ambient = mix(
+            float(ODYSSEY_GROUND_SHADE.deepAmbient),
+            mix(
+                float(ODYSSEY_GROUND_SHADE.vegetation.ambient),
+                float(ODYSSEY_GROUND_SHADE.mineral.ambient),
+                mineralW,
+            ),
+            openness,
+        ).toVar();
+        const value = ambient.add(float(1).sub(ambient).mul(lightAmt)).mul(float(GROUND_LIT_GAIN));
+        // The journey's ambient still reaches the ground — the colour script drives it — but
+        // NORMALISED to luma 1 and pulled most of the way to neutral first, because a saturated
+        // cool fill light is precisely what the measurement refutes for vegetation shade.
+        const ambientHue = uShadowTint.div(max(dot(uShadowTint, vec3(...ODYSSEY_GROUND_LUMA)), 0.001));
+        const lightCol = mix(
+            mix(vec3(1), ambientHue, float(GROUND_AMBIENT_CHROMA)),
+            uSunColour,
+            lightAmt,
+        );
+        // Rim: unlit-compatible fake translucency on snow only, cool and weak.
+        const viewDir = normalize(cameraPosition.sub(positionWorld));
+        const rim = float(1).sub(abs(dot(normal, viewDir))).pow(4)
+            .mul(kSnow)
+            .mul(0.14);
+        // NOTE the wide occlusion is NOT multiplied in here. It reaches the image through
+        // `ambient` above, which is the one-owner form: occlusion darkens the part of the light
+        // that occlusion actually blocks (the sky fill) and leaves direct sun alone. Multiplying
+        // it over the whole result as well drove a hollow in shadow to 0.195 against the
+        // measured 0.27-0.32 band, and dimmed sunlit hollows that the sun plainly reaches.
+        groundColour = surface.mul(lightCol).mul(value).mul(cavity)
+            .add(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5))
+            // ALPENGLOW: high snow that faces the sun takes a warm kiss, riding the same kSnow
+            // the albedo uses so it can never bleed onto rock or meadow, and multiplied by the
+            // baked sun visibility so a shadowed crown stays cold.
+            .add(uSunColour.mul(vec3(1.0, 0.72, 0.52))
+                .mul(kSnow.mul(ndl.pow(1.6)).mul(sunVis).mul(0.30)))
+            .add(vec3(0.72, 0.82, 0.95).mul(rim));
+    }
+    // ── THE DEPARTURE FADE (Act II -> Space, Wave 1B) ────────────────────────────
+    // The One World used to LEAVE BY BOOLEAN. `isWorldVisibleAtProgress` writes `.visible`
+    // and nothing else, so at actEnd + 0.03 the ground, water, cloud deck, forest and
+    // god-rays all stopped existing between two frames — a measured -89 luma step, 74% of
+    // the seam's whole brightness change landing in its last fifth. The mountain vanishing
+    // in front of the camera is that flag, seen on the biggest object in the frame.
+    //
+    // This recedes it instead. Note what it fades: COLOUR, not alpha. Every world material
+    // is an unlit MeshBasicNodeMaterial with hand-authored colour, so pulling that colour
+    // toward the sky is (a) exactly what distance does — this module already has
+    // `applyAerial` for the same reason — and (b) free of every cost that fading alpha
+    // would bring: nothing leaves the opaque queue, no render order changes, no blend
+    // state appears, and the `opacityNode`-is-a-dead-write trap never comes up.
+    //
+    // At uWorldFade = 0 this is a bit-for-bit no-op, so the whole of Act II is untouched.
+    // The binary gate STAYS exactly as it is: it remains the correctness backstop that
+    // stops Act II painting over chapters that own their own frame (Earth Core's magma
+    // cathedral was the proof case). It simply no longer has anything visible left to hide.
+    const uWorldFade = uniform(0);
+    const uWorldFadeColour = uniform(new THREE.Color(0x09283f));
+    // ── ATMOSPHERIC THINNING (Wave 3 / F3) — consumed only by the cloud FIELD. ──────
+    // 0 = full cumulus form; toward 1 the paint collapses into a flat haze family and
+    // each mass shrinks toward its own centre (see the field material). Driven by the
+    // board from `worldAtmosphericThin` in odyssey-world-act-gate.js — the schedule
+    // lives beside the departure fade because the two are halves of one departure.
+    const uWorldThin = uniform(0);
     const toOutput = (c) => {
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
-        return mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
+        const graded = mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
+        return mix(graded, uWorldFadeColour, uWorldFade);
     };
-    groundMat.colorNode = toOutput(applyAerial(lit, positionWorld));
+    groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND));
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
     groundMesh.frustumCulled = false;
@@ -1165,6 +1845,96 @@ export function createOdysseyWorld({
     groundMesh.updateMatrix();
     groundMesh.name = 'odyssey-world-ground';
     group.add(groundMesh);
+
+    // ── THE NORTH LAKE (north-island plan Wave 1, tripled + sculpted per owner) ─────
+    // A PAINTED lake: it is only ever seen from the climb rail ~1000 u away, so it is
+    // opaque flat discs — a sky-mirror colour family plus one big analytic sun-glint
+    // streak. No reflector, no ripples, no blend state; the SHORELINE IS DRAWN BY THE
+    // DEPTH BUFFER where the carve's rims rise through the discs, so the lobed waterline
+    // is organic for free. ONE DISC PER LOBE, each stepped 2 cm lower than the last —
+    // coplanar overlapping discs would z-fight in the waist, and 2 cm is invisible at
+    // range while giving the depth test a clean answer.
+    const lakeMat = new THREE.MeshBasicNodeMaterial();
+    const LAKE_TINT = LAKE_TINT_VARIANTS[lakeTint] || LAKE_TINT_VARIANTS[LAKE_TINT_DEFAULT];
+    {
+        // The glint is computed against the UNION's midpoint so one streak crosses the
+        // whole bean rather than each lobe growing its own.
+        const lakeLobes = ODYSSEY_NORTH_LAKE.lobes;
+        const glintCx = lakeLobes.reduce((s, lb) => s + lb.x, 0) / lakeLobes.length;
+        const glintCz = lakeLobes.reduce((s, lb) => s + lb.z, 0) / lakeLobes.length;
+        const lakeRel = vec2(
+            positionWorld.x.sub(glintCx),
+            positionWorld.z.sub(glintCz),
+        );
+        // Sun azimuth in the ground plane; the glint is a streak ALONG it — elongated
+        // toward the light, soft across it, the way every painted reference draws water.
+        const sunAz = normalize(vec2(uSunDir.x, uSunDir.z));
+        const glintAlong = dot(lakeRel, sunAz);
+        const glintAcross = dot(lakeRel, vec2(sunAz.y.negate(), sunAz.x));
+        // ⚠️ WIDE AND SOFT, because a narrow one reads as a SEAM. At 34 u across on a
+        // 700 u lake the streak was a hard-edged band sitting exactly over the waist
+        // where the lobes join — an aerial review read it as a construction scar rather
+        // than as sun on water. 150 u across, feathered over most of that, and squared
+        // so the falloff is gentle in the middle and quick at the rim.
+        const glint = smoothstep(float(150), float(24), abs(glintAcross)).pow(2)
+            .mul(smoothstep(float(560), float(90), abs(glintAlong)));
+
+        // ── THE WATER MODEL ────────────────────────────────────────────────────────
+        // Measured on the sky-mirror version: the lake read 0.85x the sky's luma at 28%
+        // saturation — pale, and the same family as the sky it sat under, which is why
+        // it looked like a hole rather than water. Water reads as water for two reasons
+        // a flat mirror tint cannot supply:
+        //
+        //   DEPTH. Shallow shore water shows the bed and goes light and green; the body
+        //   goes dark and blue. The sea material already computes bed depth from the
+        //   baked plates (macro.r + relief.r * macro.g) — the lake uses the identical
+        //   pattern, two fetches, so the shore band follows the MEANDERED waterline
+        //   exactly instead of an ellipse approximation.
+        //
+        //   GRAZING REFLECTION. Looking steeply down you see INTO water; looking along
+        //   it you see the sky in it. With the surface normal fixed at +Y, that is a
+        //   plain Fresnel-ish ramp on the view vector, and it is what makes the far side
+        //   of a lake bright while the near side stays dark.
+        const lakeUv = vec2(positionWorld.x, positionWorld.z).div(float(RELIEF_EXTENT)).add(0.5);
+        const lakeBedTex = texture(macroTex, lakeUv);
+        const lakeBedY = lakeBedTex.r.add(texture(heightTex, lakeUv).r.mul(lakeBedTex.g));
+        const lakeDepth = float(ODYSSEY_NORTH_LAKE.waterY).sub(lakeBedY).toVar();
+        const shallowT = smoothstep(float(LAKE_TINT.shallowFrom), float(LAKE_TINT.shallowTo), lakeDepth);
+        const body = mix(vec3(...LAKE_TINT.shallow), vec3(...LAKE_TINT.deep), shallowT);
+        // View-angle sky reflection. `uSkyHorizon` rather than the zenith: a lake
+        // reflects the sky it can SEE at a grazing angle, which is the horizon band.
+        const lakeView = normalize(cameraPosition.sub(positionWorld));
+        const graze = float(1).sub(abs(lakeView.y)).pow(LAKE_TINT.grazePow);
+        const skyInWater = mix(uSkyHorizon, uSkyZenith, float(0.25)).mul(LAKE_TINT.skyLevel);
+        const lakeCol = mix(body, skyInWater, graze.mul(LAKE_TINT.grazeMax))
+            .add(uSunColour.mul(glint).mul(LAKE_TINT.glintGain));
+        // ⚠️ THE **LAND** AERIAL, NOT THE WATER ONE — measured, and it was most of the
+        // washed-out look. `applyAerial`'s defaults are the SEA's (ceil 0.82, rate 1.0),
+        // because the ocean's haze has a job: converging on the same plate the sky
+        // converges on. This lake is an inland surface sitting inside terrain that hazes
+        // at the land rate (ceil 0.58, rate 0.62), so on the defaults it faded toward the
+        // sky ~1.6x faster than its own banks — and from above, `skyColourFor` returns
+        // EXACTLY uSkyHorizon (the `below` ramp is 0 for any downward ray), which is the
+        // palest colour in the palette. About a quarter of the shipped pixel was pure
+        // pale sky. Hazing like the land it sits in is both cheaper to look at and the
+        // physically sane answer for a pond 1 km away.
+        lakeMat.colorNode = toOutput(
+            applyAerial(lakeCol, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND),
+        );
+        lakeMat.side = THREE.FrontSide;
+    }
+    ODYSSEY_NORTH_LAKE.lobes.forEach((lb, li) => {
+        const lakeGeo = new THREE.CircleGeometry(1, 48);
+        lakeGeo.rotateX(-Math.PI / 2);
+        const lakeMesh = new THREE.Mesh(lakeGeo, lakeMat);
+        lakeMesh.position.set(lb.x, ODYSSEY_NORTH_LAKE.waterY - (li * 0.02), lb.z);
+        lakeMesh.scale.set(lb.rx, 1, lb.rz);
+        lakeMesh.frustumCulled = false;
+        lakeMesh.matrixAutoUpdate = false;
+        lakeMesh.updateMatrix();
+        lakeMesh.name = `odyssey-world-north-lake-${li}`;
+        group.add(lakeMesh);
+    });
 
     // ── sky ──
     const skyMat = new THREE.MeshBasicNodeMaterial();
@@ -2116,7 +2886,14 @@ export function createOdysseyWorld({
     //
     // The rule that follows is cheap: build it as a PLAIN EXPRESSION, so each consumer inlines
     // its own copy. A few duplicated ALU beats a silent zero.
-    const cfOffset = cfDrift.add(cfBreath);
+    //
+    // ATMOSPHERIC THINNING (Wave 3): a third offset term pulls every vertex toward its own
+    // mass centre as `uWorldThin` rises, shrinking the mass in place (same centres, smaller
+    // bodies — the deck opens sky between masses instead of holding full form to the end).
+    // Written as another PLAIN term inside cfOffset so the vertex position and the `cfWorld`
+    // varying stay in the exact agreement the note above paid for.
+    const cfThinPull = positionLocal.sub(cfCentre).mul(uWorldThin.mul(-FIELD_THIN_SHRINK));
+    const cfOffset = cfDrift.add(cfBreath).add(cfThinPull);
     const cfWorld = varying(positionLocal.add(cfOffset), 'cfWorld');
     const cfGeoN = normalWorld.toVar('fieldGeoN');
     const cfRadial = cfWorld.sub(cfCentre);
@@ -2146,8 +2923,13 @@ export function createOdysseyWorld({
     const cfEdge = smoothstep(float(0.55), float(0.88), cfRim);
     const fieldCol = mix(cfLit, mix(cloudShade, uSkyHorizon, float(0.30)), cfEdge.mul(0.55))
         .add(uSunColour.mul(smoothstep(float(0.15), float(0.55), cfMie)).mul(FIELD_MIE_GAIN));
+    // ATMOSPHERIC THINNING (Wave 3 / F3): the paint half. As `uWorldThin` rises the whole
+    // Witness band structure (lit/shade/underside/Mie) collapses toward one flat, low-sat
+    // haze family — contrast and saturation leave together, which is what altitude does to
+    // cumulus. Applied BEFORE the aerial so distance still grades the thinned colour.
+    const fieldThinned = mix(fieldCol, mix(cloudShade, uSkyHorizon, float(0.65)), uWorldThin);
     const fieldMat = new THREE.MeshBasicNodeMaterial();
-    fieldMat.colorNode = toOutput(heroAerial(fieldCol, cfWorld));
+    fieldMat.colorNode = toOutput(heroAerial(fieldThinned, cfWorld));
     // Built from the plain `cfOffset` EXPRESSION, never from a shared var — see the note at
     // its definition. This line reading zero while the colour graph read the right value is
     // exactly what "the clouds do not move" looked like.
@@ -2232,7 +3014,12 @@ export function createOdysseyWorld({
         const rayShimmerSafe = clamp(rayShimmer.mul(0.5).add(0.5), 0, 1).pow(1.35)
             .mul(0.55)
             .add(0.45);
-        rayMat.colorNode = uSunColour.mul(vec3(0.75, 0.92, 1.0)).mul(uOutputScale);
+        // Bypasses toOutput (no grade on the shafts), so it takes the departure fade directly.
+        rayMat.colorNode = mix(
+            uSunColour.mul(vec3(0.75, 0.92, 1.0)).mul(uOutputScale),
+            uWorldFadeColour,
+            uWorldFade,
+        );
         // 0.55 -> 0.34: the flip put the wide (formerly buried) half of every cone in front
         // of the camera, and DoubleSide additive pays both walls — at the old master the
         // shafts read as solid pipes.
@@ -2354,9 +3141,13 @@ export function createOdysseyWorld({
         // Transmitted light: brightness rises with depth below the surface, because the
         // background darkens with depth — the same inverse the vault's ember gate uses.
         const mDepth = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(120), 0, 1);
-        moteMat.colorNode = mix(vec3(0.55, 0.85, 0.90), vec3(0.35, 0.75, 0.80), mDepth)
-            .mul(mDepth.mul(0.9).add(0.35))
-            .mul(uOutputScale);
+        moteMat.colorNode = mix(
+            mix(vec3(0.55, 0.85, 0.90), vec3(0.35, 0.75, 0.80), mDepth)
+                .mul(mDepth.mul(0.9).add(0.35))
+                .mul(uOutputScale),
+            uWorldFadeColour,
+            uWorldFade,
+        );
         moteMat.opacityNode = mRadial.mul(mRadial).mul(uSubmerged).mul(0.42);
         moteMat.transparent = true;
         moteMat.depthWrite = false;
@@ -2518,15 +3309,36 @@ export function createOdysseyWorld({
     }
 
     // ── forest ──
-    const treeGeo = buildTreeGeometry();
-    const trees = scatterTrees(relief.sample, {
-        cx: -220,
-        cz: -620,
-        radius: 1750,
-        spacing: q.treeSpacing,
-        seaLevel: ODYSSEY_SEA_LEVEL,
-        snowStart: 640,
-    });
+    // MEASUREMENT LEVER (see the `forest` option). When off, the scatter never runs, so no
+    // chunk is bucketed, no InstancedMesh is built and `treeMat` never reaches a render —
+    // zero draws, zero vertex work, zero fill AND zero pipeline compile. Same shape as the
+    // `water` gate, and deliberately NOT the deck's asymmetric "built but withheld" shape:
+    // the forest's own header law says its cost is VERTEX, so a gate that left the meshes
+    // constructed would price the wrong thing.
+    //
+    // The material graph below is still built unconditionally, exactly as the water's is:
+    // TSL nodes are plain JS until a mesh that uses them is rendered, `treeMat` has to stay a
+    // `const` NodeMaterial for the fog opt-out lint and the dispose list to keep covering it,
+    // and building it on both sides of the pair keeps the gate a small diff with no dangling
+    // references. Everything downstream degrades to a no-op through the empty array: the
+    // bucket Map stays empty, `treeMeshes` stays empty, and the update loop's gate iterates
+    // nothing. `stats.trees` / `stats.forestChunks` then report 0, which is how a run with
+    // the flag identifies itself in the boot log.
+    const treeGeo = buildTreeGeometry(forestPaint);
+    // ⚠️ `forest && !forestV2`: the two forests are ALTERNATIVES, not additive. Built together
+    // (the first cut did) the world carries both and the gpu-split pair
+    // `forest-v2` minus `no-forest` would price the pair rather than the new system — the
+    // measurement the whole wave is gated on, quietly answering the wrong question.
+    const trees = (forest && !forestV2)
+        ? scatterTrees(relief.sample, {
+            cx: -220,
+            cz: -620,
+            radius: 1750,
+            spacing: q.treeSpacing,
+            seaLevel: ODYSSEY_SEA_LEVEL,
+            snowStart: 640,
+        })
+        : [];
     const CHUNK = 420;
     const buckets = new Map();
     trees.forEach((t) => {
@@ -2551,13 +3363,77 @@ export function createOdysseyWorld({
         vec3(0.235, 0.375, 0.175),
         gShade.mul(0.75).add(gTint.mul(0.25)),
     );
+    // THE INCUMBENT: one wrap-ish term on facet normals, with the vertical gradient baked
+    // into the ALBEDO via `aShade`. Kept intact so the probe is an A/B and not a rewrite.
+    const treeIncumbent = treeBase.mul(
+        uSunColour.mul(max(dot(normalWorld, uSunDir), 0).mul(0.35).add(0.55))
+            .add(uShadowTint.mul(0.30)),
+    );
+    // THE WAVE 0b PROBE. Built as plain expressions with no `.toVar()` anywhere: nothing here
+    // is shared with `positionNode`, and the field's logged r181 trap (a var's assignment is
+    // emitted at its FIRST build site, and positionNode builds before varyings) is cheapest to
+    // avoid entirely. A few duplicated ALU beats a silent zero.
+    //
+    // Height in crown, local space — so it is identical on every instance regardless of the
+    // per-tree scale, and it separates trunk from canopy at the one clean seam the geometry
+    // has (the canopy's first tier starts exactly at trunkH = 0.9).
+    const ftHeight = clamp(positionGeometry.y.sub(0.9).div(3.05), 0, 1);
+    const ftV = normalize(cameraPosition.sub(positionWorld));
+    // Wrap diffuse on the BAKED BLOB NORMAL (`normalWorld` carries it once buildTreeGeometry
+    // baked it, already rotated into world space by the instance matrix — trees only rotate
+    // about Y, so a blob normal field stays valid under instancing).
+    const ftWrap = clamp(dot(normalWorld, uSunDir).add(FOREST_WRAP).div(1 + FOREST_WRAP), 0, 1);
+    const ftBand = smoothstep(float(FOREST_BAND_LO), float(FOREST_BAND_HI), ftWrap);
+    // Albedo: one dominant crown hue per tree, red-brown trunk below the seam.
+    const ftAlbedo = mix(
+        vec3(...FOREST_TRUNK),
+        mix(vec3(...FOREST_CROWN_A), vec3(...FOREST_CROWN_B), gTint),
+        smoothstep(float(0.80), float(0.95), positionGeometry.y),
+    );
+    // The measured shadow law, applied to whatever the albedo happens to be: pull AWAY from
+    // its own luma (saturation gain > 1) and scale the value down. Clamped at zero because a
+    // gain above 1 extrapolates past the endpoint and a future desaturated hue could cross it.
+    const ftLuma = dot(ftAlbedo, vec3(0.2126, 0.7152, 0.0722));
+    const ftShade = max(
+        mix(vec3(ftLuma, ftLuma, ftLuma), ftAlbedo, float(FOREST_SHADE_SAT)),
+        vec3(0, 0, 0),
+    );
+    // QUANTISED, not ramped. A linear height ramp reads as an airbrush gradient; §1b R1 and
+    // Oga's rule both want the dark interior to be ONE CONNECTED MASS with a readable edge,
+    // which is a soft step, not a slope. Measured first as a ramp and changed on the capture.
+    const ftOcc = mix(
+        float(FOREST_OCCLUSION_FLOOR),
+        float(1),
+        smoothstep(float(FOREST_OCC_LO), float(FOREST_OCC_HI), ftHeight),
+    );
+    const ftBody = mix(ftShade, ftAlbedo, ftBand).mul(ftOcc);
+    // Two light colours, selected by the same band — so the shade band is a LIT colour, the
+    // way the Witness tints its ambient rather than darkening toward black.
+    const ftLight = mix(
+        uSunColour.mul(FOREST_SHADE_VALUE)
+            .add(uShadowTint.mul(FOREST_AMBIENT_TINT))
+            .add(uSkyHorizon.mul(FOREST_SKY_FILL)),
+        uSunColour.mul(FOREST_SUN_GAIN),
+        ftBand,
+    );
+    // ⚠️ SIGN, the same one the cloud field documents: `uSunDir` points TOWARD the sun and
+    // `ftV` points fragment->eye, so looking INTO the sun drives dot(ftV, uSunDir) toward -1.
+    // Negating first makes the term fire on backlit crowns; without it this would light the
+    // anti-sun side of every tree, which is where a design draft of the field's Mie ended up.
+    const ftBack = clamp(dot(ftV, uSunDir).mul(-1), 0, 1).pow(2.5);
+    // Weighted to the rim and to the upper crown — the thin parts light passes through.
+    const ftRim = float(1).sub(abs(dot(normalWorld, ftV)));
+    const treeProbe = ftBody.mul(ftLight)
+        .add(uSunColour.mul(ftBack.mul(ftRim).mul(ftHeight).mul(FOREST_BACKLIT_GAIN)));
+    // A JS-level branch, not a TSL `If`: only the selected graph is ever built into the
+    // shader, and the other stays plain JS objects costing nothing.
     treeMat.colorNode = toOutput(applyAerial(
-        treeBase.mul(uSunColour.mul(max(dot(normalWorld, uSunDir), 0).mul(0.35).add(0.55))
-            .add(uShadowTint.mul(0.30))),
+        forestPaint ? treeProbe : treeIncumbent,
         positionWorld,
     ));
 
     const treeMeshes = [];
+    let forestV2Stats = null;
     const m4 = new THREE.Matrix4();
     const quat = new THREE.Quaternion();
     const pos = new THREE.Vector3();
@@ -2599,12 +3475,262 @@ export function createOdysseyWorld({
         treeMeshes.push(mesh);
     });
 
+    // ── forest v2: the zoned species roster — THE SHIPPED FOREST since 2026-08-14 ─────
+    //
+    // Default since the Wave 5 swap; the incumbent above is retained per ADR-0015 behind
+    // `?odysseyWorldForestV1=1`, one flag from restoration.
+    //
+    // ONE MATERIAL for every species and every LOD. Everything a species differs by rides
+    // per-INSTANCE attributes — the `aMaxY`/`aSway` consolidation trick the conifer belt and
+    // Ch3's flora both use here — because five species x three tiers as five materials would
+    // be fifteen compiled pipelines for one visual idea.
+    // ⚠️ PACKED, BECAUSE WEBGPU ALLOWS ONLY 8 VERTEX BUFFERS. The first cut used ten separate
+    // attributes and every pipeline failed to create — "Vertex buffer count (10) exceeds the
+    // maximum number of vertex buffers (8)" — rendering a BLACK frame. It is a hard device
+    // limit, invisible to every headless test, and only a capture found it.
+    //   aVert       (vec4, per vertex)   x AO · y height-in-crown · z crown mask · w height01
+    //   aCrownSnow  (vec4, per instance) rgb crown colour · a snow amount
+    //   aShadePhase (vec4, per instance) rgb shade colour · a wind phase
+    //   aTrunk      (vec3, per instance) trunk colour
+    // Six buffers plus the instance matrix — comfortably inside the limit.
+    const fvVert = attribute('aVert', 'vec4');
+    const fvCrownSnow = attribute('aCrownSnow', 'vec4');
+    const fvShadePhase = attribute('aShadePhase', 'vec4');
+    const fvTrunk = attribute('aTrunk', 'vec3');
+    const fvCol = fvVert;
+    const fvIsCrown = fvVert.z;
+    const fvH01 = fvVert.w;
+    const fvCrown = fvCrownSnow.xyz;
+    const fvShade = fvShadePhase.xyz;
+    const fvSnow = fvCrownSnow.w;
+    const fvPhase = fvShadePhase.w;
+
+    const forestV2Mat = new THREE.MeshBasicNodeMaterial();
+    // WIND. Height above GROUND squared, so trunks stay planted and crowns lean; phase is
+    // constant per tree (from its own instanced attribute, never per-vertex) or a near tree
+    // shears — the framing-spruces rule. The two world terms make gust FRONTS cross the
+    // forest rather than the whole island pulsing in lockstep ("rhythm, not a pulse").
+    const fvMask = clamp(fvH01, 0, 1);
+    const fvGust = sin(
+        uTime.mul(1.05).add(fvPhase)
+            .add(positionWorld.x.mul(0.0042)).add(positionWorld.z.mul(0.0031)),
+    ).mul(0.5).add(
+        sin(uTime.mul(0.61).add(fvPhase.mul(1.7)).add(positionWorld.x.mul(0.0017))).mul(0.5),
+    ).mul(0.085)
+        .mul(fvMask.mul(fvMask));
+    // positionLocal, not positionGeometry: setupPosition() applies the instance matrix into
+    // positionLocal and positionNode REPLACES it (the file's own header law).
+    forestV2Mat.positionNode = positionLocal.add(vec3(fvGust, 0, fvGust.mul(0.55)));
+
+    // Snow rides the crown's upper surface on the SAME shell — no second mesh, so nothing can
+    // swim or z-fight against its own tree under wind.
+    const fvSnowMix = clamp(fvSnow.mul(smoothstep(float(0.30), float(0.85), fvCol.y)), 0, 1);
+    const fvCrownLit = mix(fvCrown, vec3(0.78, 0.83, 0.90), fvSnowMix);
+    const fvCrownShade = mix(fvShade, vec3(0.42, 0.48, 0.58), fvSnowMix);
+    const fvAlbedo = mix(fvTrunk, fvCrownLit, fvIsCrown);
+    // The trunk's own shade follows the same law rather than a second authored colour.
+    const fvShadeCol = mix(fvTrunk.mul(0.52), fvCrownShade, fvIsCrown);
+
+    const fvWrap = clamp(dot(normalWorld, uSunDir).add(FOREST_WRAP).div(1 + FOREST_WRAP), 0, 1);
+    // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
+    // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
+    // of the two authored tones.
+    // ⚠️ THREE TONES, NOT TWO — AND THE TWO-TONE VERSION IS WHY THE FOREST READ AS A SHEET.
+    //
+    // The game's camera looks DOWN at the forest, so the canopy TOP is the dominant surface,
+    // and on a blob normal field every top faces up. With the sun at its authored angle a
+    // canopy top computes wrap ~0.66 while the band ENDED at 0.58 — every top was already past
+    // the ramp, pinned to the lit tone, and 15,412 crowns rendered as one flat green sheet.
+    //
+    // A first attempt jittered each tree's threshold to break that up. It measured NOTHING
+    // (crown-scale mosaic 28.75 -> 29.03, inside noise) for the reason the numbers make
+    // obvious in hindsight: **moving a threshold the pixels have already passed changes
+    // nothing.** The band was saturated, not misplaced.
+    //
+    // So the ramp gains a third step and the upper transition is placed where canopy tops
+    // ACTUALLY sit. §1b R1 asks for 2-3 quantised steps and this is the third: sides read
+    // shade, the turn of the crown reads mid, and only the sun-facing top reaches full light.
+    // The per-tree jitter now rides the UPPER threshold, where it decides how much of each
+    // crown tips into the lit tone — so neighbouring trees separate into distinct tones and
+    // the sheet becomes the mosaic the reference island's aerial frame shows.
+    const fvTreeRand = fract(fvPhase.mul(0.1591549)).sub(0.5).mul(FOREST_BAND_JITTER);
+    // WIND-LINES (Wave 6): the gust front expressed in the LIGHTING as well as the vertex
+    // sway — a slow ripple of the upper band threshold travelling the same direction as the
+    // displacement gusts, so light sweeps across the canopy the way the 80.lv Ghibli-island
+    // breakdown animates its vegetation highlights. Three ALU; the amplitude is a fraction of
+    // the band jitter so it can never flip a crown across a whole tone.
+    const fvWindLine = sin(
+        uTime.mul(0.8).add(positionWorld.x.mul(0.011)).add(positionWorld.z.mul(0.007)),
+    ).mul(0.045);
+    // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
+    // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
+    // of the authored tones.
+    const fvBandLo = smoothstep(float(FOREST_BAND_LO).sub(fvCol.x.mul(0.10)), float(FOREST_BAND_MID), fvWrap);
+    const fvBandHi = smoothstep(
+        float(FOREST_BAND_HI_LO).add(fvTreeRand).add(fvWindLine),
+        float(FOREST_BAND_HI).add(fvTreeRand).add(fvWindLine),
+        fvWrap,
+    );
+    const fvOcc = mix(
+        float(FOREST_OCCLUSION_FLOOR),
+        float(1),
+        smoothstep(float(FOREST_OCC_LO), float(FOREST_OCC_HI), fvCol.y),
+    );
+    // The mid tone is DERIVED from the species' own two colours rather than authored a third
+    // time — the same discipline as the shade recipe, so a palette edit cannot desynchronise
+    // three colours from each other.
+    const fvMidTone = mix(fvShadeCol, fvAlbedo, float(FOREST_MID_TONE));
+    // THE DISTANCE COLLAPSE (§1b R9 + Hoa's law), and it is the paint's half of what the LOD
+    // chain does for geometry: distant trees drop BANDS, not just polygons. The references
+    // measured it — far foliage desaturates 2-3x, lifts, and converges toward the sky — and
+    // Firewatch says the flattening is the POINT ("it flattens the shapes too... which is
+    // actually what we want"). Near a crown carries three tones; by FLAT_FAR it carries one
+    // (the mid tone), and `applyAerial` then does the atmospheric lift on top. Without this,
+    // every distant crown still sparkles with per-tree band structure the eye reads as noise,
+    // which is exactly the "distant creatures still flat dark polygons" class of defect.
+    const fvEyeDist = length(cameraPosition.sub(positionWorld));
+    const fvFlat = smoothstep(float(FOREST_FLAT_NEAR), float(FOREST_FLAT_FAR), fvEyeDist);
+    const fvThree = mix(mix(fvShadeCol, fvMidTone, fvBandLo), fvAlbedo, fvBandHi);
+    // PRE-SATURATED at distance, because the desaturators downstream cannot be retuned from
+    // here: `applyAerial` hazes toward the sky for the whole world and the grade applies
+    // `outputSaturation 0.72` after that. Measured against §1b R9 the far forest came back at
+    // 4.5-4.6x desaturation versus the references' 2-3x, and softening the flatten's own sky
+    // pull moved it by NOISE (4.51 -> 4.61) — the pull was never the culprit. So the far tone
+    // leans AWAY from its luma before the haze leans it back; the two roughly cancel into the
+    // measured band. The same overshoot-for-the-grade law as every palette in this file, in
+    // saturation rather than value.
+    const fvFarLuma = dot(fvMidTone, vec3(0.2126, 0.7152, 0.0722));
+    const fvFarTone = max(
+        mix(vec3(fvFarLuma, fvFarLuma, fvFarLuma), fvMidTone, float(FOREST_FAR_PRESAT)),
+        vec3(0, 0, 0),
+    );
+    const fvBody = mix(fvThree, fvFarTone, fvFlat).mul(mix(fvOcc, float(1), fvFlat));
+    // ⚠️ THE LIGHT MUST NOT DIM IN SHADE. The measured shade/lit VALUE RATIO already lives in
+    // `aShade`, computed on the CPU by the tested `shadeColourFor`. Dimming the ambient here
+    // as well would spend that ratio twice — precisely the Wave 0b defect that measured a
+    // near-black p10 = 0.0. The ambient is therefore sun-magnitude and only HUE-shifted toward
+    // the sky, which is what a shadow lit by the sky actually is.
+    // The light term flattens with the same ramp: a far crown is lit by ONE colour, not by a
+    // per-fragment band choice.
+    const fvLight = mix(
+        mix(mix(uSunColour, uSkyHorizon, float(0.55)), uSunColour, fvBandLo),
+        // 0.12, down from a first-cut 0.28: measured against §1b R9 the far forest came back
+        // at 4.5x desaturation against the references' 2-3x — the flatten and the aerial haze
+        // both pull toward sky, so the flatten's own pull must be gentle or they compound.
+        mix(uSunColour, uSkyHorizon, float(0.12)),
+        fvFlat,
+    );
+    const fvView = normalize(cameraPosition.sub(positionWorld));
+    // Sign as documented for the cloud field: uSunDir points TOWARD the sun and fvView points
+    // fragment->eye, so looking INTO the sun drives the dot toward -1.
+    const fvBack = clamp(dot(fvView, uSunDir).mul(-1), 0, 1).pow(2.5);
+    const fvRim = float(1).sub(abs(dot(normalWorld, fvView)));
+    const forestV2Col = fvBody.mul(fvLight)
+        .add(uSunColour.mul(fvBack.mul(fvRim).mul(fvCol.y).mul(FOREST_BACKLIT_GAIN)));
+    forestV2Mat.colorNode = toOutput(applyAerial(forestV2Col, positionWorld));
+
+    // `forest &&`, not `forestV2` alone: the measurement lever must switch off the WHOLE
+    // forest whichever one is mounted, or `?odysseyWorldNoForest=1` prices a half-empty world
+    // and the differential silently means something else.
+    if (forest && forestV2) {
+        const zoned = scatterZonedForest(relief.sample, {
+            spacing: q.treeSpacing,
+            seaLevel: ODYSSEY_SEA_LEVEL,
+            rail: railSamples,
+            visibilityCull,
+            forceLod: forestLod,
+            lodDistance: forestLodDistanceForTier(qualityTier),
+        });
+        // One geometry per (species, LOD) — growth stages ride the instance matrix, because a
+        // stage is defined as pure height/width multipliers (see the scatter's header).
+        // ⚠️ THREE SEEDED VARIANTS PER (SPECIES, LOD), NOT ONE. The first cut cached a single
+        // geometry (seed 4919), which meant every tree of a species+LOD in the entire world
+        // was LITERALLY THE SAME MESH rotated — the "straight stock and the canopys" monotony
+        // the owner named, at the level where no palette work could touch it. Each bucket now
+        // picks one variant by its own key hash: draws stay identical (an InstancedMesh has
+        // one geometry either way), neighbouring chunks stop repeating, and within a chunk
+        // repetition hides behind rotation, scale, lean and density — the Firewatch recipe.
+        const FOREST_GEO_VARIANTS = 3;
+        const geoCache = new Map();
+        const geoFor = (speciesId, lod, variant) => {
+            const cacheKey = `${speciesId}|${lod}|${variant}`;
+            if (!geoCache.has(cacheKey)) {
+                const fSpec = getForestSpecies(speciesId);
+                const mature = fSpec.stages.find((st) => st.id === 'mature') ?? fSpec.stages[0];
+                geoCache.set(cacheKey, buildForestTreeGeometry(fSpec, mature, lod, 4919 + (variant * 104729)));
+            }
+            return geoCache.get(cacheKey);
+        };
+        const variantOf = (key) => {
+            let h = 2166136261;
+            for (let ci = 0; ci < key.length; ci += 1) {
+                h = Math.imul(h ^ key.charCodeAt(ci), 16777619);
+            }
+            return (h >>> 0) % FOREST_GEO_VARIANTS;
+        };
+        const fm4 = new THREE.Matrix4();
+        const fq = new THREE.Quaternion();
+        const fEuler = new THREE.Euler();
+        const fp = new THREE.Vector3();
+        const fs = new THREE.Vector3();
+        zoned.buckets.forEach((bucket) => {
+            const n = bucket.items.length;
+            const src = geoFor(bucket.speciesId, bucket.lod, variantOf(bucket.key));
+            const geo = src.clone();
+            const aCrownSnow = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+            const aShadePhase = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+            const aTrunk = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
+            const mesh = new THREE.InstancedMesh(geo, forestV2Mat, n);
+            const trunkCol = getForestSpecies(bucket.speciesId).trunk;
+            let cx = 0;
+            let cz = 0;
+            let maxY = -Infinity;
+            let minY = Infinity;
+            bucket.items.forEach((t, i) => {
+                // Lean: a few degrees of per-tree tilt, from the scatter. The cheapest possible
+                // structural variety — it costs nothing and kills the surveyor's-row read that
+                // perfectly vertical trunks give a hillside.
+                fEuler.set(t.leanX ?? 0, t.rot, t.leanZ ?? 0, 'YXZ');
+                fq.setFromEuler(fEuler);
+                fp.set(t.x, t.y, t.z);
+                // Non-uniform: the growth stage IS a proportion change.
+                fs.set(t.scaleXZ * FOREST_V2_SCALE, t.scaleY * FOREST_V2_SCALE, t.scaleXZ * FOREST_V2_SCALE);
+                mesh.setMatrixAt(i, fm4.compose(fp, fq, fs));
+                aCrownSnow.setXYZW(i, t.crown[0], t.crown[1], t.crown[2], t.snow);
+                aShadePhase.setXYZW(i, t.shade[0], t.shade[1], t.shade[2], t.rot * 3.7);
+                aTrunk.setXYZ(i, trunkCol[0], trunkCol[1], trunkCol[2]);
+                cx += t.x;
+                cz += t.z;
+                maxY = Math.max(maxY, t.y + (src.userData.forest.totalH * t.scaleY * FOREST_V2_SCALE));
+                minY = Math.min(minY, t.y);
+            });
+            geo.setAttribute('aCrownSnow', aCrownSnow);
+            geo.setAttribute('aShadePhase', aShadePhase);
+            geo.setAttribute('aTrunk', aTrunk);
+            mesh.instanceMatrix.needsUpdate = true;
+            // The bucket's own edge, not a constant: mid and far buckets are 2x and 4x wider
+            // than the hero grid, and a sphere sized for 420 u would cull half of one away.
+            mesh.boundingSphere = new THREE.Sphere(
+                new THREE.Vector3(cx / n, (minY + maxY) / 2, cz / n),
+                (bucket.edge * 0.75) + ((maxY - minY) / 2) + 40,
+            );
+            mesh.frustumCulled = true;
+            mesh.userData.centre = new THREE.Vector2(cx / n, cz / n);
+            // Keeps `?worldOnly=forest` working, which is the compile-bisect lever.
+            mesh.name = `odyssey-world-forest-v2-${bucket.lod}`;
+            group.add(mesh);
+            treeMeshes.push(mesh);
+        });
+        forestV2Stats = zoned.stats;
+        geoCache.forEach((cached) => cached.dispose());
+    }
+
     const t2 = (typeof performance !== 'undefined' ? performance.now() : 0);
     // The game puts a per-CHAPTER FogExp2 on the scene. Left on, it saturates the sky dome —
     // 3,600 units out is ~100% fogged at any density the chapters use — so the colour script
     // was never once visible in-game, and the ground got double-fogged on top of applyAerial.
     // These four materials carry their own aerial perspective; the scene fog is not theirs.
-    [groundMat, waterMat, skyMat, treeMat, cloudMat, heroMat, fieldMat].forEach((m) => { m.fog = false; });
+    [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat, lakeMat].forEach((m) => { m.fog = false; });
 
     // What the scene fog SHOULD be, for everything the world does not draw (the path ribbon,
     // the level orbs, neighbouring chapters). Exposed so one horizon drives the whole frame
@@ -2632,8 +3758,10 @@ export function createOdysseyWorld({
         groundTriangles: ground.triangles,
         waterTriangles: water.triangles,
         reach: ground.reach,
-        trees: trees.length,
+        trees: forestV2Stats ? forestV2Stats.trees : trees.length,
         forestChunks: treeMeshes.length,
+        // Present only on the v2 path, so a boot log says which forest is on screen.
+        forestV2: forestV2Stats,
         materials: 4 + (clouds ? 1 : 0) + (heroes ? 1 : 0),
         heroClouds: heroes ? ODYSSEY_HERO_CLOUD_SPECS.length : 0,
         heroTriangles: heroes ? heroBuild.triangles : 0,
@@ -2657,6 +3785,25 @@ export function createOdysseyWorld({
         state,
         heightAt: relief.sample,
         fog: fogState,
+        /**
+         * THE DEPARTURE FADE (Wave 1B). `setDepartureFade(t, colour)` pulls the whole world
+         * toward `colour` as t goes 0 -> 1, so Act II recedes instead of being switched off.
+         * The caller owns the schedule; see OdysseyBoardController, which derives it from the
+         * act edge so it completes BEFORE the visibility gate fires.
+         */
+        setDepartureFade(t, colour = null) {
+            uWorldFade.value = Math.min(Math.max(t, 0), 1);
+            if (colour) uWorldFadeColour.value.copy(colour);
+        },
+        /**
+         * ATMOSPHERIC THINNING (Wave 3 / F3). `setAtmosphericThin(t)` collapses the cloud
+         * field's paint toward a flat haze family and shrinks each mass toward its centre
+         * as t goes 0 -> 1. The caller owns the schedule (`worldAtmosphericThin`, beside
+         * the departure fade in odyssey-world-act-gate.js). Touches ONLY the cloud field.
+         */
+        setAtmosphericThin(t) {
+            uWorldThin.value = Math.min(Math.max(t, 0), 1);
+        },
         /**
          * THE ACT'S CLOUD PALETTE, as live TSL nodes — shared, never copied.
          *
@@ -2762,11 +3909,19 @@ export function createOdysseyWorld({
             // 7.73 ms), and the god-rays are the same bug inverted above the waterline. A
             // multiply by a zero uniform is NOT dead-code-eliminated — the repo has that
             // lesson logged — so the gate has to be a `visible` write on the CPU.
-            if (cloudMesh) cloudMesh.visible = clouds && uSubmerged.value < 0.999;
-            if (heroMesh) heroMesh.visible = heroes && uSubmerged.value < 0.999;
+            // `authored()` AND-s in the `?worldOnly=` filter's intent. EVERY per-frame
+            // `.visible` write in this update loop silently overrode that filter, so a mesh
+            // the bisect lever had switched OFF came back on the next frame — the sky and
+            // ground obeyed it (they have no per-frame write) while the clouds and the forest
+            // never did. Found while trying to isolate one forest LOD tier for a wind capture.
+            const authored = (mesh) => mesh.userData.filterVisible !== false;
+            if (cloudMesh) cloudMesh.visible = authored(cloudMesh) && clouds && uSubmerged.value < 0.999;
+            if (heroMesh) heroMesh.visible = authored(heroMesh) && heroes && uSubmerged.value < 0.999;
             // Same underwater gate as the heroes — the probe shares their material and their
             // altitude band, so it must share their CPU `.visible` write too.
-            if (fieldProbeMesh) fieldProbeMesh.visible = uSubmerged.value < 0.999;
+            if (fieldProbeMesh) {
+                fieldProbeMesh.visible = authored(fieldProbeMesh) && uSubmerged.value < 0.999;
+            }
             // THE FOREST IS SUBMITTED UNDER WATER AND CANNOT BE SEEN (MEASURED 2026-08-13).
             // The trees are legitimately the far SHORE -- scatterTrees rejects any site below
             // seaLevel + 3, and the lowest trunk seats at y=290.3 against sea level 287.31, so
@@ -2789,7 +3944,14 @@ export function createOdysseyWorld({
             const forestDrawable = uSubmerged.value < 0.999;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
-                treeMeshes[i].visible = forestDrawable
+                // ⚠️ AND-ed WITH THE AUTHORED FLAG, because this per-frame write silently
+                // DEFEATED the `?worldOnly=` mesh filter. That lever sets `.visible` once at
+                // mount; this loop overwrote it on the very next frame, so the forest was
+                // unhideable and every `?worldOnly=<not-forest>` bisect quietly kept a whole
+                // forest in the frame. That is the repo's own worst failure mode — a lever
+                // that reports innocence rather than absence — and it was found while trying
+                // to isolate one LOD tier for a wind capture.
+                treeMeshes[i].visible = authored(treeMeshes[i]) && forestDrawable
                     && Math.hypot(c.x - railPoint.x, c.y - railPoint.z) < 1450;
             }
         },
@@ -2799,12 +3961,13 @@ export function createOdysseyWorld({
             // heroes shipped, leaking the compiled hero material on every world dispose; with
             // the heroes retired it is usually never uploaded, but the ?odysseyWorldHeroes=1
             // escape hatch still renders it and must not leak (the SB-15 teardown class).
-            [groundMat, waterMat, skyMat, treeMat, cloudMat, heroMat, fieldMat].forEach((m) => m.dispose());
+            [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat, lakeMat]
+                .forEach((m) => m.dispose());
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
-            [heightTex, sunVisTex, detailTex, macroTex].forEach((t) => t.dispose());
+            [heightTex, sunVisTex, groundTex, detailTex, macroTex].forEach((t) => t.dispose());
             // When the mesh is in the group, group.traverse above already disposed it.
             if (!heroes) heroBuild.geometry.dispose();
             treeGeo.dispose();

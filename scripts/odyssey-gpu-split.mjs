@@ -147,6 +147,131 @@ const CONFIGURATIONS = [
         flags: { odysseyWorldCloudFieldCount: '26' },
         note: 'half the sculpted field, for the cost curve',
     },
+    // THE FOREST (Act II forest plan, Wave 0a). The largest content system in the world file
+    // — 15,412 trees / 40 InstancedMesh chunks / ~462k triangles at high quality — and the
+    // last big one whose cost has NEVER been measured as a differential, for the same reason
+    // the water's had not been: nothing in the tree could switch it off. ADR-0016 makes this
+    // pair the prerequisite for the whole overhaul. The lever is the `no-water` shape, not
+    // the deck's: the forest is never built, so this prices DRAWS + FILL + VERTEX + PIPELINE
+    // together. That matters here more than it did for the sea plate — the forest's own
+    // header law is that its cost is VERTEX, not fill, so a gate that left 40 meshes
+    // constructed and merely hidden would price the wrong half of it.
+    // Run at the forest-facing stations, one thermal window each:
+    //   --seek 0.225 --chapters 2,3   --only baseline,no-forest,baseline-repeat
+    //   --seek 0.42  --chapters 3,4,5 --only baseline,no-forest,baseline-repeat
+    // and always with --out, so a non-canonical station cannot clobber the Act II baselines.
+    {
+        id: 'no-forest',
+        flags: { odysseyWorldNoForest: '1' },
+        note: 'the Act II forest is not scattered or built at all (draws, fill, vertex and pipeline)',
+    },
+    // THE RETIRED CONE FOREST (swap 2026-08-14). The roster ships, so baseline CONTAINS it and
+    // `forestMs` prices the NEW forest; this lever restores the incumbent, priced against the
+    // forest's absence like every whole-forest configuration. The old `forest-v2` id is
+    // retired WITH its flag — a configuration driving a flag nobody reads would collect a p50
+    // identical to baseline and report a real cost as zero (the heroes' lesson).
+    // THE GROUND'S FRAGMENT STACK (ground plan Wave 0a) — asymmetric, like the cloud deck's:
+    // the geometry is built identically and only the disputed fragment work is withheld, so
+    // draws and triangles agree EXACTLY on both sides and the content-match guard passes by
+    // construction rather than by luck. Prices detail-bump octaves, the atlas fetch, the biome
+    // mixes, curvature, strata, the caustic web and the two-model shadow. Caveat for the cell:
+    // pipeline compile stays on both sides, so the figure is a floor, not a ceiling.
+    {
+        id: 'flat-ground',
+        flags: { odysseyWorldFlatGround: '1' },
+        note: 'the ground keeps its geometry and loses its fragment mesostructure '
+            + '(constant albedo under the baked sun)',
+    },
+    {
+        id: 'forest-v1',
+        flags: { odysseyWorldForestV1: '1' },
+        note: 'the retired incumbent cone forest restored in place of the roster',
+    },
+    // ── CH6 SPACE (ODYSSEY_CH6_SPACE_OVERHAUL_PLAN_2026-08.md, Wave 0) ──────────────
+    // Ch6 has NEVER had a station or a budget cell; these five levers price the diorama
+    // tier by tier before the Painted-Cosmos overhaul touches anything. Each tier is
+    // never BUILT under its flag (the `no-water` lever shape: draws + fill + vertex +
+    // pipeline together — the tiers are additive-blended sprites, so fill is the
+    // suspected whale and an asymmetric hide-only lever would price the wrong half).
+    // Stations (all with --chapters 5,6,7 and --out, so they cannot clobber Act II):
+    //   entry --seek 0.665 · reef --seek 0.73 · fall --seek 0.80
+    // Run per station, ONE thermal window:
+    //   --only baseline,ch6-no-dome,ch6-no-nebula,ch6-no-dust,ch6-no-stars,ch6-no-heroes,ch6-no-aurora,baseline-repeat
+    // The content-match guard only judges baseline/baseline-repeat; differential rows
+    // are EXPECTED to change draws — verify each row's draw count actually drops, or the
+    // lever is dead and reports innocence, not absence.
+    {
+        id: 'ch6-no-dome',
+        flags: { odysseyCh6NoDome: '1' },
+        note: 'ch6 void-sky dome not built (per-fragment FBM backdrop — the Act I whale pattern)',
+    },
+    {
+        id: 'ch6-no-nebula',
+        flags: { odysseyCh6NoNebula: '1' },
+        note: 'ch6 nebula tiers (110 near + 90 far domain-warped-FBM additive sprites) + pillar not built',
+    },
+    {
+        id: 'ch6-no-dust',
+        flags: { odysseyCh6NoDust: '1' },
+        note: 'ch6 dust tiers + 500 suction debris + 90 streak motes not built',
+    },
+    {
+        id: 'ch6-no-stars',
+        flags: { odysseyCh6NoStars: '1' },
+        note: 'ch6 starfield tiers (~1200 far + ~350 near instanced quads) not built',
+    },
+    {
+        id: 'ch6-no-heroes',
+        flags: { odysseyCh6NoHeroes: '1' },
+        note: 'ch6 hero triad (black hole assembly, gas giant + rings, galaxy) not built',
+    },
+    // THE RETIRED FBM DOME (Space overhaul Wave 2 swap). The baked dome ships, so the
+    // baseline IS the bake and this lever ADDS the old per-fragment-FBM dome back in
+    // its place — the differential is the cost of the retired system (argument order
+    // carries the sign: configuration minus baseline, like `cloud-sheet`).
+    {
+        id: 'ch6-procedural-dome',
+        flags: { odysseyCh6ProceduralDome: '1' },
+        note: 'the retired FBM void dome restored in place of the baked backdrop',
+    },
+    // THE RETIRED NEBULA SPRITES (Space overhaul Wave 3 swap). A TRUE swap lever —
+    // sprites on means the sculpted field is withheld — so this single differential
+    // is the swap's whole price in one thermal window (unlike the cloud sheet, whose
+    // add-back stacked on top of the field and left the swap price an ESTIMATE).
+    {
+        id: 'ch6-nebula-sprites',
+        flags: { odysseyCh6NebulaSprites: '1' },
+        note: 'the retired additive nebula sprite tiers + billboard pillar restored in place of the sculpted field',
+    },
+    // THE AURORAL CROWN (Space overhaul Wave 5). Unlike the two swap levers above this
+    // one is a plain REMOVE — the crown is new, so baseline-minus-lever is its own price.
+    // The lever drops BOTH halves (the +1-draw curtain mesh and the gas giant's surface
+    // term), because pricing only the mesh would miss the hero's extra fragment ALU.
+    {
+        id: 'ch6-no-aurora',
+        flags: { odysseyCh6NoAurora: '1' },
+        note: 'ch6 hero auroral crown withheld — curtain mesh AND the gas-giant surface term',
+    },
+    // THE 5->6 SEAM LIMB. `odysseyNoCloudBank=1` skips createCloudBank entirely
+    // (OdysseyBoardController.js), so this prices the whole object — draws, fill, vertex AND
+    // its pipeline compile — the same lever SHAPE as `no-water`, not a material swap.
+    //
+    // ⚠️ The seam has NEVER been priced. `render.gpuMs` in the chapter-capture sidecars reads
+    // 0 at all 18 stations and always has: that harness sends `odysseyOverlay=0`, which makes
+    // isOdysseyAAADebugEnabled() false, so the renderer is built with trackTimestamp:false and
+    // no query pool ever exists. It is a constructor default being mistaken for a measurement.
+    // THIS script is the correct instrument — it sets odysseyGpuProfile=1, which arms both
+    // switches, discards a warm-up, and voids on content mismatch.
+    //
+    // Seek 0.7401 (the boundary) for the worst frame — the rising branch peaks at density 1.0
+    // there. Seek 0.7941 for the direction question: the new envelope still has density 0.0386
+    // where the old one was exactly 0, and the camera is INSIDE the r=620 ellipsoid where it
+    // was outside the r=150 one.
+    {
+        id: 'no-cloud-bank',
+        flags: { odysseyNoCloudBank: '1' },
+        note: 'the ch5->6 limb bank is never built (draws + fill + vertex + pipeline compile)',
+    },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
 
@@ -425,6 +550,19 @@ function buildSplit(results) {
         // curve wants the cost OF a half field, so it is measured against the field's absence.
         // Requires `no-cloud-field` in the same run; `delta` returns null rather than guessing.
         cloudFieldHalfMs: delta('cloud-field-half', 'no-cloud-field'),
+        // The Act II forest's TOTAL cost at this station (draws + fill + vertex + its
+        // pipeline). The forest SHIPS, so its lever REMOVES it and the cost is baseline minus
+        // configuration — the same polarity as waterMs and cloudFieldMs, and the opposite of
+        // the two retired systems above. Argument order carries the sign; never also negate.
+        // Since the swap, baseline's forest IS the roster — so this prices the shipped
+        // five-species forest. Its Lane B value at p=0.225 is 2.621 ms (D5-accepted).
+        forestMs: delta('baseline', 'no-forest'),
+        // The retired incumbent's price, for regression comparisons only.
+        forestV1Ms: delta('forest-v1', 'no-forest'),
+        // The ground's FRAGMENT cost — the stack that had never been priced. The ground ships
+        // (it is the world), so its lever REMOVES the disputed work and the cost is baseline
+        // minus configuration, the same polarity as waterMs, cloudFieldMs and forestMs.
+        groundFragMs: delta('baseline', 'flat-ground'),
         // POSITIVE means One World (the default baseline) is CHEAPER than the dioramas.
         oneWorldSavingMs: delta('legacy-dioramas', 'baseline'),
         baselineDriftMs: driftMismatch ? null : delta('baseline', 'baseline-repeat'),

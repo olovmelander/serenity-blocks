@@ -156,7 +156,10 @@ export const STEAM_LEADERBOARDS = {
     SINGLE_PLAYER_HIGH_SCORE: 'SinglePlayerHighScore_v1',
     SINGLE_PLAYER_LINES: 'SinglePlayerLines_v1',
     ODYSSEY_TOTAL_STARS: 'OdysseyTotalStars_v1',
-    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v1_', // Append level id
+    // _v2_ since the space lengthening renumbered ids ≥42 (+4): the _v1_ boards'
+    // rows carry OLD numbering, so reusing their names would silently change what
+    // each board means (e.g. _v1_45's ch7-arrival times receiving new-ch6 entries).
+    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v2_', // Append level id
     INFINITY_HIGH_SCORE: 'InfinityHighScore_v1',
     INFINITY_SURVIVAL_TIME: 'InfinitySurvivalTime_v1',
     INFINITY_BEST_CASCADE: 'InfinityBestCascade_v1',

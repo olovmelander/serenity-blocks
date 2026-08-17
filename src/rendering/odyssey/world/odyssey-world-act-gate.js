@@ -22,11 +22,16 @@
  * present for exactly the window in which the neighbouring chapter is co-present, and no
  * wider.
  *
+ * ⚠️ SCALED 0.03 -> 0.0222 BY WAVE 1A, for the same reason every seamWidth was: `p` is
+ * arc-normalised over the whole curve, the ascent lengthened it 1767.65 -> 2393.89, and a
+ * fixed 0.03 therefore bought 35% more world than it was authored to. The value tracks
+ * the act edges' seamWidth, so it scales with them.
+ *
  * DO NOT raise this to the journey's widest seam (Ch4's 0.06). That reaches p=0.033, which is
  * only ~35% into Chapter 1, and leaves the defect this gate exists to fix in place — the
  * first attempt at the fix did precisely that and changed nothing about the captured frame.
  */
-export const ONE_WORLD_ACT_MARGIN = 0.03;
+export const ONE_WORLD_ACT_MARGIN = 0.0222;
 
 /**
  * @param {number} progress camera progress along the whole journey, 0..1
@@ -41,4 +46,73 @@ export function isWorldVisibleAtProgress(progress, actStart, actEnd) {
     }
     return progress > (actStart - ONE_WORLD_ACT_MARGIN)
         && progress < (actEnd + ONE_WORLD_ACT_MARGIN);
+}
+
+/**
+ * How far before the act edge the world begins receding, as a fraction of the sky chapter's
+ * span, and how much of the gate margin it has fully closed by. FRACTIONS on purpose: the
+ * ascent (Wave 1A) re-maps every chapter's p, and these have to carry without an edit.
+ *
+ * ⚠️ THE CLOSE IS 0 — THE RECESSION FINISHES AT THE BOUNDARY, NOT AT THE GATE, AND THAT IS
+ * THE WHOLE POINT. Wave 1B first ran it to 0.85 of the margin, which put it in the SAME
+ * window as the chapter ecotone crossfade (0.618-0.678 at the 5->6 seam). Two large
+ * brightness changes in one window do not average, they compound: the measured cliff simply
+ * moved from the gate to one sample earlier (-89.3 became -91.5), and widening the ramp
+ * nearly 3x barely touched it (-86.1) because the ramp was never what was dropping.
+ * Staggering them is the fix — the world does its leaving BEFORE the crossfade does its own.
+ */
+export const ONE_WORLD_DEPARTURE_LEAD = 0.30;
+export const ONE_WORLD_DEPARTURE_CLOSE = 0.0;
+
+/**
+ * THE DEPARTURE FADE — the other half of "when does the world leave".
+ *
+ * `isWorldVisibleAtProgress` above is a BOOLEAN, and until Wave 1B it was also, by accident,
+ * the artistic end of Act II: the world drew at full strength right up to actEnd + margin and
+ * then stopped between two frames. Measured at the 5->6 seam that is a -89 luma step, and it
+ * is what reads as the mountain vanishing in front of the camera.
+ *
+ * This returns the recession that runs AHEAD of that flag, so by the time the boolean fires
+ * there is nothing visible left to hide. The gate keeps its original job unchanged — stopping
+ * Act II painting over chapters that own their own frame.
+ *
+ * Lives here, next to the gate, because the two are one decision. A caller that has one and
+ * not the other will reintroduce the cliff.
+ *
+ * @param {number} progress camera progress along the whole journey, 0..1
+ * @param {number} skyStart chapter 5's start (chapterPositions[4])
+ * @param {number} actEnd   Act II's last chapter boundary (chapterPositions[5])
+ * @returns {number} 0 = fully present, 1 = fully receded into the sky
+ */
+export function worldDepartureFade(progress, skyStart, actEnd) {
+    if (!Number.isFinite(progress) || !Number.isFinite(skyStart) || !Number.isFinite(actEnd)) return 0;
+    const skySpan = Math.max(1e-5, actEnd - skyStart);
+    const start = actEnd - skySpan * ONE_WORLD_DEPARTURE_LEAD;
+    const end = actEnd + ONE_WORLD_ACT_MARGIN * ONE_WORLD_DEPARTURE_CLOSE;
+    const t = Math.min(Math.max((progress - start) / Math.max(1e-5, end - start), 0), 1);
+    return t * t * (3 - 2 * t);
+}
+
+/**
+ * ATMOSPHERIC THINNING (Act II -> Space, Wave 3 / F3). Real atmosphere thins, recedes and
+ * loses contrast with altitude; the sculpted cloud deck instead held full cumulus form to
+ * the last drawn frame, which is the audit's F3. This ramp drives the deck's paint toward
+ * a flat haze family and shrinks each mass toward its own centre as the rail climbs, so
+ * "leaving the weather" is something the clouds DO rather than something that happens to
+ * the frame.
+ *
+ * Distinct from `worldDepartureFade` on purpose: the fade is the whole WORLD leaving into
+ * the void; the thinning is the SKY losing body while the world below is still vivid — it
+ * opens earlier (0.40 of the sky span, as the climb enters the deck band around y~900)
+ * and never completes (max 0.85), because a deck at zero would hand the limb bank nothing
+ * to cross. FRACTIONS, so a re-layout carries it unedited.
+ */
+export const ONE_WORLD_THIN_LEAD = 0.40;
+export const ONE_WORLD_THIN_MAX = 0.85;
+export function worldAtmosphericThin(progress, skyStart, actEnd) {
+    if (!Number.isFinite(progress) || !Number.isFinite(skyStart) || !Number.isFinite(actEnd)) return 0;
+    const skySpan = Math.max(1e-5, actEnd - skyStart);
+    const start = actEnd - skySpan * ONE_WORLD_THIN_LEAD;
+    const t = Math.min(Math.max((progress - start) / Math.max(1e-5, actEnd - start), 0), 1);
+    return t * t * (3 - 2 * t) * ONE_WORLD_THIN_MAX;
 }

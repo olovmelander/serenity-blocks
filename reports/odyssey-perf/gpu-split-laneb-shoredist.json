@@ -1,0 +1,73 @@
+{
+  "wave": -1,
+  "generatedAt": "2026-08-15T07:50:04.315Z",
+  "lane": "B",
+  "configurationsRun": "restricted",
+  "quality": "Medium",
+  "adapter": {
+    "vendor": "amd",
+    "architecture": "rdna-2",
+    "device": "",
+    "description": ""
+  },
+  "warmupRun": true,
+  "lowPower": true,
+  "powerPreference": "low-power",
+  "laneAdapterMismatch": null,
+  "resolution": "1280x720",
+  "seekProgress": 0.225,
+  "captureChapters": "2,3",
+  "discipline": "p50/p99 from a fixed 600-sample ring; no mean is recorded anywhere",
+  "configurations": [
+    {
+      "id": "baseline",
+      "note": "everything on",
+      "samples": 124,
+      "p50": 10.223616,
+      "p95": 10.551296,
+      "p99": 10.878976,
+      "min": 9.830400000000001,
+      "max": 15.204352,
+      "drawCalls": 55,
+      "drawCallsMin": 55,
+      "drawCallsMax": 55,
+      "triangles": 874534,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium"
+    },
+    {
+      "id": "baseline-repeat",
+      "note": "drift check against the first baseline",
+      "samples": 122,
+      "p50": 10.289152,
+      "p95": 10.551296,
+      "p99": 10.551296,
+      "min": 9.895936,
+      "max": 10.682368,
+      "drawCalls": 55,
+      "drawCallsMin": 55,
+      "drawCallsMax": 55,
+      "triangles": 874534,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium"
+    }
+  ],
+  "split": {
+    "bloomMs": null,
+    "levelNodesMs": null,
+    "waterMs": null,
+    "cloudsMs": null,
+    "heroesMs": null,
+    "cloudFieldMs": null,
+    "cloudFieldHalfMs": null,
+    "forestMs": null,
+    "forestV1Ms": null,
+    "groundFragMs": null,
+    "oneWorldSavingMs": null,
+    "baselineDriftMs": -0.066,
+    "baselineDriftVoidReason": null,
+    "note": "Differential, not per-pass: each figure is baseline p50 minus that configuration p50 — except heroesMs and cloudsMs, whose levers ADD a retired system, so they are the configuration minus baseline. Positive always means cost. Overlapping costs are attributed to whichever system is removed first, and baselineDriftMs bounds how much of any figure could be drift rather than signal. baselineDriftMs is null when the two baselines did not render comparable scenes — see baselineDriftVoidReason."
+  }
+}

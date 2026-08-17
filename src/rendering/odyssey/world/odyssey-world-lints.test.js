@@ -158,7 +158,15 @@ describe('every world material opts out of scene fog', () => {
         // to be, so a graph reading `positionWorld` would shade and fade the mass at its old
         // place — silently, and only visibly once the drift amplitude grew.
         expect(source).toMatch(/const cfWorld = varying\(positionLocal\.add\(cfOffset\)/);
-        expect(source).toMatch(/heroAerial\(fieldCol, cfWorld\)/);
+        // Wave 3's atmospheric thinning sits between the paint stack and the aerial:
+        // `fieldThinned` mixes fieldCol toward the haze family by uWorldThin, and the
+        // aerial must read THAT (and still the drifted cfWorld), or the thinned deck
+        // would be graded at full-form colour.
+        expect(source).toMatch(/const fieldThinned = mix\(fieldCol, /);
+        expect(source).toMatch(/heroAerial\(fieldThinned, cfWorld\)/);
+        // The thinning's shrink must ride INSIDE cfOffset (a plain term), so the vertex
+        // position and the cfWorld varying stay in the agreement this lint enforces.
+        expect(source).toMatch(/const cfOffset = cfDrift\.add\(cfBreath\)\.add\(cfThinPull\)/);
     });
 
     it('the fog opt-out list names every material the renderer constructs', () => {

@@ -8,7 +8,12 @@
 
 import { CHAPTER_CONFIGS } from './chapters.js';
 
-const MAIN_ARC_LAST_LEVEL = 51;
+// 55 since the Wave-1 space lengthening (ch6 grew 36-44 → 36-48; ch7 is now 49-55).
+// LOGISTIC_MIDPOINT deliberately stays 34: ids 1-41 kept their numbers, so holding
+// the midpoint preserves their macro difficulty EXACTLY; the renumbered late game
+// (46-59) climbs slightly higher on the same curve — the right direction for a
+// finale — and the balance test re-baselines it.
+const MAIN_ARC_LAST_LEVEL = 55;
 const D_MIN = 0.06;
 const D_MAX = 0.94;
 const LOGISTIC_MIDPOINT = 34;

@@ -357,13 +357,6 @@ const RAW_THEME_REGISTRY = [
         icon: './pyrestorm/pyrestorm-theme-icon.png',
     },
     {
-        id: 'pyrestorm-v2',
-        displayName: 'Pyrestorm V2',
-        module: './pyrestorm-v2/pyrestorm-v2-theme.js',
-        group: 'fantasy',
-        icon: './pyrestorm/pyrestorm-theme-icon.png',
-    },
-    {
         id: 'neon-dusk',
         displayName: 'Neon Dusk',
         module: './neon-dusk/neon-dusk-theme.js',
@@ -476,7 +469,6 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'sky-children',
     'cinder-drift',
     'pyrestorm',
-    'pyrestorm-v2',
     'neon-dusk',
     'neon-district',
     'synthwave-sunset',
@@ -506,9 +498,13 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
  * The rebuild is now the only Sky Children and is published under the original
  * id; persisted settings naming the retired id resolve here instead of failing
  * the `getThemeMeta` guard in ThemeManager.switchTheme().
+ *
+ * `pyrestorm-v2` was deleted outright (2026-08-16); saves that had it selected
+ * fall back to its predecessor.
  */
 const RETIRED_THEME_IDS = new Map([
     ['sky-children-v2', 'sky-children'],
+    ['pyrestorm-v2', 'pyrestorm'],
 ]);
 
 /**

@@ -48,7 +48,11 @@ describe('Odyssey P4 chapter environment anchors', () => {
         expect(group.userData.blackHole?.name).toBe('volumetric-black-hole-anchor');
         expect(group.userData.blackHole?.isMesh).not.toBe(true);
         expect(group.userData.heroPlanet?.name).toBe('hero-planet-nebula-anchor');
-        expect(group.userData.nebulaVolume?.name).toBe('nebula-volume-points');
+        // Wave 3 swap (Space overhaul): the additive sprite tiers retired; the shipped
+        // nebula is the sculpted opaque field (sprites restorable via
+        // ?odysseyCh6NebulaSprites=1 — covered by cosmic-expanse-bisect-levers.test.js).
+        expect(group.userData.nebulaField?.name).toBe('nebula-field');
+        expect(group.userData.nebulaVolume).toBeUndefined();
     });
 
     it('adds lensing and infall layers to chapter 7', () => {

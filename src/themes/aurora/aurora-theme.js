@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { AURORA_TETROMINOS } from './aurora-tetrominos.js';
 import {
     auroraCurtainVertexShader,
@@ -55,6 +56,11 @@ export default class AuroraTheme extends BaseTheme {
         this.pointerY = 0;
         this.smoothedPointerX = 0;
         this.smoothedPointerY = 0;
+
+        // Impact shake. The theme owns its own sway/parallax, so the rig contributes
+        // only the shake; `cameraBase` is the scratch this frame's sway is written into.
+        this.cameraRig = null;
+        this.cameraBase = { x: 0, y: -5, z: 15 };
 
         // Uniforms
         this.uniforms = {
@@ -127,6 +133,14 @@ export default class AuroraTheme extends BaseTheme {
         );
         this.camera.position.set(0, -5, 15);
         this.camera.lookAt(0, 5, 0);
+        this.cameraRig = new ThemeCameraRig(this.camera, {
+            focus: { x: 0, y: 5, z: 0 },
+            // The theme's own orbit has a ~105 s period, so over a few seconds it barely
+            // reads as motion. The rig adds a faster 18/27 s float on top so the frame
+            // feels alive at a glance, without flattening that slow cinematic drift.
+            breathe: true,
+            pointer: false, // the theme already applies its own mouse parallax
+        });
 
         // Setup Renderer
         this.renderer = new THREE.WebGLRenderer({
@@ -459,19 +473,24 @@ export default class AuroraTheme extends BaseTheme {
             const parallaxY = -this.smoothedPointerY * 3.0;
 
             // Orbital sway + mouse parallax - creates parallax with starfield/aurora
-            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
+            this.cameraBase.x = Math.sin(cameraTime) * orbitRadiusX
                 + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4
                 + parallaxX;
-            this.camera.position.y = -5 + Math.cos(cameraTime * 0.8) * orbitRadiusY
+            this.cameraBase.y = -5 + Math.cos(cameraTime * 0.8) * orbitRadiusY
                 + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3
                 + parallaxY;
-            this.camera.position.z = 15 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
+            this.cameraBase.z = 15 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
             // LookAt drift for dynamic framing (also nudged by mouse at 0.4x)
             const lookOffsetX = Math.sin(cameraTime * 0.4) * 4 + parallaxX * 0.4;
             const lookOffsetY = 5 + Math.cos(cameraTime * 0.5) * 3 + parallaxY * 0.4;
             const lookOffsetZ = -5 + Math.sin(cameraTime * 0.3) * 3;
-            this.camera.lookAt(lookOffsetX, lookOffsetY, lookOffsetZ);
+
+            // The rig writes the final position and does the lookAt, layering impact
+            // shake on top of the sway above. Aiming at the drifting target (rather than
+            // a fixed point) is what turns a shake offset into visible view rotation.
+            this.cameraRig.setFocus(lookOffsetX, lookOffsetY, lookOffsetZ);
+            this.cameraRig.apply(delta, this.cameraBase);
         }
 
         // Decay intensity back to baseline
@@ -671,6 +690,7 @@ export default class AuroraTheme extends BaseTheme {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             if (!this.isActive) return;
             this.uniforms.intensity.value += data.lineCount * 0.3;
+            this.cameraRig?.shakeClear(data.lineCount, 0);
             if (data.lineCount >= 2) {
                 this.createPulseWave(data.lineCount);
             }
@@ -683,6 +703,10 @@ export default class AuroraTheme extends BaseTheme {
 
             // Trigger aurora sway/wave effect
             this.uniforms.comboWave.value = Math.min(1.0, 0.3 + data.comboCount * 0.15);
+
+            // Combo shake. LINE_CLEAR fires its own for the line count; whichever is
+            // larger wins, so the two never stack and neither depends on arrival order.
+            this.cameraRig?.shakeClear(1, data.comboCount);
 
             if (data.comboCount >= 2) {
                 this.createShootingStar();
@@ -699,6 +723,7 @@ export default class AuroraTheme extends BaseTheme {
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
             if (!this.isActive) return;
             this.uniforms.intensity.value += 0.08;
+            this.cameraRig?.shakeLock();
         });
 
         // Pointer tracking for parallax camera

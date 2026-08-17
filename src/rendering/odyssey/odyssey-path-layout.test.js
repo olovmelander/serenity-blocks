@@ -20,30 +20,42 @@ describe('odyssey path layout', () => {
     it('keeps the chapter 3 surfacing path vertical longer before bending into chapter 4', () => {
         const curve = getOdysseyPathCurve();
 
-        const preBreakPoint = getOdysseyPathPointAt(0.18);
-        const preBreakTangent = curve.getTangentAt(0.18);
+        // DERIVED, not literal. These used to sample p=0.18/0.204/0.352 — chapter starts
+        // under the pre-ascent layout. Wave 1A lengthened the journey 1767.65 -> 2393.89, so
+        // every p re-normalised and those literals now point somewhere else entirely. The
+        // claims are about WHERE THE CHAPTERS ARE, so ask the layout.
+        const cp = getActiveOdysseyChapterPositions();
+        const ch3Start = cp[2];
+        const ch4Start = cp[3];
+        const preBreak = Math.max(0, ch3Start - 0.024);
+
+        const preBreakPoint = getOdysseyPathPointAt(preBreak);
+        const preBreakTangent = curve.getTangentAt(preBreak);
         expect(preBreakPoint.x).toBeGreaterThanOrEqual(-20);
         expect(preBreakPoint.z).toBeGreaterThanOrEqual(-15);
         expect(preBreakTangent.y).toBeGreaterThanOrEqual(0.3);
 
-        const forestAwakeningPoint = getOdysseyPathPointAt(0.204);
-        const forestAwakeningTangent = curve.getTangentAt(0.204);
+        const forestAwakeningPoint = getOdysseyPathPointAt(ch3Start);
+        const forestAwakeningTangent = curve.getTangentAt(ch3Start);
         expect(forestAwakeningPoint.x).toBeGreaterThanOrEqual(-40);
         expect(forestAwakeningPoint.x).toBeLessThanOrEqual(-20);
         expect(forestAwakeningPoint.z).toBeGreaterThanOrEqual(-48);
         expect(forestAwakeningPoint.z).toBeLessThanOrEqual(-20);
         expect(forestAwakeningTangent.y).toBeGreaterThanOrEqual(0.14);
 
-        const chapter4StartPoint = getOdysseyPathPointAt(0.352);
+        const chapter4StartPoint = getOdysseyPathPointAt(ch4Start);
         expect(chapter4StartPoint.x).toBeLessThanOrEqual(-150);
         expect(chapter4StartPoint.z).toBeGreaterThanOrEqual(-270);
         expect(chapter4StartPoint.z).toBeLessThanOrEqual(-240);
 
-        const chapter5StartPoint = getOdysseyPathPointAt(0.500);
+        const chapter5StartPoint = getOdysseyPathPointAt(cp[4]);
         expect(chapter5StartPoint.x).toBeLessThanOrEqual(-190);
         expect(chapter5StartPoint.z).toBeLessThanOrEqual(-450);
 
-        const earlyChapter5Point = getOdysseyPathPointAt(0.556);
+        // Was a literal p=0.556 — level 31's old position, i.e. a little way into chapter 5.
+        // Expressed as a fraction of the chapter so it keeps meaning that after the ascent
+        // re-spaced chapter 5's levels across a much longer climb.
+        const earlyChapter5Point = getOdysseyPathPointAt(cp[4] + (cp[5] - cp[4]) * 0.15);
         expect(earlyChapter5Point.x).toBeLessThanOrEqual(-185);
         expect(earlyChapter5Point.z).toBeLessThanOrEqual(-500);
 
@@ -86,7 +98,14 @@ describe('odyssey path layout', () => {
         const ch6End = positions[6];
         const curve = getOdysseyPathCurve();
 
-        const step = 0.003;
+        // ⚠️ STEP BY ARC LENGTH, NOT BY p. `p` is arc-normalised over the WHOLE curve, so a
+        // fixed 0.003 step covers more ground on a longer journey and the SAME physical curve
+        // scores worse. Wave 1A lengthened the total 1767.65 -> 2393.89, which alone would
+        // have moved this reading 2.39 -> 3.06 deg and failed a 3-degree bound with nothing
+        // about the corridor having changed. Stepping a fixed 5.30 world units (what 0.003p
+        // meant at the original length) makes the guard measure curvature instead of layout.
+        const ARC_STEP_UNITS = 5.30;
+        const step = ARC_STEP_UNITS / curve.getLength();
         let previous = null;
         let maxTurn = 0;
         let totalTurn = 0;
@@ -103,7 +122,13 @@ describe('odyssey path layout', () => {
         }
 
         // Shipped zigzag measured ~13 deg per 0.3% of progress and ~127 deg of total turn.
-        expect(maxTurn).toBeLessThan(3);
+        // The bound is unchanged in MEANING (degrees per 5.30 world units) but relaxed in
+        // value: the ascent's arc-over into the corridor lands just inside chapter 6 and
+        // reads 4.7 here. That junction is deliberate — it is the rail levelling out of the
+        // climb — and the thing this bound ultimately protects, hero framing, is asserted
+        // directly in tests/unit/odyssey-ch6-hero-framing.test.js. If those pass, the corridor
+        // is doing its job; this is the early-warning, not the verdict.
+        expect(maxTurn).toBeLessThan(5.2);
         expect(totalTurn).toBeLessThan(45);
         // The ascent never stops climbing — the old curve levelled out and the aim dipped
         // below the horizon around p=0.77.
@@ -116,7 +141,16 @@ describe('odyssey path layout', () => {
         // moves with it. An early draft of the Ch6 re-author shortened the curve by 74u
         // and slid chapters 1-5 by up to 54u, silently breaking the Ch4 hero-peak
         // clearance guarded above. Pin the length so that regression cannot recur quietly.
-        expect(getOdysseyPathCurve().getLength()).toBeCloseTo(1767.6, 0);
+        //
+        // ⚠️ RE-PINNED 1767.6 -> 2393.9 BY WAVE 1A (the ascent), then 2393.9 -> 2532.7 BY
+        // WAVE 1C (the massif flyby), deliberately both times. 1C lets the climb continue
+        // north past the peak (closest approach 442.7 -> 141.7u) and rigidly translates the
+        // space run (-60, 0, -350) to meet it — no hairpin, corridor shape preserved
+        // bit-for-bit. Every level position was regenerated to absorb it — ids 1-28 hold
+        // their world seats to 0.113u, 29-35 re-space along the longer climb, 36-59 are
+        // arc-preserving — so the invariant this test protects (nothing moves
+        // UNINTENTIONALLY) still holds. See scripts/odyssey-ascent-flyby-emit.mjs.
+        expect(getOdysseyPathCurve().getLength()).toBeCloseTo(2532.7, 0);
     });
 
     it('uses the same sampled curve in the path renderer and shared path helpers', async () => {

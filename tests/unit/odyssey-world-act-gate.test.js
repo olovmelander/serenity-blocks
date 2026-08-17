@@ -5,7 +5,12 @@ import { describe, expect, it } from 'vitest';
 import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/path-utils.js';
 import {
     ONE_WORLD_ACT_MARGIN,
+    ONE_WORLD_DEPARTURE_LEAD,
+    ONE_WORLD_THIN_LEAD,
+    ONE_WORLD_THIN_MAX,
     isWorldVisibleAtProgress,
+    worldAtmosphericThin,
+    worldDepartureFade,
 } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
 import {
     DEFAULT_ODYSSEY_TRANSITION,
@@ -54,9 +59,16 @@ describe('the world is gated to Act II', () => {
         expect(seamWidthOf(5)).toBe(MARGIN);
     });
 
-    it('hides the world at the frame where the defect was captured (p=0.051, mid Chapter 1)', () => {
-        // The regression test for my own first attempt: margin 0.06 leaves this visible.
-        expect(visibleAt(0.051)).toBe(false);
+    it('hides the world at the frame where the defect was captured (mid Chapter 1)', () => {
+        // The regression test for the first attempt at this fix: margin 0.06 leaves it visible.
+        //
+        // DERIVED, not a literal. The capture was at p=0.051 when chapter 2 began at 0.093 —
+        // i.e. 54.8% of the way through chapter 1. Wave 1A's ascent lengthened the journey
+        // (1767.65 -> 2276.62) so every p re-normalised and that literal now points somewhere
+        // else entirely. The defect is a fact about a WORLD position mid-chapter-1, so express
+        // it that way and it survives the next re-layout too.
+        const midChapter1 = cp[1] * 0.548;
+        expect(visibleAt(midChapter1)).toBe(false);
     });
 
     it('keeps the world through the act-edge seams, so the handoff never shows a gap', () => {
@@ -101,5 +113,105 @@ describe('the world is gated to Act II', () => {
         // The fog handover and the orb ground-sampler read plain data off the world and must
         // keep working regardless of whether it draws.
         expect(BOARD).toMatch(/const worldFog = this\.oneWorld\.fog;/);
+    });
+});
+
+describe('the world RECEDES before the gate fires (Wave 1B)', () => {
+    const cp = getActiveOdysseyChapterPositions();
+    const actEnd = cp[5];
+    const skyStart = cp[4];
+    const fade = (p) => worldDepartureFade(p, skyStart, actEnd);
+
+    it('is fully closed BEFORE the visibility flag flips — the whole point', () => {
+        // The cliff was: full strength, then nothing, in one frame. The recession must have
+        // finished while the world is still allowed to draw, so the boolean has nothing
+        // visible left to hide. If this ever regresses, the -89 luma step comes back.
+        const gateFires = actEnd + ONE_WORLD_ACT_MARGIN;
+        expect(fade(gateFires)).toBeCloseTo(1, 6);
+        expect(fade(gateFires - 1e-4)).toBeGreaterThan(0.999);
+        expect(isWorldVisibleAtProgress(gateFires - 1e-4, cp[1], actEnd)).toBe(true);
+    });
+
+    it('leaves the whole of Act II untouched', () => {
+        // A no-op everywhere it matters: nothing before the last 30% of the sky chapter may
+        // dim by even a fraction, or the act quietly loses contrast for the whole journey.
+        for (let i = 0; i <= 20; i += 1) {
+            const p = cp[1] + ((skyStart - cp[1]) * (i / 20));
+            expect(fade(p), `p=${p.toFixed(3)} must be untouched`).toBe(0);
+        }
+        expect(fade(skyStart)).toBe(0);
+    });
+
+    it('is monotonic and smooth across the departure', () => {
+        let prev = -1;
+        for (let i = 0; i <= 60; i += 1) {
+            const p = skyStart + ((actEnd + ONE_WORLD_ACT_MARGIN - skyStart) * (i / 60));
+            const v = fade(p);
+            expect(v).toBeGreaterThanOrEqual(prev);
+            prev = v;
+        }
+        // Smoothstep ends: no step at either edge of the ramp. Uses the exported constant,
+        // not a literal — the lead is a tuning value and this assertion is about the SHAPE.
+        expect(fade(actEnd - (actEnd - skyStart) * ONE_WORLD_DEPARTURE_LEAD)).toBeCloseTo(0, 6);
+    });
+
+    it('survives a re-layout, because it is expressed in fractions', () => {
+        // Wave 1A moves every chapter boundary. Feed it a completely different layout and the
+        // contract must still hold: closed before the gate, zero through the act.
+        const alt = { skyStart: 0.3882, actEnd: 0.701 };
+        const altFade = (p) => worldDepartureFade(p, alt.skyStart, alt.actEnd);
+        expect(altFade(alt.actEnd + ONE_WORLD_ACT_MARGIN)).toBeCloseTo(1, 6);
+        expect(altFade(alt.skyStart)).toBe(0);
+    });
+});
+
+describe('the SKY thins with altitude before the world leaves (Wave 3 / F3)', () => {
+    const cp = getActiveOdysseyChapterPositions();
+    const actEnd = cp[5];
+    const skyStart = cp[4];
+    const thin = (p) => worldAtmosphericThin(p, skyStart, actEnd);
+    const thinStart = actEnd - (actEnd - skyStart) * ONE_WORLD_THIN_LEAD;
+
+    it('leaves the deck at full form through everything below the climb', () => {
+        // F3's fix must not quietly flatten the deck for the whole act — the thinning is
+        // an ALTITUDE read, and below the climb there is no altitude story to tell.
+        for (let i = 0; i <= 20; i += 1) {
+            const p = cp[1] + ((thinStart - cp[1]) * (i / 20));
+            expect(thin(p), `p=${p.toFixed(3)} must be untouched`).toBe(0);
+        }
+    });
+
+    it('opens EARLIER than the departure fade, and never completes', () => {
+        // The thinning is the sky losing body while the world below is still vivid; the
+        // fade is the whole world leaving. Order matters: thin first, then fade.
+        expect(ONE_WORLD_THIN_LEAD).toBeGreaterThan(ONE_WORLD_DEPARTURE_LEAD);
+        // A deck at zero would hand the limb bank nothing to cross — the cap is the
+        // difference between thinning the sky and deleting it.
+        expect(thin(actEnd)).toBeCloseTo(ONE_WORLD_THIN_MAX, 6);
+        expect(ONE_WORLD_THIN_MAX).toBeLessThan(1);
+        expect(thin(actEnd + ONE_WORLD_ACT_MARGIN)).toBeCloseTo(ONE_WORLD_THIN_MAX, 6);
+    });
+
+    it('is monotonic and smooth across the climb', () => {
+        let prev = -1;
+        for (let i = 0; i <= 60; i += 1) {
+            const p = skyStart + ((actEnd - skyStart) * (i / 60));
+            const v = thin(p);
+            expect(v).toBeGreaterThanOrEqual(prev);
+            expect(v).toBeLessThanOrEqual(ONE_WORLD_THIN_MAX + 1e-9);
+            prev = v;
+        }
+    });
+
+    it('survives a re-layout, because it is expressed in fractions', () => {
+        const alt = { skyStart: 0.3882, actEnd: 0.701 };
+        const altThin = (p) => worldAtmosphericThin(p, alt.skyStart, alt.actEnd);
+        expect(altThin(alt.skyStart)).toBe(0);
+        expect(altThin(alt.actEnd)).toBeCloseTo(ONE_WORLD_THIN_MAX, 6);
+    });
+
+    it('degrades to zero on an unreadable layout', () => {
+        expect(worldAtmosphericThin(NaN, skyStart, actEnd)).toBe(0);
+        expect(worldAtmosphericThin(0.7, undefined, actEnd)).toBe(0);
     });
 });

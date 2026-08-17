@@ -32,13 +32,23 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute,
+    cameraPosition,
     clamp,
+    color as tslColor,
     cos,
+    dot,
+    float,
+    fract,
     length,
     mix,
+    materialOpacity,
     mod,
+    normalWorld,
+    normalize,
     oneMinus,
+    positionWorld,
     pow,
+    screenCoordinate,
     sin,
     smoothstep,
     uniform,
@@ -56,8 +66,11 @@ import {
     createNebulaPillarTSL,
     createAsteroidRockTSL,
 } from './cosmic-expanse.tsl.js';
+import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
+import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { pickStellarClass } from './odyssey-stellar-ramp.js';
 
 /**
  * Cosmic Expanse environment configuration
@@ -112,25 +125,83 @@ export const COSMIC_EXPANSE_CONFIG = {
 //   gas giant   ndc (+0.14, -0.32) -> (+0.21, -0.23)  lower-CENTRE-right, 1047 -> 756
 //   galaxy      ndc (+0.50, +0.26) -> (+0.57, +0.38)  upper-RIGHT anchor, 1213 -> 958
 // Worst-case |ndcX| across all aspect ratios is 0.75 (galaxy at 4:3); nothing clips.
-const APPROACH = {
-    // Black hole: the destination omen. Holds the upper-left third and LOOMS (scale
-    // 1.2 -> 2.6, distance 1271 -> 885) as the camera closes on the 6->7 seam.
+// Exported for scripts/odyssey-ch6-approach-resolve.mjs, which must read the LIVE values —
+// a re-solve against transcribed (stale) coordinates is how the first run fit the wrong pose.
+export const APPROACH = {
+    // Black hole: the destination omen, in TWO phases (owner direction 2026-08-15:
+    // "the path goes straight into the black hole — it IS the transition"). Phase 1
+    // (ease 0 → DIVE_START): holds the upper-left third and LOOMS, the Journey
+    // north-star. Phase 2 (DIVE_START → 1): converges onto the camera's EXIT RAY —
+    // C sits 700 u down the measured boundary flight axis (camera local (73,65,−52)
+    // aiming at (707,242,−289), probed via the real-controller replay) — so the rail
+    // flies STRAIGHT INTO the horizon as the Lensing Engage threshold takes over.
+    bhDiveStart: 0.7,
     bhScaleA: 1.2,
     bhScaleB: 2.6,
+    bhScaleC: 3.4,
     bhXa: 392,
     bhXb: 607,
+    bhXc: 700,
     bhZa: -842,
     bhZb: -647,
+    bhZc: -285,
     bhYa: 586,
     bhYb: 387,
+    bhYc: 240,
+    // ⚠️ RE-SOLVED FOR WAVE 1A'S ASCENT (2026-08-16). These endpoints are least-squares fits
+    // against a CAMERA REPLAY, so a spline change invalidates them — that is the standing rule
+    // in this file and the ascent is exactly the case it was written for. After the rail was
+    // lifted, the gas giant projected to ndcX -0.021 at the chapter entry: dead centre, a hair
+    // to the LEFT, which breaks the authored triad (black hole upper-left, giant lower-centre-
+    // RIGHT, galaxy upper-right) and puts two heroes on the same side of the frame.
+    // Corridor-local screen-right at the entry measures (0.972, 0.235, 0), so x is very nearly
+    // pure lateral here. +114 (756 -> 870) puts it in the right third with margin on BOTH
+    // constraints: it must clear centre (ndcX > 0) AND stay 0.3 of a frame from the galaxy,
+    // which is also right-of-centre. Swept: 860 and 880 both pass, 896 collides with the
+    // galaxy at 0.297. 870 is the middle of the passing band, not the edge of it.
+    // ⚠️ RE-SOLVED AGAIN FOR WAVE 1C'S FLYBY (2026-08-16), same standing rule: the flyby
+    // re-authored the climb and translated the space run, which rotated the entry tangent
+    // (the camera now banks in at 5.43°), and the old triad broke two ways — the planet
+    // read ndcX -0.02 at entry (needs > 0) and the galaxy at 0.29 left the planet no legal
+    // band (needs > 0 AND 0.3 clear of the galaxy). Solved by scripts/
+    // odyssey-ch6-approach-resolve.mjs with the galaxy moved FIRST (entry 0.35), then the
+    // planet against the widened band (entry 0.03, -0.14; moved 77 u, distance 1151 -> 1147
+    // so apparent size holds).
     planetA: {
-        x: 756, y: 322, z: -277, s: 34 / 28,
+        x: 880, y: 352, z: -207, s: 34 / 28,
     },
+    // planetB moved along the EXIT CAMERA'S RIGHT vector (the exit forward runs
+    // nearly down local +x, so screen-lateral is mostly ±z, not ±x — the first nudge
+    // moved the planet along the view axis and its ndc barely changed) when the BH
+    // dive took the exit axis: the giant must stay clear of the dive line
+    // (separation ≥ 0.2 asserted). Distance held ~756 so apparent size is unchanged.
     planetB: {
-        x: 805, y: 110, z: -221, s: 60 / 28,
+        x: 855, y: 60, z: -89, s: 60 / 28,
     },
+    // Wave 1C: moved right-of-centre to re-open the planet's band (see planetA note).
+    // Entry ndc (0.35, 0.27), distance 1214 vs 1215 before — apparent size preserved.
     galaxyA: {
-        x: 750, y: 743, z: 106, s: 155,
+        x: 810, y: 663, z: 186, s: 155,
+    },
+    // ⚠️ THE TRIAD IS ONE FIT, NOT THREE — and the summit needed its own keyframe (Wave
+    // 1C). A feasibility sweep proved NO single static planetA satisfies both the Ch5
+    // summit window and the boundary composition once the flyby banks the camera: the
+    // solved planetA reads ndc 1.12-1.24 across the ignite stations. So the giant holds
+    // THIS pose through the summit window and travels to planetA across
+    // [summitEnd, ch6Start] in update() — a short pre-boundary drift that reads as
+    // parallax. Solved by the same resolver, all five derived stations inside |ndc| 0.87.
+    // (The transition plan once recorded {875, 175, -275}; that pose was solved before the
+    // look-ahead re-scale and now reads ndcY 0.908 at the third station — re-solved.)
+    //
+    // `s` is OWNER DECISION D3 (2026-08-16): the gas giant gets to be genuinely BIG at the
+    // summit. 3.4 vs planetA's 1.214 puts a ~4.3° disc over the mountains (2.8x the entry's
+    // apparent size at the summit distance of ~1250 u); the travel to planetA across
+    // [summitEnd, ch6Start] carries the scale with it, so the giant settles into the
+    // Wave-4-approved entry framing exactly at the boundary. F4 ("the hero reads as set
+    // dressing... a small striped disc indistinguishable from a level orb") is what this
+    // number exists to kill.
+    planetSummit: {
+        x: 900, y: 150, z: -250, s: 3.4,
     },
     galaxyB: {
         x: 942, y: 449, z: 39, s: 250,
@@ -154,15 +225,78 @@ const APPROACH = {
 //
 // Expressed as fractions of the Ch5 span so it tracks any future layout re-authoring.
 export const SUMMIT_EARTH_REVEAL = Object.freeze({
-    // 0.41 of the Ch5 span before the boundary => p ~= 0.610, just as the camera crests.
-    startBeforeBoundary: 0.41,
-    // Fully present by p ~= 0.634 — comfortably before the 5->6 backdrop fade begins.
+    // ⚠️ RETIMED 0.41 -> 0.28 (north-island plan Wave 0, owner playtest 2026-08-16). At
+    // 0.41 the ignite started at p 0.5881 — INSIDE the massif flyby's in-frame pass
+    // (0.545–0.648) — so the D3-sized giant faded up mid-mountain-beat and read as
+    // arriving "so early" (the owner's words). 0.28 starts the ignite at p 0.6408, as the
+    // crown exits the frame: mountain first, then the world blooms into the emptied sky
+    // at the crest, then the first stars. Beats stop competing.
+    //
+    // (History: these comments once said 0.610/0.634, computed from skySpan = 0.648−0.556
+    // — but 0.556 is LEVEL 31's position, not chapter 5's start. The CODE always derived
+    // from chapterPositions at runtime; only the prose lied. Derive facts by importing the
+    // modules, never by parsing source.)
+    startBeforeBoundary: 0.28,
+    // Fully present 15% of the sky span before the boundary (p = 0.6935) — comfortably
+    // before the 5->6 backdrop fade begins.
     endBeforeBoundary: 0.15,
     // Fraction of the Space span over which the REST of the chapter (stars, black hole,
     // nebula, dust, lights) ramps in past the boundary. Deliberately short: it must not
     // re-wash Space bright, and nothing but the earth may bleed into the daylight sky.
-    spaceGateBand: 0.06,
+    //
+    // 0.06 -> 0.16 (Act II->Space §8.3 step 3). At 0.06 the gate was 0.0074 of p wide and
+    // `spaceReveal` read as a BINARY FLIP: the bank-off arm measures +96.2 luma per 0.01p at
+    // p=0.7441, and today that pop is invisible only because the cloud bank is a fully
+    // opaque wall in front of it (its alpha hard-clamps to 1.0 at both 0.7401 and 0.7441).
+    // Widening it to 0.16 spreads the same arrival over 0.0197 of p.
+    //
+    // ⚠️ HARD CEILING 0.18004. `gateEnd` must stay below
+    // `worldOff = ch6Start + ONE_WORLD_ACT_MARGIN (0.0222)` = 0.7623, and must stay ABOVE
+    // ch6Start — both are ORDERING invariants in odyssey-seam-56-schedule.test.js:86,:101,
+    // not tunable numbers. (0.7623 - 0.7401) / 0.1233 = 0.18004. 0.16 leaves 0.0025 of
+    // margin; 0.175 leaves 0.00062, which is not enough to survive another re-layout.
+    spaceGateBand: 0.16,
+    // The 5->6 HAND-OFF WINDOW, as fractions of the Space span either side of the boundary.
+    // Space arriving after the boundary is a rise BY CONSTRUCTION, so the systems that make
+    // up "space" must begin arriving BEFORE it, while the bank is still falling. Only used
+    // to raise `nebulaReveal` (never to lower it) — see `spaceArrival` in updateCosmicExpanse.
+    //
+    // ⚠️ RETIMED after the limb landed, and the pre-boundary half PROVED WASTED. These
+    // reveals are all multiplied by `spaceReveal`, which is exactly 0 below ch6Start — so
+    // a hand-off starting at p=0.71013 bought nothing: the bank-off arm measured luma 1.78
+    // at p=0.7221 both before and after it was added. What it DID do was drive the nebula
+    // to ~0.9 by p=0.7501, which capture-review showed as a saturated green field flooding
+    // the frame — a +23.1 luma per 0.01p rise, the largest remaining defect at that point.
+    //
+    // The trough it was meant to fill is now the LIMB's job (measured: p=0.7221 goes 1.78
+    // -> 26.16 with the limb in). So the hand-off keeps only the half that was ever load-
+    // bearing: saturating before the metric window closes, which is what removes the tail
+    // rises at p=0.7941/0.8001.
+    handoverBeforeBoundary: 0.0, // p = 0.74010 — the boundary itself
+    handoverAfterBoundary: 0.373, // p = 0.78610 — clear of the last two stations
+    // STARS BEFORE DARK (Wave 3). The NEAR star tier is deliberately not baked into the
+    // void dome precisely so it can arrive while there is still blue sky — this is the
+    // opacity ceiling it may reach before the boundary. The window is [summitEnd,
+    // ch6Start]: zero through the whole earth-ignite (nothing but the earth may bleed
+    // into full daylight), then the first stars fade up across the final climb as the
+    // zenith deepens, and the normal `starReveal x spaceReveal` staging takes over past
+    // the boundary via max() — it can only ever arrive EARLIER, never dip.
+    starsBeforeDark: 0.5,
 });
+
+/**
+ * Level trim on the carried Ch5 aurora bridge, applied after the hue fix above. 0.65 rather
+ * than a deeper cut because switching to managed `color()` already removes most of the
+ * excess on its own; this only takes the remaining edge off so the curtains sit behind the
+ * cloud limb instead of competing with it.
+ */
+const BRIDGE_LEVEL = 0.65;
+/**
+ * How much of the bridge's chroma survives (1 = untouched, 0 = greyscale). The curtains are
+ * additive and were measuring 99-100 % saturation across ~44 % of the non-black pixels at
+ * p=0.7501, against a cloud-limb frame whose mean lit saturation is 38 %.
+ */
+const BRIDGE_CHROMA = 0.55;
 
 const _approachVec = new THREE.Vector3();
 
@@ -219,12 +353,14 @@ function rampBetween(value, start, end) {
  * @param {number} ch5Start global progress where chapter 5 begins
  * @param {number} ch6Start global progress where chapter 6 begins (the Space boundary)
  * @param {number} ch7Start global progress where chapter 7 begins
- * @returns {{earthReveal: number, spaceReveal: number, summitStart: number}}
+ * @returns {{earthReveal: number, spaceReveal: number, summitStart: number, summitEnd: number}}
  */
 export function resolveSummitEarthStaging(progress, ch5Start, ch6Start, ch7Start) {
     if (!Number.isFinite(progress) || !Number.isFinite(ch5Start) || !Number.isFinite(ch6Start)
         || ch6Start <= ch5Start) {
-        return { earthReveal: 0, spaceReveal: 1, summitStart: Number.NaN };
+        return {
+            earthReveal: 0, spaceReveal: 1, summitStart: Number.NaN, summitEnd: Number.NaN,
+        };
     }
     const skySpan = ch6Start - ch5Start;
     const summitStart = ch6Start - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
@@ -239,7 +375,9 @@ export function resolveSummitEarthStaging(progress, ch5Start, ch6Start, ch7Start
         ? rampBetween(progress, ch6Start, gateEnd)
         : 1;
 
-    return { earthReveal, spaceReveal, summitStart };
+    return {
+        earthReveal, spaceReveal, summitStart, summitEnd,
+    };
 }
 
 export function resolveCosmicEntryContinuity(progress) {
@@ -271,6 +409,20 @@ function setOpacityScale(root, scale, chapterOpacity = 1) {
     // the Ch5 summit while only the earth is allowed to show: without this the nebula
     // and dust billboard stacks would pay their full fill cost for nothing. The material
     // opacities are still written every call so nothing can pop back at a stale value.
+    //
+    // ⚠️ THE `material.opacity` WRITE BELOW IS A DEAD WRITE UNLESS THE MATERIAL'S
+    // `opacityNode` READS `materialOpacity` BACK. In r181 NodeMaterial resolves alpha as
+    // `this.opacityNode ? float(this.opacityNode) : materialOpacity` (NodeMaterial.js:872),
+    // so ASSIGNING an opacityNode REPLACES the uniform this function drives. Every
+    // opacityNode in this module therefore ends in `.mul(materialOpacity)`, and
+    // cosmic-expanse-environment.test.js pins that so a new material cannot opt out.
+    //
+    // MEASURED, 2026-08-16 (Act II->Space §8.4): while the re-arm was missing, the ONLY
+    // live effect of this whole function was the `root.visible` threshold on the next
+    // line — a binary flip at 0.2%. The seam metric proved it: across a 10x change in
+    // `spaceReveal` (0.107 -> 1.0 at p=0.7441..0.7621) mean frame luma moved 41.5 -> 43.9,
+    // i.e. not at all. Widening the space gate 0.06 -> 0.16 changed the pop by +1.8 luma
+    // because the ramp was never reaching a fragment.
     root.visible = opacity > 0.002;
     root.traverse((child) => {
         const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -326,6 +478,46 @@ export function resolveCosmicCorridorFrame(chapterRange) {
 // Environment Creation
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ── WAVE 0 BISECT LEVERS (docs/ODYSSEY_CH6_SPACE_OVERHAUL_PLAN_2026-08.md §5) ──
+// One URL flag per cost family so gpu-split can price the incumbent tier by tier:
+//   ?odysseyCh6NoDome=1    — the per-fragment-FBM void sky dome
+//   ?odysseyCh6NoHeroes=1  — the NDC-marched hero triad (black hole / gas giant / galaxy)
+//   ?odysseyCh6NoNebula=1  — both additive FBM nebula tiers + the pillar
+//   ?odysseyCh6NoDust=1    — dust tiers + suction debris + streak motes
+//   ?odysseyCh6NoStars=1   — both instanced starfield tiers
+//   ?odysseyCh6NoAurora=1  — the hero's auroral crown, BOTH halves (Wave 5)
+//   ?odysseyCh6LegacyKeyFrame=1 — ADD-BACK polarity: restores the Wave 6 lighting slip,
+//                            i.e. the masses' corridor-local key dotted against world
+//                            normals raw (55.8-95.5 deg off the accretion key). The
+//                            SHIPPED default now applies that key in the frame it was
+//                            authored in (25.7-57.1 deg). Owner flipped it 2026-08-16.
+// Polarity: every flag REMOVES its tier, so `baseline` is the shipped chapter and each
+// differential is that tier's own cost (draws + fill + vertex + pipeline — the tier is
+// never built, the `no-water` lever shape). The asteroid garland (12 opaque instances)
+// and the aurora bridge (3 curtains) are deliberately unlevered: both are below the
+// 65.536 µs timer tick on Lane A and the garland is the chapter's on-law template.
+function readCh6UrlFlag(name) {
+    if (typeof window === 'undefined') return false;
+    try {
+        const value = new URLSearchParams(window.location?.search || '').get(name);
+        return value === '1' || value === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function resolveCh6BisectLevers() {
+    return {
+        dome: !readCh6UrlFlag('odysseyCh6NoDome'),
+        heroes: !readCh6UrlFlag('odysseyCh6NoHeroes'),
+        nebula: !readCh6UrlFlag('odysseyCh6NoNebula'),
+        dust: !readCh6UrlFlag('odysseyCh6NoDust'),
+        stars: !readCh6UrlFlag('odysseyCh6NoStars'),
+        aurora: !readCh6UrlFlag('odysseyCh6NoAurora'),
+        authoredKeyFrame: !readCh6UrlFlag('odysseyCh6LegacyKeyFrame'),
+    };
+}
+
 export function createCosmicExpanseEnvironment(options = {}) {
     const group = new THREE.Group();
     group.name = 'cosmic-expanse-environment';
@@ -370,49 +562,72 @@ export function createCosmicExpanseEnvironment(options = {}) {
     group.userData.corridorFrame = corridorFrame;
 
     const particleCount = options.particleCount || 1000;
+    const bisect = resolveCh6BisectLevers();
+    group.userData.ch6Bisect = bisect;
 
-    // 0. Nebula void dome
-    const voidSky = createVoidSky(uniforms);
-    group.add(voidSky);
-    group.userData.voidSky = voidSky;
+    // 0. Nebula void dome. The BAKED dome ships (Wave 2 swap); the retired FBM dome
+    // stays restorable behind `?odysseyCh6ProceduralDome=1` (ADR-0015 escape hatch,
+    // gpu-split configuration `ch6-procedural-dome` — its differential is the cost of
+    // ADDING the old dome back).
+    let voidSky = null;
+    if (bisect.dome) {
+        voidSky = readCh6UrlFlag('odysseyCh6ProceduralDome')
+            ? createVoidSky(uniforms)
+            : createBakedVoidSky(uniforms);
+    }
+    if (voidSky) {
+        group.add(voidSky);
+        group.userData.voidSky = voidSky;
+    }
 
     // 1. The black hole — the act's DESTINATION OMEN. Starts far/small in the upper
     // third and LOOMS larger as the camera approaches the 6→7 seam (driven by uApproach
     // in update(): scale 1.25→3.0, z -900→-640, y 20→70 so it rides the upper third and
     // never sits as a tiny dot on the bottom edge — the #1 Space hero fix). Initial pose
     // matches APPROACH.*A so the first frame / smoke test agrees with the march.
-    const blackHole = createBlackHole(uniforms);
-    blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
-    blackHole.rotation.x = -1.12;
-    blackHole.scale.setScalar(APPROACH.bhScaleA);
-    group.add(blackHole);
-    group.userData.blackHole = blackHole;
+    const blackHole = bisect.heroes ? createBlackHole(uniforms) : null;
+    if (blackHole) {
+        blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
+        blackHole.rotation.x = -1.12;
+        blackHole.scale.setScalar(APPROACH.bhScaleA);
+        group.add(blackHole);
+        group.userData.blackHole = blackHole;
+    }
 
     // 1b. Hero gas giant
-    const heroPlanet = createHeroPlanet(uniforms);
-    group.add(heroPlanet);
-    group.userData.heroPlanet = heroPlanet;
+    const heroPlanet = bisect.heroes ? createHeroPlanet(uniforms, bisect) : null;
+    if (heroPlanet) {
+        group.add(heroPlanet);
+        group.userData.heroPlanet = heroPlanet;
+    }
 
     // 1c. Distant galaxy / quasar — a sharp, persistent deep-space focal anchor
     // up and to the right of the hero, so Space always has a bright far point.
-    const galaxy = createDistantGalaxy(uniforms);
-    group.add(galaxy);
-    group.userData.galaxy = galaxy;
+    const galaxy = bisect.heroes ? createDistantGalaxy(uniforms) : null;
+    if (galaxy) {
+        group.add(galaxy);
+        group.userData.galaxy = galaxy;
+    }
 
     // 2. Matter spiralling into the void (aligned to the disk plane). Tracks the BH
     // omen's transform each frame in update() so the infall stays seated on the hole as
     // it looms (starts at the BH entry pose).
-    const debris = createSuctionParticles(uniforms, particleCount);
-    debris.position.copy(blackHole.position);
-    debris.rotation.x = -1.12;
-    debris.scale.copy(blackHole.scale);
-    group.add(debris);
-    group.userData.debris = debris;
+    const debris = bisect.dust ? createSuctionParticles(uniforms, particleCount) : null;
+    if (debris) {
+        // Initial pose = the BH entry pose (APPROACH.*A) rather than a copy of the hole's
+        // transform, so the infall stays seated even when the hero tier is bisected out
+        // (update() only re-seats it when BOTH exist).
+        debris.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
+        debris.rotation.x = -1.12;
+        debris.scale.setScalar(APPROACH.bhScaleA);
+        group.add(debris);
+        group.userData.debris = debris;
+    }
 
     // 6. Crisp pinpoint starfield — TWO depth tiers so Space reads DEEP + CLEAR
     // with sharp hot-white pinpoints (the opposite of Sky's haze): a sparse, far
     // shell of small hard pinpoints + a nearer tier of brighter, fewer stars.
-    const starsFar = createVoidStars(uniforms, Math.max(96, Math.floor(particleCount * 2.4)), {
+    const starsFar = !bisect.stars ? null : createVoidStars(uniforms, Math.max(96, Math.floor(particleCount * 2.4)), {
         radiusMin: 200,
         radiusSpan: 130,
         sizeBase: 0.7,
@@ -420,10 +635,12 @@ export function createCosmicExpanseEnvironment(options = {}) {
         coreExp: 2.6,
         name: 'void-stars-far',
     });
-    group.add(starsFar);
-    group.userData.starsFar = starsFar;
+    if (starsFar) {
+        group.add(starsFar);
+        group.userData.starsFar = starsFar;
+    }
 
-    const starsNear = createVoidStars(uniforms, Math.max(36, Math.floor(particleCount * 0.7)), {
+    const starsNear = !bisect.stars ? null : createVoidStars(uniforms, Math.max(36, Math.floor(particleCount * 0.7)), {
         radiusMin: 120,
         radiusSpan: 70,
         // B3b — crisper punch-through near tier so stars read OVER the brightest cloud:
@@ -437,8 +654,10 @@ export function createCosmicExpanseEnvironment(options = {}) {
         brightWeight: 0.7,
         name: 'void-stars-near',
     });
-    group.add(starsNear);
-    group.userData.starsNear = starsNear;
+    if (starsNear) {
+        group.add(starsNear);
+        group.userData.starsNear = starsNear;
+    }
 
     // 2b. Nebula volume — WISPY, color-varied, parallax-tiered (B3b). The flat-pink
     // smoke that dominated 75% of the chapter is broken into fewer/smaller/dimmer near
@@ -446,7 +665,21 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // camera travel reveals parallax depth (near + far + void-dome backstop = 3 planes).
     // B3 (Overdraw): count CAPPED + per-sprite size/alpha nudged up so the same cloud mass
     // reads with ~⅔ the billboards (fewer-bigger — less overdraw, no uniform-haze regression).
-    const nebulaVolume = createNebulaVolume(
+    // WAVE 3 SWAP: the sculpted nebula FIELD ships; the additive sprite tiers + the
+    // billboard pillar are the retired incumbent, restorable as a TRUE swap (field
+    // off, sprites on) via `?odysseyCh6NebulaSprites=1` — gpu-split configuration
+    // `ch6-nebula-sprites`, so the differential IS the swap's price in one window.
+    const nebulaSprites = readCh6UrlFlag('odysseyCh6NebulaSprites');
+    const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL({
+        authoredFrame: bisect.authoredKeyFrame,
+        corridorQuaternion: corridorFrame.quaternion,
+    }) : null;
+    if (nebulaField) {
+        corridor.add(nebulaField.mesh);
+        group.userData.nebulaField = nebulaField.mesh;
+    }
+
+    const nebulaVolume = !(bisect.nebula && nebulaSprites) ? null : createNebulaVolume(
         uniforms,
         Math.min(NEBULA_NEAR_CAP, Math.max(30, Math.floor(particleCount * 0.26))),
         {
@@ -461,13 +694,15 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'nebula-volume-points',
         },
     );
-    corridor.add(nebulaVolume);
-    group.userData.nebulaVolume = nebulaVolume;
+    if (nebulaVolume) {
+        corridor.add(nebulaVolume);
+        group.userData.nebulaVolume = nebulaVolume;
+    }
 
     // 2c. FAR nebula tier — large, very dim, deep, drifting much slower for parallax.
     // B3 (Overdraw): the far tier's huge sprites (the biggest fill cost) get the deepest
     // count cut + cap; size/alpha bumped slightly so the deep backdrop body still reads.
-    const nebulaFar = createNebulaVolume(
+    const nebulaFar = !(bisect.nebula && nebulaSprites) ? null : createNebulaVolume(
         uniforms,
         Math.min(NEBULA_FAR_CAP, Math.max(20, Math.floor(particleCount * 0.3))),
         {
@@ -483,15 +718,17 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'nebula-volume-far',
         },
     );
-    corridor.add(nebulaFar);
-    group.userData.nebulaFar = nebulaFar;
+    if (nebulaFar) {
+        corridor.add(nebulaFar);
+        group.userData.nebulaFar = nebulaFar;
+    }
 
     // 2e. DENSE drifting mote field (the user's "more particles" — electric-dreams-v3 /
     // blood-moon density). TWO tiers for parallax: a NEAR tier of brighter iridescent
     // motes that fills the corridor with twinkling life, plus a FAR tier of fine dim dust
     // for deep parallax. Both INSTANCED + CAPPED + scaled off particleCount; the near tier
     // drifts faster than the far for a strong parallax read as the camera dollies.
-    const dustNear = createCosmicDust(
+    const dustNear = !bisect.dust ? null : createCosmicDust(
         uniforms,
         Math.min(DUST_NEAR_CAP, Math.max(120, Math.floor(particleCount * 0.40))),
         {
@@ -508,10 +745,12 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'cosmic-dust-near',
         },
     );
-    corridor.add(dustNear);
-    group.userData.dustNear = dustNear;
+    if (dustNear) {
+        corridor.add(dustNear);
+        group.userData.dustNear = dustNear;
+    }
 
-    const dustFar = createCosmicDust(
+    const dustFar = !bisect.dust ? null : createCosmicDust(
         uniforms,
         Math.min(DUST_FAR_CAP, Math.max(160, Math.floor(particleCount * 0.5))),
         {
@@ -528,14 +767,18 @@ export function createCosmicExpanseEnvironment(options = {}) {
             name: 'cosmic-dust-far',
         },
     );
-    corridor.add(dustFar);
-    group.userData.dustFar = dustFar;
+    if (dustFar) {
+        corridor.add(dustFar);
+        group.userData.dustFar = dustFar;
+    }
 
     // 2d. Hero nebula PILLAR — a one-time Pillars-of-Creation reveal off the mid-act
     // path, faded in via uApproach (mid-chapter beat). Capped to ONE.
-    const nebulaPillar = createNebulaPillar(uniforms, corridorFrame);
-    group.add(nebulaPillar);
-    group.userData.nebulaPillar = nebulaPillar;
+    const nebulaPillar = (bisect.nebula && nebulaSprites) ? createNebulaPillar(uniforms, corridorFrame) : null;
+    if (nebulaPillar) {
+        group.add(nebulaPillar);
+        group.userData.nebulaPillar = nebulaPillar;
+    }
 
     // 2f. ASTEROID GARLAND (creative plan asset 4): 12 dark silhouette rocks crossing
     // the corridor diagonally through the dead-air stretch (progress 0.35–0.65 of the
@@ -552,28 +795,47 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // ~18% local progress, becoming the first crimson nebula filaments.
     // 2h. STREAK-MOTE TIER (creative plan asset 6): a sparse rail-hugging tier of
     // slightly elongated quads that sell forward speed through the long middle act.
-    const streakMotes = createStreakMotes(uniforms, 90);
-    corridor.add(streakMotes);
-    group.userData.streakMotes = streakMotes;
+    const streakMotes = bisect.dust ? createStreakMotes(uniforms, 90) : null;
+    if (streakMotes) {
+        corridor.add(streakMotes);
+        group.userData.streakMotes = streakMotes;
+    }
+
+    // The comet (Wave 5): the reef's authored moment — unlevered, two opaque draws.
+    const comet = createComet();
+    corridor.add(comet);
+    group.userData.comet = comet;
 
     // AURORA BRIDGE — Ch6-OWNED aurora that ramps in via uApproach (NOT Ch5's daylight uDusk cap)
     // so the northern lights greet the 5→6 handoff and linger over the now-dark vacuum (in-game
     // "aurora gone" fix). The builder existed (createAuroraFilamentBridge, below) but was never
     // added to the group. It self-gates via uApproach so it's present at the handoff.
+    // MISPLACEMENT FIX (owner report 2026-08-15, "the aurora feels misplaced"): the
+    // curtains are authored in the -Z corridor convention (x spread, y overhead,
+    // depth down -Z) but were parented to the chapter GROUP — the exact 43-84 deg
+    // off-axis bug the `cosmic-corridor` frame was built to fix, and every other
+    // ambient field moved there; the bridge never did. Corridor-parented, the
+    // greeting curtains actually hang over the camera's entry stretch.
     const auroraBridge = createAuroraFilamentBridge(uniforms);
-    group.add(auroraBridge);
+    corridor.add(auroraBridge);
     group.userData.auroraBridge = auroraBridge;
+    // Buckets tolerate bisected-out tiers: filter(Boolean) so update()'s forEach walks
+    // only what was actually built.
     group.userData.entryContinuity = {
-        stars: [starsFar, starsNear],
-        destination: [blackHole, debris],
+        // The near tier is on its own key: STARS BEFORE DARK stages it against global
+        // progress before the boundary, which the far tier must never join (a whole
+        // starfield in daylight reads as noise; a few bright early stars read as dusk).
+        stars: [starsFar].filter(Boolean),
+        starsNear: [starsNear].filter(Boolean),
+        destination: [blackHole, debris].filter(Boolean),
         // EARTH AT THE SUMMIT: the gas giant is staged on its own GLOBAL-progress reveal
         // so it can rise over the still-bright Ch5 sky (see SUMMIT_EARTH_REVEAL). Every
         // other Space element — the galaxy included — stays behind the post-boundary
         // gate, so nothing but the earth bleeds into the daylight frame.
-        earth: [heroPlanet],
-        heroes: [galaxy],
-        nebula: [nebulaVolume, nebulaFar],
-        clutter: [dustNear, dustFar, asteroids, streakMotes],
+        earth: [heroPlanet].filter(Boolean),
+        heroes: [galaxy].filter(Boolean),
+        nebula: [nebulaVolume, nebulaFar].filter(Boolean),
+        clutter: [dustNear, dustFar, asteroids, streakMotes].filter(Boolean),
         // The carried aurora filaments self-gate on uApproach, which is 0 through all of
         // Ch5 — i.e. fully green and fully alive. Without this they would hang in the
         // daylight sky the moment the early ignite makes the chapter visible.
@@ -618,6 +880,16 @@ export function createCosmicExpanseEnvironment(options = {}) {
     return group;
 }
 
+function createBakedVoidSky(uniforms) {
+    // WAVE 2 (Space overhaul): the shipped dome. One texture fetch per fragment from
+    // a seeded CPU bake, replacing the ~15 per-fragment FBM fields that Wave 0
+    // measured at 13.37 ms of the 17.04 ms Lane B reef frame (78%, plus the whole
+    // frame tail). Same contract as the FBM dome: renderOrder −100, BackSide,
+    // depthWrite off, uVoidSkyOpacity staging.
+    const { mesh } = createBakedVoidSkyTSL(uniforms.uTime, uniforms.uEnergy, uniforms.uVoidSkyOpacity);
+    return mesh;
+}
+
 function createVoidSky(uniforms) {
     // TSL builder: FBM galactic backdrop (-100 backstop). Returns { mesh } already
     // positioned at renderOrder -100 with BackSide / depthWrite off.
@@ -633,11 +905,13 @@ function createBlackHole(uniforms) {
     return group;
 }
 
-function createHeroPlanet(uniforms) {
+function createHeroPlanet(uniforms, bisect = {}) {
     // TSL builder: banded gas-giant surface + plain atmosphere/ring decor. Returns
     // { group, planet }. group.userData.planet is set so update() can spin it. Initial
     // pose matches APPROACH.planetA (update() lerps it onward) so the first frame agrees.
-    const { group, planet } = createHeroPlanetTSL(uniforms.uTime);
+    const { group, planet } = createHeroPlanetTSL(uniforms.uTime, {
+        aurora: bisect.aurora !== false,
+    });
     group.position.set(APPROACH.planetA.x, APPROACH.planetA.y, APPROACH.planetA.z);
     group.scale.setScalar(APPROACH.planetA.s);
     group.userData.planet = planet;
@@ -715,7 +989,7 @@ function createNebulaVolume(uniforms, count, opts = {}) {
 
     const time = uniforms.uTime;
     const aBase = attribute('aBase', 'vec3');
-    const aColor = attribute('aColor', 'vec3');
+    const aColor = attribute('aColor', 'vec4');
     const aSize = attribute('aSize', 'float');
     const aPhase = attribute('aPhase', 'float');
 
@@ -774,7 +1048,7 @@ function createNebulaVolume(uniforms, count, opts = {}) {
     const vAlpha = varying(sin(time.mul(0.3).add(aPhase)).mul(breathe).add(alphaBase));
     // Cap opacity at 0.6 (additive, soft) so even stacked wisps never approach white
     // blowout — the new internal structure carries the richness, not raw opacity.
-    material.opacityNode = clamp(density.mul(vAlpha).mul(2.0), 0.0, 0.6);
+    material.opacityNode = clamp(density.mul(vAlpha).mul(2.0), 0.0, 0.6).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -888,7 +1162,7 @@ function createSuctionParticles(uniforms, count) {
     // glow = pow(1 - dist*2, 1.4) round-discarded at dist > 0.5; alpha = progress.
     const dist = length(uv().sub(0.5));
     const glow = pow(oneMinus(dist.mul(2.0)).max(0.0), 1.4);
-    material.opacityNode = glow.mul(progress);
+    material.opacityNode = glow.mul(progress).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -916,45 +1190,53 @@ function createVoidStars(uniforms, count, opts = {}) {
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     const twinkles = new Float32Array(count);
-    const colors = new Float32Array(count * 3);
+    // rgb = class colour x its emissive push, w = its core-exponent gain. The core gain
+    // travels in the alpha slot rather than in a fifth instanced attribute ON PURPOSE:
+    // this geometry already binds position/normal/uv + 4 instanced buffers, and 8 is the
+    // vertex-buffer ceiling (see the note in odyssey-tsl-billboard.js about the
+    // 6-attribute billboard that overflowed it).
+    const colors = new Float32Array(count * 4);
 
-    // Crisp deep-space palette: dominated by hot blue-white pinpoints (the
-    // opposite of Sky's pale haze), with a minority of warm gold / cool violet
-    // stars for stellar variety. Whites are pushed slightly HOT (>1) so the
-    // brightest pinpoints punch through and bloom cleanly.
-    const hotPalette = [
-        new THREE.Color(1.15, 1.15, 1.2), // hot white-blue
-        new THREE.Color(1.1, 1.12, 1.2),
-        new THREE.Color(0xcfe0ff),
-        new THREE.Color(0xfff0d0),
-        new THREE.Color(0xd8c4ff),
-    ];
-    const tintPalette = [
-        new THREE.Color(0x9fc0ff),
-        new THREE.Color(0x6fa6ff),
-        new THREE.Color(0xffd9a0),
-        new THREE.Color(0xffb98a),
-        new THREE.Color(0xc59cff),
-    ];
+    // WAVE 5 — THE STELLAR RAMP. Two hand-mixed palettes and a bare `Math.random() > 0.3`
+    // split used to live here; see odyssey-stellar-ramp.js for why a quantised blackbody
+    // ladder replaced them, and why the three per-class gains are the part that matters.
+    // SEEDED (the same lesson the asteroid garland paid for in e9ccc0f6): under bare
+    // Math.random the whole field re-rolled on every reload, so no two captures of this
+    // chapter were ever comparable. `name` seeds it, so the near and far tiers differ.
+    let rngState = 1013904223;
+    for (let i = 0; i < name.length; i += 1) rngState = Math.imul(rngState ^ name.charCodeAt(i), 2654435761) >>> 0;
+    const rng = () => {
+        rngState = Math.imul(rngState ^ (rngState >>> 15), 2246822519);
+        rngState = (rngState + 0x6d2b79f5) >>> 0;
+        return ((rngState ^ (rngState >>> 13)) >>> 0) / 4294967296;
+    };
 
     for (let i = 0; i < count; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        const r = radiusMin + Math.random() * radiusSpan;
+        const theta = rng() * Math.PI * 2;
+        const phi = Math.acos(2 * rng() - 1);
+        const r = radiusMin + rng() * radiusSpan;
         positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
         positions[i * 3 + 1] = r * Math.cos(phi);
         positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+        twinkles[i] = rng() * Math.PI * 2;
+
+        // `brightWeight` (the near tier's punch dial) now biases the DRAW toward the hot
+        // end of the ladder instead of toward a second flat palette: one extra sample,
+        // keep the hotter of the two. Same knob, but it means something physical.
+        let cls = pickStellarClass(rng);
+        if (brightWeight > 0 && rng() < brightWeight) {
+            const other = pickStellarClass(rng);
+            if (other.kelvin > cls.kelvin) cls = other;
+        }
         // Sparse big-star distribution: most stars tiny, a few large — squaring the
         // random keeps the field reading as fine pinpoints with rare bright anchors.
-        sizes[i] = sizeBase + Math.random() * Math.random() * sizeSpan;
-        twinkles[i] = Math.random() * Math.PI * 2;
-
-        const useHot = Math.random() > (1.0 - 0.7 - brightWeight * 0.25);
-        const palette = useHot ? hotPalette : tintPalette;
-        const color = palette[Math.floor(Math.random() * palette.length)];
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
+        // The class gain rides on top, so a rare M giant is genuinely the biggest thing
+        // in the field and a B star the hardest.
+        sizes[i] = (sizeBase + rng() * rng() * sizeSpan) * cls.sizeGain;
+        colors[i * 4] = cls.color[0] * cls.emissive;
+        colors[i * 4 + 1] = cls.color[1] * cls.emissive;
+        colors[i * 4 + 2] = cls.color[2] * cls.emissive;
+        colors[i * 4 + 3] = cls.coreGain;
     }
 
     // Instanced billboard quads (THREE.Points renders as 1px on WebGPU).
@@ -962,7 +1244,7 @@ function createVoidStars(uniforms, count, opts = {}) {
         aBase: { array: positions, itemSize: 3 },
         aSize: { array: sizes, itemSize: 1 },
         aTwinkle: { array: twinkles, itemSize: 1 },
-        aColor: { array: colors, itemSize: 3 },
+        aColor: { array: colors, itemSize: 4 },
     });
 
     const time = uniforms.uTime;
@@ -978,7 +1260,7 @@ function createVoidStars(uniforms, count, opts = {}) {
     const size = aSize.mul(twinkle).mul(0.62);
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(aBase, size);
-    material.colorNode = aColor;
+    material.colorNode = aColor.xyz;
     // Sharp HOT pinpoint: a very tight core (high exponent) for a crisp center, a
     // faint thin halo for a glow seat, plus a subtle 4-point diffraction glint along
     // the sprite axes so the brightest stars read as hot pinpoints. All feathered to
@@ -986,7 +1268,10 @@ function createVoidStars(uniforms, count, opts = {}) {
     const p = uv().sub(0.5);
     const dist = length(p);
     const fall = oneMinus(dist.mul(2.0)).max(0.0);
-    const core = pow(fall, coreExp).mul(coreMult);
+    // The class's core gain rides the EXPONENT, not the brightness: a high gain is a
+    // tighter, harder pinpoint and a low gain a soft one. That is what tells a big dim
+    // red giant apart from a near blue-white — size alone just makes a bigger dot.
+    const core = pow(fall, aColor.w.mul(coreExp)).mul(coreMult);
     const halo = pow(fall, 1.2).mul(0.14);
     // Diffraction spikes: bright along x≈0 and y≈0, decaying with radius — a thin
     // hot cross that sells the "pinpoint star" sparkle without bloating the sprite. The
@@ -999,7 +1284,9 @@ function createVoidStars(uniforms, count, opts = {}) {
     // A small constant emissive floor (near tier) keeps the brightest pinpoints reading
     // OVER bright nebula cloud rather than washing out against it. Capped via core math.
     const floorTerm = fall.mul(fall).mul(emissiveFloor);
-    material.opacityNode = core.add(halo).add(spike).add(floorTerm).mul(vAlpha);
+    material.opacityNode = core.add(halo).add(spike).add(floorTerm)
+        .mul(vAlpha)
+        .mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -1124,7 +1411,7 @@ function createCosmicDust(uniforms, count, opts = {}) {
         moteCore.add(moteHalo).add(glint).mul(vEnergy).mul(alphaBase),
         0.0,
         0.85,
-    );
+    ).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -1178,22 +1465,46 @@ function createAsteroidGarland() {
     const seats = new Float32Array(count * 3);
     const scales = new Float32Array(count);
     const spins = new Float32Array(count * 3);
+    // §3b rule 7 (witnesses, not filler): three UNEVEN clusters replacing the old
+    // even-lerp diagonal — a tight close pass of small sharp rocks, a mid swarm, and
+    // a sparse far trio of the biggest. Near = small + crisp, far = large (the
+    // parallax-speed ratio against the slow giants IS the scale statement). Seats
+    // are SEEDED (the old Math.random re-rolled the garland every build, which also
+    // made capture A/Bs incomparable).
+    let rngState = 421;
+    const rng = () => {
+        rngState = Math.imul(rngState ^ (rngState >>> 15), 0x2545f491) >>> 0;
+        return rngState / 4294967296;
+    };
+    const clusters = [
+        {
+            n: 5, x: -110, y: -30, z: -240, spread: 42, sMin: 2.5, sMax: 5,
+        },
+        {
+            n: 4, x: 150, y: 70, z: -430, spread: 58, sMin: 4, sMax: 8,
+        },
+        {
+            n: 3, x: 30, y: 130, z: -720, spread: 75, sMin: 9, sMax: 15,
+        },
+    ];
+    const seatOf = [];
+    clusters.forEach((c) => {
+        for (let k = 0; k < c.n; k += 1) seatOf.push(c);
+    });
     for (let i = 0; i < count; i += 1) {
-        const t = i / (count - 1);
+        const c = seatOf[i];
         // Diagonal garland: low-left near → high-right far (with the hero march), a few
         // pulled tight to the corridor for the close passes. Now that the garland really
         // does sit on the camera's lane (corridor frame), the close rocks are held off the
         // rail laterally so they graze the frame instead of eclipsing it, and the biggest
         // ones are kept to the far end of the run.
-        const tight = i % 4 === 0;
-        seats[i * 3] = THREE.MathUtils.lerp(-70, 190, t) + (Math.random() - 0.5) * 30;
-        seats[i * 3 + 1] = THREE.MathUtils.lerp(-40, 110, t) + (Math.random() - 0.5) * 24;
-        seats[i * 3 + 2] = THREE.MathUtils.lerp(-260, -640, t)
-            + (tight ? 60 : (Math.random() - 0.5) * 60);
-        scales[i] = tight ? 3 + Math.random() * 3 : 5 + Math.random() * 10;
-        spins[i * 3] = (Math.random() - 0.5) * 0.3;
-        spins[i * 3 + 1] = (Math.random() - 0.5) * 0.3;
-        spins[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
+        seats[i * 3] = c.x + (rng() - 0.5) * 2 * c.spread;
+        seats[i * 3 + 1] = c.y + (rng() - 0.5) * 2 * c.spread * 0.6;
+        seats[i * 3 + 2] = c.z + (rng() - 0.5) * 2 * c.spread;
+        scales[i] = c.sMin + rng() * (c.sMax - c.sMin);
+        spins[i * 3] = (rng() - 0.5) * 0.3;
+        spins[i * 3 + 1] = (rng() - 0.5) * 0.3;
+        spins[i * 3 + 2] = (rng() - 0.5) * 0.3;
         _asteroidDummy.position.set(seats[i * 3], seats[i * 3 + 1], seats[i * 3 + 2]);
         _asteroidDummy.rotation.set(0, 0, 0);
         _asteroidDummy.scale.setScalar(scales[i]);
@@ -1224,32 +1535,66 @@ export function createAuroraFilamentBridge(uniforms) {
     // Recolor completes across the first ~12% of the chapter; the filaments stretch as
     // they recolor (handled by the plane scale below) and are gone by ~18%.
     const recolor = clamp(uApproach.mul(3.2), 0.0, 1.0);
-    const green = vec3(0.24, 1.0, 0.56); // #3DFF8E (Ch5's last aurora green)
-    const crimson = mix(vec3(0.78, 0.12, 0.22), vec3(0.91, 0.28, 0.36), strands); // #C71F37→#E8485C
-    const color = mix(green, crimson, recolor);
+    // ⚠️ THESE WERE LINEAR LITERALS WRITTEN AS IF THEY WERE THE sRGB HEXES BESIDE THEM.
+    // `vec3()` is consumed as a LINEAR working-space value, but #3DFF8E linearises to
+    // (0.047, 1.000, 0.270) — the shipped (0.24, 1.0, 0.56) carried ~5x the red and ~2x the
+    // blue the author named. Same slip on both crimsons.
+    //
+    // MEASURED consequence (capture arm-limb-v2, p=0.7501): 19.8 % of the frame — about 44 %
+    // of every non-black pixel — sat at hue 152, saturation 99-100 %, against a limb frame
+    // whose mean lit saturation is 38 %. The post stack's saturation lift (MASTER 1.15 x ch6
+    // 1.06) then clipped the red channel to literal 0. This carried-Ch5 aurora, not the
+    // nebula field, IS the green wall in that frame; the field's own reveal there is ~0.056.
+    //
+    // `color()` routes through THREE.Color's colour management, so these now MEAN the hexes.
+    const green = tslColor(0x3dff8e); // Ch5's last aurora green
+    const crimson = mix(tslColor(0xc71f37), tslColor(0xe8485c), strands);
+    // A modest level cut on top. The bridge is additive, so out = colour x alpha and this is
+    // numerically identical to trimming the alpha ceiling — but it belongs in colorNode,
+    // because the opacityNode is one of the eight bound by the materialOpacity re-arm
+    // contract. Cutting alpha alone would fix the LEVEL and leave the hue clipping.
+    const toned = mix(green, crimson, recolor);
+    // ⚠️ THE HUE FIX ABOVE MAKES THIS MORE VIVID, NOT LESS — it was mis-read once already.
+    // The shipped (0.24, 1.0, 0.56) was an accidentally PALE green; the hex it claimed to be
+    // linearises to (0.047, 1.000, 0.270), which is further from grey. Correcting the slip is
+    // right because the code should mean what it says, but on its own it INCREASES the clash.
+    // The desaturation is the term that actually calms the frame, so the two ship together.
+    const graded = mix(
+        vec3(dot(toned, vec3(0.2126, 0.7152, 0.0722))),
+        toned,
+        BRIDGE_CHROMA,
+    ).mul(BRIDGE_LEVEL);
     const vertical = smoothstep(0.0, 0.3, vUv.y).mul(smoothstep(1.0, 0.2, vUv.y));
     // Linger as a visible aurora across most of the crossing, then dissolve into nebula filaments
     // (was smoothstep(0.22,0.44) → gone by ~18% local progress, too brief to read as the hero aurora).
     const alive = oneMinus(smoothstep(0.5, 0.85, uApproach));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = color.mul(strands.add(0.4));
-    material.opacityNode = vertical.mul(strands).mul(0.46).mul(alive);
+    material.colorNode = graded.mul(strands.add(0.4));
+    material.opacityNode = vertical.mul(strands).mul(0.46).mul(alive).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
     material.blending = THREE.AdditiveBlending;
+    // r181 splits a transparent DoubleSide material into a back-face pass and a front-face
+    // pass (Renderer.js:3131), so this material bills TWICE. Blending here is Additive with
+    // depthWrite off, which makes the two passes order-independent — the split buys nothing
+    // and forceSinglePass reclaims it for free. Precedent: odyssey-planet-aurora.js:301-309.
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
 
+    // Seats are CORRIDOR-LOCAL (entry ≈ z +150, exit ≈ z −150): the three curtains
+    // span the first half of the travel so the camera passes UNDER them while they
+    // are still green — the 5→6 greeting — instead of watching them off to one side.
     [
         {
-            x: -60, y: 70, z: -140, w: 460, h: 92, rotZ: 0.05,
+            x: -60, y: 70, z: 60, w: 460, h: 92, rotZ: 0.05,
         },
         {
-            x: 40, y: 84, z: -220, w: 540, h: 88, rotZ: -0.04,
+            x: 40, y: 84, z: -30, w: 540, h: 88, rotZ: -0.04,
         },
         {
-            x: -10, y: 92, z: -320, w: 500, h: 80, rotZ: 0.03,
+            x: -10, y: 92, z: -120, w: 500, h: 80, rotZ: 0.03,
         },
     ].forEach((cfg) => {
         const filament = new THREE.Mesh(new THREE.PlaneGeometry(cfg.w, cfg.h, 1, 1), material);
@@ -1283,7 +1628,7 @@ function createStreakMotes(uniforms, count) {
         aSeed: { array: seeds, itemSize: 1 },
     });
 
-    const { uTime } = uniforms;
+    const { uTime, uApproach } = uniforms;
     const aBase = attribute('aBase', 'vec3');
     const aSeed = attribute('aSeed', 'float');
 
@@ -1294,26 +1639,109 @@ function createStreakMotes(uniforms, count) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(center, 2.6);
     // Elongated streak mask along the travel diagonal (fixed angle in quad space).
+    // THE DIVE STRETCH (Wave 5): as the BH dive begins (uApproach past bhDiveStart)
+    // the streaks elongate ~2.3x and brighten — the acceleration read for the fall.
+    // Deliberately NOT a speed change: mod(time*speed(t)) phase-jumps when speed
+    // varies, so the length carries the speed statement instead.
+    const diveT = smoothstep(0.7, 1.0, uApproach ?? uniform(0));
     const STREAK_COS = Math.cos(-0.5);
     const STREAK_SIN = Math.sin(-0.5);
     const p0 = uv().sub(0.5);
     const px = p0.x.mul(STREAK_COS).sub(p0.y.mul(STREAK_SIN));
     const py = p0.x.mul(STREAK_SIN).add(p0.y.mul(STREAK_COS));
     const streak = pow(
-        clamp(oneMinus(length(vec2(px.mul(2.0), py.mul(7.0)))), 0.0, 1.0),
+        clamp(oneMinus(length(vec2(px.mul(2.0), py.mul(mix(float(7.0), float(3.0), diveT))))), 0.0, 1.0),
         1.4,
     );
     material.colorNode = vec3(0.56, 0.69, 0.94); // cool starlight streak (#8FB0FF family)
-    material.opacityNode = streak.mul(0.34);
+    material.opacityNode = streak.mul(diveT.mul(0.24).add(0.34)).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
     material.blending = THREE.AdditiveBlending;
+    // r181 splits a transparent DoubleSide material into a back-face pass and a front-face
+    // pass (Renderer.js:3131), so this material bills TWICE. Blending here is Additive with
+    // depthWrite off, which makes the two passes order-independent — the split buys nothing
+    // and forceSinglePass reclaims it for free. Precedent: odyssey-planet-aurora.js:301-309.
+    material.forceSinglePass = true;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'cosmic-streak-motes';
     mesh.frustumCulled = false;
     return mesh;
+}
+
+// ── THE COMET (Wave 5, §3.2 "the comet moment"; the level is literally named
+// Comet Chase) — a sculpted opaque head + dithered opaque tail sweeping a long chord
+// through the reef stretch. Unlevered like the garland: two draws, opaque queue.
+// Staging follows the nebula-field pattern: OUTSIDE the entryContinuity buckets
+// (setOpacityScale would flip these opaque materials transparent and dead-write
+// opacity), on a shared uReveal ticked by update() = staging × reef-window × chord
+// end-fade, dissolved by the same screen-space hash dither.
+const COMET_PATH = Object.freeze({
+    a: new THREE.Vector3(250, 70, -330),
+    b: new THREE.Vector3(-270, -50, -790),
+    periodSec: 70,
+});
+
+function cometDither(uReveal) {
+    const hash = fract(
+        sin(dot(screenCoordinate.xy.floor(), vec2(12.9898, 78.233))).mul(43758.5453),
+    );
+    return uReveal.sub(hash).add(0.5);
+}
+
+function createComet() {
+    const uReveal = uniform(0);
+    const group = new THREE.Group();
+    group.name = 'comet-chase';
+
+    const keyDir = normalize(uniform(new THREE.Vector3(-0.48, 0.36, -0.62)));
+    const N = normalize(normalWorld);
+    const V = normalize(cameraPosition.sub(positionWorld));
+
+    // Head: 2-band ice paint on the chapter's causal key + a drawn fresnel edge —
+    // the asteroid template's language in the witnesses' tiny+sharp register.
+    const headMat = new THREE.MeshBasicNodeMaterial({ side: THREE.FrontSide });
+    headMat.transparent = false;
+    headMat.depthWrite = true;
+    headMat.alphaTest = 0.5;
+    const wrap = float(0.72);
+    const d = dot(N, keyDir).add(wrap).div(wrap.add(1));
+    const band = smoothstep(0.42, 0.54, d);
+    const base = mix(vec3(0.23, 0.30, 0.49), vec3(0.81, 0.91, 0.95), band);
+    const edge = vec3(0.95, 0.98, 1.0).mul(clamp(oneMinus(dot(N, V)), 0, 1).pow(2.5).mul(0.5));
+    headMat.colorNode = base.add(edge);
+    headMat.opacityNode = cometDither(uReveal).mul(materialOpacity);
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 1), headMat);
+    head.name = 'comet-head';
+    group.add(head);
+
+    // Tail: an open cone pointing opposite the travel. ⚠️ ORIENTATION MEASURED, not
+    // assumed: on ConeGeometry `uv().y` is 0 at the BASE (local −Y, the end hugging
+    // the head) and 1 at the TIP (local +Y, the trailing end) — probed directly, and
+    // the first draft had both gradients inverted, painting a tail that dissolved at
+    // the nucleus and went solid-bright at its far end. Bright + dense where it
+    // leaves the head, cooling and dithering away as it trails.
+    const tailMat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+    tailMat.transparent = false;
+    tailMat.depthWrite = true;
+    tailMat.alphaTest = 0.5;
+    const along = uv().y;
+    tailMat.colorNode = mix(vec3(0.85, 0.94, 0.97), vec3(0.35, 0.52, 0.66), along);
+    tailMat.opacityNode = cometDither(uReveal.mul(oneMinus(smoothstep(0.25, 0.95, along)))).mul(materialOpacity);
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(5, 95, 12, 1, true), tailMat);
+    tail.name = 'comet-tail';
+    // Cone axis is +Y with the tip at +Y/2; orient so the tip trails the head along
+    // the (fixed) chord direction and the open base hugs the head.
+    const dir = COMET_PATH.b.clone().sub(COMET_PATH.a).normalize();
+    tail.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+    tail.position.copy(dir.clone().multiplyScalar(-52));
+    group.add(tail);
+
+    group.userData.uReveal = uReveal;
+    group.userData.materials = [headMat, tailMat];
+    return group;
 }
 
 function createDistantGalaxy(uniforms) {
@@ -1390,6 +1818,31 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         chapterPositions?.[6],
     );
     const { spaceReveal } = staging;
+
+    // THE 5->6 HAND-OFF (Act II->Space §8.3 step 2).
+    //
+    // `nebulaReveal` is driven by `approach`, a CAMERA-Y ramp that is pinned at 0 through
+    // the whole ascent and is still climbing well inside chapter 6 — measured 0.478 at
+    // p=0.7941 and 0.786 at p=0.8001. That climb IS the two tail rises the seam metric
+    // fails on (+6.7 and +4.7 luma per 0.01p in the bank-off arm): the void dome and the
+    // nebula field are still fading UP while the transition is supposed to have settled.
+    //
+    // Fixing that here, at source, rather than masking it with cloud-bank opacity: the
+    // residual arc needed to cancel these rises optically survives with under 0.3 luma of
+    // margin against ~1.5 of capture noise, i.e. it is not a real mechanism.
+    //
+    // ⚠️ Math.max, never a replacement — this may only ever make space arrive EARLIER.
+    const spaceSpan = (Number.isFinite(chapterPositions?.[6]) && Number.isFinite(chapterPositions?.[5]))
+        ? chapterPositions[6] - chapterPositions[5]
+        : 0.167;
+    const seamHandover = Number.isFinite(chapterPositions?.[5])
+        ? rampBetween(
+            cameraProgress,
+            chapterPositions[5] - spaceSpan * SUMMIT_EARTH_REVEAL.handoverBeforeBoundary,
+            chapterPositions[5] + spaceSpan * SUMMIT_EARTH_REVEAL.handoverAfterBoundary,
+        )
+        : 0;
+    const spaceArrival = Math.max(entryState.nebulaReveal, seamHandover);
     group.userData.summitEarthStaging = staging;
     // The earth, once shown from the summit, never dips back out (the ask was that we
     // "still see it" once space darkens) — hence max() against the staged hero reveal.
@@ -1397,15 +1850,27 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
 
     const { blackHole, debris } = group.userData;
     if (blackHole) {
-        // Ever-present DESTINATION OMEN: looms larger + rides up into the upper third as
-        // the camera approaches the seam (the #1 Space hero-starvation fix).
-        const bhScale = THREE.MathUtils.lerp(APPROACH.bhScaleA, APPROACH.bhScaleB, ease);
-        blackHole.scale.setScalar(bhScale);
-        blackHole.position.set(
-            THREE.MathUtils.lerp(APPROACH.bhXa, APPROACH.bhXb, ease),
-            THREE.MathUtils.lerp(APPROACH.bhYa, APPROACH.bhYb, ease),
-            THREE.MathUtils.lerp(APPROACH.bhZa, APPROACH.bhZb, ease),
-        );
+        // Ever-present DESTINATION OMEN, two phases: loom in the upper-left third
+        // (the north star), then DIVE onto the exit flight axis — the rail flies
+        // straight into the horizon and the 6→7 threshold takes over.
+        const { bhDiveStart } = APPROACH;
+        if (ease < bhDiveStart) {
+            const t = ease / bhDiveStart;
+            blackHole.scale.setScalar(THREE.MathUtils.lerp(APPROACH.bhScaleA, APPROACH.bhScaleB, t));
+            blackHole.position.set(
+                THREE.MathUtils.lerp(APPROACH.bhXa, APPROACH.bhXb, t),
+                THREE.MathUtils.lerp(APPROACH.bhYa, APPROACH.bhYb, t),
+                THREE.MathUtils.lerp(APPROACH.bhZa, APPROACH.bhZb, t),
+            );
+        } else {
+            const t = THREE.MathUtils.smoothstep((ease - bhDiveStart) / (1 - bhDiveStart), 0, 1);
+            blackHole.scale.setScalar(THREE.MathUtils.lerp(APPROACH.bhScaleB, APPROACH.bhScaleC, t));
+            blackHole.position.set(
+                THREE.MathUtils.lerp(APPROACH.bhXb, APPROACH.bhXc, t),
+                THREE.MathUtils.lerp(APPROACH.bhYb, APPROACH.bhYc, t),
+                THREE.MathUtils.lerp(APPROACH.bhZb, APPROACH.bhZc, t),
+            );
+        }
         // Subtle precession of the whole assembly.
         blackHole.rotation.z -= delta * 0.04;
     }
@@ -1423,10 +1888,39 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             THREE.MathUtils.lerp(APPROACH.planetA.y, APPROACH.planetB.y, ease),
             THREE.MathUtils.lerp(APPROACH.planetA.z, APPROACH.planetB.z, ease),
         );
-        const planetScale = THREE.MathUtils.lerp(APPROACH.planetA.s, APPROACH.planetB.s, ease);
+        // THE SUMMIT KEYFRAME (Wave 1C). Pre-boundary the giant sits at planetSummit —
+        // the only pose that stays framed across the whole ignite window once the flyby
+        // banks the camera — then travels to planetA across [summitEnd, ch6Start] so it
+        // arrives exactly on the authored entry composition at the boundary. Driven by
+        // GLOBAL progress like the reveal itself; `ease` is still 0 here, so the march
+        // above contributes planetA and this lerp owns the approach.
+        let planetScale = THREE.MathUtils.lerp(APPROACH.planetA.s, APPROACH.planetB.s, ease);
+        const { planetSummit } = APPROACH;
+        if (planetSummit && Number.isFinite(staging.summitEnd)
+            && Number.isFinite(chapterPositions?.[5]) && Number.isFinite(cameraProgress)) {
+            const toEntry = rampBetween(cameraProgress, staging.summitEnd, chapterPositions[5]);
+            if (toEntry < 1) {
+                heroPlanet.position.set(
+                    THREE.MathUtils.lerp(planetSummit.x, heroPlanet.position.x, toEntry),
+                    THREE.MathUtils.lerp(planetSummit.y, heroPlanet.position.y, toEntry),
+                    THREE.MathUtils.lerp(planetSummit.z, heroPlanet.position.z, toEntry),
+                );
+                // D3: the giant is BIG at the summit and settles to the approved entry
+                // size exactly as it settles into the entry composition.
+                planetScale = THREE.MathUtils.lerp(planetSummit.s ?? planetScale, planetScale, toEntry);
+            }
+        }
         heroPlanet.scale.setScalar(planetScale);
         heroPlanet.rotation.y += delta * 0.025;
         heroPlanet.rotation.z = Math.sin(time * 0.08) * 0.025;
+        // THE AURORA DARKNESS GATE (owner report 2026-08-16). The crown's own night
+        // mask only knows the PLANET's terminator; during the ascent the planet's
+        // night side faces a bright daylight sky and the curtains blazed at full
+        // effect from p≈0.62 (measured). The earth is the ONE element allowed before
+        // the boundary — its aurora is not. Both aurora halves share this uniform
+        // and arrive with the dark, exactly like every other space element.
+        const auroraGate = heroPlanet.userData.uAuroraReveal;
+        if (auroraGate) auroraGate.value = spaceReveal;
     }
 
     const { nebulaVolume, nebulaFar } = group.userData;
@@ -1493,7 +1987,8 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     }
 
     const chapterOpacity = group.userData.chapterOpacity ?? 1;
-    const voidSkyOpacity = entryState.nebulaReveal * spaceReveal * chapterOpacity;
+    // `spaceArrival` (not raw nebulaReveal) — see THE 5->6 HAND-OFF above.
+    const voidSkyOpacity = spaceArrival * spaceReveal * chapterOpacity;
     if (uniforms?.uVoidSkyOpacity) {
         uniforms.uVoidSkyOpacity.value = voidSkyOpacity;
     }
@@ -1501,11 +1996,53 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         group.userData.voidSky.visible = voidSkyOpacity > 0.002;
     }
 
+    // The sculpted nebula field stages itself OUTSIDE the entryContinuity buckets:
+    // setOpacityScale would flip its opaque material transparent and write the dead
+    // `material.opacity` (opacityNode owns opacity in r181). Same staging product,
+    // delivered as a uniform driving the dithered opaque dissolve.
+    const nebulaFieldMesh = group.userData.nebulaField;
+    if (nebulaFieldMesh?.userData?.uReveal) {
+        const fieldReveal = spaceArrival * spaceReveal * chapterOpacity;
+        nebulaFieldMesh.userData.uReveal.value = fieldReveal;
+        nebulaFieldMesh.visible = fieldReveal > 0.002;
+    }
+
+    // The comet sweeps its chord on a fixed period, alive only through the reef
+    // window (chapter-local ~0.28-0.74) and dither-faded at the chord's ends so it
+    // enters and leaves as a distant glint, never a pop.
+    const { comet } = group.userData;
+    if (comet?.userData?.uReveal) {
+        const s = (time % COMET_PATH.periodSec) / COMET_PATH.periodSec;
+        comet.position.lerpVectors(COMET_PATH.a, COMET_PATH.b, s);
+        const endFade = THREE.MathUtils.smoothstep(s, 0, 0.1)
+            * (1 - THREE.MathUtils.smoothstep(s, 0.9, 1));
+        const reefWindow = THREE.MathUtils.smoothstep(approach, 0.28, 0.38)
+            * (1 - THREE.MathUtils.smoothstep(approach, 0.62, 0.74));
+        const cometReveal = entryState.clutterReveal * spaceReveal * chapterOpacity
+            * reefWindow * endFade;
+        comet.userData.uReveal.value = cometReveal;
+        comet.visible = cometReveal > 0.02;
+    }
+
     const entryTargets = group.userData.entryContinuity;
     if (entryTargets) {
         entryTargets.stars.forEach((object) => setOpacityScale(
             object,
             entryState.starReveal * spaceReveal,
+            chapterOpacity,
+        ));
+        // STARS BEFORE DARK (Wave 3): the near tier alone may arrive pre-boundary,
+        // fading up across [summitEnd, ch6Start] to a capped ceiling while the sky is
+        // still blue. max() with the normal staging so the boundary hand-off can only
+        // ever be earlier, never a dip.
+        const starsEarly = (Number.isFinite(staging.summitEnd)
+            && Number.isFinite(chapterPositions?.[5]) && Number.isFinite(cameraProgress))
+            ? rampBetween(cameraProgress, staging.summitEnd, chapterPositions[5])
+                * SUMMIT_EARTH_REVEAL.starsBeforeDark
+            : 0;
+        (entryTargets.starsNear || []).forEach((object) => setOpacityScale(
+            object,
+            Math.max(entryState.starReveal * spaceReveal, starsEarly),
             chapterOpacity,
         ));
         entryTargets.destination.forEach((object) => setOpacityScale(
