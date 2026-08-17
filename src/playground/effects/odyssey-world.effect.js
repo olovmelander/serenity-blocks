@@ -45,6 +45,8 @@ export function create({ scene, camera, params }) {
         quality,
         railSamples,
         visibilityCull: params?.get?.('worldNoVisCull') !== '1',
+        // Review lever for the north lake's water palette (see LAKE_TINT_VARIANTS).
+        lakeTint: params?.get?.('lakeTint') || '',
     });
     scene.add(world.group);
 

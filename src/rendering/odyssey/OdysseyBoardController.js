@@ -755,6 +755,10 @@ export class OdysseyBoardController {
                     // removes it for bisects; `?odysseyWorldCloudSheet=1` brings the retired
                     // flat sheet back alongside or instead.
                     cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
+                    // REVIEW LEVER (temporary, colour pass): pick a north-lake water
+                    // palette so the GRADED capture harness can shoot the arms without a
+                    // tree edit between runs. Unset ships the default.
+                    lakeTint: readUrlValue('lakeTint') || '',
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
                     // Seat the Ch2 god-ray shafts along the real rail's submerged stretch.
                     railSamples: Array.from(
