@@ -246,7 +246,14 @@ async function runOnce(variant, tag) {
         const envs = bc?.environmentManager?.environments;
         const warmed = {};
         if (envs) for (const [id, env] of envs) warmed[id] = !!env._renderWarmed;
+        const w = bc?._warmupStats;
         return {
+          warmup: w ? {
+            mode: w.mode, sampleCount: w.sampleCount, totalMs: Math.round(w.totalMs),
+            variantsMs: Math.round(w.variantsMs || 0),
+            slowestSamples: (w.samples || []).slice().sort((a, b) => b.totalMs - a.totalMs)
+              .slice(0, 5).map((x) => ({ p: x.progress, ms: x.totalMs })),
+          } : null,
           gaps: S.gaps || [], longtasks: S.longtasks || [], marks: S.marks || [],
           renderWarmed: warmed,
           bgRenderWarmComplete: !!bc?._bgRenderWarmComplete,
@@ -287,6 +294,19 @@ function summarize(raw, consoleLines, variant, tag) {
         validationErrors: consoleLines.filter(
             (l) => /setPipeline|not of type 'GPURenderPipeline'|includes writable usage/.test(l),
         ).length,
+        // Diagnostics the summary numbers cannot answer (masterplan section 5.5): WHERE each
+        // real gap sits on the path, WHAT the validation errors said, what the warm scrub paid.
+        topGaps: (raw.gaps || [])
+            .filter((g) => g.ms > 100 && g.phase !== 'boot')
+            .sort((a, b) => b.ms - a.ms)
+            .slice(0, 12)
+            .map((g) => ({
+                phase: g.phase, p: g.p, ms: g.ms, at: g.at,
+            })),
+        errorLines: consoleLines
+            .filter((l) => /setPipeline|not of type 'GPURenderPipeline'|includes writable usage/.test(l))
+            .slice(0, 6),
+        warmup: raw.warmup || null,
         error: raw.error || null,
     };
 }

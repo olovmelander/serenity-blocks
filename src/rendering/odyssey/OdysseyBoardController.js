@@ -41,7 +41,11 @@ import { setOdysseyGltfRenderer } from './chapter-environments/shared/odyssey-gl
 import { getOdysseyPathPointAt, resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
 import { createStartupTrace } from './odyssey-startup-trace.js';
 import {
-    buildChapterWarmSamples, buildJourneyWarmSamples, buildPointWarmSamples, buildRenderWarmOrder,
+    buildChapterWarmSamples,
+    buildJourneyWarmSamples,
+    buildMotionWarmSamples,
+    buildPointWarmSamples,
+    buildRenderWarmOrder,
 } from './odyssey-warmup-plan.js';
 import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-frontier.js';
 import {
@@ -345,6 +349,12 @@ export class OdysseyBoardController {
             fastStartOff: readBooleanUrlFlag('odysseyFastStartOff'),
         });
         this._fastStart = this.warmupMode === 'current';
+        // PHASE A (masterplan): motion warm — fast-start scrubs p=0..0.21 behind the overlay
+        // instead of warming a single static sample, covering the measured first-visible-frame
+        // reveals (steam quench, lava fall, the One World act gate, the breach director, the
+        // forest crossing). Opt-in for the A/B (?odysseyMotionWarm=1); graduates to default
+        // when the patient-protocol criterion is met with non-overlapping IQRs.
+        this._motionWarm = this._fastStart && readBooleanUrlFlag('odysseyMotionWarm');
         this._skipPreRevealWarmup = this.warmupMode === 'off';
         this.focusChapter = Number.isFinite(options.focusChapter) ? options.focusChapter : null;
         // LEVER 2 — chapter LRU eviction (default OFF; opt-in ?odysseyChapterEvict=1, window N=2).
@@ -681,6 +691,11 @@ export class OdysseyBoardController {
             suppressedChapters: this.oneWorldEnabled ? ONE_WORLD_CHAPTERS : [],
         });
 
+        // TRACE BLIND SPOT FIX (masterplan F5): the ~1.2s One World build used to sit in the
+        // untraced gap between 'renderer' and 'creates', so the startup summary's parts never
+        // added up to its total and the cost was mis-attributed. Named span so regressions in
+        // the world build are visible in every [OdysseyStartup] line.
+        trace.begin('world');
         if (this.oneWorldEnabled) {
             // A feature flag must never be able to brick boot. If the world fails to build we
             // log it and fall back to the shipped chapter environments rather than leaving the
@@ -808,6 +823,7 @@ export class OdysseyBoardController {
                 } catch { /* diagnostic only — never let reporting hurt the fallback */ }
             }
         }
+        trace.end('world');
         const compilePool = [];
         this._compilePool = serialInit ? null : compilePool;
         this._compileTimings = {}; // OD-05 scoping: per-item compile ms, emitted after the barrier
@@ -1674,9 +1690,13 @@ export class OdysseyBoardController {
         let succeeded = false;
         const prevVisible = group.visible;
         const frustumOverrides = [];
+        // Same deep-reveal as _prewarmChapterEnvironment (masterplan F2): the render-warm must
+        // draw progress-gated sub-objects too, or their first real draw lands on a live frame.
         group.traverse((child) => {
+            if (child === group) return;
+            frustumOverrides.push({ child, visible: child.visible, frustumCulled: child.frustumCulled });
+            child.visible = true;
             if (child?.isMesh || child?.isPoints || child?.isLine || child?.isSprite) {
-                frustumOverrides.push({ child, frustumCulled: child.frustumCulled });
                 child.frustumCulled = false;
             }
         });
@@ -1702,7 +1722,8 @@ export class OdysseyBoardController {
         } finally {
             this._endPostTargetCompile(saved);
             group.visible = prevVisible;
-            frustumOverrides.forEach(({ child, frustumCulled }) => {
+            frustumOverrides.forEach(({ child, visible, frustumCulled }) => {
+                child.visible = visible;
                 child.frustumCulled = frustumCulled;
             });
         }
@@ -1862,9 +1883,16 @@ export class OdysseyBoardController {
         const previousGroupVisibility = group.visible;
         const frustumOverrides = [];
 
+        // Reveal EVERY descendant, exactly as _prewarmGroup deliberately does: chapters gate
+        // sub-objects on .visible until a progress threshold (Earth Core's lava fall, the steam
+        // quench), and compileAsync skips invisible objects — so before this fix those
+        // sub-objects were UNWARMABLE BY DESIGN and paid their compile on the first live frame
+        // past their threshold (audit 2026-08-17, masterplan F2).
         group.traverse((child) => {
+            if (child === group) return;
+            frustumOverrides.push({ child, visible: child.visible, frustumCulled: child.frustumCulled });
+            child.visible = true;
             if (child?.isMesh || child?.isPoints || child?.isLine || child?.isSprite) {
-                frustumOverrides.push({ child, frustumCulled: child.frustumCulled });
                 child.frustumCulled = false;
             }
         });
@@ -1894,7 +1922,8 @@ export class OdysseyBoardController {
             console.warn(`[OdysseyBoard] Shader prewarm failed for chapter ${chapterId}:`, error);
         } finally {
             group.visible = previousGroupVisibility;
-            frustumOverrides.forEach(({ child, frustumCulled }) => {
+            frustumOverrides.forEach(({ child, visible, frustumCulled }) => {
+                child.visible = visible;
                 child.frustumCulled = frustumCulled;
             });
         }
@@ -2820,7 +2849,10 @@ export class OdysseyBoardController {
         // frame as before (correctness at transitions is preserved).
         const nowMs = performance.now();
         const inSeam = blendState?.inSeam === true || this.activeSeamBoundaryId !== null;
-        const settled = this._isCameraSettled() && !inSeam;
+        // Never throttle position-work during a warm SCRUB: the scrub teleports the camera, so
+        // it reads as trivially "settled", and a throttled sample can silently skip the seam /
+        // visibility work it exists to warm (audit 2026-08-17, masterplan F2).
+        const settled = !this._isWarmingUp && this._isCameraSettled() && !inSeam;
         const runPositionWork = !settled
             || (nowMs - this.lastPositionWorkAtMs) >= this.positionWorkIntervalMs;
 
@@ -3143,7 +3175,9 @@ export class OdysseyBoardController {
             if (Number.isFinite(cc.currentPosition)) fastStartPosition = cc.currentPosition;
             else if (Number.isFinite(savedPos)) fastStartPosition = savedPos;
             const steps = this._fastStart
-                ? buildPointWarmSamples({ position: fastStartPosition })
+                ? (this._motionWarm
+                    ? buildMotionWarmSamples({ position: fastStartPosition })
+                    : buildPointWarmSamples({ position: fastStartPosition }))
                 : warmChapterIds
                     ? buildChapterWarmSamples({
                         chapterPositions: this.presentationLayout?.chapterPositions || [],
@@ -3152,7 +3186,7 @@ export class OdysseyBoardController {
                     : buildJourneyWarmSamples({
                         chapterPositions: this.presentationLayout?.chapterPositions || [],
                     });
-            const shouldYieldDuringWarmup = !this._fastStart;
+            const shouldYieldDuringWarmup = !this._fastStart || this._motionWarm;
 
             // The warm-up renders the whole journey, but only chapters that were actually
             // CREATED have a backdrop to compile/upload — uncreated (deferred) chapters'
@@ -3202,6 +3236,34 @@ export class OdysseyBoardController {
                     console.log(`[OdysseyWarmup] sample ${i} @progress ${where} took ${sampleMs}ms`);
                 }
             }
+            // MOTION WARM, CONTINUOUS LEG (Phase A iteration 2). The teleport samples above
+            // pay first-RENDER costs, but the diagnostic run showed the band's surviving gaps
+            // sit at the exact p-values the samples visited (0.031/0.043/0.046/0.14): the core
+            // of the band is TRANSITION-STATE work — the breach veil, the act-gate dissolve —
+            // that exists only while a crossing is actually in progress, which a teleported
+            // camera never triggers (backward-zero proves the cost is one-time). So after the
+            // samples, DRIVE the camera continuously 0→0.21 through the real follow/seam path,
+            // exactly like live scrolling, still behind the overlay.
+            if (this._motionWarm && Number.isFinite(fastStartPosition) && fastStartPosition <= 0.05) {
+                const driveStart = performance.now();
+                cc.currentPosition = fastStartPosition;
+                cc.targetPosition = Math.min(1, 0.21);
+                let driveFrames = 0;
+                // ~84 frames at the live velocity cap; hard bound so a stalled lerp can't
+                // hold the overlay hostage.
+                while (cc.currentPosition < 0.205 && driveFrames < 300) {
+                    this.renderFrame(1 / 60);
+                    driveFrames += 1;
+                    if (driveFrames % 6 === 0) {
+                        // eslint-disable-next-line no-await-in-loop
+                        await this._yieldToMain();
+                    }
+                }
+                warmupStats.driveFrames = driveFrames;
+                warmupStats.driveMs = Math.round(performance.now() - driveStart);
+                console.log(`[OdysseyWarmup] continuous drive: ${driveFrames} frames `
+                    + `to p=${cc.currentPosition.toFixed(3)} in ${warmupStats.driveMs}ms`);
+            }
             // Mark the chapters this pre-reveal warm covered, so the post-reveal background
             // render-warm skips them (no redundant re-render).
             for (const ch of (warmChapterIds || [])) {
@@ -3215,7 +3277,7 @@ export class OdysseyBoardController {
             // pre-reveal there.) Fast-start intentionally skips the full matrix: the focus
             // sample already warmed the ACTIVE variant, and the far variants (ch7 lens /
             // dark no-bloom) warm on first visit to those far chapters — the fast-start trade.
-            if (this._fastStart) {
+            if (this._fastStart && !this._motionWarm) {
                 console.log('[OdysseyWarmup] fast-start: focus chapter warmed; far chapters + post variants warm on first visit');
             } else {
                 const variantStart = performance.now();

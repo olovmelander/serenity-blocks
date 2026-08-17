@@ -127,7 +127,12 @@ describe('background gate distinguishes player input from cinematic auto-drift',
 
     it('leaves the positional settle test in place for the 30Hz position-work throttle', () => {
         // Different question, different right answer — that consumer wants "position is static".
-        expect(BOARD).toMatch(/const settled = this\._isCameraSettled\(\) && !inSeam/);
+        // Phase A added a warm-scrub bypass in front (the scrub teleports the camera, reads as
+        // trivially settled, and a throttled sample would skip the seam work it exists to warm),
+        // but the positional test itself must stay the throttle's predicate.
+        expect(BOARD).toMatch(
+            /const settled = !this\._isWarmingUp && this\._isCameraSettled\(\) && !inSeam/,
+        );
     });
 
     it('lets a sustained block eventually yield one pass, whatever the reason', () => {
