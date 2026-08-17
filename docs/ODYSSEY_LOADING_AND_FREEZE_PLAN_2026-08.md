@@ -983,3 +983,31 @@ Find what `clearSeamPhase()` / the restore tears down at those four p's and eith
 across the restore, or rebuild it off-thread. Only after that is the motion warm's remaining
 value (steam quench + totals −500 ms) worth its board-visible cost — or cheaper: keep the drive
 but END the warm at the reveal position without a full state reset.
+
+---
+
+## 19. The band's core, cornered: once-per-session, GPU-bound, and drawn only by LIVE crossings
+
+Three discriminators run back-to-back (all now standard harness output — `forward2` pass,
+`driveGaps`, `topLongtasks`):
+
+1. **A second forward pass costs 0 ms [0–0].** The four stubborn costs fire exactly once per
+   session. Product implication worth stating plainly: after one full traverse, the journey is
+   permanently hitch-free — the whole remaining problem is the FIRST traverse.
+2. **The warm drive crosses the same positions for free** (worst drive frame: 155 ms at p=0.16;
+   nothing at 0.031/0.043/0.046/0.14) while the live pass pays 370–660 ms at them minutes later.
+3. **All four big gaps are GPU-bound** — zero longtask overlap (the one JS-bound entry is a
+   183 ms task at the act gate, the minority share).
+
+Once-per-session + GPU-side + identical-crossing-behind-overlay-is-free leaves exactly one
+mechanism: **the live crossing draws content the warm crossing never draws.** The prime suspects
+are the live-only branches — `cinematicJourneyActive` gates `director.onChapterEnter` and
+`triggerVistaBeat` (and whatever effect layers the director enables), which fire only in real
+play; p≈0.138–0.140 is precisely the ch1→2 chapter change. First GPU touch of that content =
+pipeline/upload starvation at a fixed path position.
+
+**Next step (small, decisive):** enumerate what draws ONLY when `cinematicJourneyActive` (and any
+other live-only predicate) at those four positions, then either include it in the warm (run the
+warm with live semantics) or gate it per masterplan Phase E (pop-in over hitch). Note the
+motion-warm A/B already proved the warm CAN pay such costs when it draws the content — the steam
+quench (p≈0.005) is gone under the drive and shows 303 ms in plain base.
