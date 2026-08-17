@@ -881,3 +881,54 @@ The remaining drop-in freeze is **chapter creation + its inherent compile**, not
    they are ready, so the remaining background stall risk is bounded to the reveal-adjacent window.
 3. Everything from here needs the validated harness (§11) — n=2 cannot resolve sub-second effects,
    and this section exists because n=1 attributions kept being wrong.
+
+---
+
+## 17. Harness validated; the "GPU wedge" was self-inflicted; the first real baseline exists
+
+### The wedge was never the GPU
+
+The harness's multi-run mode had never completed (§11), and both failures were blamed on this
+machine's TDR-prone iGPU. Wrong. Phase logging pinned it in minutes: every run completed through
+"collecting" and the process died at `win.destroy()` — **Electron's default `window-all-closed`
+handler quits the app when the last window closes.** Each finished run began the app's own
+shutdown, and the next run's `loadURL` raced it (the mystery `ERR_FAILED`). The stray
+`GPU state invalid after WaitForGetOffsetInRange` stderr lines appear in *successful* runs too —
+they were noise that happened to fit a prior about this machine. One suppressed handler fixed it.
+
+Kept anyway, because they are correct for a measurement tool on this hardware:
+`disableDomainBlockingFor3DAPIs()` + `disable-gpu-process-crash-limit` (one GPU crash must not
+poison later runs), process-death logging, per-run phase logging, and
+**`scripts/odyssey-hitch-baseline.mjs`** — an orchestrator that runs ONE Electron process per
+measured run (full GPU teardown between runs, a crash costs one run and is retried once,
+interleaved variants, discarded warm-up spawn, median+IQR via the tested stats module, and the
+RESOLVED/NOT-RESOLVED IQR-overlap verdict).
+
+### The baseline (2026-08-17, fresh boot, commit bf8e4db2 + harness fixes)
+
+`reports/odyssey-perf/hitch-baseline-2026-08-17.json` — protocol: 5 runs, process-per-run,
+settle 12 s, scroll 20 s each way, end p=0.8.
+
+| metric | median | IQR | min–max |
+|---|---|---|---|
+| board init | 3 416 ms | 3 401–3 467 | 3 376–3 510 |
+| board visible | 4 388 ms | 4 341–4 522 | 4 332–4 524 |
+| forward stall total | **1 795 ms** | **1 791–1 802** | 1 744–2 172 |
+| forward gaps >100 ms | 5 | 5–6 | 4–6 |
+| forward worst gap | 487 ms | 484–501 | 483–650 |
+| backward stall total | **0 ms** | 0–0 | 0–0 |
+
+5/5 usable, all chapters warmed, sweep complete, 0 validation errors. The forward-stall IQR is
+**±0.3%** — the 2 212–9 473 ms ad-hoc chaos (§9) is gone, killed by process isolation plus a fixed
+protocol. Sub-100 ms effects are now resolvable. Backward-zero is now a standing regression assert:
+any future backward stall means a first-visit cost got reintroduced.
+
+### The protocol difference is itself a finding
+
+The smoke runs used settle 6 s and measured **7.5 s** forward stall (worst ~3.2 s); the baseline's
+12 s settle measures **1.8 s** (worst ~0.5 s). Same build. So the heavy stalls live entirely inside
+the **first ~12–16 s post-reveal build window** — a player who pauses that long then travels the
+whole journey pays only ~1.8 s of small hitches. Both protocols are now named and worth keeping:
+**patient** (settle 12 s — steady-state traverse cost) and **eager** (settle 6 s — drop-in freeze
+window, the Wave 2 target). Wave 2 should be judged on the EAGER protocol, where its problem
+actually lives.
