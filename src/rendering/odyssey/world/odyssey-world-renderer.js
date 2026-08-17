@@ -218,39 +218,75 @@ const FIELD_MIE_GAIN = 0.10;
 const LAKE_TINT_VARIANTS = {
     // A — the incumbent sky mirror, kept as the control arm for the comparison.
     mirror: {
-        shallow: [0.30, 0.40, 0.60], deep: [0.20, 0.29, 0.52],
-        shallowFrom: 0, shallowTo: 1, skyLevel: 0.92, grazeMax: 0.0, grazePow: 5, glintGain: 0.30,
+        shallow: [0.30, 0.40, 0.60],
+        deep: [0.20, 0.29, 0.52],
+        shallowFrom: 0,
+        shallowTo: 1,
+        skyLevel: 0.92,
+        grazeMax: 0.0,
+        grazePow: 5,
+        glintGain: 0.30,
     },
     // B — the world's OWN ocean family (uWaterShallow/Mid), so the island's water reads
     // as one substance. Cool, fairly blue.
     ocean: {
-        shallow: [0.29, 0.54, 0.69], deep: [0.10, 0.29, 0.42],
-        shallowFrom: 0.5, shallowTo: 13, skyLevel: 0.85, grazeMax: 0.35, grazePow: 4, glintGain: 0.16,
+        shallow: [0.29, 0.54, 0.69],
+        deep: [0.10, 0.29, 0.42],
+        shallowFrom: 0.5,
+        shallowTo: 13,
+        skyLevel: 0.85,
+        grazeMax: 0.35,
+        grazePow: 4,
+        glintGain: 0.16,
     },
     // C — alpine tarn: green-teal shallows over a deep blue body, the classic
     // mountain-lake read and the one that separates most from the sky.
     tarn: {
-        shallow: [0.30, 0.58, 0.55], deep: [0.055, 0.20, 0.34],
-        shallowFrom: 0.5, shallowTo: 13, skyLevel: 0.85, grazeMax: 0.35, grazePow: 4, glintGain: 0.16,
+        shallow: [0.30, 0.58, 0.55],
+        deep: [0.055, 0.20, 0.34],
+        shallowFrom: 0.5,
+        shallowTo: 13,
+        skyLevel: 0.85,
+        grazeMax: 0.35,
+        grazePow: 4,
+        glintGain: 0.16,
     },
     // D — Ghibli daylight lake: warmer, lighter, higher chroma, less depth contrast.
     ghibli: {
-        shallow: [0.38, 0.66, 0.66], deep: [0.12, 0.34, 0.50],
-        shallowFrom: 0.5, shallowTo: 15, skyLevel: 0.95, grazeMax: 0.40, grazePow: 3.5, glintGain: 0.20,
+        shallow: [0.38, 0.66, 0.66],
+        deep: [0.12, 0.34, 0.50],
+        shallowFrom: 0.5,
+        shallowTo: 15,
+        skyLevel: 0.95,
+        grazeMax: 0.40,
+        grazePow: 3.5,
+        glintGain: 0.20,
     },
     // E — deep still water: minimal shore band, dark body, strong grazing sky. The most
     // "mirror at the far shore, ink in the middle" of the set.
     deepstill: {
-        shallow: [0.16, 0.34, 0.46], deep: [0.035, 0.13, 0.26],
-        shallowFrom: 0.5, shallowTo: 11, skyLevel: 0.90, grazeMax: 0.40, grazePow: 3, glintGain: 0.14,
+        shallow: [0.16, 0.34, 0.46],
+        deep: [0.035, 0.13, 0.26],
+        shallowFrom: 0.5,
+        shallowTo: 11,
+        skyLevel: 0.90,
+        grazeMax: 0.40,
+        grazePow: 3,
+        glintGain: 0.14,
     },
     // F — alpine (SHIPPED): deepstill's value ladder — measured 0.74x the sky's luma at
     // the rail, where the incumbent mirror sat at 0.96x and read as a hole in the ground
     // — carrying tarn's teal in the shallows so the shore band belongs to the island's
     // greens rather than to the sky.
     alpine: {
-        shallow: [0.24, 0.50, 0.50], deep: [0.045, 0.16, 0.30],
-        shallowFrom: 0.5, shallowTo: 12, skyLevel: 0.88, grazeMax: 0.38, grazePow: 3.5, glintGain: 0.15,
+        shallow: [0.24, 0.50, 0.50],
+        deep: [0.045, 0.16, 0.30],
+        shallowFrom: 0.5,
+        shallowTo: 12,
+        skyLevel: 0.88,
+        grazeMax: 0.38,
+        grazePow: 3.5,
+        glintGain: 0.15,
     },
 };
 const LAKE_TINT_DEFAULT = 'alpine';

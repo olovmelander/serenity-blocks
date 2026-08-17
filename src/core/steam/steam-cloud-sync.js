@@ -576,9 +576,7 @@ export class SteamCloudSyncManager {
     }
 
     _getTotalStars(completedLevels) {
-        return Object.values(completedLevels || {}).reduce((sum, entry) => {
-            return sum + (entry?.stars || 0);
-        }, 0);
+        return Object.values(completedLevels || {}).reduce((sum, entry) => sum + (entry?.stars || 0), 0);
     }
 
     async _buildLocalPayload(fileName, { includeUpdatedAt = true } = {}) {
@@ -736,7 +734,7 @@ export class SteamCloudSyncManager {
         const json = JSON.stringify(this.manifest);
         const result = await steamService.cloudWrite(CLOUD_FILES.MANIFEST, json);
         if (result?.queued) {
-            return;
+            // Queued for a later flush by steamService; nothing to do here.
         }
     }
 

@@ -203,7 +203,7 @@ describe('Earth Core chapter environment (creative plan ch1)', () => {
         stubCanvasDocument();
 
         const group = createEarthCoreEnvironment({ particleCount: 660 });
-        const seamBoulders = group.userData.visibilityTargets.seamBoulders;
+        const { seamBoulders } = group.userData.visibilityTargets;
         expect(seamBoulders.length).toBeGreaterThan(0);
 
         updateEarthCoreEnvironment(group, 0.016, 1.0, null, captureProgress(12));
