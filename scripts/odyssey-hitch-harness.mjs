@@ -323,6 +323,9 @@ function summarize(raw, consoleLines, variant, tag) {
             .map((l) => ({
                 phase: l.phase, ms: l.ms, at: l.at,
             })),
+        // The board's own hitch classifier (?odysseyAAA=1): renderer.info deltas at each hitch —
+        // a geometry/texture jump = GPU upload of NEW resources; no jump = compile/CPU.
+        hitchLines: consoleLines.filter((l) => /OdysseyPerf\] hitch/.test(l)).slice(0, 16),
         errorLines: consoleLines
             .filter((l) => /setPipeline|not of type 'GPURenderPipeline'|includes writable usage/.test(l))
             .slice(0, 6),

@@ -1382,7 +1382,16 @@ export class OdysseyBoardController {
     }
 
     async _drainPrewarmQueue() {
-        if (!this.isActive || this.isPrewarming || this.prewarmQueue.length === 0) return;
+        if (this.isPrewarming || this.prewarmQueue.length === 0) return;
+        // A drain that fires while the board is not yet active (the pre-reveal warm queues
+        // chapters via _ensureBoundaryAssets) must RESCHEDULE, not dead-end: the old plain
+        // return left the queued ids stuck in the dedupe set with no timer, so their
+        // compileAsync could be dropped for the whole session and land as a synchronous
+        // compile on a live frame (scouts' verified strand bug, 2026-08-17).
+        if (!this.isActive) {
+            this._schedulePrewarmDrain(400);
+            return;
+        }
         if (!this._canRunBackgroundTask()) {
             this._schedulePrewarmDrain(160);
             return;
@@ -3246,7 +3255,18 @@ export class OdysseyBoardController {
             // exactly like live scrolling, still behind the overlay.
             if (this._motionWarm && Number.isFinite(fastStartPosition) && fastStartPosition <= 0.05) {
                 const driveStart = performance.now();
+                // RESET THE TRANSITION STATE FIRST (the scouts' verified finding): the teleport
+                // samples above end at p=0.21 and leave the chapter/seam machinery believing the
+                // journey is already there — so without this reset the drive's crossings fire NO
+                // chapter change, NO breach entry and NO camera beats, and the first GENUINE
+                // crossings (with their GPU first-draws of the breach veil, the beat-widened
+                // frustum, the lava reveal) happen on live frames instead. Same calls as the
+                // final restore uses.
                 cc.currentPosition = fastStartPosition;
+                cc.targetPosition = fastStartPosition;
+                this.thresholdDirector?.clearSeamPhase?.();
+                this.environmentManager?.updateVisibility?.(fastStartPosition, { mode: 'progress' });
+                this.renderFrame(1 / 60);
                 cc.targetPosition = Math.min(1, 0.21);
                 let driveFrames = 0;
                 warmupStats.driveGaps = [];
@@ -3270,7 +3290,22 @@ export class OdysseyBoardController {
                         await this._yieldToMain();
                     }
                 }
+                // Let the transition ENVELOPES finish: the FOV pulse (1.5s) and vista beat
+                // (1.45s) run on wall-clock, and the last chapter change (ch2->ch3 at p=0.1427)
+                // fires ~0.5s before the drive ends — so without a tail, the beat-widened
+                // frustum content never draws during the warm and pays its first draw live.
+                const tailStart = performance.now();
+                let tailFrames = 0;
+                while (performance.now() - tailStart < 1400 && tailFrames < 120) {
+                    this.renderFrame(1 / 60);
+                    tailFrames += 1;
+                    if (tailFrames % 6 === 0) {
+                        // eslint-disable-next-line no-await-in-loop
+                        await this._yieldToMain();
+                    }
+                }
                 warmupStats.driveFrames = driveFrames;
+                warmupStats.tailFrames = tailFrames;
                 warmupStats.driveMs = Math.round(performance.now() - driveStart);
                 console.log(`[OdysseyWarmup] continuous drive: ${driveFrames} frames `
                     + `to p=${cc.currentPosition.toFixed(3)} in ${warmupStats.driveMs}ms`);
