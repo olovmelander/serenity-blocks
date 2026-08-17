@@ -741,3 +741,81 @@ is high and reducible.
 The prewarm concurrency is now tunable (`?odysseyPrewarmConcurrency=N`, default 3 = unchanged) so
 the next A/B on this is a flag rather than a code change — and it should be run through the
 repeated-measures harness (§11), not two runs, given the spread visible in the table above.
+
+---
+
+## 15. The compile cost is per-SESSION, not per-material — and the reverse-order test proves it
+
+§14 left the target as "compile per material with yields". Profiling first showed that would have
+been wasted work.
+
+### The profile
+
+Patched `_prewarmChapterEnvironment` from the probe (no production change) to compile each
+chapter's drawables one at a time and time each. 137 drawables across chapters 6/7/8:
+
+| chapter | worst drawable | share of chapter | median drawable |
+|---|---|---|---|
+| 6 | `nebula-field-warm` 1313 ms | 93% | 3.7 ms |
+| 7 | (unnamed) 1060 ms | 84% | 3.8 ms |
+| 8 | (unnamed) 599 ms | 73% | 3.9 ms |
+
+Only three drawables of 137 exceeded 100 ms. That reads as "three pathological materials" — and it
+is wrong.
+
+### The test that overturned it
+
+The heavy drawable sat at **index 0 in all three chapters**, and the totals fell monotonically
+(1313 → 1060 → 599), which is the signature of a first-call cost, not a material. So: compile the
+same meshes in REVERSE order.
+
+```
+ch6 worst: void-stars-near        1168 ms  at index 0   (nebula-field-warm: 4.2 ms)
+ch7 worst: infall-ember-field-tsl 1056 ms  at index 0
+ch8 worst: rain-streak-curtain     396 ms  at index 0
+```
+
+**The cost follows position, not material.** `nebula-field-warm` went from 1313 ms to 4.2 ms purely
+by not going first. There are no pathological materials.
+
+### What it actually is
+
+A **fixed setup cost of ~0.4–1.2 s paid on the first `compileAsync` after a compile target is
+bound** — per session, landing on whichever drawable happens to be compiled first. Real per-material
+cost is ~4 ms, so 137 materials ≈ 550 ms of genuine work against ~3 s of repeated setup.
+
+This kills the §14 plan outright: per-material yielding cannot help, because the cost is not
+distributed across materials. It also explains the 480 ms first-warm one-off noted in §10 — same
+phenomenon, different caller.
+
+### The fix, and what it bought
+
+Each chapter used to bind and unbind the compile target for itself, so a 3-chapter batch paid that
+setup **three times**. `_drainPrewarmQueue` now binds once and compiles the batch's groups
+sequentially inside that single binding (sequential deliberately — the saving comes from sharing one
+prepared context, and concurrency was already measured to be a non-lever in §14).
+
+| | total post-reveal stall | worst gap |
+|---|---|---|
+| Before (bind per chapter) | 12 401 / 7 992 ms | 4 100 / 3 666 ms |
+| After (one session) | **8 987 / 8 034 ms** | **3 028 / 3 395 ms** |
+
+Median total −1.7 s, worst −700 ms, and chapters 6/7/8 now finish compiling within 1.5 s of each
+other (14.8→16.3 s) rather than trailing to ~20 s.
+
+**Confidence: moderate, not proven.** Both runs moved the predicted way on both metrics and the
+mechanism is directly demonstrated, but n=2 ranges overlap — this is exactly the case the harness
+(§11) exists to settle. Kept because the mechanism is proven and the direction is consistent, unlike
+the §14 concurrency change which was reverted for showing neither.
+
+### Where the remaining stall is
+
+~8 s of post-reveal stall survives, and it is now mostly **chapter creation**, not compilation —
+`createChapterEnvironment` is still one indivisible chunk per chapter. That is the original Wave 2
+job, unchanged and still the largest remaining item. The compile half is now close to its floor:
+one setup cost (~1 s, and worth attacking on its own — see below) plus ~4 ms per material.
+
+**Next candidate on the compile side:** pay that remaining setup cost ONCE, pre-reveal, behind the
+loading screen — compile a single throwaway mesh through the post target during startup so the
+first live batch inherits a prepared context. If the ~1 s is genuinely one-time-per-session rather
+than per-binding, that removes it from play entirely.

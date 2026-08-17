@@ -1396,9 +1396,20 @@ export class OdysseyBoardController {
         batch.forEach((ch) => this.queuedPrewarmChapters.delete(ch));
         this.isPrewarming = true;
 
+        // ONE compile session for the whole batch. Each chapter used to bind and unbind the
+        // compile target for itself, so a 3-chapter batch paid that fixed first-compile setup
+        // THREE times (~3s of the post-reveal stall). Binding once and compiling the groups
+        // sequentially inside it pays it once. Sequential, not concurrent, deliberately: the
+        // saving comes from sharing one prepared context, and concurrency was separately measured
+        // to be a non-lever (see the plan doc's negative result).
+        const sharedSaved = this._beginPostTargetCompile() || this._beginWarmTargetRender();
         try {
-            await Promise.all(batch.map((ch) => this._prewarmChapterEnvironment(ch)));
+            for (const ch of batch) {
+                // eslint-disable-next-line no-await-in-loop
+                await this._prewarmChapterEnvironment(ch, { sharedBinding: !!sharedSaved });
+            }
         } finally {
+            if (sharedSaved) this._endPostTargetCompile(sharedSaved);
             this.isPrewarming = false;
         }
 
@@ -1827,7 +1838,7 @@ export class OdysseyBoardController {
         });
     }
 
-    async _prewarmChapterEnvironment(chapterId) {
+    async _prewarmChapterEnvironment(chapterId, { sharedBinding = false } = {}) {
         if (!this.environmentManager || !this.renderer || !this.scene || !this.camera) return;
 
         const env = this.environmentManager.environments.get(chapterId);
@@ -1851,7 +1862,17 @@ export class OdysseyBoardController {
             // Structural: TARGETED compile of just this chapter's group instead of the whole
             // scene, against the POST pass target (the pipelines the chapter actually uses
             // live). Compilation is async (createRenderPipelineAsync) — never blocks main.
-            await this._compileGroupThroughPost(group);
+            // With a shared binding the CALLER already bound the compile target, and skipping
+            // the per-chapter bind is the whole point: the first compileAsync after a binding pays
+            // a fixed setup cost (measured 0.4-1.2s), and it is per SESSION, not per material.
+            // Proven by compiling a chapter's drawables in reverse order — the cost stayed at
+            // index 0 and followed whichever mesh went first, while the previously "1313ms"
+            // material dropped to 4.2ms. Real per-material cost is ~4ms.
+            if (sharedBinding) {
+                await this.renderer.compileAsync(this.scene, this.camera, group);
+            } else {
+                await this._compileGroupThroughPost(group);
+            }
 
             env.prewarmed = true;
             console.log(`[OdysseyBoard] Prewarmed chapter ${chapterId} shaders`);
