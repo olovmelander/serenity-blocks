@@ -19,6 +19,7 @@ import { mrt, vec3 } from 'three/tsl';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { BLACK_HOLE_TETROMINOS } from './black-hole-tetrominos.js';
 import { BlackHolePost } from './black-hole-post.js';
@@ -451,6 +452,10 @@ export default class BlackHoleTheme extends BaseTheme {
         // Camera motion state
         this.cameraBasePosition = new THREE.Vector3(0, 105, 1040);
         this.cameraTargetPosition = this.cameraBasePosition.clone();
+        // The orbit's smoothed position, kept apart from camera.position so the impact
+        // shake never re-enters the lerp that produces it.
+        this.cameraSmoothedPosition = this.cameraBasePosition.clone();
+        this.cameraRig = null;
         this.cameraLookTarget = new THREE.Vector3(0, 0, 0);
         this.cameraLookTargetSmoothed = new THREE.Vector3(0, 0, 0);
         this.cameraBaseFov = 60;
@@ -967,7 +972,13 @@ export default class BlackHoleTheme extends BaseTheme {
         this.camera.lookAt(this.cameraLookTarget);
         this.cameraBaseFov = this.camera.fov;
         this.cameraTargetPosition.copy(this.cameraBasePosition);
+        this.cameraSmoothedPosition.copy(this.cameraBasePosition);
         this.cameraLookTargetSmoothed.copy(this.cameraLookTarget);
+        this.cameraRig = new ThemeCameraRig(this.camera, {
+            focus: { x: 0, y: 0, z: 0 },
+            breathe: false, // the orbital float in updateNaturalCamera() is the breathing
+            pointer: false, // and it already applies its own mouse parallax + roll bank
+        });
 
         // Ambient light (very dim)
         const ambientLight = new THREE.AmbientLight(0x202030, 0.3);
@@ -2023,7 +2034,7 @@ export default class BlackHoleTheme extends BaseTheme {
         } catch {
             // Timing telemetry is opportunistic. A disposed backend or a failed query must
             // never reject into the animation loop.
-            return;
+
         }
     }
 
@@ -2666,16 +2677,24 @@ export default class BlackHoleTheme extends BaseTheme {
     // Game Event Effects
     // ─────────────────────────────────────────────────────────────────────────
 
+    // Camera shake fires here rather than off the FX controller's commands: these run
+    // synchronously on the event, while the controller's commands surface a frame later
+    // via processGameplayFx() — and an impact that lags its input stops reading as one.
     onPieceLock(payload = {}) {
+        this.cameraRig?.shakeLock();
         this.fxController.onPieceLock(payload);
     }
 
     onLineClear(payload = {}) {
-        this.fxController.onLineClear(Number.isFinite(payload) ? { lineCount: payload } : payload);
+        const data = Number.isFinite(payload) ? { lineCount: payload } : payload;
+        this.cameraRig?.shakeClear(data?.lineCount ?? 1, data?.comboCount ?? 0);
+        this.fxController.onLineClear(data);
     }
 
     onCombo(payload = {}) {
-        this.fxController.onCombo(Number.isFinite(payload) ? { comboCount: payload } : payload);
+        const data = Number.isFinite(payload) ? { comboCount: payload } : payload;
+        this.cameraRig?.shakeClear(1, data?.comboCount ?? 0);
+        this.fxController.onCombo(data);
     }
 
     processGameplayFx(delta) {
@@ -3276,8 +3295,11 @@ export default class BlackHoleTheme extends BaseTheme {
             baseZ + followZ,
         );
 
+        // Smooth into a SEPARATE base rather than camera.position: that lerp uses its own
+        // previous output as state, so shaking camera.position directly would feed the
+        // impact back into the smoothing and smear it across the following second.
         const moveLerp = Math.min(1.0, delta * (1.8 + comboEnergy * 0.9));
-        this.camera.position.lerp(this.cameraTargetPosition, moveLerp);
+        this.cameraSmoothedPosition.lerp(this.cameraTargetPosition, moveLerp);
 
         // ── Off-centre framing (camera-relative) ─────────────────────────────────
         // The game board occupies the CENTRE of the screen, so bias the look target within
@@ -3288,8 +3310,12 @@ export default class BlackHoleTheme extends BaseTheme {
         const bhX = this.driftX || 0;
         const bhY = this.driftY || 0;
         const bhZ = this.driftZ || 0;
-        this._camFwd.set(bhX - this.camera.position.x, bhY - this.camera.position.y, bhZ - this.camera.position.z)
-            .normalize();
+        // Built from the pre-shake base so an impact cannot wobble the framing basis.
+        this._camFwd.set(
+            bhX - this.cameraSmoothedPosition.x,
+            bhY - this.cameraSmoothedPosition.y,
+            bhZ - this.cameraSmoothedPosition.z,
+        ).normalize();
         this._camRight.crossVectors(this._camFwd, this._worldUp).normalize();
         this._camUp.crossVectors(this._camRight, this._camFwd).normalize();
 
@@ -3310,7 +3336,16 @@ export default class BlackHoleTheme extends BaseTheme {
             .addScaledVector(this._camUp, screenUp);
         const lookLerp = Math.min(1.0, delta * (2.4 + comboEnergy * 1.2));
         this.cameraLookTargetSmoothed.lerp(this.cameraLookTarget, lookLerp);
-        this.camera.lookAt(this.cameraLookTargetSmoothed);
+
+        // The rig writes the final camera position and performs the lookAt, layering the
+        // impact shake on top of the orbit. The cinematic roll below still composes onto
+        // the resulting orientation.
+        this.cameraRig.setFocus(
+            this.cameraLookTargetSmoothed.x,
+            this.cameraLookTargetSmoothed.y,
+            this.cameraLookTargetSmoothed.z,
+        );
+        this.cameraRig.apply(delta, this.cameraSmoothedPosition);
 
         // Subtle cinematic roll + focal breathing so the scene feels alive at idle,
         // plus a gentle bank toward the pointer so horizontal mouse motion feels embodied.

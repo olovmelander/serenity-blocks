@@ -62,8 +62,14 @@ export const AURORA_AMBIENT = new THREE.Color(0.05, 0.21, 0.15);
 //   100-150 km  atomic O 557.7 → green body
 //   200-400 km  atomic O 630.0 → crimson crown
 //   low, hard   N2+ 427.8      → blue-violet
-export const AURORA_GREEN_WARM = new THREE.Color(0.22, 1.0, 0.30);
-export const AURORA_GREEN_COOL = new THREE.Color(0.08, 0.95, 0.68);
+// The green body breathes between these two. The "warm" end used to carry
+// 0.22 red, and red+green is YELLOW-green — user called it. Real 557.7 nm
+// oxygen is a spectral line: essentially NO red in it. Both ends now hold the
+// red channel near zero, so the breathing cycle runs pure-emerald ↔ teal-tinged
+// emerald instead of mustard ↔ teal, and the higher saturation is what reads
+// as "vibrant" once the emissive bloom picks it up.
+export const AURORA_GREEN_WARM = new THREE.Color(0.04, 1.0, 0.26);
+export const AURORA_GREEN_COOL = new THREE.Color(0.03, 1.0, 0.52);
 /** Deep crimson — pushed off pink toward a truer 630 nm oxygen red. */
 export const AURORA_CRIMSON = new THREE.Color(0.86, 0.055, 0.15);
 export const AURORA_PINK = new THREE.Color(1.0, 0.32, 0.62);

@@ -76,18 +76,33 @@ describe('StarlightReactionDirector ↔ theme adapters', () => {
         expect(kinds.every((k) => typeof k === 'number')).toBe(true);
     });
 
-    it('a lock and a combo both fire a subtle camera shake (edv3-style feedback)', () => {
+    it('a lock taps, a combo hits harder, and the combo escalates with the chain', () => {
+        const amp = (w) => w.calls.of('shake')[0]?.args[0];
+
         const lock = wire();
         lock.director.onPieceLock({ piece: T_PIECE });
         advance(lock.director, 0.3);
-        expect(lock.calls.of('shake').length).toBeGreaterThanOrEqual(1);
-        expect(lock.calls.of('shake')[0].args[0]).toBeLessThan(0.03); // lock shake stays subtle
+        expect(lock.calls.of('shake')).toHaveLength(1);
+        // A lock fires on EVERY piece, so it stays the faintest cue in the game — but
+        // it must clear the perceptual floor (~0.02u ≈ 0.1° of view rotation on this
+        // rig; see tests/unit/starlight-camera-shake.test.js).
+        expect(amp(lock)).toBeGreaterThan(0.02);
+        expect(amp(lock)).toBeLessThan(0.08);
 
         const combo = wire();
         combo.director.onCombo({ comboCount: 6 });
         combo.director.onLineClear({ lineCount: 2, clearedRows: [17, 18] });
         advance(combo.director, 0.4);
-        expect(combo.calls.of('shake').length).toBeGreaterThanOrEqual(1);
+        expect(combo.calls.of('shake')).toHaveLength(1);
+        expect(amp(combo)).toBeGreaterThan(amp(lock));
+
+        // Same clear, shorter chain → a smaller hit, so the combo itself is felt.
+        const short = wire();
+        short.director.onCombo({ comboCount: 1 });
+        short.director.onLineClear({ lineCount: 2, clearedRows: [17, 18] });
+        advance(short.director, 0.4);
+        expect(amp(short)).toBeGreaterThan(amp(lock));
+        expect(amp(combo)).toBeGreaterThan(amp(short));
     });
 
     it('a Tetris spawns a hero fireball and a FOV breath through the real adapters', () => {

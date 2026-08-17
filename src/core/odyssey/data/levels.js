@@ -2918,14 +2918,206 @@ const BASE_LEVEL_CONFIGS = [
         },
     },
 
+    // ── SPACE LENGTHENED (Wave 1, D1 2026-08-15): the second movement, levels 42-45,
+    // inserted between Stellar Shockwave and the Event Horizon finale trilogy. The
+    // names track the re-composed environment's beats (the reef, the pillar, the
+    // witnesses, the quiet drift before the dive). ─────────────────────────────────
     {
         id: 42,
-        name: 'Event Horizon',
+        name: 'Nebula Reef',
         chapter: 6,
         chapterLevel: 7,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.759,
+        pathPosition: 0.725,
+
+        theme: {
+            primary: 'astral-weave',
+            overlays: ['galaxy'],
+            transitionIn: 'crossfade',
+            transitionDuration: 4000,
+        },
+
+        mechanics: {
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 4 },
+            speed: { startLevel: 10, levelProgression: true, fixedDropInterval: null },
+            pieces: { bagType: '7-bag', customSequence: null, previewCount: 4 },
+        },
+
+        victory: {
+            primary: { type: 'score', target: 38000 },
+            failure: { type: 'top-out', value: null },
+            bonuses: [
+                { type: 'tetris-count', target: 8, description: 'Clear 8 Quads' },
+                { type: 'combo', target: 6, description: 'Reach 6x combo' },
+            ],
+        },
+
+        modifiers: { active: ['combo-multiplier'] },
+
+        stars: {
+            one: { score: 38000 },
+            two: { score: 55000, tetrises: 6 },
+            three: { score: 75000, tetrises: 10, combo: 8 },
+        },
+
+        metadata: {
+            description: 'Thread the sculpted nebula reef. Painted giants drift past on either side.',
+            difficulty: 8,
+            tip: 'Steady scoring keeps you on course - the reef rewards rhythm over risk.',
+        },
+    },
+
+    {
+        id: 43,
+        name: 'Pillars of Creation',
+        chapter: 6,
+        chapterLevel: 8,
+        isChapterStart: false,
+        isChapterEnd: false,
+        pathPosition: 0.738,
+
+        theme: {
+            primary: 'cosmic-chimes',
+            overlays: ['galaxy'],
+            transitionIn: 'crossfade',
+            transitionDuration: 4000,
+        },
+
+        mechanics: {
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 5 },
+            speed: { startLevel: 10, levelProgression: true, fixedDropInterval: null },
+            pieces: { bagType: '7-bag', customSequence: null, previewCount: 4 },
+        },
+
+        victory: {
+            primary: { type: 'lines', target: 40 },
+            failure: { type: 'top-out', value: null },
+            bonuses: [
+                { type: 'tetris-count', target: 6, description: 'Clear 6 Quads' },
+                { type: 'combo', target: 7, description: 'Reach 7x combo' },
+            ],
+        },
+
+        modifiers: { active: ['combo-multiplier'] },
+
+        stars: {
+            one: { lines: 40 },
+            two: { lines: 40, tetrises: 5 },
+            three: { lines: 40, tetrises: 8, combo: 8 },
+        },
+
+        metadata: {
+            description: 'A tower of star-birthing gas rises from the void, pointing at the darkness ahead.',
+            difficulty: 9,
+            tip: 'Build tall and clear wide - the pillar honors those who work in columns.',
+        },
+    },
+
+    {
+        id: 44,
+        name: 'Comet Chase',
+        chapter: 6,
+        chapterLevel: 9,
+        isChapterStart: false,
+        isChapterEnd: false,
+        pathPosition: 0.751,
+
+        theme: {
+            primary: 'stellar-velocity',
+            overlays: ['galaxy'],
+            transitionIn: 'warp',
+            transitionDuration: 3500,
+        },
+
+        mechanics: {
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 5 },
+            speed: { startLevel: 11, levelProgression: true, fixedDropInterval: null },
+            pieces: { bagType: '7-bag', customSequence: null, previewCount: 4 },
+        },
+
+        victory: {
+            primary: { type: 'score', target: 50000 },
+            failure: { type: 'top-out', value: null },
+            bonuses: [
+                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
+                { type: 'combo', target: 8, description: 'Reach 8x combo' },
+            ],
+        },
+
+        modifiers: { active: ['combo-multiplier'] },
+
+        stars: {
+            one: { score: 50000 },
+            two: { score: 70000, tetrises: 8 },
+            three: { score: 95000, tetrises: 12, combo: 9 },
+        },
+
+        metadata: {
+            description: 'Ride alongside a comet through the asteroid witnesses. Speed is everything.',
+            difficulty: 10,
+            tip: 'The comet does not wait. Quads and long combos keep pace.',
+        },
+    },
+
+    {
+        id: 45,
+        name: 'Silent Drift',
+        chapter: 6,
+        chapterLevel: 10,
+        isChapterStart: false,
+        isChapterEnd: false,
+        pathPosition: 0.764,
+
+        theme: {
+            primary: 'cosmic-noir',
+            overlays: [],
+            transitionIn: 'crossfade',
+            transitionDuration: 5000,
+        },
+
+        mechanics: {
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 3 },
+            speed: { startLevel: 9, levelProgression: true, fixedDropInterval: null },
+            pieces: { bagType: '7-bag', customSequence: null, previewCount: 5 },
+        },
+
+        victory: {
+            primary: { type: 'score', target: 32000 },
+            failure: { type: 'top-out', value: null },
+            bonuses: [
+                { type: 'combo', target: 6, description: 'Reach 6x combo' },
+                { type: 'tetris-count', target: 6, description: 'Clear 6 Quads' },
+            ],
+        },
+
+        modifiers: { active: ['combo-multiplier'] },
+
+        stars: {
+            one: { score: 32000 },
+            two: { score: 46000, combo: 6 },
+            three: { score: 62000, combo: 8, tetrises: 8 },
+        },
+
+        metadata: {
+            description: 'The quiet before the horizon. Empty void, distant stars, and your own breathing.',
+            difficulty: 7,
+            tip: 'Nothing chases you here. Set up perfect stacks and enjoy the silence.',
+        },
+    },
+
+    {
+        id: 46,
+        name: 'Event Horizon',
+        chapter: 6,
+        chapterLevel: 11,
+        isChapterStart: false,
+        isChapterEnd: false,
+        pathPosition: 0.776,
 
         theme: {
             primary: 'stellar-velocity',
@@ -2990,13 +3182,13 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 43,
+        id: 47,
         name: 'Singularity Gate',
         chapter: 6,
-        chapterLevel: 8,
+        chapterLevel: 12,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.778,
+        pathPosition: 0.789,
 
         theme: {
             primary: 'cosmic-chimes',
@@ -3059,13 +3251,13 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 44,
+        id: 48,
         name: 'The Singularity',
         chapter: 6,
-        chapterLevel: 9,
+        chapterLevel: 13,
         isChapterStart: false,
         isChapterEnd: true,
-        pathPosition: 0.796,
+        pathPosition: 0.802,
 
         theme: {
             primary: 'black-hole',
@@ -3131,7 +3323,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 45,
+        id: 49,
         name: 'Fluid Dreams',
         chapter: 7,
         chapterLevel: 1,
@@ -3201,7 +3393,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 46,
+        id: 50,
         name: 'Nebula Flow',
         chapter: 7,
         chapterLevel: 2,
@@ -3271,7 +3463,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 47,
+        id: 51,
         name: 'Chromadelic Highway',
         chapter: 7,
         chapterLevel: 3,
@@ -3343,7 +3535,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 48,
+        id: 52,
         name: 'Voltage Storm',
         chapter: 7,
         chapterLevel: 4,
@@ -3416,7 +3608,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 49,
+        id: 53,
         name: 'Chromatic Impasto',
         chapter: 7,
         chapterLevel: 5,
@@ -3486,7 +3678,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 50,
+        id: 54,
         name: 'Electric Dreams',
         chapter: 7,
         chapterLevel: 6,
@@ -3558,7 +3750,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 51,
+        id: 55,
         name: 'Singularity Void',
         chapter: 7,
         chapterLevel: 7,
@@ -3632,7 +3824,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 52,
+        id: 56,
         name: 'Neon Dunes',
         chapter: 8,
         chapterLevel: 1,
@@ -3704,7 +3896,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 53,
+        id: 57,
         name: 'Neon Dusk',
         chapter: 8,
         chapterLevel: 2,
@@ -3776,7 +3968,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 54,
+        id: 58,
         name: 'Electric Nights',
         chapter: 8,
         chapterLevel: 3,
@@ -3848,7 +4040,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 55,
+        id: 59,
         name: 'Electric Apex',
         chapter: 8,
         chapterLevel: 4,
@@ -3964,20 +4156,26 @@ const LEVEL_PHASE2_TAGS = Object.freeze({
     39: { role: 'test', mechanicFocus: 'hybrid', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
     40: { role: 'test', mechanicFocus: 'score', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
     41: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
-    42: { role: 'boss', mechanicFocus: 'hybrid', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
-    43: { role: 'release', mechanicFocus: 'lines', emotionalBeat: 'release', victoryLapPolicy: 'none' },
-    44: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
-    45: { role: 'arrival', mechanicFocus: 'score', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
-    46: { role: 'reinforce', mechanicFocus: 'hybrid', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
-    47: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
-    48: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
-    49: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
-    50: { role: 'release', mechanicFocus: 'lines', emotionalBeat: 'release', victoryLapPolicy: 'none' },
-    51: { role: 'boss', mechanicFocus: 'hybrid', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
-    52: { role: 'encore', mechanicFocus: 'lines', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
-    53: { role: 'encore', mechanicFocus: 'score', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
-    54: { role: 'encore', mechanicFocus: 'hybrid', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
-    55: { role: 'encore', mechanicFocus: 'hybrid', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
+    // Space lengthening (Wave 1, D1): the second movement — quiet shallows, a rising
+    // test pair, a breath — inserted between Stellar Shockwave and the finale trilogy.
+    42: { role: 'reinforce', mechanicFocus: 'score', emotionalBeat: 'wonder', victoryLapPolicy: 'none' },
+    43: { role: 'test', mechanicFocus: 'lines', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
+    44: { role: 'test', mechanicFocus: 'score', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    45: { role: 'release', mechanicFocus: 'score', emotionalBeat: 'release', victoryLapPolicy: 'none' },
+    46: { role: 'boss', mechanicFocus: 'hybrid', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
+    47: { role: 'release', mechanicFocus: 'lines', emotionalBeat: 'release', victoryLapPolicy: 'none' },
+    48: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
+    49: { role: 'arrival', mechanicFocus: 'score', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    50: { role: 'reinforce', mechanicFocus: 'hybrid', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    51: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
+    52: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
+    53: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
+    54: { role: 'release', mechanicFocus: 'lines', emotionalBeat: 'release', victoryLapPolicy: 'none' },
+    55: { role: 'boss', mechanicFocus: 'hybrid', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
+    56: { role: 'encore', mechanicFocus: 'lines', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    57: { role: 'encore', mechanicFocus: 'score', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    58: { role: 'encore', mechanicFocus: 'hybrid', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
+    59: { role: 'encore', mechanicFocus: 'hybrid', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
 });
 /* eslint-enable object-curly-newline */
 
@@ -4554,7 +4752,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             tip: 'Use Quads to compress the workload. The fastest path through this level is almost always the cleanest one.',
         },
     },
-    43: {
+    47: {
         mechanics: {
             speed: {
                 startLevel: 8,
@@ -4583,14 +4781,14 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             tip: 'Use this release beat to lower the stack and rebuild a clean well before the chapter finale.',
         },
     },
-    44: {
+    48: {
         metadata: {
             difficulty: 10,
             description: 'Chapter 6 finale. Trigger massive cascades at the lip of the singularity and hold your nerve in the void.',
             tip: 'Focus on completing the chapter clear first. If the board still holds together, chase the showcase chains afterward.',
         },
     },
-    45: {
+    49: {
         victory: {
             primary: {
                 target: 36000,
@@ -4607,7 +4805,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             tip: 'Trust the score game you already know. The visuals change first; the discipline stays the same.',
         },
     },
-    48: {
+    52: {
         mechanics: {
             board: {
                 startingRows: 10,
@@ -4641,7 +4839,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             tip: 'Use the full height, but do not overbuild. The best storm boards are structured, not chaotic.',
         },
     },
-    49: {
+    53: {
         mechanics: {
             speed: {
                 startLevel: 12,
@@ -4669,7 +4867,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             tip: 'This is still a speed wall, but it is no longer a marathon. Compress the target with Quads and keep the stack low.',
         },
     },
-    50: {
+    54: {
         mechanics: {
             board: {
                 startingRows: 6,
@@ -4705,7 +4903,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             tip: 'Do not race the board. Let each cascade finish before you commit to the next shape.',
         },
     },
-    51: {
+    55: {
         mechanics: {
             baseMode: 'infinity',
             board: {
@@ -4755,24 +4953,24 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
         },
     },
-    52: {
+    56: {
         metadata: {
             difficulty: 7,
             description: 'Neon-lit dunes shimmer like a mirage. This bonus chapter opens with a stylish but manageable push.',
             tip: 'Use the starting rows to set your pace. The encore wants confidence, not panic.',
         },
     },
-    53: {
+    57: {
         metadata: {
             difficulty: 8,
         },
     },
-    54: {
+    58: {
         metadata: {
             difficulty: 9,
         },
     },
-    55: {
+    59: {
         metadata: {
             difficulty: 10,
             description: 'The bonus chapter finale turns the city into a high-voltage arena. Push for one last spectacular score run.',

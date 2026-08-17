@@ -19,6 +19,7 @@ import {
 } from '../../src/rendering/odyssey/OdysseyCameraController.js';
 import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 import {
+    getActiveOdysseyChapterPositions,
     getChapterPathRange,
     getOdysseyPathCurve,
 } from '../../src/rendering/odyssey/path-utils.js';
@@ -29,6 +30,7 @@ import {
 import {
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
+    SUMMIT_EARTH_REVEAL,
 } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.js';
 
 // Chapters 5-7 run the BEYOND act camera language (followDistance 42, fovBase 66).
@@ -139,27 +141,45 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         });
     });
 
-    it('holds each hero in its authored third of the frame', () => {
-        // The composition the chapter is written around: black hole upper-LEFT (the
-        // destination omen), gas giant lower-CENTRE-right (the near hero), galaxy
-        // upper-RIGHT (the far anchor). Checked at entry and at the 6->7 seam.
-        [ch6Start, ch6End].forEach((progress) => {
-            const frame = frameAt(controller, chapterPositions, 6, progress);
-            const heroes = heroesAt(env, frame.camPos, progress);
+    it('holds the authored thirds at entry, then DIVES the black hole onto the exit axis', () => {
+        // Entry composition: black hole upper-LEFT (the destination omen / north
+        // star), gas giant lower-CENTRE-right, galaxy upper-RIGHT.
+        {
+            const frame = frameAt(controller, chapterPositions, 6, ch6Start);
+            const heroes = heroesAt(env, frame.camPos, ch6Start);
             const bh = project(frame, heroes.blackHole, 16 / 9);
             const planet = project(frame, heroes.heroPlanet, 16 / 9);
             const galaxy = project(frame, heroes.galaxy, 16 / 9);
-
             expect(bh.x).toBeLessThan(-0.1);
             expect(bh.y).toBeGreaterThan(0.05);
             expect(planet.x).toBeGreaterThan(0);
             expect(planet.y).toBeLessThan(0);
             expect(galaxy.x).toBeGreaterThan(0.25);
             expect(galaxy.y).toBeGreaterThan(0.05);
-            // The three occupy distinct thirds — nothing stacks on anything else.
             expect(Math.abs(bh.x - planet.x)).toBeGreaterThan(0.3);
             expect(Math.abs(planet.x - galaxy.x)).toBeGreaterThan(0.3);
-        });
+        }
+        // Exit (owner direction 2026-08-15): the rail flies STRAIGHT INTO the black
+        // hole — it IS the transition into chapter 7. The hole sits on the flight
+        // axis; the other heroes stay clear of the dive line.
+        {
+            const frame = frameAt(controller, chapterPositions, 6, ch6End);
+            const heroes = heroesAt(env, frame.camPos, ch6End);
+            const bh = project(frame, heroes.blackHole, 16 / 9);
+            const planet = project(frame, heroes.heroPlanet, 16 / 9);
+            const galaxy = project(frame, heroes.galaxy, 16 / 9);
+            expect(Math.abs(bh.x), `dive ndcX ${bh.x.toFixed(2)}`).toBeLessThan(0.2);
+            expect(Math.abs(bh.y), `dive ndcY ${bh.y.toFixed(2)}`).toBeLessThan(0.25);
+            expect(bh.offAxis, `dive off-axis ${bh.offAxis.toFixed(1)} deg`).toBeLessThan(10);
+            expect(
+                Math.abs(planet.x - bh.x),
+                `planet ${planet.x.toFixed(2)} vs bh ${bh.x.toFixed(2)}`,
+            ).toBeGreaterThan(0.2);
+            expect(
+                Math.abs(galaxy.x - bh.x),
+                `galaxy ${galaxy.x.toFixed(2)} vs bh ${bh.x.toFixed(2)}`,
+            ).toBeGreaterThan(0.3);
+        }
     });
 
     it('closes on the heroes rather than letting them shrink away', () => {
@@ -180,7 +200,17 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         // The ask: "see the earth shape at the top of the mountains BEFORE it gets dark."
         // The Ch5 backdrop fade only begins at ch6Start, so every sample here is still
         // full daylight. The gas giant must already be on screen.
-        const summitSamples = [0.612, 0.620, 0.628, 0.636, 0.644];
+        // DERIVED, not literal. These were five p values inside the old ignite window
+        // (summitStart 0.5873 -> summitEnd 0.6258). Wave 1A's ascent re-spaced chapter 5, so
+        // the window is now 0.588 -> 0.6845 and the old samples land in its first 25% where
+        // the earth is legitimately still faint. The claim is "across the ignite, the earth is
+        // framed and shown", so derive the samples FROM the ignite.
+        const cpAll = getActiveOdysseyChapterPositions();
+        const skySpan = cpAll[5] - cpAll[4];
+        const igniteStart = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
+        const igniteEnd = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
+        const summitSamples = [0.30, 0.45, 0.60, 0.80, 1.0]
+            .map((f) => igniteStart + (igniteEnd - igniteStart) * f);
         summitSamples.forEach((progress) => {
             expect(progress).toBeLessThan(ch6Start);
             const frame = frameAt(controller, chapterPositions, 5, progress);
@@ -203,5 +233,14 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         // ...while the rest of Space is still held out of the daylight frame.
         expect(env.userData.starsNear.material.opacity).toBeLessThan(0.01);
         expect(env.userData.voidSky.visible).toBe(false);
+
+        // OWNER DECISION D3 (Wave 3): the giant is genuinely BIG at the summit — the
+        // last update above ran at igniteEnd, where the summit keyframe still owns the
+        // pose — and it settles back to the approved entry scale AT the boundary, where
+        // the entry-composition thirds are asserted.
+        expect(env.userData.heroPlanet.scale.x).toBeGreaterThan(2.5);
+        const entryFrame = frameAt(controller, chapterPositions, 6, ch6Start);
+        heroesAt(env, entryFrame.camPos, ch6Start);
+        expect(env.userData.heroPlanet.scale.x).toBeCloseTo(34 / 28, 3);
     });
 });

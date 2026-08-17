@@ -23,96 +23,118 @@ const DEFAULT_CONTROL_POINTS = Object.freeze([
     Object.freeze({ x: -5, y: 250, z: 8 }),
     Object.freeze({ x: -28, y: 292, z: -30 }),
     Object.freeze({ x: -86, y: 336, z: -130 }),
-    Object.freeze({ x: -164.0, y: 361.5, z: -289.0 }),
-    Object.freeze({ x: -212.0, y: 389.5, z: -469.0 }),
-    Object.freeze({ x: -211.0, y: 447.0, z: -504.0 }),
-    Object.freeze({ x: -210.0, y: 622.0, z: -572.0 }),
-    Object.freeze({ x: -96.0, y: 733.0, z: -654.0 }),
-    // ── CH6 SPACE CORRIDOR (re-authored 2026-08) ─────────────────────────────────
-    // Points 17-19 used to zigzag: cp17 stalled in z (-654 -> -662 while x ran +32),
-    // and cp18/19 overshot to x=+61 before snapping back to cp20's x=0. Replaying
-    // computeFollowFrame over the shipped curve showed the camera aim lurching
-    // 13.1 deg per 0.3% of progress (pitch swinging 32 -> 42 -> -10, yaw 57 -> 83 -> 103)
-    // and dipping BELOW the horizon mid-ascent — so no fixed placement could keep the
-    // Space heroes framed (they measured 31-68 deg off the forward ray). These three
-    // points turn the zigzag into one smooth banking climb: max turn rate 13.13 -> 1.40
-    // deg/0.3%p, total turn 127 -> 24 deg, and the aim never pitches below +11 deg.
+    Object.freeze({ x: -164, y: 361.5, z: -289 }),
+    Object.freeze({ x: -212, y: 389.5, z: -469 }),
+    Object.freeze({ x: -211, y: 447, z: -504 }),
+    Object.freeze({ x: -210, y: 622, z: -572 }),
+    // ── THE ASCENT (Act II -> Space, Wave 1A, 2026-08-16) ────────────────────────
+    // THE MOUNTAIN USED TO POP because the camera never left Act II — it was deleted out from
+    // under it. Measured before: at the act gate the rail sat at y=688 while the hero massif
+    // crowns at 1017.5 and the cloud deck bases at ~900, and the apex of the ENTIRE act was
+    // y=729. The journey reached deep space 330u BELOW a summit whose 603u footprint it was
+    // still inside, and from under the weather. Clearance was CLOSING, not opening: ground
+    // rose 375->427 over p 0.65-0.70 while the camera rose only 658->711.
     //
-    // ARC LENGTH IS LOAD-BEARING. Path positions are arc-length parameterised over the
-    // WHOLE curve, so changing the total length re-maps every chapter's p -> world
-    // position (a first attempt shortened it 74u and shifted Ch1-Ch5 by up to 54u).
-    // These points hold the total at 1767.58 vs 1767.57, which keeps ch1-ch4 within
-    // 0.01u and ch5 (the Ch4 hero-peak clearance) within 0.28u of the shipped curve.
-    // Guarded by odyssey-path-layout.test.js.
-    Object.freeze({ x: -38.1, y: 763.3, z: -693.1 }),
-    Object.freeze({ x: 53.4, y: 798.6, z: -742.8 }),
-    Object.freeze({ x: 64.1, y: 812.9, z: -729.3 }),
-    Object.freeze({ x: 1.3, y: 840.3, z: -677.3 }),
-    Object.freeze({ x: -5.0, y: 861.0, z: -675.0 }),
-    Object.freeze({ x: 3.0, y: 870.0, z: -685.0 }),
-    Object.freeze({ x: 0.0, y: 900.0, z: -680.0 }),
-    Object.freeze({ x: 0, y: 940, z: -715 }),
-    Object.freeze({ x: -5, y: 960, z: -720 }),
-    Object.freeze({ x: 5, y: 980, z: -730 }),
-    Object.freeze({ x: 0, y: 1000, z: -725 }),
+    // The seam also had NO authored shape: cp15 governed p=0.621 and cp16 p=0.722 with nothing
+    // between them, so the whole 5->6 transition was one near-linear interpolation.
+    //
+    // THESE SEVEN POINTS ARE CONSTRUCTED, NOT EYEBALLED. A gradient schedule eases
+    // 76 -> 70 -> 63 -> 55 -> 47 -> 39 -> 32 deg and then joins the corridor at its own 24,
+    // with segment lengths (105,110,115,115,105,95,85) converging on the corridor's own 76u
+    // spacing. Catmull-Rom curvature depends on SPACING as much as direction: a first attempt
+    // matched the join direction exactly but arrived on a 136u segment against the corridor's
+    // 76u and spiked the turn rate to 5.99 deg. Regenerate from the schedule, never by nudging
+    // one point.
+    //
+    // Measured after: apex 1501 (was 729), clearance grows monotonically instead of closing,
+    // and the rail breaks out of the cloud deck around p=0.755 — the journey has never risen
+    // above the weather before. The turn rate through the seam IMPROVED (14.45 -> 9.05
+    // deg/step over p 0.55-0.85) because a kink was replaced by a longer arc.
+    Object.freeze({ x: -200.1, y: 684.1, z: -615.8 }),
+    Object.freeze({ x: -189.0, y: 744.5, z: -661.7 }),
+    Object.freeze({ x: -177.4, y: 804.2, z: -708.4 }),
+    Object.freeze({ x: -165.6, y: 862.7, z: -756.4 }),
+    Object.freeze({ x: -153.8, y: 916.9, z: -809.5 }),
+    Object.freeze({ x: -141.1, y: 969.2, z: -864.1 }),
+    Object.freeze({ x: -118.2, y: 1017.3, z: -918.2 }),
+    Object.freeze({ x: -74.3, y: 1055.4, z: -968.0 }),
+    Object.freeze({ x: -34.9, y: 1100.7, z: -1015.5 }),
+    Object.freeze({ x: 33.8, y: 1160.5, z: -1042.9 }),
+    Object.freeze({ x: 100.8, y: 1205.5, z: -1069.5 }),
+    Object.freeze({ x: 158.7, y: 1235.9, z: -1108.6 }),
+    Object.freeze({ x: 216.6, y: 1266.2, z: -1147.7 }),
+    Object.freeze({ x: 308.1, y: 1301.5, z: -1197.4 }),
+    Object.freeze({ x: 318.8, y: 1315.8, z: -1183.9 }),
+    Object.freeze({ x: 256.0, y: 1343.2, z: -1131.9 }),
+    Object.freeze({ x: 249.7, y: 1363.9, z: -1129.6 }),
+    Object.freeze({ x: 257.7, y: 1372.9, z: -1139.6 }),
+    Object.freeze({ x: 254.7, y: 1402.9, z: -1134.6 }),
+    Object.freeze({ x: 254.7, y: 1442.9, z: -1169.6 }),
+    Object.freeze({ x: 249.7, y: 1462.9, z: -1174.6 }),
+    Object.freeze({ x: 259.7, y: 1482.9, z: -1184.6 }),
+    Object.freeze({ x: 254.7, y: 1502.9, z: -1179.6 }),
 ]);
 
 const DEFAULT_LEVEL_POSITIONS_BY_ID = Object.freeze({
-    1: 0.000,
-    2: 0.019,
-    3: 0.037,
-    4: 0.056,
-    5: 0.074,
-    6: 0.093,
-    7: 0.111,
-    8: 0.130,
-    9: 0.148,
-    10: 0.167,
-    11: 0.185,
-    12: 0.204,
-    13: 0.222,
-    14: 0.241,
-    15: 0.259,
-    16: 0.278,
-    17: 0.296,
-    18: 0.315,
-    19: 0.333,
-    20: 0.352,
-    21: 0.370,
-    22: 0.389,
-    23: 0.407,
-    24: 0.426,
-    25: 0.444,
-    26: 0.463,
-    27: 0.481,
-    28: 0.500,
-    29: 0.519,
-    30: 0.537,
-    31: 0.556,
-    32: 0.574,
-    33: 0.593,
-    34: 0.611,
-    35: 0.630,
-    36: 0.648,
-    37: 0.667,
-    38: 0.685,
-    39: 0.704,
-    40: 0.722,
-    41: 0.741,
-    42: 0.759,
-    43: 0.778,
-    44: 0.796,
-    45: 0.815,
-    46: 0.833,
-    47: 0.852,
-    48: 0.870,
-    49: 0.889,
-    50: 0.907,
-    51: 0.926,
-    52: 0.944,
-    53: 0.963,
-    54: 0.981,
-    55: 1.000,
+    1: 0,
+    2: 0.0132,
+    3: 0.0258,
+    4: 0.0393,
+    5: 0.0516,
+    6: 0.0649,
+    7: 0.0774,
+    8: 0.0908,
+    9: 0.1033,
+    10: 0.1167,
+    11: 0.1291,
+    12: 0.1427,
+    13: 0.1551,
+    14: 0.1682,
+    15: 0.1807,
+    16: 0.1943,
+    17: 0.2068,
+    18: 0.2198,
+    19: 0.2323,
+    20: 0.2457,
+    21: 0.2587,
+    22: 0.2716,
+    23: 0.284,
+    24: 0.2973,
+    25: 0.3097,
+    26: 0.3223,
+    27: 0.3356,
+    28: 0.3489,
+    29: 0.3996,
+    30: 0.4503,
+    31: 0.501,
+    32: 0.5516,
+    33: 0.6023,
+    34: 0.653,
+    35: 0.7037,
+    36: 0.7543,
+    37: 0.7634,
+    38: 0.7725,
+    39: 0.7808,
+    40: 0.7899,
+    41: 0.799,
+    42: 0.808,
+    43: 0.8171,
+    44: 0.8262,
+    45: 0.8353,
+    46: 0.8437,
+    47: 0.8527,
+    48: 0.8618,
+    49: 0.8709,
+    50: 0.8835,
+    51: 0.8967,
+    52: 0.9093,
+    53: 0.9225,
+    54: 0.9351,
+    55: 0.9484,
+    56: 0.9609,
+    57: 0.9742,
+    58: 0.9868,
+    59: 1,
 });
 
 export const ODYSSEY_LAYOUT_DATA = Object.freeze({

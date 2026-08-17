@@ -10,8 +10,9 @@
  * Only the REST_POSITION is tuned vs edv3: pulled to a wider, calmer canopy
  * framing for a sky-as-subject theme (no board-centric fluid mass to hug).
  *
- * Design constraints: max 0.5u displacement, max 6° FOV delta → no motion
- * sickness; all deltas critically damped (no overshoot/oscillation).
+ * Design constraints: max 0.5u sustained displacement, max 6° FOV delta → no
+ * motion sickness; all deltas critically damped (no overshoot/oscillation).
+ * Impact shake is a separate, strictly transient budget on top (see shake()).
  */
 import * as THREE from 'three';
 
@@ -32,6 +33,16 @@ const POINTER_ORBIT_Z = 0.6;
 const POINTER_LOOKAT_GAIN = 0.28;
 const POINTER_DAMP_RATE = 2.6; // s^-1
 
+// Impact shake. Incommensurate frequencies so the rattle never collapses into one
+// visible sine, and low enough to stay well-sampled at 60 Hz (Nyquist = 30 Hz).
+const SHAKE_FREQ_X = 8.9; // Hz
+const SHAKE_FREQ_Y = 11.7; // Hz
+const SHAKE_FREQ_ROLL = 6.1; // Hz
+// Roll per world-unit of amplitude. The sky is the subject here and a distant dome
+// barely parallaxes under translation, so a little roll is what actually sells an
+// impact — kept small (a 0.3u slam rolls ~0.86°).
+const SHAKE_ROLL_PER_UNIT = 0.05; // rad/unit
+
 // Lissajous idle float — period and amplitude per axis (subtle "breathing").
 const IDLE_X_PERIOD = 18;
 const IDLE_Y_PERIOD = 27;
@@ -39,7 +50,13 @@ const IDLE_X_AMP = 0.25;
 const IDLE_Y_AMP = 0.18;
 
 export class CameraDirector {
-    constructor(camera, focus = DEFAULT_FOCUS) {
+    /**
+     * `idlePhase` seeds the Lissajous float and is the director's only source of
+     * nondeterminism; pass it explicitly (playground captures, tests) to make a run
+     * reproducible. Everything else here — including the impact shake — is a pure
+     * function of theme time.
+     */
+    constructor(camera, focus = DEFAULT_FOCUS, { idlePhase = Math.random() * Math.PI * 2 } = {}) {
         this.camera = camera;
         this.focus = focus.clone();
 
@@ -58,7 +75,11 @@ export class CameraDirector {
         this._eventFovDelta = 0;
         this._eventFovDeltaTarget = 0;
 
-        this._idlePhase = Math.random() * Math.PI * 2;
+        // Kept so snapToRest() can rewind the float to where this instance started,
+        // rather than to a hardcoded 0 — a replayed seek must land on one framing,
+        // but each session should still breathe from its own random phase.
+        this._idlePhaseSeed = idlePhase;
+        this._idlePhase = idlePhase;
 
         this._trackTarget = focus.clone();
         this._trackBlend = 0;
@@ -68,17 +89,43 @@ export class CameraDirector {
         this._pointerX = 0;
         this._pointerY = 0;
 
-        this._shakeAmp = 0;
-        this._shakeDecayPerMs = 0;
+        this._shakeAmp = 0; // peak amplitude of the shake in flight
+        this._shakeTime = 0; // seconds elapsed into it
+        this._shakeDuration = 0;
+        this._shakePhase = 0;
+        this._shakeSeq = 0;
+        this._shakeRoll = 0;
 
         this._lookAt = new THREE.Vector3();
         this._tmp = new THREE.Vector3();
     }
 
+    /**
+     * Fire a short impact shake. `amplitude` is the PEAK positional offset in world
+     * units. The jitter is applied before lookAt() re-aims at the focal point, so what
+     * the viewer actually sees is ~atan(amplitude / restDistance) of view rotation:
+     * on this rig (14u back, 40° FOV) one unit of amplitude ≈ 110 px of 1080p screen
+     * height. Anything below ~0.02 is imperceptible against a distant sky.
+     *
+     * A stronger shake overrides one in flight; a weaker one is ignored rather than
+     * cutting a big impact short.
+     */
     shake(amplitude = 0.04, durationMs = 120) {
-        if (amplitude <= this._shakeAmp) return;
+        if (!(amplitude > 0) || amplitude <= this.currentShakeAmplitude()) return;
         this._shakeAmp = amplitude;
-        this._shakeDecayPerMs = amplitude / Math.max(16, durationMs);
+        this._shakeDuration = Math.max(16, durationMs) / 1000;
+        this._shakeTime = 0;
+        // Golden-angle phase offset per trigger so consecutive shakes don't repeat,
+        // without Math.random() — keeps phase-locked `?t=` playground captures exact.
+        this._shakeSeq += 1;
+        this._shakePhase = this._shakeSeq * 2.399963;
+    }
+
+    /** Envelope-scaled amplitude of the shake in flight (0 when idle). */
+    currentShakeAmplitude() {
+        if (this._shakeAmp <= 0 || this._shakeTime >= this._shakeDuration) return 0;
+        const k = 1 - this._shakeTime / this._shakeDuration; // quadratic ease-out
+        return this._shakeAmp * k * k;
     }
 
     fovPunch(delta = -1.5) {
@@ -145,14 +192,30 @@ export class CameraDirector {
         this._lookAt.x += this._pointerX * POINTER_ORBIT_X * POINTER_LOOKAT_GAIN;
         this._lookAt.y += -this._pointerY * POINTER_ORBIT_Y * POINTER_LOOKAT_GAIN;
 
-        // 8. Apply to camera + micro-shake jitter (post-spring).
+        // 8. Apply to camera + impact shake (post-spring). Smooth incommensurate
+        //    oscillators under a decaying envelope, advanced on theme time — so the
+        //    rattle reads identically at 60/120/144 Hz instead of becoming a
+        //    higher-frequency buzz the way per-frame white noise does.
         this.camera.position.copy(this._currentPos);
-        if (this._shakeAmp > 0.0001) {
-            this.camera.position.x += (Math.random() - 0.5) * this._shakeAmp * 2;
-            this.camera.position.y += (Math.random() - 0.5) * this._shakeAmp * 2;
-            this._shakeAmp = Math.max(0, this._shakeAmp - this._shakeDecayPerMs * (delta * 1000));
+        this._shakeRoll = 0;
+        const shakeAmp = this.currentShakeAmplitude();
+        if (shakeAmp > 0) {
+            const t = this._shakeTime;
+            const p = this._shakePhase;
+            const TAU = Math.PI * 2;
+            this.camera.position.x += Math.sin((t * SHAKE_FREQ_X + p) * TAU) * shakeAmp;
+            this.camera.position.y += Math.sin((t * SHAKE_FREQ_Y + p * 1.7) * TAU) * shakeAmp;
+            this._shakeRoll = Math.sin((t * SHAKE_FREQ_ROLL + p * 0.6) * TAU) * shakeAmp * SHAKE_ROLL_PER_UNIT;
+            this._shakeTime += delta;
+            if (this._shakeTime >= this._shakeDuration) {
+                this._shakeAmp = 0;
+                this._shakeTime = 0;
+                this._shakeDuration = 0;
+            }
         }
         this.camera.lookAt(this._lookAt);
+        // Roll must follow lookAt(): it overwrites the full orientation (up = +Y).
+        if (this._shakeRoll !== 0) this.camera.rotateZ(this._shakeRoll);
         if (Math.abs(this.camera.fov - this._currentFov) > 0.01) {
             this.camera.fov = this._currentFov;
             this.camera.updateProjectionMatrix();
@@ -193,6 +256,15 @@ export class CameraDirector {
         this._pointerY = 0;
         this._pointerTargetX = 0;
         this._pointerTargetY = 0;
+        this._shakeAmp = 0;
+        this._shakeTime = 0;
+        this._shakeDuration = 0;
+        this._shakeRoll = 0;
+        // Rewind the per-trigger phase counter too: a replay must reissue the SAME
+        // sequence of shake phases, or a ?t= landing mid-shake frames differently
+        // every time even though the envelope matches.
+        this._shakeSeq = 0;
+        this._idlePhase = this._idlePhaseSeed;
         this.camera.position.copy(this._currentPos);
         this.camera.lookAt(this.focus);
         this.camera.fov = this._currentFov;

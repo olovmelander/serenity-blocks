@@ -49,18 +49,18 @@ describe('OdysseyStateManager progression', () => {
 
     it('does not unlock a non-existent level after the campaign finale', () => {
         const state = new OdysseyStateManager({ levelRegistry: registry });
-        state.currentLevel = 55;
+        state.currentLevel = 59;
         state.currentChapter = 8;
 
-        state.completeLevel(55, {
+        state.completeLevel(59, {
             stars: 3,
             score: 9000,
             time: 180,
             bonuses: [],
         });
 
-        expect(state.isLevelUnlocked(56)).toBe(false);
-        expect(state.currentLevel).toBe(55);
+        expect(state.isLevelUnlocked(60)).toBe(false);
+        expect(state.currentLevel).toBe(59);
         expect(state.currentChapter).toBe(8);
     });
 
@@ -68,8 +68,8 @@ describe('OdysseyStateManager progression', () => {
         const state = new OdysseyStateManager({ levelRegistry: registry });
 
         expect(state.getProgressSummary()).toMatchObject({
-            totalLevels: 55,
-            maxStars: 165,
+            totalLevels: 59,
+            maxStars: 177,
             totalChapters: 8,
         });
         expect(state.getChapterProgress(8)).toMatchObject({

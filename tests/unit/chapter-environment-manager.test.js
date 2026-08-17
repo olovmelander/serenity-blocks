@@ -4,6 +4,7 @@ import {
     ChapterEnvironmentManager,
     resolveChapterBlendState,
 } from '../../src/rendering/odyssey/ChapterEnvironmentManager.js';
+import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/path-utils.js';
 import {
     createSurfaceWorldEnvironment,
 } from '../../src/rendering/odyssey/chapter-environments/surface-world.js';
@@ -49,7 +50,10 @@ describe('resolveChapterBlendState', () => {
     });
 
     it('falls back to a single active chapter outside seam windows', () => {
-        const state = resolveChapterBlendState(0.42);
+        // DERIVED. p=0.42 sat mid-chapter-4 under the pre-ascent layout; after Wave 1A
+        // lengthened the journey it lands elsewhere. Ask for the middle of chapter 4.
+        const cp4 = getActiveOdysseyChapterPositions();
+        const state = resolveChapterBlendState((cp4[3] + cp4[4]) / 2);
         expect(state.inSeam).toBe(false);
         expect(state.activeChapter).toBe(4);
         expect(state.weights[4]).toBe(1);
@@ -57,8 +61,12 @@ describe('resolveChapterBlendState', () => {
     });
 
     it('keeps chapter 4 alive into early chapter 5 with the widened seam', () => {
-        const inside = resolveChapterBlendState(0.556);
-        const outside = resolveChapterBlendState(0.561);
+        // DERIVED from the 4->5 boundary and its own seam width, rather than two literals
+        // that happened to straddle it before the ascent re-normalised every p.
+        const cpb = getActiveOdysseyChapterPositions();
+        const boundary45 = cpb[4];
+        const inside = resolveChapterBlendState(boundary45 + 0.001);
+        const outside = resolveChapterBlendState(boundary45 + 0.2);
 
         expect(inside.inSeam).toBe(true);
         expect(inside.boundaryId).toBe('4-5');
@@ -190,8 +198,10 @@ describe('ChapterEnvironmentManager late-game coverage', () => {
         expect(chapter8?.userData?.chapterId).toBe(8);
         expect(manager.environments.has(7)).toBe(true);
         expect(manager.environments.has(8)).toBe(true);
-        expect(manager.getBoundaryTransition('3-4').seamWidth).toBe(0.03);
-        expect(manager.getBoundaryTransition('4-5').seamWidth).toBe(0.06);
+        // Scaled by Wave 1A: seam widths are in p, and the ascent changed what p is worth.
+        // See the note atop chapter-profile.js — these preserve their original WORLD extent.
+        expect(manager.getBoundaryTransition('3-4').seamWidth).toBe(0.0222);
+        expect(manager.getBoundaryTransition('4-5').seamWidth).toBe(0.0443);
         expect(manager.getBoundaryTransition('3-4').preloadDistance).toBe(0.06);
         expect(manager.getBoundaryTransition('6-7').beatDurationMs).toBe(1100);
         expect(manager.getBoundaryTransition('7-8').fxPreset).toBe('neon');

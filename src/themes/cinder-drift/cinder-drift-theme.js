@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { CINDER_DRIFT_TETROMINOS } from './cinder-drift-tetrominos.js';
 import {
     magmaBackgroundVertexShader,
@@ -33,6 +34,11 @@ export default class CinderDriftTheme extends BaseTheme {
         this.pointerY = 0;
         this.smoothedPointerX = 0;
         this.smoothedPointerY = 0;
+
+        // Impact shake. The theme owns its own orbit/parallax, so the rig contributes
+        // only the shake; `cameraBase` is the scratch this frame's orbit is written into.
+        this.cameraRig = null;
+        this.cameraBase = { x: 0, y: 0, z: 40 };
 
         // Three.js components
         this.scene = null;
@@ -91,6 +97,14 @@ export default class CinderDriftTheme extends BaseTheme {
         // Camera setup for cinematic view
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.camera.position.z = 40;
+        this.cameraRig = new ThemeCameraRig(this.camera, {
+            focus: { x: 0, y: 0, z: 0 },
+            // The theme's own orbit has a ~63 s period, so over a few seconds it barely
+            // reads as motion. The rig adds a faster 18/27 s float on top so the frame
+            // feels alive at a glance, without flattening that slow cinematic drift.
+            breathe: true,
+            pointer: false, // the theme already applies its own mouse parallax
+        });
 
         // Renderer
         this.renderer = new THREE.WebGLRenderer({
@@ -733,7 +747,7 @@ export default class CinderDriftTheme extends BaseTheme {
         this.updateMagmaExplosion(delta);
 
         // 1. Rock Animation (Drift & Bob)
-        this.rocks.forEach((rock, i) => {
+        this.rocks.forEach((rock) => {
             // Slow rotation
             rock.mesh.rotation.x = time * rock.rotSpeed * 0.5;
             rock.mesh.rotation.y = time * rock.rotSpeed;
@@ -743,11 +757,9 @@ export default class CinderDriftTheme extends BaseTheme {
             rock.mesh.position.x = rock.basePos.x + Math.cos(time * 0.3 + rock.randomOffset) * 1.0;
         });
 
-        // 2. Camera Shake / Drift
-        const intensity = this.uniforms.coreIntensity.value - 1.0; // 0 at base
-        const shakeX = (Math.random() - 0.5) * intensity * 0.2;
-        const shakeY = (Math.random() - 0.5) * intensity * 0.2;
-
+        // 2. Camera drift. Impact shake is the rig's job now — the old per-frame
+        //    Math.random() jitter was scaled by (coreIntensity - 1), which a piece lock
+        //    only lifts by 0.1, i.e. ±0.01 units on a camera 40 units out: invisible.
         // Smooth pointer tracking for subtle mouse parallax
         this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
         this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
@@ -755,9 +767,10 @@ export default class CinderDriftTheme extends BaseTheme {
         const parallaxY = -this.smoothedPointerY * 2.5;
 
         // Gentle cinematic orbit + mouse parallax
-        this.camera.position.x = Math.sin(time * 0.1) * 5 + shakeX + parallaxX;
-        this.camera.position.y = Math.cos(time * 0.15) * 3 + shakeY + parallaxY;
-        this.camera.lookAt(parallaxX * 0.4, parallaxY * 0.4, 0);
+        this.cameraBase.x = Math.sin(time * 0.1) * 5 + parallaxX;
+        this.cameraBase.y = Math.cos(time * 0.15) * 3 + parallaxY;
+        this.cameraRig.setFocus(parallaxX * 0.4, parallaxY * 0.4, 0);
+        this.cameraRig.apply(delta, this.cameraBase);
 
         // 3. Intensity Decay
         if (this.uniforms.coreIntensity.value > 1.0) {
@@ -787,14 +800,21 @@ export default class CinderDriftTheme extends BaseTheme {
         this.eventUnsubscribers.push(
             eventBus.on(EVENTS.LINE_CLEAR, (data) => {
                 if (!this.isActive) return;
-                const count = data.lines || 1;
+                // The bus emits `lineCount` (see events/gameplay-events.js); the old
+                // `data.lines` read was always undefined, so every clear — a single or
+                // a Tetris alike — surged as 1. `lines` kept as a defensive fallback.
+                const count = data.lineCount ?? data.lines ?? 1;
                 this.triggerSurge(count);
+                this.cameraRig?.shakeClear(count, data.comboCount ?? 0);
                 this.triggerBurst(20 * count, 1.0, new THREE.Color(0xff4400));
             }),
             eventBus.on(EVENTS.COMBO, (data) => {
                 if (!this.isActive) return;
-                const combo = data.combo || 1;
+                // Same payload fix as LINE_CLEAR: the bus emits `comboCount`, so the old
+                // `data.combo` read pinned every combo — however long — to 1.
+                const combo = data.comboCount ?? data.combo ?? 1;
                 this.triggerSurge(combo * 1.5);
+                this.cameraRig?.shakeClear(1, combo);
 
                 // Random location for the explosion - CONSTRAINED TO VISIBLE AREA
                 // Camera sees roughly 45% of the width and 35% of the height
@@ -821,6 +841,7 @@ export default class CinderDriftTheme extends BaseTheme {
             eventBus.on(EVENTS.PIECE_LOCK, () => {
                 if (!this.isActive) return;
                 this.triggerMiniPulse();
+                this.cameraRig?.shakeLock();
 
                 // Random position for piece lock puff
                 const visibleRangeX = 0.4;

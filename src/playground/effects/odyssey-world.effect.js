@@ -38,7 +38,16 @@ export function create({ scene, camera, params }) {
     // The world does not know the rail; the caller samples it. 48 points across the journey
     // seat the underwater god-ray shafts along the real submerged stretch.
     const railSamples = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
-    const world = createOdysseyWorld({ quality, railSamples });
+    // `?worldNoVisCull=1` builds the full COMPOSITION set (no rail-visibility cull) — pair it
+    // with `?worldAerial=1` to review authoring decisions that ship few or no visible trees
+    // (seam and north-slope carving lives almost entirely in the culled set).
+    const world = createOdysseyWorld({
+        quality,
+        railSamples,
+        visibilityCull: params?.get?.('worldNoVisCull') !== '1',
+        // Review lever for the north lake's water palette (see LAKE_TINT_VARIANTS).
+        lakeTint: params?.get?.('lakeTint') || '',
+    });
     scene.add(world.group);
 
     // COMPILE BISECT LEVER — ?worldOnly=ground,sky (comma list; substring match on mesh name).
@@ -66,6 +75,27 @@ export function create({ scene, camera, params }) {
     const railAt = (time) => ACT_START
         + ((ACT_END - ACT_START) * Math.min(1, Math.max(0, (time % LOOP_SECONDS) / LOOP_SECONDS)));
 
+    /**
+     * AERIAL REVIEW CAMERA — `?worldAerial=1`, with `&aerialH=` / `&aerialR=` / `&aerialYaw=`.
+     *
+     * The rail camera answers "what does the player see"; it cannot answer "how is the island
+     * COMPOSED", which is the question every forest iteration has actually been reviewed on. That
+     * review has been happening on editor screenshots pasted into chat, which is why species
+     * placement kept being argued in words. This is the same view, reproducible and phase-locked.
+     *
+     * Framed south of the island looking north so the axes match those screenshots: east (+x,
+     * the autumn side) on the RIGHT, west (the green end) on the left.
+     */
+    const AERIAL = params?.get?.('worldAerial') === '1';
+    const AERIAL_CENTRE = {
+        x: Number(params?.get?.('aerialX') ?? -225),
+        y: Number(params?.get?.('aerialY') ?? 300),
+        z: Number(params?.get?.('aerialZ') ?? -625),
+    };
+    const aerialH = Number(params?.get?.('aerialH') || 1500);
+    const aerialR = Number(params?.get?.('aerialR') || 2600);
+    const aerialYaw = Number(params?.get?.('aerialYaw') || 0);
+
     return {
         cameraRadius: 1200,
         update(time) {
@@ -74,9 +104,24 @@ export function create({ scene, camera, params }) {
             // Pass the EYE the camera() hook below actually uses — uSubmerged is driven by
             // the eye now, and omitting it falls back to the old rail contract, which put
             // this playground 32 u above its own camera.
-            world.update(time, pt, (p - ACT_START) / (ACT_END - ACT_START), pt.y + ODYSSEY_EYE_RAIL_OFFSET_Y);
+            // The EYE must be the aerial one when the aerial camera is flying, or the world
+            // grades itself for a viewer standing at sea level while the picture is taken from
+            // 1,800 u up — the submerged term and the aerial mix both read this.
+            const eyeY = AERIAL
+                ? AERIAL_CENTRE.y + aerialH
+                : pt.y + ODYSSEY_EYE_RAIL_OFFSET_Y;
+            world.update(time, pt, (p - ACT_START) / (ACT_END - ACT_START), eyeY);
         },
         camera(time, cam) {
+            if (AERIAL) {
+                cam.position.set(
+                    AERIAL_CENTRE.x + (Math.sin(aerialYaw) * aerialR),
+                    AERIAL_CENTRE.y + aerialH,
+                    AERIAL_CENTRE.z + (Math.cos(aerialYaw) * aerialR),
+                );
+                cam.lookAt(AERIAL_CENTRE.x, AERIAL_CENTRE.y, AERIAL_CENTRE.z);
+                return;
+            }
             const p = railAt(time);
             const pt = getOdysseyPathPointAt(p);
             const ahead = getOdysseyPathPointAt(Math.min(1, p + 0.055));

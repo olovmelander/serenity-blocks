@@ -19,7 +19,7 @@ import {
 } from './world/odyssey-world-grade.js';
 import { ODYSSEY_BREACH_P } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
-import { isWorldVisibleAtProgress } from './world/odyssey-world-act-gate.js';
+import { isWorldVisibleAtProgress, worldAtmosphericThin, worldDepartureFade } from './world/odyssey-world-act-gate.js';
 import {
     STEAM_QUENCH_EXIT_HALF_WIDTH,
     STEAM_QUENCH_HALF_WIDTH,
@@ -69,6 +69,10 @@ import {
     endPostTargetCompile,
     compileGroupThroughPost,
 } from './warmup/post-target-compile.js';
+
+// Chapter 6's own fog tone — the void the world recedes into. Not the live fog: see the note
+// at the call site for why fading toward the CURRENT sky brightened the world instead.
+const ONE_WORLD_DEPARTURE_TARGET = new THREE.Color(0x05060f);
 
 // Dynamic-resolution (DRS) tuning. The odyssey board pins a static pixel ratio at
 // init/resize; here we wire the existing frame-time policy so render scale sheds under
@@ -661,6 +665,11 @@ export class OdysseyBoardController {
                 const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
                 this.oneWorld = createOdysseyWorld({
                     quality: weakLane ? 'low' : 'high',
+                    // The forest's hero band rides FOREST_LOD_DISTANCE_BY_TIER. Flattened to
+                    // 200 on every tier by owner direction 2026-08-15 (post-carve, the island
+                    // is 26% smaller than when 200 measured over-budget on the integrated
+                    // lane); the plumbing stays so a tier split is a table edit, not a rewire.
+                    qualityTier: this.qualityName,
                     // The post stack owns exposure and applies ACES after it, so the world
                     // must not apply exposure a second time, and must hand over scene-linear
                     // values rather than the display-referred palette the playground wants.
@@ -695,6 +704,48 @@ export class OdysseyBoardController {
                     // the tree could switch it off, so its total cost had never been measured
                     // — and an unmeasured cost cannot fund a water package (ADR-0016).
                     water: !readBooleanUrlFlag('odysseyWorldNoWater'),
+                    // Bisect lever for the Act II forest plan's Wave 0a:
+                    // ?odysseyWorldNoForest=1 removes the forest entirely. Exactly the same
+                    // argument as the water lever above, and the forest is the larger unpriced
+                    // system of the two — 15,427 trees in 40 chunks, never once measured as a
+                    // differential because nothing could turn it off. Opt-OUT (the forest
+                    // ships), so `no-forest` REMOVES and forestMs is baseline minus
+                    // configuration. docs/ODYSSEY_ACT2_FOREST_PLAN_2026-08.md §5 Wave 0a.
+                    forest: !readBooleanUrlFlag('odysseyWorldNoForest'),
+                    // Forest plan Wave 0b — the PAINT PROBE, opt-in and shipping nothing:
+                    // ?odysseyWorldForestPaint=1 swaps the incumbent facet-normal forest for
+                    // blob normals + the banded ramp. Here as well as on the graded playground
+                    // rig because owner decision D0 may want the verdict taken in the real
+                    // game, and a probe only reachable from a rig invites "but does it hold
+                    // up in-game" as an unanswerable question.
+                    forestPaint: readBooleanUrlFlag('odysseyWorldForestPaint'),
+                    // The zoned species roster is the SHIPPED forest since the 2026-08-14
+                    // swap. `?odysseyWorldForestV1=1` restores the incumbent cone forest
+                    // (ADR-0015: retained, one flag from restoration). The migration flag
+                    // `odysseyWorldForestV2` is deliberately NO LONGER READ — a dead lever
+                    // reports innocence, not absence (the odysseyWorldNoHeroes lesson).
+                    forestV2: !readBooleanUrlFlag('odysseyWorldForestV1'),
+                    // Ground plan Wave 0a — the ground's own pricing lever, opt-IN and
+                    // shipping nothing: ?odysseyWorldFlatGround=1 keeps every triangle and
+                    // every draw and withholds only the ground's fragment mesostructure, so
+                    // `baseline - flat-ground` prices the stack the overhaul spends against.
+                    // The ground could not use the forest's or water's shape (never built) —
+                    // the clipmap IS the world, so removing it measures a different scene.
+                    // docs/ODYSSEY_ACT2_GROUND_PLAN_2026-08.md §5 Wave 0a.
+                    flatGround: readBooleanUrlFlag('odysseyWorldFlatGround'),
+                    // The rail-visibility cull SHIPS (it removes only trees no camera can ever
+                    // see, measured at 0.00% of pixels across four stations). ADR-0015:
+                    // `?odysseyWorldNoVisCull=1` puts every tree back, so a suspected hole is
+                    // attributable in one reload rather than unfalsifiable.
+                    visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
+                    // EXPERIMENT: `?odysseyForestLod=hero` pins every tree to the hero tier so
+                    // the look can be FELT in the real game. Costs ~18 ms of forest on the
+                    // integrated lane against a 10.6 ms whole-frame budget, so it is a test
+                    // lever and not a quality option. Accepts hero | mid | far.
+                    forestLod: (() => {
+                        const v = readUrlValue('odysseyForestLod');
+                        return ['hero', 'mid', 'far'].includes(v) ? v : null;
+                    })(),
                     // Diagnostic re-shades of the deck, for the "keyed to something other than
                     // the camera" defect class: ?odysseyWorldCloudDebug=lattice draws the
                     // clipmap's ring structure over the shipped deck, =alpha draws the opacity
@@ -704,6 +755,10 @@ export class OdysseyBoardController {
                     // removes it for bisects; `?odysseyWorldCloudSheet=1` brings the retired
                     // flat sheet back alongside or instead.
                     cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
+                    // REVIEW LEVER (temporary, colour pass): pick a north-lake water
+                    // palette so the GRADED capture harness can shoot the arms without a
+                    // tree edit between runs. Unset ships the default.
+                    lakeTint: readUrlValue('lakeTint') || '',
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
                     // Seat the Ch2 god-ray shafts along the real rail's submerged stretch.
                     railSamples: Array.from(
@@ -2551,6 +2606,15 @@ export class OdysseyBoardController {
             if (inWindow) this.steamQuench.update(this.time, (cameraProgress - lo) / (hi - lo));
         }
         if (this.cloudBank && Number.isFinite(this._cloudBankBoundary)) {
+            // ⚠️ The bank's fast exit is the single largest step left in the 5->6 transition
+            // (-81.5 luma at p=0.668; `?odysseyNoCloudBank=1` turns that into -4.4). The
+            // obvious fix — a longer, asymmetric exit window like the steam quench's — was
+            // TRIED AND REVERTED: the bank's own colour ramp keys `toVoid` off raw window
+            // progress (`smoothstep(0.45, 1.0, uAltitude)`), which silently assumes the peak
+            // sits at t=0.5. Stretching the exit put p=0.678 at t=0.43, BELOW the tint
+            // threshold, so the bank stayed fully bridge-coloured into space and the frame
+            // ended at luma 201 instead of ~26. Fixing the exit means re-basing that colour
+            // ramp on the peak first; the window is not the only thing that assumes symmetry.
             const lo = this._cloudBankBoundary - STEAM_QUENCH_HALF_WIDTH;
             const hi = this._cloudBankBoundary + STEAM_QUENCH_HALF_WIDTH;
             const inWindow = cameraProgress > lo && cameraProgress < hi;
@@ -2619,6 +2683,49 @@ export class OdysseyBoardController {
                 const worldVisible = isWorldVisibleAtProgress(cameraProgress, actStart, actEnd);
                 this.oneWorld.group.visible = worldVisible;
                 this._oneWorldVisible = worldVisible;
+
+                // ── THE DEPARTURE FADE (Wave 1B) ─────────────────────────────────────
+                // The gate above is a BOOLEAN, and until now it was also the artistic end of
+                // Act II — the world drew at full strength right up to actEnd + margin and
+                // then stopped between two frames. Measured at the 5->6 seam: a -89 luma step
+                // at p=0.678, with 74% of the whole transition's brightness change landing in
+                // its final fifth. That flag is what the owner sees as the mountain popping.
+                //
+                // So the world now RECEDES into the sky before the flag ever fires. The ramp
+                // is derived from the act edge, never hardcoded, so a re-layout carries it:
+                // it opens 30% of the sky chapter before the boundary and is fully closed at
+                // 85% of the margin — comfortably ahead of the gate, which keeps its job as
+                // the correctness backstop and simply never has anything visible left to hide.
+                if (typeof this.oneWorld.setDepartureFade === 'function') {
+                    const skyStart = this.presentationLayout.chapterPositions[4];
+                    // ⚠️ RECEDE INTO THE VOID, NOT INTO THE LIVE FOG. The first version passed
+                    // `scene.fog.color`, reasoning that aerial perspective means distant things
+                    // take the sky's colour. True in atmosphere — and wrong here, because
+                    // chapter 5's fog is 0xbcd8ec, a bright pale blue at ~212 luma. "Receding"
+                    // therefore BRIGHTENED the world into a flat pale sheet: measured, p=0.618
+                    // went from 133.8 to 197.8 luma, and the frame stayed saturated with
+                    // fog-coloured world right up to the crossfade, which is why widening,
+                    // staggering and dimming all failed to move the cliff.
+                    //
+                    // The rail is leaving the atmosphere, so the correct target is the void the
+                    // journey is entering, not the sky it is leaving.
+                    this.oneWorld.setDepartureFade(
+                        worldDepartureFade(cameraProgress, skyStart, actEnd),
+                        ONE_WORLD_DEPARTURE_TARGET,
+                    );
+                }
+
+                // ── ATMOSPHERIC THINNING (Wave 3 / F3) ───────────────────────────────
+                // The deck loses contrast, saturation and apparent scale as the rail
+                // climbs, instead of holding full cumulus form to the last drawn frame.
+                // Same shape as the fade above: schedule derived from the act edge, in
+                // fractions, so a re-layout carries it.
+                if (typeof this.oneWorld.setAtmosphericThin === 'function') {
+                    const skyStart = this.presentationLayout.chapterPositions[4];
+                    this.oneWorld.setAtmosphericThin(
+                        worldAtmosphericThin(cameraProgress, skyStart, actEnd),
+                    );
+                }
 
                 // Only update it while it draws. `heightAt` and `fog` are plain data and stay
                 // readable either way, so the level-orb seating and the fog handover below are
@@ -2798,9 +2905,9 @@ export class OdysseyBoardController {
             if (this._fastStart && Number.isFinite(this.focusChapter)) {
                 warmChapterIds = [this.focusChapter];
             }
-            const fastStartPosition = Number.isFinite(cc.currentPosition)
-                ? cc.currentPosition
-                : (Number.isFinite(savedPos) ? savedPos : 0);
+            let fastStartPosition = 0;
+            if (Number.isFinite(cc.currentPosition)) fastStartPosition = cc.currentPosition;
+            else if (Number.isFinite(savedPos)) fastStartPosition = savedPos;
             const steps = this._fastStart
                 ? buildPointWarmSamples({ position: fastStartPosition })
                 : warmChapterIds
@@ -2994,7 +3101,11 @@ export class OdysseyBoardController {
     updateProgress(progressData) {
         this.progressData = progressData;
         this.nodeManager?.updateFromProgress(progressData);
-        this.pathRenderer?.setProgress(progressData.furthestLevel / 56);
+        // totalLevels + 1, computed — the old literal 56 quietly under-reported the
+        // trail once the space lengthening took the roster from 55 to 59 levels.
+        this.pathRenderer?.setProgress(
+            progressData.furthestLevel / (this.levelData.length + 1 || 60),
+        );
     }
 
     getLayoutData() {
