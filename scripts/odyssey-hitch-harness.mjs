@@ -79,6 +79,16 @@ const { app, BrowserWindow } = electron;
 
 // Match the shipped app's GPU selection (electron/main.js) so we profile the adapter players get.
 // These must be appended before app-ready.
+//
+// GPU-crash resilience (2026-08-17): this dev machine's iGPU has TDR form under sustained
+// full-journey WebGPU (see memory: odyssey-capture-constraint), and a single GPU-process crash
+// then made every SUBSEQUENT load fail — Chromium domain-blocks 3D APIs after a crash, which is
+// what the unexplained ERR_FAILED on run 2 was. Disable the blocklist reaction and the crash
+// limit so one bad run cannot poison the rest of a session, and LOG process deaths so a crashed
+// run is attributable instead of silent. For this machine, prefer one process per run anyway:
+// scripts/odyssey-hitch-baseline.mjs orchestrates exactly that.
+app.disableDomainBlockingFor3DAPIs();
+app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
 app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('enable-webgl');
 // Without these, an occluded/backgrounded window throttles rAF to ~1Hz and every frame reads 1001ms.
@@ -172,9 +182,13 @@ async function runOnce(variant, tag) {
         width: 1280,
         height: 720,
         show: true,
-        webPreferences: { backgroundThrottling: false, contextIsolation: true, sandbox: true },
+        // No sandbox — matches the battle-tested odyssey-perf-session.mjs window config.
+        webPreferences: { backgroundThrottling: false, contextIsolation: true, nodeIntegration: false },
     });
     activeWindow = win;
+    win.webContents.on('render-process-gone', (_e, details) => {
+        console.log(`!! render-process-gone: ${details?.reason || 'unknown'}`);
+    });
     const consoleLines = [];
     win.webContents.on('console-message', (_e, _l, message) => consoleLines.push(message));
     win.webContents.on('did-start-loading', () => {
@@ -197,6 +211,7 @@ async function runOnce(variant, tag) {
         await win.loadURL(url);
     }
     await win.webContents.executeJavaScript(INIT_SCRIPT, true).catch(() => {});
+    console.log('  phase: page loaded');
 
     await win.webContents.executeJavaScript(`
       (async () => {
@@ -212,11 +227,17 @@ async function runOnce(variant, tag) {
         return true;
       })();`, true).catch(() => {});
 
+    console.log('  phase: board active, settling');
     await sleep(SETTLE_MS);
-    await win.webContents.executeJavaScript(scrollDriver('forward', 0, END_P, SCROLL_MS), true).catch(() => {});
+    console.log('  phase: forward pass');
+    await win.webContents.executeJavaScript(scrollDriver('forward', 0, END_P, SCROLL_MS), true)
+        .catch((e) => console.log(`  forward driver threw: ${e?.message}`));
     await sleep(3000);
-    await win.webContents.executeJavaScript(scrollDriver('backward', END_P, 0, SCROLL_MS), true).catch(() => {});
+    console.log('  phase: backward pass');
+    await win.webContents.executeJavaScript(scrollDriver('backward', END_P, 0, SCROLL_MS), true)
+        .catch((e) => console.log(`  backward driver threw: ${e?.message}`));
     await sleep(2000);
+    console.log('  phase: collecting');
 
     const raw = await win.webContents.executeJavaScript(`
       (() => {
@@ -302,6 +323,16 @@ async function guardedRun(variant, tag) {
 
 async function main() {
     await app.whenReady();
+    // THE bug that masqueraded as a GPU wedge (2026-08-17): Electron's DEFAULT
+    // window-all-closed handler quits the app. Every runOnce() ends with win.destroy(), so the
+    // moment a run finished, the app began shutting down — the next run's loadURL then raced the
+    // teardown (the mystery ERR_FAILED), or the process simply exited before the summary. The
+    // "GPU state invalid" stderr lines were incidental (they appear in successful runs too).
+    // Keep the app alive between runs; main() quits explicitly when done.
+    app.on('window-all-closed', () => { /* keep alive between runs */ });
+    app.on('child-process-gone', (_e, details) => {
+        console.log(`!! child-process-gone: type=${details?.type} reason=${details?.reason}`);
+    });
     const results = [];
 
     // Discarded warm-up per variant: the first run after a build has a stale pipeline cache.
