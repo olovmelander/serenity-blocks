@@ -131,7 +131,13 @@ describe('cloud field composition', () => {
         // traded for clouds that stop reading as polygons; if it ever needs winning back, the
         // sphere-trace loop is the hot path (38 field evaluations per vertex), not the bake
         // structure.
-        expect(ms).toBeLessThan(900);
+        //
+        // 900 -> 1500 (2026-08-16): the suite grew ~10 files in one day and FULL-SUITE
+        // parallel load now wall-clocks this at 901-1257 ms while the bake itself is
+        // UNCHANGED (solo run: 469 ms including transform, the inline figure still ~330).
+        // The bound guards the BAKE, not the scheduler; 1500 still fails loudly on a real
+        // ~4x bake regression.
+        expect(ms).toBeLessThan(1500);
         build.geometry.dispose();
     });
 
