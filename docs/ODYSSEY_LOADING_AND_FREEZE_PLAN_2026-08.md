@@ -1,6 +1,10 @@
 # Odyssey — loading time & freeze remediation plan (2026-08-17)
 
-**Status:** investigation complete. **Wave 1 implemented and verified (§8).** Waves 2–4 open.
+**Status:** investigation complete; Wave 1 + follow-ups shipped (§8–§17). **Superseded as roadmap
+by [ODYSSEY_BEST_IN_CLASS_PERF_MASTERPLAN_2026-08.md](ODYSSEY_BEST_IN_CLASS_PERF_MASTERPLAN_2026-08.md)**
+— this document remains the measurement record. Known correction: §2's table attributes the One
+World build (~1 220 ms) to `creates`; the audit showed it sits in an UNTRACED gap between the
+`renderer` and `creates` spans (masterplan F5).
 **Scope:** cold start, drop-in freeze, micro-stutters, per-chapter transition freezes.
 **Method:** production build (`npm run build` + `vite preview :4173`), Electron shell, rAF-gap
 recorder + `longtask` PerformanceObserver injected pre-page-script. Five boot runs and one
