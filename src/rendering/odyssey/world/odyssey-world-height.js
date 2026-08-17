@@ -228,23 +228,65 @@ const BASIN_DEPTH = 42;
 // geometry has one owner and the calibrate-script mirror can no longer drift.
 export const ODYSSEY_NORTH_LAKE = Object.freeze({
     waterY: 354,
+    // Radii are the DISC extents. The shore meander below insets the carve within them,
+    // so the water body averages ~0.64 of these — and the margin that leaves is what
+    // buries the painted disc's own edge under terrain at every azimuth.
     lobes: Object.freeze([
         Object.freeze({
-            x: 280, z: -1500, rx: 310, rz: 250, depth: 48,
+            x: 280, z: -1500, rx: 348, rz: 280, depth: 48,
         }),
         Object.freeze({
-            x: -30, z: -1770, rx: 300, rz: 235, depth: 42,
+            x: -30, z: -1770, rx: 336, rz: 264, depth: 42,
         }),
         // The WAIST: the first two-lobe build read as two separate lakes — the neck's
         // floor stood 6 u above the water (per-lobe rn-0.4 probes never sample it).
         // This small lobe carves the neck itself, so the bean is one body of water.
         Object.freeze({
-            x: 130, z: -1640, rx: 180, rz: 150, depth: 36,
+            x: 130, z: -1640, rx: 202, rz: 168, depth: 36,
         }),
     ]),
 });
 
-/** Normalized lake-ellipse distance: min over lobes; < 1 is inside the carve. */
+/**
+ * THE SHORE MEANDER — why the waterline is not an ellipse.
+ *
+ * Measured on the first tripled build: the painted disc's edge was buried at every
+ * azimuth, and the east shore STILL read as a hard geometric arc (the owner's report).
+ * The reason is that the carve's own smoothstep reaches zero exactly at rn = 1, so on
+ * flat ground — the east shelf is flat to ±2 u — the terrain crosses the water plane
+ * within a hair of rn = 1 and the waterline traces the ellipse. Relief cannot break
+ * that: it is ±1 u where the carve is ±40 u.
+ *
+ * So the CARVE BOUNDARY itself meanders, two octaves of the module's own value noise,
+ * and the visible waterline is wherever that meandering bowl crosses the water plane —
+ * bays, points, and a curvature that has nothing to do with an ellipse.
+ *
+ * ⚠️ ONE-SIDED BY CONSTRUCTION, and this is the invariant that keeps the paint honest.
+ * The renderer draws plain ellipse discs at rn = 1 and knows nothing about this noise;
+ * if the meander could push the carve OUTSIDE rn = 1 it would dig ground below the water
+ * plane that no disc covers — a dry pit at lake level. The inset is therefore always
+ * POSITIVE, so the carve stays strictly inside the disc, and the 0.06 floor keeps a
+ * terrain margin (≈ 20 u on the main lobe) that buries the disc edge.
+ */
+const NORTH_LAKE_SHORE_MIN_INSET = 0.06;
+const NORTH_LAKE_SHORE_MEANDER = 0.28;
+/** Where the bowl's wall begins, and how hard it cuts the water plane (see the carve). */
+const NORTH_LAKE_WALL_START = 0.74;
+const NORTH_LAKE_WALL_POW = 0.6;
+function northLakeShoreInset(x, z) {
+    const broad = valueNoise((x / 205) + 37.4, (z / 205) - 11.8);
+    const fine = valueNoise((x / 84) - 8.6, (z / 84) + 51.2);
+    return NORTH_LAKE_SHORE_MIN_INSET
+        + (((broad * 0.7) + (fine * 0.3)) * NORTH_LAKE_SHORE_MEANDER);
+}
+
+/**
+ * Normalized lake distance, shore meander included: < 1 is inside the carve, and the
+ * boundary is the meandering waterline rather than an ellipse. Every consumer — the
+ * carve, the scatter's underwater kill, the lakeshore ring, the contrast-gate exclusion
+ * and the tests — reads THIS function, so the organic outline is shared by construction
+ * instead of by four copies agreeing.
+ */
 export function odysseyNorthLakeRn(x, z) {
     let best = Infinity;
     const { lobes } = ODYSSEY_NORTH_LAKE;
@@ -254,7 +296,7 @@ export function odysseyNorthLakeRn(x, z) {
         const lz = (z - lb.z) / lb.rz;
         best = Math.min(best, Math.sqrt((lx * lx) + (lz * lz)));
     }
-    return best;
+    return best + northLakeShoreInset(x, z);
 }
 
 /**
@@ -280,6 +322,13 @@ const NORTH_HILLS = Object.freeze([
     // The south-east shore's own lift: the tripled main lobe reaches ground the east
     // swell cannot, and this closes the last low arc.
     Object.freeze({ x: 560, z: -1720, r: 150, h: 22 }),
+    // The NE and E banks. The sculpt pass enlarged the discs onto ground that ran BELOW
+    // the water plane at a few azimuths — the one place the paint could have shown its
+    // own geometry (measured -0.8 u before these went in, +6.1 u after). Centred well
+    // outside the shoreline so they feather into the bank instead of pushing the
+    // waterline inward.
+    Object.freeze({ x: 640, z: -1230, r: 200, h: 28 }),
+    Object.freeze({ x: 730, z: -1610, r: 210, h: 26 }),
 ]);
 
 function smoothstep01(edge0, edge1, x) {
@@ -363,14 +412,34 @@ export function odysseyWorldMacro(x, z) {
 
     // The north lake's bowls: flat-ish floors, feathered rims, EXACT zero outside rn=1
     // per lobe (the compact profile is what keeps the plateau pin honest). The lobes join
-    // through smoothMax so the shoreline waist is a smooth curve, not a crease.
+    // through smoothMax so the shoreline waist is a smooth curve, not a crease — and the
+    // shore MEANDER is added to every lobe's radius, so the carve boundary (and therefore
+    // the waterline the depth buffer draws) wanders inside the disc instead of tracing an
+    // ellipse. One noise evaluation per sample, shared by the lobes.
+    const lakeInset = northLakeShoreInset(x, z);
     let lakeCarve = 0;
     for (let i = 0; i < ODYSSEY_NORTH_LAKE.lobes.length; i += 1) {
         const lb = ODYSSEY_NORTH_LAKE.lobes[i];
         const lx = (x - lb.x) / lb.rx;
         const lz = (z - lb.z) / lb.rz;
-        const rn = Math.sqrt((lx * lx) + (lz * lz));
-        lakeCarve = smoothMax(lakeCarve, (1 - smoothstep01(0.5, 1.0, rn)) * lb.depth, 8);
+        const rn = Math.sqrt((lx * lx) + (lz * lz)) + lakeInset;
+        // ⚠️ A POWER RAMP, NOT A SMOOTHSTEP, AND THAT IS THE WHOLE SHORELINE.
+        //
+        // smoothstep has ZERO derivative at both ends, so a smoothstep bowl approaches its
+        // rim tangentially: measured on the previous build, 9 u inside the boundary the
+        // carve was only 1.3 u deep — a 0.15 slope. The lake floor therefore met the flat
+        // water plane at a grazing angle, and the intersection of two near-parallel
+        // surfaces snaps to whatever the terrain MESH does — straight triangle-edge
+        // segments and hard corners. That is the "sharp edge to the right" the owner saw,
+        // and no amount of shore meander fixes it, because the meander moves the boundary
+        // while the grazing crossing follows the mesh either way.
+        //
+        // `t^0.6` instead: 9 u inside the rim the carve is 10.7 u deep (slope 1.2), so the
+        // floor CUTS the water plane and the waterline lands where the field says it does
+        // — the meander, not the triangulation. The inner crease where the ramp meets the
+        // flat floor sits well under water. Compactness is unchanged: t is 0 at rn >= 1.
+        const wall = Math.max(0, Math.min(1, (1 - rn) / (1 - NORTH_LAKE_WALL_START)));
+        lakeCarve = smoothMax(lakeCarve, (wall ** NORTH_LAKE_WALL_POW) * lb.depth, 8);
     }
     const lakeBowl = -lakeCarve;
 
