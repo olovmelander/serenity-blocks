@@ -1762,8 +1762,13 @@ export function createOdysseyWorld({
         const sunAz = normalize(vec2(uSunDir.x, uSunDir.z));
         const glintAlong = dot(lakeRel, sunAz);
         const glintAcross = dot(lakeRel, vec2(sunAz.y.negate(), sunAz.x));
-        const glint = smoothstep(float(34), float(9), abs(glintAcross))
-            .mul(smoothstep(float(320), float(60), abs(glintAlong)));
+        // ⚠️ WIDE AND SOFT, because a narrow one reads as a SEAM. At 34 u across on a
+        // 700 u lake the streak was a hard-edged band sitting exactly over the waist
+        // where the lobes join — an aerial review read it as a construction scar rather
+        // than as sun on water. 150 u across, feathered over most of that, and squared
+        // so the falloff is gentle in the middle and quick at the rim.
+        const glint = smoothstep(float(150), float(24), abs(glintAcross)).pow(2)
+            .mul(smoothstep(float(560), float(90), abs(glintAlong)));
         // The mirror family: between horizon and zenith, slightly deepened so the water
         // reads a step darker than the sky it reflects (the value ladder, in miniature).
         const lakeBase = mix(uSkyHorizon, uSkyZenith, float(0.55)).mul(0.92);
