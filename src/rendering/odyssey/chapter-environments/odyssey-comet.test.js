@@ -9,7 +9,9 @@
  * if three.js ever flips this mapping, this test fails and names the shader.
  */
 import * as THREE from 'three/webgpu';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
 import {
     SUMMIT_EARTH_REVEAL,
     createCosmicExpanseEnvironment,
@@ -40,7 +42,7 @@ describe('ch6 comet (Space overhaul Wave 5)', () => {
     it('ConeGeometry uv.y is 0 at the BASE and 1 at the TIP (the tail shader depends on this)', () => {
         const geometry = new THREE.ConeGeometry(5, 95, 12, 1, true);
         const pos = geometry.attributes.position;
-        const uv = geometry.attributes.uv;
+        const { uv } = geometry.attributes;
         let tipUv = null;
         let baseUv = null;
         let maxY = -Infinity;
@@ -56,7 +58,7 @@ describe('ch6 comet (Space overhaul Wave 5)', () => {
 
     it('mounts a head and a dithered-opaque tail, both fog-exempt', () => {
         const group = buildEnv();
-        const comet = group.userData.comet;
+        const { comet } = group.userData;
         expect(comet?.name).toBe('comet-chase');
         const names = comet.children.map((child) => child.name).sort();
         expect(names).toEqual(['comet-head', 'comet-tail']);
@@ -73,7 +75,7 @@ describe('ch6 comet (Space overhaul Wave 5)', () => {
 
     it('trails the tail BEHIND the head along the travel chord', () => {
         const group = buildEnv();
-        const comet = group.userData.comet;
+        const { comet } = group.userData;
         const tail = comet.children.find((child) => child.name === 'comet-tail');
         // The chord runs a -> b; the tail body must sit on the -travel side of the head.
         const dir = new THREE.Vector3(-270, -50, -790).sub(new THREE.Vector3(250, 70, -330)).normalize();
@@ -87,7 +89,7 @@ describe('ch6 comet (Space overhaul Wave 5)', () => {
 
     it('stages on its own uReveal — never through the entryContinuity buckets', () => {
         const group = buildEnv();
-        const comet = group.userData.comet;
+        const { comet } = group.userData;
         Object.values(group.userData.entryContinuity).forEach((bucket) => {
             expect(bucket).not.toContain(comet);
         });
@@ -105,7 +107,7 @@ describe('ch6 comet (Space overhaul Wave 5)', () => {
 
     it('sweeps its chord over time rather than holding a station', () => {
         const group = buildEnv();
-        const comet = group.userData.comet;
+        const { comet } = group.userData;
         updateCosmicExpanseEnvironment(group, 0.016, 5, null, 0.5);
         const early = comet.position.clone();
         updateCosmicExpanseEnvironment(group, 0.016, 35, null, 0.5);

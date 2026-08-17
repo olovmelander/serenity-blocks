@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
 import {
     createNebulaFieldTSL,
     validateNebulaFieldClearance,
 } from './odyssey-nebula-field.js';
 import {
-    NEBULA_FIELD_CLEARANCE,
     ODYSSEY_NEBULA_FIELD_SPECS,
 } from './odyssey-nebula-field-specs.js';
 import {

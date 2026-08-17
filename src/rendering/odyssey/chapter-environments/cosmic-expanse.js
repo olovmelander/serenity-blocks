@@ -569,10 +569,12 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // stays restorable behind `?odysseyCh6ProceduralDome=1` (ADR-0015 escape hatch,
     // gpu-split configuration `ch6-procedural-dome` — its differential is the cost of
     // ADDING the old dome back).
-    const voidSky = !bisect.dome ? null
-        : (readCh6UrlFlag('odysseyCh6ProceduralDome')
+    let voidSky = null;
+    if (bisect.dome) {
+        voidSky = readCh6UrlFlag('odysseyCh6ProceduralDome')
             ? createVoidSky(uniforms)
-            : createBakedVoidSky(uniforms));
+            : createBakedVoidSky(uniforms);
+    }
     if (voidSky) {
         group.add(voidSky);
         group.userData.voidSky = voidSky;
@@ -2008,7 +2010,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     // The comet sweeps its chord on a fixed period, alive only through the reef
     // window (chapter-local ~0.28-0.74) and dither-faded at the chord's ends so it
     // enters and leaves as a distant glint, never a pop.
-    const comet = group.userData.comet;
+    const { comet } = group.userData;
     if (comet?.userData?.uReveal) {
         const s = (time % COMET_PATH.periodSec) / COMET_PATH.periodSec;
         comet.position.lerpVectors(COMET_PATH.a, COMET_PATH.b, s);

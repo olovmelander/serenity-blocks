@@ -396,5 +396,6 @@ export function auroraSurfaceTerm(nLocal, dTerm, uTime, spec = AURORA_OVAL, uRev
     // Deliberately quiet. This term is UNDER the curtains and additive over an already
     // shaded cap; at 0.55 (first revision) it rendered as a solid mint puddle that read
     // as a landing light. The standing half is what the eye is meant to catch.
-    return glow.mul(band.mul(night).mul(arc).mul(ribs).mul(reveal).mul(0.30));
+    return glow.mul(band.mul(night).mul(arc).mul(ribs).mul(reveal)
+        .mul(0.30));
 }

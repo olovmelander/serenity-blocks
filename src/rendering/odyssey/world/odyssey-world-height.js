@@ -309,26 +309,42 @@ export function odysseyNorthLakeRn(x, z) {
  * release at z = -2600.
  */
 const NORTH_HILLS = Object.freeze([
-    Object.freeze({ x: -860, z: -1560, r: 300, h: 48 }), // NW backdrop swell
+    Object.freeze({
+        x: -860, z: -1560, r: 300, h: 48,
+    }), // NW backdrop swell
     // Rim swells behind the lake's north and east shores: silhouette behind the water
     // plus the rim lift the low east shelf needs, edges probed to contribute nothing
     // inside the waterline.
-    Object.freeze({ x: 380, z: -1220, r: 160, h: 24 }),
-    Object.freeze({ x: -1020, z: -1350, r: 280, h: 36 }), // links west toward the ridge
-    Object.freeze({ x: 600, z: -1450, r: 190, h: 30 }),
+    Object.freeze({
+        x: 380, z: -1220, r: 160, h: 24,
+    }),
+    Object.freeze({
+        x: -1020, z: -1350, r: 280, h: 36,
+    }), // links west toward the ridge
+    Object.freeze({
+        x: 600, z: -1450, r: 190, h: 30,
+    }),
     // Behind the lake's north-west arm: the far shore rises into a hill instead of
     // running flat to the coast taper.
-    Object.freeze({ x: -160, z: -2160, r: 220, h: 40 }),
+    Object.freeze({
+        x: -160, z: -2160, r: 220, h: 40,
+    }),
     // The south-east shore's own lift: the tripled main lobe reaches ground the east
     // swell cannot, and this closes the last low arc.
-    Object.freeze({ x: 560, z: -1720, r: 150, h: 22 }),
+    Object.freeze({
+        x: 560, z: -1720, r: 150, h: 22,
+    }),
     // The NE and E banks. The sculpt pass enlarged the discs onto ground that ran BELOW
     // the water plane at a few azimuths — the one place the paint could have shown its
     // own geometry (measured -0.8 u before these went in, +6.1 u after). Centred well
     // outside the shoreline so they feather into the bank instead of pushing the
     // waterline inward.
-    Object.freeze({ x: 640, z: -1230, r: 200, h: 28 }),
-    Object.freeze({ x: 730, z: -1610, r: 210, h: 26 }),
+    Object.freeze({
+        x: 640, z: -1230, r: 200, h: 28,
+    }),
+    Object.freeze({
+        x: 730, z: -1610, r: 210, h: 26,
+    }),
 ]);
 
 function smoothstep01(edge0, edge1, x) {

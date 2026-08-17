@@ -2905,9 +2905,9 @@ export class OdysseyBoardController {
             if (this._fastStart && Number.isFinite(this.focusChapter)) {
                 warmChapterIds = [this.focusChapter];
             }
-            const fastStartPosition = Number.isFinite(cc.currentPosition)
-                ? cc.currentPosition
-                : (Number.isFinite(savedPos) ? savedPos : 0);
+            let fastStartPosition = 0;
+            if (Number.isFinite(cc.currentPosition)) fastStartPosition = cc.currentPosition;
+            else if (Number.isFinite(savedPos)) fastStartPosition = savedPos;
             const steps = this._fastStart
                 ? buildPointWarmSamples({ position: fastStartPosition })
                 : warmChapterIds

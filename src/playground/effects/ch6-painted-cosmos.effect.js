@@ -41,8 +41,8 @@ const PALETTE = {
     // saturation held (forest Wave 0c law), nothing collapses to grey.
     nebulaLit: 0xe89a64,
     nebulaShade: 0x54428f,
-    nebulaCore: 0xffb340,        // darkness-gated interior ember (howl044's falling star)
-    nebulaEdge: 0xf4c9c2,        // pale drawn edge
+    nebulaCore: 0xffb340, // darkness-gated interior ember (howl044's falling star)
+    nebulaEdge: 0xf4c9c2, // pale drawn edge
     // Planet: three value bands, warm→cool, plus the thin terminator amber.
     planetLit: 0xf2d9a8,
     planetMid: 0xc97d6e,
@@ -60,7 +60,7 @@ const PALETTE = {
 
 function makeNebulaMaterial(uniforms) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.FrontSide });
-    const ao = attribute('color', 'vec3').x;          // sculptor: r = analytic SDF AO
+    const ao = attribute('color', 'vec3').x; // sculptor: r = analytic SDF AO
     const N = normalize(normalWorld);
     const V = normalize(cameraPosition.sub(positionWorld));
     const L = uniforms.uSunDir;
@@ -138,7 +138,7 @@ function makeHaloMaterial(uniforms) {
     return material;
 }
 
-function makeBackdropMaterial(uniforms) {
+function makeBackdropMaterial() {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
     const dir = normalize(positionWorld);
 
@@ -156,9 +156,11 @@ function makeBackdropMaterial(uniforms) {
     const roseBand = smoothstep(0.74, 0.80, field);
     const graded = mix(
         color(PALETTE.voidFloor),
-        mix(color(PALETTE.bandDeep),
+        mix(
+            color(PALETTE.bandDeep),
             mix(color(PALETTE.bandTeal), color(PALETTE.bandRose), roseBand),
-            tealBand),
+            tealBand,
+        ),
         deep,
     );
 
@@ -182,8 +184,16 @@ export function create({ scene }) {
     // 1. The sculpted nebula mass — a cloud-field spec scaled to nebula proportions and
     // sculpted at NEAR detail by the shipped, test-covered sculptor. Zero new geometry code.
     const spec = {
-        id: 'probe-nebula', role: 'framing', lod: 'near',
-        x: 0, base: -120, z: 0, w: 520, h: 280, yaw: 0.7, seed: 33.7,
+        id: 'probe-nebula',
+        role: 'framing',
+        lod: 'near',
+        x: 0,
+        base: -120,
+        z: 0,
+        w: 520,
+        h: 280,
+        yaw: 0.7,
+        seed: 33.7,
     };
     const { geometry, triangles } = buildCloudFieldGeometry([spec]);
     const nebula = new THREE.Mesh(geometry, makeNebulaMaterial(uniforms));
@@ -205,7 +215,7 @@ export function create({ scene }) {
 
     // 3. The posterized backdrop swatch (the bake's look contract).
     const domeGeo = new THREE.SphereGeometry(2400, 48, 32);
-    const dome = new THREE.Mesh(domeGeo, makeBackdropMaterial(uniforms));
+    const dome = new THREE.Mesh(domeGeo, makeBackdropMaterial());
     dome.name = 'probe-backdrop';
     group.add(dome);
 

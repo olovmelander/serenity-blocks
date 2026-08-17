@@ -2034,7 +2034,7 @@ export default class BlackHoleTheme extends BaseTheme {
         } catch {
             // Timing telemetry is opportunistic. A disposed backend or a failed query must
             // never reject into the animation loop.
-            return;
+
         }
     }
 

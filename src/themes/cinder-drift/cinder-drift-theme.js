@@ -747,7 +747,7 @@ export default class CinderDriftTheme extends BaseTheme {
         this.updateMagmaExplosion(delta);
 
         // 1. Rock Animation (Drift & Bob)
-        this.rocks.forEach((rock, i) => {
+        this.rocks.forEach((rock) => {
             // Slow rotation
             rock.mesh.rotation.x = time * rock.rotSpeed * 0.5;
             rock.mesh.rotation.y = time * rock.rotSpeed;
