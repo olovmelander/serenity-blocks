@@ -27,11 +27,19 @@
  * error, forever. It reproduces as soon as chapters are prewarmed in the BACKGROUND (after the loop
  * is live) rather than during startup.
  *
- * So the target binding is now conditional on the loop being idle. Background compiles fall back to
- * a plain compileAsync: they build canvas-format pipelines, so those chapters may still pay a small
- * first-visit compile — a hitch, which is what this optimisation existed to remove, but a hitch is
- * strictly better than a dead device, and the startup path (where the freeze actually hurt) keeps
- * the optimisation in full.
+ * So the target binding is conditional on the loop being idle.
+ *
+ * ...AND HOW THE BACKGROUND PATH GOT ITS OPTIMISATION BACK (2026-08-17).
+ * The fallback above — a plain compileAsync building CANVAS-format pipelines — meant background
+ * chapters never had their post-format pipelines built asynchronously. Those compiled
+ * SYNCHRONOUSLY inside the later render-warm instead, measured at 482-560ms per chapter, landing
+ * as a visible hitch wherever the sweep happened to reach. The hazard was never "a render target"
+ * — it was specifically the SHARED scene-pass target. A PRIVATE, format-matched target (see
+ * {@link createWarmRenderTarget}) cannot alias anything the live graph touches, so both the
+ * background compile and the render-warm can bind it while the loop runs, and both build exactly
+ * the pipelines the live post path uses (the pipeline cache key is format-based — see that
+ * function's docs). Startup keeps the exact scene-pass binding; only the live-loop path uses the
+ * private clone.
  */
 
 /**
@@ -55,6 +63,67 @@ export function beginPostTargetCompile(renderer, postProcessingStack, renderLoop
     const previousMRT = renderer.getMRT();
     renderer.setRenderTarget(scenePass.renderTarget);
     renderer.setMRT(scenePass.getMRT?.() ?? null);
+    return { previousTarget, previousMRT };
+}
+
+/**
+ * Create a small PRIVATE render target that mirrors the post scene-pass's ATTACHMENT FORMATS.
+ *
+ * Why this exists (2026-08-17): the post-reveal background render-warm was a structural no-op.
+ * It called {@link beginPostTargetCompile}, which correctly refuses to bind the scene-pass target
+ * while the rAF loop is live (doing so aliases a texture as both sampled binding and render
+ * attachment and permanently poisons the device — see the file header), and then bailed on the
+ * null return. Measured: chapters 6/7/8 finished a whole session with `_renderWarmed === false`
+ * and six failed warm attempts each, so every first visit still compiled on a visible frame.
+ *
+ * A private target breaks the aliasing by construction — the live post graph never touches it —
+ * so the warm can run at any time. It still warms the RIGHT pipelines because the WebGPU pipeline
+ * cache key is built from FORMATS, not texture identity: see `WebGPUBackend.getRenderCacheKey`,
+ * which hashes `getSampleCountRenderContext` / `getCurrentColorSpace` / `getCurrentColorFormat` /
+ * `getCurrentDepthStencilFormat`. `RenderTarget.copy` reproduces every one of those (all MRT
+ * attachment textures, the depth texture and `samples`), so a clone yields identical cache keys.
+ *
+ * Dimensions are deliberately tiny: pipeline specialisation does not depend on resolution, so a
+ * 320x180 warm pass compiles exactly the same pipelines as a full-resolution one for a small
+ * fraction of the fill cost.
+ *
+ * @param {?object} scenePass the post stack's scene pass
+ * @param {number} [width] warm target width in px
+ * @param {number} [height] warm target height in px
+ * @returns {?object} the private render target, or null when post is inactive/unclonable
+ */
+export function createWarmRenderTarget(scenePass, width = 320, height = 180) {
+    const source = scenePass?.renderTarget;
+    if (!source || typeof source.clone !== 'function') return null;
+    try {
+        const target = source.clone();
+        if (typeof target.setSize === 'function') target.setSize(width, height);
+        return target;
+    } catch {
+        return null; // caller falls back to skipping the warm — never worse than before
+    }
+}
+
+/**
+ * Bind a private warm target (from {@link createWarmRenderTarget}) plus the scene pass's MRT, so
+ * a following `renderer.render()` compiles the pipelines the chapter uses live. Safe while the
+ * rAF loop is running, which is the whole point. Restore with {@link endPostTargetCompile}.
+ * @param {object} renderer the renderer
+ * @param {?object} warmTarget the private target
+ * @param {?object} scenePass the post stack's scene pass (for its MRT configuration)
+ * @returns {?{previousTarget: *, previousMRT: *}} saved state, or null when unavailable
+ */
+export function beginWarmTargetRender(renderer, warmTarget, scenePass) {
+    if (!warmTarget
+        || typeof renderer?.getMRT !== 'function'
+        || typeof renderer?.setMRT !== 'function'
+        || typeof renderer?.getRenderTarget !== 'function') {
+        return null;
+    }
+    const previousTarget = renderer.getRenderTarget();
+    const previousMRT = renderer.getMRT();
+    renderer.setRenderTarget(warmTarget);
+    renderer.setMRT(scenePass?.getMRT?.() ?? null);
     return { previousTarget, previousMRT };
 }
 
@@ -88,8 +157,17 @@ export function compileGroupThroughPost(
     camera,
     group,
     renderLoopActive = false,
+    warmTarget = null,
 ) {
-    const saved = beginPostTargetCompile(renderer, postProcessingStack, renderLoopActive);
+    // Under a live loop the scene-pass target is off limits, but a PRIVATE format-matched target
+    // is not — and using it here is what makes a background compile actually async. Without it
+    // the background path fell back to a plain compileAsync, which captures the CANVAS format, so
+    // the post-format pipelines were never built asynchronously and instead compiled SYNCHRONOUSLY
+    // inside the later render-warm (measured at 482-560ms per chapter, landing as a visible hitch
+    // wherever the sweep happened to reach). Same formats => same pipeline cache key, so this
+    // builds exactly the pipelines the live post path uses, off the main thread.
+    const saved = beginPostTargetCompile(renderer, postProcessingStack, renderLoopActive)
+        || beginWarmTargetRender(renderer, warmTarget, postProcessingStack?.scenePass);
     try {
         if (typeof renderer.compileAsync === 'function') {
             return renderer.compileAsync(scene, camera, group);

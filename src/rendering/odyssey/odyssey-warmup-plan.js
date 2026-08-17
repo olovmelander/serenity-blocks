@@ -81,4 +81,42 @@ export function buildPointWarmSamples({ position = 0 } = {}) {
     return [Math.min(1, Math.max(0, value))];
 }
 
-export default { buildJourneyWarmSamples, buildChapterWarmSamples, buildPointWarmSamples };
+/**
+ * Build the chapter visit order for the POST-REVEAL background render-warm sweep.
+ *
+ * Two rules, both learned from a measured failure (2026-08-17):
+ *
+ * 1. SUPPRESSED CHAPTERS MUST NEVER ENTER THE SWEEP. Under One World (the default) chapters
+ *    2-5 are suppressed — the single continuous world owns that stretch — so their environments
+ *    are never created. An unfiltered `1..total` sweep therefore sat in its "not created yet"
+ *    wait for 30 x 300ms = 9s on EACH of them, ~36s of dead time, before it even considered
+ *    chapters 6-8 — the ones the player actually scrolls into. The sweep never completed, so
+ *    fast-start (which reveals early and repays the skipped warm-up in the background) never
+ *    repaid, and every forward transition paid its first-visit compile on a visible frame.
+ *
+ * 2. NEAREST THE PLAYER FIRST, so the sweep warms what is about to be reached.
+ *
+ * @param {{total?: number, focus?: number, suppressed?: Iterable<number>}} options
+ *   total — highest chapter id in the journey; focus — the player's current chapter;
+ *   suppressed — chapter ids the configuration will never create.
+ * @returns {number[]} chapter ids to warm, nearest-to-focus first
+ */
+export function buildRenderWarmOrder({ total = 0, focus = 1, suppressed = [] } = {}) {
+    const count = Number.isFinite(total) ? Math.max(0, Math.floor(total)) : 0;
+    const skip = suppressed instanceof Set ? suppressed : new Set(suppressed || []);
+    const centre = Number.isFinite(focus) ? focus : 1;
+
+    const order = [];
+    for (let ch = 1; ch <= count; ch += 1) {
+        if (!skip.has(ch)) order.push(ch);
+    }
+    // Stable nearest-first: ties (equidistant either side) keep ascending chapter order.
+    return order.sort((a, b) => (Math.abs(a - centre) - Math.abs(b - centre)) || (a - b));
+}
+
+export default {
+    buildJourneyWarmSamples,
+    buildChapterWarmSamples,
+    buildPointWarmSamples,
+    buildRenderWarmOrder,
+};
