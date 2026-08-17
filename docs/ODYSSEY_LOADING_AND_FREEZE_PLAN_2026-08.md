@@ -819,3 +819,65 @@ one setup cost (~1 s, and worth attacking on its own — see below) plus ~4 ms p
 loading screen — compile a single throwaway mesh through the post target during startup so the
 first live batch inherits a prepared context. If the ~1 s is genuinely one-time-per-session rather
 than per-binding, that removes it from play entirely.
+
+---
+
+## 16. Corrections to §15, an r181 trap, and the theme-warm collision — measured 2026-08-17
+
+### §15's mechanism was wrong (its numbers stand; its story does not)
+
+Two follow-up measurements dismantled the "fixed per-binding session setup" explanation:
+
+**The r181 arg-order trap.** `Renderer.compileAsync(scene, camera, targetScene)` PROJECTS THE WHOLE
+FIRST ARGUMENT (`_projectObject(scene, ...)`, Renderer.js:897) — `targetScene` contributes only
+lights. Every call in this codebase passes `(this.scene, this.camera, group)`, so every "targeted"
+chapter compile actually walks and compiles the full visible scene. The per-chapter cost comes from
+the chapter being force-visible during its own prewarm, not from targeting. This is why the
+per-mesh profile's cost "followed position": the first call compiled everything visible; later
+calls found it cached.
+
+**The conserved wandering cost.** Re-running the sibling-hidden isolated profile twice:
+
+| | ch6 worst | ch7 worst | ch8 worst | three-chapter total |
+|---|---|---|---|---|
+| run 1 | 260 ms | **4 312 ms** | 112 ms | 4 982 ms |
+| run 2 | **3 250 ms** | 336 ms | 782 ms | 4 677 ms |
+
+Per-chapter worsts swing 7–13× between runs while the TOTAL is conserved (~4.7–5.0 s). No material
+property behaves like that. It is **concurrent session work** — chapter creation, Dawn's pipeline
+queue, and the first-entry theme pre-warm — being absorbed as wall time by whichever compile await
+happens to be open. The §15 profile was attributing other people's work to whichever mesh went
+first. (§15's batch change stays: sequential still avoids stacking Dawn bursts, and the first
+compile still captures the post context. Its comment in `_drainPrewarmQueue` now tells the
+corrected story.)
+
+### Fixed: the first-entry theme warm no longer runs inside the contested window (RC-5)
+
+`warmInitialThemeForFirstEntry` compiles a whole SECOND WebGPU scene, and in the Odyssey flow it
+fired mid-play (~17.5 s), overlapping the board's background pipeline. It now waits for
+`OdysseyMode.isBackgroundPipelineQuiet()` (capped 25 s; skipping the warm is safe by design — the
+loading-overlay resume net makes an unwarmed entry identical to no-warm). Verified in both runs:
+the warm now starts only after `background render-warm complete`, and its execution window is
+stall-free. Non-Odyssey flows are untouched (the wait no-ops).
+
+### Honest scorecard
+
+Post-reveal stall totals did NOT improve from this (8 987/8 034 → 9 220/8 078 ms; n=2, variance
+±1 s). The two dominant stalls (~2.5–3.2 s at ~9.4 s and ~13 s) sit in the **chapter creation**
+window. What this change buys is determinism — one large GPU consumer at a time, background
+pipeline first, theme warm after — and the removal of a real collision that DID land inside compile
+awaits in earlier runs (it is exactly the kind of wandering cost the conserved-total measurement
+exposed).
+
+### Where this leaves the plan
+
+The remaining drop-in freeze is **chapter creation + its inherent compile**, nothing else:
+
+1. **Wave 2 (creation slicing) is the one remaining structural fix.** `createChapterEnvironment`
+   is still one indivisible unit per chapter. Per-mesh compile slicing (the §14/§15 idea) is NOT
+   worth building on current evidence: the sync codegen share is the minority of the stall, and the
+   dominant Dawn-side pipeline compile does not care how the CPU side is sliced.
+2. **The travel gate (§13) is the complement**: with it on, the player cannot reach 6/7/8 before
+   they are ready, so the remaining background stall risk is bounded to the reveal-adjacent window.
+3. Everything from here needs the validated harness (§11) — n=2 cannot resolve sub-second effects,
+   and this section exists because n=1 attributions kept being wrong.
