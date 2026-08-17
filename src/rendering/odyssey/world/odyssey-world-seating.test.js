@@ -90,6 +90,17 @@ describe('ground seating contract (stubs)', () => {
     });
 });
 
+/**
+ * ⚠️ EXPLICIT TIMEOUT, because these two are MEASUREMENTS, not unit checks: each one
+ * builds an entire Act II world — a 768� relief bake of five-octave domain-warped noise
+ * plus the macro plate — and then samples the drawn ground at thousands of positions.
+ * They run ~1.2 s each on a dev machine and 4-5 s on a shared CI runner, which sat right
+ * on vitest's 5 s default and failed the pipeline intermittently. 30 s is not slack for a
+ * slow test; it is the honest budget for a whole-world bake, and it still fails loudly if
+ * the bake ever regresses by an order of magnitude.
+ */
+const WORLD_BAKE_TIMEOUT_MS = 30000;
+
 describe('the real Act II rail against the real drawn ground (measurement)', () => {
     it('every default node position clears the world surface once seated', () => {
         const world = createOdysseyWorld({ quality: 'low' });
@@ -124,7 +135,7 @@ describe('the real Act II rail against the real drawn ground (measurement)', () 
         } finally {
             world.dispose();
         }
-    });
+    }, WORLD_BAKE_TIMEOUT_MS);
 
     it('the rail itself never runs under the drawn ground through Act II', () => {
         const world = createOdysseyWorld({ quality: 'low' });
@@ -149,5 +160,5 @@ describe('the real Act II rail against the real drawn ground (measurement)', () 
         } finally {
             world.dispose();
         }
-    });
+    }, WORLD_BAKE_TIMEOUT_MS);
 });
