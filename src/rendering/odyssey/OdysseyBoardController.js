@@ -554,6 +554,15 @@ export class OdysseyBoardController {
         this.scrollIdleThreshold = 0.004;
         // Travel gate (opt-in `?odysseyTravelGate=1`) — see _updateTravelFrontier.
         this._travelGateEnabled = readBooleanUrlFlag('odysseyTravelGate');
+        // Default 3 (unchanged). Serialising to 1 was TRIED and measured: it split the compile
+        // burst into smaller stalls but left the total identical (~10.2s vs ~10.4s of post-reveal
+        // stall) and delayed readiness, because a SINGLE chapter's compile alone starves the GPU
+        // for ~3.7s. Concurrency is not the lever. Kept tunable so the next A/B is a flag, not a
+        // code change: ?odysseyPrewarmConcurrency=1
+        this._prewarmConcurrency = Math.max(
+            1,
+            Number.parseInt(readUrlValue('odysseyPrewarmConcurrency'), 10) || 3,
+        );
         this._frontierHoldSince = 0;
         // Release a stuck hold quickly. This is a UX judgement, not a safety margin: a player
         // pushing against the frontier would rather take one hitch than be unable to move, so the
@@ -1376,7 +1385,14 @@ export class OdysseyBoardController {
         // Bounded concurrency: compile up to N nearest chapters at once so a slow chapter
         // (surface-world's ~15-material compile) never serially blocks the rest, WITHOUT an
         // unbounded GPU burst that would starve the create loop / stutter the orient-pause.
-        const batch = this.prewarmQueue.splice(0, 3);
+        //
+        // N was 3, chosen when the journey had 8 diorama chapters and a slow one could block six
+        // others. Under One World only chapters 6/7/8 are separate environments — EXACTLY the
+        // batch size — so "bounded" degenerated to "all at once", and three simultaneous pipeline
+        // compiles starve the compositor: measured a 3.6-3.7s rAF gap carrying only ~0.77s of
+        // longtask, i.e. ~2.9s of pure GPU starvation. With so few chapters the serialisation
+        // risk N was protecting against no longer exists, so prefer smaller bursts.
+        const batch = this.prewarmQueue.splice(0, this._prewarmConcurrency);
         batch.forEach((ch) => this.queuedPrewarmChapters.delete(ch));
         this.isPrewarming = true;
 
