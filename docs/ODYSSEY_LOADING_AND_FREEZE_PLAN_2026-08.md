@@ -608,3 +608,72 @@ With the goldens in place, take RC-3 in this order:
 Precomputing to a shipped asset is the alternative to (2). It saves the same time but adds binary
 assets and a code/asset drift risk; the worker keeps one source of truth. Prefer the worker unless
 the asset is wanted for other reasons.
+
+---
+
+## 13. THE GALAXY GUARANTEE — a travel frontier (opt-in: `?odysseyTravelGate=1`)
+
+### What "do it the Galaxy way" should NOT mean
+
+The naive reading is "hold the loading screen until everything is ready". That is the wrong trade
+here and would make the loudest complaint worse: preparation completes around 18.7 s, so it buys a
+~19 s loading screen.
+
+Galaxy does not preload the whole game either. It loads the *current galaxy*, and the launch-star
+flight between galaxies is a loading cover wearing a costume. **Its guarantee is not "everything is
+loaded" — it is "you cannot get to anything unfinished."** Odyssey broke exactly that guarantee,
+because it is one continuous scrollable world with no loading covers.
+
+### The rule
+
+`odyssey-travel-frontier.js` computes how far the player may travel right now: to the end of the
+last **contiguous** prepared chapter, and no further. Travel eases to a hold just short of an
+unprepared boundary and releases the moment it is ready.
+
+Applied to the two continuous-travel paths only — manual scroll and the cinematic auto-drift.
+`travelToPosition`/focus are deliberate navigation (entering a level) and are never gated.
+
+Two rules the module will not bend:
+
+- **Fail open.** Malformed positions, a missing predicate, a throwing predicate, a NaN margin — all
+  return "no limit". A bug in a perf optimisation must never trap the player behind an invisible
+  wall: a stutter is a bad frame, being stuck is a broken game.
+- **Contiguous only.** Readiness is scanned forward and stops at the first gap. Under One World,
+  chapters 6/7/8 can be ready while an earlier one is not; a prepared 8 must not entitle anyone to
+  cross an unprepared 4.
+
+Plus an **anti-softlock release** in the board: a hold outlasting 2.5 s releases and takes the
+hitch, and logs — a release means the warm pipeline failed to keep ahead of the player, which is
+the most useful diagnostic this system can emit.
+
+### Verified in the real app
+
+Frontier sampled every 250 ms through a real boot with the gate on:
+
+```
+t= 6.0s  frontier=0.7503   reveal — Acts I+II open, held at the start of chapter 6
+t=16.8s  frontier=0.8669   chapter 6 ready  -> opens to chapter 7
+t=18.7s  frontier=0.9569   chapter 7 ready  -> opens to chapter 8
+t=19.0s  frontier=1        all ready, no limit
+```
+
+`0.7503` is the Act II→space boundary (0.7543) minus the 0.004 margin — it holds exactly where it
+should. The camera reached only p=0.019 in that window, so **the gate was never actually felt**: it
+is invisible in normal play while making it impossible to outrun preparation. No errors, no
+anti-softlock releases fired.
+
+16 unit tests cover the logic, weighted toward the fail-open cases.
+
+### Why it is still opt-in, and what to feel-test before flipping it
+
+The mechanism is verified; the **feel** of an actual hold is not, and that needs human eyes. The
+risk case is a player who flicks hard from the reveal: `maxScrollVelocity` 0.15/s means ~5 s of
+sustained flicking reaches 0.75, where they would meet the frontier and — worst case — wait out the
+2.5 s release. Whether that reads as "a beat at a vista" or "the game is stuck" is a judgement call
+this measurement cannot make.
+
+To decide: run with `?odysseyTravelGate=1`, scroll forward as fast as you can from the reveal, and
+watch what happens around p≈0.75. If it reads as a natural pause, make it the default (same path
+One World took). If it reads as a wall, the fix is to make the hold *expressive* rather than to
+abandon it — ease the camera to rest and let the vista breathe, which is precisely what the
+launch-star flight is doing.

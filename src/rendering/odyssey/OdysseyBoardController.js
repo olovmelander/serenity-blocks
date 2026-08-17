@@ -43,6 +43,7 @@ import { createStartupTrace } from './odyssey-startup-trace.js';
 import {
     buildChapterWarmSamples, buildJourneyWarmSamples, buildPointWarmSamples, buildRenderWarmOrder,
 } from './odyssey-warmup-plan.js';
+import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-frontier.js';
 import {
     normalizeOdysseyWarmupMode,
     resolveOdysseyAdaptiveFrameRate,
@@ -551,6 +552,13 @@ export class OdysseyBoardController {
         // Compared against travelModel.inputVelocity, which excludes the cinematic auto-drift —
         // see _isScrollIdle for why the positional test cannot be used for this.
         this.scrollIdleThreshold = 0.004;
+        // Travel gate (opt-in `?odysseyTravelGate=1`) — see _updateTravelFrontier.
+        this._travelGateEnabled = readBooleanUrlFlag('odysseyTravelGate');
+        this._frontierHoldSince = 0;
+        // Release a stuck hold quickly. This is a UX judgement, not a safety margin: a player
+        // pushing against the frontier would rather take one hitch than be unable to move, so the
+        // window is short. 2.5s still lets a nearly-ready chapter land without the player noticing.
+        this._frontierHoldReleaseMs = Number.parseFloat(readUrlValue('odysseyTravelGateReleaseMs')) || 2500;
         this.globalEnvProgressThreshold = 0.0005;
         this.globalEnvMaxIntervalMs = 33;
         this.lastGlobalEnvUpdateTime = 0;
@@ -1274,6 +1282,55 @@ export class OdysseyBoardController {
             return true;
         }
         return false;
+    }
+
+    /**
+     * THE GALAXY GUARANTEE — push the travel frontier to the camera so the player can never
+     * scroll into a chapter that is not prepared (see odyssey-travel-frontier.js for why this,
+     * rather than a longer loading screen, is the right reading of "do it the Galaxy way").
+     *
+     * Opt-in for now (`?odysseyTravelGate=1`): this changes where the player may go, which is a
+     * gameplay-visible contract, and it has not yet been verified in-game. Same pattern One World
+     * shipped under before it became the default.
+     * @private
+     */
+    _updateTravelFrontier() {
+        if (!this._travelGateEnabled || !this.cameraController) return;
+        const chapterPositions = this.presentationLayout?.chapterPositions || [];
+        const suppressed = this.environmentManager?.suppressedChapters;
+        const environments = this.environmentManager?.environments;
+
+        let frontier = computeTravelFrontier({
+            chapterPositions,
+            isChapterReady: (chapterId) => {
+                // Chapters One World owns have no environment of their own — the world is built
+                // in full before reveal, so that whole stretch is ready by construction.
+                if (suppressed?.has?.(chapterId)) return true;
+                const env = environments?.get(chapterId);
+                return !!(env && env._renderWarmed);
+            },
+        });
+
+        // ANTI-SOFTLOCK. Being stuck is a worse bug than the stutter this prevents, so a hold that
+        // outlasts the grace window releases and takes the hitch. It also logs: a release means
+        // the warm pipeline failed to keep ahead of the player, which is the single most useful
+        // diagnostic this system can emit.
+        const position = this.cameraController.currentPosition;
+        if (isHeldAtFrontier(position, frontier)) {
+            if (!this._frontierHoldSince) {
+                this._frontierHoldSince = performance.now();
+            } else if (performance.now() - this._frontierHoldSince > this._frontierHoldReleaseMs) {
+                console.warn(
+                    `[OdysseyTravelGate] released a ${Math.round(this._frontierHoldReleaseMs)}ms hold at `
+                    + `p=${position.toFixed(3)} — warm pipeline did not keep ahead of the player`,
+                );
+                this._frontierHoldSince = 0;
+                frontier = 1;
+            }
+        } else {
+            this._frontierHoldSince = 0;
+        }
+        this.cameraController.setTravelFrontier(frontier);
     }
 
     _queueChapterPrewarm(chapterId) {
@@ -2647,6 +2704,10 @@ export class OdysseyBoardController {
         if (this.director && this.cinematicJourneyActive) {
             this.cameraController?.setDirectorState?.(previousDirectorState);
         }
+
+        // Publish the travel frontier BEFORE the camera integrates this frame, so a chapter that
+        // is not ready is never entered even for one frame.
+        this._updateTravelFrontier();
 
         // Feed director state to the path so it flows toward the head and reacts to beats.
         this.cameraController?.update(delta);
