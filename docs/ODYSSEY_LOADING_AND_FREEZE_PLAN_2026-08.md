@@ -1011,3 +1011,57 @@ other live-only predicate) at those four positions, then either include it in th
 warm with live semantics) or gate it per masterplan Phase E (pop-in over hitch). Note the
 motion-warm A/B already proved the warm CAN pay such costs when it draws the content — the steam
 quench (p≈0.005) is gone under the drive and shows 303 ms in plain base.
+
+---
+
+## 20. Warm iteration 3, the corrected mechanism map, and the pivot decision
+
+### §19's prime suspect is dead — killed by its own verification
+
+Six line-verified scout reports (17 CONFIRMED / 0 REFUTED) corrected the record:
+
+- **`cinematicJourneyActive` is a constructor constant, true for the whole session including the
+  warm.** Nothing it gates is live-only. `director.onChapterEnter` writes one object into an
+  event log with ZERO consumers — it cannot draw anything.
+- **`this.isActive` is the only true live-only predicate**, and all four uses gate *warming*
+  work, not drawing.
+- Position corrections: p≈0.14 is the **ch2→ch3** crossing (ch1→2 is 0.0649); p≈0.046 is the
+  **breach veil/ring/particles' first real draw** at 1→2 seam entry; p≈0.0427 is the act gate
+  *and* seam/ecotone entry at the same p by construction; p≈0.0312 flips three lava objects.
+- Two real bugs found and fixed: the **stranded prewarm drain** (a drain firing pre-reveal
+  dead-ended, leaving queued chapters stuck in the dedupe set — now reschedules; validation
+  errors 0 in all runs since) and the **teleport-samples state corruption** (the samples ended at
+  p=0.21 and left the chapter/seam machinery believing the journey was there, so the drive's
+  crossings fired no transitions at all).
+
+### Iteration 3: real transitions, full envelopes — still not resolved
+
+With the state reset before the drive (real chapter changes + breach entries + beats) and a
+~1.4 s tail so the wall-clock envelopes (FOV pulse 1.5 s, vista beat 1.45 s) complete:
+
+| | base | motion v3 |
+|---|---|---|
+| fwd stall total | 1 701 ms | 1 644 ms — NOT RESOLVED |
+| fwd worst gap | ~493 ms | ~466 ms — NOT RESOLVED |
+| board visible | 4 274 ms | 8 263 ms — resolved WORSE |
+| validation errors | 0 | 0 (drain fix held) |
+
+The drive now demonstrably crosses all four positions with real transition semantics and pays
+~nothing (`driveGaps`: one recurring 109 ms frame at p=0.16), while the first live pass still pays
+365–535 ms at the same four spots, and the second live pass pays 0. Whatever GPU resource the
+first live crossing creates, an equivalent crossing behind the overlay does not create it.
+
+### The decision: stop iterating the warm; pivot
+
+Applying the plan's own discipline (three failed graduations = stop): the four gaps are
+**once-per-session, first-traverse-only, ~1.4 s in total**, and the masterplan already contains
+the designed answer for costs that escape warming — **Phase E's object-level readiness gating**
+(pop-in over hitch). Meanwhile **Phase C (startup re-chain)** carries guaranteed, mechanism-free
+wins (~−2 s board visible) that also fund the motion warm's cost if it is ever wanted.
+
+Order from here: **Phase C → Phase B (eager window) → Phase E** (which subsumes the four gaps).
+Motion warm stays opt-in; its genuinely-banked pieces (steam-quench elimination, deep-reveal,
+drain fix, throttle bypass, trace span, and the full diagnostic loadout in the harness) are all
+default-on or committed. Open riddle, stated honestly for Phase E's design: what GPU resource
+does a first LIVE crossing create that an identical pre-reveal crossing does not — with
+presentation/occlusion state during the overlay as the remaining suspect.
