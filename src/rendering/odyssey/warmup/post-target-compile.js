@@ -205,6 +205,17 @@ export async function compileGroupThroughPost(
         return true;
     }
 
+    // r185 upstream bug (caught by the 2026-08-20 capture matrix): with a target
+    // group, compileAsync routes `_background.update(targetScene, ...)` at the
+    // GROUP (Renderer.js:1005-1007), and Background.update guards `=== null`
+    // while a Group's `background` is UNDEFINED — `background.isColor` then
+    // TypeErrors and the swallowing catch silently voids every chapter prewarm
+    // (r181 always used the real scene here). Mirror Scene's `background = null`
+    // default onto the group so the null branch is taken.
+    if (group && typeof group === 'object' && group.background === undefined) {
+        group.background = null;
+    }
+
     const session = renderLoopActive ? null : acquireCompileBinding(renderer, postProcessingStack);
     try {
         await renderer.compileAsync(scene, camera, group);

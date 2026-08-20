@@ -445,6 +445,12 @@ export default class StillwaterTheme extends BaseTheme {
         params.set('boardGuide', 'off');
         params.set('event', 'idle');
         if (this.validationEnabled) params.set('validationTelemetry', '1');
+        // Deliberate pass-through, not a leak: the volumetric moonshafts stay
+        // opt-in behind `?shafts=1` pending the in-theme look call, and the
+        // runtime gate can only see flags forwarded here. Exactly this one
+        // page flag crosses the boundary, via the sanctioned helper (the wave0
+        // gate forbids raw location reads in this method by contract).
+        if (readBoolParam('shafts')) params.set('shafts', '1');
         return params;
     }
 
