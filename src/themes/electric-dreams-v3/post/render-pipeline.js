@@ -2,8 +2,8 @@
 /**
  * Electric Dreams V3 — Post Pipeline
  *
- * Modern TSL-based post stack. Uses the three.js WebGPU PostProcessing class
- * (r181-compatible) until r183 RenderPipeline is available across the codebase.
+ * Modern TSL-based post stack. Uses the three.js WebGPU RenderPipeline class
+ * (the r183+ name for the former PostProcessing).
  *
  * Stack (in order):
  *   1. MRT bloom from emissive channel (selective — only emissive surfaces glow)
@@ -46,6 +46,7 @@ import {
 import * as THREE from 'three';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../../shared/mrt-blend.js';
 
 export const V3_POST_PROFILES = Object.freeze({
     Minimal: Object.freeze({
@@ -151,7 +152,7 @@ export class V3PostPipeline {
     }
 
     _setupWebGPU(params) {
-        this.postProcessing = new WEBGPU.PostProcessing(this.renderer);
+        this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
 
         // MRT: split scene rendering into color + emissive targets so bloom
@@ -160,7 +161,7 @@ export class V3PostPipeline {
         let bloomSource;
         try {
             if (this.mrtEnabled) {
-                scenePass.setMRT(mrt({ output, emissive }));
+                scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
                 bloomSource = scenePass.getTextureNode('emissive');
             } else {
                 bloomSource = scenePass.getTextureNode('output');

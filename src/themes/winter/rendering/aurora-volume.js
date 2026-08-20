@@ -22,7 +22,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, If, Loop, float, vec2, vec3, vec4, uniform,
-    mix, clamp, abs, fract, sin, cos, smoothstep, max, pow, exp, dot, atan2,
+    mix, clamp, abs, fract, sin, cos, smoothstep, max, pow, exp, dot, atan,
     normalize, positionWorld, cameraPosition,
 } from 'three/tsl';
 import {
@@ -185,7 +185,7 @@ export function createAuroraVolume(params = {}) {
     // counts, so it tiles seamlessly around the full horizon; the atan2 seam is
     // rotated to +z, behind the camera. Feet dissolve into the same haze band
     // the ground fog resolves to, so field, chain and sky meet at one colour.
-    const azR = atan2(rd.x, rd.z.negate()).mul(0.15915494309); // cycles, seam behind camera
+    const azR = atan(rd.x, rd.z.negate()).mul(0.15915494309); // cycles, seam behind camera
     const ridgeOct = (f, ph) => tri(azR.mul(f).add(ph)).mul(2.04);
     const hazeBand = vec3(0.17, 0.30, 0.52)
         .add(vec3(WARM_HORIZON.r, WARM_HORIZON.g, WARM_HORIZON.b).mul(pow(along, 2.0)).mul(0.20));
@@ -224,7 +224,7 @@ export function createAuroraVolume(params = {}) {
     const auro = aurora(rd);
     // Vertical PILLAR mask: irregular drifting shafts from the horizontal view
     // angle → straight vertical light pillars carved into the curtain band.
-    const az = atan2(rd.x, rd.z);
+    const az = atan(rd.x, rd.z);
     const s1 = sin(az.mul(16.0).add(uTime.mul(0.14)));
     const s2 = sin(az.mul(33.0).sub(uTime.mul(0.09)));
     const s3 = sin(az.mul(6.0).add(1.7));

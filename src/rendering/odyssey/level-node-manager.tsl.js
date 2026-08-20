@@ -63,9 +63,11 @@ import {
     vec2,
     vec3,
     attribute,
+    positionGeometry,
     positionLocal,
     positionView,
     normalLocal,
+    normalGeometry,
 } from 'three/tsl';
 import { hash21, snoise3 } from './chapter-environments/shared/odyssey-tsl-noise.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './chapter-environments/shared/odyssey-tsl-billboard.js';
@@ -118,14 +120,14 @@ export function createGlassShellTSL(uTime = uniform(0), uAAA = uniform(0)) {
 
         If(uAAA.greaterThan(0.5), () => {
             const s = aNodeStyle.add(0.5);
-            const wave = nsWave(positionLocal, aNodeSeed.mul(TAU));
+            const wave = nsWave(positionGeometry, aNodeSeed.mul(TAU));
             const displacement = float(0.0).toVar();
 
             If(s.lessThan(1.0), () => {
                 displacement.assign(0.0);
             }).ElseIf(s.lessThan(2.0), () => {
                 displacement.assign(
-                    sin(uTime.mul(0.9).add(positionLocal.y.mul(5.0)).add(aNodeSeed.mul(12.0))).mul(0.026),
+                    sin(uTime.mul(0.9).add(positionGeometry.y.mul(5.0)).add(aNodeSeed.mul(12.0))).mul(0.026),
                 );
             }).ElseIf(s.lessThan(3.0), () => {
                 const ribs = pow(abs(sin(vUv.x.add(aNodeSeed).mul(18.0))), 8.0);
@@ -735,13 +737,15 @@ export function createFluidInnerInstancedTSL(arrayTexture, uTime = uniform(0)) {
     const fbB = fw.sub(floor(fw.div(32.0)).mul(32.0)).div(31.0);
     const fallbackColor = vec3(fbR, fbG, fbB);
 
-    // ── Vertex: wobble along the normal (LOCAL displacement → instancing-safe) ──
+    // ── Vertex: wobble phases/normal from the geometry nodes — identical on r181
+    // (positionLocal/normalLocal are the raw attributes inside positionNode) and correct on
+    // r185 (positionLocal is post-instance there); placement rides the positionLocal add-base. ──
     const vertexSpeed = mix(0.22, 1.25, oneMinus(uLocked));
     const vPhase = uTime.mul(vertexSpeed).add(seed);
-    const waveA = sin(vPhase.add(positionLocal.y.mul(7.0)).add(positionLocal.x.mul(5.0)));
-    const waveB = cos(vPhase.mul(0.8).add(positionLocal.z.mul(6.0)).sub(positionLocal.y.mul(4.0)));
+    const waveA = sin(vPhase.add(positionGeometry.y.mul(7.0)).add(positionGeometry.x.mul(5.0)));
+    const waveB = cos(vPhase.mul(0.8).add(positionGeometry.z.mul(6.0)).sub(positionGeometry.y.mul(4.0)));
     const wobble = waveA.add(waveB.mul(0.65)).mul(uWobbleStrength);
-    const positionNode = positionLocal.add(normalLocal.mul(wobble));
+    const positionNode = positionLocal.add(normalGeometry.mul(wobble));
 
     const vViewNormal = normalView;
 

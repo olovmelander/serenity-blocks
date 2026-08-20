@@ -105,6 +105,19 @@ const CHAPTER_1_NODE_MIN_SCALE = 0.0;
 // idle camera sway/breathing doesn't needlessly re-flush the whole particle buffer.
 const UPDATE_PROGRESS_EPSILON = 1e-4;
 
+// Portable "hidden instance" matrix: far-below translation + zero scale. Zero scale alone
+// hides an instance on r181 (vertices collapse to a point), but on r185 the instance matrix
+// is applied BEFORE positionNode runs, so an additive positionNode (the inner-core wobble,
+// the AAA shell displacement) re-inflates a scale-0 instance into a small blob at its
+// translation. Parking hidden instances at y=-99999 keeps them invisible on BOTH versions.
+// Only used for meshes whose material has a positionNode; the fixed-function lock/star/glow
+// hides stay plain scale-0 (no positionNode → nothing can re-inflate them).
+const HIDDEN_INSTANCE_MATRIX = new THREE.Matrix4().compose(
+    new THREE.Vector3(0, -99999, 0),
+    new THREE.Quaternion(),
+    new THREE.Vector3(0, 0, 0),
+);
+
 // Lock/star indicator placement relative to the orb, expressed in the CAMERA basis
 // (camera-right, camera-up, toward-camera) and multiplied by node scale. Placing them in
 // screen space — instead of a fixed world offset — keeps them directly above the orb and
@@ -831,10 +844,11 @@ export class LevelNodeManager {
             'aCore',
             new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4),
         );
-        // MUST-FIX: seed scale-0 matrices so nothing renders at the world origin before the
-        // first update() composes each instance (the shells set theirs in createNodes).
-        const zero = this._scratchMatrix2.makeScale(0, 0, 0);
-        for (let i = 0; i < count; i += 1) this.innerCoreMesh.setMatrixAt(i, zero);
+        // MUST-FIX: seed hidden matrices so nothing renders before the first update()
+        // composes each instance (the shells set theirs in createNodes). HIDDEN_INSTANCE_MATRIX
+        // (far-away + scale-0, not scale-0 alone) so the wobble positionNode can't re-inflate
+        // the seeds into a blob on r185; this mesh is frustumCulled=false, so no CPU-side change.
+        for (let i = 0; i < count; i += 1) this.innerCoreMesh.setMatrixAt(i, HIDDEN_INSTANCE_MATRIX);
         this.innerCoreMesh.instanceMatrix.needsUpdate = true;
         this.scene.add(this.innerCoreMesh);
     }
@@ -1271,13 +1285,15 @@ export class LevelNodeManager {
             node.group.visible = isVisible;
 
             if (!isVisible) {
+                // Glass has a positionNode (AAA shell displacement) → hide it via the portable
+                // HIDDEN_INSTANCE_MATRIX; glow/lock/star have none, so plain scale-0 stays.
+                this.glassInstancedMesh.setMatrixAt(idx, HIDDEN_INSTANCE_MATRIX);
                 matrix.makeScale(0, 0, 0);
-                this.glassInstancedMesh.setMatrixAt(idx, matrix);
                 this.glowInstancedMesh.setMatrixAt(idx, matrix);
                 this.lockInstancedMesh.setMatrixAt(idx, matrix);
                 for (let s = 0; s < 3; s++) this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix);
-                // LEVER 1: scale-0 cull the inner core too (same matrix the shells use).
-                if (this.innerCoreMesh) this.innerCoreMesh.setMatrixAt(idx, matrix);
+                // LEVER 1: hide the inner core too (wobble positionNode → same portable matrix).
+                if (this.innerCoreMesh) this.innerCoreMesh.setMatrixAt(idx, HIDDEN_INSTANCE_MATRIX);
 
                 // Hide particles for this node
                 for (let p = 0; p < particleCountPerNode; p++) {
@@ -1337,18 +1353,17 @@ export class LevelNodeManager {
 
             // LEVER 1: inner-core instance matrix + packed aCore vec4. The legacy per-node
             // innerMesh was a child scaled by INNER_CORE_DISPLAY_SCALE and hidden when
-            // chapterOneQuench >= 0.92; reproduce both here (scale 0 = hidden). aCore packs
-            // layer+0.5 / -1, seed, the locked|completed|hovered|selected bitfield, and the
-            // 5-5-5 fallback colour. setNode*/hover/select mark dirty so this reflushes.
+            // chapterOneQuench >= 0.92; reproduce both here (HIDDEN_INSTANCE_MATRIX = hidden).
+            // aCore packs layer+0.5 / -1, seed, the locked|completed|hovered|selected bitfield,
+            // and the 5-5-5 fallback colour. setNode*/hover/select mark dirty so this reflushes.
             if (this.coreInstanced && this.innerCoreMesh && aCoreAttr) {
-                const innerScale = chapterOneQuench < 0.92
-                    ? node.group.scale.x * INNER_CORE_DISPLAY_SCALE
-                    : 0;
-                const innerMat4 = this._scratchMatrix2.compose(
-                    node.group.position,
-                    node.group.quaternion,
-                    this._scratchInnerScaleVec.setScalar(innerScale),
-                );
+                const innerMat4 = chapterOneQuench < 0.92
+                    ? this._scratchMatrix2.compose(
+                        node.group.position,
+                        node.group.quaternion,
+                        this._scratchInnerScaleVec.setScalar(node.group.scale.x * INNER_CORE_DISPLAY_SCALE),
+                    )
+                    : HIDDEN_INSTANCE_MATRIX;
                 this.innerCoreMesh.setMatrixAt(idx, innerMat4);
                 const layer = node.group.userData.coreLayer ?? -1;
                 const layerEnc = layer >= 0 ? (layer + 0.5) : -1.0;

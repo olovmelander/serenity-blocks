@@ -27,6 +27,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 export class CosmicNoirPost {
     constructor(renderer, scene, camera, params = {}) {
@@ -36,14 +37,14 @@ export class CosmicNoirPost {
         this.resolutionScale = params.resolutionScale ?? 1.0;
         this.chromaticEnabled = params.chromaticEnabled ?? true;
         this.size = { width: 0, height: 0 };
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
 
         this.scenePass = pass(scene, camera);
         // PassNode.updateBefore() synchronizes its logical size from the renderer every frame.
         // setResolutionScale() is the r181-supported way to retain an internal scene scale.
         this.scenePass.setResolutionScale(this.resolutionScale);
         if (this.useMRT) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
+            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
 
         const sceneColor = this.scenePass.getTextureNode('output');

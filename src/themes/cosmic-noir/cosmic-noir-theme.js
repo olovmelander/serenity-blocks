@@ -1505,7 +1505,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             isWebGPU: true,
             maxColorAttachments: device?.limits?.maxColorAttachments ?? 0,
             supportsCompute: typeof this.renderer.compute === 'function',
-            supportsPost: typeof THREE_WEBGPU.PostProcessing === 'function',
+            supportsPost: typeof (THREE_WEBGPU.RenderPipeline ?? THREE_WEBGPU.PostProcessing) === 'function',
         };
     }
 

@@ -2,7 +2,7 @@
 /**
  * Himalayan Peak AAA — Cinematic Post Pipeline
  *
- * TSL post stack on three.js r181 `PostProcessing` (same toolbox as Electric
+ * TSL post stack on three.js `RenderPipeline` (same toolbox as Electric
  * Dreams V3 / Winter), retuned for a mountain dawn → alpenglow look.
  *
  * Stack (in order):
@@ -42,6 +42,7 @@ import {
 import * as THREE from 'three';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../../shared/mrt-blend.js';
 
 export const PEAK_POST_PROFILES = Object.freeze({
     Minimal: Object.freeze({
@@ -158,13 +159,13 @@ export class PeakPostPipeline {
     }
 
     _setup(params) {
-        this.postProcessing = new WEBGPU.PostProcessing(this.renderer);
+        this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
 
         let bloomSource;
         try {
             if (this.mrtEnabled) {
-                scenePass.setMRT(mrt({ output, emissive }));
+                scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
                 bloomSource = scenePass.getTextureNode('emissive');
             } else {
                 bloomSource = scenePass.getTextureNode('output');

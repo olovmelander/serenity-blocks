@@ -564,11 +564,10 @@ export class OdysseyBoardController {
         this.scrollIdleThreshold = 0.004;
         // Travel gate (opt-in `?odysseyTravelGate=1`) — see _updateTravelFrontier.
         this._travelGateEnabled = readBooleanUrlFlag('odysseyTravelGate');
-        // Default 3 (unchanged). Serialising to 1 was TRIED and measured: it split the compile
-        // burst into smaller stalls but left the total identical (~10.2s vs ~10.4s of post-reveal
-        // stall) and delayed readiness, because a SINGLE chapter's compile alone starves the GPU
-        // for ~3.7s. Concurrency is not the lever. Kept tunable so the next A/B is a flag, not a
-        // code change: ?odysseyPrewarmConcurrency=1
+        // RETIRED BY THE r185 DRAIN REWORK: the background drain no longer runs compileAsync
+        // batches (unsafe on r185 — see warmup/post-target-compile.js) and render-warms exactly
+        // one chapter per tick, so this knob currently drives nothing. Field + flag kept so the
+        // registry stays stable and a future batched warm can re-adopt it.
         this._prewarmConcurrency = Math.max(
             1,
             Number.parseInt(readUrlValue('odysseyPrewarmConcurrency'), 10) || 3,
@@ -678,9 +677,11 @@ export class OdysseyBoardController {
         // ─── Steps 2+3: Create chapter environments, compiling in PARALLEL ───
         // Default startup creates and warms the whole journey to prevent first-visit hitches.
         // Capture sessions can pass ?odysseyCaptureChapters=... to load only a local chapter
-        // window and keep weak GPUs out of the TDR danger zone. compileAsync snapshots its
-        // renderables and restores shared renderer state synchronously BEFORE its only await,
-        // so launches can overlap safely; the pool barrier sits before the warm-up replay.
+        // window and keep weak GPUs out of the TDR danger zone. Overlapped launches are safe
+        // because compileGroupThroughPost holds ONE refcounted post-target binding across all
+        // concurrent awaits (r185: node builds are deferred and read live renderer state, so
+        // the binding must outlive every compile); the pool barrier sits before the warm-up
+        // replay.
         this.environmentManager = new ChapterEnvironmentManager(this.scene, this.renderer, {
             chapterPositions: this.presentationLayout.chapterPositions,
             chapterLOD: this.chapterLodEnabled,
@@ -1397,63 +1398,55 @@ export class OdysseyBoardController {
             return;
         }
 
-        // AAA warm pipeline (Stage 3): compile the queued chapters CONCURRENTLY instead of
-        // one-at-a-time. compileAsync is a background-thread GPU op that pipelines, so the old
-        // serial drain let ONE slow chapter (surface-world's ~15-material compile) block every
-        // later chapter's compile for many seconds — the player then scrolls into ch4-8 before
-        // they are prewarmed = the first-visit hitch. Firing the whole pending set at once during
-        // idle (this path only runs when idle + camera-settled + frame-healthy, so the concurrent
-        // GPU burst does not contend with an active scroll) gets them all ready in ~max(compile)
-        // instead of sum(compile). Nearest-to-player first so the closest chapters resolve soonest.
+        // r185 rework (2026-08-20): this drain used to run background compileAsync batches
+        // (one shared binding, sequential awaits). r185's compileAsync defers every object's
+        // node build into a main-thread-yielding loop that reads the LIVE renderer target/MRT
+        // at build time — under a live rAF loop those reads drift with the loop's own rebinding
+        // and the poisoned builder states land in an MRT-agnostic cache (the black-screen
+        // failure; see warmup/post-target-compile.js's header). There is no safe background
+        // compileAsync on r185, so the drain now does the ONLY live-loop-safe warm directly:
+        // the synchronous private-target render-warm. One chapter per tick — the warm render
+        // pays that chapter's pipeline compile synchronously (bounded hitch, idle-gated by
+        // _canRunBackgroundTask above; this matches the pre-existing fallback behaviour when
+        // background compiles failed to land, and r184's compile speedups shrink it), then the
+        // drain reschedules so consecutive warms never stack in one frame. Nearest-to-player
+        // first so the closest chapters become scroll-safe soonest.
         const focus = Number.isFinite(this.focusChapter) ? this.focusChapter : 1;
         this.prewarmQueue.sort((a, b) => Math.abs(a - focus) - Math.abs(b - focus));
-        // Bounded concurrency: compile up to N nearest chapters at once so a slow chapter
-        // (surface-world's ~15-material compile) never serially blocks the rest, WITHOUT an
-        // unbounded GPU burst that would starve the create loop / stutter the orient-pause.
-        //
-        // N was 3, chosen when the journey had 8 diorama chapters and a slow one could block six
-        // others. Under One World only chapters 6/7/8 are separate environments — EXACTLY the
-        // batch size — so "bounded" degenerated to "all at once", and three simultaneous pipeline
-        // compiles starve the compositor: measured a 3.6-3.7s rAF gap carrying only ~0.77s of
-        // longtask, i.e. ~2.9s of pure GPU starvation. With so few chapters the serialisation
-        // risk N was protecting against no longer exists, so prefer smaller bursts.
-        const batch = this.prewarmQueue.splice(0, this._prewarmConcurrency);
+        const batch = this.prewarmQueue.splice(0, 1);
         batch.forEach((ch) => this.queuedPrewarmChapters.delete(ch));
         this.isPrewarming = true;
 
-        // One binding + SEQUENTIAL compiles for the batch. Two honest notes from the follow-up
-        // profiling (2026-08-17, plan doc §16), which corrected this block's original rationale:
-        //
-        // 1. The binding is only guaranteed to be captured by the FIRST compileAsync — its sync
-        //    phase reads the currently-bound target, and between awaited compiles the live rAF
-        //    loop rebinds targets for its own frames. So this is "first compile gets the post
-        //    context for free", not a shared session. (The original "fixed per-binding setup paid
-        //    three times" story did not survive profiling: cross-run isolated profiles show a
-        //    conserved ~3-4s of CONCURRENT session work — theme warm, chapter creation, Dawn's
-        //    compile queue — landing on whichever await happens to be open, not a per-binding
-        //    cost. The theme warm is now sequenced out of this window, see
-        //    main.js _deferThemeWarmWhileOdysseyLoads.)
-        //
-        // 2. Sequential stays: it avoids stacking three Dawn pipeline-compile bursts, and
-        //    concurrency was separately measured to be a non-lever (plan doc §14).
-        //
-        // r181 trap worth knowing here: compileAsync(scene, camera, group) PROJECTS THE WHOLE
-        // first argument (Renderer.js:897) — `group` only contributes lights. Every "targeted"
-        // chapter compile therefore walks the full visible scene; the per-chapter cost comes from
-        // the chapter being force-visible during its own prewarm, not from targeting.
-        const sharedSaved = this._beginPostTargetCompile() || this._beginWarmTargetRender();
         try {
             for (const ch of batch) {
-                // eslint-disable-next-line no-await-in-loop
-                await this._prewarmChapterEnvironment(ch, { sharedBinding: !!sharedSaved });
+                const env = this.environmentManager?.environments?.get(ch);
+                if (!env || env._renderWarmed) continue;
+                const warmStart = performance.now();
+                const warmed = this._renderWarmChapterOffscreen(ch, env);
+                if (warmed) {
+                    // A successful warm RENDER builds strictly more than a compile did:
+                    // pipelines, GPU uploads, first update(). Mark both flags so the
+                    // post-reveal sweep and the scroll-in fallback skip this chapter.
+                    env.prewarmed = true;
+                    env._renderWarmed = true;
+                    const warmMs = Math.round(performance.now() - warmStart);
+                    console.log(`[OdysseyBoard] Drain render-warmed chapter ${ch} in ${warmMs}ms`);
+                } else {
+                    // Warm failed (device/pipeline race) — re-queue bounded, like the sweep.
+                    this._drainWarmRetries = this._drainWarmRetries || {};
+                    this._drainWarmRetries[ch] = (this._drainWarmRetries[ch] || 0) + 1;
+                    if (this._drainWarmRetries[ch] <= 5 && !this.queuedPrewarmChapters.has(ch)) {
+                        this.prewarmQueue.push(ch);
+                        this.queuedPrewarmChapters.add(ch);
+                    }
+                }
             }
         } finally {
-            if (sharedSaved) this._endPostTargetCompile(sharedSaved);
             this.isPrewarming = false;
         }
 
         if (this.prewarmQueue.length > 0) {
-            this._schedulePrewarmDrain(60);
+            this._schedulePrewarmDrain(180);
         }
     }
 
@@ -1854,6 +1847,9 @@ export class OdysseyBoardController {
 
     /** @private */
     _compileGroupThroughPost(group) {
+        // r185: resolves false (compile skipped) when the loop is live and post is active —
+        // deferred builds under a live loop poison the MRT-agnostic builder cache, so
+        // background warming belongs to the private-target render-warm, never compileAsync.
         return compileGroupThroughPost(
             this.renderer,
             this.postProcessingStack,
@@ -1861,10 +1857,6 @@ export class OdysseyBoardController {
             this.camera,
             group,
             this._renderLoopActive(),
-            // Background compiles (loop live) bind the private target so they build POST-format
-            // pipelines asynchronously, instead of canvas-format ones that leave the real compile
-            // to land synchronously in the render-warm.
-            this._getWarmRenderTarget(),
         );
     }
 
@@ -1882,7 +1874,7 @@ export class OdysseyBoardController {
         });
     }
 
-    async _prewarmChapterEnvironment(chapterId, { sharedBinding = false } = {}) {
+    async _prewarmChapterEnvironment(chapterId) {
         if (!this.environmentManager || !this.renderer || !this.scene || !this.camera) return;
 
         const env = this.environmentManager.environments.get(chapterId);
@@ -1912,21 +1904,18 @@ export class OdysseyBoardController {
 
             // Structural: TARGETED compile of just this chapter's group instead of the whole
             // scene, against the POST pass target (the pipelines the chapter actually uses
-            // live). Compilation is async (createRenderPipelineAsync) — never blocks main.
-            // With a shared binding the CALLER already bound the compile target, and skipping
-            // the per-chapter bind is the whole point: the first compileAsync after a binding pays
-            // a fixed setup cost (measured 0.4-1.2s), and it is per SESSION, not per material.
-            // Proven by compiling a chapter's drawables in reverse order — the cost stayed at
-            // index 0 and followed whichever mesh went first, while the previously "1313ms"
-            // material dropped to 4.2ms. Real per-material cost is ~4ms.
-            if (sharedBinding) {
-                await this.renderer.compileAsync(this.scene, this.camera, group);
-            } else {
-                await this._compileGroupThroughPost(group);
-            }
+            // live). Compilation is async — r185 yields to main between objects, never blocks.
+            // Concurrent pool launches share one refcounted binding inside
+            // compileGroupThroughPost (r185 holds it across the whole await; the module
+            // restores only after the last pooled compile resolves — see its file header).
+            const compiled = await this._compileGroupThroughPost(group);
 
-            env.prewarmed = true;
-            console.log(`[OdysseyBoard] Prewarmed chapter ${chapterId} shaders`);
+            if (compiled) {
+                env.prewarmed = true;
+                console.log(`[OdysseyBoard] Prewarmed chapter ${chapterId} shaders`);
+            }
+            // compiled === false: loop live + post active — compileAsync is unsafe on r185.
+            // Leave env.prewarmed false; the background render-warm owns this chapter now.
         } catch (error) {
             console.warn(`[OdysseyBoard] Shader prewarm failed for chapter ${chapterId}:`, error);
         } finally {

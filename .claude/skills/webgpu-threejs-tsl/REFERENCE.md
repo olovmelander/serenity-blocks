@@ -221,8 +221,9 @@ const compute2 = Fn(() => { /* ... */ })().compute(count, [64]);
 import { pass } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
-// r181 class is PostProcessing (RenderPipeline is the r183 rename — not available here)
-const postProcessing = new THREE.PostProcessing(renderer);
+// r185: RenderPipeline is the real class (renamed from PostProcessing in r183;
+// the old name is a deprecated warn-once alias). The repo-wide rename has landed.
+const postProcessing = new THREE.RenderPipeline(renderer);
 const scenePass = pass(scene, camera);
 const color = scenePass.getTextureNode('output');
 
@@ -351,16 +352,39 @@ if (adapter.limits.maxBufferSize >= desiredSize) {
 
 See `docs/limits-and-features.md` for full details.
 
-## Version Notes (installed: r181)
+## Version Notes (installed: 0.185.1 / r185)
 
-**r181 (this repo):**
+**r185 (this repo — changes vs the previous r181 pin):**
+- `PostProcessing` was renamed `RenderPipeline` in r183; in r185 `PostProcessing` is a
+  fully-functional deprecated warn-once alias. **Repo policy: construct
+  `RenderPipeline`** — the repo-wide rename has landed; a `PostProcessing` deprecation
+  warning now indicates a stray un-renamed site that needs fixing.
+- TSL `atan2` removed → two-arg `atan(y, x)`. TSL `.equals` removed → `.equal`.
+- MRT secondary attachments default to `NoBlending` — restore emissive blending via
+  `withEmissiveMaterialBlending(...)` from `src/themes/shared/mrt-blend.js`
+  (`setBlendMode('emissive', new BlendMode(MaterialBlending))` + a patch for the
+  upstream `merge()` blendModes bug).
+- `positionNode` ordering **inverted** vs r181 (verified from generated WGSL): r181 ran
+  `positionNode` first (`positionLocal` inside it = raw geometry) and applied
+  instance/batch/skin matrices after its output; r185 applies the matrices first
+  (`positionLocal` is post-instance inside `positionNode`) and the node's output is
+  final. Portable idiom: masks/pivots/phases from `positionGeometry`, output
+  `positionLocal.add(displacement)`. A `positionGeometry`-only output on a real-matrix
+  InstancedMesh collapses instancing on r185.
+- `compileAsync` defers node building to a per-object main-thread-yielding loop — a
+  bind/compile/restore-synchronously recipe silently poisons the MRT-agnostic builder
+  cache. Hold bindings across the `await` (loop idle only), or warm by actually
+  rendering once (render-warm is unchanged and remains the only live-loop-safe warm).
+- `backend.hasTimestamp(uid)` → `hasTimestampQuery(uid)`; `hasTimestamp` is now a
+  boolean **capability getter** — calling it like a function is a TypeError, and
+  truthiness checks silently changed meaning.
+- `BloomNode.dispose()` now disposes its own materials; the new public
+  `setResolutionScale()` replaces half-res `setSize` monkey-patching.
+
+**Still true from earlier releases:**
 - `PI2` is deprecated → use `TWO_PI`
-- `PostProcessing` is the post class; `RenderPipeline` does not exist until r183
 - `renderAsync()`/`computeAsync()`-style methods deprecated → `await renderer.init()` once, then sync `render()`/`compute()`
-
-**r178+:**
-- `transformedNormalView` → use `normalView`
-- `transformedNormalWorld` → use `normalWorld`
+- `transformedNormalView` → use `normalView`; `transformedNormalWorld` → use `normalWorld` (r178+)
 
 ## Resources
 

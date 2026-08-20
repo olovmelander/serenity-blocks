@@ -240,7 +240,7 @@ export function create({
     const edgeDistance = screenUV.sub(vec2(0.5)).length();
     const vignette = float(1).sub(smoothstep(0.24, 0.72, edgeDistance).mul(0.72));
     const graded = sceneColor.rgb.add(bloomNode.rgb).mul(0.78).mul(vignette);
-    const post = new THREE.PostProcessing(renderer);
+    const post = new THREE.RenderPipeline(renderer);
     post.outputNode = vec4(graded, sceneColor.a);
     post.needsUpdate = true;
 

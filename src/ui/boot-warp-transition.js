@@ -207,8 +207,13 @@ export class BootWarpTransition {
         };
         if (this.sharedDevice) {
             // three.js skips requestAdapter/requestDevice when a device is passed — the warp
-            // then shares the intro's device (no 3rd context). dispose() does NOT destroy the
-            // shared device (three r181 WebGPUBackend.dispose leaves it), so the intro survives.
+            // then shares the intro's device (no 3rd context). Passing `device` also means
+            // r185's WebGPUBackend.dispose() treats it as NOT owned and skips device.destroy(),
+            // so warp.dispose() leaves the intro's device alive. ORDERING CONSTRAINT (r185):
+            // the INTRO renderer owns this device, and r185 destroys owned devices on dispose —
+            // the warp must therefore always be disposed BEFORE the intro's destroy() can run.
+            // boot-warp-orchestrator's `finally { warpTransition.dispose() }` enforces this at
+            // handoff end; do not move warp disposal after any intro teardown.
             rendererParams.device = this.sharedDevice;
         }
         markStartup('boot-warp:init-start', {

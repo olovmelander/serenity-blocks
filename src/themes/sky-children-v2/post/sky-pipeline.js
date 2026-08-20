@@ -2,7 +2,7 @@
 /**
  * Sky Children V2 AAA — Cinematic Post Pipeline
  *
- * TSL post stack on three.js `PostProcessing` (same toolbox as Himalayan Peak /
+ * TSL post stack on three.js `RenderPipeline` (same toolbox as Himalayan Peak /
  * Electric Dreams V3 / Winter), retuned for the painterly Sky sunset look.
  *
  * Stack (in order):
@@ -45,6 +45,7 @@ import {
 import * as THREE from 'three';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../../shared/mrt-blend.js';
 
 const GODRAY_STEPS = 16;
 
@@ -65,13 +66,13 @@ export class SkyPipeline {
     }
 
     _setup(params) {
-        this.postProcessing = new WEBGPU.PostProcessing(this.renderer);
+        this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
 
         let bloomSource;
         try {
             if (this.mrtEnabled) {
-                scenePass.setMRT(mrt({ output, emissive }));
+                scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
                 bloomSource = scenePass.getTextureNode('emissive');
             } else {
                 bloomSource = scenePass.getTextureNode('output');

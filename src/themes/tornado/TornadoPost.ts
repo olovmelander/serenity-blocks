@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { emissive, mrt, output, pass } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 type TornadoPostParams = {
     bloomStrength: number;
@@ -11,16 +12,16 @@ type TornadoPostParams = {
 
 export class TornadoPost {
     private renderer: THREE.WebGPURenderer;
-    private postProcessing: THREE.PostProcessing;
+    private postProcessing: THREE.RenderPipeline;
     private scenePass: ReturnType<typeof pass>;
     private bloomNode: ReturnType<typeof bloom>;
     private bloomDownsample: number;
 
     constructor(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, params: TornadoPostParams) {
         this.renderer = renderer;
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
         this.scenePass = pass(scene, camera);
-        this.scenePass.setMRT(mrt({ output, emissive }));
+        this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
 
         const scenePassColor = this.scenePass.getTextureNode('output');
         const emissivePass = this.scenePass.getTextureNode('emissive');

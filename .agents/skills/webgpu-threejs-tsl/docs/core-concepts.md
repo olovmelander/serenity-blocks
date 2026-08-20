@@ -421,7 +421,7 @@ clamp(x, 0, 1)   // Clamp to range
 
 ### Trigonometry
 ```javascript
-import { sin, cos, tan, asin, acos, atan, atan2 } from 'three/tsl';
+import { sin, cos, tan, asin, acos, atan } from 'three/tsl';
 
 sin(x)
 cos(x)
@@ -429,7 +429,7 @@ tan(x)
 asin(x)
 acos(x)
 atan(x)
-atan2(y, x)
+atan(y, x)       // two-arg form — TSL atan2 was removed in r185
 ```
 
 ### Exponential

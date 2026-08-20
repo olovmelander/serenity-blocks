@@ -30,6 +30,7 @@ import {
     mix,
     normalize,
     normalWorld,
+    positionGeometry,
     positionLocal,
     positionWorld,
     pow,
@@ -180,7 +181,7 @@ function createCanopyMaterial(uTime, uMotion) {
 
     // Slow crown drift; per-instance phase desyncs neighbours.
     const phase = hash(instanceIndex).mul(TAU);
-    const tipWeight = smoothstep(0.1, 1.0, positionLocal.y);
+    const tipWeight = smoothstep(0.1, 1.0, positionGeometry.y);
     const sway = sin(uTime.mul(0.19).add(phase))
         .add(sin(uTime.mul(0.11).sub(phase.mul(0.7))).mul(0.45))
         .mul(0.022)
@@ -230,7 +231,7 @@ function createHeroCanopyMaterial(leafMap, uTime, uMotion) {
     const moonDir = makeMoonDirNode();
 
     const phase = hash(instanceIndex).mul(TAU);
-    const tipWeight = smoothstep(0.1, 1.0, positionLocal.y);
+    const tipWeight = smoothstep(0.1, 1.0, positionGeometry.y);
     const sway = sin(uTime.mul(0.19).add(phase))
         .add(sin(uTime.mul(0.11).sub(phase.mul(0.7))).mul(0.45))
         .mul(0.026)

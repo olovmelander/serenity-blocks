@@ -28,15 +28,16 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 export class NeonDistrictPost {
     constructor(renderer, scene, camera, params) {
         this.renderer = renderer;
         this.useMRT = params?.useMRT ?? false;
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
         this.scenePass = pass(scene, camera);
         if (this.useMRT) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
+            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
 
         const scenePassColor = this.scenePass.getTextureNode('output');

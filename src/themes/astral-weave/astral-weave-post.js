@@ -28,6 +28,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 export const ASTRAL_WEAVE_POST_PROFILES = Object.freeze({
     Minimal: Object.freeze({
@@ -257,10 +258,10 @@ export class AstralWeavePost {
     }
 
     setupWebGPU(params = {}) {
-        this.postProcessing = new WEBGPU.PostProcessing(this.renderer);
+        this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         this.scenePass = pass(this.scene, this.camera);
         if (this.useMRT) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
+            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
 
         const sceneColor = this.scenePass.getTextureNode('output');

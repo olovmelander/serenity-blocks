@@ -1,9 +1,14 @@
 /**
  * @fileoverview Unit tests for the Odyssey warm-up post-target compile helpers (E2 extraction).
  *
- * These were previously private methods buried in the 2,800-line OdysseyBoardController and could
- * only be exercised through a live WebGPU board. Extracted to warmup/post-target-compile.js, the
- * bind → compile → restore recipe is now testable in isolation with a mock renderer.
+ * r185 CONTRACT (reworked 2026-08-20 — see the module's file header for the full mechanism):
+ * r181 built all nodes in compileAsync's synchronous prologue, so bind → launch → restore-in-
+ * finally was safe and these tests used to pin exactly that. r185 defers every object's node
+ * build into a main-thread-yielding loop that reads the LIVE renderer target/MRT, so the binding
+ * must now be HELD ACROSS THE ENTIRE AWAIT, shared by concurrent pooled compiles (refcounted
+ * session), and restored only when the last one resolves. Under a live render loop with post
+ * active there is NO safe compileAsync at all — the compile is skipped (resolves false) and
+ * warming belongs to the synchronous private-target render-warm.
  */
 
 import {
@@ -29,6 +34,16 @@ function makeRenderer() {
     };
 }
 
+/** A mock renderer whose compileAsync stays pending until the test resolves it. */
+function makeDeferredRenderer() {
+    const renderer = makeRenderer();
+    const pending = [];
+    renderer.compileAsync = vi.fn(() => new Promise((resolve) => { pending.push(resolve); }));
+    renderer._resolveCompile = (i = 0) => { pending[i](); };
+    renderer._pendingCount = () => pending.length;
+    return renderer;
+}
+
 /** A mock post stack whose scene pass exposes a render target + MRT. */
 function makePostStack() {
     return {
@@ -38,6 +53,9 @@ function makePostStack() {
         },
     };
 }
+
+/** Let queued microtasks run so awaited promise chains settle. */
+const flushMicrotasks = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
 describe('post-target-compile (E2 warm-up helper)', () => {
     it('binds the scene-pass target + MRT and returns the previous state when post is active', () => {
@@ -71,37 +89,73 @@ describe('post-target-compile (E2 warm-up helper)', () => {
         endPostTargetCompile(renderer, null);
         expect(renderer.setRenderTarget).not.toHaveBeenCalled();
     });
+});
 
-    it('compileGroupThroughPost compiles with the post target bound, then restores', async () => {
-        const renderer = makeRenderer();
-        let targetDuringCompile = null;
-        renderer.compileAsync = vi.fn(() => {
-            targetDuringCompile = renderer._current().target; // captured while bound
-            return Promise.resolve();
-        });
+describe('the r185 hold-across-await contract', () => {
+    it('holds the post binding for the ENTIRE compile and restores only after it resolves', async () => {
+        // r185 builds nodes AFTER compileAsync's synchronous section, reading the live
+        // renderer target/MRT — restoring before resolution poisons the builder cache
+        // (the r181-era restore-in-finally recipe this module used to pin).
+        const renderer = makeDeferredRenderer();
         const promise = compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', 'GROUP');
-        // The bind is restored synchronously in finally, before the awaited promise resolves.
-        expect(renderer._current().target).toBe('CANVAS');
         expect(renderer.compileAsync).toHaveBeenCalledWith('SCENE', 'CAM', 'GROUP');
-        expect(targetDuringCompile).toBe('SCENE_RT'); // was bound during the compileAsync call
-        await promise;
+        // Still bound while the compile is in flight — the load-bearing r185 assertion.
+        expect(renderer._current()).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT' });
+        renderer._resolveCompile(0);
+        await expect(promise).resolves.toBe(true);
+        expect(renderer._current()).toEqual({ target: 'CANVAS', mrt: null });
     });
 
-    it('compileGroupThroughPost still resolves + restores when post is inactive (direct compile)', async () => {
+    it('concurrent compiles share ONE refcounted binding; the last release restores the ORIGINAL state', async () => {
+        // The startup pool launches chapter compiles concurrently. Naive per-call
+        // save/restore would capture each other's bound state and could leave the
+        // scene-pass target bound after the pool drains.
+        const renderer = makeDeferredRenderer();
+        const first = compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', 'G1');
+        const second = compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', 'G2');
+        expect(renderer._pendingCount()).toBe(2);
+        // One bind for the whole pool.
+        expect(renderer.setRenderTarget).toHaveBeenCalledTimes(1);
+
+        renderer._resolveCompile(0);
+        await first;
+        // Second compile still in flight — binding must survive the first release.
+        expect(renderer._current()).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT' });
+
+        renderer._resolveCompile(1);
+        await second;
+        // Restored to the TRUE original state (not an intermediate save).
+        expect(renderer._current()).toEqual({ target: 'CANVAS', mrt: null });
+        expect(renderer.setRenderTarget).toHaveBeenCalledTimes(2); // bind + final restore
+    });
+
+    it('restores even when the compile rejects', async () => {
         const renderer = makeRenderer();
-        await compileGroupThroughPost(renderer, null, 'SCENE', 'CAM', 'GROUP');
+        renderer.compileAsync = vi.fn(() => Promise.reject(new Error('device lost')));
+        await expect(
+            compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', 'GROUP'),
+        ).rejects.toThrow('device lost');
+        await flushMicrotasks();
+        expect(renderer._current()).toEqual({ target: 'CANVAS', mrt: null });
+    });
+
+    it('compiles bare (no binding) and still resolves true when post is inactive', async () => {
+        const renderer = makeRenderer();
+        await expect(
+            compileGroupThroughPost(renderer, null, 'SCENE', 'CAM', 'GROUP'),
+        ).resolves.toBe(true);
         expect(renderer.compileAsync).toHaveBeenCalledWith('SCENE', 'CAM', 'GROUP');
-        expect(renderer._current().target).toBe('CANVAS'); // untouched (no post to bind)
+        expect(renderer._current()).toEqual({ target: 'CANVAS', mrt: null }); // untouched
     });
 });
 
-describe('the render-loop guard (2026-08-12 device-loss fix)', () => {
-    // compileAsync opens a render pass on whatever target is bound. Doing that while the rAF loop
-    // is rendering the post graph puts the scene-pass "output" texture in one command encoder as
-    // BOTH a sampled binding and a render attachment, which WebGPU rejects; pipeline creation then
-    // returns undefined and the next draw throws inside setPipeline, permanently poisoning the
-    // device. The symptom is thousands of identical errors per second, so the cheap guard below is
-    // worth pinning: it is invisible in every renderer-free test unless asserted directly.
+describe('the render-loop guard (2026-08-12 device-loss fix, hardened for r185)', () => {
+    // Binding the shared scene-pass target while the rAF loop renders aliases its `output`
+    // texture as both sampled binding and render attachment — device-poisoning, still true on
+    // r185. NEW on r185: even an UNBOUND background compileAsync is unsafe with post active,
+    // because the deferred builds read the live loop's drifting target/MRT and poison the
+    // MRT-agnostic builder cache. So a live-loop compile with post active is SKIPPED entirely
+    // (resolves false); live-loop warming belongs to the private-target render-warm.
     it('does NOT bind the post target while the render loop is active', () => {
         const renderer = makeRenderer();
         expect(beginPostTargetCompile(renderer, makePostStack(), true)).toBeNull();
@@ -115,14 +169,23 @@ describe('the render-loop guard (2026-08-12 device-loss fix)', () => {
         expect(renderer._current()).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT' });
     });
 
-    it('compileGroupThroughPost still compiles when the loop is active, just unbound', async () => {
-        // The chapter must STILL be compiled — skipping the compile entirely would reintroduce a
-        // first-visit freeze. Only the target binding is dropped.
+    it('SKIPS the compile entirely (resolves false) when the loop is active and post is active', async () => {
         const renderer = makeRenderer();
-        await compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', 'GROUP', true);
-        expect(renderer.compileAsync).toHaveBeenCalledWith('SCENE', 'CAM', 'GROUP');
+        await expect(
+            compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', 'GROUP', true),
+        ).resolves.toBe(false);
+        expect(renderer.compileAsync).not.toHaveBeenCalled();
         expect(renderer.setRenderTarget).not.toHaveBeenCalled();
         expect(renderer._current()).toEqual({ target: 'CANVAS', mrt: null });
+    });
+
+    it('still compiles bare on a live loop when post is INACTIVE (no MRT to poison)', async () => {
+        const renderer = makeRenderer();
+        await expect(
+            compileGroupThroughPost(renderer, null, 'SCENE', 'CAM', 'GROUP', true),
+        ).resolves.toBe(true);
+        expect(renderer.compileAsync).toHaveBeenCalledWith('SCENE', 'CAM', 'GROUP');
+        expect(renderer.setRenderTarget).not.toHaveBeenCalled();
     });
 
     it('defaults to the SAFE behaviour when the flag is omitted', () => {

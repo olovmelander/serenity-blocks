@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-    atan2,
+    atan,
     clamp,
     float,
     length,
@@ -71,7 +71,7 @@ export class TornadoGround {
 
         const radialCoord = vec2(positionLocal.x, positionLocal.y);
         const radius = length(radialCoord);
-        const angle = atan2(positionLocal.y, positionLocal.x);
+        const angle = atan(positionLocal.y, positionLocal.x);
 
         const swirlSpeed = time.mul(this.uTimeScale).mul(float(0.6));
         const swirlTightness = radius.mul(float(1.4));

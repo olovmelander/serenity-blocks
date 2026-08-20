@@ -27,6 +27,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 export class ChromadelicHighwayPost {
     constructor(renderer, scene, camera, params = {}) {
@@ -36,11 +37,11 @@ export class ChromadelicHighwayPost {
         // (was 0.8). Bloom is inherently soft so the lower internal resolution is not
         // perceptible, but it cuts bloom pixel work by ~(0.8/0.65)^2 ≈ 1.5x.
         this.bloomDownsample = params.bloomDownsample ?? 0.65;
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
 
         this.scenePass = pass(scene, camera);
         if (this.useMRT) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
+            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
 
         const sceneColor = this.scenePass.getTextureNode('output');

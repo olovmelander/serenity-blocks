@@ -4,7 +4,7 @@
  *
  * Part of the Odyssey AAA WebGPU migration (P-post). See docs/ODYSSEY_AAA_MASTER_PLAN.md §3.5.
  * The cinematic post stack for the converted board, modeled on the shipped
- * winter/electric-dreams-v3 TSL pipelines (THREE.PostProcessing node graph). Replaces the
+ * winter/electric-dreams-v3 TSL pipelines (THREE.RenderPipeline node graph). Replaces the
  * legacy EffectComposer + UnrealBloomPass + GLSL ShaderPass chain (which WebGPURenderer
  * cannot run).
  *
@@ -64,6 +64,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../../../themes/shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../../../themes/shared/mrt-blend.js';
 
 // A6: seam-bloom accent multiplier. Was effectively 0.5 (a white flash hiding the old hard
 // portal cut). Cut to a fraction of that so the ecotone blend reads instead of blowing out.
@@ -235,7 +236,7 @@ export class OdysseyTslPipeline {
         this._bloomAllowed = this.enableBloom;
         this._baseGrain = params.grain ?? 0.012; // grain anchor the scale multiplies; halved 2026-07-05 (was 0.022 → softened/veiled the frame)
 
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
         // MEADOW-ALIASING FIX (2026-08): QW1 dropped renderer-level MSAA (antialias:false)
         // and let the post grain soften edges — but the Ch3 wildflower carpet is thousands
         // of 1-3px vertex-coloured petals, and with zero scene-pass samples they alias into
@@ -256,7 +257,7 @@ export class OdysseyTslPipeline {
         if (this.enableBloom) {
             let bloomSource;
             if (this.useMRT) {
-                scenePass.setMRT(mrt({ output, emissive }));
+                scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
                 bloomSource = scenePass.getTextureNode('emissive');
             } else {
                 bloomSource = scenePass.getTextureNode('output');

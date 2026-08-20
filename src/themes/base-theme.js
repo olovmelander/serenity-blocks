@@ -345,11 +345,11 @@ export class BaseTheme {
      * `visible = false` until an event reveals them.
      *
      * Such objects are skipped by `compileAsync` and by every warm render
-     * (three r181 `Renderer._projectObject` returns early on `visible === false`,
-     * and `compileAsync` uses that same traversal), so their pipelines compile
-     * on the first gameplay frame that reveals them — a 70-190ms GPU stall with
-     * no JS longtask. A theme that declares its FX root gets those pipelines
-     * compiled during its masked warm window instead.
+     * (three `Renderer._projectObject` returns early on `visible === false` —
+     * r185 Renderer.js:3082 — and `compileAsync` uses that same traversal), so
+     * their pipelines compile on the first gameplay frame that reveals them — a
+     * 70-190ms GPU stall with no JS longtask. A theme that declares its FX root
+     * gets those pipelines compiled during its masked warm window instead.
      *
      * See src/themes/shared/warm-hidden-drawables.js.
      * @returns {Array<any>}
@@ -361,10 +361,12 @@ export class BaseTheme {
     /**
      * True when this theme's scene pass renders into a multi-target (MRT)
      * framebuffer. A bare `compileAsync(scene, camera)` is unsafe on such
-     * themes — it binds no render target, so it caches a one-output shader that
-     * is then reused for the multi-attachment pass, which poisons the pipeline
-     * cache and blanks the affected objects. Consumers must skip bare sweeps
-     * when this is true.
+     * themes — it compiles with no MRT bound (r181 bound no target at all;
+     * r185 falls back to the internal single-output framebuffer, Renderer.js:
+     * 909-911, and its deferred builds read live `getMRT()` = null), so it
+     * caches a one-output shader that is then reused for the multi-attachment
+     * pass, which poisons the pipeline cache and blanks the affected objects.
+     * Consumers must skip bare sweeps when this is true.
      * @returns {boolean}
      */
     usesMrtScenePass() {

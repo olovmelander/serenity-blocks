@@ -15,7 +15,7 @@
  *
  * Modeled on the proven in-repo src/themes/wolfhour/wolfhour-post.js so the
  * setSize / bloom-downsample / dispose plumbing matches a shipped surface.
- * `renderOutput` (PostProcessing.outputColorTransform) applies the renderer's
+ * `renderOutput` (RenderPipeline.outputColorTransform) applies the renderer's
  * NoToneMapping + sRGB OETF to our linear output — so AgX runs once, in-graph.
  */
 import * as THREE from 'three/webgpu';
@@ -158,7 +158,7 @@ export class KoiPondPost {
         this.useFilmGrain = params.useFilmGrain === true;
         this.baseGrainStrength = Number.isFinite(params.grainStrength) ? params.grainStrength : 0.0012;
 
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
         this.scenePass = pass(scene, camera);
 
         // Output-threshold bloom: the marquee glows are MeshBasicNodeMaterial

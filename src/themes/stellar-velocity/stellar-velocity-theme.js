@@ -935,10 +935,17 @@ export default class StellarVelocityTheme extends BaseTheme {
             const backend = this.renderer.backend;
             const computePassMs = {};
             const collectPassTiming = (label, computeNode) => {
-                if (!computeNode || !backend?.getTimestampUID || !backend?.hasTimestamp || !backend?.getTimestamp) return;
+                // r185 renames hasTimestamp(uid) → hasTimestampQuery(uid); hasTimestamp becomes a
+                // boolean capability getter there (truthy), so guarding on it and calling it would throw.
+                const hasTimestampFn = typeof backend?.hasTimestampQuery === 'function'
+                    ? (uid) => backend.hasTimestampQuery(uid)
+                    : typeof backend?.hasTimestamp === 'function'
+                        ? (uid) => backend.hasTimestamp(uid)
+                        : null;
+                if (!computeNode || !backend?.getTimestampUID || !hasTimestampFn || !backend?.getTimestamp) return;
                 try {
                     const uid = backend.getTimestampUID(computeNode);
-                    if (uid && backend.hasTimestamp(uid)) {
+                    if (uid && hasTimestampFn(uid)) {
                         computePassMs[label] = backend.getTimestamp(uid);
                     }
                 } catch (_error) {
@@ -1636,7 +1643,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         const supportsTimestampQuery = this.renderer?.hasFeature?.('timestamp-query') ?? false;
         const supportsPost = this.isWebGPU
             ? this.renderer?.backend?.isWebGPUBackend === true
-                && typeof THREE_WEBGPU.PostProcessing === 'function'
+                && typeof (THREE_WEBGPU.RenderPipeline ?? THREE_WEBGPU.PostProcessing) === 'function'
             : this.isWebGL && this.renderer?.isWebGLRenderer === true;
         const enhancementsEnabled = !this.flags.noEnhancements;
         const postEnabledByFlags = !this.flags.noPost && enhancementsEnabled;

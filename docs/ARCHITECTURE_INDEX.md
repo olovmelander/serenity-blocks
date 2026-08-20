@@ -19,6 +19,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 |---|---|---|
 | [ARCHITECTURAL_REMEDIATION_PLAN.md](ARCHITECTURAL_REMEDIATION_PLAN.md) | Active | Umbrella roadmap and phase ordering. |
 | [ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md](ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md) | Tactical | Multiplayer stabilization pre-phase referenced by the umbrella plan. |
+| [THREE_UPGRADE_RESEARCH_R181_TO_R185_2026-08.md](THREE_UPGRADE_RESEARCH_R181_TO_R185_2026-08.md) | Tactical | three.js r181 → 0.185.1 upgrade plan (revised 2026-08-20): verified evidence, phased execution, capture matrix. Scope: everything touching three.js. |
 | [WEBGPU_THREEJS_WORKFLOW.md](WEBGPU_THREEJS_WORKFLOW.md) | Active | Required workflow for WebGPU/TSL visual changes. |
 | [SFX_GENERATION_WORKFLOW.md](SFX_GENERATION_WORKFLOW.md) | Active | Required workflow for local SFX generation. |
 | [adr/README.md](adr/README.md) | Active | Accepted architecture decisions and enforcement links. |

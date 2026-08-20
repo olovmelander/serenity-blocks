@@ -270,7 +270,7 @@ describe('Stillwater integrated masterpiece candidate', () => {
         expect(runtimeSource).toContain('createStillwaterReactions({');
         expect(runtimeSource.match(/new StillwaterPipeline\(/g)).toHaveLength(1);
         expect(runtimeSource).not.toMatch(
-            /new THREE\.PostProcessing|THREE\.ShaderMaterial|\b(?:glslFn|wgslFn)\s*\(/,
+            /new THREE\.(?:PostProcessing|RenderPipeline)|THREE\.ShaderMaterial|\b(?:glslFn|wgslFn)\s*\(/,
         );
         expect(runtimeSource).not.toMatch(/\bwindow\b|stillwater-water\.effect/);
         expect(adapterSource).toContain('createStillwaterRuntime(context)');

@@ -1659,7 +1659,7 @@ export function create({
             .sub(0.5).mul(uGrain);
         graded = clamp(graded.add(grain), 0.0, 1.0);
 
-        const postProcessing = new THREE.PostProcessing(renderer);
+        const postProcessing = new THREE.RenderPipeline(renderer);
         postProcessing.outputNode = graded;
         postProcessing.needsUpdate = true;
 
