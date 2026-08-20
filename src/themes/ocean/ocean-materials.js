@@ -539,8 +539,9 @@ export function createSeaweedNodeMaterial(params = {}) {
     color = tslDepthGradedFog(color, positionWorld.y, viewDist, float(1.05));
 
     material.colorNode = color;
-    const shapedLocal = vec3(positionLocal.x.mul(aBladeWidth).add(bladeFlutter), positionLocal.y, positionLocal.z);
-    material.positionNode = shapedLocal.add(vec3(swayX, float(0.0), swayZ));
+    material.positionNode = positionLocal
+        .add(vec3(positionGeometry.x.mul(aBladeWidth.sub(1.0)).add(bladeFlutter), float(0.0), float(0.0)))
+        .add(vec3(swayX, float(0.0), swayZ));
     material.emissiveNode = vec3(0.0);
 
     material.userData = { uTime, uCurrentStrength };
@@ -658,9 +659,9 @@ export function createCoralNodeMaterial(baseColor) {
             .add(positionWorld.x.mul(0.045))
             .add(positionWorld.z.mul(0.034)),
     ).mul(flex.mul(flex));
-    // positionLocal already contains the InstancedMesh transform in r181.
-    // Replacing it with raw positionGeometry collapses every overgrowth
-    // instance to the source geometry origin.
+    // Placement rides positionLocal.add(delta): identical on r181 (the instance
+    // matrix applies after positionNode) and correct on r185 (positionLocal is
+    // post-instance there; a positionGeometry-only output collapses instances).
     material.positionNode = positionLocal.add(
         vec3(currentWave.mul(0.13), float(0.0), currentWave.mul(0.34)),
     );
@@ -710,7 +711,7 @@ export function createCoralOvergrowthNodeMaterial() {
             .add(positionWorld.x.mul(0.045))
             .add(positionWorld.z.mul(0.034)),
     ).mul(flex.mul(flex));
-    material.positionNode = positionGeometry.add(
+    material.positionNode = positionLocal.add(
         vec3(currentWave.mul(0.13), float(0.0), currentWave.mul(0.34)),
     );
     material.emissiveNode = vec3(0);
@@ -735,7 +736,7 @@ export function createModularCoralNodeMaterial() {
     const uCurrentStrength = uniform(0.5);
     const aFlex = attribute('aFlex');
     const flex = aFlex.mul(aFlex);
-    const spatialPhase = positionLocal.x.mul(0.047).add(positionLocal.z.mul(0.036));
+    const spatialPhase = positionGeometry.x.mul(0.047).add(positionGeometry.z.mul(0.036));
     const primary = sin(uTime.mul(0.72).add(spatialPhase))
         .mul(flex)
         .mul(uCurrentStrength)
@@ -744,9 +745,10 @@ export function createModularCoralNodeMaterial() {
         .mul(flex)
         .mul(uCurrentStrength)
         .mul(0.055);
-    // r181 applies BatchedMesh transforms to positionLocal before evaluating
-    // positionNode. Outputting positionGeometry here would discard every
-    // colony transform and collapse the batch at its source-module origin.
+    // Portable base: on r181 the BatchedMesh transform applies AFTER positionNode
+    // (positionLocal here is raw geometry); on r185 it applies BEFORE and this
+    // output is final. positionLocal.add(...) keeps colony placement on both;
+    // a positionGeometry-only output would collapse the batch on r185.
     material.positionNode = positionLocal.add(vec3(
         primary.mul(0.22).sub(flutter.mul(0.976)),
         float(0.0),
@@ -761,11 +763,13 @@ export function createModularCoralNodeMaterial() {
         viewDistance,
         float(0.82),
     );
-    // BatchedMesh exposes its per-colony tint through vBatchColor in r181.
+    // BatchedMesh exposes its per-colony tint through the vBatchColor varying;
+    // r185 declares it as vec4 (r181 used vec3) and this declaration must
+    // match the engine's type so both dedupe into the same varying.
     // A very low subsurface lift keeps saturated coral sides readable under
     // blue water without flattening the PBR key light or crossing bloom.
-    const batchColor = varyingProperty('vec3', 'vBatchColor');
-    material.emissiveNode = batchColor
+    const batchColor = varyingProperty('vec4', 'vBatchColor');
+    material.emissiveNode = batchColor.rgb
         .mul(float(0.10).add(upLight.mul(0.04)));
     material.userData = {
         uTime,

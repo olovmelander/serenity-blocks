@@ -38,6 +38,7 @@ import {
 import * as THREE from 'three';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../../shared/mrt-blend.js';
 
 export const STARLIGHT_POST_PROFILES = Object.freeze({
     Minimal: Object.freeze({
@@ -146,13 +147,13 @@ export class StarlightPostPipeline {
     }
 
     _setupWebGPU(params) {
-        this.postProcessing = new WEBGPU.PostProcessing(this.renderer);
+        this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
 
         let bloomSource;
         try {
             if (this.mrtEnabled) {
-                scenePass.setMRT(mrt({ output, emissive }));
+                scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
                 bloomSource = scenePass.getTextureNode('emissive');
             } else {
                 bloomSource = scenePass.getTextureNode('output');

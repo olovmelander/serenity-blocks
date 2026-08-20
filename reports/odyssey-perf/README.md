@@ -18,6 +18,20 @@ node scripts/run-electron.mjs scripts/odyssey-gpu-split.mjs --lane B --low-power
 #   → reports/odyssey-perf/gpu-split-lane{a,b}.json
 ```
 
+> ⚠️ **Every committed baseline here is from a machine that no longer exists.** The
+> `baseline-rtx5080-*` files and the Stillwater calibration were captured on a Legion Pro 7
+> Gen 10 (RTX 5080 Laptop 16 GB + Radeon 610M iGPU), which died. The dev machine as of
+> 2026-08-19 is a Legion 82JU (RTX 3070 Laptop 8 GB + Vega-class iGPU). Two consequences:
+>
+> 1. **Do not diff a fresh capture against these numbers** — different silicon, different
+>    VRAM budget. It manufactures phantom regressions. Re-baseline first, and name the new
+>    files for the new GPU.
+> 2. **Lane B is not reproducible on the 82JU.** Chrome there returns the RTX 3070 for
+>    *every* `powerPreference` — `default`, `low-power`, and `high-performance` all report
+>    `nvidia / ampere`. There is no selectable low-power adapter, so `--lane B --low-power`
+>    does not fail; it quietly re-runs lane A and writes a discrete-GPU result under an
+>    iGPU label. Verified 2026-08-19 via `navigator.gpu.requestAdapter()`.
+
 Two things to know before reading one of these files:
 
 **It is differential, not per-pass.** three r181's WebGPU backend exposes one timestamp scope

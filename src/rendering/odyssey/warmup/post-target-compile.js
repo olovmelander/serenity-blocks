@@ -7,39 +7,37 @@
  * testable functions. The board keeps thin wrappers so every internal caller is unchanged.
  *
  * WHY the post target is bound before compileAsync: the chapters always render THROUGH the post
- * PassNode's HalfFloat/MRT scene-pass target, and `Renderer.compileAsync` captures the currently
- * bound render context (target + MRT) in its synchronous phase. Binding the scene-pass target here
- * makes compileAsync build the pipelines the chapter ACTUALLY uses live; without it, canvas-format
- * pipelines were built that the post path never used, so the REAL pipelines compiled synchronously
- * inside the warm-up renders — the loading-screen freeze.
+ * PassNode's HalfFloat/MRT scene-pass target. Binding the scene-pass target makes compileAsync
+ * build the pipelines the chapter ACTUALLY uses live; without it, canvas-format pipelines were
+ * built that the post path never used, so the REAL pipelines compiled synchronously inside the
+ * warm-up renders — the loading-screen freeze.
  *
- * ...AND WHY IT IS ONLY SAFE BEFORE THE RENDER LOOP STARTS (2026-08-12, crash fix).
- * `compileAsync` opens its own render pass on whatever target is bound. Do that while the rAF loop
- * is also rendering the post graph and both touch the SAME scene-pass target inside one command
- * encoder — the graph SAMPLES `output` while the compile pass has it attached for writing:
+ * WHY the binding is HELD ACROSS THE ENTIRE AWAIT (r185 rework, 2026-08-20). r181's compileAsync
+ * did all node building in a synchronous prologue, so bind → launch → restore-in-finally was safe:
+ * the restore could not affect the in-flight compile. r185 restructured compileAsync into a
+ * DEFERRED build loop — `_createObjectPipeline` only queues work items, and every object's node
+ * build + pipeline creation runs AFTER the synchronous section, one object at a time, yielding to
+ * the main thread between shader stages (r185 Renderer.js:884-1067, NodeBuilder.js:3265). Each
+ * deferred build reads the LIVE `renderer.getMRT()` at build time, and the resulting builder state
+ * is cached under an MRT-agnostic key (RenderObject.js:949-951, NodeManager.js:151-153). Restore
+ * before the promise resolves and objects 2..N build against the restored (null) MRT → single-
+ * output shaders poison the cache the live MRT pass then reuses — the documented poisoned-cache
+ * black screen, self-inflicted. Upstream's own recipe (r185 PassNode.compileAsync, PassNode.js:
+ * 749-762) holds the binding across the await; this module now does the same, with a refcounted
+ * session so the controller's CONCURRENT startup compile pool shares one binding and the true
+ * previous state is restored only when the last pooled compile resolves.
  *
- *   [Texture "output"] usage (TextureBinding|RenderAttachment) includes writable usage and
- *   another usage in the same synchronization scope
- *
- * WebGPU then refuses to create the pipeline, `getForRender` hands back undefined, and the very
- * next draw throws `setPipeline: parameter 1 is not of type 'GPURenderPipeline'`. From there the
- * device is poisoned: every subsequent frame re-emits the usage error plus an invalid-CommandBuffer
- * error, forever. It reproduces as soon as chapters are prewarmed in the BACKGROUND (after the loop
- * is live) rather than during startup.
- *
- * So the target binding is conditional on the loop being idle.
- *
- * ...AND HOW THE BACKGROUND PATH GOT ITS OPTIMISATION BACK (2026-08-17).
- * The fallback above — a plain compileAsync building CANVAS-format pipelines — meant background
- * chapters never had their post-format pipelines built asynchronously. Those compiled
- * SYNCHRONOUSLY inside the later render-warm instead, measured at 482-560ms per chapter, landing
- * as a visible hitch wherever the sweep happened to reach. The hazard was never "a render target"
- * — it was specifically the SHARED scene-pass target. A PRIVATE, format-matched target (see
- * {@link createWarmRenderTarget}) cannot alias anything the live graph touches, so both the
- * background compile and the render-warm can bind it while the loop runs, and both build exactly
- * the pipelines the live post path uses (the pipeline cache key is format-based — see that
- * function's docs). Startup keeps the exact scene-pass binding; only the live-loop path uses the
- * private clone.
+ * WHY compileAsync IS SKIPPED ENTIRELY WHILE THE RENDER LOOP IS LIVE (r185 rework). Holding a
+ * global target/MRT binding across a multi-frame-yielding compile is impossible under a live rAF
+ * loop — the loop rebinds targets for its own frames between yields, so the deferred builds read
+ * drifting state no matter what this module binds (and binding the SHARED scene-pass target while
+ * the loop renders aliases its `output` texture as both sampled binding and render attachment,
+ * which permanently poisons the device — the 2026-08-12 crash, still true on r185). There is no
+ * safe background compileAsync on r185. Background/live-loop warming is owned by the synchronous
+ * private-target render-warm ({@link createWarmRenderTarget} + {@link beginWarmTargetRender} +
+ * `renderer.render()`), which r185 leaves untouched: `render()` is still fully synchronous, and
+ * the WebGPU pipeline cache key is format-based (`WebGPUBackend.getRenderCacheKey`), so a
+ * format-matched private clone warms exactly the pipelines the live post path uses.
  */
 
 /**
@@ -82,6 +80,7 @@ export function beginPostTargetCompile(renderer, postProcessingStack, renderLoop
  * which hashes `getSampleCountRenderContext` / `getCurrentColorSpace` / `getCurrentColorFormat` /
  * `getCurrentDepthStencilFormat`. `RenderTarget.copy` reproduces every one of those (all MRT
  * attachment textures, the depth texture and `samples`), so a clone yields identical cache keys.
+ * Re-verified against r185 source (WebGPUBackend.js:2113-2141; RenderTarget.js:349-389).
  *
  * Dimensions are deliberately tiny: pipeline specialisation does not depend on resolution, so a
  * 320x180 warm pass compiles exactly the same pipelines as a full-resolution one for a small
@@ -106,8 +105,12 @@ export function createWarmRenderTarget(scenePass, width = 320, height = 180) {
 
 /**
  * Bind a private warm target (from {@link createWarmRenderTarget}) plus the scene pass's MRT, so
- * a following `renderer.render()` compiles the pipelines the chapter uses live. Safe while the
- * rAF loop is running, which is the whole point. Restore with {@link endPostTargetCompile}.
+ * a following SYNCHRONOUS `renderer.render()` compiles the pipelines the chapter uses live. Safe
+ * while the rAF loop is running, which is the whole point — the render, bind and restore all
+ * happen inside one synchronous task, so the live loop can never observe the binding. (This is
+ * the render-warm path; it must NOT be used to wrap an r185 compileAsync, whose deferred builds
+ * outlive any synchronous binding — see the file header.) Restore with
+ * {@link endPostTargetCompile}.
  * @param {object} renderer the renderer
  * @param {?object} warmTarget the private target
  * @param {?object} scenePass the post stack's scene pass (for its MRT configuration)
@@ -139,46 +142,74 @@ export function endPostTargetCompile(renderer, saved) {
 }
 
 /**
- * Launch a targeted compileAsync for one group with the post target bound for its synchronous
- * context-capture phase, restoring renderer state immediately after (the returned promise resolves
- * later, off the main thread — safe to pool in parallel).
+ * Refcounted post-target binding sessions, one per renderer. The startup compile pool launches
+ * several compileGroupThroughPost calls CONCURRENTLY (barrier later); they must share ONE binding
+ * — the first acquire binds and records the true previous state, later acquires join, and only
+ * the final release restores. Without this, overlapped holds would save each other's bound state
+ * and the last-resolving compile could leave the scene-pass target bound after the pool drains.
+ */
+const _compileSessions = new WeakMap();
+
+function acquireCompileBinding(renderer, postProcessingStack) {
+    const existing = _compileSessions.get(renderer);
+    if (existing) {
+        existing.count += 1;
+        return existing;
+    }
+    const saved = beginPostTargetCompile(renderer, postProcessingStack, false);
+    if (!saved) return null;
+    const session = { saved, count: 1 };
+    _compileSessions.set(renderer, session);
+    return session;
+}
+
+function releaseCompileBinding(renderer, session) {
+    if (!session) return;
+    session.count -= 1;
+    if (session.count > 0) return;
+    _compileSessions.delete(renderer);
+    endPostTargetCompile(renderer, session.saved);
+}
+
+/**
+ * Compile one group with the post target bound — held for the ENTIRE compile (r185 contract, see
+ * the file header) — restoring renderer state after the last concurrent compile resolves.
+ *
+ * While the render loop is live and post is active this SKIPS the compile and resolves `false`:
+ * r185's deferred builds read drifting global target/MRT under a live loop and poison the
+ * MRT-agnostic builder cache, so there is no safe background compileAsync — callers must leave
+ * live-loop warming to the private-target render-warm. (With post INACTIVE a bare compile stays
+ * safe on a live loop: no MRT exists to poison, matching direct-to-canvas rendering.)
+ *
  * @param {object} renderer the renderer
  * @param {?object} postProcessingStack the post stack
  * @param {object} scene the scene
  * @param {object} camera the camera
  * @param {object} group the chapter group to compile
- * @param {boolean} [renderLoopActive] when true the post target is not bound — see the file header.
- * @returns {Promise<void>} resolves when the group's pipelines are compiled
+ * @param {boolean} [renderLoopActive] when true + post active, the compile is skipped entirely.
+ * @returns {Promise<boolean>} true when a compile ran, false when skipped (live loop + post)
  */
-export function compileGroupThroughPost(
+export async function compileGroupThroughPost(
     renderer,
     postProcessingStack,
     scene,
     camera,
     group,
     renderLoopActive = false,
-    warmTarget = null,
 ) {
-    // Under a live loop the scene-pass target is off limits, but a PRIVATE format-matched target
-    // is not — and using it here is what makes a background compile actually async. Without it
-    // the background path fell back to a plain compileAsync, which captures the CANVAS format, so
-    // the post-format pipelines were never built asynchronously and instead compiled SYNCHRONOUSLY
-    // inside the later render-warm (measured at 482-560ms per chapter, landing as a visible hitch
-    // wherever the sweep happened to reach). Same formats => same pipeline cache key, so this
-    // builds exactly the pipelines the live post path uses, off the main thread.
-    const saved = beginPostTargetCompile(renderer, postProcessingStack, renderLoopActive)
-        || beginWarmTargetRender(renderer, warmTarget, postProcessingStack?.scenePass);
-    try {
-        if (typeof renderer.compileAsync === 'function') {
-            return renderer.compileAsync(scene, camera, group);
-        }
-        if (typeof renderer.compile === 'function') {
-            renderer.compile(scene, camera, group);
-        }
-        return Promise.resolve();
-    } finally {
-        // compileAsync captures its render context (incl. the bound target) in its synchronous
-        // phase — restoring here cannot affect the in-flight compile.
-        endPostTargetCompile(renderer, saved);
+    const postActive = !!postProcessingStack?.scenePass?.renderTarget;
+    if (renderLoopActive && postActive) return false;
+
+    if (typeof renderer?.compileAsync !== 'function') {
+        if (typeof renderer?.compile === 'function') renderer.compile(scene, camera, group);
+        return true;
     }
+
+    const session = renderLoopActive ? null : acquireCompileBinding(renderer, postProcessingStack);
+    try {
+        await renderer.compileAsync(scene, camera, group);
+    } finally {
+        releaseCompileBinding(renderer, session);
+    }
+    return true;
 }

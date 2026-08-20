@@ -29,9 +29,16 @@ const geometriesSource = readFileSync(
     ),
     'utf8',
 );
-const nodesSource = readFileSync(
+const nodeManagerSource = readFileSync(
     new URL(
-        '../../node_modules/three/src/renderers/common/nodes/Nodes.js',
+        '../../node_modules/three/src/renderers/common/nodes/NodeManager.js',
+        import.meta.url,
+    ),
+    'utf8',
+);
+const quadMeshSource = readFileSync(
+    new URL(
+        '../../node_modules/three/src/renderers/common/QuadMesh.js',
         import.meta.url,
     ),
     'utf8',
@@ -53,16 +60,21 @@ const waterSource = readFileSync(
 );
 
 describe('Stillwater terminal WebGPU device disposal contract', () => {
-    it('three r181 still captures its renderer in the device-loss promise', () => {
+    it('three r185 still captures its renderer in the device-loss promise', () => {
         expect(backendSource).toContain('device.lost.then( ( info ) => {');
         expect(backendSource).toContain('renderer.onDeviceLost( deviceLossInfo )');
     });
 
-    it('WebGPUBackend.dispose still omits owned device destruction', () => {
+    it('WebGPUBackend.dispose destroys the owned device on r185', () => {
         const disposeStart = backendSource.lastIndexOf('\tdispose()');
         const disposeEnd = backendSource.indexOf('\n\t}', disposeStart);
         expect(disposeStart).toBeGreaterThan(-1);
-        expect(backendSource.slice(disposeStart, disposeEnd)).not.toContain('.destroy()');
+        // r185 destroys self-requested devices inside dispose(). Stillwater's
+        // manual destroy in terminallyDisposePooledRenderer stays as a
+        // harmless idempotent backstop.
+        expect(backendSource.slice(disposeStart, disposeEnd)).toContain(
+            'this.device.destroy()',
+        );
     });
 
     it('Stillwater resolves the promise during terminal owned-renderer teardown', () => {
@@ -72,11 +84,18 @@ describe('Stillwater terminal WebGPU device disposal contract', () => {
         expect(stillwaterSource).toContain('backend.device = null');
     });
 
-    it('pins the private r181 contracts used by the bounded renderer pool', () => {
+    it('pins the private r185 contracts used by the bounded renderer pool', () => {
         expect(rendererSource).toContain('this._renderLists = new RenderLists');
         expect(rendererSource).toContain('this._renderContexts = new RenderContexts');
         expect(rendererSource).toContain('this._bundles = new RenderBundles');
-        expect(nodesSource).toContain('this.nodeFrame = new NodeFrame()');
+        expect(rendererSource).toContain('this._quadCache = new Map()');
+        expect(rendererSource).toContain(
+            'this._quadCache.set( renderTarget.texture, quadData )',
+        );
+        expect(quadMeshSource).toContain(
+            'const _geometry = /*@__PURE__*/ new QuadGeometry()',
+        );
+        expect(nodeManagerSource).toContain('this.nodeFrame = new NodeFrame()');
         expect(geometriesSource).toContain('this._geometryDisposeListeners = new Map()');
         expect(geometriesSource).toContain(
             'this._geometryDisposeListeners.set( geometry, onDispose )',
@@ -97,12 +116,13 @@ describe('Stillwater terminal WebGPU device disposal contract', () => {
         expect(stillwaterSource).toContain(
             'renderer._geometries?._geometryDisposeListeners',
         );
+        expect(stillwaterSource).toContain('renderer._quadCache');
         expect(stillwaterSource).toContain('renderer._animation?.stop?.()');
         expect(stillwaterSource).toContain('record.renderer._animation.start?.()');
         expect(stillwaterSource).toContain('if (drained && !record.terminal)');
     });
 
-    it('pins the private r181 request state used by lifecycle pause diagnostics', () => {
+    it('pins the private r185 request state used by lifecycle pause diagnostics', () => {
         const start = animationSource.indexOf('\tstart()');
         const stop = animationSource.indexOf('\tstop()');
         const getAnimationLoop = animationSource.indexOf('\tgetAnimationLoop()');
@@ -127,7 +147,7 @@ describe('Stillwater terminal WebGPU device disposal contract', () => {
         expect(validationSource).toContain('stillwaterNodeMaterialSamples');
     });
 
-    it('detaches reflector samplers from the immortal r181 placeholder texture', () => {
+    it('detaches reflector samplers from the immortal r185 placeholder texture', () => {
         expect(waterSource).toContain('reflectionDefaultDisposeListeners = new Set');
         expect(waterSource).toContain('rendererTextureDisposeListener');
         expect(waterSource).toContain(

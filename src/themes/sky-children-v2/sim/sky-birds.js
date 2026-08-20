@@ -17,7 +17,7 @@
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
-    Fn, abs, attribute, cos, float, mix, positionLocal, sin, smoothstep, uniform, vec3,
+    Fn, abs, attribute, cos, float, mix, positionGeometry, positionLocal, sin, smoothstep, uniform, vec3,
 } from 'three/tsl';
 
 const SHOULDER_X = 0.06;
@@ -85,14 +85,15 @@ export function createSkyBirds(u, opts = {}) {
         const flapAngle = dihedral.add(sin(phase).mul(amp));
 
         const shoulderX = aWing.mul(SHOULDER_X);
-        const dx = positionLocal.x.sub(shoulderX);
-        const dy = positionLocal.y;
+        const dx = positionGeometry.x.sub(shoulderX);
+        const dy = positionGeometry.y;
         const ang = flapAngle.mul(aWing).mul(isWing);
         const ca = cos(ang);
         const sa = sin(ang);
         const wingX = shoulderX.add(dx.mul(ca).sub(dy.mul(sa)));
         const wingY = dx.mul(sa).add(dy.mul(ca));
-        return vec3(wingX, wingY, positionLocal.z);
+        const flapped = vec3(wingX, wingY, positionGeometry.z);
+        return positionLocal.add(flapped.sub(positionGeometry));
     })();
 
     // Pale birds, backlit-warm from the sun, darker underwing for read.

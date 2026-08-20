@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-    positionLocal, positionWorld, cameraPosition, length, smoothstep, mix, vec3, vec4, uniform, clamp, sin, cos,
+    positionGeometry, positionLocal, positionWorld, cameraPosition, length, smoothstep, mix, vec3, vec4, uniform, clamp, sin, cos,
     modelWorldMatrix,
 } from 'three/tsl';
 
@@ -67,7 +67,7 @@ function makeTreeMat(hex, { snow = false } = {}) {
     // (from the tree's base/origin, not per-vertex) — otherwise a big close tree shears
     // and the snow layer swims against the green and z-fight-flickers. modelWorldMatrix's
     // translation gives each hero its own phase; the instanced belt shares one (it's far).
-    const mask = clamp(positionLocal.y, 0.0, 1.0);
+    const mask = clamp(positionGeometry.y, 0.0, 1.0);
     const m2 = mask.mul(mask);
     const base = modelWorldMatrix.mul(vec4(0.0, 0.0, 0.0, 1.0)).xz;
     const ph = base.x.mul(0.021).add(base.y.mul(0.017));

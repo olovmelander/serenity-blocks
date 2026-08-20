@@ -1,7 +1,7 @@
 {
   "note": "Performance budgets (plan \u00a79.2). Nulls = budget declared, baseline pending \u2014 visible and lintable, never silently unfalsifiable. Gate on p95 frame-time, never FPS. Pin adaptive systems (tier + effectScale=1 + fixed pixelRatio) in every capture.",
   "capturedAt": "2026-07-25",
-  "machine": "AMD Radeon 610M low-power adapter for Stillwater baseline; RTX5080-laptop for discrete/nightly lanes unless noted per report",
+  "machine": "HISTORICAL / CROSS-HARDWARE as of 2026-08-19. Captured on a Legion Pro 7 Gen 10 (Ryzen 9 9955HX3D + RTX 5080 Laptop 16GB) that has since died: AMD Radeon 610M low-power adapter for the Stillwater baseline; RTX5080-laptop for discrete/nightly lanes unless noted per report. The current dev machine is a Legion 82JU (Ryzen 7 5800H + RTX 3070 Laptop 8GB) and has NEITHER GPU, so every committed baseline here is evidence from hardware nobody can re-run. Do not diff a fresh capture against these numbers - it manufactures phantom regressions; re-baseline on the current machine first. The low-power lane (odyssey-gpu-split.mjs --lane B --low-power) cannot be reproduced on the 82JU at all: Chrome there returns the RTX 3070 for every powerPreference (default, low-power, high-performance), so lane B silently collapses into lane A and writes a discrete-GPU result under an iGPU label.",
   "budgets": {
     "timeToMenuReadyMs": {
       "baseline": null,

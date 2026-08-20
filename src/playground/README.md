@@ -27,7 +27,7 @@ npm run dev:playground        # opens /playground.html
 | `ref=<url>` | reference image to overlay, e.g. `/playground-refs/target.png` |
 | `refMode=overlay\|split\|side` | how the reference is shown |
 | `refOpacity=<0..1>` | reference opacity in `overlay` mode |
-| `inspector=1` | attach three.js's built-in `Inspector` (r181+) — GPU-timestamp Performance/Memory/Console panel |
+| `inspector=1` | attach three.js's built-in `Inspector` (r185) — GPU-timestamp Performance/Memory/Console panel |
 | `webgpuInspector=1` | load `webgpu_inspector` (GPU frame/buffer/shader capture) — inspect via `window.webgpuInspector` or the extension/plugin panel |
 
 Example: `/playground.html?effect=nebula-dome&t=8&ref=/playground-refs/sky.png&refMode=split`

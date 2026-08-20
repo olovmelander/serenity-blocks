@@ -25,11 +25,12 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 export class ShiftingSandsPost {
     constructor(renderer, scene, camera, params = {}) {
         this.renderer = renderer;
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
 
         this.uTime = uniform(0);
         this.uStrength = uniform(params.heatShimmerStrength ?? 0.006);
@@ -43,7 +44,7 @@ export class ShiftingSandsPost {
 
         // Scene pass with MRT for selective bloom
         this.scenePass = pass(scene, camera);
-        this.scenePass.setMRT(mrt({ output, emissive }));
+        this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
 
         const sceneColor = this.scenePass.getTextureNode('output');
         const emissivePass = this.scenePass.getTextureNode('emissive');

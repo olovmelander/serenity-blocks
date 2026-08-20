@@ -21,6 +21,7 @@ import {
     modelWorldMatrix,
     normalWorld,
     normalize,
+    positionGeometry,
     positionLocal,
     positionWorld,
     pow,
@@ -531,7 +532,7 @@ export function createInstancedFoliageNodeMaterial(params = {}) {
     const aInstancePhase = attribute('aInstancePhase');
     const aInstanceWindOffset = attribute('aInstanceWindOffset');
 
-    const normalizedHeight = clamp(positionLocal.y.div(20.0), 0.0, 1.0);
+    const normalizedHeight = clamp(positionGeometry.y.div(20.0), 0.0, 1.0);
     const windPhase = aInstanceWindOffset.add(aInstancePhase).add(uTime.mul(0.8));
     const windOffsetX = sin(windPhase)
         .mul(aInstanceSway)
@@ -613,7 +614,7 @@ export function createInstancedTrunkNodeMaterial(params = {}) {
     const aInstancePhase = attribute('aInstancePhase');
     const aInstanceWindOffset = attribute('aInstanceWindOffset');
 
-    const normalizedHeight = clamp(positionLocal.y.div(3.0), 0.0, 1.0);
+    const normalizedHeight = clamp(positionGeometry.y.div(3.0), 0.0, 1.0);
     const windPhase = aInstanceWindOffset.add(aInstancePhase.mul(0.85)).add(uTime.mul(0.7));
     const windOffsetX = sin(windPhase)
         .mul(aInstanceSway)
@@ -794,7 +795,7 @@ export function createShoreReedNodeMaterial(params = {}) {
     const uHeightScale = uniform(params.heightScale ?? 7.0);
 
     const anchor = modelWorldMatrix.mul(vec4(0.0, 0.0, 0.0, 1.0));
-    const heightFactor = clamp(positionLocal.y.div(uHeightScale), 0.0, 1.0);
+    const heightFactor = clamp(positionGeometry.y.div(uHeightScale), 0.0, 1.0);
     const windPhase = anchor.x.mul(0.24)
         .add(anchor.z.mul(0.18))
         .add(positionLocal.y.mul(0.12))

@@ -44,6 +44,11 @@ const ACTIVATION_MILESTONE_NAMES = Object.freeze([
     'canvasReveal',
 ]);
 
+// r184 removed renderer._quad. Every post-pass QuadMesh — including each
+// renderer._quadCache entry — still shares QuadMesh's one module-singleton
+// geometry, reached here through a local instance of the same class.
+const sharedQuadMeshGeometry = new THREE.QuadMesh().geometry;
+
 let pooledRendererRecord = null;
 
 function drainRendererQueue(renderer) {
@@ -89,11 +94,12 @@ function detachRendererCanvas(renderer) {
 }
 
 /**
- * Retire transient r181 render state without destroying the dedicated
+ * Retire transient r185 render state without destroying the dedicated
  * Stillwater renderer/backend. Public dispose() is terminal and cannot be used
  * for a pooled renderer, while leaving these caches untouched pins the most
- * recently retired scene through render lists, node-frame references, and the
- * shared QuadMesh geometry's first RenderObject closure.
+ * recently retired scene through render lists, node-frame references, the
+ * output-keyed _quadCache, and the shared QuadMesh geometry's first
+ * RenderObject closure.
  */
 function resetPooledRendererTransientState(renderer) {
     if (!renderer) return;
@@ -104,7 +110,7 @@ function resetPooledRendererTransientState(renderer) {
     const nodes = renderer._nodes;
     const nodeFrame = nodes?.nodeFrame;
     if (nodeFrame) {
-        // A queued/pending r181 callback may outlive the public NodeFrame slot.
+        // A queued/pending r185 callback may outlive the public NodeFrame slot.
         // Sever its strong render references before replacing the frame so that
         // callback cannot retain a retired scene and its last rendered object.
         nodeFrame.scene = null;
@@ -119,7 +125,7 @@ function resetPooledRendererTransientState(renderer) {
         } catch (error) { /* strong slots were already severed above */ }
     }
 
-    // These r181 managers are reusable after dispose(): each call only replaces
+    // These r185 managers are reusable after dispose(): each call only replaces
     // its scene-keyed ChainMaps. Do not bulk-dispose nodes, textures, pipelines,
     // bindings, attributes, objects, or geometries on a live backend.
     renderer._renderLists?.dispose?.();
@@ -127,16 +133,31 @@ function resetPooledRendererTransientState(renderer) {
     renderer._bundles?.dispose?.();
 
     // Geometries.initGeometry() stores a strong Map entry whose listener closes
-    // over the first RenderObject for a geometry. All post passes share
-    // renderer._quad.geometry, so that one listener otherwise pins the first
-    // retired Stillwater post graph for the lifetime of the pool. The geometry
-    // and its initialized GPU attributes remain valid and reusable.
-    const quadGeometry = renderer._quad?.geometry;
+    // over the first RenderObject for a geometry — still unfixed in r185. All
+    // post passes share the QuadMesh module-singleton geometry (r184 replaced
+    // renderer._quad with the texture-keyed _quadCache), so that one listener
+    // otherwise pins the first retired Stillwater post graph for the lifetime
+    // of the pool. The geometry and its initialized GPU attributes remain
+    // valid and reusable.
+    const quadGeometry = sharedQuadMeshGeometry;
     const geometryListeners = renderer._geometries?._geometryDisposeListeners;
     const quadDisposeListener = quadGeometry && geometryListeners?.get?.(quadGeometry);
     if (quadDisposeListener) {
         quadGeometry.removeEventListener?.('dispose', quadDisposeListener);
         geometryListeners.delete(quadGeometry);
+    }
+
+    // r184's _quadCache keys { quad, cacheKey } entries by output texture and
+    // self-evicts only when that texture is disposed. A pooled renderer's
+    // output texture outlives every session, so each entry pins a QuadMesh +
+    // NodeMaterial chained into the node manager. Dispose the materials and
+    // drop the entries; the next _renderOutput() lazily rebuilds them.
+    const quadCache = renderer._quadCache;
+    if (typeof quadCache?.forEach === 'function') {
+        quadCache.forEach((quadData) => {
+            try { quadData?.quad?.material?.dispose?.(); } catch (error) { /* noop */ }
+        });
+        quadCache.clear?.();
     }
 
     renderer.info?.reset?.();

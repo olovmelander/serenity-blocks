@@ -1362,11 +1362,12 @@ export function createFluffyGrassTSL(uTime = uniform(0), count = 1000) {
     const vUv = uv();
 
     // Wind sway in the vertex stage — pos.x/pos.z displaced by uv.y^2 weighted wind.
-    // (Per-instance world placement comes from instanceMatrix; the GLSL used object-space
-    //  pos.x/pos.z in the wind phase, which we mirror with positionLocal.)
+    // (Wind phase from positionGeometry: identical on r181 — positionLocal is raw geometry
+    //  inside positionNode — and correct on r185, where positionLocal is post-instance.)
     const posL = positionLocal;
-    const wind = sin(uTime.mul(0.5).add(posL.x.mul(0.1)).add(posL.z.mul(0.1))).mul(0.2);
-    const wind2 = cos(uTime.mul(0.7).add(posL.z.mul(0.2))).mul(0.1);
+    const posG = positionGeometry;
+    const wind = sin(uTime.mul(0.5).add(posG.x.mul(0.1)).add(posG.z.mul(0.1))).mul(0.2);
+    const wind2 = cos(uTime.mul(0.7).add(posG.z.mul(0.2))).mul(0.1);
     const sway = vUv.y.mul(vUv.y).mul(2.0);
     const displaced = vec3(
         posL.x.add(wind.mul(sway)),
@@ -1488,7 +1489,9 @@ function mergeOffsetGeometries(parts) {
 function vegetationSwayNode(uTime, strength = 1.0) {
     const posL = positionLocal;
     // Sway weight rises with local height (base ~0, tip ~1); square for a rooted bend.
-    const heightW = smoothstep(0.0, 6.0, posL.y);
+    // Mask from positionGeometry: identical on r181 (positionLocal is raw geometry inside
+    // positionNode) and correct on r185 (positionLocal is post-instance there).
+    const heightW = smoothstep(0.0, 6.0, positionGeometry.y);
     const w = heightW.mul(heightW).mul(strength);
     const phase = uTime.mul(0.9).add(positionWorld.x.mul(0.06)).add(positionWorld.z.mul(0.05));
     const swayX = sin(phase).mul(0.55).mul(w);
@@ -1513,8 +1516,9 @@ const SURFACE_WIND_DIR = new THREE.Vector2(0.94, 0.34);
 
 // Height-masked wind sway for the instanced 3D wildflowers (Midsommar's makeFloraMat grammar):
 // the bloom top bends along the wind while the stem stays rooted, phased PER-INSTANCE by a
-// world-XZ attribute (positionNode runs BEFORE instanceMatrix, so the final world pos isn't
-// available here — aWorldXZ is baked on the CPU at placement).
+// world-XZ attribute (aWorldXZ, baked on the CPU at placement). Mask from positionGeometry:
+// identical on r181 (positionLocal is raw geometry inside positionNode) and correct on r185
+// (positionLocal is post-instance there); instance placement rides the positionLocal add-base.
 //
 // CONSOLIDATION (remake plan action #2): the per-species params (amp/stiff/flutter/height) come
 // from a per-instance `aSway` attribute instead of baked float() constants, so ONE material object
@@ -1524,7 +1528,7 @@ const SURFACE_WIND_DIR = new THREE.Vector2(0.94, 0.34);
 // it uniformly across its instances.
 function floraSwayNodeShared(uTime) {
     const aSway = attribute('aSway', 'vec4');
-    const yN = clamp(positionLocal.y.div(aSway.w), 0.0, 1.0);
+    const yN = clamp(positionGeometry.y.div(aSway.w), 0.0, 1.0);
     const mask = pow(yN, aSway.y);
     const wxz = attribute('aWorldXZ', 'vec2');
     const ph = wxz.x.mul(0.6).add(wxz.y.mul(0.45));

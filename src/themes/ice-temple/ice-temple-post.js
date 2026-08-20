@@ -7,6 +7,7 @@ import * as WEBGPU from 'three/webgpu';
 import * as TSL from 'three/tsl';
 import * as BLOOM from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 export class IceTemplePost {
     static async create(renderer, scene, camera, params = {}) {
@@ -28,9 +29,9 @@ export class IceTemplePost {
         this.postScale = params.postScale ?? 1.0;
         this.scenePass = pass(scene, camera);
         if (this.useMRT) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
+            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
-        this.postProcessing = new WEBGPU.PostProcessing(renderer);
+        this.postProcessing = new WEBGPU.RenderPipeline(renderer);
         this.size = { width: 0, height: 0 };
 
         const sceneColor = this.scenePass.getTextureNode('output');

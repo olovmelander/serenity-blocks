@@ -1352,10 +1352,12 @@ export function createStillwaterForest({
         // noise is precisely the mid-frequency gradient band that reads as
         // "3D blob" rather than painted mass (BotW/Europa foliage trick).
         //
-        // positionGeometry, NOT positionLocal: r181's InstanceNode reassigns
-        // positionLocal before positionNode runs — a trap this repo has hit
-        // before. The lobes carry only translation, scale and a Y rotation, so
-        // the local Y axis still maps to world up and the ramp stays correct.
+        // positionGeometry, NOT positionLocal: on r181 positionLocal inside
+        // positionNode is still the raw geometry (instancing applies after), but
+        // on r185 the instance matrix applies BEFORE positionNode — only
+        // positionGeometry reads the raw geometry on both versions. The lobes
+        // carry only translation, scale and a Y rotation, so the local Y axis
+        // still maps to world up and the ramp stays correct.
         const crownUp = mix(normalWorld.y, normalize(positionGeometry).y, 0.75);
         const lift = crownUp.mul(0.5).add(0.5);
         const crownVariation = sin(phase.mul(1.71)).mul(0.5).add(0.5);

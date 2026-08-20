@@ -160,7 +160,7 @@ export function create({
     const scenePass = pass(scene, camera);
     const sceneColor = scenePass.getTextureNode('output');
     const bloomNode = bloom(sceneColor, 0.32, 0.42, 0.76);
-    const post = new THREE.PostProcessing(renderer);
+    const post = new THREE.RenderPipeline(renderer);
     post.outputNode = vec4(sceneColor.rgb.add(bloomNode.rgb), sceneColor.a);
     post.needsUpdate = true;
 

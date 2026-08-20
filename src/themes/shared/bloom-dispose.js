@@ -1,27 +1,25 @@
 // @ts-check
 
 /**
- * Deep disposal for the addons BloomNode (three/addons/tsl/display/BloomNode.js).
+ * Post-dispose severing for the addons BloomNode (three/addons/tsl/display/BloomNode.js).
  *
- * three r181's BloomNode.dispose() frees its render targets but NOT its internal
- * NodeMaterials (_highPassFilterMaterial, _separableBlurMaterials[0..4],
- * _compositeMaterial). Those materials are rendered through the module-level
- * shared QuadMesh, so each one owns a renderer RenderObject that registers a
- * 'dispose' listener on the shared quad geometry (RenderObject subscribes to
- * both material and geometry dispose; only material disposal detaches it —
- * three.webgpu RenderObject.dispose()). Because the shared quad geometry is a
- * module singleton that is never disposed, every undisposed bloom material
- * permanently leaks its RenderObject, whose node-builder state retains the
- * scene pass (PassNode) and through it the ENTIRE disposed theme scene.
+ * three r185's BloomNode.dispose() now frees its internal NodeMaterials
+ * (_highPassFilterMaterial, _compositeMaterial, _separableBlurMaterials[0..4])
+ * along with its render targets — the material-dispose half of the SB-15 leak
+ * (PERFORMANCE_STABILITY_AUDIT.md) is fixed upstream, so this helper no longer
+ * disposes them itself.
  *
- * Measured impact before this fix (PERFORMANCE_STABILITY_AUDIT.md SB-15):
- * +2.4–3.3 MB of GC-immune JS heap and +7 leaked quad-geometry dispose
- * listeners per theme activation for lunara / stellar-drift / ocean.
+ * What upstream still does NOT fix: BloomNode renders through a module-level
+ * shared QuadMesh and leaves the last-rendered material parked on that
+ * singleton's .material — a strong module-scope reference that survives
+ * disposal. Without the severing below, that parked material retains its full
+ * TSL graph + node builder + scene pass (PassNode) and through it the entire
+ * disposed theme scene until the next bloom render overwrites it.
  *
- * The private-field access below is deliberately version-coupled to the pinned
- * three release (package.json: three 0.181.x). If three upgrades ever make
- * BloomNode.dispose() release its materials, this helper degrades to a no-op
- * for the missing fields.
+ * The private-field access below is version-coupled to the installed three
+ * release. If a future upgrade renames the fields, the helper degrades to a
+ * no-op for the missing fields; tests/unit/bloom-dispose-contract.test.js pins
+ * the contract so that fails loudly instead of silently.
  *
  * @param {object|null|undefined} bloomNode - A BloomNode instance (or null).
  */
@@ -42,16 +40,9 @@ export function disposeBloomNodeDeep(bloomNode) {
 
     for (const material of materials) {
         if (!material) continue;
-        try {
-            material.dispose?.();
-        } catch (error) {
-            console.warn('[bloom-dispose] bloom material dispose failed:', error);
-        }
-        // BloomNode renders through a module-level shared QuadMesh and leaves the
-        // last-rendered material parked on that singleton's .material — a strong
-        // module-scope reference that survives both disposals above. Severing the
-        // material's node graph here caps that parked reference at a few small
-        // objects instead of the full TSL graph + node builder + scene pass.
+        // Severing the material's node graph caps the reference parked on the
+        // shared quad's .material at a few small objects instead of the full
+        // TSL graph + node builder + scene pass.
         try {
             material.fragmentNode = null;
             material.colorNode = null;

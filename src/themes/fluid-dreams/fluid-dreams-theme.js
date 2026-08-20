@@ -7,7 +7,7 @@
  * volumetric neon haze, with curl-noise compute particles, MRT emissive bloom,
  * ACES tonemap, and subtle chromatic aberration.
  *
- * WebGPU path: TSL node materials + compute + THREE.PostProcessing.
+ * WebGPU path: TSL node materials + compute + THREE.RenderPipeline.
  * WebGL fallback: MeshPhysicalMaterial liquid-glass orbs + EffectComposer.
  *
  * ═══════════════════════════════════════════════════════════════════════════════

@@ -21,7 +21,7 @@ import { createStillwaterWater } from '../../themes/stillwater/rendering/stillwa
 export const meta = {
     id: 'stillwater-water',
     title: 'Stillwater — The Pool Remembers',
-    description: 'Black-water optics with fixed-budget lock, Tetris, and T-spin displacement responses.',
+    description: 'Black-water optics with fixed-budget lock, Quad, and T-spin displacement responses.',
 };
 
 export function create(context) {

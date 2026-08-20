@@ -2012,7 +2012,12 @@ export default class BlackHoleTheme extends BaseTheme {
             const addTiming = (label, node) => {
                 if (!node) return;
                 const uid = backend.getTimestampUID(node);
-                if (backend.hasTimestamp(uid)) {
+                // r185 renames hasTimestamp(uid) → hasTimestampQuery(uid); hasTimestamp becomes a
+                // boolean capability getter there, so calling it would throw into the catch below.
+                const hasTs = typeof backend.hasTimestampQuery === 'function'
+                    ? backend.hasTimestampQuery(uid)
+                    : (typeof backend.hasTimestamp === 'function' && backend.hasTimestamp(uid));
+                if (hasTs) {
                     compute[label] = backend.getTimestamp(uid);
                 }
             };

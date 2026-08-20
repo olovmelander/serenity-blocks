@@ -1,15 +1,15 @@
 ---
 name: webgpu-threejs-tsl
-description: Three.js WebGPU + TSL reference (node materials, compute shaders, post-processing) verified against this repo's pinned three r181. Use when creating or changing any visual surface — a theme (src/themes), a playground effect (src/playground/effects), an Odyssey chapter (src/rendering/odyssey) — or when working with shaders, particles, glow/bloom, reflections, auroras, GPU compute, node materials, or debugging WebGPU validation errors and TSL compile failures. Not for Phaser 2D code, DOM/CSS UI, Electron shell, or audio work.
+description: Three.js WebGPU + TSL reference (node materials, compute shaders, post-processing) verified against this repo's pinned three 0.185.1 (r185). Use when creating or changing any visual surface — a theme (src/themes), a playground effect (src/playground/effects), an Odyssey chapter (src/rendering/odyssey) — or when working with shaders, particles, glow/bloom, reflections, auroras, GPU compute, node materials, or debugging WebGPU validation errors and TSL compile failures. Not for Phaser 2D code, DOM/CSS UI, Electron shell, or audio work.
 ---
 
-# WebGPU Three.js with TSL (three r181)
+# WebGPU Three.js with TSL (three r185)
 
 TSL (Three.js Shading Language) is a node-based shader abstraction: you write GPU
 shaders in JavaScript instead of GLSL/WGSL strings. Every visual surface in this
 repo (themes, playground effects, Odyssey chapters) is WebGPU/TSL.
 
-**Version contract:** this repo pins `three@0.181.x`. Everything in this skill was
+**Version contract:** this repo pins `three@0.185.1` (r185). Everything in this skill was
 verified against that version. TSL churns fast between releases — when an API is in
 doubt, the source of truth is `node_modules/three/src/Three.TSL.js` (TSL exports)
 and `node_modules/three/src/Three.WebGPU.js` (renderer/material exports), not your
@@ -36,15 +36,18 @@ const material = new THREE.MeshStandardNodeMaterial();
 material.colorNode = color(0xff0000).mul(oscSine(time));  // oscSine already returns 0..1
 ```
 
-Post-processing in r181 is `THREE.PostProcessing` — **`THREE.RenderPipeline` does not
-exist here** (that rename lands in r183). Copy the working repo pattern, e.g.
-`src/themes/wolfhour/wolfhour-post.js`:
+The post class was renamed `RenderPipeline` in r183; in r185 `THREE.PostProcessing`
+is a fully-functional **deprecated alias** that logs one warnOnce per pipeline
+("has been renamed to RenderPipeline"). **Repo policy: construct
+`RenderPipeline`** — the repo-wide rename has landed, so a `PostProcessing`
+deprecation warning now indicates a stray un-renamed site that needs fixing.
+Copy the working repo pattern, e.g. `src/themes/wolfhour/wolfhour-post.js`:
 
 ```javascript
 import { pass } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
-const post = new THREE.PostProcessing(renderer);
+const post = new THREE.RenderPipeline(renderer);
 const scenePass = pass(scene, camera);
 const scenePassColor = scenePass.getTextureNode('output');
 post.outputNode = scenePassColor.add(bloom(scenePassColor));
@@ -57,9 +60,9 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `THREE.RenderPipeline is not a constructor` | r183 API in r181 code | Use `THREE.PostProcessing` |
+| `PostProcessing: "PostProcessing" has been renamed to "RenderPipeline"` warning | A stray un-renamed construction site — the repo-wide rename to `RenderPipeline` has landed, so nothing in-repo should construct `PostProcessing` anymore | Swap that site to `new THREE.RenderPipeline(...)` (pure name change; every member is identical) |
 | `X is not defined` in effect code | TSL functions are not globals | Import every identifier from `'three/tsl'` (incl. `Fn`, `If`, `Loop`) |
-| Instanced mask/displacement lands in wrong space | In r181, InstanceNode reassigns `positionLocal` **before** your `positionNode` runs | Use `positionGeometry` for instanced local-space masks |
+| Instanced mask/displacement lands in wrong space, or instancing collapses to one transform | r185 **inverted** `positionNode` ordering (verified from generated WGSL): r181 ran `positionNode` first (`positionLocal` inside it = raw geometry) and applied instance/batch/skin matrices *after* its output; r185 applies the matrices *first* (`positionLocal` is post-instance inside `positionNode`) and the node's output is **final** | Portable idiom: compute masks/pivots/phases from `positionGeometry`, output `positionLocal.add(displacement)`. Never output a `positionGeometry`-only expression on a real-matrix InstancedMesh — on r185 that discards the instance matrices |
 | Instanced/point particles invisible or collapsed to a dot | `positionNode = buffer.element(instanceIndex)` replaces *every vertex* with one point | `positionLocal.add(buffer.element(instanceIndex))`, or the `vertexNode` billboard pattern in `src/themes/winter/rendering/snow-renderer.js` |
 | Conditional write silently ignored | JS variable reassignment inside `If()` — TSL can't see `x = x.add(1)` | `.toVar()` + `.assign()`, or `select()` — see `docs/core-concepts.md` § Control Flow |
 | A branch reads ZEROS from shared nodes (uniform `If`/`Else` regimes: one side fine, other flat/grey) | The WGSL builder hoists var **declarations** to function scope but emits each **assignment at the node's first build site**; a `.toVar()` created *outside* any `Fn` (no active stack) gets its assignment emitted inside whichever branch builds it first — the other branch reads the zero-initialised declaration. Also poisons later graph roots (`opacityNode` after `colorNode`) that reuse the var | Root-pin: at the top of the `Fn`, before any `If`, call bare `.toVar()` on every shared node (`toStack()` runs at creation, so each call is a real root statement). Found via Odyssey water's regime branch: submerged frames zeroed `wN`/`depth` — Snell ceiling went flat, sea went transparent |
@@ -69,7 +72,8 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
 | Per-frame uniform upload you didn't intend | Mutating a `THREE.Color`/`Vector` inside `uniform(...)` in place still uploads every frame | Fine when intended; don't assume unchanged-value writes are free |
 | Oscillation stuck in upper half | `oscSine` already returns 0..1 | Drop the `.mul(0.5).add(0.5)` remap |
 | Emissive-only (selective) bloom does nothing | Selective bloom needs MRT; most themes here run bloom on the composite without MRT | Check the theme's `useMRT` before promising selective bloom; see `docs/post-processing.md` § MRT |
-| First-visit hitch despite `compileAsync` | `compileAsync` doesn't cover post-`PassNode` / first-update paths | Warm by actually rendering once (see Odyssey warm-up) |
+| Additive glow stops blooming / glows stomp black after r185 | MRT secondary attachments default to `NoBlending` in r185 | Use `withEmissiveMaterialBlending` from `src/themes/shared/mrt-blend.js` — it does `setBlendMode('emissive', new BlendMode(MaterialBlending))` and patches the upstream `merge()` blendModes bug |
+| First-visit hitch despite `compileAsync`, or warmed materials rebuild wrong | r185 `compileAsync` defers node building to a per-object loop that **yields to the main thread** — a bind/compile/restore-synchronously recipe restores state mid-await and silently poisons the MRT-agnostic builder cache | Hold bindings across the whole `await` (loop idle only), or warm by actually rendering once — render-warm is unchanged and remains the only live-loop-safe warm (see Odyssey warm-up) |
 | Backgrounded tab burns GPU | Loop keeps computing/rendering when hidden | `shouldRenderFrame()` gate + clamp `delta` in the update loop (pattern in every theme) |
 | Works in dev, black in packaged Electron | Absolute `/assets/...` fetch resolves to filesystem root under `file://` | Use relative `./assets/...` |
 
@@ -93,7 +97,7 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
   configuring a material.
 - `docs/compute-shaders.md` — storage buffers, compute passes, atomics, GPU↔CPU readback.
   Read for particles/simulation work.
-- `docs/post-processing.md` — PostProcessing, `pass()`, MRT, every r181 display effect
+- `docs/post-processing.md` — RenderPipeline, `pass()`, MRT, every r185 display effect
   with verified import paths. Read for bloom/grade/DoF/etc.
 - `docs/noise-and-utility-nodes.md` — built-in noise (mx_* / triNoise3D), per-instance
   variation, billboarding, UV/blend utilities. Read BEFORE hand-rolling noise or

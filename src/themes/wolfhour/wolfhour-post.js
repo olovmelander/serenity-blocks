@@ -27,6 +27,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 export const WOLFHOUR_POST_PROFILES = Object.freeze({
     Minimal: Object.freeze({
@@ -155,10 +156,10 @@ export class WolfhourPost {
         this.useFilmGrain = params.useFilmGrain !== false;
         this.baseGrainStrength = Number.isFinite(params.grainStrength) ? params.grainStrength : 0.00135;
 
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
         this.scenePass = pass(scene, camera);
         if (this.useMRT) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
+            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
 
         const sceneColor = this.scenePass.getTextureNode('output');

@@ -8,6 +8,7 @@ import {
     it,
     vi,
 } from 'vitest';
+import * as THREE from 'three/webgpu';
 
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 import StillwaterTheme from '../../src/themes/stillwater/stillwater-theme.js';
@@ -27,6 +28,18 @@ const stillwaterMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('three/webgpu', () => {
+    // Mirrors r185: every post-pass QuadMesh shares one module-singleton
+    // geometry, reached by the theme through its own QuadMesh instance.
+    const sharedQuadGeometry = {
+        removeEventListener: vi.fn(),
+    };
+
+    class MockQuadMesh {
+        constructor() {
+            this.geometry = sharedQuadGeometry;
+        }
+    }
+
     class MockNodeFrame {
         constructor() {
             this.camera = null;
@@ -46,9 +59,6 @@ vi.mock('three/webgpu', () => {
             this.options = options;
             this.domElement = document.createElement('canvas');
             const quadDisposeListener = vi.fn();
-            const quadGeometry = {
-                removeEventListener: vi.fn(),
-            };
             this.backend = options.forceWebGL
                 ? {
                     isWebGLBackend: true,
@@ -79,7 +89,7 @@ vi.mock('three/webgpu', () => {
             this._bundles = { dispose: vi.fn() };
             this._geometries = {
                 _geometryDisposeListeners: new Map([
-                    [quadGeometry, quadDisposeListener],
+                    [sharedQuadGeometry, quadDisposeListener],
                 ]),
             };
             this._nodes = { nodeFrame: new MockNodeFrame() };
@@ -89,7 +99,12 @@ vi.mock('three/webgpu', () => {
             this._nodes.nodeFrame.renderer = this;
             this._nodes.nodeFrame.scene = {};
             this.initialNodeFrame = this._nodes.nodeFrame;
-            this._quad = { geometry: quadGeometry };
+            this._quadCache = new Map([
+                [
+                    { isTexture: true },
+                    { quad: { material: { dispose: vi.fn() } }, cacheKey: 'mock' },
+                ],
+            ]);
             this._renderContexts = { dispose: vi.fn() };
             this._renderLists = { dispose: vi.fn() };
             this.info = {
@@ -146,6 +161,7 @@ vi.mock('three/webgpu', () => {
     return {
         NoToneMapping: 'NoToneMapping',
         PerspectiveCamera: MockPerspectiveCamera,
+        QuadMesh: MockQuadMesh,
         Scene: MockScene,
         SRGBColorSpace: 'SRGBColorSpace',
         WebGPURenderer: MockWebGPURenderer,
@@ -556,6 +572,7 @@ describe('Stillwater production adapter regression gates', () => {
         await theme.start(sharedRenderer);
         const [renderer] = stillwaterMocks.rendererInstances;
         const { device } = renderer.backend;
+        const [pooledQuadData] = renderer._quadCache.values();
 
         theme.stop();
         const replacementTheme = trackTheme();
@@ -593,11 +610,13 @@ describe('Stillwater production adapter regression gates', () => {
             renderer: null,
             scene: null,
         });
-        expect(renderer._quad.geometry.removeEventListener).toHaveBeenCalledWith(
+        expect(new THREE.QuadMesh().geometry.removeEventListener).toHaveBeenCalledWith(
             'dispose',
             expect.any(Function),
         );
         expect(renderer._geometries._geometryDisposeListeners.size).toBe(0);
+        expect(pooledQuadData.quad.material.dispose).toHaveBeenCalledTimes(1);
+        expect(renderer._quadCache.size).toBe(0);
 
         replacementTheme.stop();
         StillwaterTheme.disposeSharedResources();

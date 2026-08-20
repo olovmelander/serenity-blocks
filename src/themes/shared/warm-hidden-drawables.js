@@ -3,10 +3,13 @@
  * Reveal FX drawables parked at `visible = false` so the caller's very next real
  * render creates their GPU pipelines.
  *
- * three r181 anchors (pinned 0.181.2, read from node_modules/three/src):
- *   Renderer.js:2761  `_projectObject()` returns immediately on `visible === false`
- *   Renderer.js:2763  ...and then gates on `object.layers.test(camera.layers)`
- *   Renderer.js:895   `compileAsync()` builds its work list through that SAME traversal
+ * three r185 anchors (pinned 0.185.1, read from node_modules/three/src):
+ *   Renderer.js:3082  `_projectObject()` returns immediately on `visible === false`
+ *   Renderer.js:3084  ...and then gates on `object.layers.test(camera.layers)`
+ *   Renderer.js:966   `compileAsync()` builds its work list through that SAME traversal
+ *   (r185 note: compileAsync now also updates matrices/camera and REALLY frustum-culls
+ *   against the passed camera — callers must clear `frustumCulled` during a warm, as
+ *   the Odyssey prewarm paths already do.)
  *
  * So a pooled FX mesh built at scene build but held invisible is skipped by
  * `compileAsync` AND by every warm render, and its pipeline is created by the
@@ -19,15 +22,17 @@
  * This module only ever writes `visible`, `frustumCulled` and
  * `InstancedMesh.count`. None of the three is part of a render object's
  * identity — `RenderObject.getMaterialCacheKey()` skips `visible`
- * (RenderObject.js:691) — so revealing cannot change which pipeline the live
+ * (RenderObject.js:738) — so revealing cannot change which pipeline the live
  * frame later asks for.
  *
  * IMPORTANT: a reveal must never be live across a bare
- * `renderer.compileAsync(scene, camera)` on an MRT theme. That call binds no
- * render target (Renderer.js:861), so it bakes a one-output shader under a
- * cache key that carries no target component, which then gets reused for the
- * two-attachment pass — the documented poisoned-cache black screen. Reveal only
- * across the theme's own shipped post render.
+ * `renderer.compileAsync(scene, camera)` on an MRT theme. That call compiles
+ * with no MRT bound (r185 targets the internal single-output framebuffer,
+ * Renderer.js:909-911, and its deferred builds read live `getMRT()` = null),
+ * so it bakes a one-output shader under a cache key that carries no target
+ * component, which then gets reused for the two-attachment pass — the
+ * documented poisoned-cache black screen. Reveal only across the theme's own
+ * shipped post render.
  */
 
 /**
@@ -130,8 +135,9 @@ export function revealHiddenDrawables(roots, options = {}) {
  * `device.createRenderPipeline()` returns to JS long before Dawn finishes
  * compiling — that asymmetry IS the measured signature. Without this fence the
  * stall merely relocates from the first line clear onto the first visible
- * frames. `queue.onSubmittedWorkDone()` is the only real GPU wait left in r181;
- * `renderAsync` / `waitForGPU` are deprecated no-ops.
+ * frames. `queue.onSubmittedWorkDone()` is the only real GPU wait left (true on
+ * r181 and r185 alike); `renderAsync` is a deprecated shim and `waitForGPU` is
+ * removed-with-error in r185.
  *
  * Resolves false on timeout, on a WebGL backend, or on device loss — warming is
  * best-effort and must never be able to wedge activation.

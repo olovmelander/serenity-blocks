@@ -656,7 +656,7 @@ export default class ThreeJSIntroRendererWebGPU {
     }
 
     setupPostProcessing() {
-        this.postProcessing = new THREE.PostProcessing(this.renderer);
+        this.postProcessing = new THREE.RenderPipeline(this.renderer);
 
         const scenePass = pass(this.scene, this.camera);
         const sceneColor = scenePass.getTextureNode('output');
