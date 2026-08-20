@@ -473,19 +473,44 @@ mocks of `three/webgpu`: shapes fine.
 | #34285 dispose of still-in-use shared geometry/texture no longer auto-recovers | Teardown ordering | Dispose only after last user stops rendering (already repo policy) |
 | #33795 compute→texture same-frame staleness (open, no fix) | Only the safe ping-pong variant exists in-repo | Acceptance check §8.8 |
 | #33821 WebGPU material-init 16× WebGL (open) | Theme-switch compile cost | This is why the warm-up architecture stays load-bearing after the upgrade |
+| **NEW (found in-repo 2026-08-20, capture matrix): `compileAsync(scene, camera, group)` TypeErrors on r185** — `Background.update` runs against the target GROUP (Renderer.js:1005-1007) and guards `=== null` while a Group's `background` is `undefined` → `background.isColor` throws; the prewarm catch swallowed it, silently voiding every Odyssey chapter warm | Every targeted compile in the repo | App-normalized in `compileGroupThroughPost` (mirror Scene's `background = null` onto object groups; pinned by the contract test). Candidate for an upstream issue — the public 3-arg compileAsync signature is broken for Groups on r185 |
 
 ---
 
 ## 11. Opportunity ladder (exploit r185; ranked, phased)
 
-1. **Stillwater volumetric moonshafts — unblock (with-bump acceptance test).** Root cause
-   found: repo never enables `shadowMap` → `AnalyticLightNode` leaves `shadowNode` null →
-   r181 `VolumetricLightingModel.js:154` multiplies by null unconditionally → the WGSL
-   `null` error that parked the feature. **r185 guards it**
-   (`VolumetricLightingModel.js:183-187`). To ship: flip `?shafts=1` on, enable
-   `renderer.shadowMap.enabled=true` for the canopy carve, retune density (accumulation
-   model changed to per-step front-to-back; new `scatteringEmissiveNode` is useful for
-   moon-tinting). SpotLight workaround stays (DirectionalLight still skipped).
+1. **Stillwater volumetric moonshafts — DONE (acceptance passed 2026-08-20).** Root cause
+   confirmed: repo never enables `shadowMap` → `AnalyticLightNode` leaves `shadowNode`
+   null → r181 `VolumetricLightingModel.js:154` multiplied by null unconditionally → the
+   WGSL `null` error that parked the feature. r185 guards it
+   (`VolumetricLightingModel.js:183-187`). **Implemented:** new iteration harness
+   `src/playground/effects/stillwater-moonshafts.effect.js` (drives the REAL theme
+   module); `stillwater-shafts.js` retuned against r185's front-to-back accumulation —
+   SpotLight intensity 2.4→110 (the r181-era value summed to ~0.06 through
+   density×0.01×stepSize: invisible), `AdditiveBlending` set (the default
+   Normal/opacity-1 painted the accumulated light as an opaque box), IGN `offsetNode`
+   dither + steps 12→16, box-edge density fade (kills the slab silhouette);
+   `stillwater-runtime.js` `?shafts=1` gate now enables `renderer.shadowMap` and marks
+   the near/hero forest roots as shadow casters (all scoped to the opt-in — default path
+   pays nothing). Playground verification: carved diagonal beams, zero console
+   errors/warnings, 133 fps on the RTX 3070 (`moonshafts-final.png`). SpotLight
+   workaround stays (DirectionalLight still skipped, r185 :177).
+   **In-theme calibration (same day, second pass):** driving the real game to stillwater
+   exposed two more findings. (1) A wiring gap — `getRuntimeParams()` deliberately
+   isolates the shader graph from page params (enforced by the wave0 "no
+   `window.location.search` in this method" gate), so `?shafts=1` never reached the
+   runtime; fixed as an explicit sanctioned pass-through via `readBoolParam('shafts')`.
+   (2) The playground calibration (110 / 40°) floods the whole valley as milky haze
+   in-theme: the channel camera at z≈43 looks straight DOWN the beam axis, so there is
+   no side-on beam contrast — live-tuned in the running game to **35 / 23°** (now the
+   module's shipped constants), which reads as a moonlit atmospheric veil that
+   preserves the theme's mood (A/B captures: `stillwater-shafts-OFF/-ingame/-tune2/
+   -final-ingame.png`). Zero console errors across fresh boots.
+   **Remaining: the look call proper** — judge veil-vs-off from the captures (distinct
+   Bauer beam striping is geometrically unavailable from this fixed camera; getting it
+   would need the light repositioned to slant ACROSS the view — an art-direction
+   decision, one-line to try via `MOON_DIRECTION`), then decide default-on per quality
+   tier.
 2. **`BloomNode.setResolutionScale`** — replace the two stillwater `setSize`
    monkey-patches; map lunara's `bloomDownsample` tier param onto it. Trivial.
 3. **`Info.memory` byte accounting as a leak gate** — assert `info.memory.total` returns
@@ -536,12 +561,31 @@ mocks of `three/webgpu`: shapes fine.
 > cleanly. §8.7 boot-warp/intro shared-device teardown VERIFIED SAFE by ordering (the
 > orchestrator's `finally` disposes the warp at handoff end, before any user-driven
 > intro destroy; constraint now documented at the `rendererParams.device` site).
-> OPEN: Phase 2 visual capture matrix (theme-level MRT bloom A/B, the two
+> §11.1 moonshafts acceptance PASSED (2026-08-20, post-commit `38d91cfa`): module
+> retuned for r185 in the playground-first loop, `?shafts=1` gate wired with scoped
+> shadow-map enable + casters — see §11.1 for the full record; only the in-theme look
+> call remains. OPEN: Phase 2 visual capture matrix (theme-level MRT bloom A/B, the two
 > premultiplied-alpha surfaces with loud backdrops, Water ×3, shadows ×2, PBR trio,
-> fragment-stage positionLocal reads), the §11.1 moonshafts acceptance (`?shafts=1` +
-> `shadowMap.enabled` + density retune — own session, visual iteration), Phase 3 perf
+> fragment-stage positionLocal reads, the moonshafts in-theme look call), Phase 3 perf
 > re-baseline (capture r181 numbers from the pre-bump state via git), and the
 > renderAsync→render() cleanup (pre-existing warnings, 9 sites). 
+>
+> **Phase 2 capture matrix — first full pass DONE (2026-08-20, real game, serial theme
+> switches = SB-15 soak):** stellar-drift / winter / ocean / koi-pond / golden-forest /
+> lunara / crystal-cave + **Odyssey mode** all boot and render on r185 with zero console
+> errors (`cap-*.png`). Verified in vivo: MRT additive bloom accumulates (stellar-drift
+> nebulae, winter aurora+moon), ocean's coral tints (vec4 vBatchColor) + placement
+> (collapse fix), koi-pond's viewportDepthTexture route, golden-forest incl. the §6
+> loud-magenta-backdrop test (**zero bleed-through — its alpha exposure is not real in
+> practice**; the intro-webgpu surface remains the only live §6 item), and the entire
+> Odyssey warm architecture (all four targeted prewarms + compile pool + warm replay) —
+> after the capture caught, and we fixed, the NEW upstream compileAsync-Group bug (§10
+> last row; pinned by the contract test). Notes for later: stellar-drift's black
+> asteroid silhouettes + its 5 "uv not found" warns (compare against pre-upgrade
+> footage), crystal-cave's Water-plane look-delta needs a targeted angle, `RGBELoader`
+> deprecated → `HDRLoader` (lunara, one line). Not yet run: neon-district/neon-dusk/
+> chromadelic + remaining MRT tier, shadows retune pass, PBR drift close-reads,
+> WebGL-fallback lanes.
 
 ### Phase 0 — pre-bump, dual-compatible, land on main now (keeps r181 green)
 

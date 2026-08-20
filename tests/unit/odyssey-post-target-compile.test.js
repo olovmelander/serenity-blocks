@@ -139,6 +139,28 @@ describe('the r185 hold-across-await contract', () => {
         expect(renderer._current()).toEqual({ target: 'CANVAS', mrt: null });
     });
 
+    it('normalizes a target Group\'s undefined background to null before compiling', async () => {
+        // r185 upstream bug: compileAsync routes Background.update at the target
+        // GROUP, whose `background` is undefined; Background guards `=== null`,
+        // so `background.isColor` TypeErrors and the prewarm catch silently
+        // voids every chapter warm (caught by the 2026-08-20 capture matrix —
+        // "Shader prewarm failed ... reading 'isColor'"). The module mirrors
+        // Scene's `background = null` default onto object groups.
+        const renderer = makeRenderer();
+        const group = { name: 'chapter-group' };
+        let backgroundAtCompile;
+        renderer.compileAsync = vi.fn(() => {
+            backgroundAtCompile = group.background;
+            return Promise.resolve();
+        });
+        await compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', group);
+        expect(backgroundAtCompile).toBeNull();
+        // An explicitly-set background must never be clobbered.
+        const themed = { background: 'SKY' };
+        await compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', themed);
+        expect(themed.background).toBe('SKY');
+    });
+
     it('compiles bare (no binding) and still resolves true when post is inactive', async () => {
         const renderer = makeRenderer();
         await expect(
