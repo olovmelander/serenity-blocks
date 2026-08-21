@@ -1873,8 +1873,10 @@ export function create({
             else renderer.render(scene, camera);
         },
         renderAsync() {
-            if (postProcessing) return postProcessing.renderAsync();
-            return renderer.renderAsync(scene, camera);
+            // Host awaited renderer.init() before mounting; sync render, Promise-shaped.
+            if (postProcessing) postProcessing.render();
+            else renderer.render(scene, camera);
+            return Promise.resolve();
         },
         resize() { /* camera aspect handled by host */ },
         dispose() {

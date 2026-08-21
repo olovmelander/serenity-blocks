@@ -699,7 +699,7 @@ export default class VerdantHillsTheme extends BaseTheme {
     startAnimation() {
         if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
 
-        const loop = async () => {
+        const loop = () => {
             if (!this.isActive) return;
 
             const time = this.clock.getElapsedTime();
@@ -743,9 +743,10 @@ export default class VerdantHillsTheme extends BaseTheme {
             this.camera.position.x = Math.sin(time * 0.1) * 5;
             this.camera.position.y = 80 + Math.sin(time * 0.15) * 2;
 
-            // Render (async for WebGPU)
+            // Render. renderer.init() was awaited in createScene() before this loop
+            // starts, so the deprecated renderAsync() shim is not needed.
             try {
-                await this.renderer.renderAsync(this.scene, this.camera);
+                this.renderer.render(this.scene, this.camera);
             } catch (error) {
                 console.error('[VerdantHillsTheme] Render error:', error);
             }

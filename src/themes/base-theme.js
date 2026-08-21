@@ -64,6 +64,29 @@ eventBus.on(EVENTS.PERFORMANCE_DOWNSCALE, () => {
 });
 
 /**
+ * Stop a WebGPU renderer issuing new timestamp queries and collect the resolves
+ * still in flight on its query pools (three r185 `WebGPUTimestampQueryPool#pendingResolve`).
+ * Returns [] for WebGL renderers, mocks, or an idle backend — callers treat that
+ * as "safe to release synchronously".
+ * @param {any} renderer
+ * @returns {Promise<any>[]}
+ */
+function collectPendingTimestampResolves(renderer) {
+    const backend = renderer?.backend;
+    if (!backend || backend.isWebGPUBackend !== true) return [];
+    try {
+        backend.trackTimestamp = false;
+    } catch (error) {
+        /* read-only mock — nothing to quiesce */
+    }
+    const pools = backend.timestampQueryPool;
+    if (!pools || typeof pools !== 'object') return [];
+    return Object.values(pools)
+        .map((pool) => pool?.pendingResolve)
+        .filter((pending) => pending && typeof pending.then === 'function');
+}
+
+/**
  * Abstract base class for all themes
  * Each theme should extend this class and implement its methods
  */
@@ -593,19 +616,39 @@ export class BaseTheme {
                 console.warn(`[BaseTheme] Failed to stop renderer loop for ${this.name}:`, error);
             }
         }
-        if (typeof renderer.dispose === 'function') {
-            try {
-                renderer.dispose();
-            } catch (error) {
-                console.warn(`[BaseTheme] Failed to dispose renderer for ${this.name}:`, error);
+        const releaseGpu = () => {
+            if (typeof renderer.dispose === 'function') {
+                try {
+                    renderer.dispose();
+                } catch (error) {
+                    console.warn(`[BaseTheme] Failed to dispose renderer for ${this.name}:`, error);
+                }
             }
-        }
-        if (typeof renderer.forceContextLoss === 'function') {
-            try {
-                renderer.forceContextLoss();
-            } catch (error) {
-                console.warn(`[BaseTheme] Failed to force WebGL context loss for ${this.name}:`, error);
+            if (typeof renderer.forceContextLoss === 'function') {
+                try {
+                    renderer.forceContextLoss();
+                } catch (error) {
+                    console.warn(`[BaseTheme] Failed to force WebGL context loss for ${this.name}:`, error);
+                }
             }
+        };
+        // three r185: WebGPUBackend.dispose() fires the timestamp pools' ASYNC
+        // dispose() without awaiting it and then destroys the owned device, so
+        // an in-flight resolveTimestampsAsync() (black-hole samples its GPU-timed
+        // DRS at 15 Hz, compute at 2 Hz) rejects against a dead device and three
+        // logs "Error resolving queries" — once per pool. r181 never destroyed
+        // the device here, which is why this never surfaced. Quiesce first and
+        // defer ONLY the GPU release until pending resolves settle (bounded so a
+        // stuck query can never wedge teardown); loop stop, canvas detach and
+        // the reference clear below stay synchronous.
+        const pendingResolves = collectPendingTimestampResolves(renderer);
+        if (pendingResolves.length > 0) {
+            Promise.race([
+                Promise.allSettled(pendingResolves),
+                new Promise((resolve) => { setTimeout(resolve, 300); }),
+            ]).then(releaseGpu, releaseGpu);
+        } else {
+            releaseGpu();
         }
         try {
             if (domElement?.parentNode) {

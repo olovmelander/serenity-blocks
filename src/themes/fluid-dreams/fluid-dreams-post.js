@@ -133,10 +133,10 @@ export class FluidDreamsPost {
         return this.postProcessing.render();
     }
 
+    // Promise-returning alias kept for callers that await a render. The renderer is
+    // init-awaited by the theme before this post is constructed, so the deprecated
+    // RenderPipeline.renderAsync() (warnOnce + await init + render) is not needed.
     renderAsync() {
-        if (typeof this.postProcessing.renderAsync === 'function') {
-            return this.postProcessing.renderAsync();
-        }
         return Promise.resolve(this.postProcessing.render());
     }
 

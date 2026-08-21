@@ -1900,7 +1900,8 @@ export function create({
         render() { if (post) post.render(); else renderer.render(scene, camera); },
         renderAsync() {
             if (post) return post.renderAsync();
-            return renderer.renderAsync(scene, camera);
+            renderer.render(scene, camera); // host awaited renderer.init() before mounting
+            return Promise.resolve();
         },
         resize(w, h) { post?.setSize(w, h); },
         pulse: applyPulse,
