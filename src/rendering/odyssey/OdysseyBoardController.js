@@ -3409,7 +3409,19 @@ export class OdysseyBoardController {
             // sample already warmed the ACTIVE variant, and the far variants (ch7 lens /
             // dark no-bloom) warm on first visit to those far chapters — the fast-start trade.
             if (this._fastStart && !this._motionWarm) {
-                console.log('[OdysseyWarmup] fast-start: focus chapter warmed; far chapters + post variants warm on first visit');
+                // Item 2.12: the bloom node's five quad passes were the last pipelines created
+                // synchronously on the first live post frame (the director's bloom weight is 0
+                // at the warm sample's p=0, so the sample bound the no-bloom variant). Warm the
+                // lean pair (bloom on/off, lens off) minus the live one — one render + the
+                // restore, ~150 ms behind the overlay (the compiles are synchronous quads);
+                // the ch7 lens variants still warm on first visit (the fast-start trade).
+                const variantStart = performance.now();
+                await this.postProcessingStack?.warmOutputVariants?.(
+                    this._yieldToMain.bind(this),
+                    { lensStates: [false], skipActive: true },
+                );
+                warmupStats.variantsMs = performance.now() - variantStart;
+                console.log(`[OdysseyWarmup] fast-start: focus chapter + lean post variants warmed in ${Math.round(warmupStats.variantsMs)}ms; far chapters + lens variants warm on first visit`);
             } else {
                 const variantStart = performance.now();
                 await this.postProcessingStack?.warmOutputVariants?.(this._yieldToMain.bind(this));

@@ -84,3 +84,45 @@ describe('OdysseyTslPipeline sharpen gate', () => {
         expect(p.getPerfState().sharpenAmount).toBeCloseTo(0.6, 5);
     });
 });
+
+describe('OdysseyTslPipeline.warmOutputVariants (plan item 2.12)', () => {
+    const renders = (p) => {
+        const keys = [];
+        p.postProcessing.render = () => { keys.push(p._activeVariantKey); };
+        return keys;
+    };
+
+    it('warms the full lens × bloom matrix by default and restores the live variant', async () => {
+        const p = make();
+        const live = p._activeVariantKey;
+        const keys = renders(p);
+        await p.warmOutputVariants();
+        expect(keys.slice(0, 4)).toEqual(['0|1', '0|0', '1|1', '1|0']);
+        expect(p._activeVariantKey).toBe(live);
+    });
+
+    it('fast-start warms only the lean pair when lensStates is [false] (the bloom passes, not the ch7 lens)', async () => {
+        const p = make();
+        const live = p._activeVariantKey;
+        const keys = renders(p);
+        await p.warmOutputVariants(null, { lensStates: [false] });
+        expect(keys.slice(0, 2)).toEqual(['0|1', '0|0']);
+        expect(keys.some((k) => k.startsWith('1|'))).toBe(false);
+        expect(p._activeVariantKey).toBe(live);
+    });
+
+    it('skipActive leaves out the variant that is already live (the warm sample rendered it)', async () => {
+        const p = make();
+        expect(p._activeVariantKey).toBe('0|1'); // bloom tier: bloom variant is the default
+        const keys = renders(p);
+        await p.warmOutputVariants(null, { lensStates: [false], skipActive: true });
+        expect(keys).toEqual(['0|0', '0|1']); // the other lean variant, then the restore render
+    });
+
+    it('without a bloom node only the no-bloom variant exists', async () => {
+        const p = make({ enableBloom: false });
+        const keys = renders(p);
+        await p.warmOutputVariants(null, { lensStates: [false] });
+        expect(keys.slice(0, 1)).toEqual(['0|0']);
+    });
+});
