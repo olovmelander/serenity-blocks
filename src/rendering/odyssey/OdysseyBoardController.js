@@ -10,7 +10,10 @@ import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { LevelNodeManager } from './LevelNodeManager.js';
 import { PerfRing } from '../../utils/perf-ring.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
-import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
+import { ODYSSEY_WORLD_QUALITY, createOdysseyWorld } from './world/odyssey-world-renderer.js';
+import { awaitWorldBake, startWorldBake } from './world/odyssey-world-bake-loader.js';
+import { makeReliefSampler } from './world/odyssey-world-bake-data.js';
+import { ODYSSEY_CLOUD_FIELD_SPECS } from './world/odyssey-cloud-field-specs.js';
 import {
     ONE_WORLD_APPLY_EXPOSURE,
     ONE_WORLD_OUTPUT_SCALE,
@@ -658,6 +661,25 @@ export class OdysseyBoardController {
         // compiles are launched in parallel).
         const serialInit = new URLSearchParams(window.location.search).get('odysseySerialInit') === '1';
 
+        // Item 2.1: start the One World bakes NOW — before the renderer's requestAdapter/
+        // requestDevice wait, chapter 1's creation, the path and the nodes — in a Worker (or the
+        // synchronous twin on its first await). Every input is already known here; the world is
+        // assembled after the nodes from the landed arrays (world/odyssey-world-bake-loader.js).
+        this._worldBakeOptions = this.oneWorldEnabled ? this._readWorldBuildOptions() : null;
+        this._worldBake = this.oneWorldEnabled
+            ? startWorldBake({
+                reliefRes: this._worldBakeOptions.q.reliefRes,
+                shadowRes: this._worldBakeOptions.q.shadowRes,
+                cloudSpecs: this._worldBakeOptions.cloudSpecs,
+                railSamples: this._worldBakeOptions.railSamples,
+                cloudField: this._worldBakeOptions.cloudField,
+                forceSync: readBooleanUrlFlag('odysseyWorldBakeSync'),
+            })
+            : null;
+        if (this._worldBake) {
+            trace.event(`world-bake started (${this._worldBake.viaWorker ? 'worker' : 'sync twin'})`);
+        }
+
         // ─── Step 1: Lightweight Three.js shell (very fast) ───
         trace.begin('renderer');
         await this.initRenderer();
@@ -701,135 +723,9 @@ export class OdysseyBoardController {
         // untraced gap between 'renderer' and 'creates', so the startup summary's parts never
         // added up to its total and the cost was mis-attributed. Named span so regressions in
         // the world build are visible in every [OdysseyStartup] line.
-        trace.begin('world');
-        if (this.oneWorldEnabled) {
-            // A feature flag must never be able to brick boot. If the world fails to build we
-            // log it and fall back to the shipped chapter environments rather than leaving the
-            // journey with no ground at all — the failure mode that cost a capture cycle here
-            // was a silent throw inside init, which just hangs bootstrap with no diagnostic.
-            try {
-                const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
-                this.oneWorld = createOdysseyWorld({
-                    quality: weakLane ? 'low' : 'high',
-                    // The forest's hero band rides FOREST_LOD_DISTANCE_BY_TIER. Flattened to
-                    // 200 on every tier by owner direction 2026-08-15 (post-carve, the island
-                    // is 26% smaller than when 200 measured over-budget on the integrated
-                    // lane); the plumbing stays so a tier split is a table edit, not a rewire.
-                    qualityTier: this.qualityName,
-                    // The post stack owns exposure and applies ACES after it, so the world
-                    // must not apply exposure a second time, and must hand over scene-linear
-                    // values rather than the display-referred palette the playground wants.
-                    applyExposure: ONE_WORLD_APPLY_EXPOSURE,
-                    outputScale: ONE_WORLD_OUTPUT_SCALE,
-                    outputSaturation: ONE_WORLD_OUTPUT_SATURATION,
-                    // Inside the board camera's 9,000 far plane, and inside the shipped
-                    // r=4000 atmosphere backstop so the world's sky paints in front of it.
-                    skyRadius: ONE_WORLD_SKY_RADIUS,
-                    // Bisect lever for the boot-stall investigation (see the plan's BLOCKER
-                    // note): the sheet's pipeline stays out of the in-game compile when it is
-                    // not mounted.
-                    // ⚠️ POLARITY FLIPPED 2026-08-14 — the owner retired the flat sheet in
-                    // favour of the sculpted field. It is opt-IN now, so the old
-                    // `?odysseyWorldNoClouds` lever no longer has anything to switch off and
-                    // is deliberately NOT read here: a flag that silently does nothing is how
-                    // the `odysseyWorldNoHeroes` bisect produced a wrong conclusion. Use
-                    // `?odysseyWorldCloudSheet=1` to bring the sheet back, and
-                    // `?odysseyWorldNoCloudField=1` to remove the field.
-                    clouds: readBooleanUrlFlag('odysseyWorldCloudSheet'),
-                    // HEROES RETIRED BY THE OWNER, 2026-08-14 — an art-direction call, not a
-                    // perf one (they measured 1-2 timer ticks). Two cloud MODELS in one sky do
-                    // not cohere: the smooth lobed icosphere masses read as a different object
-                    // class next to the deck's flat painted bands, and the owner circled them
-                    // in live play twice. Retired per the ADR-0015 pattern (module + tests +
-                    // this lever retained, mounting stops): ?odysseyWorldHeroes=1 restores the meshes
-                    // AND the deck's hero clearings, which ride the same option.
-                    heroes: readBooleanUrlFlag('odysseyWorldHeroes'),
-                    // Bisect lever for the Ghibli-water plan's Wave 0: ?odysseyWorldNoWater=1
-                    // removes the sea plate entirely. The water is one ungated DoubleSide
-                    // transparent clipmap drawing across the whole act window and NOTHING in
-                    // the tree could switch it off, so its total cost had never been measured
-                    // — and an unmeasured cost cannot fund a water package (ADR-0016).
-                    water: !readBooleanUrlFlag('odysseyWorldNoWater'),
-                    // Bisect lever for the Act II forest plan's Wave 0a:
-                    // ?odysseyWorldNoForest=1 removes the forest entirely. Exactly the same
-                    // argument as the water lever above, and the forest is the larger unpriced
-                    // system of the two — 15,427 trees in 40 chunks, never once measured as a
-                    // differential because nothing could turn it off. Opt-OUT (the forest
-                    // ships), so `no-forest` REMOVES and forestMs is baseline minus
-                    // configuration. docs/ODYSSEY_ACT2_FOREST_PLAN_2026-08.md §5 Wave 0a.
-                    forest: !readBooleanUrlFlag('odysseyWorldNoForest'),
-                    // Forest plan Wave 0b — the PAINT PROBE, opt-in and shipping nothing:
-                    // ?odysseyWorldForestPaint=1 swaps the incumbent facet-normal forest for
-                    // blob normals + the banded ramp. Here as well as on the graded playground
-                    // rig because owner decision D0 may want the verdict taken in the real
-                    // game, and a probe only reachable from a rig invites "but does it hold
-                    // up in-game" as an unanswerable question.
-                    forestPaint: readBooleanUrlFlag('odysseyWorldForestPaint'),
-                    // The zoned species roster is the SHIPPED forest since the 2026-08-14
-                    // swap. `?odysseyWorldForestV1=1` restores the incumbent cone forest
-                    // (ADR-0015: retained, one flag from restoration). The migration flag
-                    // `odysseyWorldForestV2` is deliberately NO LONGER READ — a dead lever
-                    // reports innocence, not absence (the odysseyWorldNoHeroes lesson).
-                    forestV2: !readBooleanUrlFlag('odysseyWorldForestV1'),
-                    // Ground plan Wave 0a — the ground's own pricing lever, opt-IN and
-                    // shipping nothing: ?odysseyWorldFlatGround=1 keeps every triangle and
-                    // every draw and withholds only the ground's fragment mesostructure, so
-                    // `baseline - flat-ground` prices the stack the overhaul spends against.
-                    // The ground could not use the forest's or water's shape (never built) —
-                    // the clipmap IS the world, so removing it measures a different scene.
-                    // docs/ODYSSEY_ACT2_GROUND_PLAN_2026-08.md §5 Wave 0a.
-                    flatGround: readBooleanUrlFlag('odysseyWorldFlatGround'),
-                    // The rail-visibility cull SHIPS (it removes only trees no camera can ever
-                    // see, measured at 0.00% of pixels across four stations). ADR-0015:
-                    // `?odysseyWorldNoVisCull=1` puts every tree back, so a suspected hole is
-                    // attributable in one reload rather than unfalsifiable.
-                    visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
-                    // EXPERIMENT: `?odysseyForestLod=hero` pins every tree to the hero tier so
-                    // the look can be FELT in the real game. Costs ~18 ms of forest on the
-                    // integrated lane against a 10.6 ms whole-frame budget, so it is a test
-                    // lever and not a quality option. Accepts hero | mid | far.
-                    forestLod: (() => {
-                        const v = readUrlValue('odysseyForestLod');
-                        return ['hero', 'mid', 'far'].includes(v) ? v : null;
-                    })(),
-                    // Diagnostic re-shades of the deck, for the "keyed to something other than
-                    // the camera" defect class: ?odysseyWorldCloudDebug=lattice draws the
-                    // clipmap's ring structure over the shipped deck, =alpha draws the opacity
-                    // graph alone, =flat leaves only geometry. See createOdysseyWorld.
-                    cloudDebug: readUrlValue('odysseyWorldCloudDebug') || null,
-                    // The shipped Act II sky since 2026-08-14. `?odysseyWorldNoCloudField=1`
-                    // removes it for bisects; `?odysseyWorldCloudSheet=1` brings the retired
-                    // flat sheet back alongside or instead.
-                    cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
-                    // REVIEW LEVER (temporary, colour pass): pick a north-lake water
-                    // palette so the GRADED capture harness can shoot the arms without a
-                    // tree edit between runs. Unset ships the default.
-                    lakeTint: readUrlValue('lakeTint') || '',
-                    cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
-                    // Seat the Ch2 god-ray shafts along the real rail's submerged stretch.
-                    railSamples: Array.from(
-                        { length: 48 },
-                        (_, i) => getOdysseyPathPointAt(i / 47),
-                    ),
-                });
-                this.scene.add(this.oneWorld.group);
-                console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));
-            } catch (error) {
-                console.error('[OdysseyBoard] One World failed to build; falling back', error);
-                this.oneWorld = null;
-                this.oneWorldEnabled = false;
-                this.environmentManager.suppressedChapters = new Set();
-                // LOUD, after the fallback is arranged (Wave 4/6 audit prerequisite): a
-                // player-visible banner + a persisted localStorage log. Silent recovery is
-                // how we would have retired the fallback while some machine quietly needed
-                // it — and how a future world-only build would degrade to a void nobody
-                // reports. Reporting must never break the recovery, hence its own guard.
-                try {
-                    reportWorldBuildFailure(error);
-                } catch { /* diagnostic only — never let reporting hurt the fallback */ }
-            }
-        }
-        trace.end('world');
+        // Item 2.1 (2026-08-21): the One World is built AFTER the nodes — see the 'world' span
+        // below. Its bakes started before the renderer (this._worldBake) and land while the
+        // renderer, chapter 1, the path and the nodes are built.
         const compilePool = [];
         this._compilePool = serialInit ? null : compilePool;
         this._compileTimings = {}; // OD-05 scoping: per-item compile ms, emitted after the barrier
@@ -973,23 +869,183 @@ export class OdysseyBoardController {
         // ONE WORLD Wave 3: level orbs consult the CPU mirror of the drawn ground, so a node
         // can never sit inside a rise the shader displaced above the spline. Act II only —
         // outside it the chapters own their ground, and Ch1's nodes are UNDER the terrain.
-        if (this.oneWorld) {
-            const cp = this.presentationLayout.chapterPositions;
-            this.nodeManager.setGroundSampler(this.oneWorld.heightAt, {
-                clearance: 7,
-                rangeStart: cp[1],
-                rangeEnd: cp[5],
-            });
+        if (this._worldBake) {
+            // Item 2.1: the height mirror comes straight from the relief stage — the first the
+            // worker posts — so the nodes never wait for the whole world. A failed bake leaves
+            // the nodes unseated exactly as a failed world build did; the world step below
+            // then bakes synchronously and reports the failure.
+            try {
+                const relief = await this._worldBake.relief;
+                trace.event(`world-bake relief landed +${Math.round(performance.now() - this._worldBake.startedAt)}ms`);
+                const cp = this.presentationLayout.chapterPositions;
+                this.nodeManager.setGroundSampler(makeReliefSampler(relief), {
+                    clearance: 7,
+                    rangeStart: cp[1],
+                    rangeEnd: cp[5],
+                });
+            } catch (error) {
+                console.warn('[OdysseyBoard] world bake (relief) failed before the nodes:', error?.message || error);
+            }
         }
         await this.nodeManager.createNodes(this.levelData, this._yieldToMain.bind(this));
         this.nodeManager.updateFromProgress(this.progressData);
+
         // A/B lever, applied HERE so it works on its own (fixed 2026-08-12). It used to be
         // read only inside _sampleGpuProfile, i.e. ?odysseyHideLevelNodes=1 was a silent
         // no-op unless ?odysseyGpuProfile=1 was also passed — so anyone running the
         // comparison by hand from the URL measured two identical frames and concluded the
         // level nodes were free.
         if (this.hideLevelNodes) this.nodeManager.setAllVisible(false);
+
         trace.end('nodes');
+
+        trace.begin('world');
+        if (this.oneWorldEnabled) {
+            // A feature flag must never be able to brick boot. If the world fails to build we
+            // log it and fall back to the shipped chapter environments rather than leaving the
+            // journey with no ground at all — the failure mode that cost a capture cycle here
+            // was a silent throw inside init, which just hangs bootstrap with no diagnostic.
+            try {
+                const { weakLane } = this._worldBakeOptions ?? this._readWorldBuildOptions();
+                // Landed bakes (or the synchronous twin's); a bake that failed outright falls
+                // through to createOdysseyWorld's own synchronous bakes via prebaked = null.
+                let prebaked = null;
+                if (this._worldBake) {
+                    try {
+                        prebaked = await awaitWorldBake(this._worldBake);
+                        trace.event(`world-bake landed +${Math.round(performance.now() - this._worldBake.startedAt)}ms ${JSON.stringify(prebaked.ms)}`);
+                    } catch (error) {
+                        console.warn('[OdysseyBoard] world bake failed; baking on the main thread:', error?.message || error);
+                    }
+                }
+                this.oneWorld = createOdysseyWorld({
+                    prebaked,
+                    quality: weakLane ? 'low' : 'high',
+                    // The forest's hero band rides FOREST_LOD_DISTANCE_BY_TIER. Flattened to
+                    // 200 on every tier by owner direction 2026-08-15 (post-carve, the island
+                    // is 26% smaller than when 200 measured over-budget on the integrated
+                    // lane); the plumbing stays so a tier split is a table edit, not a rewire.
+                    qualityTier: this.qualityName,
+                    // The post stack owns exposure and applies ACES after it, so the world
+                    // must not apply exposure a second time, and must hand over scene-linear
+                    // values rather than the display-referred palette the playground wants.
+                    applyExposure: ONE_WORLD_APPLY_EXPOSURE,
+                    outputScale: ONE_WORLD_OUTPUT_SCALE,
+                    outputSaturation: ONE_WORLD_OUTPUT_SATURATION,
+                    // Inside the board camera's 9,000 far plane, and inside the shipped
+                    // r=4000 atmosphere backstop so the world's sky paints in front of it.
+                    skyRadius: ONE_WORLD_SKY_RADIUS,
+                    // Bisect lever for the boot-stall investigation (see the plan's BLOCKER
+                    // note): the sheet's pipeline stays out of the in-game compile when it is
+                    // not mounted.
+                    // ⚠️ POLARITY FLIPPED 2026-08-14 — the owner retired the flat sheet in
+                    // favour of the sculpted field. It is opt-IN now, so the old
+                    // `?odysseyWorldNoClouds` lever no longer has anything to switch off and
+                    // is deliberately NOT read here: a flag that silently does nothing is how
+                    // the `odysseyWorldNoHeroes` bisect produced a wrong conclusion. Use
+                    // `?odysseyWorldCloudSheet=1` to bring the sheet back, and
+                    // `?odysseyWorldNoCloudField=1` to remove the field.
+                    clouds: readBooleanUrlFlag('odysseyWorldCloudSheet'),
+                    // HEROES RETIRED BY THE OWNER, 2026-08-14 — an art-direction call, not a
+                    // perf one (they measured 1-2 timer ticks). Two cloud MODELS in one sky do
+                    // not cohere: the smooth lobed icosphere masses read as a different object
+                    // class next to the deck's flat painted bands, and the owner circled them
+                    // in live play twice. Retired per the ADR-0015 pattern (module + tests +
+                    // this lever retained, mounting stops): ?odysseyWorldHeroes=1 restores the meshes
+                    // AND the deck's hero clearings, which ride the same option.
+                    heroes: readBooleanUrlFlag('odysseyWorldHeroes'),
+                    // Bisect lever for the Ghibli-water plan's Wave 0: ?odysseyWorldNoWater=1
+                    // removes the sea plate entirely. The water is one ungated DoubleSide
+                    // transparent clipmap drawing across the whole act window and NOTHING in
+                    // the tree could switch it off, so its total cost had never been measured
+                    // — and an unmeasured cost cannot fund a water package (ADR-0016).
+                    water: !readBooleanUrlFlag('odysseyWorldNoWater'),
+                    // Bisect lever for the Act II forest plan's Wave 0a:
+                    // ?odysseyWorldNoForest=1 removes the forest entirely. Exactly the same
+                    // argument as the water lever above, and the forest is the larger unpriced
+                    // system of the two — 15,427 trees in 40 chunks, never once measured as a
+                    // differential because nothing could turn it off. Opt-OUT (the forest
+                    // ships), so `no-forest` REMOVES and forestMs is baseline minus
+                    // configuration. docs/ODYSSEY_ACT2_FOREST_PLAN_2026-08.md §5 Wave 0a.
+                    forest: !readBooleanUrlFlag('odysseyWorldNoForest'),
+                    // Forest plan Wave 0b — the PAINT PROBE, opt-in and shipping nothing:
+                    // ?odysseyWorldForestPaint=1 swaps the incumbent facet-normal forest for
+                    // blob normals + the banded ramp. Here as well as on the graded playground
+                    // rig because owner decision D0 may want the verdict taken in the real
+                    // game, and a probe only reachable from a rig invites "but does it hold
+                    // up in-game" as an unanswerable question.
+                    forestPaint: readBooleanUrlFlag('odysseyWorldForestPaint'),
+                    // The zoned species roster is the SHIPPED forest since the 2026-08-14
+                    // swap. `?odysseyWorldForestV1=1` restores the incumbent cone forest
+                    // (ADR-0015: retained, one flag from restoration). The migration flag
+                    // `odysseyWorldForestV2` is deliberately NO LONGER READ — a dead lever
+                    // reports innocence, not absence (the odysseyWorldNoHeroes lesson).
+                    forestV2: !readBooleanUrlFlag('odysseyWorldForestV1'),
+                    // Ground plan Wave 0a — the ground's own pricing lever, opt-IN and
+                    // shipping nothing: ?odysseyWorldFlatGround=1 keeps every triangle and
+                    // every draw and withholds only the ground's fragment mesostructure, so
+                    // `baseline - flat-ground` prices the stack the overhaul spends against.
+                    // The ground could not use the forest's or water's shape (never built) —
+                    // the clipmap IS the world, so removing it measures a different scene.
+                    // docs/ODYSSEY_ACT2_GROUND_PLAN_2026-08.md §5 Wave 0a.
+                    flatGround: readBooleanUrlFlag('odysseyWorldFlatGround'),
+                    // The rail-visibility cull SHIPS (it removes only trees no camera can ever
+                    // see, measured at 0.00% of pixels across four stations). ADR-0015:
+                    // `?odysseyWorldNoVisCull=1` puts every tree back, so a suspected hole is
+                    // attributable in one reload rather than unfalsifiable.
+                    visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
+                    // EXPERIMENT: `?odysseyForestLod=hero` pins every tree to the hero tier so
+                    // the look can be FELT in the real game. Costs ~18 ms of forest on the
+                    // integrated lane against a 10.6 ms whole-frame budget, so it is a test
+                    // lever and not a quality option. Accepts hero | mid | far.
+                    forestLod: (() => {
+                        const v = readUrlValue('odysseyForestLod');
+                        return ['hero', 'mid', 'far'].includes(v) ? v : null;
+                    })(),
+                    // Diagnostic re-shades of the deck, for the "keyed to something other than
+                    // the camera" defect class: ?odysseyWorldCloudDebug=lattice draws the
+                    // clipmap's ring structure over the shipped deck, =alpha draws the opacity
+                    // graph alone, =flat leaves only geometry. See createOdysseyWorld.
+                    cloudDebug: readUrlValue('odysseyWorldCloudDebug') || null,
+                    // The shipped Act II sky since 2026-08-14. `?odysseyWorldNoCloudField=1`
+                    // removes it for bisects; `?odysseyWorldCloudSheet=1` brings the retired
+                    // flat sheet back alongside or instead.
+                    // (Same reads as _readWorldBuildOptions — the bake and the build agree.)
+                    cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
+                    // REVIEW LEVER (temporary, colour pass): pick a north-lake water
+                    // palette so the GRADED capture harness can shoot the arms without a
+                    // tree edit between runs. Unset ships the default.
+                    lakeTint: readUrlValue('lakeTint') || '',
+                    cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
+                    // Seat the Ch2 god-ray shafts along the real rail's submerged stretch — the
+                    // SAME 48 plain points the bake used (item 2.1), so the worker's cloud LOD
+                    // promotion and the main thread's seating agree.
+                    railSamples: this._worldBakeOptions?.railSamples ?? Array.from(
+                        { length: 48 },
+                        (_, i) => getOdysseyPathPointAt(i / 47),
+                    ),
+                });
+                this.scene.add(this.oneWorld.group);
+                console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));
+            } catch (error) {
+                console.error('[OdysseyBoard] One World failed to build; falling back', error);
+                this.oneWorld = null;
+                this.oneWorldEnabled = false;
+                // The world now builds AFTER the startup chapter creates (item 2.1), so lifting
+                // the suppression here no longer re-creates chapters 2-5 in the startup loop;
+                // the background loader picks them up (they are outside the startup set).
+                this.environmentManager.suppressedChapters = new Set();
+                // LOUD, after the fallback is arranged (Wave 4/6 audit prerequisite): a
+                // player-visible banner + a persisted localStorage log. Silent recovery is
+                // how we would have retired the fallback while some machine quietly needed
+                // it — and how a future world-only build would degrade to a void nobody
+                // reports. Reporting must never break the recovery, hence its own guard.
+                try {
+                    reportWorldBuildFailure(error);
+                } catch { /* diagnostic only — never let reporting hurt the fallback */ }
+            }
+        }
+        trace.end('world');
 
         await this._yieldToMain();
 
@@ -2011,6 +2067,29 @@ export class OdysseyBoardController {
      * just what _prewarmGroup / compileObjectsFannedOut read: `traverse` and `visible`.
      * @private
      */
+    /**
+     * Item 2.1: the inputs the One World bake and build share — read once, before the renderer,
+     * so the Worker and `createOdysseyWorld` agree on quality, the cloud-field spec slice and
+     * the 48 rail samples (the path layout is set just before this runs).
+     * @private
+     */
+    _readWorldBuildOptions() {
+        const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
+        const q = ODYSSEY_WORLD_QUALITY[weakLane ? 'low' : 'high'] || ODYSSEY_WORLD_QUALITY.high;
+        const cloudField = !readBooleanUrlFlag('odysseyWorldNoCloudField');
+        const cloudFieldCount = Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0;
+        const cloudSpecs = cloudFieldCount > 0
+            ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount)
+            : ODYSSEY_CLOUD_FIELD_SPECS;
+        const railSamples = Array.from({ length: 48 }, (_, i) => {
+            const pt = getOdysseyPathPointAt(i / 47);
+            return { x: pt.x, y: pt.y, z: pt.z }; // plain points: structured-clone friendly
+        });
+        return {
+            weakLane, q, cloudField, cloudFieldCount, cloudSpecs, railSamples,
+        };
+    }
+
     _boardPresentationGroup() {
         if (!this.scene) return null;
         const covered = new Set([

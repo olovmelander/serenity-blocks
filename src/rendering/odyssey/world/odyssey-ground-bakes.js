@@ -28,7 +28,10 @@
  * deterministic and testable without a GPU (odyssey-ground-bakes.test.js).
  */
 
-import * as THREE from 'three/webgpu';
+// 'three' CORE, not 'three/webgpu': this module is imported by the world-bake Worker
+// (odyssey-world-bake.worker.js), which must not pull the WebGPU renderer + TSL graph. Every
+// symbol used here (DataTexture, DataUtils, formats, filters) is core.
+import * as THREE from 'three';
 
 import { ODYSSEY_SEA_LEVEL } from './odyssey-world-height.js';
 import { createTilingValueNoise } from './odyssey-tiling-noise.js';
@@ -171,7 +174,14 @@ function stretchToLand(field, mask, lo = FIELD_STRETCH[0], hi = FIELD_STRETCH[1]
  * @param {number} shadowRes texture resolution
  * @returns {{tex: THREE.DataTexture, stats: object}}
  */
-export function bakeGroundSunFields(heightAt, shadowRes) {
+/**
+ * Pure half of {@link bakeGroundSunFields}: the four fields packed as RGBA half floats, no three
+ * object. Worker-safe; byte-identical to what the wrapper uploads (golden suite).
+ * @param {(x: number, z: number) => number} heightAt
+ * @param {number} shadowRes
+ * @returns {{data: Uint16Array, res: number, stats: object}}
+ */
+export function bakeGroundSunFieldsData(heightAt, shadowRes) {
     const len = Math.hypot(...ODYSSEY_WORLD_SUN);
     const [sx, sy, sz] = ODYSSEY_WORLD_SUN.map((v) => v / len);
     const horiz = Math.hypot(sx, sz) || 1e-4;
@@ -338,15 +348,9 @@ export function bakeGroundSunFields(heightAt, shadowRes) {
             data[idx + 3] = THREE.DataUtils.toHalfFloat(zone[(j * shadowRes) + i]);
         }
     }
-    const tex = new THREE.DataTexture(data, shadowRes, shadowRes, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
     return {
-        tex,
+        data,
+        res: shadowRes,
         stats: {
             sun: fieldStats(raw, land),
             ao: fieldStats(ao, land),
@@ -355,6 +359,27 @@ export function bakeGroundSunFields(heightAt, shadowRes) {
             landTexels: land.reduce((a, b) => a + b, 0),
         },
     };
+}
+
+/**
+ * Wrap baked RGBA half-float texels as the ground plate texture (clamped, linear, no mips).
+ * @param {Uint16Array} data
+ * @param {number} res
+ */
+export function wrapGroundSunFieldsTexture(data, res) {
+    const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    return tex;
+}
+
+export function bakeGroundSunFields(heightAt, shadowRes, baked = null) {
+    const d = baked ?? bakeGroundSunFieldsData(heightAt, shadowRes);
+    return { tex: wrapGroundSunFieldsTexture(d.data, d.res), stats: d.stats };
 }
 
 /**
@@ -413,7 +438,12 @@ function normaliseInPlace(field) {
  *   color corresponds to the whole-island-color-map's color at that position") and it is the
  *   difference between detail that decorates the paint and detail that overwrites it.
  */
-export function bakeGroundAtlas(res = GROUND_ATLAS_RES) {
+/**
+ * Pure half of {@link bakeGroundAtlas}. Worker-safe; byte-identical to the wrapper's upload.
+ * @param {number} [res]
+ * @returns {{data: Uint16Array, res: number, avg: number[], fields: Float32Array[]}}
+ */
+export function bakeGroundAtlasData(res = GROUND_ATLAS_RES) {
     const vn = createTilingValueNoise(res);
     const n = res * res;
     const grass = new Float32Array(n);
@@ -472,6 +502,13 @@ export function bakeGroundAtlas(res = GROUND_ATLAS_RES) {
         data[(k * 4) + 2] = THREE.DataUtils.toHalfFloat(sand[k]);
         data[(k * 4) + 3] = THREE.DataUtils.toHalfFloat(tooth[k]);
     }
+    return {
+        data, res, avg, fields: [grass, rock, sand, tooth],
+    };
+}
+
+/** Wrap baked atlas texels as the repeating ground atlas texture (linear, no mips). */
+export function wrapGroundAtlasTexture(data, res) {
     const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.HalfFloatType);
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
@@ -485,7 +522,10 @@ export function bakeGroundAtlas(res = GROUND_ATLAS_RES) {
     // surface does not need to take.
     tex.generateMipmaps = false;
     tex.needsUpdate = true;
-    return {
-        tex, avg, fields: [grass, rock, sand, tooth],
-    };
+    return tex;
+}
+
+export function bakeGroundAtlas(res = GROUND_ATLAS_RES, baked = null) {
+    const d = baked ?? bakeGroundAtlasData(res);
+    return { tex: wrapGroundAtlasTexture(d.data, d.res), avg: d.avg, fields: d.fields };
 }
