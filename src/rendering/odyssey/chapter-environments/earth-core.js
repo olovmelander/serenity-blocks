@@ -1353,9 +1353,28 @@ export function createEarthCoreEnvironment(options = {}) {
  * lowered, low-displacement opaque lake the camera looks ACROSS (validated TSL
  * builder). Glow sprites are dimmed/shrunk for the value hierarchy (~70% dark rock).
  */
+// Lake noise source flag (docs/ODYSSEY_EARTH_CORE_LAVA_LAKE_REMAKE_2026-08.md §2.6). Read at BUILD
+// time, like ?earthCoreBakeNoise: `?earthCoreLakeBake=1|0` (dev URL) over
+// `localStorage['serenity.earthCoreLakeBake']` (packaged Electron). Default OFF until the
+// design's gates pass; the analytic arm is the shipped lake. `?earthCoreLakeDebug=2` (URL only)
+// builds the tier-ID variant for mask statistics in captures.
+function _readLakeNoiseOptions() {
+    const out = { noise: 'analytic', debug: 0 };
+    if (typeof window === 'undefined') return out;
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const url = params.get('earthCoreLakeBake');
+        const ls = window.localStorage && window.localStorage.getItem('serenity.earthCoreLakeBake');
+        if (url === '1' || (url !== '0' && ls === '1')) out.noise = 'baked';
+        if (params.get('earthCoreLakeDebug') === '2') out.debug = 2;
+    } catch { /* URL/localStorage unavailable — defaults */ }
+    return out;
+}
+
 function createLavaFloor(uniforms, basins = []) {
     const group = new THREE.Group();
     group.name = 'lava-floor';
+    const lakeNoise = _readLakeNoiseOptions();
 
     // Main lava LAKE — wide (360 square), lifted (y=-10), opaque, NormalBlending lake the
     // camera looks across. The basin list revives the legacy floor's molten-sea reads
@@ -1365,7 +1384,9 @@ function createLavaFloor(uniforms, basins = []) {
         uniforms.uTime,
         uniforms.uPulseIntensity,
         uniforms.uDescent,
-        { basins, uSeam: uniforms.uSeam },
+        {
+            basins, uSeam: uniforms.uSeam, noise: lakeNoise.noise, debug: lakeNoise.debug,
+        },
     );
     group.add(lavaSurface);
 
