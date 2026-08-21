@@ -32,9 +32,25 @@ node scripts/run-electron.mjs scripts/odyssey-gpu-split.mjs --lane B --low-power
 >    does not fail; it quietly re-runs lane A and writes a discrete-GPU result under an
 >    iGPU label. Verified 2026-08-19 via `navigator.gpu.requestAdapter()`.
 
+## 2026-08-21 — first 82JU (RTX 3070) baseline: three r181 → r185 A/B
+
+[`rtx3070-r181-vs-r185/`](rtx3070-r181-vs-r185/AGGREGATE.md) holds the first numbers captured
+**on the current machine**: the same perf-session instrument run against the pre-bump commit
+(three 0.181.2, own worktree) and the upgraded tree (0.185.1), three repeats per cell, draw
+calls identical in every cell. Headline: load-phase freezes collapse (frame p95 −73 %/−75 %,
+p99 −62 %/−86 %), startup wall-clock +15 % cold / +4 % warm (a semantic shift of work into the
+now-yielding compile barrier, explained in the report), idle steady-state flat on average with
+−63 % spikes, JS heap −6…−9 %.
+
+**82JU harness note:** `odyssey-perf-baseline.mjs --committed --runs N` only completes run 1
+per cell here — a second WebGPU window in the same Electron process aborts its load with
+`ERR_FAILED (-2)` / `GPU state invalid after WaitForGetOffsetInRange` (identical on r181 and
+r185). Use the process-per-run driver in that folder (fresh Electron per run, the
+`validate-all-themes.mjs` pattern) until the session script grows the same isolation.
+
 Two things to know before reading one of these files:
 
-**It is differential, not per-pass.** three r181's WebGPU backend exposes one timestamp scope
+**It is differential, not per-pass.** three's WebGPU backend (r181 and r185 alike) exposes one timestamp scope
 per render type, and `PostProcessing` renders its whole graph inside a single call, so there is
 nowhere to hang a per-pass query without forking the renderer. Each configuration instead
 removes one system and the delta against baseline is attributed to it. Overlapping cost lands

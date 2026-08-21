@@ -474,6 +474,7 @@ mocks of `three/webgpu`: shapes fine.
 | #33795 compute→texture same-frame staleness (open, no fix) | Only the safe ping-pong variant exists in-repo | Acceptance check §8.8 |
 | #33821 WebGPU material-init 16× WebGL (open) | Theme-switch compile cost | This is why the warm-up architecture stays load-bearing after the upgrade |
 | **NEW (found in-repo 2026-08-20, capture matrix): `compileAsync(scene, camera, group)` TypeErrors on r185** — `Background.update` runs against the target GROUP (Renderer.js:1005-1007) and guards `=== null` while a Group's `background` is `undefined` → `background.isColor` throws; the prewarm catch swallowed it, silently voiding every Odyssey chapter warm | Every targeted compile in the repo | App-normalized in `compileGroupThroughPost` (mirror Scene's `background = null` onto object groups; pinned by the contract test). Candidate for an upstream issue — the public 3-arg compileAsync signature is broken for Groups on r185 |
+| **NEW (found 2026-08-21, Electron theme harness): `WebGPUBackend.dispose()` fires the timestamp pools' ASYNC `dispose()` without awaiting, then destroys the owned device** — an in-flight `resolveTimestampsAsync()` rejects and the pool logs "Error resolving queries: DOMException" (once per pool; black-hole's 15 Hz render + 2 Hz compute sampling = exactly 2). r181 never destroyed the device on dispose | Any theme disposing a renderer with `trackTimestamp` sampling live (black-hole; latent for cosmic-noir/stellar-velocity/wolfhour/stillwater) | App-side in `BaseTheme.disposeRenderer`: stop queries, keep loop-stop/canvas-detach/ref-clear synchronous, defer ONLY `renderer.dispose()` until `pool.pendingResolve`s settle (300 ms bound). Pinned by `base-theme-dispose-timestamp-quiesce.test.js`; black-hole re-captured at 0 errors. Upstream-report candidate (dispose should await the pools) |
 
 ---
 
@@ -583,9 +584,58 @@ mocks of `three/webgpu`: shapes fine.
 > last row; pinned by the contract test). Notes for later: stellar-drift's black
 > asteroid silhouettes + its 5 "uv not found" warns (compare against pre-upgrade
 > footage), crystal-cave's Water-plane look-delta needs a targeted angle, `RGBELoader`
-> deprecated → `HDRLoader` (lunara, one line). Not yet run: neon-district/neon-dusk/
-> chromadelic + remaining MRT tier, shadows retune pass, PBR drift close-reads,
-> WebGL-fallback lanes.
+> deprecated → `HDRLoader` (done next day, see below). Boot/console coverage of every
+> remaining theme came from the Electron matrix below; still open as LOOK work (not
+> correctness): shadows retune pass (neon-district/golden-forest bias), PBR drift
+> close-reads, WebGL-fallback lanes, crystal-cave water angle.
+>
+> **Electron theme matrix — 61/61 GREEN on r185 (2026-08-21, `capture:themes`: production
+> build, one fresh Electron process per theme, real GPU).** First pass: 60/61 — black-hole
+> failed on 2 console errors, which exposed upstream bug #2 (§10 last row: dispose races
+> in-flight timestamp resolves); fixed in `BaseTheme.disposeRenderer` + contract test, black-
+> hole re-captured at 0 errors. The refreshed `docs/theme-screenshots/` (61 PNGs + per-theme
+> `results/*.json`) is the **new r185 visual baseline**; the 5 previously committed captures
+> were different-era theme builds (composition/resolution/menu state) so they are NOT an
+> upgrade A/B — except `sky-children-v2`, **byte-identical** across the upgrade. Stellar-drift
+> closed: black asteroid silhouettes are intended and present in the r181 capture; the 5 "uv
+> not found" warnings were pre-existing (identical r181 AttributeNode behavior) — silenced by
+> giving the three uv-less `Points` geometries a centre uv, which also makes those particle
+> layers (dust ring, ambient motes, nebula bursts) **visible for the first time on WebGPU**
+> (they had been masked to opacity 0 in both versions; subtle additive dots — look-call
+> note, revert to uv (0,0) if pixel-parity with old footage is preferred). Cleanups landed:
+> `RGBELoader`→`HDRLoader` (lunara-assets + summer-meadow effect; r185's RGBELoader is
+> literally a warning shim over HDRLoader), deprecated `renderAsync()` retired at all 6
+> three-facing sites with per-site `renderer.init()` ordering proofs (repo-local forwarders
+> kept). Full suite 362 files / 3,636 tests green. The SwiftShader `validate:odyssey:webgpu`
+> pilot lane is **environment-blocked on the 82JU**: 0/11 scenes, every one "backend did
+> not initialize as WebGPU (got WebGL2 fallback)" behind Chromium's `Failed to query
+> ID3D11Device from ANGLE` — Electron 38's software-WebGPU path never yields a device
+> here, so the lane cannot reach three's code; not an r185 signal. Needs a machine where
+> SwiftShader WebGPU works, or a real-GPU variant of the lane (the theme harness shape).
+>
+> **Phase 3 perf re-baseline — DONE (2026-08-21), the first numbers on the current machine.**
+> An r181 worktree at `b6f46ffb` (own `npm ci`, three 0.181.2) and the r185 tree were run
+> through the identical perf-session instrument, 3 repeats per cell, **draw calls identical
+> in every cell** (ADR-0016 content match). Full report + raw sessions:
+> `reports/odyssey-perf/rtx3070-r181-vs-r185/AGGREGATE.md`. Verdict, graded against §2's
+> predictions: **load-phase freezes collapse** (frame p95 −73 %/−75 %, p99 −62 %/−86 %, worst
+> warm-load frame 3.6 s → 1.7 s, long-task time −12 %/−46 %) — the r184 non-blocking
+> compileAsync cashing out; **startup wall-clock slightly longer** (cold 7.0 → 8.1 s, warm
+> 4.9 → 5.2 s) because the yielded compile barrier now absorbs work r181 did synchronously in
+> `creates`/`post` (a bucket shift, documented — the "+189 % compiles" is not a regression);
+> **idle steady-state flat on average** (p50/p95/p99 within 2–3 %, overlapping ranges) with
+> **−63 % spikes** and −18 % long-task time; **JS heap −6…−9 %** everywhere. Exactly "no
+> higher frame rate, less stutter, smoother load". Harness finding on the way: the committed
+> `--runs N` flow cannot run on the 82JU (second WebGPU window per Electron process aborts,
+> identical on r181) — replaced by a process-per-run driver kept in the report folder.
+> `perf-budgets.json` values intentionally untouched (RTX 5080 targets; re-targeting for the
+> 3070 is a policy call) — its `machine` note now points at the new capture. **GPU time
+> (lane A timestamp lane, 23 configurations, both trees):** draw calls AND triangles identical
+> in every configuration; GPU p50 same 65.536 µs bucket in 12/23, r185 one tick lower in 9,
+> one tick higher in 1; baseline p50 identical (0.655 ms), p95 equal-or-better nearly
+> everywhere (legacy-dioramas 4.19 → 1.51 ms), drift ≤ 1 tick — **unchanged within
+> quantization**, as §7.5 predicted for fill-bound surfaces. Both lanes now prove the perf
+> story on the current hardware, which closes the plan's last phase.
 
 ### Phase 0 — pre-bump, dual-compatible, land on main now (keeps r181 green)
 

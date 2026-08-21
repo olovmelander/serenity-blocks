@@ -1,0 +1,3087 @@
+{
+  "manifest": {
+    "schemaVersion": 2,
+    "date": "2026-08-21T07:19:16.755Z",
+    "commit": "b6f46ffb993cebbb0f654c77accbd9803fa06ce2",
+    "script": "scripts/odyssey-perf-session.mjs",
+    "argv": [
+      "--scenario",
+      "idle",
+      "--cache",
+      "warm",
+      "--profile-dir",
+      "C:/Users/olov_/AppData/Local/Temp/claude/c--Users-olov--repos-serenity-blocks/4c6a5c17-09e4-4031-95c0-a8517040b615/scratchpad/r181-worktree/artifacts/odyssey/perf-profiles/warm-idle-1",
+      "--output",
+      "C:/Users/olov_/AppData/Local/Temp/claude/c--Users-olov--repos-serenity-blocks/4c6a5c17-09e4-4031-95c0-a8517040b615/scratchpad/perf/r181-idle-warm-1.json",
+      "--port",
+      "4177",
+      "--quality",
+      "Extreme",
+      "--target-frame-rate",
+      "240",
+      "--warmup-mode",
+      "current",
+      "--duration",
+      "30000",
+      "--pan-duration",
+      "2200",
+      "--width",
+      "1280",
+      "--height",
+      "720",
+      "--runs",
+      "1"
+    ],
+    "backend": {
+      "isWebGPU": true,
+      "isWebGL": false,
+      "name": "webgpu"
+    },
+    "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "machine": {
+      "platform": "win32",
+      "release": "10.0.26200",
+      "arch": "x64",
+      "cpuModel": "AMD Ryzen 7 5800H with Radeon Graphics         ",
+      "cpuCount": 16,
+      "totalMemBytes": 64269381632
+    },
+    "gpu": null,
+    "url": "http://127.0.0.1:4177/?skipIntro=1&odysseyPerfRun=1&odysseyPerfScenario=idle&odysseyWarmupMode=current&odysseyPerfRefreshTarget=240&odysseyOverlay=0&odysseyDisableAdaptiveQuality=1&odysseyPixelRatio=1",
+    "pins": {
+      "adaptive": "disabled",
+      "dpr": 1,
+      "backgroundLoading": "default-on (measured, not pinned)"
+    },
+    "session": {
+      "cacheMode": "warm",
+      "scenario": "idle",
+      "quality": "Extreme",
+      "targetFrameRate": 240,
+      "warmupMode": "current",
+      "durationMs": 30000,
+      "panDurationMs": 2200,
+      "reloadCycles": 0,
+      "runs": 1,
+      "width": 1280,
+      "height": 720,
+      "profileDir": "artifacts\\odyssey\\perf-profiles\\warm-idle-1",
+      "coldCacheCaveat": null
+    }
+  },
+  "aggregate": {
+    "runCount": 1,
+    "metrics": {
+      "boardVisibleMs": {
+        "count": 1,
+        "median": 8018,
+        "p95": 8018,
+        "p99": 8018,
+        "min": 8018,
+        "max": 8018,
+        "values": [
+          8018
+        ]
+      },
+      "startup.totalMs": {
+        "count": 1,
+        "median": 7042,
+        "p95": 7042,
+        "p99": 7042,
+        "min": 7042,
+        "max": 7042,
+        "values": [
+          7042
+        ]
+      },
+      "startup.warmupMs": {
+        "count": 1,
+        "median": 313,
+        "p95": 313,
+        "p99": 313,
+        "min": 313,
+        "max": 313,
+        "values": [
+          313
+        ]
+      },
+      "frame.p50": {
+        "count": 1,
+        "median": 11.100000000558794,
+        "p95": 11.100000000558794,
+        "p99": 11.100000000558794,
+        "min": 11.100000000558794,
+        "max": 11.100000000558794,
+        "values": [
+          11.100000000558794
+        ]
+      },
+      "frame.p95": {
+        "count": 1,
+        "median": 13.700000000186265,
+        "p95": 13.700000000186265,
+        "p99": 13.700000000186265,
+        "min": 13.700000000186265,
+        "max": 13.700000000186265,
+        "values": [
+          13.700000000186265
+        ]
+      },
+      "frame.p99": {
+        "count": 1,
+        "median": 15.600000000558794,
+        "p95": 15.600000000558794,
+        "p99": 15.600000000558794,
+        "min": 15.600000000558794,
+        "max": 15.600000000558794,
+        "values": [
+          15.600000000558794
+        ]
+      },
+      "frame.max": {
+        "count": 1,
+        "median": 759.2000000001863,
+        "p95": 759.2000000001863,
+        "p99": 759.2000000001863,
+        "min": 759.2000000001863,
+        "max": 759.2000000001863,
+        "values": [
+          759.2000000001863
+        ]
+      },
+      "overBudget": {
+        "count": 1,
+        "median": 2453,
+        "p95": 2453,
+        "p99": 2453,
+        "min": 2453,
+        "max": 2453,
+        "values": [
+          2453
+        ]
+      },
+      "spikes": {
+        "count": 1,
+        "median": 8,
+        "p95": 8,
+        "p99": 8,
+        "min": 8,
+        "max": 8,
+        "values": [
+          8
+        ]
+      },
+      "drawCalls.p50": {
+        "count": 1,
+        "median": 104,
+        "p95": 104,
+        "p99": 104,
+        "min": 104,
+        "max": 104,
+        "values": [
+          104
+        ]
+      },
+      "drawCalls.max": {
+        "count": 1,
+        "median": 104,
+        "p95": 104,
+        "p99": 104,
+        "min": 104,
+        "max": 104,
+        "values": [
+          104
+        ]
+      },
+      "triangles.p50": {
+        "count": 1,
+        "median": 537645,
+        "p95": 537645,
+        "p99": 537645,
+        "min": 537645,
+        "max": 537645,
+        "values": [
+          537645
+        ]
+      },
+      "triangles.max": {
+        "count": 1,
+        "median": 537645,
+        "p95": 537645,
+        "p99": 537645,
+        "min": 537645,
+        "max": 537645,
+        "values": [
+          537645
+        ]
+      },
+      "longTasks.count": {
+        "count": 1,
+        "median": 62,
+        "p95": 62,
+        "p99": 62,
+        "min": 62,
+        "max": 62,
+        "values": [
+          62
+        ]
+      },
+      "longTasks.totalMs": {
+        "count": 1,
+        "median": 33032,
+        "p95": 33032,
+        "p99": 33032,
+        "min": 33032,
+        "max": 33032,
+        "values": [
+          33032
+        ]
+      },
+      "longTasks.maxMs": {
+        "count": 1,
+        "median": 5687,
+        "p95": 5687,
+        "p99": 5687,
+        "min": 5687,
+        "max": 5687,
+        "values": [
+          5687
+        ]
+      },
+      "memory.usedJSHeapSizeMB": {
+        "count": 1,
+        "median": 221.90297603607178,
+        "p95": 221.90297603607178,
+        "p99": 221.90297603607178,
+        "min": 221.90297603607178,
+        "max": 221.90297603607178,
+        "values": [
+          221.90297603607178
+        ]
+      }
+    }
+  },
+  "runs": [
+    {
+      "runIndex": 0,
+      "label": "warm:idle",
+      "cacheMode": "warm",
+      "scenario": "idle",
+      "quality": "Extreme",
+      "targetFrameRate": 240,
+      "warmupMode": "current",
+      "durationMs": 30000,
+      "panDurationMs": 2200,
+      "reloadCycles": 0,
+      "parsedConsole": {
+        "startupLine": "[OdysseyStartup] total 7042ms | renderer 413 | world 1707 | creates 1429 | path 59 | nodes 1026 | post+director 486 | compiles 1491 | warmup 313",
+        "boardVisibleLine": "[OdysseyStartup] board visible 8018ms after overlay show",
+        "startup": {
+          "totalMs": 7042,
+          "buckets": {
+            "renderer": 413,
+            "world": 1707,
+            "creates": 1429,
+            "path": 59,
+            "nodes": 1026,
+            "post+director": 486,
+            "compiles": 1491,
+            "warmup": 313
+          }
+        },
+        "boardVisibleMs": 8018,
+        "warmupLines": [
+          "[OdysseyWarmup] sample 0 @progress 0.000 took 312ms",
+          "[OdysseyWarmup] fast-start: focus chapter warmed; far chapters + post variants warm on first visit",
+          "[OdysseyWarmup] render-warmed chapter 6 in 965ms",
+          "[OdysseyWarmup] render-warmed chapter 7 in 9ms",
+          "[OdysseyWarmup] render-warmed chapter 8 in 8ms",
+          "[OdysseyWarmup] background render-warm complete"
+        ],
+        "warnings": []
+      },
+      "browser": {
+        "location": "http://127.0.0.1:4177/?skipIntro=1&odysseyPerfRun=1&odysseyPerfScenario=idle&odysseyWarmupMode=current&odysseyPerfRefreshTarget=240&odysseyOverlay=0&odysseyDisableAdaptiveQuality=1&odysseyPixelRatio=1",
+        "devicePixelRatio": 1,
+        "gpu": null,
+        "backend": {
+          "isWebGPU": true,
+          "isWebGL": false,
+          "name": "webgpu"
+        },
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "perf": {
+          "metrics": {
+            "fps": 92.59259259418951,
+            "avgFPS": 85.9229557497007,
+            "minFPS": 1.3171759747098981,
+            "maxFPS": 1111.1111118009796,
+            "frameTime": 10.799999999813735,
+            "avgFrameTime": 11.638333333330229,
+            "maxFrameTime": 759.2000000001863,
+            "updateTime": 0,
+            "renderTime": 0,
+            "inputLatency": 0,
+            "memoryUsed": 209.4243631362915,
+            "frameDrops": 8,
+            "totalFrames": 2454,
+            "contextRestoreCount": 0,
+            "themeSwitchCount": 0,
+            "memoryLimit": 4095.75,
+            "memoryTotal": 277.60110569000244
+          },
+          "rollingPercentiles": {
+            "p50": 11.600000000558794,
+            "p95": 13.900000000372529,
+            "p99": 14.5
+          },
+          "frameTimeSummary": {
+            "count": 2454,
+            "budgetMs": 4.166666666666667,
+            "p50": 11.100000000558794,
+            "p95": 13.700000000186265,
+            "p99": 15.600000000558794,
+            "max": 759.2000000001863,
+            "overBudget": 2453,
+            "overBudgetPct": 99.95925020374898
+          },
+          "counters": {
+            "calls": 104,
+            "triangles": 537645,
+            "geometries": 252,
+            "textures": 31,
+            "programs": 0,
+            "callsAvg": 104,
+            "trianglesAvg": 537645,
+            "callsP50": 104,
+            "callsMax": 104,
+            "trianglesP50": 537645,
+            "trianglesMax": 537645
+          },
+          "spikes": [
+            {
+              "t": 26916,
+              "ms": 53.9,
+              "fps": 18.6,
+              "p50Before": 11.3,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 60,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.003841745089546422,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 83,
+                "triangles": 256303,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 249,
+                "textures": 31
+              }
+            },
+            {
+              "t": 27378,
+              "ms": 462.4,
+              "fps": 2.2,
+              "p50Before": 11.3,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 60,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.003925613348495087,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 86,
+                "triangles": 258513,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 249,
+                "textures": 31
+              }
+            },
+            {
+              "t": 28033,
+              "ms": 97.5,
+              "fps": 10.3,
+              "p50Before": 11,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 60,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.0049089803011983235,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 87,
+                "triangles": 259985,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 250,
+                "textures": 31
+              }
+            },
+            {
+              "t": 28129,
+              "ms": 96,
+              "fps": 10.4,
+              "p50Before": 11.1,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 60,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.004993244754564548,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 87,
+                "triangles": 259985,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 250,
+                "textures": 31
+              }
+            },
+            {
+              "t": 43683,
+              "ms": 33.8,
+              "fps": 29.6,
+              "p50Before": 11.3,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 60,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.030466343897546332,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 1,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 90,
+                "triangles": 257223,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 252,
+                "textures": 31
+              }
+            },
+            {
+              "t": 44285,
+              "ms": 601.7,
+              "fps": 1.7,
+              "p50Before": 11.5,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 60,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.030526260979503762,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 90,
+                "triangles": 257223,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 252,
+                "textures": 31
+              }
+            },
+            {
+              "t": 52049,
+              "ms": 306.4,
+              "fps": 3.3,
+              "p50Before": 10.9,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 60,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": "1-2",
+              "inSeam": true,
+              "seamProgress": 2.199881229065701e-12,
+              "progress": 0.04270268037663799,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 1,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 105,
+                "triangles": 538605,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 252,
+                "textures": 31
+              }
+            },
+            {
+              "t": 52808,
+              "ms": 759.2,
+              "fps": 1.3,
+              "p50Before": 10.9,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 60,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": "1-2",
+              "inSeam": true,
+              "seamProgress": 6.251075609245607e-8,
+              "progress": 0.04278186567746433,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 1,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 104,
+                "triangles": 537645,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 252,
+                "textures": 31
+              }
+            }
+          ],
+          "topSections": [],
+          "report": {
+            "summary": {
+              "uptime": "30.04s",
+              "totalFrames": 2454,
+              "frameDropRate": "0.33%"
+            },
+            "fps": {
+              "current": "92.6",
+              "average": "85.9",
+              "low1Pct": "69.0",
+              "low5Pct": "71.9"
+            },
+            "frameTime": {
+              "current": "10.80ms",
+              "average": "11.64ms",
+              "max": "759.20ms",
+              "budget": "16.67ms"
+            },
+            "performance": {
+              "updateTime": "0.00ms",
+              "renderTime": "0.00ms",
+              "inputLatency": "0.00ms"
+            },
+            "memory": {
+              "current": "209.42MB",
+              "history": "195.43MB - 248.67MB"
+            },
+            "gpu": {
+              "webglRenderer": "Google Inc. (NVIDIA) - ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+              "desktopDiagnostics": null
+            },
+            "performancePolicy": null
+          },
+          "longTasks": {
+            "count": 62,
+            "totalMs": 33032,
+            "maxMs": 5687,
+            "recent": [
+              {
+                "kind": "longtask",
+                "t": 1528,
+                "ms": 118
+              },
+              {
+                "kind": "loaf",
+                "t": 47,
+                "ms": 929
+              },
+              {
+                "kind": "loaf",
+                "t": 997,
+                "ms": 529,
+                "src": "http://127.0.0.1:4177/src/main.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 1528,
+                "ms": 118,
+                "src": "FrameRequestCallback"
+              },
+              {
+                "kind": "loaf",
+                "t": 1648,
+                "ms": 60,
+                "src": "http://127.0.0.1:4177/src/audio/music-loader.js"
+              },
+              {
+                "kind": "longtask",
+                "t": 1781,
+                "ms": 89
+              },
+              {
+                "kind": "loaf",
+                "t": 1778,
+                "ms": 114,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/phaser.js?v=a683ae00"
+              },
+              {
+                "kind": "loaf",
+                "t": 1994,
+                "ms": 170
+              },
+              {
+                "kind": "loaf",
+                "t": 2173,
+                "ms": 83
+              },
+              {
+                "kind": "loaf",
+                "t": 2296,
+                "ms": 151,
+                "src": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 2511,
+                "ms": 64,
+                "src": "http://127.0.0.1:4177/src/ui/cinematic-loading-overlay.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 2657,
+                "ms": 164
+              },
+              {
+                "kind": "longtask",
+                "t": 2935,
+                "ms": 1713
+              },
+              {
+                "kind": "loaf",
+                "t": 2933,
+                "ms": 1714,
+                "src": "FrameRequestCallback"
+              },
+              {
+                "kind": "longtask",
+                "t": 4714,
+                "ms": 1206
+              },
+              {
+                "kind": "longtask",
+                "t": 5985,
+                "ms": 77
+              },
+              {
+                "kind": "longtask",
+                "t": 6071,
+                "ms": 67
+              },
+              {
+                "kind": "loaf",
+                "t": 4714,
+                "ms": 1214,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/chapter-environments/registry.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 5930,
+                "ms": 50,
+                "src": "http://127.0.0.1:4177/src/main.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 5983,
+                "ms": 77
+              },
+              {
+                "kind": "loaf",
+                "t": 6063,
+                "ms": 74,
+                "src": "FrameRequestCallback"
+              },
+              {
+                "kind": "longtask",
+                "t": 6330,
+                "ms": 91
+              },
+              {
+                "kind": "longtask",
+                "t": 6473,
+                "ms": 143
+              },
+              {
+                "kind": "loaf",
+                "t": 6319,
+                "ms": 144,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-ANUDAY57.js?v=989e7fb0"
+              },
+              {
+                "kind": "loaf",
+                "t": 6464,
+                "ms": 161,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-ANUDAY57.js?v=989e7fb0"
+              },
+              {
+                "kind": "loaf",
+                "t": 6627,
+                "ms": 110,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-ANUDAY57.js?v=989e7fb0"
+              },
+              {
+                "kind": "loaf",
+                "t": 6738,
+                "ms": 109,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-ANUDAY57.js?v=989e7fb0"
+              },
+              {
+                "kind": "loaf",
+                "t": 6849,
+                "ms": 113,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-ANUDAY57.js?v=989e7fb0"
+              },
+              {
+                "kind": "loaf",
+                "t": 6964,
+                "ms": 80,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-ANUDAY57.js?v=989e7fb0"
+              },
+              {
+                "kind": "longtask",
+                "t": 7212,
+                "ms": 495
+              },
+              {
+                "kind": "loaf",
+                "t": 7209,
+                "ms": 497,
+                "src": "FrameRequestCallback"
+              },
+              {
+                "kind": "loaf",
+                "t": 7772,
+                "ms": 55
+              },
+              {
+                "kind": "longtask",
+                "t": 9241,
+                "ms": 316
+              },
+              {
+                "kind": "longtask",
+                "t": 11240,
+                "ms": 539
+              },
+              {
+                "kind": "longtask",
+                "t": 11877,
+                "ms": 1293
+              },
+              {
+                "kind": "longtask",
+                "t": 13839,
+                "ms": 619
+              },
+              {
+                "kind": "loaf",
+                "t": 9241,
+                "ms": 344,
+                "src": "http://127.0.0.1:4177/src/utils/performance-monitor.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 9587,
+                "ms": 4867,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/chapter-environments/registry.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 14458,
+                "ms": 178,
+                "src": "http://127.0.0.1:4177/src/utils/performance-monitor.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 14637,
+                "ms": 5687,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 20325,
+                "ms": 135,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 20461,
+                "ms": 1179,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 21641,
+                "ms": 79,
+                "src": "http://127.0.0.1:4177/src/utils/performance-monitor.js"
+              },
+              {
+                "kind": "longtask",
+                "t": 22056,
+                "ms": 965
+              },
+              {
+                "kind": "loaf",
+                "t": 21987,
+                "ms": 52
+              },
+              {
+                "kind": "loaf",
+                "t": 22056,
+                "ms": 973,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 23030,
+                "ms": 760
+              },
+              {
+                "kind": "longtask",
+                "t": 24047,
+                "ms": 272
+              },
+              {
+                "kind": "loaf",
+                "t": 24047,
+                "ms": 279,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 24335,
+                "ms": 80,
+                "src": "http://127.0.0.1:4177/src/utils/performance-monitor.js"
+              },
+              {
+                "kind": "longtask",
+                "t": 25530,
+                "ms": 391
+              },
+              {
+                "kind": "loaf",
+                "t": 25524,
+                "ms": 409,
+                "src": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js"
+              },
+              {
+                "kind": "longtask",
+                "t": 26862,
+                "ms": 53
+              },
+              {
+                "kind": "loaf",
+                "t": 26858,
+                "ms": 56,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 26923,
+                "ms": 462
+              },
+              {
+                "kind": "longtask",
+                "t": 27935,
+                "ms": 97
+              },
+              {
+                "kind": "loaf",
+                "t": 27930,
+                "ms": 101,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 28041,
+                "ms": 96
+              },
+              {
+                "kind": "loaf",
+                "t": 43689,
+                "ms": 603
+              },
+              {
+                "kind": "longtask",
+                "t": 51742,
+                "ms": 305
+              },
+              {
+                "kind": "loaf",
+                "t": 51738,
+                "ms": 308,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 52059,
+                "ms": 757
+              }
+            ]
+          },
+          "releaseGates": {
+            "frameTime": {
+              "p50": 11.600000000558794,
+              "p95": 13.900000000372529,
+              "p99": 14.5
+            },
+            "fps": {
+              "p50": 86.95652173913044,
+              "p05": 71.94244604123736
+            },
+            "memory": {
+              "currentMb": 209.4243631362915,
+              "peakMb": 248.6710205078125
+            },
+            "themeSwitches": {
+              "count": 0,
+              "maxDurationMs": 0
+            },
+            "runtime": {
+              "contextRestoreCount": 0,
+              "recentEvents": [
+                {
+                  "type": "odyssey-perf-reset",
+                  "timestamp": 1787296782828,
+                  "payload": {
+                    "label": "warm:idle:idle"
+                  }
+                },
+                {
+                  "type": "startup_theme_prewarm",
+                  "timestamp": 1787296783200,
+                  "payload": {
+                    "theme": "forest",
+                    "warmed": true,
+                    "durationMs": 1263.2999999998137
+                  }
+                },
+                {
+                  "type": "startup_deferred_task_completed",
+                  "timestamp": 1787296783200,
+                  "payload": {
+                    "label": "initial-theme-prewarm"
+                  }
+                }
+              ]
+            },
+            "network": null
+          },
+          "memory": {
+            "usedJSHeapSize": 232682135,
+            "totalJSHeapSize": 291095619,
+            "jsHeapSizeLimit": 4294705152
+          }
+        },
+        "odyssey": {
+          "label": "warm:idle",
+          "cacheMode": "warm",
+          "scenario": "idle",
+          "targetFrameRate": 240,
+          "warpPreinit": {
+            "mode": "defer",
+            "complete": true,
+            "scheduled": true
+          },
+          "timestamp": "2026-08-21T07:20:12.865Z",
+          "odyssey": {
+            "source": "odyssey",
+            "spike": false,
+            "warmupMode": "current",
+            "targetFrameRate": 240,
+            "adaptiveTargetFrameRate": 60,
+            "detectedRefreshRate": 60,
+            "backend": "webgpu",
+            "quality": "Extreme",
+            "activeChapter": 1,
+            "boundaryId": "1-2",
+            "inSeam": true,
+            "seamProgress": 0.010069510632623256,
+            "progress": 0.04740190895428634,
+            "settled": true,
+            "pendingChapterLoads": 0,
+            "prewarmQueue": 1,
+            "isPrewarming": false,
+            "bgRenderWarm": {
+              "started": true,
+              "complete": true,
+              "current": null,
+              "pending": 0
+            },
+            "adaptive": {
+              "renderScale": 1,
+              "baselineRenderScale": 1,
+              "pressureTier": 0,
+              "bloomScale": 0.5,
+              "bloomEnabled": true,
+              "postQuality": 1
+            },
+            "post": {
+              "active": true,
+              "useMRT": false,
+              "enableBloom": true,
+              "bloomAllowed": true,
+              "bloomScale": 0.25,
+              "activeVariantKey": "0|1",
+              "outputVariants": 1,
+              "postChromaScale": 1,
+              "postGrainScale": 1
+            },
+            "canvas": {
+              "width": 1280,
+              "height": 720,
+              "clientWidth": 1280,
+              "clientHeight": 720
+            },
+            "render": {
+              "calls": 104,
+              "triangles": 537645,
+              "timestamp": 0
+            },
+            "memory": {
+              "geometries": 252,
+              "textures": 31
+            }
+          },
+          "warmup": {
+            "mode": "current",
+            "skipped": false,
+            "syncGpu": false,
+            "sampleCount": 1,
+            "renderFrameMs": 312.29999999981374,
+            "yieldMs": 0,
+            "gpuSyncMs": 0,
+            "variantsMs": 0,
+            "totalMs": 312.59999999962747,
+            "samples": [
+              {
+                "index": 0,
+                "progress": 0,
+                "renderFrameMs": 312,
+                "gpuSyncMs": 0,
+                "yieldMs": 0,
+                "totalMs": 312
+              }
+            ]
+          },
+          "startupMeasures": [
+            {
+              "name": "odyssey:mode:board-init",
+              "duration": 7045
+            },
+            {
+              "name": "odyssey:mode:board-visible",
+              "duration": 7913
+            },
+            {
+              "name": "odyssey:renderer",
+              "duration": 413
+            },
+            {
+              "name": "odyssey:world",
+              "duration": 1707
+            },
+            {
+              "name": "odyssey:creates",
+              "duration": 1429
+            },
+            {
+              "name": "odyssey:path",
+              "duration": 59
+            },
+            {
+              "name": "odyssey:nodes",
+              "duration": 1026
+            },
+            {
+              "name": "odyssey:post+director",
+              "duration": 486
+            },
+            {
+              "name": "odyssey:compiles",
+              "duration": 1491
+            },
+            {
+              "name": "odyssey:warmup",
+              "duration": 313
+            },
+            {
+              "name": "odyssey:mode:reveal-container",
+              "duration": 0
+            },
+            {
+              "name": "odyssey:mode:reveal-board",
+              "duration": 1
+            },
+            {
+              "name": "odyssey:mode:create-board-overlay",
+              "duration": 0
+            },
+            {
+              "name": "odyssey:mode:focus-selected-level",
+              "duration": 0
+            },
+            {
+              "name": "odyssey:mode:overlay-wait",
+              "duration": 0
+            },
+            {
+              "name": "odyssey:mode:overlay-dismiss",
+              "duration": 867
+            },
+            {
+              "name": "odyssey:mode:preinit-warp",
+              "duration": 391
+            }
+          ]
+        }
+      },
+      "consoleLines": [
+        {
+          "level": 0,
+          "message": "[vite] connecting...",
+          "line": 495,
+          "sourceId": "http://127.0.0.1:4177/@vite/client",
+          "t": 1787296757861
+        },
+        {
+          "level": 0,
+          "message": "[vite] connected.",
+          "line": 618,
+          "sourceId": "http://127.0.0.1:4177/@vite/client",
+          "t": 1787296757867
+        },
+        {
+          "level": 2,
+          "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+          "line": 2,
+          "sourceId": "node:electron/js2c/sandbox_bundle",
+          "t": 1787296757886
+        },
+        {
+          "level": 1,
+          "message": "[ObjectPool] Initialized with 100 objects (max: 500)",
+          "line": 45,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787296758213
+        },
+        {
+          "level": 1,
+          "message": "[ObjectPool] Initialized with 50 objects (max: 200)",
+          "line": 45,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787296758213
+        },
+        {
+          "level": 1,
+          "message": "[ObjectPool] Initialized with 40 objects (max: 160)",
+          "line": 45,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787296758213
+        },
+        {
+          "level": 1,
+          "message": "💡 Object pools available:",
+          "line": 304,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787296758213
+        },
+        {
+          "level": 1,
+          "message": "  window.objectPools.status() - View pool statistics",
+          "line": 305,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787296758213
+        },
+        {
+          "level": 1,
+          "message": "  window.objectPools.clear()  - Clear all pools",
+          "line": 306,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787296758213
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Initialized",
+          "line": 204,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758213
+        },
+        {
+          "level": 1,
+          "message": "💡 Performance monitor available:",
+          "line": 1725,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758215
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.start()  - Start monitoring with overlay",
+          "line": 1726,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758215
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.stop()   - Stop monitoring",
+          "line": 1727,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758215
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.toggle() - Toggle overlay (or press F3)",
+          "line": 1728,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758215
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.setQuality(mode) - Set quality mode display",
+          "line": 1729,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758215
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.report() - Generate detailed report",
+          "line": 1730,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758215
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.export() - Export metrics to JSON",
+          "line": 1731,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758215
+        },
+        {
+          "level": 1,
+          "message": "💡 Asset manager available: window.assetManager.logStatus()",
+          "line": 481,
+          "sourceId": "http://127.0.0.1:4177/src/utils/asset-manager.js",
+          "t": 1787296758216
+        },
+        {
+          "level": 1,
+          "message": "🚀 Bootstrapping Serenity Blocks...",
+          "line": 5076,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758223
+        },
+        {
+          "level": 1,
+          "message": "🎮 Initializing Serenity Blocks...",
+          "line": 845,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758410
+        },
+        {
+          "level": 1,
+          "message": "Canvas initialized: Phaser container ready, block size: 40px",
+          "line": 1584,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758410
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Constructor - canvas element: [object HTMLCanvasElement]",
+          "line": 676,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787296758410
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] WebGL context created successfully",
+          "line": 698,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787296758505
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Canvas resized to: 1280 x 720 (Auto)",
+          "line": 877,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787296758523
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Resize handler throttled to 100ms",
+          "line": 716,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787296758523
+        },
+        {
+          "level": 1,
+          "message": "[TextureManager] Initialized (max: 20 textures)",
+          "line": 40,
+          "sourceId": "http://127.0.0.1:4177/src/utils/texture-manager.js",
+          "t": 1787296758523
+        },
+        {
+          "level": 1,
+          "message": "[BufferManager] Initialized",
+          "line": 349,
+          "sourceId": "http://127.0.0.1:4177/src/utils/texture-manager.js",
+          "t": 1787296758523
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] GPU resource managers initialized",
+          "line": 781,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787296758523
+        },
+        {
+          "level": 1,
+          "message": "%c[GPU] Active Renderer: color: #00ff00; font-weight: bold; Google Inc. (NVIDIA) - ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+          "line": 746,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787296758524
+        },
+        {
+          "level": 1,
+          "message": "⏭️ Skipping intro animation (URL flag or reduced motion)...",
+          "line": 5166,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758524
+        },
+        {
+          "level": 1,
+          "message": "✅ Loaded 36 songs from songs.json",
+          "line": 29,
+          "sourceId": "http://127.0.0.1:4177/src/audio/music-loader.js",
+          "t": 1787296758530
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Starting initialization... [object Object]",
+          "line": 1612,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758717
+        },
+        {
+          "level": 1,
+          "message": "[BackgroundScene] Creating new Phaser 4 scene class",
+          "line": 31,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/background-scene.js",
+          "t": 1787296758717
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Creating scene class for Phaser 4",
+          "line": 36,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787296758717
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Creating new Phaser 4 scene class",
+          "line": 42,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787296758718
+        },
+        {
+          "level": 1,
+          "message": "[MultiplayerBoardScene] Creating scene class for Phaser 4",
+          "line": 57,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/multiplayer/board-panel.js",
+          "t": 1787296758718
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Returning cached class",
+          "line": 38,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787296758718
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Creating game with config: [object Object]",
+          "line": 1743,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758718
+        },
+        {
+          "level": 1,
+          "message": "%cPhaser v4.1.0 (WebGL | Web Audio)%c https://phaser.io/v401 color: #ffffff; background-image: url(\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAOCAYAAAAmL5yKAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAARBJREFUeNpi/P//P0OHsPB/BiCoePuWkYFEwALSXJElzMBgLwE2CNkQxgWr/yMr/p8QimlBu5DQ//+8vBBco/ofzAe6imH+qv/53/6jYJAYSA4ZoxoANYTPKhiuCQZwGcJU+e4dqpMmvsDq14krV2MPAxDha2CMKvoXoiE/PBQUDgQD8j82UFae9B9bOIC8B9UD9gIjjIMN7Ns6lWHn4XMoYu62RgxO3tkMjIyMII2MYAOAtmFVhA+ADHf2ycGMRhANjUq8YO+WKWCvgAORIV8CkpDCrzIwsLIymC1qAtuAD4Bsh3sBmqAY3qcGwL2AC4DCpKtzHlgzOLWihwEuzTCN0GhDJHeYC4gByBphACDAAH2dDIxdjr+VAAAAAElFTkSuQmCC\"), linear-gradient(to bottom, #000814, #001d3d, #003566); background-repeat: no-repeat; background-position: 4px center, 0 0; padding: 2px 6px 2px 24px; background: transparent",
+          "line": 8451,
+          "sourceId": "http://127.0.0.1:4177/node_modules/.vite/deps/phaser.js?v=a683ae00",
+          "t": 1787296758739
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Game instance created successfully",
+          "line": 1753,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758741
+        },
+        {
+          "level": 1,
+          "message": "[DisplayManager] Initialized [object Object]",
+          "line": 2357,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758742
+        },
+        {
+          "level": 1,
+          "message": "[Display] Applying display settings: [object Object]",
+          "line": 1830,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758742
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Global render scale set to: 1",
+          "line": 27,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787296758742
+        },
+        {
+          "level": 1,
+          "message": "[Display] Render scale set to: 1 (effective DPR: 1)",
+          "line": 1839,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Global antialiasing set to: true",
+          "line": 44,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[Display] Antialiasing set to: true",
+          "line": 1845,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Setting internal resolution: 1600x852 (auto)",
+          "line": 893,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Canvas resized to: 1280 x 720 (Auto)",
+          "line": 877,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[DisplayManager] Setting display mode: windowed [object Object]",
+          "line": 95,
+          "sourceId": "http://127.0.0.1:4177/src/core/display-manager.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[FPS] Performance monitor hidden",
+          "line": 1928,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[Display] Display settings applied successfully",
+          "line": 1878,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] VSync enabled",
+          "line": 203,
+          "sourceId": "http://127.0.0.1:4177/src/core/frame-rate-controller.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] Target FPS set to 60",
+          "line": 194,
+          "sourceId": "http://127.0.0.1:4177/src/core/frame-rate-controller.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] Updated Phaser FPS target to 60",
+          "line": 1164,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[Settings] Frame rate settings applied: [object Object]",
+          "line": 1177,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758743
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Initialized with asset and audio managers",
+          "line": 127,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296758744
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+          "line": 1479,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296758744
+        },
+        {
+          "level": 1,
+          "message": "[InputController] Initialized High-Precision DAS",
+          "line": 83,
+          "sourceId": "http://127.0.0.1:4177/src/ui/controls.js",
+          "t": 1787296758744
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Controller manager initialized",
+          "line": 207,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787296758744
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Gamepad support initialized",
+          "line": 236,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787296758745
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Updated custom bindings",
+          "line": 2093,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787296758745
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Updated deadzone to 0.25",
+          "line": 2102,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787296758745
+        },
+        {
+          "level": 1,
+          "message": "✅ All managers initialized",
+          "line": 2498,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758746
+        },
+        {
+          "level": 1,
+          "message": "[Main] Initializing GameModeManager...",
+          "line": 2637,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758746
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: single (Single Player)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296758746
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: local-multiplayer (Local Multiplayer)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296758746
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: online-multiplayer (Online Multiplayer)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296758746
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: serenity (Serenity)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296758746
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: infinity (Infinity)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296758746
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: odyssey (Odyssey)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296758746
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Initialized with modes: single,local-multiplayer,online-multiplayer,serenity,infinity,odyssey",
+          "line": 42,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296758746
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+          "line": 1479,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296758746
+        },
+        {
+          "level": 1,
+          "message": "[RichPresenceManager] Initialized with GameModeManager",
+          "line": 120,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/rich-presence-manager.js",
+          "t": 1787296758747
+        },
+        {
+          "level": 1,
+          "message": "✅ GameModeManager initialized",
+          "line": 2727,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758747
+        },
+        {
+          "level": 1,
+          "message": "[Keyboard] Setting up keyboard controls",
+          "line": 503,
+          "sourceId": "http://127.0.0.1:4177/src/ui/controls.js",
+          "t": 1787296758751
+        },
+        {
+          "level": 1,
+          "message": "[Keyboard] Keyboard controls initialized",
+          "line": 789,
+          "sourceId": "http://127.0.0.1:4177/src/ui/controls.js",
+          "t": 1787296758751
+        },
+        {
+          "level": 1,
+          "message": "[Main] Skipping legacy Player 2 keyboard controls (handled by InputController)",
+          "line": 4027,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758751
+        },
+        {
+          "level": 1,
+          "message": "[Visibility] Background tab throttling initialized: reduce",
+          "line": 1391,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758751
+        },
+        {
+          "level": 1,
+          "message": "✅ Serenity Blocks initialized successfully!",
+          "line": 890,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758751
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+          "line": 1479,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296758751
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Menu navigation enabled",
+          "line": 948,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787296758751
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Cleared previous button states",
+          "line": 957,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787296758752
+        },
+        {
+          "level": 1,
+          "message": "🎨 Tetromino style: Default colors",
+          "line": 232,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/tetromino-style-manager.js",
+          "t": 1787296758788
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Preload complete",
+          "line": 96,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787296758791
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Graphics layers created successfully",
+          "line": 342,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787296758791
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Scene created: BoardScene",
+          "line": 132,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Creating scene...",
+          "line": 114,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] ✅ MULTIPLAYER OPTIMIZATION ACTIVE: Graphics cleared once per frame in update()",
+          "line": 828,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Scene created successfully",
+          "line": 116,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Post-boot callback started",
+          "line": 1690,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "✅ Phaser 4 game initialized successfully",
+          "line": 1719,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Canvas dimensions: 400 x 800",
+          "line": 1720,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Logical size: 400 x 800",
+          "line": 1721,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Device pixel ratio: 1",
+          "line": 1722,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Board config: ROWS: 20 HIDDEN_ROWS: 4",
+          "line": 1723,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "  └─ Scenes loaded: BoardScene, BackgroundScene",
+          "line": 1724,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758792
+        },
+        {
+          "level": 1,
+          "message": "[Startup] Menu ready in 528ms; intro skipped in 0ms",
+          "line": 5309,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758793
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Game mode selection enabled",
+          "line": 740,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787296758794
+        },
+        {
+          "level": 1,
+          "message": "💡 Steam service available: window.steamService.getStatus()",
+          "line": 5371,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758794
+        },
+        {
+          "level": 1,
+          "message": "🧪 Test functions available:",
+          "line": 5771,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758794
+        },
+        {
+          "level": 1,
+          "message": "  - window.testMultiplayer(numPlayers) - Create test lobby with dummy players",
+          "line": 5772,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758794
+        },
+        {
+          "level": 1,
+          "message": "    Example: testMultiplayer(5)",
+          "line": 5773,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758794
+        },
+        {
+          "level": 1,
+          "message": "  - window.testLobby(numPlayers) - Create ready lobby without auto-start",
+          "line": 5774,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758794
+        },
+        {
+          "level": 1,
+          "message": "    Example: testLobby(8)",
+          "line": 5775,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758794
+        },
+        {
+          "level": 1,
+          "message": "  - window.testPostMatch(numPlayers) - Show match results modal",
+          "line": 5776,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758794
+        },
+        {
+          "level": 1,
+          "message": "    Example: testPostMatch(9)",
+          "line": 5777,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758794
+        },
+        {
+          "level": 1,
+          "message": "  - LOCAL 2P (no Steam): open ?localMp=host and ?localMp=join in two windows",
+          "line": 5778,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296758794
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Focused first element: [object HTMLDivElement]",
+          "line": 980,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787296758862
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Metrics reset",
+          "line": 367,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758880
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Enabled",
+          "line": 236,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758880
+        },
+        {
+          "level": 1,
+          "message": "✅ Performance monitoring started (Press F3 to toggle)",
+          "line": 1661,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758882
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Metrics reset",
+          "line": 367,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758882
+        },
+        {
+          "level": 1,
+          "message": "🔄 Metrics reset",
+          "line": 1684,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296758882
+        },
+        {
+          "level": 1,
+          "message": "[LevelRegistry] Loaded 59 levels in 8 chapters",
+          "line": 58,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/LevelRegistry.js",
+          "t": 1787296759285
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyState] No saved progress found, starting fresh",
+          "line": 157,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/OdysseyStateManager.js",
+          "t": 1787296759285
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Loaded mode: odyssey (Odyssey Mode)",
+          "line": 142,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296759285
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Activating mode: odyssey",
+          "line": 224,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296759285
+        },
+        {
+          "level": 1,
+          "message": "[odyssey] Mode activated",
+          "line": 76,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/BaseGameMode.js",
+          "t": 1787296759286
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Activating Odyssey Mode...",
+          "line": 354,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296759286
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyState] No saved progress found, starting fresh",
+          "line": 157,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/OdysseyStateManager.js",
+          "t": 1787296759286
+        },
+        {
+          "level": 1,
+          "message": "[ThemeTransition] Manager initialized",
+          "line": 39,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/ThemeTransitionManager.js",
+          "t": 1787296759288
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Showing board view",
+          "line": 3300,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296759393
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Controller created",
+          "line": 619,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296759395
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Initializing...",
+          "line": 635,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296759396
+        },
+        {
+          "level": 2,
+          "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+          "line": 41578,
+          "sourceId": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-GRRXWVXR.js?v=989e7fb0",
+          "t": 1787296759428
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Renderer backend: WebGPU",
+          "line": 2023,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296759799
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] OdysseyTslPipeline initialized (Extreme)",
+          "line": 2098,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296759809
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created",
+          "line": 476,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787296759818
+        },
+        {
+          "level": 1,
+          "message": "[world] cloud silhouette histogram {\"k\":2.062,\"p10\":0.433,\"p50\":0.5486,\"p90\":0.713}",
+          "line": 774,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/world/odyssey-world-renderer.js",
+          "t": 1787296760687
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] One World enabled — {\"quality\":\"high\",\"groundTriangles\":241088,\"reach\":26214.4,\"trees\":7039,\"forestChunks\":40,\"forestV2\":{\"trees\":7039,\"draws\":40,\"chunks\":12,\"maxVariantsPerChunk\":6,\"bySpecies\":{\"S4-gold-birch\":2543,\"S3-subalpine-fir\":1770,\"S6-red-maple\":873,\"S5-cypress-spike\":290,\"S2-workhorse-pine\":314,\"S1-shore-broadleaf\":1139,\"S7-pink-blossom\":110},\"byLod\":{\"hero\":670,\"mid\":2572,\"far\":3797}},\"materials\":4,\"heroClouds\":0,\"heroTriangles\":0,\"cloudField\":true,\"cloudFieldMasses\":52,\"cloudFieldTriangles\":31880,\"applyExposure\":false,\"outputScale\":0.82,\"outputSaturation\":0.72,\"clouds\":false,\"godRays\":7,\"motes\":640,\"fish\":110,\"skyRadius\":3600,\"bakeMs\":{\"relief\":1076.1,\"total\":1704.1}}",
+          "line": 810,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296761525
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Startup chapter set: 1, 2 (eager window; 6 deferred to background)",
+          "line": 861,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296761525
+        },
+        {
+          "level": 1,
+          "message": "[EnhancedBreathingIndicator] Elements created with stunning design",
+          "line": 257,
+          "sourceId": "http://127.0.0.1:4177/src/ui/effects/enhanced-breathing-indicator.js",
+          "t": 1787296761541
+        },
+        {
+          "level": 1,
+          "message": "[Main] Initializing global Serenity Hub...",
+          "line": 2572,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296761572
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 1 environment",
+          "line": 701,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787296761813
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] create ch1 took 287ms +2.4s",
+          "line": 52,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787296761813
+        },
+        {
+          "level": 1,
+          "message": "✨ [Cosmic Cursor] Mounted",
+          "line": 438,
+          "sourceId": "http://127.0.0.1:4177/src/ui/components/custom-cursor.js",
+          "t": 1787296762825
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Loaded mode: single (Single Player)",
+          "line": 142,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296762842
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPath] Path built with 39 control points",
+          "line": 136,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyPathRenderer.js",
+          "t": 1787296763016
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Serenity Mode enabled",
+          "line": 2112,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787296763208
+        },
+        {
+          "level": 1,
+          "message": "[SerenityHub] Gamepad callbacks registered",
+          "line": 895,
+          "sourceId": "http://127.0.0.1:4177/src/ui/serenity-hub/SerenityHub.js",
+          "t": 1787296763208
+        },
+        {
+          "level": 1,
+          "message": "✨ Serenity Hub initialized with gamepad support",
+          "line": 88,
+          "sourceId": "http://127.0.0.1:4177/src/ui/serenity-hub/SerenityHub.js",
+          "t": 1787296763208
+        },
+        {
+          "level": 1,
+          "message": "✅ Global Serenity Hub initialized",
+          "line": 2620,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296763209
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] Detected monitor refresh rate: 60Hz (measured: 63)",
+          "line": 164,
+          "sourceId": "http://127.0.0.1:4177/src/core/frame-rate-controller.js",
+          "t": 1787296763934
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] switchTheme called: forest",
+          "line": 923,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296763944
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] switchTheme called: forest",
+          "line": 956,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296763944
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Loading theme: forest",
+          "line": 983,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296763944
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Loading theme \"forest\" from disk",
+          "line": 684,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296763944
+        },
+        {
+          "level": 1,
+          "message": "[MainMenuPlayerCard] Initialized",
+          "line": 353,
+          "sourceId": "http://127.0.0.1:4177/src/ui/components/main-menu-player-card.js",
+          "t": 1787296763946
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme \"forest\" loaded. Cache: 1/2",
+          "line": 778,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296763963
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme loaded: forest",
+          "line": 996,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296763963
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme activation deferred (themes are suspended)",
+          "line": 1002,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296763963
+        },
+        {
+          "level": 1,
+          "message": "✅ Initial theme loaded: forest",
+          "line": 2761,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296763963
+        },
+        {
+          "level": 1,
+          "message": "[LevelNodes] Created 59 level nodes in batches with instancing",
+          "line": 460,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/LevelNodeManager.js",
+          "t": 1787296764079
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] No IPC available - running in offline mode",
+          "line": 256,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787296764091
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed threshold breach shaders",
+          "line": 1968,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296764800
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed one world shaders",
+          "line": 1968,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296764848
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed corridor field shaders",
+          "line": 1968,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296764948
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787296766092
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787296766092
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787296766092
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed chapter 1 shaders",
+          "line": 1929,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296766123
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] compile-breakdown ch1=3321 corridor=365 one-world=265 breach=216 ch2=0 +6.7s",
+          "line": 52,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787296766123
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyWarmup] sample 0 @progress 0.000 took 312ms",
+          "line": 3245,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296766436
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyWarmup] fast-start: focus chapter warmed; far chapters + post variants warm on first visit",
+          "line": 3327,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296766436
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Journey warm-up complete (chapters + seams warmed through render path)",
+          "line": 3335,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296766436
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] total 7042ms | renderer 413 | world 1707 | creates 1429 | path 59 | nodes 1026 | post+director 486 | compiles 1491 | warmup 313",
+          "line": 64,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787296766438
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Initialized successfully",
+          "line": 1089,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296766438
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Three.js board initialized",
+          "line": 3518,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296766438
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:reveal-container: 0ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296766438
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:create-board-overlay: 0ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296766438
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:reveal-board: 1ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296766438
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:board-init: 7045ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296766438
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:focus-selected-level: 0ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296766439
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:overlay-wait: 0ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296766439
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:overlay-dismiss: 867ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296767306
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] board visible 8018ms after overlay show",
+          "line": 3360,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296767306
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:board-visible: 7913ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296767306
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Background loading chapters: 3,4,5,6,7,8",
+          "line": 900,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787296767307
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Debug: Use window.testOdysseyLevel(levelId) to test a specific level",
+          "line": 426,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296767307
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Mode activated",
+          "line": 429,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296767307
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Progress: 0%",
+          "line": 430,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296767307
+        },
+        {
+          "level": 1,
+          "message": "[Main] Mode activated: odyssey",
+          "line": 2680,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296767307
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Mode odyssey activated successfully",
+          "line": 231,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296767307
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Starting mode: odyssey [object Object]",
+          "line": 258,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296767307
+        },
+        {
+          "level": 1,
+          "message": "[odyssey] Starting game...",
+          "line": 93,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/BaseGameMode.js",
+          "t": 1787296767307
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] onStart called - entering level",
+          "line": 456,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296767307
+        },
+        {
+          "level": 1,
+          "message": "[Main] Mode started: odyssey",
+          "line": 2684,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296767307
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Mode odyssey started successfully",
+          "line": 297,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js",
+          "t": 1787296767308
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 6 environment",
+          "line": 701,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787296768661
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 7 environment",
+          "line": 701,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787296768758
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 8 environment",
+          "line": 701,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787296770093
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] All chapters loaded in background",
+          "line": 913,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787296770159
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed chapter 6 shaders",
+          "line": 1929,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296777343
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed chapter 7 shaders",
+          "line": 1929,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296778922
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyWarmup] render-warmed chapter 6 in 965ms",
+          "line": 1640,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296779903
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed chapter 8 shaders",
+          "line": 1929,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296781381
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyWarmup] render-warmed chapter 7 in 9ms",
+          "line": 1640,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296781423
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyWarmup] render-warmed chapter 8 in 8ms",
+          "line": 1640,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296781508
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyWarmup] background render-warm complete",
+          "line": 1555,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js",
+          "t": 1787296781593
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme \"forest\" found in cache",
+          "line": 638,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296781935
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Pre-warming theme (hidden): forest",
+          "line": 1301,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296781935
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] start() called, state: initialized theme: forest",
+          "line": 164,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787296781936
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Starting theme: forest",
+          "line": 192,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787296781936
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Shared renderer: WebGLRenderer",
+          "line": 193,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787296781936
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Has loadTheme? function",
+          "line": 197,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787296781936
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Pre-warming theme container (hidden): forest",
+          "line": 212,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787296781936
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Calling loadTheme for: forest",
+          "line": 231,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787296781936
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] loadTheme called: forest",
+          "line": 1184,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787296781937
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Clearing theme-owned renderer resources",
+          "line": 1186,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787296781937
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Theme start complete: forest",
+          "line": 307,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787296781938
+        },
+        {
+          "level": 1,
+          "message": "[WarpTransition] Orb-portal renderer created",
+          "line": 64,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/transitions/WarpTransitionRenderer.js",
+          "t": 1787296782412
+        },
+        {
+          "level": 1,
+          "message": "[WarpTransition] Scene initialized",
+          "line": 117,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/transitions/WarpTransitionRenderer.js",
+          "t": 1787296782469
+        },
+        {
+          "level": 1,
+          "message": "[ThemeTransition] Warp renderer pre-initialized",
+          "line": 297,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/ThemeTransitionManager.js",
+          "t": 1787296782802
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:preinit-warp: 391ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js",
+          "t": 1787296782802
+        },
+        {
+          "level": 1,
+          "message": "✅ Performance monitoring started (Press F3 to toggle)",
+          "line": 1661,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296782826
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Metrics reset",
+          "line": 367,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296782826
+        },
+        {
+          "level": 1,
+          "message": "🔄 Metrics reset",
+          "line": 1684,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296782826
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Pausing theme: forest",
+          "line": 1324,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787296783198
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme pre-warmed + parked for instant first entry: forest",
+          "line": 1408,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787296783198
+        },
+        {
+          "level": 1,
+          "message": "[Main] First-entry theme warm-up complete: forest",
+          "line": 2909,
+          "sourceId": "http://127.0.0.1:4177/src/main.js",
+          "t": 1787296783198
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787296810434
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787296810435
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787296810435
+        },
+        {
+          "level": 1,
+          "message": "📊 Performance Report",
+          "line": 1227,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296812863
+        },
+        {
+          "level": 1,
+          "message": "Summary: [object Object]",
+          "line": 1228,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296812863
+        },
+        {
+          "level": 1,
+          "message": "FPS: [object Object]",
+          "line": 1229,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296812863
+        },
+        {
+          "level": 1,
+          "message": "Frame Time: [object Object]",
+          "line": 1230,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296812863
+        },
+        {
+          "level": 1,
+          "message": "Performance: [object Object]",
+          "line": 1231,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296812863
+        },
+        {
+          "level": 1,
+          "message": "Memory: [object Object]",
+          "line": 1232,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296812863
+        },
+        {
+          "level": 1,
+          "message": "GPU: [object Object]",
+          "line": 1233,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296812863
+        },
+        {
+          "level": 1,
+          "message": "console.groupEnd",
+          "line": 1234,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787296812863
+        }
+      ]
+    }
+  ]
+}

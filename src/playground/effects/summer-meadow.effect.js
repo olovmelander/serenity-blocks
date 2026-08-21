@@ -41,7 +41,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import summerFloraUrl from '../../themes/summer/assets/summer_flora.glb?url';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 import midsummerPoleUrl from '../../themes/summer/assets/midsummer_pole.glb?url';
 import cottageUrl from '../../themes/summer/assets/swedish_cottage.glb?url';
@@ -157,7 +157,7 @@ export function create({
     // muted it). The HDRI is used purely for glossy REFLECTIONS — the cottage windows
     // mirror the warm sky. No scene-wide PBR re-grade.
     renderer.toneMapping = T.NoToneMapping;
-    new RGBELoader().load('/hdri/belfast_sunset_puresky_2k.hdr', (hdr) => {
+    new HDRLoader().load('/hdri/belfast_sunset_puresky_2k.hdr', (hdr) => {
         hdr.mapping = T.EquirectangularReflectionMapping;
         try {
             const pmrem = new T.PMREMGenerator(renderer);
@@ -1147,8 +1147,10 @@ export function create({
             else renderer.render(scene, camera);
         },
         renderAsync() {
-            if (postProcessing) return postProcessing.renderAsync();
-            return renderer.renderAsync(scene, camera);
+            // Host awaited renderer.init() before mounting; sync render, Promise-shaped.
+            if (postProcessing) postProcessing.render();
+            else renderer.render(scene, camera);
+            return Promise.resolve();
         },
         // Bridge for the theme wrapper: push SeasonDirector state into uniforms.
         setReactive(s) {
