@@ -27,18 +27,38 @@
  * session so the controller's CONCURRENT startup compile pool shares one binding and the true
  * previous state is restored only when the last pooled compile resolves.
  *
- * WHY compileAsync IS SKIPPED ENTIRELY WHILE THE RENDER LOOP IS LIVE (r185 rework). Holding a
- * global target/MRT binding across a multi-frame-yielding compile is impossible under a live rAF
- * loop — the loop rebinds targets for its own frames between yields, so the deferred builds read
- * drifting state no matter what this module binds (and binding the SHARED scene-pass target while
- * the loop renders aliases its `output` texture as both sampled binding and render attachment,
- * which permanently poisons the device — the 2026-08-12 crash, still true on r185). There is no
- * safe background compileAsync on r185. Background/live-loop warming is owned by the synchronous
- * private-target render-warm ({@link createWarmRenderTarget} + {@link beginWarmTargetRender} +
- * `renderer.render()`), which r185 leaves untouched: `render()` is still fully synchronous, and
- * the WebGPU pipeline cache key is format-based (`WebGPUBackend.getRenderCacheKey`), so a
- * format-matched private clone warms exactly the pipelines the live post path uses.
+ * WHY a GLOBAL binding cannot be held while the render loop is live (r185 rework, 2026-08-20).
+ * The loop's own frames run between the compile's yields: with a foreign target bound the
+ * RenderPipeline quad draws INTO it (the canvas goes black), and binding the SHARED scene-pass
+ * target while the loop renders aliases its `output` texture as both sampled binding and render
+ * attachment, which permanently poisons the device (the 2026-08-12 crash, still true on r185).
+ * From 2026-08-20 to 08-21 that meant no background compileAsync at all: live-loop warming was
+ * the synchronous private-target render-warm ({@link createWarmRenderTarget} +
+ * {@link beginWarmTargetRender} + `renderer.render()`), which paid every background chapter's
+ * pipeline compile synchronously (78 sync creations, 1.4–1.8 s stalls — r185p1light cells).
+ *
+ * ITEM 2.11 (2026-08-21): {@link compileGroupUnderLiveLoop} compiles under the live loop WITHOUT
+ * binding anything across a yield — the scene-pass binding is applied for compileAsync's
+ * synchronous prologue only, and the drained builds' target/MRT READS are answered from that
+ * binding by instance accessors that are suspended for the synchronous extent of every render.
+ * See the "Item 2.11" block below. The render-warm stays as the cheap post-compile pass (GPU
+ * uploads, first update(), the non-representative bucket members' first draw).
  */
+
+/**
+ * The renderer's ACTUAL bound target + MRT, bypassing the live-compile read override
+ * ({@link beginLiveCompileReads}) — every save/restore in this module must see the truth.
+ * Falls back to the getters for doubles without the private fields.
+ * @param {object} renderer
+ * @returns {{previousTarget: *, previousMRT: *}}
+ */
+function rawBinding(renderer) {
+    const live = renderer.__odysseyLiveCompileReads;
+    if (live) return { previousTarget: live.backing.renderTarget, previousMRT: live.backing.mrt };
+    const previousTarget = '_renderTarget' in renderer ? renderer._renderTarget : renderer.getRenderTarget();
+    const previousMRT = '_mrt' in renderer ? renderer._mrt : renderer.getMRT();
+    return { previousTarget, previousMRT };
+}
 
 /**
  * Bind the post scene-pass render target + MRT so a following compileAsync captures the real
@@ -57,8 +77,7 @@ export function beginPostTargetCompile(renderer, postProcessingStack, renderLoop
         || typeof renderer?.setMRT !== 'function') {
         return null;
     }
-    const previousTarget = renderer.getRenderTarget();
-    const previousMRT = renderer.getMRT();
+    const { previousTarget, previousMRT } = rawBinding(renderer);
     renderer.setRenderTarget(scenePass.renderTarget);
     renderer.setMRT(scenePass.getMRT?.() ?? null);
     // Same context DEPTH as the live scene pass (see beginNestedContextDepth) — the target alone
@@ -125,8 +144,7 @@ export function beginWarmTargetRender(renderer, warmTarget, scenePass) {
         || typeof renderer?.getRenderTarget !== 'function') {
         return null;
     }
-    const previousTarget = renderer.getRenderTarget();
-    const previousMRT = renderer.getMRT();
+    const { previousTarget, previousMRT } = rawBinding(renderer);
     renderer.setRenderTarget(warmTarget);
     renderer.setMRT(scenePass?.getMRT?.() ?? null);
     // The warm render is synchronous, so the context-depth patch is scoped to this one call
@@ -248,7 +266,10 @@ export async function compileGroupThroughPost(
     options = {},
 ) {
     const postActive = !!postProcessingStack?.scenePass?.renderTarget;
-    if (renderLoopActive && postActive) return false;
+    if (renderLoopActive && postActive) {
+        if (!options.live) return false;
+        return compileGroupUnderLiveLoop(renderer, postProcessingStack, scene, camera, group, options);
+    }
 
     // ARGUMENT ORDER (three's contract, Renderer.js JSDoc): `compileAsync(objectToCompile,
     // camera, targetScene)` — the FIRST argument is projected into the render list, the THIRD
@@ -309,7 +330,7 @@ export function beginDeferredSideCapture(renderer) {
     const pipelines = renderer._pipelines;
     const originalCreate = renderer._createObjectPipeline;
     const originalGetForRender = pipelines?.getForRender;
-    /** @type {Map<object, number>} material → side to restore once its drained item is built */
+    /** @type {Map<object, {original: number, captured: number}>} material → sides while its drained item builds */
     const pending = new Map();
     renderer._createObjectPipeline = function odysseyCreateObjectPipeline(object, material, scene, camera, lightsNode, group, clippingContext, passId) {
         if (!Array.isArray(this._compilationPromises) || !material) {
@@ -326,7 +347,9 @@ export function beginDeferredSideCapture(renderer) {
             passId,
             renderContext: this._currentRenderContext,
             get material() {
-                if (!pending.has(material)) pending.set(material, material.side);
+                const entry = pending.get(material);
+                if (!entry) pending.set(material, { original: material.side, captured: side });
+                else entry.captured = side;
                 if (material.side !== side) material.side = side;
                 return material;
             },
@@ -335,12 +358,17 @@ export function beginDeferredSideCapture(renderer) {
     };
     if (pipelines && typeof originalGetForRender === 'function') {
         pipelines.getForRender = function odysseyGetForRender(renderObject, promises) {
+            const material = renderObject?.material;
+            const entry = Array.isArray(promises) && material ? pending.get(material) : undefined;
+            // Re-apply right before the backend key is computed: the build yielded since the
+            // item getter set it, and a live frame drawing a SHARED material would have left it
+            // DoubleSide again (hardening — hidden chapters' materials are never drawn live).
+            if (entry && material.side !== entry.captured) material.side = entry.captured;
             try {
                 return originalGetForRender.call(this, renderObject, promises);
             } finally {
-                const material = renderObject?.material;
-                if (Array.isArray(promises) && material && pending.has(material)) {
-                    material.side = pending.get(material);
+                if (entry) {
+                    material.side = entry.original;
                     pending.delete(material);
                 }
             }
@@ -353,7 +381,7 @@ export function beginDeferredSideCapture(renderer) {
             if (state.count > 0) return;
             renderer._createObjectPipeline = originalCreate;
             if (pipelines && typeof originalGetForRender === 'function') pipelines.getForRender = originalGetForRender;
-            for (const [material, side] of pending) material.side = side;
+            for (const [material, entry] of pending) material.side = entry.original;
             pending.clear();
             delete renderer.__odysseySideCapture;
         },
@@ -418,15 +446,23 @@ export async function compileObjectsFannedOut(
     camera,
     group,
     concurrency = DEFAULT_COMPILE_CONCURRENCY,
+    hooks = {},
 ) {
+    // `hooks.aroundCall(object, call)`: wraps each `renderer.compileAsync` launch — the live-loop
+    // path binds target/MRT/depth and reveals the object ONLY for compileAsync's synchronous
+    // prologue. `hooks.includeHidden`: bucket objects that are currently hidden too (the live path
+    // reveals them per call instead of for the whole await).
+    const launch = typeof hooks.aroundCall === 'function'
+        ? (object) => hooks.aroundCall(object, () => renderer.compileAsync(object, camera, scene))
+        : (object) => renderer.compileAsync(object, camera, scene);
     if (!group || typeof group.traverse !== 'function') {
-        await renderer.compileAsync(group, camera, scene);
+        await launch(group);
         return 1;
     }
     const byMaterial = new Map();
     group.traverse((object) => {
         if (!(object.isMesh || object.isPoints || object.isSprite || object.isLine) || !object.material) return;
-        if (object.visible === false) return;
+        if (object.visible === false && !hooks.includeHidden) return;
         const materials = Array.isArray(object.material) ? object.material : [object.material];
         const identity = materials.map((m) => String(m.uuid ?? m.id ?? m)).join('|');
         // Instanced / multi-draw / batched / skinned objects own their builder state (three keys
@@ -467,7 +503,7 @@ export async function compileObjectsFannedOut(
     if (queue.length === 0) {
         // Nothing renderable under the group (or a group whose children are all hidden):
         // one plain call keeps three's own semantics for whatever is there.
-        await renderer.compileAsync(group, camera, scene);
+        await launch(group);
         return 1;
     }
     let calls = 0;
@@ -481,11 +517,244 @@ export async function compileObjectsFannedOut(
             for (const [object] of chain) {
                 calls += 1;
                 // eslint-disable-next-line no-await-in-loop
-                await renderer.compileAsync(object, camera, scene);
+                await launch(object);
             }
         }
     };
     const width = Math.max(1, Math.min(concurrency | 0 || 1, queue.length));
     await Promise.all(Array.from({ length: width }, worker));
     return calls;
+}
+
+// ── Item 2.11: background compiles UNDER the live rAF loop ──────────────────────────────────────
+//
+// r185's compileAsync is a synchronous PROLOGUE (resolve the render context from the bound
+// target/MRT at the default call depth, walk the object, queue one work item per draw) followed by
+// a DRAIN that builds every item later, yielding to the main thread nine times per cold build
+// (NodeBuilder.buildAsync: setup/analyze/generate × fragment/vertex/compute) and once more per
+// object. The node build reads the renderer's LIVE `getRenderTarget()` / `getMRT()` both before
+// the first yield (NodeMaterial.setup: MRT struct vs single output) and after the last one
+// (WGSLNodeBuilder.buildCode → getOutputType → renderTarget.textures[0].type), and caches the
+// result under a key that is CORRECT (it carries the item's render-context id) — so whatever
+// target happens to be bound when a yield resumes silently decides the shader's output
+// signature. Binding the scene-pass target globally across the await is not an option under a
+// live loop: RenderPipeline.render() draws its output quad into whatever is bound (the frame
+// vanishes into the scene-pass target and the pass's output texture is attached while sampled —
+// the 2026-08-12 device poison). Hence, before today, no background compileAsync at all on r185,
+// and the background warms compiled synchronously (78 sync creations, 1.4–1.8 s stalls 13–17 s
+// after launch, r185p1light cells).
+//
+// The fix keeps the global state untouched and answers the READS instead:
+//   • Each compileAsync launch gets the real scene-pass target + MRT bound, the scene pass's call
+//     depth, and the object revealed — for the SYNCHRONOUS prologue only. The call returns its
+//     promise before any yield resumes, and everything is restored right there: no frame can ever
+//     observe the binding or the reveal.
+//   • While any such compile is draining, the renderer's `getRenderTarget()` / `getMRT()` /
+//     `isOutputTarget` (which `currentToneMapping` / `currentColorSpace` / `needsFrameBufferTarget`
+//     derive from) are shadowed on the INSTANCE to return the captured scene-pass binding — except
+//     while a synchronous `render()` / `compute()` is executing, when they fall through to the
+//     real fields. Live frames are synchronous end to end (render → _renderScene →
+//     _renderObjectDirect, no await), so a frame can never interleave with a read it should not
+//     answer; the drained builds, which run BETWEEN frames, always see the scene-pass binding.
+//   • This module's own save/restore points read the raw fields ({@link rawBinding}); the
+//     controller's synchronous private-target render-warm is a `render()`, so it is suspended
+//     like any frame. The deferred-side capture and the per-item render context three already
+//     carries complete the picture: every drained item builds exactly what the live scene pass
+//     will ask for.
+// Upstream: the real fix is for the drain to re-apply the item's renderContext (target/MRT) around
+// each build — filed alongside Issues 3–4 (docs/UPSTREAM_THREE_R185_ISSUES_READY_TO_FILE.md).
+
+/**
+ * Shadow the renderer's target/MRT reads with a fixed binding while background compiles drain,
+ * suspended during synchronous renders/computes. Refcounted per renderer.
+ * @param {object} renderer
+ * @param {{renderTarget: *, mrt: *}} binding what draining builds must see
+ * @returns {?Function} release
+ */
+export function beginLiveCompileReads(renderer, binding) {
+    if (!renderer || typeof renderer.getRenderTarget !== 'function' || typeof renderer.getMRT !== 'function') return null;
+    const existing = renderer.__odysseyLiveCompileReads;
+    if (existing) {
+        existing.count += 1;
+        existing.binding = binding;
+        return existing.release;
+    }
+    // The FIELDS are shadowed, not the methods: `_renderTarget` / `_mrt` are own data properties
+    // that getRenderTarget / getMRT / isOutputTarget (→ currentToneMapping / currentColorSpace /
+    // needsFrameBufferTarget) AND currentSamples (→ NodeMaterial.setupClipping, the points shape
+    // helpers, the backend's sample-data helpers) all read — an accessor over the field catches
+    // every one of them, a method shadow misses currentSamples. Writes always land in the backing
+    // value (the live frame's setRenderTarget/setMRT and _renderScene's rebinds), reads return
+    // the binding while active and the backing value while a synchronous render is executing.
+    const state = {
+        count: 1,
+        binding,
+        liveDepth: 0,
+        backing: { renderTarget: renderer._renderTarget ?? null, mrt: renderer._mrt ?? null },
+        release: null,
+    };
+    const active = () => state.liveDepth === 0;
+    const saved = {};
+    const shadow = (name, descriptor) => {
+        saved[name] = Object.getOwnPropertyDescriptor(renderer, name) ?? null;
+        Object.defineProperty(renderer, name, { ...descriptor, configurable: true, enumerable: false });
+    };
+    shadow('_renderTarget', {
+        get() { return active() ? state.binding.renderTarget : state.backing.renderTarget; },
+        set(value) { state.backing.renderTarget = value; },
+    });
+    shadow('_mrt', {
+        get() { return active() ? state.binding.mrt : state.backing.mrt; },
+        set(value) { state.backing.mrt = value; },
+    });
+    // Suspend the shadow for the whole synchronous extent of every entry point that reads or
+    // rebinds the real target: renders, computes, clears, copies, resizes (the canvas MSAA buffers
+    // are sized from currentSamples). SYNCHRONOUS entry points only — an async one (renderAsync,
+    // computeAsync, the *Async clears, readRenderTargetPixelsAsync) would keep the override
+    // suspended across its own awaits, exactly when drained builds resume.
+    const suspended = (target, name) => {
+        const original = target[name];
+        if (typeof original !== 'function') return null;
+        return function odysseySuspended(...args) {
+            state.liveDepth += 1;
+            try {
+                return original.apply(this, args);
+            } finally {
+                state.liveDepth -= 1;
+            }
+        };
+    };
+    [
+        'render', 'compute',
+        'clear', 'clearColor', 'clearDepth', 'clearStencil',
+        'copyFramebufferToTexture', 'copyTextureToTexture',
+        'setSize', 'setPixelRatio', 'setDrawingBufferSize',
+    ].forEach((name) => {
+        const wrapped = suspended(renderer, name);
+        if (wrapped) shadow(name, { value: wrapped });
+    });
+    // The drain's own per-item update hooks run OUTSIDE any render(): a FRAME-type updateBefore
+    // (PassNode, RTTNode, ReflectorNode, RendererUtils.resetRendererState) saves getRenderTarget(),
+    // renders, restores — with the override active it would save the scene-pass target and write
+    // it into the backing. Suspend those too (nesting inside a render is harmless). Latent today:
+    // no chapter carries such a node (reflector() is opt-in), kept closed by construction. No
+    // runtime guard on the backing: the scene-pass target IS legitimately bound whenever the live
+    // scene pass or a pre-reveal warm render runs (a guard tried here fired inside the pass).
+    const nodes = renderer._nodes;
+    const savedNodeMethods = {};
+    if (nodes) {
+        for (const name of ['updateBefore', 'updateForRender', 'updateAfter']) {
+            const wrapped = suspended(nodes, name);
+            if (!wrapped) continue;
+            savedNodeMethods[name] = Object.getOwnPropertyDescriptor(nodes, name) ?? null;
+            Object.defineProperty(nodes, name, {
+                value: wrapped, configurable: true, writable: true, enumerable: false,
+            });
+        }
+    }
+    state.release = () => {
+        state.count -= 1;
+        if (state.count > 0) return;
+        const { renderTarget, mrt } = state.backing;
+        for (const [name, descriptor] of Object.entries(saved)) {
+            if (descriptor) Object.defineProperty(renderer, name, descriptor);
+            else delete renderer[name];
+        }
+        for (const [name, descriptor] of Object.entries(savedNodeMethods)) {
+            if (descriptor) Object.defineProperty(nodes, name, descriptor);
+            else delete nodes[name];
+        }
+        // Put the final backing values back into the plain fields.
+        if (saved._renderTarget) renderer._renderTarget = renderTarget;
+        if (saved._mrt) renderer._mrt = mrt;
+        delete renderer.__odysseyLiveCompileReads;
+    };
+    renderer.__odysseyLiveCompileReads = state;
+    return state.release;
+}
+
+/**
+ * Wrap ONE compileAsync launch for the live path: bind the scene-pass target + MRT at the scene
+ * pass's call depth and reveal the object (visible, frustum-uncullable, lights untouched) for the
+ * synchronous prologue only; restore everything before the returned promise can resume.
+ * @param {object} renderer
+ * @param {object} scenePass
+ * @param {object} object the representative object about to be compiled
+ * @param {() => Promise<*>} call launches `renderer.compileAsync(object, …)`
+ * @returns {Promise<*>}
+ */
+export function launchCompileInScenePassPrologue(renderer, scenePass, object, call) {
+    const { previousTarget, previousMRT } = rawBinding(renderer);
+    const overrides = [];
+    const reveal = (node) => {
+        if (!node || node.isLight) return;
+        overrides.push({ node, visible: node.visible, frustumCulled: node.frustumCulled });
+        node.visible = true;
+        if (node.isMesh || node.isPoints || node.isLine || node.isSprite) node.frustumCulled = false;
+    };
+    if (typeof object?.traverse === 'function') object.traverse(reveal);
+    else reveal(object);
+    renderer.setRenderTarget(scenePass.renderTarget);
+    renderer.setMRT(scenePass.getMRT?.() ?? null);
+    const restoreDepth = beginNestedContextDepth(renderer);
+    const target = scenePass.renderTarget;
+    const mrt = scenePass.getMRT?.() ?? null;
+    let promise;
+    try {
+        promise = call();
+    } finally {
+        restoreDepth?.();
+        // compileAsync's prologue writes renderContext.depth/stencil from the RENDERER flags
+        // (Renderer.js ~931) where _renderScene derives them from the target's buffers; the
+        // context is the live scene pass's, so put the target's truth back before any drained
+        // item can reach Pipelines.getForRender on it (item 1 can, without a task boundary).
+        const contexts = renderer._renderContexts;
+        if (contexts && typeof contexts.get === 'function') {
+            const context = contexts.get(target, mrt, POST_SCENE_PASS_CALL_DEPTH);
+            if (context && typeof target?.depthBuffer === 'boolean') {
+                context.depth = target.depthBuffer;
+                context.stencil = !!target.stencilBuffer;
+            }
+        }
+        renderer.setRenderTarget(previousTarget);
+        renderer.setMRT(previousMRT);
+        for (const { node, visible, frustumCulled } of overrides) {
+            node.visible = visible;
+            node.frustumCulled = frustumCulled;
+        }
+    }
+    return promise;
+}
+
+/**
+ * Compile a group's renderables while the rAF loop is LIVE (item 2.11) — see the block comment
+ * above. Objects may be hidden (far chapters are); they are revealed per launch, never across an
+ * await. Resolves when every pipeline of the group has been created asynchronously, so a
+ * following synchronous render-warm creates none.
+ * @param {object} renderer
+ * @param {object} postProcessingStack with `scenePass.renderTarget`
+ * @param {object} scene
+ * @param {object} camera
+ * @param {object} group
+ * @param {{concurrency?: number}} [options]
+ * @returns {Promise<boolean>} true when the compile ran
+ */
+export async function compileGroupUnderLiveLoop(renderer, postProcessingStack, scene, camera, group, options = {}) {
+    const scenePass = postProcessingStack?.scenePass;
+    if (!scenePass?.renderTarget || typeof renderer?.compileAsync !== 'function') return false;
+    if (renderer._isDeviceLost === true) return false;
+    const binding = { renderTarget: scenePass.renderTarget, mrt: scenePass.getMRT?.() ?? null };
+    const releaseReads = beginLiveCompileReads(renderer, binding);
+    const releaseSideCapture = beginDeferredSideCapture(renderer);
+    try {
+        await compileObjectsFannedOut(renderer, scene, camera, group, options.concurrency, {
+            includeHidden: true,
+            aroundCall: (object, call) => launchCompileInScenePassPrologue(renderer, scenePass, object, call),
+        });
+    } finally {
+        releaseSideCapture?.();
+        releaseReads?.();
+    }
+    // compileAsync returns early on a lost device — that is not a landed compile.
+    return renderer._isDeviceLost !== true;
 }
