@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { readdirSync } from 'node:fs';
 import replace from '@rollup/plugin-replace';
 import path from 'path';
 import {
@@ -65,6 +66,12 @@ function createCopyLegalNoticesPlugin() {
   };
 }
 
+// Theme directory ids, longest first, for the playground-effect → theme chunk rule below.
+const themeIdsByLength = readdirSync(path.resolve(projectRoot, 'src/themes'), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory() && entry.name !== 'shared')
+  .map((entry) => entry.name)
+  .sort((a, b) => b.length - a.length);
+
 export default defineConfig({
   // Force a canonical-cased root so dev-server module resolution is launch-cwd agnostic.
   root: projectRoot,
@@ -128,11 +135,42 @@ export default defineConfig({
     rollupOptions: {
       input: {
         app: path.resolve(projectRoot, 'index.html'),
-        playground: path.resolve(projectRoot, 'playground.html'),
+        // The WebGPU/TSL playground is a DEV tool (`npm run dev:playground`; the capture scripts
+        // run it on the dev server). It is no longer a production input: its static graph reaches
+        // every effect and, through them, Odyssey chapter modules — and Rollup places a
+        // dynamically imported module into the chunk that already imports it statically, so the
+        // game's lazy chapter loads resolved to the playground's entry chunk and ran its
+        // top-level init ("[playground] init failed", 2026-08-21).
         'entry-desktop': path.resolve(projectRoot, 'src/entry-desktop.js'),
       },
       output: {
+        // APP BOOT (2026-08-21): Rollup's function-form manualChunks ABSORBS every unclaimed static
+        // dependency of a manual-chunk root into that chunk (rollup node-entry.js
+        // addStaticDependenciesToManualChunk). With the directory rules below, tiny shared
+        // modules — src/core/constants.js, utils/viewport.js, the Odyssey theme palette behind the
+        // custom cursor, the intro config, Vite's own __vitePreload helper — were captured by
+        // lazy theme/mode chunks, which welded three (1.75 MB), Phaser (1.6 MB), the Odyssey
+        // mode chunk and all 60 theme chunks onto the menu's boot path: dist main's static
+        // closure was 75 chunks / 9.5 MB, ~1.7 s of parse+evaluate long tasks before the menu
+        // (Electron, production). onlyExplicitManualChunks stops the absorption: modules not
+        // named here get Rollup's normal shared-chunk placement. scripts/check-boot-closure.mjs
+        // guards the result after every build.
+        onlyExplicitManualChunks: true,
         manualChunks(id) {
+          const clean = id.split('?')[0];
+          const isRuntimeJs = /\.(js|mjs|ts)$/.test(clean);
+
+          // Vite's preload helper must never strand inside a lazy chunk: whoever hosts it is
+          // statically imported by EVERY dynamic import site, the entry included.
+          if (id.includes('vite/preload-helper')) {
+            return 'app-runtime';
+          }
+
+          // No explicit 'app-core' list: with absorption off, Rollup's own placement puts every
+          // module shared between the boot path and a lazy chunk into a shared chunk that main
+          // already imports. (An explicit list was tried: each listed module's unassigned
+          // dependencies were then extracted into chunks that import the list back — cycles.)
+
           // Split Phaser into its own chunk
           if (id.includes('node_modules/phaser')) {
             return 'phaser';
@@ -159,12 +197,25 @@ export default defineConfig({
             return 'app-runtime';
           }
 
-          if (id.includes('src/themes/base-theme.js')) {
-            return 'theme-shared';
+          // base-theme.js is NOT in theme-shared any more: the shared/** chunk imports three
+          // (mrt-blend, shared TSL), and main imports base-theme at boot — naming them together
+          // put three back on the boot path. Rollup places base-theme with its importers.
+
+          // Playground effects that a theme imports as its scene builder belong to that theme's
+          // chunk (summer → summer-meadow.effect, winter → winter-wonderland.effect, …); left
+          // unassigned they become their own chunk that imports the theme back — a cycle.
+          if (isRuntimeJs && id.includes('src/playground/effects/')) {
+            const effectName = clean.split('/').pop().replace(/.effect.js$/, '');
+            const owner = themeIdsByLength.find((themeId) => effectName === themeId || effectName.startsWith(`${themeId}-`));
+            if (owner) {
+              return `theme-${owner}`;
+            }
           }
 
-          // Group theme runtime by implementation family to reduce chunk graph fragility
-          if (id.includes('src/themes/')) {
+          // Group theme runtime by implementation family to reduce chunk graph fragility.
+          // RUNTIME JS ONLY: the *-theme-icon.png URL modules the Serenity Hub globs must not
+          // bind the hub (and through it the boot) to all 60 theme chunks.
+          if (isRuntimeJs && id.includes('src/themes/')) {
             if (id.includes('/shared/')) {
               return 'theme-shared';
             }
@@ -176,18 +227,14 @@ export default defineConfig({
           }
 
           // Split game modes into individual chunks
-          if (id.includes('src/core/game-modes/') && id.includes('Mode.js')) {
-            const modeName = id.split('/').pop().replace('.js', '');
+          if (isRuntimeJs && id.includes('src/core/game-modes/') && id.includes('Mode.js')) {
+            const modeName = clean.split('/').pop().replace('.js', '');
             return `mode-${modeName}`;
           }
 
-          // Split rendering engines
-          if (id.includes('src/rendering/phaser/')) {
-            return 'rendering-phaser';
-          }
-          if (id.includes('src/rendering/canvas/')) {
-            return 'rendering-canvas';
-          }
+          // (No manual 'rendering-phaser' / 'rendering-canvas' chunks any more: main imports the
+          // Phaser scenes at boot and draw.js (app-core) imports the canvas utils, so naming them
+          // only produced circular chunk imports — Rollup places them with their importers.)
 
           // Group vendor dependencies
           if (id.includes('node_modules')) {
