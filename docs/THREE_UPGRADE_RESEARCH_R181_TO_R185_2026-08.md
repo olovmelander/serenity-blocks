@@ -473,8 +473,8 @@ mocks of `three/webgpu`: shapes fine.
 | #34285 dispose of still-in-use shared geometry/texture no longer auto-recovers | Teardown ordering | Dispose only after last user stops rendering (already repo policy) |
 | #33795 compute→texture same-frame staleness (open, no fix) | Only the safe ping-pong variant exists in-repo | Acceptance check §8.8 |
 | #33821 WebGPU material-init 16× WebGL (open) | Theme-switch compile cost | This is why the warm-up architecture stays load-bearing after the upgrade |
-| **NEW (found in-repo 2026-08-20, capture matrix): `compileAsync(scene, camera, group)` TypeErrors on r185** — `Background.update` runs against the target GROUP (Renderer.js:1005-1007) and guards `=== null` while a Group's `background` is `undefined` → `background.isColor` throws; the prewarm catch swallowed it, silently voiding every Odyssey chapter warm | Every targeted compile in the repo | App-normalized in `compileGroupThroughPost` (mirror Scene's `background = null` onto object groups; pinned by the contract test). Candidate for an upstream issue — the public 3-arg compileAsync signature is broken for Groups on r185 |
-| **NEW (found 2026-08-21, Electron theme harness): `WebGPUBackend.dispose()` fires the timestamp pools' ASYNC `dispose()` without awaiting, then destroys the owned device** — an in-flight `resolveTimestampsAsync()` rejects and the pool logs "Error resolving queries: DOMException" (once per pool; black-hole's 15 Hz render + 2 Hz compute sampling = exactly 2). r181 never destroyed the device on dispose | Any theme disposing a renderer with `trackTimestamp` sampling live (black-hole; latent for cosmic-noir/stellar-velocity/wolfhour/stillwater) | App-side in `BaseTheme.disposeRenderer`: stop queries, keep loop-stop/canvas-detach/ref-clear synchronous, defer ONLY `renderer.dispose()` until `pool.pendingResolve`s settle (300 ms bound). Pinned by `base-theme-dispose-timestamp-quiesce.test.js`; black-hole re-captured at 0 errors. Upstream-report candidate (dispose should await the pools) |
+| **NEW (found in-repo 2026-08-20, capture matrix): `compileAsync(scene, camera, group)` TypeErrors on r185** — `Background.update` runs against the target GROUP (Renderer.js:1005-1007) and guards `=== null` while a Group's `background` is `undefined` → `background.isColor` throws; the prewarm catch swallowed it, silently voiding every Odyssey chapter warm | Every targeted compile in the repo | App-normalized in `compileGroupThroughPost` (mirror Scene's `background = null` onto object groups; pinned by the contract test). Upstream issue drafted: `docs/UPSTREAM_THREE_R185_ISSUES_READY_TO_FILE.md` (Issue 1) — the public 3-arg compileAsync signature is broken for Groups on r185 |
+| **NEW (found 2026-08-21, Electron theme harness): `WebGPUBackend.dispose()` fires the timestamp pools' ASYNC `dispose()` without awaiting, then destroys the owned device** — an in-flight `resolveTimestampsAsync()` rejects and the pool logs "Error resolving queries: DOMException" (once per pool; black-hole's 15 Hz render + 2 Hz compute sampling = exactly 2). r181 never destroyed the device on dispose | Any theme disposing a renderer with `trackTimestamp` sampling live (black-hole; latent for cosmic-noir/stellar-velocity/wolfhour/stillwater) | App-side in `BaseTheme.disposeRenderer`: stop queries, keep loop-stop/canvas-detach/ref-clear synchronous, defer ONLY `renderer.dispose()` until `pool.pendingResolve`s settle (300 ms bound). Pinned by `base-theme-dispose-timestamp-quiesce.test.js`; black-hole re-captured at 0 errors. Upstream issue drafted: `docs/UPSTREAM_THREE_R185_ISSUES_READY_TO_FILE.md` (Issue 2 — dispose should await the pools) |
 
 ---
 
@@ -636,6 +636,20 @@ mocks of `three/webgpu`: shapes fine.
 > everywhere (legacy-dioramas 4.19 → 1.51 ms), drift ≤ 1 tick — **unchanged within
 > quantization**, as §7.5 predicted for fill-bound surfaces. Both lanes now prove the perf
 > story on the current hardware, which closes the plan's last phase.
+>
+> **WebGL-fallback lane smoke (2026-08-21, `?forceWebGL`, real game):** black-hole, summer,
+> moonlit-forest, bioluminescence-2 run clean on the WebGL2 backend (node materials through
+> the GLSL builder, 0 errors); starlight ignores the page flag (its `forceWebGL` is an
+> internal retry order — fine). **neon-district rendered BLACK** on that lane — pre-existing
+> on r181 (identical NodeBuilder rejection at r181 NodeBuilder.js:2890): the theme always
+> constructs a `WebGPURenderer`, yet gated ~25 material/post choices on the *backend*
+> (`isWebGPU`), sending every non-WebGPU machine into classic `ShaderMaterial`/`EffectComposer`
+> branches the node system rejects. Fixed by re-gating those choices on renderer kind
+> (`usesNodeMaterials = renderer.isWebGPURenderer`) while MRT, timestamps and lighting
+> calibration stay backend-gated; WebGL2 lane now renders the full theme with 0 errors
+> (`cap-neon-district-forceWebGL-fixed.png`), WebGPU lane unchanged. Classic-only twins are
+> retained but unreachable. r186 still unpublished as of 2026-08-21. Upstream issue drafts for
+> the two r185 bugs: `docs/UPSTREAM_THREE_R185_ISSUES_READY_TO_FILE.md`.
 
 ### Phase 0 — pre-bump, dual-compatible, land on main now (keeps r181 green)
 

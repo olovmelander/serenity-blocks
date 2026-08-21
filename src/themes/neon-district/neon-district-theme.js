@@ -244,6 +244,9 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.post = null;
         this.isWebGPU = false;
         this.isWebGL = false;
+        // Renderer KIND (node system on either backend) - gates node-vs-classic
+        // material choices. isWebGPU/isWebGL stay BACKEND flags (MRT, perf tuning).
+        this.usesNodeMaterials = false;
         this.mrtAuditEnabled = false;
         this.debugEnabled = false; // Phase 0: conditional logging via ?ndDebug=1
 
@@ -1272,7 +1275,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     setupMaterials() {
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material, uniforms } = createBuildingNodeMaterial();
             this.buildingMaterial = material;
             this.buildingUniforms = uniforms;
@@ -1296,7 +1299,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             return;
         }
 
-        // Fallback LOD materials for WebGL (simple standard materials)
+        // Fallback LOD materials for a classic (non-node) renderer only
         this.buildingMaterialLOD1 = new THREE.MeshStandardMaterial({
             color: 0x1a1a2e,
             roughness: 0.8,
@@ -1534,7 +1537,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     createBasicMaterial(params = {}) {
-        if (!this.isWebGPU) {
+        if (!this.usesNodeMaterials) {
             return new THREE.MeshBasicMaterial(params);
         }
 
@@ -1574,7 +1577,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     createStandardMaterial(params = {}) {
-        if (!this.isWebGPU) {
+        if (!this.usesNodeMaterials) {
             return new THREE.MeshStandardMaterial(params);
         }
 
@@ -1588,7 +1591,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     createPhongMaterial(params = {}) {
-        if (!this.isWebGPU) {
+        if (!this.usesNodeMaterials) {
             return new THREE.MeshPhongMaterial(params);
         }
 
@@ -1703,6 +1706,10 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = renderer.backend?.isWebGLBackend === true;
+        // WebGPURenderer runs the node system on BOTH backends (WebGPU and its
+        // WebGL2 fallback); classic ShaderMaterial is rejected by NodeBuilder on
+        // either. Material/path choices must gate on this, not on isWebGPU.
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
 
         renderer.setClearColor(0x150820, 1); // Deep Cyberpunk Purple-Black
         // Enable shadow mapping for realistic building shadows on road
@@ -1749,7 +1756,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Create gradient sky dome - size increased to cover new far clip
         const skyGeometry = new THREE.SphereGeometry(9000, 24, 24);
         let skyMaterial;
-        if (this.isWebGPU || this.isWebGL) {
+        if (this.usesNodeMaterials) {
             skyMaterial = createSkyNodeMaterial().material;
         } else {
             skyMaterial = new THREE.ShaderMaterial({
@@ -1868,7 +1875,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
 
         let material;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material: nodeMaterial, uniforms } = createStarfieldNodeMaterial();
             material = nodeMaterial;
             this.starUniforms = uniforms;
@@ -2590,7 +2597,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     createMegaTowerWindowOverlayMaterial() {
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material, uniforms } = createMegaTowerNodeMaterial();
             material.transparent = true;
             material.depthWrite = false;
@@ -2723,7 +2730,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 if (towerMaterial.specular?.isColor) {
                     towerMaterial.specular.multiplyScalar(0.25);
                 }
-                if (this.isWebGPU && this.assets?.applyEmissiveNode) {
+                if (this.usesNodeMaterials && this.assets?.applyEmissiveNode) {
                     this.assets.applyEmissiveNode(towerMaterial);
                 }
                 towerMaterial.needsUpdate = true;
@@ -2737,7 +2744,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             const megaTexture = this.getMegaTowerTexture(useLiteTexture);
             if (megaTexture) {
                 const towerIntensity = megaTowerNoBloom ? 0.65 : megaTowerLite ? 0.85 : 1.2;
-                if (this.isWebGPU) {
+                if (this.usesNodeMaterials) {
                     const material = new THREE.MeshBasicNodeMaterial();
                     const texNode = uniformTexture(megaTexture).sample(uv());
                     material.colorNode = texNode.rgb.mul(float(towerIntensity));
@@ -2753,7 +2760,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                     });
                 }
                 this.megaTowerUniforms = null;
-            } else if (this.isWebGPU) {
+            } else if (this.usesNodeMaterials) {
                 const { material, uniforms } = createMegaTowerNodeMaterial();
                 this.megaTowerMaterial = material;
                 this.megaTowerUniforms = uniforms;
@@ -2943,7 +2950,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
             });
-            if (this.isWebGPU && megaTowerNoBloom && glowMat?.isNodeMaterial) {
+            if (this.usesNodeMaterials && megaTowerNoBloom && glowMat?.isNodeMaterial) {
                 glowMat.emissiveNode = vec3(0.0, 0.0, 0.0);
             }
             const blinkerGlow = new THREE.Mesh(glowGeom, glowMat);
@@ -3116,7 +3123,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         let vhsMaterial;
         let vhsUniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const vhs = createVhsBillboardNodeMaterial({
                 texture1: tex1,
                 texture2: tex2,
@@ -3579,7 +3586,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Fallback to procedural shader if assets not loaded
         if (this.buildingMaterial) {
-            if (this.isWebGPU && this.buildingUniforms?.uSeed) {
+            if (this.usesNodeMaterials && this.buildingUniforms?.uSeed) {
                 this.buildingUniforms.uSeed.value = seed * 1000;
                 return this.buildingMaterial;
             }
@@ -3612,7 +3619,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
     getOuterBuildingMaterial(matId) {
         if (!this.assets?.loaded) return null;
-        const cacheKey = `${matId}:${this.isWebGPU ? 'gpu' : 'gl'}:lod`;
+        const cacheKey = `${matId}:${this.usesNodeMaterials ? 'node' : 'classic'}:lod`;
         if (this.outerBuildingBasicMaterials.has(cacheKey)) {
             return this.outerBuildingBasicMaterials.get(cacheKey);
         }
@@ -3622,7 +3629,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Clone the base material but simplify it for performance
         // Keep colors similar to main buildings (not too dim)
-        if (!this.isWebGPU) {
+        if (!this.usesNodeMaterials) {
             const clone = baseMat.clone();
 
             // PERFORMANCE: Force lower mip levels on textures
@@ -3665,7 +3672,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             return clone;
         }
 
-        // WebGPU path: Use MeshBasicNodeMaterial for faster rendering
+        // Node-renderer path: Use MeshBasicNodeMaterial for faster rendering
         // Keep full intensity to match main buildings visually
         const map = baseMat.map || null;
         const emissiveMap = baseMat.emissiveMap || null;
@@ -4068,9 +4075,12 @@ export default class NeonDistrictTheme extends BaseTheme {
         if (!this.renderer) issues.push('Renderer not initialized');
         if (!this.scene) issues.push('Scene not created');
         if (!this.camera) issues.push('Camera not created');
-        if (this.isWebGPU && !this.post) issues.push('WebGPU without TSL post-processing');
-        if (!this.isWebGPU && !this.composer && this.qualityPreset.enablePostProcessing) {
-            issues.push('WebGL without EffectComposer (post-processing expected)');
+        const qaNodeRenderer = this.renderer?.isWebGPURenderer === true;
+        if (qaNodeRenderer && !this.post && this.qualityPreset.enablePostProcessing) {
+            issues.push('Node renderer without TSL post-processing');
+        }
+        if (!qaNodeRenderer && !this.composer && this.qualityPreset.enablePostProcessing) {
+            issues.push('Classic WebGL renderer without EffectComposer (post-processing expected)');
         }
 
         if (issues.length > 0) {
@@ -4708,8 +4718,8 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         let wetAsphaltMaterial = null;
 
-        if (this.isWebGPU) {
-            // WebGPU: Create placeholder material first, then upgrade with textures
+        if (this.usesNodeMaterials) {
+            // Node renderer: Create placeholder material first, then upgrade with textures
             // PHASE 1: Pass quality for shadow gating
             const wetGround = createWetGroundNodeMaterial({ quality: this.currentQualityName, reflectorNode });
             wetAsphaltMaterial = wetGround.material;
@@ -4875,9 +4885,9 @@ export default class NeonDistrictTheme extends BaseTheme {
         };
 
         // ═══════════════════════════════════════════════════════════════════════
-        // SHADER INJECTION - Add puddle/ripple effects via onBeforeCompile (WebGL only)
+        // SHADER INJECTION - Add puddle/ripple effects via onBeforeCompile (classic renderer only)
         // ═══════════════════════════════════════════════════════════════════════
-        if (!this.isWebGPU) {
+        if (!this.usesNodeMaterials) {
             wetAsphaltMaterial.onBeforeCompile = (shader) => {
                 // Add our custom uniforms
                 shader.uniforms.uTime = this.groundUniforms.uTime;
@@ -5190,8 +5200,8 @@ export default class NeonDistrictTheme extends BaseTheme {
             };
         }
 
-        // Need customProgramCacheKey to prevent shader caching issues (WebGL only)
-        if (!this.isWebGPU) {
+        // Need customProgramCacheKey to prevent shader caching issues (classic renderer only)
+        if (!this.usesNodeMaterials) {
             wetAsphaltMaterial.customProgramCacheKey = () => 'neon-district-wet-asphalt';
         }
 
@@ -5331,7 +5341,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         const geometry = new THREE.BoxGeometry(1, 1, 1);
         let material;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const bottomColor = vec3(0.01, 0.005, 0.02);
             const topColor = vec3(0.05, 0.02, 0.08);
             const heightT = smoothstep(float(200.0), float(1800.0), positionWorld.y);
@@ -5423,7 +5433,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const geometry = new THREE.CircleGeometry(2200, 96);
 
         let material;
-        if (this.isWebGPU || this.isWebGL) {
+        if (this.usesNodeMaterials) {
             const moonMaterial = createMoonNodeMaterial();
             material = moonMaterial.material;
             this.moonUniforms = moonMaterial.uniforms;
@@ -5621,7 +5631,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             let material;
             let uniforms = null;
 
-            if (this.isWebGPU || this.isWebGL) {
+            if (this.usesNodeMaterials) {
                 const materialInfo = createCloudStrataNodeMaterial({
                     tint: cfg.tint,
                     speed: cfg.speed,
@@ -5659,7 +5669,7 @@ export default class NeonDistrictTheme extends BaseTheme {
      */
     createSkyFlash() {
         if (this.featureFlags?.noSky || this.featureFlags?.noClouds) return;
-        if (!(this.isWebGPU || this.isWebGL)) return; // node material covers both backends
+        if (!this.usesNodeMaterials) return; // node material covers both backends
         if (this.skyFlash) return;
 
         const geometry = new THREE.PlaneGeometry(18000, 7000, 1, 1);
@@ -5753,7 +5763,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const geometry = new THREE.CylinderGeometry(4500, 4500, 5000, radialSegments, 1, true);
 
         let material;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             material = createSkylineNodeMaterial().material;
         } else {
             // Procedural city texture shader
@@ -5851,7 +5861,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         coneGeom.translate(0, 2000, 0); // Pivot at bottom
 
         let material;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             material = createSearchlightNodeMaterial().material;
         } else {
             material = new THREE.ShaderMaterial({
@@ -6169,7 +6179,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         let material;
         let uniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const uTime = uniform(0);
             const uvScaleAttr = attribute('aUvScale');
             const uvOffsetAttr = attribute('aUvOffset');
@@ -6334,7 +6344,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         let material;
         let uniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const uTime = uniform(0);
             const uvScaleAttr = attribute('aUvScale');
             const uvOffsetAttr = attribute('aUvOffset');
@@ -6845,7 +6855,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const geometry = new THREE.PlaneGeometry(width, height);
         let material;
         let hologramUniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const hologram = createHologramNodeMaterial({
                 color1: new THREE.Color(pair[0]),
                 color2: new THREE.Color(pair[1]),
@@ -7104,12 +7114,12 @@ export default class NeonDistrictTheme extends BaseTheme {
         splashGeometry.setAttribute('aPhase', new THREE.BufferAttribute(splashPhases, 1));
         splashGeometry.setAttribute('aColor', new THREE.BufferAttribute(splashColors, 3));
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const splash = createSplashNodeMaterial();
             this.splashMaterial = splash.material;
             this.splashUniforms = splash.uniforms;
         } else {
-            // WebGL splash shader
+            // Classic-renderer splash shader
             this.splashMaterial = new THREE.ShaderMaterial({
                 uniforms: {
                     uTime: { value: 0 },
@@ -7978,7 +7988,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Create Instance Meshes
         // We use one InstancedMesh per material/geometry type
-        const useGpuInstances = this.isWebGPU;
+        const useGpuInstances = this.usesNodeMaterials; // node positionNode instancing
         const createInst = (geom, mat, limit) => {
             if (useGpuInstances) {
                 const instancedGeometry = new THREE.InstancedBufferGeometry().copy(geom);
@@ -8086,7 +8096,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         console.log(`[NeonDistrict] Created ${count} flying vehicles across 5 layers`);
 
-        const gpuEnabled = this.isWebGPU && this.enableVehicleGpuInstancing(count);
+        const gpuEnabled = this.usesNodeMaterials && this.enableVehicleGpuInstancing(count);
         if (!gpuEnabled && this.vehicleInstances?.body?.isInstancedMesh) {
             // Initial update to place them (CPU fallback)
             this.updateFlyingVehicles(0);
@@ -8531,7 +8541,17 @@ export default class NeonDistrictTheme extends BaseTheme {
             return;
         }
 
-        if (this.isWebGPU) {
+        // Route by RENDERER KIND, not backend. This theme always constructs a
+        // WebGPURenderer (see initRenderer), whose WebGL2 fallback backend still
+        // runs the node system — so the TSL RenderPipeline works on both lanes,
+        // while the classic EffectComposer/ShaderMaterial chain below can only
+        // ever serve a classic WebGLRenderer. Gating on `isWebGPU` sent every
+        // non-WebGPU machine into that chain, where NodeBuilder rejects
+        // ShaderMaterial ("is not compatible") and the theme rendered BLACK
+        // (pre-existing on r181; caught by the 2026-08-21 forceWebGL lane smoke).
+        // MRT stays WebGPU-only via shouldUseMrt().
+        const isNodeRenderer = this.renderer?.isWebGPURenderer === true;
+        if (isNodeRenderer) {
             this.composer = null;
             this.bloomPass = null;
 
