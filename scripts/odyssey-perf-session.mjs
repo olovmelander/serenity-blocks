@@ -320,7 +320,49 @@ async function resetPerf(win, label) {
     `);
 }
 
+// ── CPU profile of the boot + activation (opt-in: --cpu-profile <file.cpuprofile>) ────────────
+// Attaches the CDP Profiler to the window BEFORE navigation and stops it once the board is active,
+// so the app-boot long tasks (entry evaluation, Phaser/three module evaluation, main.js top-level)
+// can be attributed by function UNDER ELECTRON's V8 — a Chrome trace of the same build shows a
+// different (faster) picture, and the harness is the shipping engine. Names are real against the
+// dev server; minified against a preview build (still attributable per chunk + line/column).
+const CPU_PROFILE_FILE = args.cpuProfile ? path.resolve(String(args.cpuProfile)) : null;
+function startCpuProfile(win) {
+    if (!CPU_PROFILE_FILE) return null;
+    const dbg = win.webContents.debugger;
+    // Attaching before any navigation hangs (no renderer process yet); 'did-navigate' fires at
+    // commit, before the module entry has been fetched, so the whole boot is still captured.
+    const started = new Promise((resolve) => {
+        win.webContents.once('did-navigate', async () => {
+            try {
+                dbg.attach('1.3');
+                await dbg.sendCommand('Profiler.enable');
+                await dbg.sendCommand('Profiler.setSamplingInterval', { interval: 250 });
+                await dbg.sendCommand('Profiler.start');
+                resolve(dbg);
+            } catch (error) {
+                console.warn('[odyssey-perf] cpu profile unavailable:', error?.message || error);
+                resolve(null);
+            }
+        });
+    });
+    return started;
+}
+async function stopCpuProfile(started) {
+    const dbg = started ? await started : null;
+    if (!dbg) return;
+    try {
+        const { profile } = await dbg.sendCommand('Profiler.stop');
+        await writeFile(CPU_PROFILE_FILE, JSON.stringify(profile));
+        console.log(`[odyssey-perf] wrote cpu profile ${path.relative(process.cwd(), CPU_PROFILE_FILE)}`);
+        dbg.detach();
+    } catch (error) {
+        console.warn('[odyssey-perf] cpu profile stop failed:', error?.message || error);
+    }
+}
+
 async function bootstrapOdyssey(win, { resetBeforeActivate = true } = {}) {
+    win.__cpuProfiler = startCpuProfile(win);
     await win.loadURL(makeUrl());
     const ready = await waitFor(win, 'window.serenityBlocks?.gameModeManager', 140000);
     if (!ready) throw new Error('gameModeManager not ready');
@@ -494,6 +536,8 @@ async function bootstrapOdyssey(win, { resetBeforeActivate = true } = {}) {
     if (!boot) throw new Error('Odyssey activation failed');
 
     const active = await waitFor(win, 'window.odysseyMode?.boardController?.isActive', 180000);
+    await stopCpuProfile(win.__cpuProfiler);
+    win.__cpuProfiler = null;
     if (!active) throw new Error('Odyssey board did not become active');
     await delay(300);
 }
