@@ -18,7 +18,21 @@ describe('SoundManager.scheduleDeferredAudioAnalysis', () => {
         vi.stubGlobal('window', {
             location: { search: '' },
             requestIdleCallback: vi.fn((cb, opts) => { idle.push({ cb, opts }); return idle.length; }),
-            AudioContext: class { constructor() { this.state = 'running'; } createGain() { return { gain: { value: 1 }, connect() {} }; } createDynamicsCompressor() { return { threshold: {}, knee: {}, ratio: {}, attack: {}, release: {}, connect() {} }; } get destination() { return {}; } resume() {} },
+            AudioContext: class {
+                constructor() { this.state = 'running'; }
+
+                createGain() { return { gain: { value: 1 }, connect() {} }; }
+
+                createDynamicsCompressor() {
+                    return {
+                        threshold: {}, knee: {}, ratio: {}, attack: {}, release: {}, connect() {},
+                    };
+                }
+
+                get destination() { return {}; }
+
+                resume() {}
+            },
         });
         vi.stubGlobal('localStorage', { getItem: () => null, setItem() {} });
     });
