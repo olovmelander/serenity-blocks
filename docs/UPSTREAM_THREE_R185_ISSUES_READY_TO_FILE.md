@@ -1,7 +1,7 @@
 # Draft upstream issues for three.js r185 — WebGPURenderer defects found during the r181 → r185 upgrade
 
-Status: **Issues 2, 3 and 4 drafted, not yet filed; Issue 1 withdrawn** (see below). Issues 3–4 added
-2026-08-21 from the Phase-2 prewarm work (`R185_FAST_AND_BEAUTIFUL_PLAN_2026-08.md` item 2.9). Prepared 2026-08-21 from the Serenity Blocks upgrade
+Status: **Issues 2, 3, 4 and 5 drafted, not yet filed; Issue 1 withdrawn** (see below). Issues 3–5 added
+2026-08-21 from the Phase-2 prewarm work (`R185_FAST_AND_BEAUTIFUL_PLAN_2026-08.md` items 2.9, 2.11). Prepared 2026-08-21 from the Serenity Blocks upgrade
 (`THREE_UPGRADE_RESEARCH_R181_TO_R185_2026-08.md` §10, last two rows). Both were verified on
 **r185** (`three@0.185.1`) with `WebGPURenderer` on the WebGPU backend (Chromium 140 / Electron
 38 and Chrome, Windows 11, RTX 3070). Both are regressions relative to r181 in the sense that
@@ -223,6 +223,69 @@ context *object* already does — the key only needs the attachment/MRT state).
 
 **Workaround used**: during the compile, wrap `renderer._renderContexts.get` so a default depth of 0
 resolves at depth 1 (the post scene pass's depth). Pinned by a contract test against the r185 source.
+
+**Version**: r185 (`three@0.185.1`). Browser: Chrome 140 / Electron 38, Windows 11.
+
+---
+
+## Issue 5 — `compileAsync`'s deferred builds read the renderer's LIVE render target / MRT instead of the work item's render context, so compiling while rendering builds shaders for the wrong output
+
+### Title
+
+`compileAsync()` drains its work items across `yieldToMain()` and every node build reads
+`renderer.getRenderTarget()` / `renderer.getMRT()` at that later moment — a render that runs between
+yields changes what the compiled shader outputs to, and the state is cached under the item's
+(correct) context key (r185)
+
+### Body
+
+**Description**
+
+Since r185 `compileAsync()` queues one work item per draw and builds them afterwards, yielding to
+the main thread between shader stages (`NodeBuilder.buildAsync`, nine yields per cold build, plus
+one per object). Each item captures `renderContext` (Renderer.js `_createObjectPipeline`), but the
+node build does not use it: it reads the renderer's current binding —
+
+- `NodeMaterial.setup`: `renderer.getRenderTarget()` decides whether the fragment result is an MRT
+  struct (`renderer.getMRT().merge(...)`) or a single output (NodeMaterial.js ~475, ~559-572), and
+  `depthNode` checks `renderer.getMRT().has('depth')` (~684-688);
+- `MRTNode.setup`: `builder.renderer.getRenderTarget().textures[i]` + `getOutputType(i)`;
+- `WGSLNodeBuilder.buildCode` (after the LAST yield): `getOutputType()` →
+  `renderer.getRenderTarget().textures[0].type` for the `@location(0)` output;
+- `NodeBuilder.needsPreviousData`, `Textures.updateTexture` (framebuffer texture type),
+  `ViewportTextureNode`, `ScreenNode`: same reads; `renderer.currentSamples` (`setupClipping`)
+  reads `_renderTarget.samples`.
+
+`yieldToMain()` is `scheduler.yield()` where available (Chrome ≥ 129), i.e. a real task boundary:
+a `requestAnimationFrame` render — including a `PostProcessing`/`RenderPipeline` frame that binds
+and restores its own pass targets — runs between two stages of one build. A build that started
+with the MRT pass target bound can finish with `null` bound and emit a single-output shader (or the
+reverse), and `NodeManager` caches it under `renderObject.initialCacheKey`, whose render-context id
+was fixed at `_objects.get` time. The entry is keyed correctly and has the wrong content; every
+later draw of that material through that context uses it (black output / attachment count
+mismatch validation errors). The only way to use `compileAsync` while rendering today is to make
+the caller hold a global binding across the whole await (as `PassNode.compileAsync` does), which
+is impossible when something else renders in between.
+
+**Reproduction** (any scene): bind an MRT pass target, call `renderer.compileAsync(scene, camera)`
+WITHOUT awaiting, start a `requestAnimationFrame` loop that calls `postProcessing.render()`, await
+the compile, then render through the pass: materials whose build straddled a frame are wrong.
+
+**Suggested fix**
+
+Make the drain authoritative for the item's binding: around each item's
+`getForRenderAsync` → … → `getForRender` sequence, re-apply `item.renderContext`'s target/MRT (or
+have the builder read `renderObject.context.renderTarget / .mrt` instead of the renderer), and
+restore after. Equivalent: give `NodeBuilder` an explicit output descriptor at construction
+(`{ renderTarget, mrt, samples }`) instead of live renderer reads.
+
+**Workaround used** (Serenity Blocks `src/rendering/odyssey/warmup/post-target-compile.js`,
+`compileGroupUnderLiveLoop` / `beginLiveCompileReads`): bind the pass target only for
+`compileAsync`'s synchronous prologue, then shadow `renderer._renderTarget` / `_mrt` with instance
+accessors that return the pass binding to the draining builds and the real value during any
+synchronous `render()` / `compute()` / `clear()`. Verified: background chapters compile while the
+post loop renders at 60 fps, zero synchronous `createRenderPipeline` calls afterwards, rendering
+identical.
 
 **Version**: r185 (`three@0.185.1`). Browser: Chrome 140 / Electron 38, Windows 11.
 

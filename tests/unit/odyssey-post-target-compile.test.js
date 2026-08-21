@@ -22,6 +22,9 @@ import {
     compileGroupThroughPost,
     beginDeferredSideCapture,
     beginNestedContextDepth,
+    beginLiveCompileReads,
+    launchCompileInScenePassPrologue,
+    compileGroupUnderLiveLoop,
     POST_SCENE_PASS_CALL_DEPTH,
 } from '../../src/rendering/odyssey/warmup/post-target-compile.js';
 
@@ -499,6 +502,23 @@ describe('beginDeferredSideCapture (r185 deferred compile loses the two-pass mat
         expect(material.side).toBe(DoubleSide);
     });
 
+    it('re-applies the captured side right before the pipeline key even if a live frame flipped it meanwhile (FIX-4)', () => {
+        const { renderer, built } = r185Double();
+        const material = { side: DoubleSide, transparent: true };
+        const release = beginDeferredSideCapture(renderer);
+        renderer._compilationPromises = [];
+        material.side = BackSide;
+        renderer._createObjectPipeline({ name: 'o' }, material, 'S', 'C', 'L', null, null, 'backSide');
+        material.side = DoubleSide;
+        const [item] = renderer._compilationPromises;
+        expect(item.material.side).toBe(BackSide); // drain reads the item → BackSide applied
+        material.side = DoubleSide; // …a live two-pass of a SHARED material restored it during a yield
+        renderer._pipelines.getForRender({ material, passId: 'backSide' }, []);
+        expect(built.at(-1).sideAtPipeline).toBe(BackSide); // key computed with the captured side
+        expect(material.side).toBe(DoubleSide); // original restored
+        release();
+    });
+
     it('returns null for a renderer without the deferred path (WebGL / doubles)', () => {
         expect(beginDeferredSideCapture({})).toBeNull();
         expect(beginDeferredSideCapture(null)).toBeNull();
@@ -536,5 +556,298 @@ describe("beginNestedContextDepth (compile at the scene pass's call depth)", () 
         // The deferred drain the side capture works around.
         expect(rendererSrc).toMatch(/this\._compilationPromises\.push\( \{/);
         expect(rendererSrc).toMatch(/for \( const item of compilationPromises \)/);
+    });
+});
+
+// ── Item 2.11: background compiles under the live rAF loop ─────────────────────────────────────
+// A renderer double shaped like r185's: PROTOTYPE accessors exactly as Renderer.js defines them
+// (getRenderTarget/getMRT return the private fields; isOutputTarget / currentToneMapping /
+// currentColorSpace / needsFrameBufferTarget derive from each other), a synchronous render() that
+// reads them the way _renderScene does, and a compileAsync split into a synchronous prologue
+// (resolves the context, queues items) and a yielding drain that reads getRenderTarget()/getMRT()
+// before the first yield and after the last one, like NodeMaterial.setup / WGSLNodeBuilder.buildCode.
+class R185Renderer {
+    constructor() {
+        this._renderTarget = null;
+        this._mrt = null;
+        this._outputRenderTarget = null;
+        this.toneMapping = 'ACES';
+        this.outputColorSpace = 'srgb';
+        this._compilationPromises = null;
+        this._callDepth = -1;
+        const contexts = new Map();
+        this._renderContexts = {
+            get: (rt = null, mrt = null, depth = 0) => {
+                const id = `${rt?.name ?? rt}|${mrt}|${depth}`;
+                if (!contexts.has(id)) contexts.set(id, { id, depth: 'renderer-flag', stencil: 'renderer-flag' });
+                this._renderContexts.last = contexts.get(id);
+                return contexts.get(id);
+            },
+        };
+        this.frames = []; // what each render() saw
+        this.builds = []; // what each drained item saw
+        this.prologues = []; // what each compileAsync prologue saw
+    }
+
+    getRenderTarget() { return this._renderTarget; }
+
+    getMRT() { return this._mrt; }
+
+    setRenderTarget(t) { this._renderTarget = t; }
+
+    setMRT(m) { this._mrt = m; }
+
+    get isOutputTarget() { return this._renderTarget === this._outputRenderTarget || this._renderTarget === null; }
+
+    get currentSamples() { return this._renderTarget ? this._renderTarget.samples : 0; } // Renderer.js 2476
+
+    clear() { this.cleared = (this.cleared || []).concat([this._renderTarget]); } // reads the field directly (2306)
+
+    get currentToneMapping() { return this.isOutputTarget ? this.toneMapping : 'none'; }
+
+    get currentColorSpace() { return this.isOutputTarget ? this.outputColorSpace : 'working'; }
+
+    get needsFrameBufferTarget() { return this.currentToneMapping !== 'none' || this.currentColorSpace !== 'working'; }
+
+    // A live frame: the RenderPipeline quad at depth 0, a nested scene pass at depth 1 that
+    // binds its own target and restores — reads through the public accessors like three does.
+    render(label = 'frame') {
+        this._callDepth += 1;
+        const outer = {
+            label, depth: this._callDepth, target: this.getRenderTarget(), mrt: this.getMRT(), tone: this.currentToneMapping, fb: this.needsFrameBufferTarget,
+        };
+        this.frames.push(outer);
+        if (this._callDepth === 0 && label === 'post') {
+            const prevT = this.getRenderTarget(); const prevM = this.getMRT();
+            this.setRenderTarget('SCENE_RT'); this.setMRT('SCENE_MRT');
+            this.render('scene-pass');
+            this.setRenderTarget(prevT); this.setMRT(prevM);
+        }
+        this._callDepth -= 1;
+        return outer;
+    }
+
+    // The r185 compileAsync shape, reduced to what matters here.
+    async compileAsync(object) {
+        const ctx = this._renderContexts.get(this._renderTarget || this._outputRenderTarget, this._mrt);
+        this.prologues.push({
+            object: object.name, visible: object.visible, frustumCulled: object.frustumCulled, ctx: ctx.id, target: this._renderTarget, mrt: this._mrt, fb: this.needsFrameBufferTarget,
+        });
+        const items = [{ object, renderContext: ctx }];
+        for (const item of items) {
+            const before = { target: this.getRenderTarget(), mrt: this.getMRT(), tone: this.currentToneMapping };
+            // eslint-disable-next-line no-await-in-loop -- buildAsync yields (9×); a frame may run here
+            await new Promise((r) => { setTimeout(r, 0); });
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((r) => { setTimeout(r, 0); });
+            const after = { target: this.getRenderTarget(), mrt: this.getMRT(), tone: this.currentToneMapping };
+            this.builds.push({
+                object: item.object.name, ctx: item.renderContext.id, before, after,
+            });
+        }
+    }
+}
+
+const tick = () => new Promise((r) => { setTimeout(r, 0); });
+
+describe('item 2.11 — beginLiveCompileReads', () => {
+    it('answers target/MRT reads with the binding between frames and with the truth inside a render', () => {
+        const r = new R185Renderer();
+        const sceneRT = { name: 'SCENE_RT', samples: 4 };
+        const release = beginLiveCompileReads(r, { renderTarget: sceneRT, mrt: 'SCENE_MRT' });
+        expect(r.getRenderTarget()).toBe(sceneRT);
+        expect(r.getMRT()).toBe('SCENE_MRT');
+        expect(r.isOutputTarget).toBe(false);
+        expect(r.currentToneMapping).toBe('none'); // derived getters follow the shadowed field
+        expect(r.needsFrameBufferTarget).toBe(false);
+        expect(r.currentSamples).toBe(4); // the field accessor covers what a method shadow misses
+        expect(r.__odysseyLiveCompileReads.backing.renderTarget).toBeNull(); // the truth is untouched
+        r.clear(); // a between-frame clear() is suspended: it sees the truth
+        expect(r.cleared).toEqual([null]);
+        const frame = r.render('post');
+        expect(frame.target).toBeNull(); // the live quad saw the canvas …
+        expect(frame.tone).toBe('ACES'); // … with tone mapping, i.e. the real isOutputTarget
+        expect(frame.fb).toBe(true);
+        expect(r.frames[1]).toMatchObject({
+            label: 'scene-pass', depth: 1, target: 'SCENE_RT', mrt: 'SCENE_MRT', tone: 'none',
+        });
+        expect(r.__odysseyLiveCompileReads.backing.renderTarget).toBeNull(); // frame restored its own binding
+        // The app's own save points see the truth through the backing, not the binding.
+        r.setRenderTarget('PRIVATE_WARM');
+        expect(r.__odysseyLiveCompileReads.backing.renderTarget).toBe('PRIVATE_WARM');
+        expect(r.getRenderTarget()).toBe(sceneRT); // a drained build still sees the binding
+        r.setRenderTarget(null);
+        release();
+        expect(r.getRenderTarget()).toBeNull();
+        expect(r._renderTarget).toBeNull();
+        const desc = Object.getOwnPropertyDescriptor(r, '_renderTarget');
+        expect(desc && 'value' in desc).toBe(true); // plain data field again
+        expect(Object.prototype.hasOwnProperty.call(r, 'render')).toBe(false);
+        expect(Object.prototype.hasOwnProperty.call(r, 'clear')).toBe(false);
+        expect(r.currentToneMapping).toBe('ACES');
+    });
+
+    it("suspends the drain's own node update hooks (a FRAME-type updateBefore sees and restores the truth)", () => {
+        const r = new R185Renderer();
+        const sceneRT = { name: 'SCENE_RT', samples: 4 };
+        const seen = [];
+        r._nodes = {
+            // A FRAME-type updateBefore that saves / rebinds / restores, like PassNode / RTTNode.
+            updateBefore() {
+                const saved = r.getRenderTarget(); seen.push(saved); r.setRenderTarget('RTT'); r.render('rtt'); r.setRenderTarget(saved);
+            },
+            updateForRender() { seen.push(r.getRenderTarget()); },
+            updateAfter() {},
+        };
+        const release = beginLiveCompileReads(r, { renderTarget: sceneRT, mrt: 'SCENE_MRT' });
+        r._nodes.updateBefore();
+        r._nodes.updateForRender();
+        expect(seen).toEqual([null, null]); // the hooks saw the TRUTH, not the binding
+        expect(r.__odysseyLiveCompileReads.backing.renderTarget).toBeNull(); // and restored it
+        // Inside a live scene pass the scene-pass target is LEGITIMATELY bound around nested hooks.
+        r.setRenderTarget(sceneRT);
+        r._nodes.updateForRender();
+        expect(seen.at(-1)).toBe(sceneRT);
+        expect(r.__odysseyLiveCompileReads.backing.renderTarget).toBe(sceneRT); // never "corrected"
+        r.setRenderTarget(null);
+        release();
+        expect(r._nodes.updateBefore.name).not.toBe('odysseySuspended'); // restored
+    });
+
+    it('does not wrap async entry points (their awaits would keep the override suspended)', () => {
+        const r = new R185Renderer();
+        r.renderAsync = async function renderAsync() { return 'async'; };
+        r.computeAsync = async function computeAsync() { return 'async'; };
+        const release = beginLiveCompileReads(r, { renderTarget: 'RT', mrt: null });
+        expect(r.renderAsync.name).toBe('renderAsync');
+        expect(r.computeAsync.name).toBe('computeAsync');
+        release();
+    });
+
+    it('is refcounted and never leaves a shadow behind when a render throws', () => {
+        const r = new R185Renderer();
+        r.render = function boom() { throw new Error('device lost'); };
+        const a = beginLiveCompileReads(r, { renderTarget: 'RT', mrt: null });
+        const b = beginLiveCompileReads(r, { renderTarget: 'RT', mrt: null });
+        expect(b).toBe(a);
+        expect(() => r.render()).toThrow('device lost');
+        expect(r.getRenderTarget()).toBe('RT'); // liveDepth unwound in finally
+        a();
+        expect(r.__odysseyLiveCompileReads).toBeDefined();
+        b();
+        expect(r.__odysseyLiveCompileReads).toBeUndefined();
+    });
+
+    it('returns null for renderers without the accessors', () => {
+        expect(beginLiveCompileReads({}, { renderTarget: null, mrt: null })).toBeNull();
+    });
+});
+
+describe('item 2.11 — launchCompileInScenePassPrologue', () => {
+    it('binds the scene pass at depth 1 and reveals the object ONLY for the synchronous prologue', async () => {
+        const r = new R185Renderer();
+        const scenePass = { renderTarget: { name: 'SCENE_RT', depthBuffer: true, stencilBuffer: false }, getMRT: () => 'SCENE_MRT' };
+        const light = { name: 'light', isLight: true, visible: false };
+        const child = {
+            name: 'gated', isMesh: true, visible: false, frustumCulled: true,
+        };
+        const object = {
+            name: 'far-chapter-mesh',
+            isMesh: true,
+            visible: false,
+            frustumCulled: true,
+            traverse(fn) { fn(this); fn(child); fn(light); },
+        };
+        r.setRenderTarget('PRIVATE_WARM'); // whatever the app had bound before
+        const promise = launchCompileInScenePassPrologue(r, scenePass, object, () => r.compileAsync(object));
+        // Synchronously after the call: everything restored, nothing a frame could observe.
+        expect(r._renderTarget).toBe('PRIVATE_WARM');
+        expect(r._mrt).toBeNull();
+        expect(r._renderContexts.last).toMatchObject({ depth: true, stencil: false }); // FIX-1: target's buffers, not renderer flags
+        expect(object.visible).toBe(false);
+        expect(object.frustumCulled).toBe(true);
+        expect(child.visible).toBe(false);
+        expect(light.visible).toBe(false);
+        expect(r._renderContexts.__odysseyDepthPatched).toBeUndefined();
+        // The prologue saw the scene pass, the depth-1 context, and the revealed object.
+        expect(r.prologues[0]).toMatchObject({
+            object: 'far-chapter-mesh',
+            visible: true,
+            frustumCulled: false,
+            target: scenePass.renderTarget,
+            mrt: 'SCENE_MRT',
+            fb: false,
+            ctx: `SCENE_RT|SCENE_MRT|${POST_SCENE_PASS_CALL_DEPTH}`,
+        });
+        await promise;
+    });
+
+    it('restores even when compileAsync throws synchronously', () => {
+        const r = new R185Renderer();
+        const scenePass = { renderTarget: 'SCENE_RT', getMRT: () => null };
+        const object = {
+            name: 'o', isMesh: true, visible: false, frustumCulled: true,
+        };
+        expect(() => launchCompileInScenePassPrologue(r, scenePass, object, () => { throw new Error('x'); })).toThrow('x');
+        expect(r._renderTarget).toBeNull();
+        expect(object.visible).toBe(false);
+        expect(r._renderContexts.__odysseyDepthPatched).toBeUndefined();
+    });
+});
+
+describe('item 2.11 — compileGroupUnderLiveLoop / compileGroupThroughPost(live)', () => {
+    const hiddenChapter = () => {
+        const a = {
+            name: 'a', isMesh: true, visible: false, frustumCulled: true, material: { uuid: 'ma' },
+        };
+        const b = {
+            name: 'b', isMesh: true, visible: false, frustumCulled: true, material: { uuid: 'mb', transparent: true, side: 2 },
+        };
+        const group = { name: 'ch6', visible: false, traverse(fn) { fn(this); fn(a); fn(b); } };
+        return { group, a, b };
+    };
+
+    it('drained builds see the scene-pass binding across yields while live frames keep rendering to the canvas', async () => {
+        const r = new R185Renderer();
+        const { group, a, b } = hiddenChapter();
+        const post = { scenePass: { renderTarget: 'SCENE_RT', getMRT: () => 'SCENE_MRT' } };
+        const done = compileGroupUnderLiveLoop(r, post, 'SCENE', 'CAM', group);
+        // The rAF loop keeps going while the builds yield.
+        r.render('post');
+        await tick();
+        r.render('post');
+        await done;
+        expect(r.builds.map((x) => x.object).sort()).toEqual(['a', 'b']); // hidden objects compiled
+        for (const build of r.builds) {
+            expect(build.ctx).toBe(`SCENE_RT|SCENE_MRT|${POST_SCENE_PASS_CALL_DEPTH}`);
+            expect(build.before).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT', tone: 'none' });
+            expect(build.after).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT', tone: 'none' });
+        }
+        const quads = r.frames.filter((f) => f.label === 'post');
+        expect(quads.length).toBe(2);
+        quads.forEach((f) => { expect(f.target).toBeNull(); expect(f.tone).toBe('ACES'); });
+        expect(a.visible).toBe(false);
+        expect(b.visible).toBe(false);
+        expect(r._renderTarget).toBeNull();
+        // Everything released.
+        expect(r.__odysseyLiveCompileReads).toBeUndefined();
+        expect(r.__odysseySideCapture).toBeUndefined();
+        expect(Object.prototype.hasOwnProperty.call(r, 'getMRT')).toBe(false);
+    });
+
+    it('compileGroupThroughPost runs the live path only when asked, and still refuses otherwise', async () => {
+        const r = new R185Renderer();
+        const { group } = hiddenChapter();
+        const post = { scenePass: { renderTarget: 'SCENE_RT', getMRT: () => 'SCENE_MRT' } };
+        expect(await compileGroupThroughPost(r, post, 'SCENE', 'CAM', group, true)).toBe(false);
+        expect(r.builds.length).toBe(0);
+        expect(await compileGroupThroughPost(r, post, 'SCENE', 'CAM', group, true, { live: true })).toBe(true);
+        expect(r.builds.length).toBe(2);
+    });
+
+    it('is a no-op (false) without a post scene pass', async () => {
+        const r = new R185Renderer();
+        const { group } = hiddenChapter();
+        expect(await compileGroupUnderLiveLoop(r, null, 'SCENE', 'CAM', group)).toBe(false);
     });
 });

@@ -361,6 +361,11 @@ export class OdysseyBoardController {
         // Suppressed during capture-restricted runs. When ON it OWNS residency, so the
         // background chapter loader + full background render-warm are disabled (below) to avoid
         // fighting the evictor. NOT auto-enabled on the RTX/keep-alive path — flag-only.
+        // Item 2.11 (default ON; ?odysseyLiveCompile=0 falls back to the synchronous render-warm
+        // alone): background chapters compile through the live-loop-safe compileAsync path
+        // BEFORE their render-warm, so the warm creates no pipelines.
+        this.liveCompileEnabled = !readBooleanUrlFlag('odysseyLiveCompileOff')
+            && readUrlValue('odysseyLiveCompile') !== '0';
         this.chapterEvictionEnabled = (options.chapterEviction === true
             || readBooleanUrlFlag('odysseyChapterEvict'))
             && !this.restrictStartupChapterLoading;
@@ -1407,19 +1412,17 @@ export class OdysseyBoardController {
             return;
         }
 
-        // r185 rework (2026-08-20): this drain used to run background compileAsync batches
-        // (one shared binding, sequential awaits). r185's compileAsync defers every object's
-        // node build into a main-thread-yielding loop that reads the LIVE renderer target/MRT
-        // at build time — under a live rAF loop those reads drift with the loop's own rebinding
-        // and the poisoned builder states land in an MRT-agnostic cache (the black-screen
-        // failure; see warmup/post-target-compile.js's header). There is no safe background
-        // compileAsync on r185, so the drain now does the ONLY live-loop-safe warm directly:
-        // the synchronous private-target render-warm. One chapter per tick — the warm render
-        // pays that chapter's pipeline compile synchronously (bounded hitch, idle-gated by
-        // _canRunBackgroundTask above; this matches the pre-existing fallback behaviour when
-        // background compiles failed to land, and r184's compile speedups shrink it), then the
-        // drain reschedules so consecutive warms never stack in one frame. Nearest-to-player
-        // first so the closest chapters become scroll-safe soonest.
+        // r185 rework (2026-08-20) + item 2.11 (2026-08-21). r185's compileAsync defers every
+        // object's node build into a main-thread-yielding loop that reads the LIVE renderer
+        // target/MRT at build time, so from 08-20 this drain ran ONLY the synchronous
+        // private-target render-warm — which paid each chapter's pipeline compile synchronously
+        // (78 sync creations for chapters 6–8, 1.4–1.8 s idle-gated stalls, r185p1light cells).
+        // Now the drain first compiles the chapter through the live-loop-safe path
+        // (_prewarmChapterEnvironment → compileGroupUnderLiveLoop: the deferred builds' reads
+        // are answered per item, nothing is bound across a yield — see post-target-compile.js),
+        // then runs the same render-warm, which creates no pipelines any more (~4 ms: GPU
+        // uploads + first update()). One chapter per tick, nearest-to-player first, idle-gated
+        // by _canRunBackgroundTask above; ?odysseyLiveCompile=0 restores the 08-20 behaviour.
         const focus = Number.isFinite(this.focusChapter) ? this.focusChapter : 1;
         this.prewarmQueue.sort((a, b) => Math.abs(a - focus) - Math.abs(b - focus));
         const batch = this.prewarmQueue.splice(0, 1);
@@ -1430,6 +1433,15 @@ export class OdysseyBoardController {
             for (const ch of batch) {
                 const env = this.environmentManager?.environments?.get(ch);
                 if (!env || env._renderWarmed) continue;
+                if (!env.prewarmed && this.liveCompileEnabled) {
+                    const compileStart = performance.now();
+                    // eslint-disable-next-line no-await-in-loop
+                    await this._prewarmChapterEnvironment(ch);
+                    this._liveCompileTimings = this._liveCompileTimings || {};
+                    this._liveCompileTimings[ch] = Math.round(performance.now() - compileStart);
+                    // The chapter may have been evicted / the board torn down while compiling.
+                    if (!this.isActive || this.environmentManager?.environments?.get(ch) !== env) continue;
+                }
                 const warmStart = performance.now();
                 const warmed = this._renderWarmChapterOffscreen(ch, env);
                 if (warmed) {
@@ -1618,13 +1630,25 @@ export class OdysseyBoardController {
                 // sweep should simply wait; the bound exists only so a stuck/rejected compile can
                 // never leave _bgRenderWarmComplete false forever (the adaptive controller gates
                 // on it). ~30 x 200ms = 6s, matching the original grace — but non-blocking now.
-                if (this._bgWarmWaits[ch] <= 30) {
+                // Item 2.11: with the live-loop compile on, the drain owns every un-compiled
+                // chapter (compile, then the cheap warm) — the sweep must never "warm anyway",
+                // that is exactly the synchronous compile this item removes. Queue it (dedupes)
+                // and rotate; the bound still lets the sweep COMPLETE if a compile never lands.
+                if (this.liveCompileEnabled) this._queueChapterPrewarm(ch);
+                if (this._bgWarmWaits[ch] <= (this.liveCompileEnabled ? 90 : 30)) {
                     // Head-of-line rule again: a chapter still compiling must not hold up a
                     // chapter that is already compiled and ready to warm.
                     idx += 1;
                     order.push(ch);
                     this._bgRenderWarmPending = Math.max(0, order.length - idx);
                     setTimeout(step, 200);
+                    return;
+                }
+                if (this.liveCompileEnabled) {
+                    console.warn(`[OdysseyWarmup] chapter ${ch} compile never landed — left to first visit`);
+                    idx += 1;
+                    this._bgRenderWarmPending = Math.max(0, order.length - idx);
+                    setTimeout(step, 75);
                     return;
                 }
                 console.warn(`[OdysseyWarmup] chapter ${ch} still not prewarmed after grace window — warming anyway`);
@@ -1671,6 +1695,11 @@ export class OdysseyBoardController {
         if (!this.isActive || !env || env._renderWarmed) return;
         if (!env.prewarmed && attempt < 30) { // ~30 × 200ms = 6s grace for the compile to land
             setTimeout(() => this._deferRenderWarm(chapterId, env, attempt + 1), 200);
+            return;
+        }
+        // Item 2.11: the drain compiles then warms; never fall back to a synchronous compile here.
+        if (!env.prewarmed && this.liveCompileEnabled) {
+            this._queueChapterPrewarm(chapterId);
             return;
         }
         this._renderWarmChapterOffscreen(chapterId, env);
@@ -1860,10 +1889,12 @@ export class OdysseyBoardController {
     }
 
     /** @private */
-    _compileGroupThroughPost(group) {
-        // r185: resolves false (compile skipped) when the loop is live and post is active —
-        // deferred builds under a live loop poison the MRT-agnostic builder cache, so
-        // background warming belongs to the private-target render-warm, never compileAsync.
+    _compileGroupThroughPost(group, options = {}) {
+        // r185: resolves false (compile skipped) when the loop is live and post is active,
+        // UNLESS `options.live` — item 2.11's live-loop path, which answers the deferred
+        // builds' target/MRT reads per item instead of binding anything across a yield
+        // (post-target-compile.js, "Item 2.11"). Without it, background warming belonged to
+        // the synchronous private-target render-warm alone.
         return compileGroupThroughPost(
             this.renderer,
             this.postProcessingStack,
@@ -1871,6 +1902,7 @@ export class OdysseyBoardController {
             this.camera,
             group,
             this._renderLoopActive(),
+            options,
         );
     }
 
@@ -1895,6 +1927,25 @@ export class OdysseyBoardController {
         if (!env || env.prewarmed) return;
 
         const { group } = env;
+
+        // LIVE loop (item 2.11): the compile module reveals each object for compileAsync's
+        // synchronous prologue only — revealing the whole (far, hidden) chapter across the
+        // await would make every live frame DRAW it, frustum-uncullable, with pipelines that
+        // do not exist yet. No deep-reveal here; `live` selects compileGroupUnderLiveLoop.
+        if (this._renderLoopActive()) {
+            if (!this.liveCompileEnabled) return;
+            try {
+                const compiled = await this._compileGroupThroughPost(group, { live: true });
+                if (compiled) {
+                    env.prewarmed = true;
+                    console.log(`[OdysseyBoard] Prewarmed chapter ${chapterId} shaders (live loop)`);
+                }
+            } catch (error) {
+                console.warn(`[OdysseyBoard] Live shader prewarm failed for chapter ${chapterId}:`, error);
+            }
+            return;
+        }
+
         const previousGroupVisibility = group.visible;
         const frustumOverrides = [];
 
