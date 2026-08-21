@@ -436,13 +436,23 @@ export class OdysseyTslPipeline {
      * previously active variant afterwards (re-bind of a cached node — no recompile).
      * @param {Function|null} yieldFn optional async yield between renders (keeps the
      *   loading overlay animating)
+     * @param {{lensStates?: boolean[], skipActive?: boolean}} [options] which lens variants to
+     *   warm; fast-start passes `lensStates: [false], skipActive: true` — the lean pair only
+     *   (bloom on/off) minus the variant already live (the warm sample rendered it), so the ch7
+     *   lens branch warms on first visit. Measured 2026-08-21 (plan item 2.12): the bloom node's
+     *   five quad passes were the only pipelines still created synchronously on the first live
+     *   post frame (~49 ms); the director's bloom weight is 0 at p=0, so the sample bound no-bloom.
      */
-    async warmOutputVariants(yieldFn = null) {
+    async warmOutputVariants(yieldFn = null, options = {}) {
         const savedKey = this._activeVariantKey;
         const bloomStates = this.bloomNode ? [true, false] : [false];
+        const lensStates = Array.isArray(options.lensStates) && options.lensStates.length
+            ? options.lensStates
+            : [false, true];
         const warmed = new Set();
+        if (options.skipActive && savedKey) warmed.add(savedKey);
         /* eslint-disable no-await-in-loop */
-        for (const withLens of [false, true]) {
+        for (const withLens of lensStates) {
             for (const withBloom of bloomStates) {
                 const key = OdysseyTslPipeline._variantKey(withLens, withBloom);
                 if (warmed.has(key)) continue;
