@@ -64,6 +64,7 @@ import {
     fbm3, noise3, ridged3, snoise3,
 } from './shared/odyssey-tsl-noise.js';
 import { billboardWorld } from './shared/odyssey-tsl-billboard.js';
+import { getLakeNoiseTexture, makeLakeNoiseSampler } from './shared/odyssey-lake-noise-bake.js';
 import { buildTileableNoise3D } from './shared/odyssey-baked-noise.js';
 
 // Lake surface Y (mirrors LAVA_LAKE_Y in earth-core.js). Used for the emissive
@@ -262,7 +263,18 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
 //
 // Exported as `createLavaFloorTSL` (the public API name the plan + earth-core.js use)
 // with a `createLavaLakeTSL` alias below for readability at call sites.
+// `options.noise`: 'analytic' (default — the shared calibrated simplex, 19 noise bodies per fragment)
+// or 'baked' (the SAME primitive baked into a periodic R16F 3D texture, 19 fetches — see
+// shared/odyssey-lake-noise-bake.js and docs/ODYSSEY_EARTH_CORE_LAVA_LAKE_REMAKE_2026-08.md).
+// `options.noiseSource`: an explicit `(p) => float` TSL closure (the playground's split A/B).
+// `options.debug`: 0 (ship), 2 = tier-ID output (crust/mid/hot/bloom as flat colours) for mask
+// statistics in captures — a BUILD-time option so the shipped graph is byte-identical.
 export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent = uniform(0), options = {}) {
+    let noiseMode = options.noise === 'baked' ? 'baked' : 'analytic';
+    if (options.noiseSource) noiseMode = 'custom';
+    const sn = options.noiseSource
+        ?? (noiseMode === 'baked' ? makeLakeNoiseSampler(getLakeNoiseTexture()) : snoise3);
+    const debugTiers = options.debug === 2;
     const uColorHot = uniform(new THREE.Color(0xff8a24)); // Warm molten orange (hottest veins)
     const uColorMid = uniform(new THREE.Color(0xb83208)); // Deep molten orange
     // Charred crust. Was 0x050206 — so near-black that the lake read as a VOID everywhere
@@ -296,8 +308,8 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // at the rim so the lake reads flat-calm to the far shore, never a jagged wall.
     const posL = positionLocal;
     const vtime = uTime.mul(0.3);
-    const bubble = snoise3(vec3(posL.x.mul(0.1), posL.z.mul(0.1), vtime));
-    const flow = snoise3(vec3(posL.x.mul(0.05).add(vtime.mul(0.5)), posL.z.mul(0.05), vtime.mul(0.2)));
+    const bubble = sn(vec3(posL.x.mul(0.1), posL.z.mul(0.1), vtime));
+    const flow = sn(vec3(posL.x.mul(0.05).add(vtime.mul(0.5)), posL.z.mul(0.05), vtime.mul(0.2)));
     const uvCentered = uv().sub(0.5);
     const radial = length(uvCentered);
     const rimFalloff = oneMinus(smoothstep(0.3, 0.55, radial)); // 1 center → 0 rim
@@ -322,16 +334,16 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // Lava lake fbm dropped 4->3 octaves (perf): the largest co-visible surface in the chapter
     // (360x360 opaque plane the camera looks ACROSS); the finest octave is lost in haze + ACES.
     const warp = vec3(
-        fbm(vPos.mul(0.035).add(vec3(ftime.mul(0.4), 0.0, 0.0)), 3),
+        fbm(vPos.mul(0.035).add(vec3(ftime.mul(0.4), 0.0, 0.0)), 3, sn),
         0.0,
-        fbm(vPos.mul(0.035).add(vec3(0.0, 0.0, ftime.mul(0.4)).add(9.0)), 3),
+        fbm(vPos.mul(0.035).add(vec3(0.0, 0.0, ftime.mul(0.4)).add(9.0)), 3, sn),
     ).mul(6.0);
     const wPos = vPos.add(warp);
-    const flow1 = fbm(wPos.mul(0.06).add(vec3(ftime, 0.0, ftime.mul(0.5))), 3);
-    const flow2 = fbm(wPos.mul(0.1).add(vec3(ftime.mul(-0.3), ftime.mul(0.2), 0.0)), 3);
-    const cracks = fbm(wPos.mul(0.3).add(vec3(ftime.mul(0.1), 0.0, ftime.mul(0.15))), 3);
+    const flow1 = fbm(wPos.mul(0.06).add(vec3(ftime, 0.0, ftime.mul(0.5))), 3, sn);
+    const flow2 = fbm(wPos.mul(0.1).add(vec3(ftime.mul(-0.3), ftime.mul(0.2), 0.0)), 3, sn);
+    const cracks = fbm(wPos.mul(0.3).add(vec3(ftime.mul(0.1), 0.0, ftime.mul(0.15))), 3, sn);
     // High-freq crust map: dark charred islands floating in the molten (pyrestorm).
-    const crustMap = fbm(wPos.mul(0.5).add(vec3(ftime.mul(0.2), 0.0, 0.0)), 3).add(0.5);
+    const crustMap = fbm(wPos.mul(0.5).add(vec3(ftime.mul(0.2), 0.0, 0.0)), 3, sn).add(0.5);
     // WAVE 3a — THE STUDY'S CRUST WINDOW, ported. Wave 1 measured this exact trade three
     // times: at a wide window the lake is a dark floor with smears and stops being a key at
     // all; when the pale stop wins it becomes a cream beach. Crust is the MINORITY on a lake
@@ -383,7 +395,7 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // Slow hot spots that pulse (sparse warm highlights, not a wash) — plus the legacy
     // floor's pow-3 pulse spots at full energy inside the basins, beat-reactive like
     // the original createLavaFloor shader.
-    const hotSpot = pow(max(0.0, snoise3(wPos.mul(0.18).add(ftime.mul(1.4)))), 4.0);
+    const hotSpot = pow(max(0.0, sn(wPos.mul(0.18).add(ftime.mul(1.4)))), 4.0);
     const heatAlive = oneMinus(uSeam.mul(0.6)); // molten emission dies across the seam
     color = color.add(uColorHot.mul(hotSpot).mul(0.24).mul(heatAlive));
     color = color.add(uLegacyHot.mul(hotSpot).mul(vBasin).mul(0.55).mul(heatAlive));
@@ -439,9 +451,22 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // in the palette law); outside the basins the original cap holds the dark-crust
     // value ladder, and the white-hot #ffe6b0 tier stays reserved for the First Heart.
     const cap = mix(vec3(0.78, 0.46, 0.26), vec3(0.93, 0.9, 0.62), vBasin);
-    color = min(color, cap);
+    if (debugTiers) {
+        // Tier-ID output for mask statistics (captures only): luma of the PRE-cap colour →
+        // crust (blue) < 0.08 ≤ mid (green) < 0.35 ≤ hot (red) < 0.85 ≤ bloom tier (white).
+        const luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        const tier = step(0.08, luma).add(step(0.35, luma)).add(step(0.85, luma));
+        color = mix(
+            mix(vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), clamp(tier, 0.0, 1.0)),
+            mix(vec3(1.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0), clamp(tier.sub(2.0), 0.0, 1.0)),
+            clamp(tier.sub(1.0), 0.0, 1.0),
+        );
+    } else {
+        color = min(color, cap);
+    }
 
     const material = new THREE.MeshBasicNodeMaterial();
+    material.name = `earth-core-lake-${noiseMode}${debugTiers ? '-debug' : ''}`;
     material.positionNode = displaced;
     material.colorNode = color;
     material.transparent = false;
