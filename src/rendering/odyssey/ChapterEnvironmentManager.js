@@ -21,6 +21,9 @@ import {
 } from './chapter-environments/shared/chapter-profile.js';
 import { CHAPTER_SCENES, getChapterScene, exportNamesForScene } from './chapter-environments/registry.js';
 import {
+    seedChapterLightPool, releaseChapterLights, syncChapterLightSlots,
+} from './chapter-environments/shared/chapter-light-pool.js';
+import {
     SEAM_56_COLOUR_HALF_WIDTH,
     SEAM_56_AURORA_BRIDGE,
 } from './chapter-environments/shared/seam-bridges.js';
@@ -408,11 +411,19 @@ export class ChapterEnvironmentManager {
         this.persistentLightRig.name = 'odyssey-persistent-light-rig';
         this.persistentLightRig.visible = true; // never hidden — keeps the light set constant
         this.environmentGroup.add(this.persistentLightRig);
+        // 2.9 — the rig holds a FIXED set of light SLOTS (sized to two blending chapters), so the
+        // light ID SET — which three hashes into every material's builder key — never changes when
+        // chapters 3–8 are created in the background after the reveal (each creation used to
+        // re-create every visible pipeline synchronously). Chapters' own lights are VIRTUAL
+        // (acquireChapterLight(): never rendered) and are copied into the slots each frame by
+        // syncChapterLightSlots() below; see chapter-light-pool.js.
+        seedChapterLightPool(this.persistentLightRig);
         // Scratch matrix/vector reused when baking a reparented light's world placement.
         this._lightReparentMatrix = new THREE.Matrix4();
         this._lightReparentPos = new THREE.Vector3();
         this._lightReparentQuat = new THREE.Quaternion();
         this._lightReparentScale = new THREE.Vector3();
+        this._activeLightChapters = [];
 
         // Active environment references
         this.environments = new Map(); // chapterId -> { group, update }
@@ -589,7 +600,9 @@ export class ChapterEnvironmentManager {
         const lights = [];
         // Collect first; reparenting mutates the tree, so don't reparent mid-traverse.
         group.traverse((child) => {
-            if (child.isLight) lights.push(child);
+            // Virtual (pooled) lights stay in the chapter group, hidden: the rig's SLOTS render
+            // them. Only a light constructed outside the pool is reparented the QW4 way.
+            if (child.isLight && !child.userData?.chapterVirtualLight) lights.push(child);
         });
 
         // Ensure world matrices are current so baked placement is accurate.
@@ -684,6 +697,7 @@ export class ChapterEnvironmentManager {
         const rigLights = this._reparentChapterLights(group);
 
         this.environments.set(chapterId, {
+            chapterId,
             group,
             update: def.update,
             config: def.config,
@@ -730,6 +744,7 @@ export class ChapterEnvironmentManager {
             }
             env.rigLights.length = 0;
         }
+        if (Number.isInteger(env.chapterId)) releaseChapterLights(env.chapterId);
 
         // 2) Geometry + material + ALL textures (material maps AND uniform .isTexture) + RTs.
         if (env.group) {
@@ -1304,6 +1319,17 @@ export class ChapterEnvironmentManager {
                 }
             }
         });
+        // 2.9 — write the active chapters' VIRTUAL lights into the rig's fixed slots (intensity ×
+        // blend weight), after their update() rewrote intensities. Chapters at weight 0 release
+        // their slots; the slot set itself never changes, so no builder key ever does.
+        this._activeLightChapters.length = 0;
+        this.environments.forEach((env) => {
+            const weight = env.lastOpacity ?? (env.group.visible ? 1 : 0);
+            if (weight > 0 && Number.isInteger(env.chapterId)) {
+                this._activeLightChapters.push({ chapterId: env.chapterId, weight });
+            }
+        });
+        syncChapterLightSlots(this._activeLightChapters);
 
         // Handle transition animation
         if (this.isTransitioning) {

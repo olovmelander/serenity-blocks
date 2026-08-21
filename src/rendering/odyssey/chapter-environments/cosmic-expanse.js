@@ -57,6 +57,7 @@ import {
     vec2,
     vec3,
 } from 'three/tsl';
+import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
 import {
     createVoidSkyTSL,
@@ -1757,14 +1758,14 @@ function createDistantGalaxy(uniforms) {
 }
 
 function setupCosmicLighting(group) {
-    group.add(new THREE.AmbientLight(0x141425, 0.5));
+    group.add(acquireChapterLight(6, 'AmbientLight', { color: 0x141425, intensity: 0.5 }));
 
-    const diskLight = new THREE.PointLight(0xff6a2a, 1.1, 600);
+    const diskLight = acquireChapterLight(6, 'PointLight', { color: 0xff6a2a, intensity: 1.1, distance: 600 });
     diskLight.position.set(0, 18, -640);
     group.add(diskLight);
     group.userData.diskLight = diskLight;
 
-    const rimLight = new THREE.DirectionalLight(0x6a4cff, 0.4);
+    const rimLight = acquireChapterLight(6, 'DirectionalLight', { color: 0x6a4cff, intensity: 0.4 });
     rimLight.position.set(-60, 50, -200);
     group.add(rimLight);
 }
