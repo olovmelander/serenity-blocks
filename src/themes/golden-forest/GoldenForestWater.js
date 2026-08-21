@@ -562,6 +562,10 @@ class GoldenForestWater extends Mesh {
             this.geometry.dispose();
         }
         this.mirrorCamera = null;
+        // r186 adds Object3D.dispose() (mrdoob/three.js#34141); r185 has no base
+        // dispose on Object3D/Mesh, so the optional call is a no-op today and
+        // chains into the base teardown once it exists. Keep it last.
+        super.dispose?.();
     }
 }
 

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-21T06:47:00.124Z",
-  "startedAt": "2026-08-21T06:45:48.157Z",
-  "runId": "2026-08-21T06-45-48-156Z",
+  "generatedAt": "2026-08-21T09:23:20.711Z",
+  "startedAt": "2026-08-21T09:22:03.932Z",
+  "runId": "2026-08-21T09-22-03-932Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 2,
@@ -19,17 +19,17 @@
     "failureCooldownMs": 15000
   },
   "selectedThemes": [
-    "black-hole",
-    "stellar-drift"
+    "neon-district",
+    "golden-forest"
   ],
   "results": [
     {
-      "theme": "black-hole",
-      "displayName": "Black Hole",
+      "theme": "neon-district",
+      "displayName": "Neon District",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\black-hole.png",
-      "report": "docs\\theme-screenshots\\results\\black-hole.json",
+      "screenshot": "docs\\theme-screenshots\\neon-district.png",
+      "report": "docs\\theme-screenshots\\results\\neon-district.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "processFailureCount": 0,
@@ -41,12 +41,12 @@
       }
     },
     {
-      "theme": "stellar-drift",
-      "displayName": "Stellar Drift",
+      "theme": "golden-forest",
+      "displayName": "Golden Forest",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\stellar-drift.png",
-      "report": "docs\\theme-screenshots\\results\\stellar-drift.json",
+      "screenshot": "docs\\theme-screenshots\\golden-forest.png",
+      "report": "docs\\theme-screenshots\\results\\golden-forest.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "processFailureCount": 0,

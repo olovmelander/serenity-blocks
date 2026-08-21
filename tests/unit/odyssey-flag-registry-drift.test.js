@@ -93,6 +93,11 @@ const CALL_SITES = {
         pattern: /get\('odysseyWarpPreinit'\);[\s\S]{0,400}?return 'defer';/,
         idiom: "_resolveWarpPreinitMode() — absent/invalid → 'defer'",
     },
+    odysseySharpen: optOutBoolean(
+        'odysseySharpen',
+        BOARD_CONTROLLER,
+        /get\('odysseySharpen'\);[\s\S]{0,200}?sharpenFlag === '0' \|\| sharpenFlag === 'false' \|\| sharpenFlag === 'off'/,
+    ),
 };
 
 const odysseyFlags = FLAG_REGISTRY.filter((flag) => flag.name.startsWith('odyssey'));

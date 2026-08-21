@@ -249,6 +249,29 @@ function profileSnapshot() {
             computeError: profileState.computeTimestampError,
         },
         renderer: current?.getRendererCounters?.() || null,
+        // three r185 renderer.info.memory byte accounting (MiB). Null when the
+        // renderer exposes no `total` (WebGL2 fallback / r181-shaped counts-only
+        // memory) — never NaN, so a capture can assert on it safely.
+        gpuMemory: readGpuMemoryMB(),
+    };
+}
+
+function readGpuMemoryMB() {
+    const mem = renderer?.info?.memory;
+    if (!mem || !Number.isFinite(mem.total)) return null;
+    const toMB = (bytes) => (Number.isFinite(bytes) ? bytes / (1024 * 1024) : null);
+    return {
+        totalMB: toMB(mem.total),
+        texturesMB: toMB(mem.texturesSize),
+        attributesMB: toMB(mem.attributesSize),
+        indexAttributesMB: toMB(mem.indexAttributesSize),
+        storageAttributesMB: toMB(mem.storageAttributesSize),
+        uniformBuffersMB: toMB(mem.uniformBuffersSize),
+        programsMB: toMB(mem.programsSize),
+        // Counts, not bytes: r185 tracks no renderTargetsSize.
+        renderTargets: Number.isFinite(mem.renderTargets) ? mem.renderTargets : null,
+        textures: Number.isFinite(mem.textures) ? mem.textures : null,
+        geometries: Number.isFinite(mem.geometries) ? mem.geometries : null,
     };
 }
 

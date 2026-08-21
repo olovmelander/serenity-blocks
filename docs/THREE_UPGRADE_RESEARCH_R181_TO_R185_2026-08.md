@@ -650,6 +650,29 @@ mocks of `three/webgpu`: shapes fine.
 > (`cap-neon-district-forceWebGL-fixed.png`), WebGPU lane unchanged. Classic-only twins are
 > retained but unreachable. r186 still unpublished as of 2026-08-21. Upstream issue drafts for
 > the two r185 bugs: `docs/UPSTREAM_THREE_R185_ISSUES_READY_TO_FILE.md`.
+>
+> **Follow-up round (2026-08-21, owner: "fix all five, no merge yet"):** (1) Look-calls
+> decided and recorded in code — moonshafts ship OPT-IN (stillwater-runtime gate comment),
+> stellar-drift particle layers stay VISIBLE (stellar-drift-theme uv comment). (2) **Perf
+> budgets re-targeted to the 82JU from drift-checked pairs**: Lane A World 0.655 ms / 61
+> draws, ch6 (p=0.73) 0.59 / 58, Act I ch1 (p=0.051) 1.507 / 104 — new station reports
+> `gpu-split-lanea-rtx3070-r185-{ch6-p073,act1-p0051}.json`; three contradicting `max`
+> values re-targeted with the same intent (Act I 1.0→1.8, its draw max 35→120, World
+> 1.5→1.2 restoring the dioramas-revert tripwire); `frameP95Ms.perSurface.odyssey` 7→15
+> (measured idle p95 14.0 + headroom); Stillwater's 6.0 calibration and every Lane B cell
+> kept as LEDGER values (tests guard that history; no gate consumes them). Gate PASS.
+> (3) Upstream issues: drafts ready; filing needs a signed-in GitHub session (the
+> automation browser has none). (4) Cheap wins landed: **SharpenNode (RCAS)** on the Odyssey
+> output, ramped 0→0.35 from render scale 0.95→0.65, `?odysseySharpen=0` opt-out, verified
+> in-game at the 0.65 floor (engages, toggles both ways, zero validation errors, no
+> ringing/speckle; a pale A/B frame turned out to be Earth Core's own progression, not the
+> pipeline); **r185 byte-level `Info.memory`** recorded in the perf session, playground
+> snapshot and debug overlay, with `gpuMemoryTotalMB` / `gpuMemoryScenarioGrowthMB` budget
+> rows (null baselines, compare-tool rows + self-test). (5) **r186 pre-positioned**:
+> `GoldenForestWater`/`MistyLakeWater` dispose chain to a future base `dispose()`,
+> `PCFSoftShadowMap`→`PCFShadowMap` at both WebGPU sites (Vogel-disk PCF; neon-district +
+> golden-forest re-captured clean, no acne/peter-panning), `Source`/`shadow.radius` confirmed
+> zero usage. Full suite 363 files / 3,643 tests green.
 
 ### Phase 0 — pre-bump, dual-compatible, land on main now (keeps r181 green)
 

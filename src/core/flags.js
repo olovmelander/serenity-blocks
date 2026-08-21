@@ -168,6 +168,9 @@ export const FLAG_REGISTRY = [
         name: 'odysseyWarpPreinit', default: 'defer', purpose: 'warp transition pre-init timing A/B (immediate|defer|off)', kind: 'refactor', graduationBar: 'A/B lever — pick a winner and delete', reader: 'local',
     },
     {
+        name: 'odysseySharpen', default: true, purpose: 'RCAS sharpen (r185 SharpenNode) on DRS-upscaled Odyssey output (rollback when 0)', kind: 'refactor', graduationBar: 'three r185 upgrade plan §11 item 4 — delete the opt-out after the sharpen survives a stable release at the 0.65 DRS floor', reader: 'local',
+    },
+    {
         name: 'owmDirtyCheck', default: true, purpose: 'opponent mini-board dirty-check repaint skip (rollback when 0)', kind: 'refactor', graduationBar: 'delete after a stable release with dirty-check on', reader: 'local',
     },
 

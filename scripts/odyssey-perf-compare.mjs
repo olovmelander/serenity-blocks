@@ -106,6 +106,14 @@ const METRIC_DEFS = [
     { name: 'longTasks.count', flat: ['browser', 'perf', 'longTasks', 'count'] },
     { name: 'longTasks.totalMs', flat: ['browser', 'perf', 'longTasks', 'totalMs'] },
     { name: 'memory.usedJSHeapSizeMB', flat: [] },
+    // three r185 Info.memory byte accounting (session v2 only; legacy flat
+    // payloads predate it). totalMB = resident footprint at collection,
+    // scenarioGrowthMB = same-renderer growth across the scenario window.
+    { name: 'gpuMemory.totalMB', flat: [] },
+    { name: 'gpuMemory.texturesMB', flat: [] },
+    { name: 'gpuMemory.attributesMB', flat: [] },
+    { name: 'gpuMemory.renderTargets', flat: [] },
+    { name: 'gpuMemory.scenarioGrowthMB', flat: [] },
 ];
 
 function metricRows(before, after) {
@@ -146,6 +154,21 @@ function budgetChecks(budgets, candidate) {
         budgetRef: `frameP95Ms.perSurface.odyssey${tier ? ` + maxPerTier.${tier}` : ''}`,
         baseline: finiteOrNull(b.frameP95Ms?.perSurface?.odyssey),
         max: tier ? finiteOrNull(b.frameP95Ms?.maxPerTier?.[tier]) : null,
+    });
+
+    // GPU-memory leak gate (r185 Info.memory). Both rows are {baseline, max}
+    // scalars keyed 1:1 to a session aggregate metric; null cells → SKIPPED.
+    checks.push({
+        metric: 'gpuMemory.totalMB',
+        budgetRef: 'gpuMemoryTotalMB',
+        baseline: finiteOrNull(b.gpuMemoryTotalMB?.baseline),
+        max: finiteOrNull(b.gpuMemoryTotalMB?.max),
+    });
+    checks.push({
+        metric: 'gpuMemory.scenarioGrowthMB',
+        budgetRef: 'gpuMemoryScenarioGrowthMB',
+        baseline: finiteOrNull(b.gpuMemoryScenarioGrowthMB?.baseline),
+        max: finiteOrNull(b.gpuMemoryScenarioGrowthMB?.max),
     });
 
     return checks;
@@ -256,6 +279,17 @@ function selfTest() {
     assert(
         runBudgetCheck(baselineBudgets, fixtureSession(12)) === false,
         'end-to-end: candidate 12 vs baseline 10 (>10%) exits non-zero',
+    );
+    // GPU-memory leak gate row can still fail (r185 Info.memory growth over max).
+    const leakSession = normalizeSession({
+        manifest: { session: { targetFrameRate: 60 } },
+        aggregate: { metrics: { 'gpuMemory.scenarioGrowthMB': { count: 1, median: 3 } } },
+        runs: [{}],
+    });
+    const leakBudgets = { budgets: { gpuMemoryScenarioGrowthMB: { baseline: null, max: 1 } } };
+    assert(
+        runBudgetCheck(leakBudgets, leakSession) === false,
+        'end-to-end: gpuMemory.scenarioGrowthMB 3 vs max 1 exits non-zero',
     );
 
     if (!ok) {
