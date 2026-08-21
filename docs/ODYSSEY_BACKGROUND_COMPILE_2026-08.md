@@ -1,16 +1,28 @@
 # Odyssey background chapter compile under the live loop (plan item 2.11)
 
-Status: **design final, implementation in progress** (2026-08-21). three 0.185.1, WebGPURenderer,
-Electron 38 / Chrome 140. Companion rows: `docs/R185_FAST_AND_BEAUTIFUL_PLAN_2026-08.md` 2.9
-(landed), 2.11 (this), 2.12 (Bloom first frame, landed). All three.js references are to
+Status: **LANDED 2026-08-21** (commit `b810144d` on `feature/game_improvements_20260724`; measured
+cells `r185p1live` in `reports/odyssey-perf/rtx3070-r181-vs-r185/AGGREGATE.md`). three 0.185.1,
+WebGPURenderer, Electron 38 / Chrome 140. Companion rows: `docs/R185_FAST_AND_BEAUTIFUL_PLAN_2026-08.md`
+2.9 (landed), 2.11 (this), 2.12 (Bloom first frame, landed). All three.js references are to
 `node_modules/three/src/...` at r185.
 
-A first cut of this design is already in the working tree (uncommitted):
-`src/rendering/odyssey/warmup/post-target-compile.js` (`rawBinding`, `beginLiveCompileReads`,
-`launchCompileInScenePassPrologue`, `compileGroupUnderLiveLoop`, lines ~40-730) and
-`src/rendering/odyssey/OdysseyBoardController.js` (`liveCompileEnabled` :367, drain :1399-1470,
-sweep :1630-1660, `_deferRenderWarm` :1694-1706, `_prewarmChapterEnvironment` :1923-1948).
-§3 lists what that cut still lacks; the adversarial review found one real hole (H-6 below).
+How this document came to be: four read-only research lenses over the r185 source and the repo's
+drain/warm code, two independent designs, an adversarial critique, and a synthesis (one workflow,
+8 agents), while the first cut was being written against the lenses' findings. The critique's
+amendments (H-6, H-8, FIX-1, FIX-4, H-9, H-12) are all in the landed code. ONE amendment was
+tried and reverted: the "dev assertion that the backing never equals the scene-pass target after a
+suspended section" fires inside the live scene pass, where `PassNode` has legitimately bound that
+target around nested `updateBefore` calls — it unbound mid-pass on the first run. The suspension
+of the NodeManager hooks closes H-6 by construction; no runtime guard.
+
+What landed (file → function): `src/rendering/odyssey/warmup/post-target-compile.js` —
+`rawBinding`, `beginLiveCompileReads`, `launchCompileInScenePassPrologue`,
+`compileGroupUnderLiveLoop`, `compileGroupThroughPost({ live })`, `compileObjectsFannedOut`
+hooks (`includeHidden`, `aroundCall`), `beginDeferredSideCapture` FIX-4;
+`src/rendering/odyssey/OdysseyBoardController.js` — `liveCompileEnabled` (flag), drain
+(compile then warm), sweep + `_deferRenderWarm` (no "warm anyway"), `_prewarmChapterEnvironment`
+live branch; tests in `tests/unit/odyssey-post-target-compile.test.js` (38). The drain tracks a
+chapter's compile through the queue's dedupe set rather than an `env._compileInFlight` promise.
 
 ---
 
@@ -143,7 +155,8 @@ binding (null) — not the overridden scene target (H-6).
 ### 1.5 What happens per chapter (`_drainPrewarmQueue`)
 
 1. Gate: `isActive`, `_canRunBackgroundTask` (idle + scroll-idle + frame-healthy, :1281-1322).
-2. `env._compileInFlight = this._prewarmChapterEnvironment(ch)`; await it. Inside:
+2. `await this._prewarmChapterEnvironment(ch)` (the chapter stays in the drain's dedupe set
+   meanwhile — there is no separate in-flight promise). Inside:
    `_compileGroupThroughPost(group, { live: true })` -> `compileGroupUnderLiveLoop` ->
    `beginLiveCompileReads` + `beginDeferredSideCapture` -> `compileObjectsFannedOut(..., {
    includeHidden: true, aroundCall: launchCompileInScenePassPrologue })` (6-wide pool, one
@@ -158,7 +171,8 @@ binding (null) — not the overridden scene target (H-6).
    non-representative bucket members (geometry/bind groups), `onBeforeRender`, the warm
    target's attachments, and RENDER-type update hooks the drain skipped (renderId gating,
    `NodeFrame.js:147-166`). Sets `env._renderWarmed` (Galaxy guarantee reader :1345).
-5. Clear `env._compileInFlight`; 180 ms to the next chapter; 5-retry cap on failure.
+5. 180 ms to the next chapter; 5-retry cap on a failed warm; a compile that did not land leaves
+   `env.prewarmed` false and the chapter is re-queued by the sweep (bounded).
 
 The sweep (`_startBackgroundRenderWarm`) and `_deferRenderWarm` never call
 `_renderWarmChapterOffscreen` on an env with `!env.prewarmed` while `liveCompileEnabled`: they
@@ -177,7 +191,7 @@ item removes).
 | H-3 | Live frame redirected into a bound target (black canvas) | Nothing is bound between frames; `render` is suspended so `_renderScene` sees `_renderTarget === null`, takes `_getFrameBufferTarget` + `_renderOutput` | `Renderer.js:1524-1564, 1774-1780, 2525` |
 | H-4 | Builder cache key / content mismatch | Key: `initialCacheKey` = material key + `context.id` + dynamic key; `context.id` is the live depth-1 scene-pass context (prologue under the depth patch, same signature + `mrt.id`). Content: built under the same target/MRT/samples answers the live pass gives. Lights stable (chapter-light-pool v2, 2.9). Backend key: `renderObject.context` + re-applied `material.side` (FIX-4) + re-asserted `ctx.depth/stencil` (FIX-1) | `RenderObject.js:263, 730-848, 841`, `RenderContexts.js:41-72`, `NodeManager.js:151-155, 194-304`, `WebGPUBackend.js:2113-2143`, `Pipelines.js:431-435` |
 | H-5 | Depth patch re-keying live contexts | `beginNestedContextDepth` is installed only inside the synchronous prologue `call()` and inside the synchronous warm render; `compileAsync`'s only `contexts.get` is in the prologue (:911); the live quad's depth-0 `get` (:1589) never sees it | `post-target-compile.js:226-240`, `Renderer.js:911, 1589, 2313` |
-| H-6 | **Drain-time FRAME hook restores the overridden target into the backing** (`updateBefore` runs outside `render()` with the override active; `PassNode/Reflector/RTT/RendererUtils` save `getRenderTarget()` = scene target, render, then `setRenderTarget(saved)` writes the scene target into the backing; the next quad frame then draws into the scene target while sampling it = H-2) | Wrap `renderer._nodes.updateBefore/updateForRender/updateAfter` in the suspend set; dev assertion after every suspended section that `backing.renderTarget !== scenePass.renderTarget`. Latent today (no chapter carries such a node; `surface-world` `reflector()` opt-in OFF; `castShadow=false`; `ShadowNode` RENDER-type skipped) | `Renderer.js:1046-1050, 1060`, `PassNode.js:807-868`, `ReflectorNode.js:547-548`, `RTTNode.js:217/256`, `RendererUtils.js:19-75`, `NodeManager.js:930-1000` |
+| H-6 | **Drain-time FRAME hook restores the overridden target into the backing** (`updateBefore` runs outside `render()` with the override active; `PassNode/Reflector/RTT/RendererUtils` save `getRenderTarget()` = scene target, render, then `setRenderTarget(saved)` writes the scene target into the backing; the next quad frame then draws into the scene target while sampling it = H-2) | Wrap `renderer._nodes.updateBefore/updateForRender/updateAfter` in the suspend set (landed; unit-tested with a PassNode-shaped hook). NO runtime assertion on the backing: the scene-pass target is legitimately bound around nested hooks inside the live scene pass (the assertion fired there and unbound mid-pass — reverted). Latent today (no chapter carries such a node; `surface-world` `reflector()` opt-in OFF; `castShadow=false`; `ShadowNode` RENDER-type skipped) | `Renderer.js:1046-1050, 1060`, `PassNode.js:807-868`, `ReflectorNode.js:547-548`, `RTTNode.js:217/256`, `RendererUtils.js:19-75`, `NodeManager.js:930-1000` |
 | H-7 | `rawBinding()` reading the accessor and "restoring" the scene target | `rawBinding` returns `state.backing` when the override is installed | `post-target-compile.js:55-61` (already in the cut; unit-tested in §4) |
 | H-8 | Async entry points wrapped => `liveDepth` raised across awaits => drained builds read the backing | Only synchronous members are wrapped; drop `renderAsync`, `computeAsync`, `clear*Async`, `readRenderTargetPixelsAsync` from the current cut's list | `Renderer.js:1078-1086` (`renderAsync` is `await init(); render()`) |
 | H-9 | Resize during a compile allocates canvas MSAA buffers with the scene target's sample count | `setSize`/`setPixelRatio` suspended | `WebGPUBackend.js:438-461`, `WebGPUTextureUtils.js:465-551` |
@@ -193,7 +207,14 @@ item removes).
 
 ---
 
-## §3 Implementation steps (in order)
+## §3 Implementation steps (as written before the landing; every numbered step is in except where noted)
+
+Notes against the landed code: step 1's `assertBackingSane()` was tried and reverted (see the
+status block); step 5's `__odysseyLiveCompileStats` counter and step 13's in-app
+`createRenderPipeline` counter were not added — the session's `browser.pipelines.sync` list and
+the renderer key trace are the instruments; step 9's `env._compileInFlight` is the queue's dedupe
+set; step 14's `pipelines.syncAfter10s` is derivable from the recorded list (every entry carries
+`at`).
 
 ### 3.1 `src/rendering/odyssey/warmup/post-target-compile.js`
 
@@ -341,7 +362,16 @@ differ (FIX-1); visibility/`frustumCulled` restored when `call()` throws; lights
 
 ---
 
-## §5 Measurement protocol
+## §5 Measurement protocol — and the result
+
+**Result (2026-08-21, process-per-run driver, n = 3 medians, `AGGREGATE.md` section r185p1live vs
+r185p1light):** synchronous pipeline creations after the reveal **0 in all nine cells** (gate);
+load/cold post-reveal p95 113 → 99 ms, p99 573 → 265; load/warm p95 107 → 53, p99 574 → 172; idle
+long-task total 13.7 → 9.9 s; startup / board-visible flat (cold 5,580 / 6,615; warm 5,349 / 6,269).
+Chrome (warm cache): chapters 6/7/8 compiled under the loop in 1,086 / 693 / 627 ms, render-warmed in
+4 / 5 / 8 ms, travel into 6 and 8 created 0 pipelines, screenshots identical, no WebGPU errors. The
+"r185p2live / r185p2sync" cell names below were written before the landing; the measured tag is
+`r185p1live`, and the `?odysseyLiveCompile=0` control is the r185p1light tree itself.
 
 Per ADR-0016 every number comes from the verified instrument; per ADR-0018 the three pin is
 0.185.1 throughout.
