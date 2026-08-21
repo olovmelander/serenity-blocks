@@ -434,10 +434,13 @@ export function createStillwaterRuntime({
         // model multiplied by it unconditionally — the `scatteringDensity *
         // null` WGSL error. r185 guards that multiply, and the module is
         // retuned against r185's front-to-back accumulation (iterate via the
-        // `stillwater-moonshafts` playground effect). Still opt-in via
-        // `?shafts=1` pending an in-theme look call + perf pass; the carve
-        // needs a live shadow map and registered casters, both scoped to the
-        // opt-in below so the default path pays nothing.
+        // `stillwater-moonshafts` playground effect). DECIDED 2026-08-21: ships
+        // OPT-IN (`?shafts=1`). From the fixed channel camera the volume reads as a
+        // moonlit veil rather than the Bauer beams the module was written for —
+        // beam striping needs the light slanted ACROSS the view (MOON_DIRECTION),
+        // which moves the visible moon disc: an art-direction pass, not a switch.
+        // The carve needs a live shadow map and registered casters, both scoped
+        // to the opt-in below so the default path pays nothing.
         if (qualityProfile.bloom && !reducedMotion && readToggle(params, 'shafts', false)) {
             renderer.shadowMap.enabled = true;
             shafts = createStillwaterShafts({ root: scene });

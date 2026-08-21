@@ -2061,6 +2061,12 @@ export class OdysseyBoardController {
             const bloomScale = Number.isFinite(bloomScaleOverride)
                 ? Math.min(1, Math.max(0.1, bloomScaleOverride))
                 : ODYSSEY_BLOOM_SCALE;
+            // RCAS sharpen on DRS'd output (three r185 SharpenNode; upgrade plan §11 item 4).
+            // Default ON; opt out with ?odysseySharpen=0 (A/B at a low ?odysseyPixelRatio).
+            // ?odysseySharpenMax=<0..1> overrides the lobe fraction reached at the 0.65 floor.
+            const sharpenFlag = getUrlSearchParams()?.get('odysseySharpen');
+            const sharpenEnabled = !(sharpenFlag === '0' || sharpenFlag === 'false' || sharpenFlag === 'off');
+            const sharpenMaxOverride = Number.parseFloat(readUrlValue('odysseySharpenMax'));
             // WebGPU TSL post graph: bloom + ACES + per-chapter grade + CA + vignette + grain.
             // API-compatible with the old PostProcessingStack (update/render/resize/seam/dispose).
             this.postProcessingStack = new OdysseyTslPipeline(this.renderer, this.scene, this.camera, {
@@ -2077,11 +2083,14 @@ export class OdysseyBoardController {
                 // the sub-pixel wildflower geometry needs real sample coverage; lower tiers
                 // keep QW1's zero-sample pass (the iGPU budget that motivated it).
                 sceneSamples: ['High', 'Ultra', 'Extreme'].includes(this.qualityName) ? 4 : 0,
+                sharpen: sharpenEnabled,
+                sharpenMaxAmount: Number.isFinite(sharpenMaxOverride) ? sharpenMaxOverride : undefined,
             });
             if (Number.isFinite(postQualityOverride)) {
                 this.postProcessingStack.setPostQuality(postQualityOverride);
             }
             this.postProcessingStack.setSize(this.container.clientWidth, this.container.clientHeight);
+            this._syncOutputSharpen(); // the policy / ?odysseyPixelRatio may already start below 1
             this.composer = null;
             this.bloomPass = null;
             console.log(`[OdysseyBoard] OdysseyTslPipeline initialized (${this.qualityName})`);
@@ -2495,6 +2504,7 @@ export class OdysseyBoardController {
         } else if (this.composer) {
             this.composer.setSize(width, height);
         }
+        this._syncOutputSharpen();
     }
 
     /**
@@ -2527,6 +2537,30 @@ export class OdysseyBoardController {
         } else if (this.composer?.setSize) {
             this.composer.setSize(width, height);
         }
+        this._syncOutputSharpen();
+    }
+
+    /**
+     * RCAS sharpen follow-through (three r185 SharpenNode; upgrade plan §11 item 4): hand
+     * the TSL pipeline the LIVE render scale — the pixel ratio the renderer actually applied
+     * over this tier's full-resolution ratio — so it attaches contrast-adaptive sharpening
+     * only while the output is being upscaled (DRS below 0.95, or a low ?odysseyPixelRatio
+     * override; the floor 0.65 reaches the full amount). Call after every setPixelRatio site
+     * once the pipeline exists; edge events only (DRS is debounced, resize is user-driven).
+     * No-op without the TSL pipeline (legacy/no-post paths).
+     * @private
+     */
+    _syncOutputSharpen() {
+        const pipeline = this.postProcessingStack;
+        if (!pipeline?.setRenderScale || typeof this.renderer?.getPixelRatio !== 'function') return;
+        const fullPixelRatio = computeScenePixelRatio({
+            renderScale: 1,
+            devicePixelRatio: window.devicePixelRatio || 1,
+            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
+            sceneType: 'odyssey',
+            qualityTier: this.qualityName,
+        });
+        pipeline.setRenderScale(fullPixelRatio > 0 ? this.renderer.getPixelRatio() / fullPixelRatio : 1);
     }
 
     /**

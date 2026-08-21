@@ -7,6 +7,12 @@
 //   --disable-background-loading when isolating).
 // - Collects long-task / heap / release-gate evidence (null when a hook is
 //   absent — never throws).
+// - GPU-memory leak gate (three r185 Info.memory byte accounting, plan §11 item
+//   3): samples `renderer.info.memory` once at each perf reset (= scenario window
+//   start, after the runtime is clean), once per --reload-cycles boot, and once at
+//   collection. `gpuMemory.scenarioGrowthMB` = end minus reset on the SAME renderer
+//   — the leak signal; `gpuMemory.totalMB` = resident footprint at collection.
+//   A renderer without byte fields (WebGL2 fallback, r181) yields null, never NaN.
 // - --runs N repeats the single-run flow with a fresh page per run and emits a
 //   per-metric aggregate (median/p95/min/max) alongside every raw run payload.
 // - Every output embeds a machine manifest (OS/CPU/RAM/GPU adapter/commit/
@@ -260,6 +266,36 @@ async function waitFor(win, predicateSource, timeoutMs = 140000) {
     return false;
 }
 
+/** In-page probe source: one snapshot of the board renderer's `info.memory` byte
+ * accounting (three r185 `renderers/common/Info.js`). Field names are the
+ * renderer's own — `*Size` are bytes, `renderTargets`/`textures`/`geometries`/
+ * `programs` are counts (r185 has no renderTargetsSize). Every field is
+ * finite-or-null so an r181 / WebGL2 `info.memory` (counts only) reads
+ * `total: null` = "no byte accounting", never NaN. Null when no renderer. */
+const GPU_MEMORY_PROBE = `(() => {
+    try {
+        const mem = window.odysseyMode?.boardController?.renderer?.info?.memory;
+        if (!mem || typeof mem !== 'object') return null;
+        const num = (v) => (Number.isFinite(v) ? v : null);
+        return {
+            total: num(mem.total),
+            texturesSize: num(mem.texturesSize),
+            attributesSize: num(mem.attributesSize),
+            indexAttributesSize: num(mem.indexAttributesSize),
+            storageAttributesSize: num(mem.storageAttributesSize),
+            indirectStorageAttributesSize: num(mem.indirectStorageAttributesSize),
+            uniformBuffersSize: num(mem.uniformBuffersSize),
+            readbackBuffersSize: num(mem.readbackBuffersSize),
+            programsSize: num(mem.programsSize),
+            renderTargets: num(mem.renderTargets),
+            textures: num(mem.textures),
+            geometries: num(mem.geometries),
+            programs: num(mem.programs),
+            atMs: performance.now(),
+        };
+    } catch { return null; }
+})()`;
+
 async function resetPerf(win, label) {
     await execute(win, `
         (() => {
@@ -268,6 +304,9 @@ async function resetPerf(win, label) {
             window.perfMonitor?.reset?.();
             window.perfMonitor?.clearSpikes?.();
             window.perfMonitor?.event?.('odyssey-perf-reset', { label: ${JSON.stringify(label)} });
+            // GPU-memory "before" sample, same renderer as collectResult's "after".
+            // The :load reset precedes the renderer (null); scenario resets overwrite it.
+            window.__odysseyPerfGpuMemoryAtReset = ${GPU_MEMORY_PROBE};
             return true;
         })();
     `);
@@ -444,7 +483,7 @@ async function runScenario(win) {
     return null;
 }
 
-async function collectResult(win, runIndex) {
+async function collectResult(win, runIndex, gpuMemoryCycles = []) {
     const browser = await execute(win, `
         (() => {
             const target = ${JSON.stringify(TARGET_FRAME_RATE)};
@@ -452,6 +491,14 @@ async function collectResult(win, runIndex) {
             return {
                 location: window.location.href,
                 devicePixelRatio: window.devicePixelRatio,
+                // r185 Info.memory byte accounting on the board renderer: the sample
+                // taken at the scenario's perf reset and the one taken now. Both are
+                // the SAME renderer instance, so atEnd.total - atReset.total is
+                // resident growth over the scenario window (the leak gate).
+                gpuMemory: {
+                    atReset: window.__odysseyPerfGpuMemoryAtReset ?? null,
+                    atEnd: ${GPU_MEMORY_PROBE},
+                },
                 // Machine-manifest GPU identity as the page sees it (three.js WebGPU
                 // backend adapter). Nullable — WebGL2 fallback / older builds have none.
                 gpu: (() => {
@@ -545,6 +592,9 @@ async function collectResult(win, runIndex) {
         durationMs: DURATION_MS,
         panDurationMs: PAN_DURATION_MS,
         reloadCycles: RELOAD_CYCLES,
+        // One Info.memory sample per --reload-cycles boot (each cycle is a fresh
+        // page, so these are per-boot footprints, NOT a same-renderer series).
+        gpuMemoryCycles,
         parsedConsole: parseConsole(consoleLines),
         browser,
         consoleLines: [...consoleLines],
@@ -618,6 +668,31 @@ function extractRunMetrics(run) {
         'longTasks.maxMs': finiteOrNull(perf.longTasks?.maxMs),
         'memory.usedJSHeapSizeMB': perf.memory?.usedJSHeapSize != null
             ? finiteOrNull(perf.memory.usedJSHeapSize / (1024 * 1024))
+            : null,
+        ...extractGpuMemoryMetrics(run),
+    };
+}
+
+/** r185 Info.memory bytes → MB metrics. Names mirror the renderer's fields
+ * (`texturesSize` → `gpuMemory.texturesMB`); `renderTargets` is a count (r185
+ * tracks no renderTargetsSize). Missing byte accounting yields null everywhere. */
+function extractGpuMemoryMetrics(run) {
+    const atEnd = run?.browser?.gpuMemory?.atEnd || null;
+    const atReset = run?.browser?.gpuMemory?.atReset || null;
+    const toMB = (bytes) => (bytes == null ? null : finiteOrNull(bytes / (1024 * 1024)));
+    return {
+        'gpuMemory.totalMB': toMB(atEnd?.total),
+        'gpuMemory.texturesMB': toMB(atEnd?.texturesSize),
+        'gpuMemory.attributesMB': toMB(atEnd?.attributesSize),
+        'gpuMemory.indexAttributesMB': toMB(atEnd?.indexAttributesSize),
+        'gpuMemory.storageAttributesMB': toMB(atEnd?.storageAttributesSize),
+        'gpuMemory.uniformBuffersMB': toMB(atEnd?.uniformBuffersSize),
+        'gpuMemory.programsMB': toMB(atEnd?.programsSize),
+        'gpuMemory.renderTargets': finiteOrNull(atEnd?.renderTargets),
+        // Leak gate: same-renderer growth between the scenario's perf reset and
+        // collection. Null for the load scenario (its only reset precedes the renderer).
+        'gpuMemory.scenarioGrowthMB': (atEnd?.total != null && atReset?.total != null)
+            ? toMB(atEnd.total - atReset.total)
             : null,
     };
 }
@@ -707,22 +782,26 @@ function buildManifest(runs) {
 }
 
 async function runDegradeCycles(win) {
+    const samples = [];
     for (let cycle = 0; cycle < RELOAD_CYCLES; cycle += 1) {
         await bootstrapOdyssey(win, { resetBeforeActivate: false });
         await delay(1000);
+        samples.push({ cycle, memory: await execute(win, GPU_MEMORY_PROBE) });
     }
+    return samples;
 }
 
 async function runOnce(runIndex) {
     consoleLines.length = 0;
     const win = createWindow();
     try {
+        let gpuMemoryCycles = [];
         if (RELOAD_CYCLES > 0) {
-            await runDegradeCycles(win);
+            gpuMemoryCycles = await runDegradeCycles(win);
         }
         await bootstrapOdyssey(win, { resetBeforeActivate: true });
         await runScenario(win);
-        const result = await collectResult(win, runIndex);
+        const result = await collectResult(win, runIndex, gpuMemoryCycles);
         if (SCREENSHOT_PATH) {
             const image = await win.webContents.capturePage();
             await mkdir(path.dirname(SCREENSHOT_PATH), { recursive: true });

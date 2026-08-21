@@ -810,8 +810,14 @@ export default class GoldenForestTheme extends BaseTheme {
             return false;
         }
         this.renderer = renderer;
+        // PCFShadowMap (not PCFSoft): on r185's WebGPURenderer PCFShadowFilter is
+        // already soft — 5 Vogel-disk taps rotated per-pixel by interleaved
+        // gradient noise, each a hardware-compared 2x2 tap, disk scaled by
+        // shadow.radius * texelSize (ShadowFilterNode.js). PCFSoftShadowMap is
+        // removed for WebGPURenderer in r186 (mrdoob/three.js#33987); the classic
+        // WebGLRenderer fallback already coerced it to PCFShadowMap with a warning.
         this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.shadowMap.type = THREE.PCFShadowMap;
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         container.appendChild(this.renderer.domElement);

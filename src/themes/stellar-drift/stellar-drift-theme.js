@@ -3959,6 +3959,9 @@ export default class StellarDriftTheme extends BaseTheme {
         // Constant centre uv: the PointsNodeMaterial reads uv() for its soft-circle mask, but
         // WebGPU point primitives carry no per-fragment uv. Without the attribute TSL warns
         // ("Vertex attribute "uv" not found") and substitutes vec2(0) -> mask 0 -> invisible.
+        // DECIDED 2026-08-21: keep these layers VISIBLE (the material author's intent; they
+        // had been silently masked out on both r181 and r185). For pixel-parity with pre-
+        // upgrade footage, fill(0) instead — the warning stays silenced either way.
         geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(particleCount * 2).fill(0.5), 2));
 
         this.dustRingCompute = null;
