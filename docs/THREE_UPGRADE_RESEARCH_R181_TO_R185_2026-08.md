@@ -1,7 +1,28 @@
-# three.js upgrade plan: r181 → r185 (revised 2026-08-20)
+# three.js upgrade: r181 → r185 — CLOSED 2026-08-21 (a record, not a backlog)
 
-**Decision: upgrade to exactly `three@0.185.1`, now, as a phased project.** This revision
-replaces the 2026-08-13 research doc's "wait for r186" recommendation: as of 2026-08-20,
+> **Status: CLOSED — executed in full.** Every phase below shipped on the feature branch
+> between 2026-08-20 and 2026-08-21 (commits `38d91cfa` → `9af29357`): the portability
+> sweep, the exact-pin bump to `three@0.185.1`, the warm-up and MRT reworks, the
+> `RenderPipeline` rename, the validation matrix (browser + 61/61 Electron themes + the
+> WebGL-fallback lane), the perf re-baseline on the current machine on both instruments, the
+> moonshafts unblock, and the follow-ups (SharpenNode, `Info.memory` gate, r186
+> pre-positioning, budgets re-targeted). Four bugs were found and fixed on the way — two
+> upstream r185 defects (drafts in `UPSTREAM_THREE_R185_ISSUES_READY_TO_FILE.md`), the dead
+> `?shafts=1` wiring, and neon-district's black screen on every non-WebGPU machine.
+> Measured outcome: load-phase freezes −62…−86 %, idle spikes −63 %, JS heap −6…−9 %, GPU time
+> unchanged within quantization, startup wall-clock +4…+15 % (a documented bucket shift).
+> **Decisions that escaped into governance:** ADR-0018 (exact pin + upgrade protocol) and
+> ADR-0019 (gate on renderer kind, not backend).
+> **Still open, none engineering:** file the two upstream issues (needs a signed-in GitHub
+> session), close the stale Dependabot branch, merge to `main`, and the r186 delta when it
+> ships (§13). Read §12's status block for the execution log; everything else is the plan
+> as it was executed, kept verbatim as the record.
+
+---
+
+**Original decision (2026-08-20): upgrade to exactly `three@0.185.1`, now, as a phased
+project.** This revision
+replaced the 2026-08-13 research doc's "wait for r186" recommendation: as of 2026-08-20,
 r186 is **still unpublished** (npm `latest` = 0.185.1; the r186 milestone sits at 61 open /
 408 closed, due date 2026-08-19 shown as *overdue*, with pre-release API-rename polish
 landing on dev Aug 18–19 — it will likely ship within days-to-weeks, see §13). 0.185.1 is

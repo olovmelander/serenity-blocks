@@ -19,7 +19,6 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 |---|---|---|
 | [ARCHITECTURAL_REMEDIATION_PLAN.md](ARCHITECTURAL_REMEDIATION_PLAN.md) | Active | Umbrella roadmap and phase ordering. |
 | [ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md](ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md) | Tactical | Multiplayer stabilization pre-phase referenced by the umbrella plan. |
-| [THREE_UPGRADE_RESEARCH_R181_TO_R185_2026-08.md](THREE_UPGRADE_RESEARCH_R181_TO_R185_2026-08.md) | Tactical | three.js r181 → 0.185.1 upgrade plan (revised 2026-08-20): verified evidence, phased execution, capture matrix. Scope: everything touching three.js. |
 | [WEBGPU_THREEJS_WORKFLOW.md](WEBGPU_THREEJS_WORKFLOW.md) | Active | Required workflow for WebGPU/TSL visual changes. |
 | [SFX_GENERATION_WORKFLOW.md](SFX_GENERATION_WORKFLOW.md) | Active | Required workflow for local SFX generation. |
 | [adr/README.md](adr/README.md) | Active | Accepted architecture decisions and enforcement links. |
@@ -95,6 +94,8 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [SUMMER_MIDSUMMER_MASTERPIECE_PLAN.md](SUMMER_MIDSUMMER_MASTERPIECE_PLAN.md) | Reference | Theme plan. |
 | [SUMMER_THEME_VEGETATION_PLAN.md](SUMMER_THEME_VEGETATION_PLAN.md) | Reference | Theme plan. |
 | [tetromino-visual-upgrade-plan.md](tetromino-visual-upgrade-plan.md) | Reference | Visual feature plan. |
+| [THREE_UPGRADE_RESEARCH_R181_TO_R185_2026-08.md](THREE_UPGRADE_RESEARCH_R181_TO_R185_2026-08.md) | Reference | **CLOSED 2026-08-21 — a record, not a backlog.** three.js r181 → 0.185.1 upgrade: SHIPPED on the feature branch in full (portability sweep, exact-pin bump, warm-up + MRT reworks, RenderPipeline rename, 61/61 Electron matrix + WebGL-fallback lane, perf re-baseline on the 82JU, moonshafts unblock, SharpenNode + Info.memory gate, r186 pre-positioning). Four bugs found and fixed (two upstream r185 defects — drafts in `UPSTREAM_THREE_R185_ISSUES_READY_TO_FILE.md`). Read the header for the outcome and §12's status block for the log. Decisions that escaped into governance: ADR-0018 (exact pin + upgrade protocol), ADR-0019 (gate on renderer kind, not backend). Open, none engineering: file the upstream issues, close the Dependabot branch, merge, the r186 delta (§13). |
+| [UPSTREAM_THREE_R185_ISSUES_READY_TO_FILE.md](UPSTREAM_THREE_R185_ISSUES_READY_TO_FILE.md) | Reference | Copy-paste-ready three.js issue bodies for the two r185 defects found during the upgrade; status: drafted, not yet filed. |
 | [VESPER_CHRYSALIS_MASTERPIECE_UPGRADE_2026-07.md](VESPER_CHRYSALIS_MASTERPIECE_UPGRADE_2026-07.md) | Reference | Theme plan. |
 | [VESPER_CHRYSALIS_THEME_MASTERPLAN_2026-07.md](VESPER_CHRYSALIS_THEME_MASTERPLAN_2026-07.md) | Reference | Theme source plan. |
 | [VESPER_CHRYSALIS_VISUAL_UPGRADE_V3_2026-07.md](VESPER_CHRYSALIS_VISUAL_UPGRADE_V3_2026-07.md) | Reference | Theme source plan. |
