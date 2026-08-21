@@ -293,8 +293,17 @@ export class ThemeTransitionManager {
     preInitWarp() {
         this.ensureWarpRenderer();
         this.warpRenderer.init();
-        this.warpRenderer.prewarmFrame?.();
-        console.log('[ThemeTransition] Warp renderer pre-initialized');
+        // Parallel shader compile, then the hidden prewarm frame (see WarpTransitionRenderer
+        // .prewarmAsync) — never a synchronous first render here: that compiled the warp's GLSL
+        // on the GPU process's main thread and stalled the Odyssey board for seconds.
+        if (typeof this.warpRenderer.prewarmAsync === 'function') {
+            this._warpPrewarm = this.warpRenderer.prewarmAsync()
+                .catch(() => {})
+                .then(() => { console.log('[ThemeTransition] Warp renderer pre-initialized'); });
+        } else {
+            this.warpRenderer.prewarmFrame?.();
+            console.log('[ThemeTransition] Warp renderer pre-initialized');
+        }
     }
 
     /**

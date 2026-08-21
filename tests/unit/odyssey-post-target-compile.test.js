@@ -14,6 +14,8 @@
 import {
     describe, it, expect, vi,
 } from 'vitest';
+import { readFileSync } from 'fs';
+import path from 'path';
 import {
     beginPostTargetCompile,
     endPostTargetCompile,
@@ -98,7 +100,7 @@ describe('the r185 hold-across-await contract', () => {
         // (the r181-era restore-in-finally recipe this module used to pin).
         const renderer = makeDeferredRenderer();
         const promise = compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', 'GROUP');
-        expect(renderer.compileAsync).toHaveBeenCalledWith('SCENE', 'CAM', 'GROUP');
+        expect(renderer.compileAsync).toHaveBeenCalledWith('GROUP', 'CAM', 'SCENE');
         // Still bound while the compile is in flight — the load-bearing r185 assertion.
         expect(renderer._current()).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT' });
         renderer._resolveCompile(0);
@@ -139,26 +141,31 @@ describe('the r185 hold-across-await contract', () => {
         expect(renderer._current()).toEqual({ target: 'CANVAS', mrt: null });
     });
 
-    it('normalizes a target Group\'s undefined background to null before compiling', async () => {
-        // r185 upstream bug: compileAsync routes Background.update at the target
-        // GROUP, whose `background` is undefined; Background guards `=== null`,
-        // so `background.isColor` TypeErrors and the prewarm catch silently
-        // voids every chapter warm (caught by the 2026-08-20 capture matrix —
-        // "Shader prewarm failed ... reading 'isColor'"). The module mirrors
-        // Scene's `background = null` default onto object groups.
+    it('passes the GROUP as the object to compile and the SCENE as targetScene (three\'s contract)', async () => {
+        // three: `compileAsync(objectToCompile, camera, targetScene)` — the first argument
+        // is projected into the render list, the third supplies lights/background/cache
+        // key. Inverted (`scene, camera, group`) every "targeted" prewarm walked the whole
+        // scene and read `background` off a Group (undefined → `background.isColor`
+        // TypeError, first misfiled as an r185 bug). A Group must NOT be mutated to make
+        // the wrong order work.
         const renderer = makeRenderer();
         const group = { name: 'chapter-group' };
-        let backgroundAtCompile;
-        renderer.compileAsync = vi.fn(() => {
-            backgroundAtCompile = group.background;
-            return Promise.resolve();
-        });
         await compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', group);
-        expect(backgroundAtCompile).toBeNull();
-        // An explicitly-set background must never be clobbered.
-        const themed = { background: 'SKY' };
-        await compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', themed);
-        expect(themed.background).toBe('SKY');
+        expect(renderer.compileAsync).toHaveBeenCalledWith(group, 'CAM', 'SCENE');
+        expect('background' in group).toBe(false);
+    });
+
+    it('pins three\'s compileAsync parameter order from the installed source', () => {
+        const src = readFileSync(
+            path.join(process.cwd(), 'node_modules/three/src/renderers/common/Renderer.js'),
+            'utf8',
+        );
+        // Signature + the JSDoc that defines the third parameter as the target SCENE.
+        expect(src).toMatch(/async compileAsync\(\s*scene,\s*camera,\s*targetScene\s*=\s*null\s*\)/);
+        expect(src).toMatch(/@param \{\?Scene\} targetScene - If the first argument is a 3D object/);
+        // The first argument is what gets projected; lights come from targetScene.
+        expect(src).toMatch(/this\._projectObject\(\s*scene,\s*camera,\s*0,\s*renderList/);
+        expect(src).toMatch(/targetScene\.traverseVisible\(/);
     });
 
     it('compiles bare (no binding) and still resolves true when post is inactive', async () => {
@@ -166,7 +173,7 @@ describe('the r185 hold-across-await contract', () => {
         await expect(
             compileGroupThroughPost(renderer, null, 'SCENE', 'CAM', 'GROUP'),
         ).resolves.toBe(true);
-        expect(renderer.compileAsync).toHaveBeenCalledWith('SCENE', 'CAM', 'GROUP');
+        expect(renderer.compileAsync).toHaveBeenCalledWith('GROUP', 'CAM', 'SCENE');
         expect(renderer._current()).toEqual({ target: 'CANVAS', mrt: null }); // untouched
     });
 });
@@ -206,7 +213,7 @@ describe('the render-loop guard (2026-08-12 device-loss fix, hardened for r185)'
         await expect(
             compileGroupThroughPost(renderer, null, 'SCENE', 'CAM', 'GROUP', true),
         ).resolves.toBe(true);
-        expect(renderer.compileAsync).toHaveBeenCalledWith('SCENE', 'CAM', 'GROUP');
+        expect(renderer.compileAsync).toHaveBeenCalledWith('GROUP', 'CAM', 'SCENE');
         expect(renderer.setRenderTarget).not.toHaveBeenCalled();
     });
 
@@ -217,5 +224,110 @@ describe('the render-loop guard (2026-08-12 device-loss fix, hardened for r185)'
         // choice is deliberate and visible rather than accidental.
         const renderer = makeRenderer();
         expect(beginPostTargetCompile(renderer, makePostStack())).not.toBeNull();
+    });
+});
+
+describe('the fan-out (r185 awaits each object\'s pipeline before the next — one call = serial compiles)', () => {
+    const renderable = (name, material) => ({
+        name, isMesh: true, material, visible: true,
+    });
+    const makeGroup = (children) => ({
+        name: 'group',
+        traverse(fn) { fn(this); children.forEach((c) => fn(c)); },
+    });
+    const pendingRenderer = () => {
+        const renderer = makeRenderer();
+        const pending = [];
+        renderer.compileAsync = vi.fn((object) => new Promise((resolve) => { pending.push({ object, resolve }); }));
+        return { renderer, pending };
+    };
+
+    it('compiles renderables through concurrent targeted calls, never the group as a whole', async () => {
+        const { renderer, pending } = pendingRenderer();
+        const m1 = { uuid: 'm1' };
+        const m2 = { uuid: 'm2' };
+        const m3 = { uuid: 'm3' };
+        const group = makeGroup([
+            renderable('a', m1), renderable('b', m2), renderable('c', m3),
+            { name: 'light', isLight: true }, // not a renderable → skipped
+            {
+                name: 'hidden', isMesh: true, material: { uuid: 'm4' }, visible: false,
+            },
+        ]);
+        const opts = { concurrency: 2 };
+        const done = compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', group, false, opts);
+        await Promise.resolve();
+        // Width 2: exactly two calls in flight, each a targeted (object, camera, SCENE) call.
+        expect(pending.map((p) => p.object.name)).toEqual(['a', 'b']);
+        expect(renderer.compileAsync).toHaveBeenCalledWith(expect.objectContaining({ name: 'a' }), 'CAM', 'SCENE');
+        expect(renderer.compileAsync).not.toHaveBeenCalledWith(group, 'CAM', 'SCENE');
+        pending.shift().resolve();
+        await Promise.resolve(); await Promise.resolve();
+        expect(pending.map((p) => p.object.name)).toEqual(['b', 'c']);
+        pending.forEach((p) => p.resolve());
+        await Promise.resolve(); await Promise.resolve();
+        await done;
+        expect(renderer.compileAsync).toHaveBeenCalledTimes(3);
+        const names = renderer.compileAsync.mock.calls.map(([o]) => o.name);
+        expect(names).not.toContain('light');
+        expect(names).not.toContain('hidden');
+    });
+
+    it('one representative per material INSTANCE + layout; instanced objects are each their own bucket', async () => {
+        // three keys the builder state on the material instance's properties + the vertex layout
+        // + receiveShadow — and on the OBJECT uuid for InstancedMesh / count > 1 / BatchedMesh
+        // (RenderObject.getMaterialCacheKey, r185:833). The bucket rule mirrors that exactly.
+        const { renderer, pending } = pendingRenderer();
+        const shared = { uuid: 'shared' };
+        const otherInstance = { uuid: 'shared-2' }; // same program in practice, but a different instance
+        const group = makeGroup([
+            renderable('s1', shared), renderable('s2', shared), renderable('s3', shared), // one bucket
+            renderable('o1', otherInstance), // its own bucket (instance identity, not program)
+            { ...renderable('i1', shared), isInstancedMesh: true, uuid: 'i1' }, // per-object
+            { ...renderable('i2', shared), isInstancedMesh: true, uuid: 'i2' }, // per-object
+            { ...renderable('rs', shared), receiveShadow: true }, // receiveShadow specialises
+        ]);
+        const opts = { concurrency: 8 };
+        const done = compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', group, false, opts);
+        await Promise.resolve();
+        expect(pending.map((p) => p.object.name)).toEqual(['s1', 'o1', 'i1', 'i2', 'rs']);
+        pending.forEach((p) => p.resolve());
+        await done;
+        expect(renderer.compileAsync).toHaveBeenCalledTimes(5);
+        const names = renderer.compileAsync.mock.calls.map(([o]) => o.name);
+        expect(names).not.toContain('s2');
+        expect(names).not.toContain('s3');
+    });
+
+    it('a different vertex layout under one material instance is its own bucket (pipeline key differs)', async () => {
+        const { renderer, pending } = pendingRenderer();
+        const prog = { uuid: 'p' };
+        const geoA = { attributes: { position: { itemSize: 3 }, uv: { itemSize: 2 } }, index: null };
+        const geoB = { attributes: { position: { itemSize: 3 } }, index: null };
+        const group = makeGroup([
+            { ...renderable('a', prog), geometry: geoA },
+            { ...renderable('b', prog), geometry: geoB },
+            { ...renderable('c', prog), geometry: geoA },
+        ]);
+        const done = compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', group);
+        await Promise.resolve();
+        expect(pending.map((p) => p.object.name)).toEqual(['a', 'b']);
+        pending.forEach((p) => p.resolve());
+        await done;
+        expect(renderer.compileAsync).toHaveBeenCalledTimes(2);
+    });
+
+    it('holds the post binding across the WHOLE fan-out and restores only after the last call', async () => {
+        const { renderer, pending } = pendingRenderer();
+        const group = makeGroup([renderable('a', { uuid: 'a' }), renderable('b', { uuid: 'b' })]);
+        const done = compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', group);
+        await Promise.resolve();
+        expect(renderer.getRenderTarget()).toBe('SCENE_RT');
+        pending.shift().resolve();
+        await Promise.resolve(); await Promise.resolve();
+        expect(renderer.getRenderTarget()).toBe('SCENE_RT');
+        pending.shift().resolve();
+        await done;
+        expect(renderer.getRenderTarget()).toBe('CANVAS');
     });
 });

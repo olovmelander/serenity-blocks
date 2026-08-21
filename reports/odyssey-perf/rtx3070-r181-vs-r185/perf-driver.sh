@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Process-per-run perf driver (82JU: one Electron process cannot host a 2nd WebGPU window).
 # usage: perf-driver.sh <tree-dir> <tag> <out-dir>
+# PREREQUISITE: a dev server for <tree-dir> must already be listening on PORT — the session script
+# does NOT start one (unlike odyssey-chapter-capture.mjs). e.g. in <tree-dir>:
+#   npx vite --port 4177 --strictPort --logLevel warn &
+# Without it every run fails with "Timed out waiting for dev server" after 120 s (2026-08-21).
 set -u
 TREE="$1"; TAG="$2"; OUT="$3"; PORT=4177
 cd "$TREE" || exit 1
