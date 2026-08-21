@@ -11,11 +11,13 @@
  *                        camera and clock in BOTH stages (screenUV is fragment-only and the vertex
  *                        displacement goes through the same source). Compiles both bodies;
  *                        playground only.
- * Poses (static, deterministic): ?pose=entry|basin|top. Entry ≈ the chapter's p=0 station
+ * Poses (static, deterministic): ?pose=entry|basin|top|fall. Entry ≈ the chapter's p=0 station
  * (eye ~6 u above the plane looking across); basin looks down into a molten basin; top is the
  * straight-down tiling check. ?descent=0..1 ?pulse=0..1 ?seam=0..1 drive the chapter uniforms,
  * ?basins=0 drops the basin list, ?debug=2 builds the tier-ID variant (crust/mid/hot/bloom as
  * flat colours for mask statistics), ?split=<local x> moves the split line. ?t= freezes the clock.
+ * ?flow=1 (S2-a): the three molten fields drift from the playground's fall seat (the orange marker at
+ * x 84, z 58) toward the lake centre instead of the three authored fixed vectors.
  */
 
 import * as THREE from 'three/webgpu';
@@ -43,6 +45,8 @@ const PLAYGROUND_BASINS = [
 ];
 
 const LAKE_Y = -10; // createLavaFloorTSL's LAVA_LAKE_Y
+// Playground stand-in for the chapter's lava-fall seat (earth-core.js: staging.lakeAt(0.72, …)).
+const FALL_SEAT = new THREE.Vector3(84, LAKE_Y, 58);
 
 export function create({ scene, params }) {
     const variant = params?.get('variant') || 'split';
@@ -60,6 +64,13 @@ export function create({ scene, params }) {
     const basins = params?.get('basins') === '0' ? [] : PLAYGROUND_BASINS;
 
     const options = { basins, uSeam, debug };
+    const flow = params?.get('flow') === '1';
+    const rimCrust = num('rim', 0); // S2-c bias, e.g. ?rim=0.12
+    if (rimCrust > 0) options.rimCrustBias = rimCrust;
+    if (flow) {
+        const dir = new THREE.Vector3(-FALL_SEAT.x, 0, -FALL_SEAT.z).normalize();
+        options.uFlowDir = uniform(dir);
+    }
     if (variant === 'baked') {
         options.noise = 'baked';
     } else if (variant === 'split') {
@@ -71,6 +82,15 @@ export function create({ scene, params }) {
     scene.add(mesh);
 
     scene.background = new THREE.Color(0x12040a); // the dark vault, not the backdrop dome
+
+    // Fall-seat marker: a tall thin emissive slab where the chapter's lava-fall would stand.
+    const marker = new THREE.Mesh(
+        new THREE.BoxGeometry(6, 60, 6),
+        new THREE.MeshBasicNodeMaterial({ color: 0xff7a1a }),
+    );
+    marker.position.set(FALL_SEAT.x, LAKE_Y + 30, FALL_SEAT.z);
+    marker.visible = flow;
+    scene.add(marker);
 
     const lakeTexture = variant === 'analytic' ? null : getLakeNoiseTexture();
 
@@ -92,6 +112,11 @@ export function create({ scene, params }) {
             if (pose === 'top') {
                 camera.position.set(0, LAKE_Y + 230, 0.01);
                 camera.lookAt(0, LAKE_Y, 0);
+            } else if (pose === 'fall') {
+                // The fall seat on the far shore, the lake between it and the eye: flow (S2-a)
+                // should read as pouring from the marker toward the viewer.
+                camera.position.set(-70, LAKE_Y + 34, -48);
+                camera.lookAt(FALL_SEAT.x * 0.55, LAKE_Y, FALL_SEAT.z * 0.55);
             } else if (pose === 'basin') {
                 const b = PLAYGROUND_BASINS[1];
                 camera.position.set(b.x - 40, LAKE_Y + 38, b.z + 44);
@@ -106,6 +131,9 @@ export function create({ scene, params }) {
         },
         dispose() {
             scene.remove(mesh);
+            scene.remove(marker);
+            marker.geometry.dispose();
+            marker.material.dispose();
             geometry.dispose();
             material.dispose();
         },

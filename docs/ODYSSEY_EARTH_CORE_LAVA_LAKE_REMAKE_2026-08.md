@@ -2,7 +2,7 @@
 
 Status: synthesis of Design A (minimal 3D bake of the calibrated primitive), Design B (look-first 2D texture stack) and their adversarial critiques. Numbers marked **measured** come from the instruments named in ADR-0016 or from the plan/findings docs; **twin** numbers come from the critics' CPU ports (analysis aids, not instruments); everything else is **est.**/**unmeasured**. Nothing in the repo was modified for this document.
 
-## 0. Status (2026-08-21) — Stage 1 SHIPPED (default on); Stage 2 pending
+## 0. Status (2026-08-21) — Stage 1 SHIPPED (default on); Stage 2 measured: S2-a ON, S2-c no-op, S2-b deferred
 
 | gate (§4) | instrument | result |
 |---|---|---|
@@ -20,6 +20,24 @@ Status: synthesis of Design A (minimal 3D bake of the calibrated primitive), Des
 | F5 / F6 perf-driver cells (`r185p1lake`, AGGREGATE.md) | `perf-driver.sh` n = 3 | startup flat (the lake left the RTX critical path with the fan-out, so F5's "−1.2 s" premise no longer applies); `creates` +41 ms ✓; post-reveal p99 cold 2.11 → 1.70 s, warm 2.77 → 1.30 s |
 | B-crust / B-mid / B-hot at the chapter entry station, t = 9 / 40 / 120 | `odyssey-chapter-capture.mjs --url-flag earthCoreLakeDebug=2` | crust −1.8…−3.2, mid +0.8…+2.0, hot +0.9…+1.2 pts ✓ (stations ≥ 0.333 have no lake in frame) |
 | B-void / B-rim / B-basin | in-game screenshot, p = 0, t = 9 | rim band present, basin pools present, no void — judged by eye, not by metric (the chapter post colours every pixel red, so the lake mask cannot be isolated in-game; the playground masks are the metric) |
+
+### 0.1 Stage 2 outcomes (2026-08-21)
+
+| delta | result | evidence |
+|---|---|---|
+| **S2-a flow from the fall** | **ON by default** (`?earthCoreLakeFlowDir=0` escape). The fall seat is resolved before the lake build; `uLakeFlowDir` = unit(fall → lake centre) in the lake plane; the three molten fields drift along **−uFlowDir** at their authored speeds (1.118 / 0.36 + the 0.2 slice drift / 0.18). A rigid translation — tier masks unchanged (baked top view 88–93 % crust by radial bin with or without it). | Block-matched motion between t = 9 and t = 11 at the `pose=fall` framing: rivers move down-screen toward the viewer on the marker's bearing (median +12 px, −4 across). The first cut used **+uFlowDir** and the same measurement showed the rivers flowing *toward* the fall (−10 px) — the offset is added to the sampling coordinate, so the pattern moves along minus the offset. Kept the sign fix and the measurement. |
+| **S2-c crust rises toward the rim** | implemented (`options.rimCrustBias`, `?earthCoreLakeRimCrust=1`), **OFF**: imperceptible. | Bias 0.12 moved the outer radial bin's crust share by +0.2 pt in the top view; bias 0.3 at the entry pose left every row band's mean luminance identical to 4 decimals. `crustFactor` only darkens the molten 6–9 % toward the crust colour, and the visible radii (≤ 0.37 from the top, the near rows at the entry) sit where `smoothstep(0.25, 0.5)` is small. The "cools at the edges" intent is already carried by `beyondRim`. A visible version is an art call (larger bias, lower start radius), not a default. |
+| **S2-b blackbody LUT ladder** | **deferred** | Zero perf value now that the lake is 19 fetches + ~400 ALU, and it carries Q6 (interpolated stops soften the `step()` river edges the look depends on). Not worth its risk without an art session. |
+
+**Instrument correction (same day):** the first `debug=2` binned tiers by pre-cap luma (0.08 / 0.35 /
+0.85), which filed most of the dark molten as "crust" — the earlier "crust 70–72 %, mid 27–30 %"
+split-view numbers were crust-vs-*rim-ring*, not crust-vs-molten. The tiers are now defined on the
+ladder's own fields (crust = `crustFactor ≥ 0.5` or `temp < 0.4`; molten = `0.4 ≤ temp < 0.7`;
+hot = `temp ≥ 0.7`; bloom = luma ≥ 0.85). Re-measured A/B on the corrected masks, top split, two
+clocks: analytic 93.7–94.2 % crust / 5.3–5.8 % molten, baked 91.0–91.7 % / 8.3–9.0 % — the baked
+arm leans **~3 pts more molten** (band-limited peaks are broader above a threshold; the critics'
+Q1). At the edge of the ±3 gate, in the direction of the stated 70/30 intent, and the in-game
+frames read correctly; recorded as a measured lean, not tuned away.
 
 Landed: `shared/odyssey-lake-noise-math.js`, `shared/odyssey-lake-noise-bake.js`,
 `shared/lake-noise.worker.js`, `createLavaFloorTSL(options.noise | noiseSource | debug)`,

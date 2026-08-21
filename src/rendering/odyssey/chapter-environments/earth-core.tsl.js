@@ -269,6 +269,12 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
 // `options.noiseSource`: an explicit `(p) => float` TSL closure (the playground's split A/B).
 // `options.debug`: 0 (ship), 2 = tier-ID output (crust/mid/hot/bloom as flat colours) for mask
 // statistics in captures — a BUILD-time option so the shipped graph is byte-identical.
+// `options.uFlowDir`: S2-a — a vec3 uniform (unit, y = 0) the three flow fields drift along, from
+// the lava-fall seat toward the lake centre. A rigid translation of each field, so marginals and
+// every threshold are unchanged; null keeps today's three fixed drift vectors.
+// `options.rimCrustBias`: S2-c — lifts the crust map by up to this much between radial 0.25 and
+// 0.5 (the lake cools toward its edges: the Act I plan's "push crust % up at the lake rim"); 0 =
+// off. Nothing inside radial 0.25, where the basins and the entry station live.
 export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent = uniform(0), options = {}) {
     let noiseMode = options.noise === 'baked' ? 'baked' : 'analytic';
     if (options.noiseSource) noiseMode = 'custom';
@@ -339,11 +345,26 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
         fbm(vPos.mul(0.035).add(vec3(0.0, 0.0, ftime.mul(0.4)).add(9.0)), 3, sn),
     ).mul(6.0);
     const wPos = vPos.add(warp);
-    const flow1 = fbm(wPos.mul(0.06).add(vec3(ftime, 0.0, ftime.mul(0.5))), 3, sn);
-    const flow2 = fbm(wPos.mul(0.1).add(vec3(ftime.mul(-0.3), ftime.mul(0.2), 0.0)), 3, sn);
-    const cracks = fbm(wPos.mul(0.3).add(vec3(ftime.mul(0.1), 0.0, ftime.mul(0.15))), 3, sn);
+    // Drift of the three molten fields. Default: the authored fixed vectors. With `uFlowDir`
+    // (S2-a) all three translate along the fall→centre direction at their authored SPEEDS
+    // (|(1,0,0.5)| = 1.118, |(-0.3,0.2,0)| → 0.36 in-plane + the same 0.2 slice drift, |(0.1,0,0.15)|
+    // = 0.18), so the rivers read as pouring away from the fall instead of three unrelated drifts.
+    // SIGN: the offset is ADDED to the sampling coordinate, so the visible pattern moves along
+    // MINUS the offset — the drift is −uFlowDir·speed·t. (Measured 2026-08-21 with block matching
+    // between t = 9 and t = 11: +uFlowDir moved the rivers TOWARD the fall.)
+    const uFlowDir = options.uFlowDir ?? null;
+    const flowDrift1 = uFlowDir ? uFlowDir.mul(ftime.mul(-1.118)) : vec3(ftime, 0.0, ftime.mul(0.5));
+    const flowDrift2 = uFlowDir
+        ? uFlowDir.mul(ftime.mul(-0.36)).add(vec3(0.0, ftime.mul(0.2), 0.0))
+        : vec3(ftime.mul(-0.3), ftime.mul(0.2), 0.0);
+    const crackDrift = uFlowDir ? uFlowDir.mul(ftime.mul(-0.18)) : vec3(ftime.mul(0.1), 0.0, ftime.mul(0.15));
+    const flow1 = fbm(wPos.mul(0.06).add(flowDrift1), 3, sn);
+    const flow2 = fbm(wPos.mul(0.1).add(flowDrift2), 3, sn);
+    const cracks = fbm(wPos.mul(0.3).add(crackDrift), 3, sn);
     // High-freq crust map: dark charred islands floating in the molten (pyrestorm).
-    const crustMap = fbm(wPos.mul(0.5).add(vec3(ftime.mul(0.2), 0.0, 0.0)), 3, sn).add(0.5);
+    const rimCrustBias = Number.isFinite(options.rimCrustBias) ? options.rimCrustBias : 0;
+    let crustMap = fbm(wPos.mul(0.5).add(vec3(ftime.mul(0.2), 0.0, 0.0)), 3, sn).add(0.5);
+    if (rimCrustBias > 0) crustMap = crustMap.add(smoothstep(0.25, 0.5, radial).mul(rimCrustBias));
     // WAVE 3a — THE STUDY'S CRUST WINDOW, ported. Wave 1 measured this exact trade three
     // times: at a wide window the lake is a dark floor with smears and stops being a key at
     // all; when the pale stop wins it becomes a cream beach. Crust is the MINORITY on a lake
@@ -452,10 +473,18 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // value ladder, and the white-hot #ffe6b0 tier stays reserved for the First Heart.
     const cap = mix(vec3(0.78, 0.46, 0.26), vec3(0.93, 0.9, 0.62), vBasin);
     if (debugTiers) {
-        // Tier-ID output for mask statistics (captures only): luma of the PRE-cap colour →
-        // crust (blue) < 0.08 ≤ mid (green) < 0.35 ≤ hot (red) < 0.85 ≤ bloom tier (white).
+        // Tier-ID output for mask statistics (captures only), defined on the ladder's OWN fields
+        // so the masks mean what the art law means (70 % crust / 30 % molten):
+        //   crust  (blue)  — crustFactor ≥ 0.5, or temp < 0.4 (the cool end of the ladder)
+        //   molten (green) — 0.4 ≤ temp < 0.7 and not crust (midMix: the rivers)
+        //   hot    (red)   — temp ≥ 0.7 and not crust (hotMix: the pale seams / basin cores)
+        //   bloom  (white) — PRE-cap luma ≥ 0.85 (what the bloom pass would pick up)
+        // (A first cut binned by luma alone and filed most of the dark molten as crust.)
         const luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
-        const tier = step(0.08, luma).add(step(0.35, luma)).add(step(0.85, luma));
+        const isCrust = max(step(0.5, crustFactor), oneMinus(step(0.4, temp)));
+        const heatTier = step(0.4, temp).add(step(0.7, temp)); // 0 cool, 1 molten, 2 hot
+        const moltenTier = mix(heatTier, float(0.0), isCrust); // crust wins
+        const tier = max(moltenTier, step(0.85, luma).mul(3.0));
         color = mix(
             mix(vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), clamp(tier, 0.0, 1.0)),
             mix(vec3(1.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0), clamp(tier.sub(2.0), 0.0, 1.0)),
@@ -466,7 +495,7 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     }
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.name = `earth-core-lake-${noiseMode}${debugTiers ? '-debug' : ''}`;
+    material.name = `earth-core-lake-${noiseMode}${uFlowDir ? '-flow' : ''}${rimCrustBias > 0 ? '-rim' : ''}${debugTiers ? '-debug' : ''}`;
     material.positionNode = displaced;
     material.colorNode = color;
     material.transparent = false;
