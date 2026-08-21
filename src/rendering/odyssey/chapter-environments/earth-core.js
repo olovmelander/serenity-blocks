@@ -53,6 +53,7 @@ import {
     createFirstHeartTSL,
 } from './earth-core.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { acquireChapterLight } from './shared/chapter-light-pool.js';
 
 /**
  * Earth Core environment configuration
@@ -2087,20 +2088,20 @@ function setupVolcanicLighting(group) {
 
     // Warm ambient — lifted 0.10→0.14 to recover a little of the global fill the four
     // accent lights gave the dark rock, while keeping the ~70% near-black value target.
-    const ambient = new THREE.AmbientLight(0x0f0b18, 0.14); // cool-purple ambient light for cooler shadows (changed from warm 0x1a0600)
+    const ambient = acquireChapterLight(1, 'AmbientLight', { color: 0x0f0b18, intensity: 0.14 }); // cool-purple ambient light for cooler shadows (changed from warm 0x1a0600)
     group.add(ambient);
     group.userData.ambient = ambient;
 
     // KEY 1 — Central lava lake point light (main light source) — range 220→150 so the
     // light pools on the lake and the surrounding vault falls dark.
-    const lavaLight = new THREE.PointLight(0xff5511, 2.9, 150);
+    const lavaLight = acquireChapterLight(1, 'PointLight', { color: 0xff5511, intensity: 2.9, distance: 150 });
     lavaLight.position.set(0, LAVA_LAKE_Y + 4, 0); // just above the lake
     group.add(lavaLight);
     group.userData.lavaLight = lavaLight;
 
     // KEY 2 — Secondary lava glow (softer, larger radius) — also absorbs the warm tint
     // the cut crater accents contributed, lifted 1.35→1.55.
-    const lavaGlow = new THREE.PointLight(0xff7722, 1.55, 220);
+    const lavaGlow = acquireChapterLight(1, 'PointLight', { color: 0xff7722, intensity: 1.55, distance: 220 });
     lavaGlow.position.set(0, LAVA_LAKE_Y + 2, 0);
     group.add(lavaGlow);
     group.userData.lavaGlow = lavaGlow;

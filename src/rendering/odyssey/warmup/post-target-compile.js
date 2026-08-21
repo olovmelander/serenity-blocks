@@ -47,7 +47,7 @@
  * @param {object} renderer the WebGPU/WebGL renderer
  * @param {?object} postProcessingStack the post stack (or null when post is inactive)
  * @param {boolean} [renderLoopActive] when true the binding is SKIPPED — see the file header.
- * @returns {?{previousTarget: *, previousMRT: *}} saved state, or null when post is inactive
+ * @returns {?{previousTarget: *, previousMRT: *, restoreContexts: ?Function}} saved state, or null when post is inactive
  */
 export function beginPostTargetCompile(renderer, postProcessingStack, renderLoopActive = false) {
     if (renderLoopActive) return null;
@@ -61,7 +61,9 @@ export function beginPostTargetCompile(renderer, postProcessingStack, renderLoop
     const previousMRT = renderer.getMRT();
     renderer.setRenderTarget(scenePass.renderTarget);
     renderer.setMRT(scenePass.getMRT?.() ?? null);
-    return { previousTarget, previousMRT };
+    // Same context DEPTH as the live scene pass (see beginNestedContextDepth) — the target alone
+    // is not enough: the builder key carries the render-context id, which includes the depth.
+    return { previousTarget, previousMRT, restoreContexts: beginNestedContextDepth(renderer) };
 }
 
 /**
@@ -127,7 +129,10 @@ export function beginWarmTargetRender(renderer, warmTarget, scenePass) {
     const previousMRT = renderer.getMRT();
     renderer.setRenderTarget(warmTarget);
     renderer.setMRT(scenePass?.getMRT?.() ?? null);
-    return { previousTarget, previousMRT };
+    // The warm render is synchronous, so the context-depth patch is scoped to this one call
+    // (see beginNestedContextDepth): without it the warm render resolves the depth-0 context and
+    // re-creates every pipeline the depth-1 live pass already has (52 sync creations, measured).
+    return { previousTarget, previousMRT, restoreContexts: beginNestedContextDepth(renderer) };
 }
 
 /**
@@ -137,6 +142,7 @@ export function beginWarmTargetRender(renderer, warmTarget, scenePass) {
  */
 export function endPostTargetCompile(renderer, saved) {
     if (!saved) return;
+    saved.restoreContexts?.();
     renderer.setRenderTarget(saved.previousTarget);
     renderer.setMRT(saved.previousMRT);
 }
@@ -158,7 +164,7 @@ function acquireCompileBinding(renderer, postProcessingStack) {
     }
     const saved = beginPostTargetCompile(renderer, postProcessingStack, false);
     if (!saved) return null;
-    const session = { saved, count: 1 };
+    const session = { saved, count: 1, restoreContexts: beginNestedContextDepth(renderer) };
     _compileSessions.set(renderer, session);
     return session;
 }
@@ -168,7 +174,49 @@ function releaseCompileBinding(renderer, session) {
     session.count -= 1;
     if (session.count > 0) return;
     _compileSessions.delete(renderer);
+    session.restoreContexts?.();
     endPostTargetCompile(renderer, session.saved);
+}
+
+/**
+ * The call depth the post scene pass renders at: `Renderer._callDepth` starts at -1, every
+ * `_renderScene` increments it on entry, and the scene pass runs NESTED inside
+ * `RenderPipeline.render()` — depth 1 — while `compileAsync` resolves its render context at the
+ * default depth 0.
+ */
+export const POST_SCENE_PASS_CALL_DEPTH = 1;
+
+/**
+ * Make every render context resolved during the compile session the one the LIVE post scene pass
+ * uses.
+ *
+ * WHY (measured 2026-08-21 with the per-pipeline instrument, once the light-set churn of plan
+ * item 2.9 was gone): `RenderContexts.get(renderTarget, mrt, callDepth)` keys contexts by
+ * attachment state + MRT + call depth, and every builder state is keyed by its context id
+ * (`RenderObject.getMaterialCacheKey`, r185:835). The prewarm resolved context
+ * `1:1023:1016:4:true:false-default-0` (id 0); the scene pass inside the RenderPipeline renders in
+ * `…-default-1` (id 2). Same attachments, same lights, same everything — different id — so the
+ * first live post frame re-built and re-created all ~50 visible pipelines synchronously (a
+ * 1.5 s frame). The private-target warm-up render (depth 0) had been hitting the prewarm's
+ * states, which is why the problem only showed on the live frame. Forcing depth-0 requests to
+ * depth 1 while a session is open makes the prewarm build exactly the states the live frame
+ * reuses. Restored when the last pooled compile releases. Pinned by a contract test reading the
+ * installed three source.
+ * @param {object} renderer the renderer
+ * @returns {?() => void} restore function, or null when the private map is not where r185 keeps it
+ */
+export function beginNestedContextDepth(renderer) {
+    const contexts = renderer?._renderContexts;
+    if (!contexts || typeof contexts.get !== 'function' || contexts.__odysseyDepthPatched) return null;
+    const originalGet = contexts.get;
+    contexts.get = function patchedGet(renderTarget = null, mrt = null, callDepth = 0) {
+        return originalGet.call(this, renderTarget, mrt, callDepth === 0 ? POST_SCENE_PASS_CALL_DEPTH : callDepth);
+    };
+    contexts.__odysseyDepthPatched = true;
+    return () => {
+        contexts.get = originalGet;
+        delete contexts.__odysseyDepthPatched;
+    };
 }
 
 /**
@@ -217,12 +265,101 @@ export async function compileGroupThroughPost(
     }
 
     const session = renderLoopActive ? null : acquireCompileBinding(renderer, postProcessingStack);
+    const releaseSideCapture = beginDeferredSideCapture(renderer);
     try {
         await compileObjectsFannedOut(renderer, scene, camera, group, options.concurrency);
     } finally {
+        releaseSideCapture?.();
         releaseCompileBinding(renderer, session);
     }
     return true;
+}
+
+/**
+ * r185 `compileAsync` regression, worked around for the duration of a compile
+ * (upstream: Renderer.js `_createObjectPipeline` / the deferred drain in `compileAsync`).
+ *
+ * WHAT (measured 2026-08-21 with the renderer-level key trace, after the context-depth and
+ * light-set fixes): every pipeline the prewarm built for a transparent DoubleSide material was
+ * still re-created on the first live frame — identical programs, identical dynamic key, ONE field
+ * of the backend key different: `material.side` 2 at compile time vs 1 then 0 live. The live
+ * renderer draws such materials in two passes (`_renderTransparents` / `renderObject`: side =
+ * BackSide for pass id 'backSide', FrontSide for the default pass, then DoubleSide restored).
+ * r181 built pipelines synchronously inside those calls, so the side was right. r185's
+ * `_createObjectPipeline` instead pushes a work item `{ object, material, …, passId }` and
+ * compileAsync drains the queue AFTER the render-list walk has restored `side = DoubleSide` — both
+ * queued passes compile one DoubleSide pipeline the live path never uses, and the real pair is
+ * created synchronously on the first visible frame (45 sync creations, a 0.5–1.5 s stall).
+ *
+ * FIX: while a compile runs, `_createObjectPipeline` queues an item whose `material` property is a
+ * getter that re-applies the side captured at queue time the moment the drain reads the item
+ * (`this._objects.get(item.object, item.material, …)` is the first thing it does), and
+ * `Pipelines.getForRender` restores the material's pre-drain side once the pipeline has been
+ * requested (the drain passes a promise array; live renders do not, and are left alone). Every
+ * other field of the item is exactly what three pushes today, so the drain is unchanged.
+ * @param {object} renderer
+ * @returns {?Function} restore, or null when this renderer has no deferred compile path
+ */
+export function beginDeferredSideCapture(renderer) {
+    if (!renderer || typeof renderer._createObjectPipeline !== 'function') return null;
+    if (renderer.__odysseySideCapture) {
+        renderer.__odysseySideCapture.count += 1;
+        return renderer.__odysseySideCapture.release;
+    }
+    const pipelines = renderer._pipelines;
+    const originalCreate = renderer._createObjectPipeline;
+    const originalGetForRender = pipelines?.getForRender;
+    /** @type {Map<object, number>} material → side to restore once its drained item is built */
+    const pending = new Map();
+    renderer._createObjectPipeline = function odysseyCreateObjectPipeline(object, material, scene, camera, lightsNode, group, clippingContext, passId) {
+        if (!Array.isArray(this._compilationPromises) || !material) {
+            return originalCreate.call(this, object, material, scene, camera, lightsNode, group, clippingContext, passId);
+        }
+        const { side } = material;
+        this._compilationPromises.push({
+            object,
+            scene,
+            camera,
+            lightsNode,
+            group,
+            clippingContext,
+            passId,
+            renderContext: this._currentRenderContext,
+            get material() {
+                if (!pending.has(material)) pending.set(material, material.side);
+                if (material.side !== side) material.side = side;
+                return material;
+            },
+        });
+        return undefined;
+    };
+    if (pipelines && typeof originalGetForRender === 'function') {
+        pipelines.getForRender = function odysseyGetForRender(renderObject, promises) {
+            try {
+                return originalGetForRender.call(this, renderObject, promises);
+            } finally {
+                const material = renderObject?.material;
+                if (Array.isArray(promises) && material && pending.has(material)) {
+                    material.side = pending.get(material);
+                    pending.delete(material);
+                }
+            }
+        };
+    }
+    const state = {
+        count: 1,
+        release: () => {
+            state.count -= 1;
+            if (state.count > 0) return;
+            renderer._createObjectPipeline = originalCreate;
+            if (pipelines && typeof originalGetForRender === 'function') pipelines.getForRender = originalGetForRender;
+            for (const [material, side] of pending) material.side = side;
+            pending.clear();
+            delete renderer.__odysseySideCapture;
+        },
+    };
+    renderer.__odysseySideCapture = state;
+    return state.release;
 }
 
 /**
@@ -234,6 +371,9 @@ export async function compileGroupThroughPost(
  * key; builder states only dedupe once set), which the by-material grouping below avoids.
  */
 export const DEFAULT_COMPILE_CONCURRENCY = 6;
+
+/** three's `DoubleSide` constant (kept numeric: this module has no three import on purpose). */
+const DOUBLE_SIDE = 2;
 
 /**
  * Compile a group's renderables through a small concurrent pool of targeted
@@ -302,7 +442,28 @@ export async function compileObjectsFannedOut(
         }
         bucket.push(object);
     });
-    const queue = [...byMaterial.values()];
+    // Buckets that share a TWO-PASS material instance (transparent + DoubleSide, not
+    // forceSinglePass — the only materials whose `side` three mutates during the walk) run one
+    // after the other, never concurrently: the deferred-side capture above re-applies
+    // `material.side` per drained item, the node build yields mid-way (buildAsync), and two
+    // interleaved drains of one such material with different sides would race it. Every other
+    // material's captured side is constant, so its buckets stay fully parallel — serialising ALL
+    // same-instance buckets was measured at one-world 1.26 → 4.72 s (its opaque instanced forest).
+    const byInstance = new Map();
+    let chainId = 0;
+    for (const [key, bucket] of byMaterial) {
+        const materials = Array.isArray(bucket[0].material) ? bucket[0].material : [bucket[0].material];
+        const twoPass = materials.some((m) => m && m.transparent === true && m.side === DOUBLE_SIDE && m.forceSinglePass !== true);
+        chainId += 1;
+        const instance = twoPass ? key.split('|')[0] : `#${chainId}`;
+        let chain = byInstance.get(instance);
+        if (!chain) {
+            chain = [];
+            byInstance.set(instance, chain);
+        }
+        chain.push(bucket);
+    }
+    const queue = [...byInstance.values()];
     if (queue.length === 0) {
         // Nothing renderable under the group (or a group whose children are all hidden):
         // one plain call keeps three's own semantics for whatever is there.
@@ -316,10 +477,12 @@ export async function compileObjectsFannedOut(
             // build + pipeline IS the others'. Each extra call would be a cache hit that still
             // pays ~22 ms of compileAsync overhead (render list, light traversal, background,
             // yields).
-            const [object] = queue.shift();
-            calls += 1;
-            // eslint-disable-next-line no-await-in-loop
-            await renderer.compileAsync(object, camera, scene);
+            const chain = queue.shift();
+            for (const [object] of chain) {
+                calls += 1;
+                // eslint-disable-next-line no-await-in-loop
+                await renderer.compileAsync(object, camera, scene);
+            }
         }
     };
     const width = Math.max(1, Math.min(concurrency | 0 || 1, queue.length));

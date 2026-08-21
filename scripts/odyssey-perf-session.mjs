@@ -380,6 +380,109 @@ async function bootstrapOdyssey(win, { resetBeforeActivate = true } = {}) {
         })();
     `);
 
+    // Renderer-level KEY TRACE (opt-in: ODYSSEY_PERF_KEY_TRACE=1). The GPU hook above sees
+    // descriptors; this one sees WHY three builds a pipeline: it wraps `Pipelines.getForRender`
+    // on the board renderer as soon as it exists and records, per build, the render object's
+    // material + dynamic cache keys, render-context id, lights key and the renderer call depth —
+    // so a prewarm/live mismatch can be read off instead of inferred.
+    if (process.env.ODYSSEY_PERF_KEY_TRACE === '1') {
+        await execute(win, `
+            (() => {
+                if (window.__odysseyKeyTrace) return false;
+                const rec = []; window.__odysseyKeyTrace = rec;
+                const state = { found: false, err: null, via: null }; window.__odysseyKeyTraceState = state;
+                // Setter traps instead of a poll: a 1 ms interval starves under the startup's long
+                // tasks and hooked in AFTER the prewarm and first live frame (measured 2026-08-21).
+                let r = null;
+                const wrapPipelines = (pipes) => {
+                    if (!pipes || pipes.__odysseyTraced) return;
+                    pipes.__odysseyTraced = true; state.found = true;
+                    // Hook the CREATION point, not the cache size: a re-create releases the old
+                    // pipeline and makes a new one in the same call (size unchanged), and that is
+                    // exactly the case being diagnosed. "prev" is the render object's previous
+                    // pipeline, so a record with prev* tells rebuild-vs-first-build, and whether
+                    // the PROGRAMS changed (code differs) or only the backend key (state/formats).
+                    const origGet = pipes.getForRender;
+                    let current = null;
+                    pipes.getForRender = function (ro, promises) {
+                        current = { ro, prev: this.get(ro)?.pipeline ?? null, promises };
+                        try { return origGet.call(this, ro, promises); } finally { current = null; }
+                    };
+                    const origCreate = pipes._getRenderPipeline;
+                    pipes._getRenderPipeline = function (ro, sv, sf, cacheKey, promises) {
+                        const prev = current?.ro === ro ? current.prev : null;
+                        let lightsKey = null;
+                        try { lightsKey = ro.lightsNode?.getCacheKey?.(true) ?? null; } catch {}
+                        const keyTail = (k) => (typeof k === 'string' ? k.slice(k.indexOf(',', k.indexOf(',') + 1) + 1) : null);
+                        rec.push({
+                            at: Math.round(performance.now()),
+                            label: (ro.material?.name || ro.material?.type) + '_' + ro.material?.id,
+                            async: Array.isArray(promises),
+                            ctx: ro.context?.id, depth: r._callDepth,
+                            mat: ro.getMaterialCacheKey(), dyn: ro.getDynamicCacheKey(), initial: ro.initialCacheKey,
+                            lightsKey, lights: ro.lightsNode?._lights?.length ?? null,
+                            programs: sv?.id + '/' + sf?.id,
+                            prevPrograms: prev ? prev.vertexProgram?.id + '/' + prev.fragmentProgram?.id : null,
+                            backendKey: keyTail(cacheKey), prevBackendKey: prev ? keyTail(prev.cacheKey) : null,
+                            geo: ro.geometry?.id, obj: ro.object?.id,
+                        });
+                        return origCreate.call(this, ro, sv, sf, cacheKey, promises);
+                    };
+                };
+                const trapRenderer = (renderer) => {
+                    if (!renderer || renderer.__odysseyKeyTrapped) return;
+                    renderer.__odysseyKeyTrapped = true;
+                    r = renderer;
+                    let pipes = renderer._pipelines;
+                    wrapPipelines(pipes);
+                    Object.defineProperty(renderer, '_pipelines', {
+                        configurable: true, enumerable: true,
+                        get() { return pipes; },
+                        set(v) { pipes = v; wrapPipelines(v); },
+                    });
+                };
+                const trapController = (bc) => {
+                    if (!bc || bc.__odysseyKeyTrapped) return;
+                    bc.__odysseyKeyTrapped = true;
+                    let renderer = bc.renderer;
+                    trapRenderer(renderer);
+                    Object.defineProperty(bc, 'renderer', {
+                        configurable: true, enumerable: true,
+                        get() { return renderer; },
+                        set(v) { renderer = v; trapRenderer(v); },
+                    });
+                };
+                const trapMode = (mode) => {
+                    if (!mode || mode.__odysseyKeyTrapped) return;
+                    mode.__odysseyKeyTrapped = true;
+                    let bc = mode.boardController;
+                    trapController(bc);
+                    Object.defineProperty(mode, 'boardController', {
+                        configurable: true, enumerable: true,
+                        get() { return bc; },
+                        set(v) { bc = v; trapController(v); },
+                    });
+                };
+                try {
+                    // OdysseyMode.onActivate awaits the board (renderer init, prewarm, first
+                    // frames) BEFORE it assigns window.odysseyMode, so trap the instance at the
+                    // game-mode manager: _ensureMode resolves it before onActivate runs.
+                    const gm = window.serenityBlocks?.gameModeManager;
+                    if (!gm || typeof gm._ensureMode !== 'function') throw new Error('no gameModeManager._ensureMode');
+                    const origEnsure = gm._ensureMode;
+                    gm._ensureMode = async function (modeId) {
+                        const mode = await origEnsure.call(this, modeId);
+                        if (modeId === 'odyssey') trapMode(mode);
+                        return mode;
+                    };
+                    trapMode(gm.getMode?.('odyssey'));
+                    state.via = 'gameModeManager._ensureMode';
+                } catch (e) { state.err = String(e); }
+                return true;
+            })();
+        `);
+    }
+
     const boot = await execute(win, `
         (async () => {
             const gm = window.serenityBlocks.gameModeManager;
@@ -560,6 +663,8 @@ async function collectResult(win, runIndex, gpuMemoryCycles = []) {
             return {
                 adapter: adapterInfo,
                 pipelines,
+                keyTrace: window.__odysseyKeyTrace ? window.__odysseyKeyTrace.slice() : null,
+                keyTraceState: window.__odysseyKeyTraceState ?? null,
                 location: window.location.href,
                 devicePixelRatio: window.devicePixelRatio,
                 // r185 Info.memory byte accounting on the board renderer: the sample

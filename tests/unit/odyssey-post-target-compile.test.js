@@ -20,6 +20,9 @@ import {
     beginPostTargetCompile,
     endPostTargetCompile,
     compileGroupThroughPost,
+    beginDeferredSideCapture,
+    beginNestedContextDepth,
+    POST_SCENE_PASS_CALL_DEPTH,
 } from '../../src/rendering/odyssey/warmup/post-target-compile.js';
 
 /** A mock renderer that records the target/MRT it currently has bound. */
@@ -63,7 +66,8 @@ describe('post-target-compile (E2 warm-up helper)', () => {
     it('binds the scene-pass target + MRT and returns the previous state when post is active', () => {
         const renderer = makeRenderer();
         const saved = beginPostTargetCompile(renderer, makePostStack());
-        expect(saved).toEqual({ previousTarget: 'CANVAS', previousMRT: null });
+        // restoreContexts is null on this double (no _renderContexts) — the depth patch is tested below.
+        expect(saved).toEqual({ previousTarget: 'CANVAS', previousMRT: null, restoreContexts: null });
         expect(renderer._current()).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT' });
     });
 
@@ -317,6 +321,49 @@ describe('the fan-out (r185 awaits each object\'s pipeline before the next — o
         expect(renderer.compileAsync).toHaveBeenCalledTimes(2);
     });
 
+    it('buckets of ONE two-pass material (transparent DoubleSide) run in sequence; everything else stays parallel', async () => {
+        // The deferred-side capture re-applies material.side per drained item and the node build
+        // yields mid-way, so two concurrent drains of one two-pass material would race its side.
+        // Opaque / single-pass materials never have their side mutated by three — they fan out.
+        const { renderer, pending } = pendingRenderer();
+        const twoPass = { uuid: 'tp', transparent: true, side: 2 };
+        const singlePass = {
+            uuid: 'sp', transparent: true, side: 2, forceSinglePass: true,
+        };
+        const opaque = { uuid: 'op', side: 2 };
+        const geoA = { attributes: { position: { itemSize: 3 }, uv: { itemSize: 2 } }, index: null };
+        const geoB = { attributes: { position: { itemSize: 3 } }, index: null };
+        const group = makeGroup([
+            { ...renderable('t1', twoPass), geometry: geoA },
+            { ...renderable('t2', twoPass), geometry: geoB },
+            {
+                ...renderable('t3', twoPass), geometry: geoA, isInstancedMesh: true, uuid: 't3',
+            },
+            { ...renderable('s1', singlePass), geometry: geoA },
+            { ...renderable('s2', singlePass), geometry: geoB },
+            {
+                ...renderable('o1', opaque), geometry: geoA, isInstancedMesh: true, uuid: 'o1',
+            },
+            {
+                ...renderable('o2', opaque), geometry: geoA, isInstancedMesh: true, uuid: 'o2',
+            },
+        ]);
+        const done = compileGroupThroughPost(renderer, makePostStack(), 'SCENE', 'CAM', group, false, { concurrency: 8 });
+        await Promise.resolve();
+        expect(pending.map((p) => p.object.name)).toEqual(['t1', 's1', 's2', 'o1', 'o2']);
+        const order = [];
+        while (pending.length) {
+            const next = pending.shift();
+            order.push(next.object.name);
+            next.resolve();
+            // eslint-disable-next-line no-await-in-loop
+            await flushMicrotasks();
+        }
+        await done;
+        expect(order).toEqual(['t1', 's1', 's2', 'o1', 'o2', 't2', 't3']);
+        expect(renderer.compileAsync).toHaveBeenCalledTimes(7);
+    });
+
     it('holds the post binding across the WHOLE fan-out and restores only after the last call', async () => {
         const { renderer, pending } = pendingRenderer();
         const group = makeGroup([renderable('a', { uuid: 'a' }), renderable('b', { uuid: 'b' })]);
@@ -329,5 +376,165 @@ describe('the fan-out (r185 awaits each object\'s pipeline before the next — o
         pending.shift().resolve();
         await done;
         expect(renderer.getRenderTarget()).toBe('CANVAS');
+    });
+});
+
+// r185's compileAsync defers pipeline creation into a work-item queue and drains it after the
+// render-list walk restored material.side (Renderer.js _createObjectPipeline / compileAsync).
+// This double reproduces exactly that: the two-pass push (BackSide item, FrontSide item, restore
+// DoubleSide) and the sequential drain that reads item.material, builds, then requests the pipeline.
+const FrontSide = 0; const BackSide = 1; const DoubleSide = 2;
+function r185Double() {
+    const built = []; // { passId, sideAtBuild, sideAtPipeline }
+    const renderer = {
+        _compilationPromises: null,
+        _currentRenderContext: { id: 7 },
+        _pipelines: {
+            getForRender(renderObject, promises) {
+                renderObject.sideAtPipeline = renderObject.material.side;
+                if (Array.isArray(promises)) promises.push(Promise.resolve());
+                built.push(renderObject);
+                return { cacheKey: 'pipe' };
+            },
+        },
+        // three's own: queue a bare item in async mode
+        _createObjectPipeline(object, material, scene, camera, lightsNode, group, clippingContext, passId) {
+            if (this._compilationPromises !== null) {
+                this._compilationPromises.push({
+                    object, material, scene, camera, lightsNode, group, clippingContext, passId, renderContext: this._currentRenderContext,
+                });
+                return;
+            }
+            built.push({ passId, sync: true, material });
+        },
+        // three's two-pass walk (renderObject / _renderTransparents) for ONE transparent DoubleSide object
+        walk(object, material) {
+            material.side = BackSide;
+            this._createObjectPipeline(object, material, 'S', 'C', 'L', null, null, 'backSide');
+            material.side = FrontSide;
+            this._createObjectPipeline(object, material, 'S', 'C', 'L', null, null, null);
+            material.side = DoubleSide;
+        },
+        // three's drain: read item.material, "build" (async, yields), request the pipeline
+        async drain(items) {
+            for (const item of items) {
+                const renderObject = {
+                    object: item.object, material: item.material, passId: item.passId, sideAtBuild: item.material.side,
+                };
+                // eslint-disable-next-line no-await-in-loop
+                await Promise.resolve(); // getForRenderAsync yields
+                const promises = [];
+                this._pipelines.getForRender(renderObject, promises);
+                // eslint-disable-next-line no-await-in-loop
+                await Promise.all(promises);
+            }
+        },
+        async compileAsync(object, material) {
+            const previous = this._compilationPromises;
+            const items = [];
+            this._compilationPromises = items;
+            this.walk(object, material);
+            this._compilationPromises = previous;
+            await this.drain(items);
+        },
+    };
+    return { renderer, built };
+}
+
+describe('beginDeferredSideCapture (r185 deferred compile loses the two-pass material.side)', () => {
+    it('WITHOUT the capture, both queued passes compile DoubleSide (the bug being worked around)', async () => {
+        const { renderer, built } = r185Double();
+        const material = { side: DoubleSide, transparent: true };
+        await renderer.compileAsync({ name: 'card' }, material);
+        expect(built.map((b) => [b.passId, b.sideAtBuild, b.sideAtPipeline])).toEqual([
+            ['backSide', DoubleSide, DoubleSide], [null, DoubleSide, DoubleSide],
+        ]);
+    });
+
+    it('re-applies the side each item was queued with, through build and pipeline request, then restores', async () => {
+        const { renderer, built } = r185Double();
+        const material = { side: DoubleSide, transparent: true };
+        const release = beginDeferredSideCapture(renderer);
+        await renderer.compileAsync({ name: 'card' }, material);
+        expect(built.map((b) => [b.passId, b.sideAtBuild, b.sideAtPipeline])).toEqual([
+            ['backSide', BackSide, BackSide], [null, FrontSide, FrontSide],
+        ]);
+        expect(material.side).toBe(DoubleSide); // restored after each drained item
+        release();
+        expect(renderer._createObjectPipeline.name).not.toBe('odysseyCreateObjectPipeline');
+        // Sync (non-compile) path is untouched: three's original runs.
+        renderer._createObjectPipeline({ name: 'x' }, material, 'S', 'C', 'L', null, null, null);
+        expect(built.at(-1)).toMatchObject({ sync: true });
+    });
+
+    it('leaves LIVE getForRender calls (no promise array) alone and is refcounted across overlapping compiles', () => {
+        const { renderer } = r185Double();
+        const material = { side: DoubleSide, transparent: true };
+        const releaseA = beginDeferredSideCapture(renderer);
+        const releaseB = beginDeferredSideCapture(renderer);
+        expect(releaseB).toBe(releaseA);
+        // A live render mid-two-pass: side BackSide, no promises → must NOT be reset.
+        material.side = BackSide;
+        renderer._pipelines.getForRender({ material }, undefined);
+        expect(material.side).toBe(BackSide);
+        material.side = DoubleSide;
+        releaseA();
+        expect(renderer.__odysseySideCapture).toBeDefined(); // B still holds
+        releaseB();
+        expect(renderer.__odysseySideCapture).toBeUndefined();
+    });
+
+    it('restores a side left mid-flight when the session is released', () => {
+        const { renderer } = r185Double();
+        const material = { side: DoubleSide };
+        const release = beginDeferredSideCapture(renderer);
+        renderer._compilationPromises = [];
+        material.side = BackSide;
+        renderer._createObjectPipeline({ name: 'o' }, material, 'S', 'C', 'L', null, null, 'backSide');
+        material.side = DoubleSide;
+        const [item] = renderer._compilationPromises;
+        expect(item.material).toBe(material); // getter applied the captured side…
+        expect(material.side).toBe(BackSide); // …and the drain has not requested the pipeline yet
+        release();
+        expect(material.side).toBe(DoubleSide);
+    });
+
+    it('returns null for a renderer without the deferred path (WebGL / doubles)', () => {
+        expect(beginDeferredSideCapture({})).toBeNull();
+        expect(beginDeferredSideCapture(null)).toBeNull();
+    });
+});
+
+describe("beginNestedContextDepth (compile at the scene pass's call depth)", () => {
+    it('maps the default depth 0 to the post scene-pass depth and leaves explicit depths alone', () => {
+        const calls = [];
+        const renderer = {
+            _renderContexts: {
+                get(rt = null, mrt = null, depth = 0) { calls.push([rt, mrt, depth]); return { id: depth }; },
+            },
+        };
+        const restore = beginNestedContextDepth(renderer);
+        expect(renderer._renderContexts.get('RT', null)).toEqual({ id: POST_SCENE_PASS_CALL_DEPTH });
+        expect(renderer._renderContexts.get('RT', null, 0)).toEqual({ id: POST_SCENE_PASS_CALL_DEPTH });
+        expect(renderer._renderContexts.get('RT', null, -1)).toEqual({ id: -1 }); // clear contexts stay
+        expect(renderer._renderContexts.get('RT', null, 2)).toEqual({ id: 2 });
+        expect(beginNestedContextDepth(renderer)).toBeNull(); // already patched → join, no double wrap
+        restore();
+        expect(renderer._renderContexts.get('RT', null)).toEqual({ id: 0 });
+        expect(calls.length).toBe(5);
+    });
+
+    it("pins three's contract: RenderContexts keys by attachment + mrt + callDepth; _callDepth starts at -1", () => {
+        const contexts = readFileSync(path.resolve('node_modules/three/src/renderers/common/RenderContexts.js'), 'utf8');
+        expect(contexts).toMatch(/get\( renderTarget = null, mrt = null, callDepth = 0 \)/);
+        expect(contexts).toMatch(/attachmentState \+ '-' \+ mrtState \+ '-' \+ callDepth/);
+        const rendererSrc = readFileSync(path.resolve('node_modules/three/src/renderers/common/Renderer.js'), 'utf8');
+        expect(rendererSrc).toMatch(/this\._callDepth = - 1;/);
+        expect(rendererSrc).toMatch(/this\._renderContexts\.get\( renderTarget, this\._mrt, this\._callDepth \)/);
+        // compileAsync resolves its context at the DEFAULT depth — the reason the patch exists.
+        expect(rendererSrc).toMatch(/const renderContext = this\._renderContexts\.get\( renderTarget, this\._mrt \);/);
+        // The deferred drain the side capture works around.
+        expect(rendererSrc).toMatch(/this\._compilationPromises\.push\( \{/);
+        expect(rendererSrc).toMatch(/for \( const item of compilationPromises \)/);
     });
 });

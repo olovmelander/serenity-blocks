@@ -872,7 +872,16 @@ export class OdysseyBoardController {
         // lights. Opt-in until a cold Electron boot A/B confirms the win (warm Dawn cache hides
         // the compile cost, so this can only be measured cold).
         const lightsFirst = this.aaaPostActive && readBooleanUrlFlag('odysseyLightsFirst');
-        if (lightsFirst) {
+        // 2026-08-21 — the atmosphere rig hoist is the DEFAULT now (`?odysseyLightsLate=1` restores
+        // the old order for A/B). The A2 experiment could never be proven because three other
+        // light-set changes (chapters 6/7/8 created in the background, each reparenting new
+        // lights) re-created every pipeline anyway; the chapter light pool (2.9) removed those,
+        // and the per-pipeline instrument then showed exactly ONE remaining re-creation wave —
+        // ~50 sync createRenderPipeline calls on the first live post frame — whose only cause
+        // left is this rig being born in setupDirector() after the compile barrier. The
+        // two-pass compile ordering below is no longer needed for a constant light set and
+        // stays opt-in.
+        if (this.aaaPostActive && !readBooleanUrlFlag('odysseyLightsLate')) {
             this._createAtmosphereLightRig();
         }
 
@@ -1696,6 +1705,11 @@ export class OdysseyBoardController {
         // draw progress-gated sub-objects too, or their first real draw lands on a live frame.
         group.traverse((child) => {
             if (child === group) return;
+            // NEVER reveal lights: they compile nothing, and a revealed light enters the render
+            // list — the lights key (light ids, count) then differs from the live pass, the warm
+            // builds a different program, and three disposes one side's pipelines when the key
+            // flips back (chapter-light-pool.js: the pool's lights are VIRTUAL, visible=false).
+            if (child.isLight) return;
             frustumOverrides.push({ child, visible: child.visible, frustumCulled: child.frustumCulled });
             child.visible = true;
             if (child?.isMesh || child?.isPoints || child?.isLine || child?.isSprite) {
@@ -1891,6 +1905,11 @@ export class OdysseyBoardController {
         // past their threshold (audit 2026-08-17, masterplan F2).
         group.traverse((child) => {
             if (child === group) return;
+            // NEVER reveal lights: they compile nothing, and a revealed light enters the render
+            // list — the lights key (light ids, count) then differs from the live pass, the warm
+            // builds a different program, and three disposes one side's pipelines when the key
+            // flips back (chapter-light-pool.js: the pool's lights are VIRTUAL, visible=false).
+            if (child.isLight) return;
             frustumOverrides.push({ child, visible: child.visible, frustumCulled: child.frustumCulled });
             child.visible = true;
             if (child?.isMesh || child?.isPoints || child?.isLine || child?.isSprite) {
@@ -1934,6 +1953,33 @@ export class OdysseyBoardController {
      * its prior state. Used for the seam-only breach + the corridor field, whose pipelines
      * would otherwise compile on the FIRST chapter transition (the first-transition hitch).
      */
+    /**
+     * A traverse-only stand-in for "everything the board added straight to the scene": the
+     * scene's direct children except the groups other prewarms already cover (chapter
+     * environments, One World, corridor field, threshold breach) and non-renderables. Exposes
+     * just what _prewarmGroup / compileObjectsFannedOut read: `traverse` and `visible`.
+     * @private
+     */
+    _boardPresentationGroup() {
+        if (!this.scene) return null;
+        const covered = new Set([
+            this.environmentManager?.environmentGroup,
+            this.oneWorld?.group,
+            this.corridorField?.group,
+            this.thresholdDirector?.group,
+        ].filter(Boolean));
+        const roots = this.scene.children.filter((child) => !covered.has(child)
+            && !child.isLight && !child.isCamera);
+        if (roots.length === 0) return null;
+        return {
+            visible: true,
+            traverse(callback) {
+                callback(this);
+                roots.forEach((root) => root.traverse(callback));
+            },
+        };
+    }
+
     async _prewarmGroup(group, label = 'group') {
         if (!group || !this.renderer || !this.scene || !this.camera) return;
         const previousVisibility = group.visible;
@@ -1943,6 +1989,11 @@ export class OdysseyBoardController {
         const overrides = [];
         group.traverse((child) => {
             if (child === group) return;
+            // NEVER reveal lights: they compile nothing, and a revealed light enters the render
+            // list — the lights key (light ids, count) then differs from the live pass, the warm
+            // builds a different program, and three disposes one side's pipelines when the key
+            // flips back (chapter-light-pool.js: the pool's lights are VIRTUAL, visible=false).
+            if (child.isLight) return;
             overrides.push({ child, visible: child.visible, frustumCulled: child.frustumCulled });
             child.visible = true;
             if (child.isMesh || child.isPoints || child.isLine || child.isSprite) {
@@ -2240,16 +2291,27 @@ export class OdysseyBoardController {
                 // and would compile four materials on the first Act II frame — the whole point
                 // of collapsing 66 materials into 4 is lost if they land as a cold stall.
                 const worldWarm = this._prewarmGroup(this.oneWorld?.group, 'one world');
+                // The board's OWN presentation — path tube/core/glow + chapter rings, the 55
+                // level nodes and their instanced glass/glow/lock/star meshes, the starfield —
+                // is added straight to the scene, outside every group above, so nothing
+                // compiled it: measured 2026-08-21 (renderer key trace) as the 14 pipelines
+                // still created synchronously on the first live frame once every re-create
+                // cause was gone. A pseudo-group over the scene's direct children minus the
+                // groups already in the pool compiles exactly that residue (each cache-hit
+                // compileAsync costs ~22 ms, so the covered groups are excluded, not re-walked).
+                const boardWarm = this._prewarmGroup(this._boardPresentationGroup(), 'board presentation');
                 if (this._compilePool) {
                     this._compilePool.push(
                         this._timedCompile('corridor', corridorWarm),
                         this._timedCompile('breach', breachWarm),
                         this._timedCompile('one-world', worldWarm),
+                        this._timedCompile('board', boardWarm),
                     );
                 } else {
                     await corridorWarm;
                     await breachWarm;
                     await worldWarm;
+                    await boardWarm;
                 }
             }
 

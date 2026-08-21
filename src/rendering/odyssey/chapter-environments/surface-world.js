@@ -19,6 +19,7 @@
 
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
+import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
@@ -1183,15 +1184,15 @@ export function createSurfaceWorldEnvironment() {
     // gilds the hills with long shadows, balanced by a cool sky-fill ambient that keeps the
     // shadows from going muddy. Lower/warmer than the old near-overhead key so the relief
     // reads at the forward angle without lifting the frame toward white.
-    const ambient = new THREE.AmbientLight(0xacc6e6, 0.18); // Low cool flat floor
+    const ambient = acquireChapterLight(3, 'AmbientLight', { color: 0xacc6e6, intensity: 0.18 }); // Low cool flat floor
     group.add(ambient);
-    const sunLight = new THREE.DirectionalLight(0xffcf7a, 0.7); // Low warm golden key
+    const sunLight = acquireChapterLight(3, 'DirectionalLight', { color: 0xffcf7a, intensity: 0.7 }); // Low warm golden key
     sunLight.position.set(-90, 38, -120); // low raking angle from the left
     group.add(sunLight);
     // Hemisphere sky/ground bounce — gives the now-LIT vegetation (MeshLambertNode trees)
     // a natural fill so shadow sides read as lush green, not black silhouettes. Only the lit
     // foliage responds; the unlit terrain/GLB props are unaffected, so the grade is unchanged.
-    const hemiFill = new THREE.HemisphereLight(0xcfe4ff, 0x5a7a44, 0.75);
+    const hemiFill = acquireChapterLight(3, 'HemisphereLight', { color: 0xcfe4ff, groundColor: 0x5a7a44, intensity: 0.75 });
     group.add(hemiFill);
     group.userData.hemiFill = hemiFill;
     // Creative plan item 6: the season MOVES the key — spring gold → autumn amber →

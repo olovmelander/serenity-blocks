@@ -25,6 +25,7 @@
 
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
+import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
 import {
     createSkyGradientTSL,
@@ -414,21 +415,21 @@ function setupSkyLighting(group) {
     // PAINTERLY-ASCENT REPALETTE (2026-08, Wave C): bright cool-white DAYLIGHT ambient (was dark
     // indigo 0x1a1a2e@0.3, which lit the sky chapter like night); the cosmic purple/cyan glows are
     // dimmed so they no longer tint the sunlit clouds, and the warm sun key is strengthened.
-    group.add(new THREE.AmbientLight(0x9fc4e8, 0.6));
+    group.add(acquireChapterLight(5, 'AmbientLight', { color: 0x9fc4e8, intensity: 0.6 }));
 
-    const purpleGlow = new THREE.PointLight(0x9933FF, 0.12, 400);
+    const purpleGlow = acquireChapterLight(5, 'PointLight', { color: 0x9933FF, intensity: 0.12, distance: 400 });
     purpleGlow.position.set(-50, 40, -600);
     group.add(purpleGlow);
     group.userData.purpleGlow = purpleGlow;
 
-    const cyanGlow = new THREE.PointLight(0x3399FF, 0.10, 400);
+    const cyanGlow = acquireChapterLight(5, 'PointLight', { color: 0x3399FF, intensity: 0.10, distance: 400 });
     cyanGlow.position.set(60, 20, -600);
     group.add(cyanGlow);
     group.userData.cyanGlow = cyanGlow;
 
     // Warm sun key — placed toward the on-camera sun azimuth so the clouds catch a
     // warm sun-side rim (matches the baked Mie sun / sun-glow sprite).
-    const sunKey = new THREE.PointLight(0xffe4b8, 0.6, 600);
+    const sunKey = acquireChapterLight(5, 'PointLight', { color: 0xffe4b8, intensity: 0.6, distance: 600 });
     sunKey.position.copy(SKY_DRIFT_SUN_DIR.clone().multiplyScalar(360));
     group.add(sunKey);
     group.userData.sunKey = sunKey;
