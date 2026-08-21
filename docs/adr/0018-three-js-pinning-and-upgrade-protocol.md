@@ -13,10 +13,11 @@ measurement, that the guide omitted **ten** breaking changes this repo hit (TSL 
 `.equals` removal, MRT secondary attachments defaulting to opaque, the `viewportTexture`
 refresh cadence, the Water addon look change, PBR energy-conservation drift, …), that one
 widely-repeated claim about `positionLocal` was **backwards** until proven from generated WGSL,
-and that two r185 defects were only reachable by running the real game on a real GPU
-(`compileAsync(scene, camera, group)` throws on a `Group`; `WebGPUBackend.dispose()` destroys
-the device under in-flight timestamp resolves). A `^0.181.2` caret had also quietly pinned us
-for nine months, because on a `0.x` dependency a caret never crosses a minor.
+and that two r185 behaviours were only reachable by running the real game on a real GPU
+(`WebGPUBackend.dispose()` destroys the device under in-flight timestamp resolves — a real
+defect; and `compileAsync` throwing on a `Group` `targetScene`, which turned out to be the
+repo's own inverted argument order that r181 had silently tolerated). A `^0.181.2` caret
+had also quietly pinned us for nine months, because on a `0.x` dependency a caret never crosses a minor.
 
 ## Decision
 

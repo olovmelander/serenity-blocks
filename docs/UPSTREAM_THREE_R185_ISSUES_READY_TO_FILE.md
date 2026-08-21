@@ -1,7 +1,7 @@
 # Draft upstream issues for three.js r185 — two WebGPURenderer defects found during the r181 → r185 upgrade
 
-Status: **draft, not yet filed**. Prepared 2026-08-21 from the Serenity Blocks upgrade
-(`THREE_UPGRADE_RESEARCH_R181_TO_R185_2026-08.md` §10, last two rows). Both verified on
+Status: **Issue 2 draft, not yet filed; Issue 1 withdrawn** (see below). Prepared 2026-08-21 from the Serenity Blocks upgrade
+(`THREE_UPGRADE_RESEARCH_R181_TO_R185_2026-08.md` §10, last two rows). Both were verified on
 **r185** (`three@0.185.1`) with `WebGPURenderer` on the WebGPU backend (Chromium 140 / Electron
 38 and Chrome, Windows 11, RTX 3070). Both are regressions relative to r181 in the sense that
 r181 code paths never triggered them. Copy-paste-ready bodies below; the file:line references
@@ -9,79 +9,21 @@ are into the `three@0.185.1` npm tarball (`src/` tree).
 
 ---
 
-## Issue 1 — `compileAsync(scene, camera, targetScene)` throws when `targetScene` is a `Group`
+## Issue 1 — WITHDRAWN 2026-08-21 (was: `compileAsync` throws when `targetScene` is a `Group`)
 
-### Title
+**Do not file.** The premise was wrong. three's contract (Renderer.js JSDoc, r181 and r185
+alike) is `compileAsync(objectToCompile, camera, targetScene)`: the **first** argument is the
+scene *or 3D object* to precompile and the **third** "must represent the scene the 3D object is
+going to be added" to. The repo had the order inverted — `compileAsync(scene, camera, group)` —
+so r185 correctly read `background` off a `Group` (undefined) and threw. r181 merely tolerated
+the misuse, and tolerated it expensively: every "targeted" prewarm walked the whole scene.
 
-`WebGPURenderer.compileAsync()`: passing a `Group` as `targetScene` throws
-`TypeError: Cannot read properties of undefined (reading 'isColor')` in r185 (worked in r181)
-
-### Body
-
-**Description**
-
-The documented three-argument form `renderer.compileAsync(scene, camera, targetScene)` — where
-`targetScene` is a sub-group whose materials should be compiled in the context of `scene` —
-throws in r185 when `targetScene` is an `Object3D`/`Group` rather than a `Scene`.
-
-**Reproduction** (r185, WebGPU backend)
-
-```js
-import * as THREE from 'three/webgpu';
-
-const renderer = new THREE.WebGPURenderer();
-await renderer.init();
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera();
-const group = new THREE.Group();
-group.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardNodeMaterial()));
-scene.add(group);
-
-await renderer.compileAsync(scene, camera, group);
-// r181: resolves. r185: TypeError: Cannot read properties of undefined (reading 'isColor')
-```
-
-Live example: https://jsfiddle.net/ (paste the snippet above into an `importmap` fiddle on
-`three@0.185.1`).
-
-**Cause**
-
-`Renderer.compileAsync()` now routes the background update at the *target* scene when it
-differs from `scene` (`src/renderers/common/Renderer.js:1005-1007`):
-
-```js
-if ( targetScene !== scene ) {
-    this._background.update( targetScene, renderList, renderContext );
-}
-```
-
-`Background.update()` then does (`src/renderers/common/Background.js`, `update()`):
-
-```js
-const background = this.nodes.getBackgroundNode( scene ) || scene.background;
-if ( background === null ) { ... } else if ( background.isColor === true ) { ...
-```
-
-A `Group` has no `background` property, so `background` is `undefined`, the `=== null` guard
-does not fire, and `background.isColor` throws. r181 always updated the background against the
-real scene (`sceneRef`), so any `Object3D` was accepted as `targetScene`.
-
-**Impact**
-
-Every targeted compile of a sub-group fails. Because `compileAsync` is usually awaited inside a
-try/catch by warm-up code, the failure tends to be *silent* — the app's shader prewarm stops
-working and first-use compile hitches return without an obvious error.
-
-**Suggested fix**
-
-Either guard for `undefined` as well as `null` in `Background.update()`
-(`if ( background == null )`), or keep using `sceneRef` for the background update and only
-use `targetScene` for the render-list traversal, as r181 did.
-
-**Workaround**
-
-Set `group.background = null` before calling `compileAsync(scene, camera, group)`.
+Fixed in-repo by calling `compileAsync(group, camera, scene)`
+(`src/rendering/odyssey/warmup/post-target-compile.js`); the `group.background = null` patch
+and its test were removed; the parameter order is now pinned from the installed source by
+`tests/unit/odyssey-post-target-compile.test.js`. A doc-only upstream suggestion remains
+legitimate: a `targetScene` that is not a `Scene` could warn instead of throwing deep inside
+`Background.update`. Not worth an issue on its own.
 
 ---
 

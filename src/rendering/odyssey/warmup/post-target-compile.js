@@ -187,6 +187,7 @@ function releaseCompileBinding(renderer, session) {
  * @param {object} camera the camera
  * @param {object} group the chapter group to compile
  * @param {boolean} [renderLoopActive] when true + post active, the compile is skipped entirely.
+ * @param {{concurrency?: number}} [options] fan-out width (default {@link DEFAULT_COMPILE_CONCURRENCY})
  * @returns {Promise<boolean>} true when a compile ran, false when skipped (live loop + post)
  */
 export async function compileGroupThroughPost(
@@ -196,31 +197,132 @@ export async function compileGroupThroughPost(
     camera,
     group,
     renderLoopActive = false,
+    options = {},
 ) {
     const postActive = !!postProcessingStack?.scenePass?.renderTarget;
     if (renderLoopActive && postActive) return false;
 
+    // ARGUMENT ORDER (three's contract, Renderer.js JSDoc): `compileAsync(objectToCompile,
+    // camera, targetScene)` — the FIRST argument is projected into the render list, the THIRD
+    // supplies lights, background and the render-list/cache key. This call was inverted
+    // (`scene, camera, group`) from r181 through 2026-08-21: every "targeted" prewarm walked
+    // the WHOLE scene and took lights/background from a Group (whose `background` is
+    // undefined — the `background.isColor` TypeError first blamed on r185 was this misuse).
+    // Cheap on r181 (sync build, cache hits); on r185's per-object yielding loop the four
+    // concurrent whole-scene walks cost seconds (corridor/breach/one-world "compiles" of
+    // identical length regardless of group size were the tell).
     if (typeof renderer?.compileAsync !== 'function') {
-        if (typeof renderer?.compile === 'function') renderer.compile(scene, camera, group);
+        if (typeof renderer?.compile === 'function') renderer.compile(group, camera, scene);
         return true;
-    }
-
-    // r185 upstream bug (caught by the 2026-08-20 capture matrix): with a target
-    // group, compileAsync routes `_background.update(targetScene, ...)` at the
-    // GROUP (Renderer.js:1005-1007), and Background.update guards `=== null`
-    // while a Group's `background` is UNDEFINED — `background.isColor` then
-    // TypeErrors and the swallowing catch silently voids every chapter prewarm
-    // (r181 always used the real scene here). Mirror Scene's `background = null`
-    // default onto the group so the null branch is taken.
-    if (group && typeof group === 'object' && group.background === undefined) {
-        group.background = null;
     }
 
     const session = renderLoopActive ? null : acquireCompileBinding(renderer, postProcessingStack);
     try {
-        await renderer.compileAsync(scene, camera, group);
+        await compileObjectsFannedOut(renderer, scene, camera, group, options.concurrency);
     } finally {
         releaseCompileBinding(renderer, session);
     }
     return true;
+}
+
+/**
+ * Default fan-out width for {@link compileGroupThroughPost}. Measured 2026-08-21 (RTX 3070,
+ * Electron 38, cold Dawn cache): the Earth Core group compiled as ONE targeted call serialised
+ * its pipelines (lake 1.65 s + 0.8 + 0.46 + 0.44 + 0.37 … = 5.4 s); the same objects through a
+ * pool overlap in Dawn. Kept modest: each concurrent call costs duplicate JS node builds for any
+ * material that is mid-build in another worker (pipelines and shader modules dedupe by cache
+ * key; builder states only dedupe once set), which the by-material grouping below avoids.
+ */
+export const DEFAULT_COMPILE_CONCURRENCY = 6;
+
+/**
+ * Compile a group's renderables through a small concurrent pool of targeted
+ * `compileAsync(object, camera, scene)` calls.
+ *
+ * WHY: r185's compileAsync awaits each object's pipeline creation before moving to the next
+ * (Renderer.js deferred loop, `await Promise.all(pipelinePromises)` per object; r181 awaited once
+ * at the end), so one call keeps at most ONE `createRenderPipelineAsync` in flight and a chapter
+ * compiles as the SUM of its shader compile times. The repo's old inverted call
+ * (`compileAsync(scene, camera, group)`) had hidden this: four whole-scene walks drained the same
+ * object list concurrently, i.e. ~4 pipelines in flight by accident. The fan-out restores that
+ * parallelism on purpose, with the public API only.
+ *
+ * Objects are bucketed by three's OWN builder-cache identity (`RenderObject.getMaterialCacheKey`,
+ * r185): the material instance's properties, the vertex layout, `receiveShadow`, the skeleton — and,
+ * for an InstancedMesh / `count > 1` / BatchedMesh, the OBJECT's uuid (RenderObject.js:833), so
+ * every instanced object owns a distinct builder state no matter what it shares. One representative
+ * per bucket is therefore exact for plain meshes sharing a material instance + layout, and every
+ * instanced object is its own bucket. Getting this wrong in either direction was measured:
+ * collapsing the One World forest's 40 instanced chunks (40 material instances of one program) to
+ * one call moved 39 node builds onto the first frames (load p99 344 → 2,820 ms); compiling all 50
+ * world objects individually cost ~22 ms of compileAsync overhead per cache-hit call. Objects
+ * without a material (groups, lights, cameras) are skipped — they are not renderables; an object
+ * whose `traverse` is absent (unit-test doubles) compiles as one call.
+ */
+/** Vertex-layout part of the pipeline key: attribute names + item sizes + index presence. */
+function attributeSignatureOf(geometry) {
+    const attributes = geometry?.attributes;
+    if (!attributes) return '';
+    const parts = Object.keys(attributes).sort().map((name) => {
+        const attribute = attributes[name];
+        const instanced = attribute?.isInstancedBufferAttribute || attribute?.isInstancedInterleavedBufferAttribute;
+        const kind = instanced ? 'I' : 'A';
+        return `${name}:${attribute?.itemSize ?? '?'}${kind}`;
+    });
+    return `${parts.join(',')}${geometry.index ? '#idx' : ''}`;
+}
+
+export async function compileObjectsFannedOut(
+    renderer,
+    scene,
+    camera,
+    group,
+    concurrency = DEFAULT_COMPILE_CONCURRENCY,
+) {
+    if (!group || typeof group.traverse !== 'function') {
+        await renderer.compileAsync(group, camera, scene);
+        return 1;
+    }
+    const byMaterial = new Map();
+    group.traverse((object) => {
+        if (!(object.isMesh || object.isPoints || object.isSprite || object.isLine) || !object.material) return;
+        if (object.visible === false) return;
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        const identity = materials.map((m) => String(m.uuid ?? m.id ?? m)).join('|');
+        // Instanced / multi-draw / batched / skinned objects own their builder state (three keys
+        // it on the object) — never share a representative across them.
+        const perObject = object.isInstancedMesh || object.isBatchedMesh || object.isSkinnedMesh
+            || (typeof object.count === 'number' && object.count > 1);
+        const owner = perObject ? `|obj:${object.uuid ?? object.id ?? Math.random()}` : '';
+        const key = `${identity}${object.receiveShadow ? '|rs' : ''}|${attributeSignatureOf(object.geometry)}${owner}`;
+        let bucket = byMaterial.get(key);
+        if (!bucket) {
+            bucket = [];
+            byMaterial.set(key, bucket);
+        }
+        bucket.push(object);
+    });
+    const queue = [...byMaterial.values()];
+    if (queue.length === 0) {
+        // Nothing renderable under the group (or a group whose children are all hidden):
+        // one plain call keeps three's own semantics for whatever is there.
+        await renderer.compileAsync(group, camera, scene);
+        return 1;
+    }
+    let calls = 0;
+    const worker = async () => {
+        while (queue.length > 0) {
+            // ONE representative per bucket (see the bucket rule above): the first object's node
+            // build + pipeline IS the others'. Each extra call would be a cache hit that still
+            // pays ~22 ms of compileAsync overhead (render list, light traversal, background,
+            // yields).
+            const [object] = queue.shift();
+            calls += 1;
+            // eslint-disable-next-line no-await-in-loop
+            await renderer.compileAsync(object, camera, scene);
+        }
+    };
+    const width = Math.max(1, Math.min(concurrency | 0 || 1, queue.length));
+    await Promise.all(Array.from({ length: width }, worker));
+    return calls;
 }

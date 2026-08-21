@@ -336,6 +336,42 @@ async function bootstrapOdyssey(win, { resetBeforeActivate = true } = {}) {
 
     if (resetBeforeActivate) await resetPerf(win, `${CACHE_MODE}:${SCENARIO}:load`);
 
+    // Per-pipeline compile timing (2026-08-21). Installed BEFORE the mode creates its device so
+    // every `createRenderPipelineAsync` of the run is timed by label
+    // (`renderPipeline_<MaterialType>_<material.id>`). This is the instrument that found the
+    // 7 s lava-lake shader; without it the `compiles` bucket is one opaque number.
+    await execute(win, `
+        (() => {
+            if (window.__odysseyPipelineTimes || typeof GPUDevice === 'undefined') return false;
+            const rec = []; window.__odysseyPipelineTimes = rec;
+            const shape = (desc) => ({
+                targets: (desc?.fragment?.targets || []).map((t) => (t ? t.format : null)).join(','),
+                samples: desc?.multisample?.count ?? 1,
+                depth: desc?.depthStencil?.format ?? null,
+            });
+            const orig = GPUDevice.prototype.createRenderPipelineAsync;
+            GPUDevice.prototype.createRenderPipelineAsync = function (desc) {
+                const t = performance.now();
+                // Capture label + shape NOW: three reuses one module-level descriptor object and
+                // mutates it for the next pipeline before this promise resolves.
+                const label = (desc && desc.label) || '?';
+                const shp = shape(desc);
+                const p = orig.call(this, desc);
+                p.then(() => rec.push({ label, ms: Math.round(performance.now() - t), at: Math.round(t), ...shp }), () => {});
+                return p;
+            };
+            // SYNC creations are the ones that stall: the call returns at once but the GPU
+            // process blocks on the compile at first draw — a multi-second rAF gap with NO
+            // main-thread long task. Recorded with ms = -1 so they are distinguishable.
+            const origSync = GPUDevice.prototype.createRenderPipeline;
+            GPUDevice.prototype.createRenderPipeline = function (desc) {
+                rec.push({ label: (desc && desc.label) || '?', ms: -1, at: Math.round(performance.now()), sync: true, ...shape(desc) });
+                return origSync.call(this, desc);
+            };
+            return true;
+        })();
+    `);
+
     const boot = await execute(win, `
         (async () => {
             const gm = window.serenityBlocks.gameModeManager;
@@ -485,10 +521,37 @@ async function runScenario(win) {
 
 async function collectResult(win, runIndex, gpuMemoryCycles = []) {
     const browser = await execute(win, `
-        (() => {
+        (async () => {
             const target = ${JSON.stringify(TARGET_FRAME_RATE)};
             const bc = window.odysseyMode?.boardController;
+            // The adapter the page ACTUALLY gets. three 0.185.1's WebGPUBackend never stores
+            // its adapter, so the renderer-side probe further down is always null on r185.
+            const adapterInfo = await (async () => {
+                try {
+                    const a = await navigator.gpu?.requestAdapter?.();
+                    if (!a?.info) return null;
+                    return {
+                        vendor: a.info.vendor ?? null,
+                        architecture: a.info.architecture ?? null,
+                        description: a.info.description ?? null,
+                    };
+                } catch { return null; }
+            })();
+            const pipes = (window.__odysseyPipelineTimes || []).slice();
+            const asyncPipes = pipes.filter((p) => !p.sync);
+            const syncPipes = pipes.filter((p) => p.sync);
+            const pipelines = pipes.length ? {
+                count: asyncPipes.length,
+                sumMs: asyncPipes.reduce((acc, p) => acc + p.ms, 0),
+                top: asyncPipes.slice().sort((a, b) => b.ms - a.ms).slice(0, 15),
+                // Every synchronous creation, in order: these compile on the GPU process at
+                // first draw and are the usual cause of post-reveal frame stalls.
+                sync: syncPipes.map((p) => ({ label: p.label, at: p.at, targets: p.targets, samples: p.samples, depth: p.depth })),
+                asyncShapes: [...new Set(asyncPipes.map((p) => [p.targets, p.samples, p.depth].join('|')))],
+            } : null;
             return {
+                adapter: adapterInfo,
+                pipelines,
                 location: window.location.href,
                 devicePixelRatio: window.devicePixelRatio,
                 // r185 Info.memory byte accounting on the board renderer: the sample
@@ -732,7 +795,7 @@ function buildAggregate(runs) {
  * identity or they are not comparable). GPU identity comes from the page. */
 function buildManifest(runs) {
     const cpus = os.cpus() || [];
-    const gpu = runs.map((run) => run?.browser?.gpu).find((info) => info) ?? null;
+    const gpu = runs.map((run) => run?.browser?.gpu || run?.browser?.adapter).find((info) => info) ?? null;
     const backend = runs.map((run) => run?.browser?.backend).find(Boolean) ?? null;
     const webglRenderer = runs.map((run) => run?.browser?.webglRenderer).find(Boolean) ?? null;
     return {

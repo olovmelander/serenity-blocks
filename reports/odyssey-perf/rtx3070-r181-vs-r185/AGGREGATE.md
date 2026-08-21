@@ -159,3 +159,109 @@ Files: `../gpu-split-lanea-rtx3070-r181.json` and `../gpu-split-lanea-rtx3070-r1
 | baseline-repeat | 0.721 | 0.655 | -1 | 0.918 | 0.852 | 61 = 61 | 945818 = 945818 |
 
 **Content match:** draw calls and triangles identical in all 23 configurations. **Drift:** r181 baselineDrift −1 tick, r185 0. **Verdict:** GPU p50 identical-bucket in 12/23, r185 one tick lower in 9 (three ticks lower on legacy-no-level-nodes), one tick higher in 1 (ch6-nebula-sprites); baseline p50 identical (0.655 ms); p95 equal or better nearly everywhere (legacy-dioramas 4.19 → 1.51 ms). GPU time on the Odyssey surface is **unchanged within quantization** — as §7.5 of the plan predicted for fill-bound surfaces — with a mild tail improvement and no regression beyond one tick.
+
+---
+
+## r185p1 — the post-upgrade Phase 1 tree (2026-08-21, same machine, same driver)
+
+**Tree:** the r185 tree plus `docs/R185_FAST_AND_BEAUTIFUL_PLAN_2026-08.md` Phase 1: calibrated Ashima
+simplex `snoise3` (replacing MaterialX Perlin — the 7 s lava-lake shader), `setLayout` on every shared
+noise `Fn`, `compileAsync(group, camera, scene)` (was inverted) with a by-builder-identity fan-out,
+and the warp pre-init through `WebGLRenderer.compileAsync`. **Instrument additions in this tree:**
+the session now records the actual adapter (`browser.adapter`, all cells `nvidia / ampere`) and every
+pipeline creation (`browser.pipelines`: async by label with duration; synchronous creations with
+target formats / samples / depth). The driver script documents its dev-server prerequisite.
+
+**Conditions:** Chrome tab blank (a tab left on the Odyssey board inflated idle p50 11.6 → 13.0 ms
+and invalidated one whole sweep — re-run). `warm-prime` discarded as before.
+
+### Reading
+
+- **Startup is the headline**: cold total **5,316 ms** (r185 8,051 → −34 %; r181 7,031 → −24 %),
+  `compiles` 4,146 → **1,225 ms** (−70 %), board visible 9,084 → **6,444 ms** (−29 %; r181 8,054).
+  Warm startup is flat (5,186 vs 5,153; `compiles` −12 %) — the Dawn cache already hid the
+  shader cost there; what Phase 1 removed was the cold cost and the accidental serialisation.
+- **Idle steady state** is equal-or-better on every metric (p50/p95/p99 −3…−5 %, long-task total
+  −17 %, long-task max −29 %, heap −3 %): the simplex costs nothing at runtime.
+- **Load-window frame health after the reveal is WORSE in the table (p99 0.2 → 2.1–2.8 s, max 1.7 →
+  3.0–3.3 s) and the table is not like-for-like there.** The per-pipeline hook shows what those
+  frames are: 44–101 *synchronous* pipeline creations at 9–12 s, each batch right after a background
+  chapter is created — its lights join the persistent rig, `lightsNode.getCacheKey()` changes, and
+  every visible material's builder state is rebuilt and its pipeline re-created on the next frame.
+  The r185 ledger's load cells never reached chapter 6's creation inside their 30 s window (its
+  console shows no drain, no warp pre-init), so its p99 215 ms measured a quieter window, not a
+  better tree; r181's load cells show the same spike shape (2.2 / 1.3 / 3.9 s at 8.7–16 s). This is
+  plan item **2.9** (light-set manifest), with the instrument that will prove it (`pipelines.sync`
+  empty after reveal). One further 5.3 s frame at 17.4 s in `load-warm-3` has no creations and no
+  warp log attached — recorded, unexplained.
+- Content match holds: draws 80 / 104, triangles 255 k / 538 k identical across all three trees.
+
+### idle-warm  (median (min–max, n))
+
+| metric | r181 | r185 | r185p1 | Δ r185 vs r181 | Δ r185p1 vs r181 | Δ r185p1 vs r185 |
+|---|---|---|---|---|---|---|
+| frame p50 ms | 11.20 (11.10–11.30, n=3) | 11.40 (9.30–11.50, n=3) | 10.90 (10.90–11.60, n=3) | 2% | -3% | -4% |
+| frame p95 ms | 13.70 (13.50–13.80, n=3) | 14.00 (12.20–14.30, n=3) | 13.60 (13.50–14.20, n=3) | 2% | -1% | -3% |
+| frame p99 ms | 15.80 (15.60–16.10, n=3) | 16.20 (13.50–16.50, n=3) | 15.40 (15.30–16.40, n=3) | 3% | -3% | -5% |
+| frame max ms | 761.8 (759.2–778.7, n=3) | 851.4 (792.6–862.5, n=3) | 722.8 (707.8–724.4, n=3) | 12% | -5% | -15% |
+| spikes | 8 (5–9, n=3) | 3 (3–4, n=3) | 5 (5–7, n=3) | -63% | -38% | 67% |
+| long tasks (count) | 62 (60–70, n=3) | 60 (57–64, n=3) | 56 (54–56, n=3) | -3% | -10% | -7% |
+| long tasks total ms | 34995 (33032–38301, n=3) | 28869 (26634–28973, n=3) | 23836 (23764–24090, n=3) | -18% | -32% | -17% |
+| long task max ms | 5687 (4010–5902, n=3) | 4349 (4270–4454, n=3) | 3076 (3006–3249, n=3) | -24% | -46% | -29% |
+| draw calls p50 | 104 (104–104, n=3) | 104 (104–104, n=3) | 104 (104–104, n=3) | 0% | 0% | 0% |
+| triangles p50 | 537633 (537593–537645, n=3) | 537609 (537609–537625, n=3) | 537637 (537605–537637, n=3) | -0% | 0% | 0% |
+| JS heap MB | 217.6 (196.5–221.9, n=3) | 204.7 (196.1–215.0, n=3) | 197.7 (191.2–202.5, n=3) | -6% | -9% | -3% |
+backend: r181=webgpu r185=webgpu r185p1=webgpu
+
+### load-cold  (median (min–max, n))
+
+| metric | r181 | r185 | r185p1 | Δ r185 vs r181 | Δ r185p1 vs r181 | Δ r185p1 vs r185 |
+|---|---|---|---|---|---|---|
+| startup total ms | 7031 (6979–7090, n=3) | 8051 (7402–8116, n=3) | 5316 (5251–5431, n=3) | 15% | -24% | -34% |
+|   startup bucket: renderer | 373 (358–375, n=3) | 402 (397–424, n=3) | 292 (251–363, n=3) | 8% | -22% | -27% |
+|   startup bucket: world | 1713 (1706–1738, n=3) | 1732 (1727–1734, n=3) | 1751 (1745–1758, n=3) | 1% | 2% | 1% |
+|   startup bucket: creates | 1545 (1337–1547, n=3) | 377 (365–394, n=3) | 453 (430–458, n=3) | -76% | -71% | 20% |
+|   startup bucket: nodes | 996 (970–1023, n=3) | 844 (824–851, n=3) | 1009 (1008–1032, n=3) | -15% | 1% | 20% |
+|   startup bucket: post+director | 536 (492–564, n=3) | 120 (110–131, n=3) | 173 (172–180, n=3) | -78% | -68% | 44% |
+|   startup bucket: compiles | 1434 (1334–1457, n=3) | 4146 (3532–4163, n=3) | 1225 (1105–1228, n=3) | 189% | -15% | -70% |
+|   startup bucket: warmup | 313 (310–321, n=3) | 305 (230–313, n=3) | 240 (232–244, n=3) | -3% | -23% | -21% |
+| board visible ms | 8054 (7992–8091, n=3) | 9084 (8431–9143, n=3) | 6444 (6387–6444, n=3) | 13% | -20% | -29% |
+| frame p50 ms | 7.70 (7.70–7.70, n=3) | 8.80 (8.00–9.20, n=3) | 13.60 (11.40–14.10, n=3) | 14% | 77% | 55% |
+| frame p95 ms | 105.60 (97.20–109.30, n=3) | 28.60 (27.80–29.90, n=3) | 230.00 (211.50–250.80, n=3) | -73% | 118% | 704% |
+| frame p99 ms | 560.00 (531.80–607.10, n=3) | 215.30 (213.70–242.80, n=3) | 2110.30 (1758.80–2308.00, n=3) | -62% | 277% | 880% |
+| frame max ms | 1720.3 (1717.8–1745.2, n=3) | 1745.1 (1735.7–1745.8, n=3) | 2972.0 (2816.7–2977.7, n=3) | 1% | 73% | 70% |
+| spikes | 24 (23–27, n=3) | 25 (24–27, n=3) | 33 (32–38, n=3) | 4% | 38% | 32% |
+| long tasks (count) | 30 (28–31, n=3) | 33 (32–37, n=3) | 38 (38–41, n=3) | 10% | 27% | 15% |
+| long tasks total ms | 11610 (11330–11655, n=3) | 10166 (9864–10305, n=3) | 12185 (12154–14659, n=3) | -12% | 5% | 20% |
+| long task max ms | 1719 (1712–1743, n=3) | 1767 (1734–1769, n=3) | 2637 (2599–2815, n=3) | 3% | 53% | 49% |
+| draw calls p50 | 80 (80–80, n=3) | 80 (80–80, n=3) | 80 (80–80, n=3) | 0% | 0% | 0% |
+| triangles p50 | 255179 (255147–255191, n=3) | 255183 (255155–255207, n=3) | 255167 (255147–255183, n=3) | 0% | -0% | -0% |
+| JS heap MB | 196.3 (194.1–204.1, n=3) | 179.1 (178.8–184.8, n=3) | 201.5 (185.0–203.4, n=3) | -9% | 3% | 12% |
+backend: r181=webgpu r185=webgpu r185p1=webgpu
+
+### load-warm  (median (min–max, n))
+
+| metric | r181 | r185 | r185p1 | Δ r185 vs r181 | Δ r185p1 vs r181 | Δ r185p1 vs r185 |
+|---|---|---|---|---|---|---|
+| startup total ms | 4943 (4793–5928, n=3) | 5153 (5094–5267, n=3) | 5186 (4843–5246, n=3) | 4% | 5% | 1% |
+|   startup bucket: renderer | 374 (341–564, n=3) | 602 (553–627, n=3) | 540 (453–601, n=3) | 61% | 44% | -10% |
+|   startup bucket: world | 1715 (1710–2201, n=3) | 1727 (1714–1752, n=3) | 1725 (1723–1754, n=3) | 1% | 1% | -0% |
+|   startup bucket: creates | 1081 (1034–1441, n=3) | 340 (328–363, n=3) | 369 (360–376, n=3) | -69% | -66% | 9% |
+|   startup bucket: nodes | 728 (715–741, n=3) | 752 (730–764, n=3) | 776 (739–785, n=3) | 3% | 7% | 3% |
+|   startup bucket: post+director | 455 (450–617, n=3) | 131 (109–132, n=3) | 173 (172–224, n=3) | -71% | -62% | 32% |
+|   startup bucket: compiles | 30 (30–40, n=3) | 1293 (1241–1299, n=3) | 1132 (924–1153, n=3) | 4210% | 3673% | -12% |
+|   startup bucket: warmup | 324 (312–437, n=3) | 217 (217–225, n=3) | 239 (239–240, n=3) | -33% | -26% | 10% |
+| board visible ms | 5895 (5889–6907, n=3) | 6182 (6177–6274, n=3) | 6215 (5917–6272, n=3) | 5% | 5% | 1% |
+| frame p50 ms | 11.30 (7.80–13.30, n=3) | 10.30 (9.60–10.90, n=3) | 12.70 (11.80–14.50, n=3) | -9% | 12% | 23% |
+| frame p95 ms | 395.90 (90.00–468.10, n=3) | 100.80 (92.90–109.40, n=3) | 249.90 (248.50–257.10, n=3) | -75% | -37% | 148% |
+| frame p99 ms | 1719.40 (630.00–1722.70, n=3) | 242.20 (232.90–251.10, n=3) | 2768.40 (2143.30–2921.70, n=3) | -86% | 61% | 1043% |
+| frame max ms | 3575.8 (3081.8–3884.8, n=3) | 1735.2 (1721.0–1761.9, n=3) | 3325.2 (2806.0–5348.0, n=3) | -51% | -7% | 92% |
+| spikes | 27 (24–32, n=3) | 28 (28–30, n=3) | 30 (30–33, n=3) | 4% | 11% | 7% |
+| long tasks (count) | 34 (34–38, n=3) | 34 (33–35, n=3) | 39 (39–42, n=3) | 0% | 15% | 15% |
+| long tasks total ms | 16905 (15271–18631, n=3) | 9151 (8832–9308, n=3) | 11591 (11162–14518, n=3) | -46% | -31% | 27% |
+| long task max ms | 3619 (3096–3892, n=3) | 1738 (1724–1758, n=3) | 2334 (2318–2354, n=3) | -52% | -36% | 34% |
+| draw calls p50 | 80 (80–80, n=3) | 80 (80–80, n=3) | 80 (80–80, n=3) | 0% | 0% | 0% |
+| triangles p50 | 255159 (255123–255179, n=3) | 255195 (255195–255207, n=3) | 255183 (255163–255207, n=3) | 0% | 0% | -0% |
+| JS heap MB | 211.8 (203.3–212.9, n=3) | 193.7 (189.6–213.7, n=3) | 229.5 (184.8–231.7, n=3) | -9% | 8% | 19% |
+backend: r181=webgpu r185=webgpu r185p1=webgpu
+
