@@ -2652,6 +2652,23 @@ class SerenityBlocks {
         });
 
         const savedMode = this.settingsManager?.get()?.gameMode || GAME_MODES.SINGLE_PLAYER;
+
+        // APP BOOT (2026-08-21): three (1.75 MB) is no longer on the menu's boot path (the chunk
+        // graph was welding it there through absorbed shared modules), so its evaluation moved to
+        // the first mode/theme that imports it. Every mode and every WebGPU theme needs it, so
+        // warm it at MENU idle — evaluated, not just fetched — through the browser-idle helper
+        // (the deferred-task queue is gated behind the first interaction on Electron, which is
+        // exactly the click this must beat). ?noThreeWarm=1 skips it for A/B.
+        const noThreeWarm = typeof window !== 'undefined'
+            && new URLSearchParams(window.location?.search || '').get('noThreeWarm') === '1';
+        if (!isPackagedWindowsSafeMode() && !noThreeWarm) {
+            scheduleBrowserIdleTask(async () => {
+                const start = performance.now();
+                await import('three/webgpu');
+                performanceMonitor.recordEvent('startup_three_warmed', { ms: Math.round(performance.now() - start) });
+            }, { delayMs: 0, timeout: 1500 });
+        }
+
         if (savedMode === GAME_MODES.ODYSSEY) {
             performanceMonitor.recordEvent('startup_mode_warmup_skipped', {
                 safeMode: false,

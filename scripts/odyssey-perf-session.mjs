@@ -64,6 +64,11 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 const SESSION_DATE = new Date();
 
 const PORT = Number(args.port || process.env.ODYSSEY_PERF_PORT || 4177);
+// --menu-dwell <ms>: wait for the menu to be VISIBLE, then this long, before activating Odyssey —
+// a player's reaction time. Default 0 keeps the historical cells' semantics (activation the
+// instant gameModeManager exists, before the menu is even painted), which is the pessimistic
+// case for anything warmed at menu idle (three's evaluation since 2026-08-21).
+const MENU_DWELL_MS = Math.max(0, Number(args.menuDwell || process.env.ODYSSEY_PERF_MENU_DWELL || 0));
 const BASE_URL = String(args.baseUrl || process.env.ODYSSEY_PERF_BASE_URL || `http://127.0.0.1:${PORT}`);
 const SCENARIO = String(args.scenario || process.env.ODYSSEY_PERF_SCENARIO || 'load');
 const CACHE_MODE = String(args.cache || process.env.ODYSSEY_PERF_CACHE || 'cold');
@@ -525,6 +530,11 @@ async function bootstrapOdyssey(win, { resetBeforeActivate = true } = {}) {
         `);
     }
 
+    if (MENU_DWELL_MS > 0) {
+        const menuShown = await waitFor(win, "(window.__serenityStartupTrace || []).some((e) => e?.phase === 'startup-pipeline:menu-visible')", 60000);
+        if (!menuShown) console.warn('[odyssey-perf] menu-visible never traced; dwelling from now');
+        await delay(MENU_DWELL_MS);
+    }
     const boot = await execute(win, `
         (async () => {
             const gm = window.serenityBlocks.gameModeManager;
@@ -708,6 +718,25 @@ async function collectResult(win, runIndex, gpuMemoryCycles = []) {
                 adapter: adapterInfo,
                 pipelines,
                 keyTrace: window.__odysseyKeyTrace ? window.__odysseyKeyTrace.slice() : null,
+                // Page-relative (navigation start = 0) boot milestones, so work that MOVES across
+                // the menu click (e.g. three's evaluation, 2026-08-21) is visible end to end:
+                // startup.totalMs alone starts at the click.
+                boot: (() => {
+                    const measureEnd = (name) => {
+                        const m = performance.getEntriesByName(name, 'measure').slice(-1)[0];
+                        return m ? Math.round(m.startTime + m.duration) : null;
+                    };
+                    const traceAt = (phase) => {
+                        const entry = (window.__serenityStartupTrace || []).find((e) => e?.phase === phase);
+                        return entry && Number.isFinite(entry.t) ? Math.round(entry.t) : null;
+                    };
+                    return {
+                        menuVisibleMs: traceAt('startup-pipeline:menu-visible'),
+                        menuReadyMs: traceAt('startup-pipeline:menu-ready'),
+                        boardInitEndMs: measureEnd('odyssey:mode:board-init'),
+                        boardVisibleMs: measureEnd('odyssey:mode:board-visible'),
+                    };
+                })(),
                 keyTraceState: window.__odysseyKeyTraceState ?? null,
                 location: window.location.href,
                 devicePixelRatio: window.devicePixelRatio,
