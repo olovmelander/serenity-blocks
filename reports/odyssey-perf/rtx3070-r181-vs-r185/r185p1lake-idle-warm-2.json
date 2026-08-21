@@ -1,0 +1,4807 @@
+{
+  "manifest": {
+    "schemaVersion": 2,
+    "date": "2026-08-21T13:46:06.703Z",
+    "commit": "67f8fbfdd898176abdd67e7d4a9b07f0dac35b60",
+    "script": "scripts/odyssey-perf-session.mjs",
+    "argv": [
+      "--scenario",
+      "idle",
+      "--cache",
+      "warm",
+      "--profile-dir",
+      "C:/Users/olov_/repos/serenity-blocks/artifacts/odyssey/perf-profiles/warm-idle-2",
+      "--output",
+      "C:/Users/olov_/repos/serenity-blocks/reports/odyssey-perf/rtx3070-r181-vs-r185/r185p1lake-idle-warm-2.json",
+      "--port",
+      "4177",
+      "--quality",
+      "Extreme",
+      "--target-frame-rate",
+      "240",
+      "--warmup-mode",
+      "current",
+      "--duration",
+      "30000",
+      "--pan-duration",
+      "2200",
+      "--width",
+      "1280",
+      "--height",
+      "720",
+      "--runs",
+      "1"
+    ],
+    "backend": {
+      "isWebGPU": true,
+      "isWebGL": false,
+      "name": "webgpu"
+    },
+    "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "machine": {
+      "platform": "win32",
+      "release": "10.0.26200",
+      "arch": "x64",
+      "cpuModel": "AMD Ryzen 7 5800H with Radeon Graphics         ",
+      "cpuCount": 16,
+      "totalMemBytes": 64269381632
+    },
+    "gpu": {
+      "vendor": "nvidia",
+      "architecture": "ampere",
+      "description": ""
+    },
+    "url": "http://127.0.0.1:4177/?skipIntro=1&odysseyPerfRun=1&odysseyPerfScenario=idle&odysseyWarmupMode=current&odysseyPerfRefreshTarget=240&odysseyOverlay=0&odysseyDisableAdaptiveQuality=1&earthCoreLakeBake=1&odysseyPixelRatio=1",
+    "pins": {
+      "adaptive": "disabled",
+      "dpr": 1,
+      "backgroundLoading": "default-on (measured, not pinned)"
+    },
+    "session": {
+      "cacheMode": "warm",
+      "scenario": "idle",
+      "quality": "Extreme",
+      "targetFrameRate": 240,
+      "warmupMode": "current",
+      "durationMs": 30000,
+      "panDurationMs": 2200,
+      "reloadCycles": 0,
+      "runs": 1,
+      "width": 1280,
+      "height": 720,
+      "profileDir": "artifacts\\odyssey\\perf-profiles\\warm-idle-2",
+      "coldCacheCaveat": null
+    }
+  },
+  "aggregate": {
+    "runCount": 1,
+    "metrics": {
+      "boardVisibleMs": {
+        "count": 1,
+        "median": 6311,
+        "p95": 6311,
+        "p99": 6311,
+        "min": 6311,
+        "max": 6311,
+        "values": [
+          6311
+        ]
+      },
+      "startup.totalMs": {
+        "count": 1,
+        "median": 5236,
+        "p95": 5236,
+        "p99": 5236,
+        "min": 5236,
+        "max": 5236,
+        "values": [
+          5236
+        ]
+      },
+      "startup.warmupMs": {
+        "count": 1,
+        "median": 344,
+        "p95": 344,
+        "p99": 344,
+        "min": 344,
+        "max": 344,
+        "values": [
+          344
+        ]
+      },
+      "frame.p50": {
+        "count": 1,
+        "median": 11.100000001490116,
+        "p95": 11.100000001490116,
+        "p99": 11.100000001490116,
+        "min": 11.100000001490116,
+        "max": 11.100000001490116,
+        "values": [
+          11.100000001490116
+        ]
+      },
+      "frame.p95": {
+        "count": 1,
+        "median": 13.899999998509884,
+        "p95": 13.899999998509884,
+        "p99": 13.899999998509884,
+        "min": 13.899999998509884,
+        "max": 13.899999998509884,
+        "values": [
+          13.899999998509884
+        ]
+      },
+      "frame.p99": {
+        "count": 1,
+        "median": 15.899999998509884,
+        "p95": 15.899999998509884,
+        "p99": 15.899999998509884,
+        "min": 15.899999998509884,
+        "max": 15.899999998509884,
+        "values": [
+          15.899999998509884
+        ]
+      },
+      "frame.max": {
+        "count": 1,
+        "median": 723.3999999985099,
+        "p95": 723.3999999985099,
+        "p99": 723.3999999985099,
+        "min": 723.3999999985099,
+        "max": 723.3999999985099,
+        "values": [
+          723.3999999985099
+        ]
+      },
+      "overBudget": {
+        "count": 1,
+        "median": 2550,
+        "p95": 2550,
+        "p99": 2550,
+        "min": 2550,
+        "max": 2550,
+        "values": [
+          2550
+        ]
+      },
+      "spikes": {
+        "count": 1,
+        "median": 4,
+        "p95": 4,
+        "p99": 4,
+        "min": 4,
+        "max": 4,
+        "values": [
+          4
+        ]
+      },
+      "drawCalls.p50": {
+        "count": 1,
+        "median": 104,
+        "p95": 104,
+        "p99": 104,
+        "min": 104,
+        "max": 104,
+        "values": [
+          104
+        ]
+      },
+      "drawCalls.max": {
+        "count": 1,
+        "median": 104,
+        "p95": 104,
+        "p99": 104,
+        "min": 104,
+        "max": 104,
+        "values": [
+          104
+        ]
+      },
+      "triangles.p50": {
+        "count": 1,
+        "median": 537613,
+        "p95": 537613,
+        "p99": 537613,
+        "min": 537613,
+        "max": 537613,
+        "values": [
+          537613
+        ]
+      },
+      "triangles.max": {
+        "count": 1,
+        "median": 537613,
+        "p95": 537613,
+        "p99": 537613,
+        "min": 537613,
+        "max": 537613,
+        "values": [
+          537613
+        ]
+      },
+      "longTasks.count": {
+        "count": 1,
+        "median": 61,
+        "p95": 61,
+        "p99": 61,
+        "min": 61,
+        "max": 61,
+        "values": [
+          61
+        ]
+      },
+      "longTasks.totalMs": {
+        "count": 1,
+        "median": 22154,
+        "p95": 22154,
+        "p99": 22154,
+        "min": 22154,
+        "max": 22154,
+        "values": [
+          22154
+        ]
+      },
+      "longTasks.maxMs": {
+        "count": 1,
+        "median": 2177,
+        "p95": 2177,
+        "p99": 2177,
+        "min": 2177,
+        "max": 2177,
+        "values": [
+          2177
+        ]
+      },
+      "memory.usedJSHeapSizeMB": {
+        "count": 1,
+        "median": 216.1719274520874,
+        "p95": 216.1719274520874,
+        "p99": 216.1719274520874,
+        "min": 216.1719274520874,
+        "max": 216.1719274520874,
+        "values": [
+          216.1719274520874
+        ]
+      },
+      "gpuMemory.totalMB": {
+        "count": 1,
+        "median": 66.36572074890137,
+        "p95": 66.36572074890137,
+        "p99": 66.36572074890137,
+        "min": 66.36572074890137,
+        "max": 66.36572074890137,
+        "values": [
+          66.36572074890137
+        ]
+      },
+      "gpuMemory.texturesMB": {
+        "count": 1,
+        "median": 48.6463680267334,
+        "p95": 48.6463680267334,
+        "p99": 48.6463680267334,
+        "min": 48.6463680267334,
+        "max": 48.6463680267334,
+        "values": [
+          48.6463680267334
+        ]
+      },
+      "gpuMemory.attributesMB": {
+        "count": 1,
+        "median": 11.426254272460938,
+        "p95": 11.426254272460938,
+        "p99": 11.426254272460938,
+        "min": 11.426254272460938,
+        "max": 11.426254272460938,
+        "values": [
+          11.426254272460938
+        ]
+      },
+      "gpuMemory.indexAttributesMB": {
+        "count": 1,
+        "median": 4.4582977294921875,
+        "p95": 4.4582977294921875,
+        "p99": 4.4582977294921875,
+        "min": 4.4582977294921875,
+        "max": 4.4582977294921875,
+        "values": [
+          4.4582977294921875
+        ]
+      },
+      "gpuMemory.storageAttributesMB": {
+        "count": 1,
+        "median": 0,
+        "p95": 0,
+        "p99": 0,
+        "min": 0,
+        "max": 0,
+        "values": [
+          0
+        ]
+      },
+      "gpuMemory.uniformBuffersMB": {
+        "count": 1,
+        "median": 0.512542724609375,
+        "p95": 0.512542724609375,
+        "p99": 0.512542724609375,
+        "min": 0.512542724609375,
+        "max": 0.512542724609375,
+        "values": [
+          0.512542724609375
+        ]
+      },
+      "gpuMemory.programsMB": {
+        "count": 1,
+        "median": 1.3222579956054688,
+        "p95": 1.3222579956054688,
+        "p99": 1.3222579956054688,
+        "min": 1.3222579956054688,
+        "max": 1.3222579956054688,
+        "values": [
+          1.3222579956054688
+        ]
+      },
+      "gpuMemory.renderTargets": {
+        "count": 1,
+        "median": 9,
+        "p95": 9,
+        "p99": 9,
+        "min": 9,
+        "max": 9,
+        "values": [
+          9
+        ]
+      },
+      "gpuMemory.scenarioGrowthMB": {
+        "count": 1,
+        "median": 0.19623279571533203,
+        "p95": 0.19623279571533203,
+        "p99": 0.19623279571533203,
+        "min": 0.19623279571533203,
+        "max": 0.19623279571533203,
+        "values": [
+          0.19623279571533203
+        ]
+      }
+    }
+  },
+  "runs": [
+    {
+      "runIndex": 0,
+      "label": "warm:idle",
+      "cacheMode": "warm",
+      "scenario": "idle",
+      "quality": "Extreme",
+      "targetFrameRate": 240,
+      "warmupMode": "current",
+      "durationMs": 30000,
+      "panDurationMs": 2200,
+      "reloadCycles": 0,
+      "gpuMemoryCycles": [],
+      "parsedConsole": {
+        "startupLine": "[OdysseyStartup] total 5236ms | renderer 418 | world 1768 | creates 574 | path 26 | nodes 812 | post+director 188 | compiles 930 | warmup 344",
+        "boardVisibleLine": "[OdysseyStartup] board visible 6311ms after overlay show",
+        "startup": {
+          "totalMs": 5236,
+          "buckets": {
+            "renderer": 418,
+            "world": 1768,
+            "creates": 574,
+            "path": 26,
+            "nodes": 812,
+            "post+director": 188,
+            "compiles": 930,
+            "warmup": 344
+          }
+        },
+        "boardVisibleMs": 6311,
+        "warmupLines": [
+          "[OdysseyWarmup] sample 0 @progress 0.000 took 343ms",
+          "[OdysseyWarmup] fast-start: focus chapter warmed; far chapters + post variants warm on first visit",
+          "[OdysseyWarmup] background render-warm complete"
+        ],
+        "warnings": []
+      },
+      "browser": {
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "description": ""
+        },
+        "pipelines": {
+          "count": 87,
+          "sumMs": 11733,
+          "top": [
+            {
+              "label": "renderPipeline_earth-core-lake-baked_34",
+              "ms": 698,
+              "at": 4321,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_40",
+              "ms": 687,
+              "at": 4333,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_33",
+              "ms": 678,
+              "at": 4308,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_SpriteNodeMaterial_37",
+              "ms": 541,
+              "at": 4326,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_53",
+              "ms": 517,
+              "at": 5657,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_48",
+              "ms": 401,
+              "at": 5257,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_31",
+              "ms": 398,
+              "at": 5268,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_SpriteNodeMaterial_36",
+              "ms": 397,
+              "at": 4325,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_52",
+              "ms": 373,
+              "at": 5369,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_50",
+              "ms": 318,
+              "at": 5340,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_SpriteNodeMaterial_51",
+              "ms": 308,
+              "at": 5350,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_41",
+              "ms": 283,
+              "at": 5019,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_SpriteNodeMaterial_35",
+              "ms": 265,
+              "at": 4325,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_21",
+              "ms": 251,
+              "at": 5624,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_25",
+              "ms": 241,
+              "at": 5628,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            }
+          ],
+          "sync": [
+            {
+              "label": "mipmap-rgba8unorm-2d-array",
+              "at": 4324,
+              "targets": "rgba8unorm",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_56",
+              "at": 6630,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_57",
+              "at": 6633,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardMaterial_59",
+              "at": 6642,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_72",
+              "at": 6650,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_33",
+              "at": 6656,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_45",
+              "at": 6659,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_45",
+              "at": 6661,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_46",
+              "at": 6664,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_46",
+              "at": 6667,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_47",
+              "at": 6672,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_47",
+              "at": 6675,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_52",
+              "at": 6699,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_PointsMaterial_16",
+              "at": 6719,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_75",
+              "at": 6722,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_75",
+              "at": 6724,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_50",
+              "at": 6727,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_50",
+              "at": 6729,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_67",
+              "at": 6741,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_68",
+              "at": 6744,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_71",
+              "at": 6747,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_71",
+              "at": 6749,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_40",
+              "at": 6753,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_40",
+              "at": 6755,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_42",
+              "at": 6757,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_42",
+              "at": 6759,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_43",
+              "at": 6763,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_43",
+              "at": 6767,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_44",
+              "at": 6770,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_44",
+              "at": 6772,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_55",
+              "at": 6775,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_55",
+              "at": 6778,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_earth-core-lake-baked_34",
+              "at": 6903,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_78",
+              "at": 6911,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_78",
+              "at": 6913,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_77",
+              "at": 6916,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_77",
+              "at": 6918,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_58",
+              "at": 6921,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_30",
+              "at": 6923,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_30",
+              "at": 6925,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_69",
+              "at": 6928,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_69",
+              "at": 6931,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_70",
+              "at": 6934,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_70",
+              "at": 6936,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_Bloom_highPass_94",
+              "at": 6939,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_Bloom_separable_95",
+              "at": 6942,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_Bloom_separable_96",
+              "at": 6944,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_Bloom_separable_97",
+              "at": 6946,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_Bloom_comp_98",
+              "at": 6948,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_RenderPipeline_17",
+              "at": 6949,
+              "targets": "bgra8unorm",
+              "samples": 1,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_56",
+              "at": 9748,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_57",
+              "at": 9751,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardMaterial_59",
+              "at": 9769,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_72",
+              "at": 9775,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_33",
+              "at": 9783,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_45",
+              "at": 9788,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_45",
+              "at": 9793,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_46",
+              "at": 9797,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_46",
+              "at": 9802,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_47",
+              "at": 9813,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_47",
+              "at": 9816,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_75",
+              "at": 9820,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_75",
+              "at": 9825,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_48",
+              "at": 9847,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_PointsMaterial_16",
+              "at": 9849,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_52",
+              "at": 9873,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_40",
+              "at": 9901,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_40",
+              "at": 9905,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_42",
+              "at": 9910,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_42",
+              "at": 9914,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_43",
+              "at": 9919,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_43",
+              "at": 9926,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_44",
+              "at": 9929,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_44",
+              "at": 9933,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_55",
+              "at": 9939,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_55",
+              "at": 9944,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_earth-core-lake-baked_34",
+              "at": 9957,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_67",
+              "at": 9972,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_68",
+              "at": 9977,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_71",
+              "at": 9980,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_71",
+              "at": 9985,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_50",
+              "at": 9992,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_50",
+              "at": 9995,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_77",
+              "at": 10013,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_77",
+              "at": 10017,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_78",
+              "at": 10022,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_78",
+              "at": 10025,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_58",
+              "at": 10028,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_30",
+              "at": 10030,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_30",
+              "at": 10033,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_69",
+              "at": 10037,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_69",
+              "at": 10041,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_70",
+              "at": 10045,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_70",
+              "at": 10049,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_56",
+              "at": 12483,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_57",
+              "at": 12487,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_72",
+              "at": 12496,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardMaterial_59",
+              "at": 12515,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_33",
+              "at": 12524,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_45",
+              "at": 12529,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_45",
+              "at": 12533,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_46",
+              "at": 12539,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_46",
+              "at": 12542,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_47",
+              "at": 12550,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_47",
+              "at": 12554,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_75",
+              "at": 12557,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_75",
+              "at": 12562,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_PointsMaterial_16",
+              "at": 12564,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_77",
+              "at": 12567,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_77",
+              "at": 12571,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_48",
+              "at": 12596,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_earth-core-lake-baked_34",
+              "at": 12618,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_40",
+              "at": 12623,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_40",
+              "at": 12626,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_42",
+              "at": 12631,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_42",
+              "at": 12634,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_43",
+              "at": 12640,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_43",
+              "at": 12647,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_44",
+              "at": 12652,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_44",
+              "at": 12656,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_55",
+              "at": 12662,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_55",
+              "at": 12666,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_52",
+              "at": 12689,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_67",
+              "at": 12702,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_68",
+              "at": 12706,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_71",
+              "at": 12709,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_71",
+              "at": 12713,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_50",
+              "at": 12744,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_50",
+              "at": 12749,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_78",
+              "at": 12755,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_78",
+              "at": 12758,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_58",
+              "at": 12770,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_30",
+              "at": 12773,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_30",
+              "at": 12777,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_69",
+              "at": 12781,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_69",
+              "at": 12784,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_70",
+              "at": 12788,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_70",
+              "at": 12792,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_72",
+              "at": 15193,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_105",
+              "at": 15214,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_127",
+              "at": 15255,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_115",
+              "at": 15269,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_115",
+              "at": 15272,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_67",
+              "at": 15422,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_68",
+              "at": 15426,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_120",
+              "at": 15482,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_111",
+              "at": 15490,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_113",
+              "at": 15493,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_114",
+              "at": 15496,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_114",
+              "at": 15498,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_122",
+              "at": 15508,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_119",
+              "at": 15512,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_121",
+              "at": 15516,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_126",
+              "at": 15520,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_126",
+              "at": 15524,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_117",
+              "at": 15528,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_118",
+              "at": 15531,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_123",
+              "at": 15534,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_124",
+              "at": 15543,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_125",
+              "at": 15547,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_106",
+              "at": 15550,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_107",
+              "at": 15555,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_107",
+              "at": 15559,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_108",
+              "at": 15562,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_108",
+              "at": 15565,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_109",
+              "at": 15568,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_109",
+              "at": 15571,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_110",
+              "at": 15576,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_116",
+              "at": 15580,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_112",
+              "at": 15585,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_69",
+              "at": 15599,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_69",
+              "at": 15604,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_70",
+              "at": 15608,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_70",
+              "at": 15612,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_134",
+              "at": 17177,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_135",
+              "at": 17182,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_163",
+              "at": 17188,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_149",
+              "at": 17194,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_148",
+              "at": 17198,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_148",
+              "at": 17200,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_150",
+              "at": 17203,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_150",
+              "at": 17206,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_151",
+              "at": 17210,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_151",
+              "at": 17214,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_155",
+              "at": 17218,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_155",
+              "at": 17220,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_156",
+              "at": 17234,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_156",
+              "at": 17238,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_157",
+              "at": 17242,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_157",
+              "at": 17246,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_164",
+              "at": 17250,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_164",
+              "at": 17254,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_146",
+              "at": 17262,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_146",
+              "at": 17269,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_147",
+              "at": 17273,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_144",
+              "at": 17287,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_141",
+              "at": 17292,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_141",
+              "at": 17294,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_166",
+              "at": 18187,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_167",
+              "at": 18191,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_165",
+              "at": 18197,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_168",
+              "at": 18202,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_168",
+              "at": 18207,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_171",
+              "at": 18210,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_171",
+              "at": 18213,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_169",
+              "at": 18218,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_169",
+              "at": 18220,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_170",
+              "at": 18225,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_170",
+              "at": 18228,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_190",
+              "at": 18232,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_190",
+              "at": 18236,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_178",
+              "at": 18242,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_178",
+              "at": 18253,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_174",
+              "at": 18259,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_177",
+              "at": 18263,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_177",
+              "at": 18266,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_179",
+              "at": 18269,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_179",
+              "at": 18273,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_180",
+              "at": 18277,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_173",
+              "at": 18282,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_173",
+              "at": 18285,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_187",
+              "at": 18288,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_187",
+              "at": 18290,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_41",
+              "at": 19754,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_89",
+              "at": 20708,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_31",
+              "at": 36403,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_31",
+              "at": 36407,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_49",
+              "at": 36410,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicMaterial_49",
+              "at": 36413,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_74",
+              "at": 44187,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_20",
+              "at": 44191,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_18",
+              "at": 44199,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_19",
+              "at": 44203,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_27",
+              "at": 44208,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_21",
+              "at": 44221,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_21",
+              "at": 44230,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_25",
+              "at": 44234,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_25",
+              "at": 44238,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_26",
+              "at": 44241,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_91",
+              "at": 44247,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_91",
+              "at": 44254,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_92",
+              "at": 44258,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_93",
+              "at": 44261,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_93",
+              "at": 44264,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            }
+          ],
+          "asyncShapes": [
+            "rgba16float|4|depth24plus"
+          ]
+        },
+        "location": "http://127.0.0.1:4177/?skipIntro=1&odysseyPerfRun=1&odysseyPerfScenario=idle&odysseyWarmupMode=current&odysseyPerfRefreshTarget=240&odysseyOverlay=0&odysseyDisableAdaptiveQuality=1&earthCoreLakeBake=1&odysseyPixelRatio=1",
+        "devicePixelRatio": 1,
+        "gpuMemory": {
+          "atReset": {
+            "total": 69383737,
+            "texturesSize": 51009414,
+            "attributesSize": 11951980,
+            "indexAttributesSize": 4643760,
+            "storageAttributesSize": 0,
+            "indirectStorageAttributesSize": 0,
+            "uniformBuffersSize": 531968,
+            "readbackBuffersSize": 0,
+            "programsSize": 1246615,
+            "renderTargets": 9,
+            "textures": 32,
+            "geometries": 242,
+            "programs": 269,
+            "atMs": 20727
+          },
+          "atEnd": {
+            "total": 69589502,
+            "texturesSize": 51009414,
+            "attributesSize": 11981296,
+            "indexAttributesSize": 4674864,
+            "storageAttributesSize": 0,
+            "indirectStorageAttributesSize": 0,
+            "uniformBuffersSize": 537440,
+            "readbackBuffersSize": 0,
+            "programsSize": 1386488,
+            "renderTargets": 9,
+            "textures": 32,
+            "geometries": 248,
+            "programs": 297,
+            "atMs": 50782.699999999255
+          }
+        },
+        "gpu": null,
+        "backend": {
+          "isWebGPU": true,
+          "isWebGL": false,
+          "name": "webgpu"
+        },
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "perf": {
+          "metrics": {
+            "fps": 80.64516127578581,
+            "avgFPS": 88.07985907184013,
+            "minFPS": 1.38236107271504,
+            "maxFPS": 1428.5714300919553,
+            "frameTime": 12.400000002235174,
+            "avgFrameTime": 11.353333333383004,
+            "maxFrameTime": 723.3999999985099,
+            "updateTime": 0,
+            "renderTime": 0,
+            "inputLatency": 0,
+            "memoryUsed": 210.88498973846436,
+            "frameDrops": 5,
+            "totalFrames": 2551,
+            "contextRestoreCount": 0,
+            "themeSwitchCount": 0,
+            "memoryLimit": 4095.75,
+            "memoryTotal": 274.72796535491943
+          },
+          "rollingPercentiles": {
+            "p50": 11.099999997764826,
+            "p95": 13.699999999254942,
+            "p99": 16.099999997764826
+          },
+          "frameTimeSummary": {
+            "count": 2551,
+            "budgetMs": 4.166666666666667,
+            "p50": 11.100000001490116,
+            "p95": 13.899999998509884,
+            "p99": 15.899999998509884,
+            "max": 723.3999999985099,
+            "overBudget": 2550,
+            "overBudgetPct": 99.9607996863975
+          },
+          "counters": {
+            "calls": 104,
+            "triangles": 537613,
+            "geometries": 248,
+            "textures": 32,
+            "programs": 0,
+            "callsAvg": 104,
+            "trianglesAvg": 537613,
+            "callsP50": 104,
+            "callsMax": 104,
+            "trianglesP50": 537613,
+            "trianglesMax": 537613
+          },
+          "spikes": [
+            {
+              "t": 20854,
+              "ms": 126.5,
+              "fps": 7.9,
+              "p50Before": 0.7,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.004946497473355004,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 87,
+                "triangles": 259953,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 242,
+                "textures": 32
+              }
+            },
+            {
+              "t": 36701,
+              "ms": 270.3,
+              "fps": 3.7,
+              "p50Before": 10.7,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.030514957543407547,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 90,
+                "triangles": 257191,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 245,
+                "textures": 32
+              }
+            },
+            {
+              "t": 44272,
+              "ms": 96,
+              "fps": 10.4,
+              "p50Before": 11.3,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": "1-2",
+              "inSeam": true,
+              "seamProgress": 5.1911111110034906e-11,
+              "progress": 0.042707688483429714,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 1,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 105,
+                "triangles": 538573,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 248,
+                "textures": 32
+              }
+            },
+            {
+              "t": 44996,
+              "ms": 723.4,
+              "fps": 1.4,
+              "p50Before": 11.3,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 60,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": "1-2",
+              "inSeam": true,
+              "seamProgress": 7.539915028370686e-8,
+              "progress": 0.04278714951398405,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": true,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 104,
+                "triangles": 537613,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 248,
+                "textures": 32
+              }
+            }
+          ],
+          "topSections": [],
+          "report": {
+            "summary": {
+              "uptime": "30.09s",
+              "totalFrames": 2551,
+              "frameDropRate": "0.20%"
+            },
+            "fps": {
+              "current": "80.6",
+              "average": "88.1",
+              "low1Pct": "62.1",
+              "low5Pct": "73.0"
+            },
+            "frameTime": {
+              "current": "12.40ms",
+              "average": "11.35ms",
+              "max": "723.40ms",
+              "budget": "16.67ms"
+            },
+            "performance": {
+              "updateTime": "0.00ms",
+              "renderTime": "0.00ms",
+              "inputLatency": "0.00ms"
+            },
+            "memory": {
+              "current": "210.88MB",
+              "history": "200.58MB - 242.95MB"
+            },
+            "gpu": {
+              "webglRenderer": "Google Inc. (NVIDIA) - ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+              "desktopDiagnostics": null
+            },
+            "performancePolicy": null
+          },
+          "longTasks": {
+            "count": 61,
+            "totalMs": 22154,
+            "maxMs": 2177,
+            "recent": [
+              {
+                "kind": "loaf",
+                "t": 46,
+                "ms": 208
+              },
+              {
+                "kind": "longtask",
+                "t": 850,
+                "ms": 103
+              },
+              {
+                "kind": "loaf",
+                "t": 282,
+                "ms": 557,
+                "src": "http://127.0.0.1:4177/src/main.js?t=1787318436515"
+              },
+              {
+                "kind": "loaf",
+                "t": 839,
+                "ms": 115,
+                "src": "FrameRequestCallback"
+              },
+              {
+                "kind": "longtask",
+                "t": 1025,
+                "ms": 82
+              },
+              {
+                "kind": "loaf",
+                "t": 957,
+                "ms": 62,
+                "src": "http://127.0.0.1:4177/src/audio/music-loader.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 1025,
+                "ms": 100,
+                "src": "09e4-4031-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/phaser.js?v=964d404a"
+              },
+              {
+                "kind": "loaf",
+                "t": 1245,
+                "ms": 193
+              },
+              {
+                "kind": "loaf",
+                "t": 1450,
+                "ms": 134,
+                "src": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515"
+              },
+              {
+                "kind": "loaf",
+                "t": 1586,
+                "ms": 91
+              },
+              {
+                "kind": "loaf",
+                "t": 1710,
+                "ms": 78,
+                "src": "http://127.0.0.1:4177/src/ui/cinematic-loading-overlay.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 1789,
+                "ms": 53
+              },
+              {
+                "kind": "loaf",
+                "t": 1843,
+                "ms": 58
+              },
+              {
+                "kind": "longtask",
+                "t": 2138,
+                "ms": 1775
+              },
+              {
+                "kind": "loaf",
+                "t": 1902,
+                "ms": 100
+              },
+              {
+                "kind": "loaf",
+                "t": 2003,
+                "ms": 52
+              },
+              {
+                "kind": "loaf",
+                "t": 2138,
+                "ms": 1774,
+                "src": "FrameRequestCallback"
+              },
+              {
+                "kind": "longtask",
+                "t": 4030,
+                "ms": 245
+              },
+              {
+                "kind": "loaf",
+                "t": 4029,
+                "ms": 251,
+                "src": ".0.1:4177/src/rendering/odyssey/chapter-environments/registry.js?t=1787318436515"
+              },
+              {
+                "kind": "loaf",
+                "t": 4280,
+                "ms": 71,
+                "src": "1-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-BK2XMPO3.js?v=964d404a"
+              },
+              {
+                "kind": "loaf",
+                "t": 4363,
+                "ms": 150,
+                "src": "FrameRequestCallback"
+              },
+              {
+                "kind": "longtask",
+                "t": 4590,
+                "ms": 85
+              },
+              {
+                "kind": "loaf",
+                "t": 4564,
+                "ms": 119,
+                "src": "1-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-BK2XMPO3.js?v=964d404a"
+              },
+              {
+                "kind": "loaf",
+                "t": 4684,
+                "ms": 111,
+                "src": "1-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-BK2XMPO3.js?v=964d404a"
+              },
+              {
+                "kind": "loaf",
+                "t": 4796,
+                "ms": 104,
+                "src": "1-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-BK2XMPO3.js?v=964d404a"
+              },
+              {
+                "kind": "loaf",
+                "t": 4901,
+                "ms": 106,
+                "src": "1-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-BK2XMPO3.js?v=964d404a"
+              },
+              {
+                "kind": "loaf",
+                "t": 5008,
+                "ms": 109,
+                "src": "1-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-BK2XMPO3.js?v=964d404a"
+              },
+              {
+                "kind": "loaf",
+                "t": 5118,
+                "ms": 58,
+                "src": "1-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-BK2XMPO3.js?v=964d404a"
+              },
+              {
+                "kind": "longtask",
+                "t": 5375,
+                "ms": 198
+              },
+              {
+                "kind": "loaf",
+                "t": 5375,
+                "ms": 197,
+                "src": "FrameRequestCallback"
+              },
+              {
+                "kind": "loaf",
+                "t": 5573,
+                "ms": 92,
+                "src": "1-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-BK2XMPO3.js?v=964d404a"
+              },
+              {
+                "kind": "longtask",
+                "t": 6605,
+                "ms": 347
+              },
+              {
+                "kind": "loaf",
+                "t": 6605,
+                "ms": 385,
+                "src": "1-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-BK2XMPO3.js?v=964d404a"
+              },
+              {
+                "kind": "loaf",
+                "t": 6992,
+                "ms": 980,
+                "src": "http://127.0.0.1:4177/src/utils/performance-monitor.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 7974,
+                "ms": 506,
+                "src": "//127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515"
+              },
+              {
+                "kind": "longtask",
+                "t": 9177,
+                "ms": 557
+              },
+              {
+                "kind": "longtask",
+                "t": 9735,
+                "ms": 317
+              },
+              {
+                "kind": "loaf",
+                "t": 9176,
+                "ms": 874,
+                "src": ".0.1:4177/src/rendering/odyssey/chapter-environments/registry.js?t=1787318436515"
+              },
+              {
+                "kind": "loaf",
+                "t": 10063,
+                "ms": 2053
+              },
+              {
+                "kind": "longtask",
+                "t": 12474,
+                "ms": 322
+              },
+              {
+                "kind": "loaf",
+                "t": 12456,
+                "ms": 339,
+                "src": ".0.1:4177/src/rendering/odyssey/chapter-environments/registry.js?t=1787318436515"
+              },
+              {
+                "kind": "loaf",
+                "t": 12803,
+                "ms": 2177
+              },
+              {
+                "kind": "longtask",
+                "t": 15171,
+                "ms": 441
+              },
+              {
+                "kind": "loaf",
+                "t": 15171,
+                "ms": 451,
+                "src": "//127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515"
+              },
+              {
+                "kind": "loaf",
+                "t": 15630,
+                "ms": 1299
+              },
+              {
+                "kind": "loaf",
+                "t": 16930,
+                "ms": 56
+              },
+              {
+                "kind": "longtask",
+                "t": 17167,
+                "ms": 139
+              },
+              {
+                "kind": "loaf",
+                "t": 17167,
+                "ms": 147,
+                "src": "//127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515"
+              },
+              {
+                "kind": "loaf",
+                "t": 17314,
+                "ms": 237
+              },
+              {
+                "kind": "loaf",
+                "t": 17553,
+                "ms": 456
+              },
+              {
+                "kind": "longtask",
+                "t": 18180,
+                "ms": 137
+              },
+              {
+                "kind": "loaf",
+                "t": 18180,
+                "ms": 145,
+                "src": "//127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515"
+              },
+              {
+                "kind": "loaf",
+                "t": 18334,
+                "ms": 579
+              },
+              {
+                "kind": "loaf",
+                "t": 19767,
+                "ms": 335
+              },
+              {
+                "kind": "longtask",
+                "t": 20448,
+                "ms": 63
+              },
+              {
+                "kind": "loaf",
+                "t": 20448,
+                "ms": 77,
+                "src": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515"
+              },
+              {
+                "kind": "loaf",
+                "t": 20737,
+                "ms": 123
+              },
+              {
+                "kind": "loaf",
+                "t": 36436,
+                "ms": 271
+              },
+              {
+                "kind": "longtask",
+                "t": 44176,
+                "ms": 95
+              },
+              {
+                "kind": "loaf",
+                "t": 44173,
+                "ms": 96,
+                "src": "//127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515"
+              },
+              {
+                "kind": "loaf",
+                "t": 44281,
+                "ms": 722
+              }
+            ]
+          },
+          "releaseGates": {
+            "frameTime": {
+              "p50": 11.099999997764826,
+              "p95": 13.699999999254942,
+              "p99": 16.099999997764826
+            },
+            "fps": {
+              "p50": 90.09009010823127,
+              "p05": 74.07407407407408
+            },
+            "memory": {
+              "currentMb": 210.88498973846436,
+              "peakMb": 242.95107173919678
+            },
+            "themeSwitches": {
+              "count": 0,
+              "maxDurationMs": 0
+            },
+            "runtime": {
+              "contextRestoreCount": 0,
+              "recentEvents": [
+                {
+                  "type": "odyssey-perf-reset",
+                  "timestamp": 1787319987556,
+                  "payload": {
+                    "label": "warm:idle:idle"
+                  }
+                },
+                {
+                  "type": "startup_theme_prewarm",
+                  "timestamp": 1787319987919,
+                  "payload": {
+                    "theme": "forest",
+                    "warmed": true,
+                    "durationMs": 1412.199999999255
+                  }
+                },
+                {
+                  "type": "startup_deferred_task_completed",
+                  "timestamp": 1787319987919,
+                  "payload": {
+                    "label": "initial-theme-prewarm"
+                  }
+                }
+              ]
+            },
+            "network": null
+          },
+          "memory": {
+            "usedJSHeapSize": 226672695,
+            "totalJSHeapSize": 288351307,
+            "jsHeapSizeLimit": 4294705152
+          }
+        },
+        "odyssey": {
+          "label": "warm:idle",
+          "cacheMode": "warm",
+          "scenario": "idle",
+          "targetFrameRate": 240,
+          "warpPreinit": {
+            "mode": "defer",
+            "complete": true,
+            "scheduled": true
+          },
+          "timestamp": "2026-08-21T13:46:57.644Z",
+          "odyssey": {
+            "source": "odyssey",
+            "spike": false,
+            "warmupMode": "current",
+            "targetFrameRate": 240,
+            "adaptiveTargetFrameRate": 60,
+            "detectedRefreshRate": 120,
+            "backend": "webgpu",
+            "quality": "Extreme",
+            "activeChapter": 1,
+            "boundaryId": "1-2",
+            "inSeam": true,
+            "seamProgress": 0.046042493133108396,
+            "progress": 0.05084824938845151,
+            "settled": true,
+            "pendingChapterLoads": 0,
+            "prewarmQueue": 1,
+            "isPrewarming": false,
+            "bgRenderWarm": {
+              "started": true,
+              "complete": true,
+              "current": null,
+              "pending": 0
+            },
+            "adaptive": {
+              "renderScale": 1,
+              "baselineRenderScale": 1,
+              "pressureTier": 0,
+              "bloomScale": 0.5,
+              "bloomEnabled": true,
+              "postQuality": 1
+            },
+            "post": {
+              "active": true,
+              "useMRT": false,
+              "enableBloom": true,
+              "bloomAllowed": true,
+              "bloomScale": 0.25,
+              "activeVariantKey": "0|1",
+              "outputVariants": 1,
+              "postChromaScale": 1,
+              "postGrainScale": 1,
+              "sharpenEnabled": true,
+              "sharpenAmount": 0,
+              "sharpenActive": false
+            },
+            "canvas": {
+              "width": 1280,
+              "height": 720,
+              "clientWidth": 1280,
+              "clientHeight": 720
+            },
+            "render": {
+              "calls": 104,
+              "triangles": 537613,
+              "timestamp": 0
+            },
+            "memory": {
+              "geometries": 248,
+              "textures": 32
+            }
+          },
+          "warmup": {
+            "mode": "current",
+            "skipped": false,
+            "syncGpu": false,
+            "sampleCount": 1,
+            "renderFrameMs": 343.0999999977648,
+            "yieldMs": 0,
+            "gpuSyncMs": 0,
+            "variantsMs": 0,
+            "totalMs": 343.3999999985099,
+            "samples": [
+              {
+                "index": 0,
+                "progress": 0,
+                "renderFrameMs": 343,
+                "gpuSyncMs": 0,
+                "yieldMs": 0,
+                "totalMs": 343
+              }
+            ]
+          },
+          "startupMeasures": [
+            {
+              "name": "odyssey:mode:board-init",
+              "duration": 5242
+            },
+            {
+              "name": "odyssey:mode:board-visible",
+              "duration": 6111
+            },
+            {
+              "name": "odyssey:renderer",
+              "duration": 418
+            },
+            {
+              "name": "odyssey:world",
+              "duration": 1768
+            },
+            {
+              "name": "odyssey:creates",
+              "duration": 574
+            },
+            {
+              "name": "odyssey:path",
+              "duration": 26
+            },
+            {
+              "name": "odyssey:nodes",
+              "duration": 812
+            },
+            {
+              "name": "odyssey:post+director",
+              "duration": 188
+            },
+            {
+              "name": "odyssey:compiles",
+              "duration": 930
+            },
+            {
+              "name": "odyssey:warmup",
+              "duration": 344
+            },
+            {
+              "name": "odyssey:mode:reveal-container",
+              "duration": 0
+            },
+            {
+              "name": "odyssey:mode:reveal-board",
+              "duration": 1
+            },
+            {
+              "name": "odyssey:mode:create-board-overlay",
+              "duration": 1
+            },
+            {
+              "name": "odyssey:mode:focus-selected-level",
+              "duration": 0
+            },
+            {
+              "name": "odyssey:mode:overlay-wait",
+              "duration": 0
+            },
+            {
+              "name": "odyssey:mode:overlay-dismiss",
+              "duration": 870
+            },
+            {
+              "name": "odyssey:mode:preinit-warp",
+              "duration": 63
+            }
+          ]
+        }
+      },
+      "consoleLines": [
+        {
+          "level": 0,
+          "message": "[vite] connecting...",
+          "line": 495,
+          "sourceId": "http://127.0.0.1:4177/@vite/client",
+          "t": 1787319967093
+        },
+        {
+          "level": 2,
+          "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+          "line": 2,
+          "sourceId": "node:electron/js2c/sandbox_bundle",
+          "t": 1787319967112
+        },
+        {
+          "level": 0,
+          "message": "[vite] connected.",
+          "line": 618,
+          "sourceId": "http://127.0.0.1:4177/@vite/client",
+          "t": 1787319967114
+        },
+        {
+          "level": 1,
+          "message": "[ObjectPool] Initialized with 100 objects (max: 500)",
+          "line": 45,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787319967243
+        },
+        {
+          "level": 1,
+          "message": "[ObjectPool] Initialized with 50 objects (max: 200)",
+          "line": 45,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787319967243
+        },
+        {
+          "level": 1,
+          "message": "[ObjectPool] Initialized with 40 objects (max: 160)",
+          "line": 45,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787319967243
+        },
+        {
+          "level": 1,
+          "message": "💡 Object pools available:",
+          "line": 304,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787319967243
+        },
+        {
+          "level": 1,
+          "message": "  window.objectPools.status() - View pool statistics",
+          "line": 305,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787319967243
+        },
+        {
+          "level": 1,
+          "message": "  window.objectPools.clear()  - Clear all pools",
+          "line": 306,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787319967243
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Initialized",
+          "line": 204,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319967244
+        },
+        {
+          "level": 1,
+          "message": "💡 Performance monitor available:",
+          "line": 1725,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319967245
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.start()  - Start monitoring with overlay",
+          "line": 1726,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319967246
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.stop()   - Stop monitoring",
+          "line": 1727,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319967246
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.toggle() - Toggle overlay (or press F3)",
+          "line": 1728,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319967246
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.setQuality(mode) - Set quality mode display",
+          "line": 1729,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319967246
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.report() - Generate detailed report",
+          "line": 1730,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319967246
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.export() - Export metrics to JSON",
+          "line": 1731,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319967246
+        },
+        {
+          "level": 1,
+          "message": "💡 Asset manager available: window.assetManager.logStatus()",
+          "line": 481,
+          "sourceId": "http://127.0.0.1:4177/src/utils/asset-manager.js",
+          "t": 1787319967247
+        },
+        {
+          "level": 1,
+          "message": "🚀 Bootstrapping Serenity Blocks...",
+          "line": 5076,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967254
+        },
+        {
+          "level": 1,
+          "message": "🎮 Initializing Serenity Blocks...",
+          "line": 845,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967682
+        },
+        {
+          "level": 1,
+          "message": "Canvas initialized: Phaser container ready, block size: 40px",
+          "line": 1584,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967682
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Constructor - canvas element: [object HTMLCanvasElement]",
+          "line": 676,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787319967682
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] WebGL context created successfully",
+          "line": 698,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787319967767
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Canvas resized to: 1280 x 720 (Auto)",
+          "line": 877,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787319967779
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Resize handler throttled to 100ms",
+          "line": 716,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787319967779
+        },
+        {
+          "level": 1,
+          "message": "[TextureManager] Initialized (max: 20 textures)",
+          "line": 40,
+          "sourceId": "http://127.0.0.1:4177/src/utils/texture-manager.js",
+          "t": 1787319967779
+        },
+        {
+          "level": 1,
+          "message": "[BufferManager] Initialized",
+          "line": 349,
+          "sourceId": "http://127.0.0.1:4177/src/utils/texture-manager.js",
+          "t": 1787319967780
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] GPU resource managers initialized",
+          "line": 781,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787319967780
+        },
+        {
+          "level": 1,
+          "message": "%c[GPU] Active Renderer: color: #00ff00; font-weight: bold; Google Inc. (NVIDIA) - ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+          "line": 746,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787319967781
+        },
+        {
+          "level": 1,
+          "message": "⏭️ Skipping intro animation (URL flag or reduced motion)...",
+          "line": 5166,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967781
+        },
+        {
+          "level": 1,
+          "message": "✅ Loaded 36 songs from songs.json",
+          "line": 29,
+          "sourceId": "http://127.0.0.1:4177/src/audio/music-loader.js",
+          "t": 1787319967788
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Starting initialization... [object Object]",
+          "line": 1612,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967901
+        },
+        {
+          "level": 1,
+          "message": "[BackgroundScene] Creating new Phaser 4 scene class",
+          "line": 31,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/background-scene.js",
+          "t": 1787319967901
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Creating scene class for Phaser 4",
+          "line": 36,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787319967901
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Creating new Phaser 4 scene class",
+          "line": 42,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787319967902
+        },
+        {
+          "level": 1,
+          "message": "[MultiplayerBoardScene] Creating scene class for Phaser 4",
+          "line": 57,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/multiplayer/board-panel.js",
+          "t": 1787319967902
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Returning cached class",
+          "line": 38,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787319967902
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Creating game with config: [object Object]",
+          "line": 1743,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967902
+        },
+        {
+          "level": 1,
+          "message": "%cPhaser v4.1.0 (WebGL | Web Audio)%c https://phaser.io/v401 color: #ffffff; background-image: url(\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAOCAYAAAAmL5yKAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAARBJREFUeNpi/P//P0OHsPB/BiCoePuWkYFEwALSXJElzMBgLwE2CNkQxgWr/yMr/p8QimlBu5DQ//+8vBBco/ofzAe6imH+qv/53/6jYJAYSA4ZoxoANYTPKhiuCQZwGcJU+e4dqpMmvsDq14krV2MPAxDha2CMKvoXoiE/PBQUDgQD8j82UFae9B9bOIC8B9UD9gIjjIMN7Ns6lWHn4XMoYu62RgxO3tkMjIyMII2MYAOAtmFVhA+ADHf2ycGMRhANjUq8YO+WKWCvgAORIV8CkpDCrzIwsLIymC1qAtuAD4Bsh3sBmqAY3qcGwL2AC4DCpKtzHlgzOLWihwEuzTCN0GhDJHeYC4gByBphACDAAH2dDIxdjr+VAAAAAElFTkSuQmCC\"), linear-gradient(to bottom, #000814, #001d3d, #003566); background-repeat: no-repeat; background-position: 4px center, 0 0; padding: 2px 6px 2px 24px; background: transparent",
+          "line": 8451,
+          "sourceId": "http://127.0.0.1:4177/@fs/C:/Users/olov_/AppData/Local/Temp/claude/c--Users-olov--repos-serenity-blocks/4c6a5c17-09e4-4031-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/phaser.js?v=964d404a",
+          "t": 1787319967924
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Game instance created successfully",
+          "line": 1753,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967925
+        },
+        {
+          "level": 1,
+          "message": "[DisplayManager] Initialized [object Object]",
+          "line": 2357,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967927
+        },
+        {
+          "level": 1,
+          "message": "[Display] Applying display settings: [object Object]",
+          "line": 1830,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967927
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Global render scale set to: 1",
+          "line": 27,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787319967927
+        },
+        {
+          "level": 1,
+          "message": "[Display] Render scale set to: 1 (effective DPR: 1)",
+          "line": 1839,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967927
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Global antialiasing set to: true",
+          "line": 44,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787319967927
+        },
+        {
+          "level": 1,
+          "message": "[Display] Antialiasing set to: true",
+          "line": 1845,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967927
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Setting internal resolution: 1600x852 (auto)",
+          "line": 893,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787319967927
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Canvas resized to: 1280 x 720 (Auto)",
+          "line": 877,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787319967927
+        },
+        {
+          "level": 1,
+          "message": "[DisplayManager] Setting display mode: windowed [object Object]",
+          "line": 95,
+          "sourceId": "http://127.0.0.1:4177/src/core/display-manager.js",
+          "t": 1787319967927
+        },
+        {
+          "level": 1,
+          "message": "[FPS] Performance monitor hidden",
+          "line": 1928,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967927
+        },
+        {
+          "level": 1,
+          "message": "[Display] Display settings applied successfully",
+          "line": 1878,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967928
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] VSync enabled",
+          "line": 203,
+          "sourceId": "http://127.0.0.1:4177/src/core/frame-rate-controller.js",
+          "t": 1787319967928
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] Target FPS set to 240",
+          "line": 194,
+          "sourceId": "http://127.0.0.1:4177/src/core/frame-rate-controller.js",
+          "t": 1787319967928
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] Updated Phaser FPS target to 240",
+          "line": 1164,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967928
+        },
+        {
+          "level": 1,
+          "message": "[Settings] Frame rate settings applied: [object Object]",
+          "line": 1177,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967928
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Initialized with asset and audio managers",
+          "line": 127,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319967928
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+          "line": 1479,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319967929
+        },
+        {
+          "level": 1,
+          "message": "[InputController] Initialized High-Precision DAS",
+          "line": 83,
+          "sourceId": "http://127.0.0.1:4177/src/ui/controls.js",
+          "t": 1787319967929
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Controller manager initialized",
+          "line": 207,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787319967929
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Gamepad support initialized",
+          "line": 236,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787319967930
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Updated custom bindings",
+          "line": 2093,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787319967930
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Updated deadzone to 0.25",
+          "line": 2102,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787319967930
+        },
+        {
+          "level": 1,
+          "message": "✅ All managers initialized",
+          "line": 2498,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967930
+        },
+        {
+          "level": 1,
+          "message": "[Main] Initializing GameModeManager...",
+          "line": 2637,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967931
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: single (Single Player)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319967931
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: local-multiplayer (Local Multiplayer)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319967931
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: online-multiplayer (Online Multiplayer)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319967931
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: serenity (Serenity)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319967931
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: infinity (Infinity)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319967931
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: odyssey (Odyssey)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319967931
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Initialized with modes: single,local-multiplayer,online-multiplayer,serenity,infinity,odyssey",
+          "line": 42,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319967931
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+          "line": 1479,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319967931
+        },
+        {
+          "level": 1,
+          "message": "[RichPresenceManager] Initialized with GameModeManager",
+          "line": 120,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/rich-presence-manager.js",
+          "t": 1787319967931
+        },
+        {
+          "level": 1,
+          "message": "✅ GameModeManager initialized",
+          "line": 2727,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967932
+        },
+        {
+          "level": 1,
+          "message": "[Keyboard] Setting up keyboard controls",
+          "line": 503,
+          "sourceId": "http://127.0.0.1:4177/src/ui/controls.js",
+          "t": 1787319967935
+        },
+        {
+          "level": 1,
+          "message": "[Keyboard] Keyboard controls initialized",
+          "line": 789,
+          "sourceId": "http://127.0.0.1:4177/src/ui/controls.js",
+          "t": 1787319967935
+        },
+        {
+          "level": 1,
+          "message": "[Main] Skipping legacy Player 2 keyboard controls (handled by InputController)",
+          "line": 4027,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967936
+        },
+        {
+          "level": 1,
+          "message": "[Visibility] Background tab throttling initialized: reduce",
+          "line": 1391,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967936
+        },
+        {
+          "level": 1,
+          "message": "✅ Serenity Blocks initialized successfully!",
+          "line": 890,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967936
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+          "line": 1479,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319967936
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Menu navigation enabled",
+          "line": 948,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787319967936
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Cleared previous button states",
+          "line": 957,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787319967936
+        },
+        {
+          "level": 1,
+          "message": "🎨 Tetromino style: Default colors",
+          "line": 232,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/tetromino-style-manager.js",
+          "t": 1787319967965
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Preload complete",
+          "line": 96,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787319967967
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Graphics layers created successfully",
+          "line": 342,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Scene created: BoardScene",
+          "line": 132,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Creating scene...",
+          "line": 114,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] ✅ MULTIPLAYER OPTIMIZATION ACTIVE: Graphics cleared once per frame in update()",
+          "line": 828,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Scene created successfully",
+          "line": 116,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Post-boot callback started",
+          "line": 1690,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "✅ Phaser 4 game initialized successfully",
+          "line": 1719,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Canvas dimensions: 400 x 800",
+          "line": 1720,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Logical size: 400 x 800",
+          "line": 1721,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Device pixel ratio: 1",
+          "line": 1722,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Board config: ROWS: 20 HIDDEN_ROWS: 4",
+          "line": 1723,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "  └─ Scenes loaded: BoardScene, BackgroundScene",
+          "line": 1724,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967968
+        },
+        {
+          "level": 1,
+          "message": "[Startup] Menu ready in 682ms; intro skipped in 0ms",
+          "line": 5309,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Game mode selection enabled",
+          "line": 740,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "💡 Steam service available: window.steamService.getStatus()",
+          "line": 5371,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "🧪 Test functions available:",
+          "line": 5771,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "  - window.testMultiplayer(numPlayers) - Create test lobby with dummy players",
+          "line": 5772,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "    Example: testMultiplayer(5)",
+          "line": 5773,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "  - window.testLobby(numPlayers) - Create ready lobby without auto-start",
+          "line": 5774,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "    Example: testLobby(8)",
+          "line": 5775,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "  - window.testPostMatch(numPlayers) - Show match results modal",
+          "line": 5776,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "    Example: testPostMatch(9)",
+          "line": 5777,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "  - LOCAL 2P (no Steam): open ?localMp=host and ?localMp=join in two windows",
+          "line": 5778,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319967971
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Focused first element: [object HTMLDivElement]",
+          "line": 980,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787319968052
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Metrics reset",
+          "line": 367,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319968076
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Enabled",
+          "line": 236,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319968077
+        },
+        {
+          "level": 1,
+          "message": "✅ Performance monitoring started (Press F3 to toggle)",
+          "line": 1661,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319968078
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Metrics reset",
+          "line": 367,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319968078
+        },
+        {
+          "level": 1,
+          "message": "🔄 Metrics reset",
+          "line": 1684,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319968078
+        },
+        {
+          "level": 1,
+          "message": "[LevelRegistry] Loaded 59 levels in 8 chapters",
+          "line": 58,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/LevelRegistry.js",
+          "t": 1787319968337
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyState] No saved progress found, starting fresh",
+          "line": 157,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/OdysseyStateManager.js",
+          "t": 1787319968337
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Loaded mode: odyssey (Odyssey Mode)",
+          "line": 142,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319968337
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Activating mode: odyssey",
+          "line": 224,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319968337
+        },
+        {
+          "level": 1,
+          "message": "[odyssey] Mode activated",
+          "line": 76,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/BaseGameMode.js",
+          "t": 1787319968337
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Activating Odyssey Mode...",
+          "line": 354,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319968338
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyState] No saved progress found, starting fresh",
+          "line": 157,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/OdysseyStateManager.js",
+          "t": 1787319968338
+        },
+        {
+          "level": 1,
+          "message": "[ThemeTransition] Manager initialized",
+          "line": 39,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/ThemeTransitionManager.js?t=1787313254599",
+          "t": 1787319968340
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Showing board view",
+          "line": 3300,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319968540
+        },
+        {
+          "level": 2,
+          "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+          "line": 297,
+          "sourceId": "http://127.0.0.1:4177/@fs/C:/Users/olov_/AppData/Local/Temp/claude/c--Users-olov--repos-serenity-blocks/4c6a5c17-09e4-4031-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-BK2XMPO3.js?v=964d404a",
+          "t": 1787319968542
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Controller created",
+          "line": 618,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319968543
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Initializing...",
+          "line": 634,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319968544
+        },
+        {
+          "level": 2,
+          "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+          "line": 43880,
+          "sourceId": "http://127.0.0.1:4177/@fs/C:/Users/olov_/AppData/Local/Temp/claude/c--Users-olov--repos-serenity-blocks/4c6a5c17-09e4-4031-95c0-a8517040b615/scratchpad/vite-r185-cache/deps/chunk-SPSTJXIA.js?v=964d404a",
+          "t": 1787319968553
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Renderer backend: WebGPU",
+          "line": 2012,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319968953
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] OdysseyTslPipeline initialized (Extreme)",
+          "line": 2096,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319968963
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created",
+          "line": 476,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js?t=1787318436515",
+          "t": 1787319968970
+        },
+        {
+          "level": 1,
+          "message": "[world] cloud silhouette histogram {\"k\":2.062,\"p10\":0.433,\"p50\":0.5486,\"p90\":0.713}",
+          "line": 774,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/world/odyssey-world-renderer.js?t=1787314598840",
+          "t": 1787319969867
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] One World enabled — {\"quality\":\"high\",\"groundTriangles\":241088,\"reach\":26214.4,\"trees\":7039,\"forestChunks\":40,\"forestV2\":{\"trees\":7039,\"draws\":40,\"chunks\":12,\"maxVariantsPerChunk\":6,\"bySpecies\":{\"S4-gold-birch\":2543,\"S3-subalpine-fir\":1770,\"S6-red-maple\":873,\"S5-cypress-spike\":290,\"S2-workhorse-pine\":314,\"S1-shore-broadleaf\":1139,\"S7-pink-blossom\":110},\"byLod\":{\"hero\":670,\"mid\":2572,\"far\":3797}},\"materials\":4,\"heroClouds\":0,\"heroTriangles\":0,\"cloudField\":true,\"cloudFieldMasses\":52,\"cloudFieldTriangles\":31880,\"applyExposure\":false,\"outputScale\":0.82,\"outputSaturation\":0.72,\"clouds\":false,\"godRays\":7,\"motes\":640,\"fish\":110,\"skyRadius\":3600,\"bakeMs\":{\"relief\":1110.8,\"total\":1765.1}}",
+          "line": 811,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319970738
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Startup chapter set: 1, 2 (eager window; 6 deferred to background)",
+          "line": 862,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319970738
+        },
+        {
+          "level": 1,
+          "message": "[EnhancedBreathingIndicator] Elements created with stunning design",
+          "line": 257,
+          "sourceId": "http://127.0.0.1:4177/src/ui/effects/enhanced-breathing-indicator.js",
+          "t": 1787319970755
+        },
+        {
+          "level": 1,
+          "message": "[Main] Initializing global Serenity Hub...",
+          "line": 2572,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319970773
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Loaded mode: single (Single Player)",
+          "line": 142,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319970807
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 1 environment",
+          "line": 701,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js?t=1787318436515",
+          "t": 1787319971077
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] create ch1 took 339ms +2.5s",
+          "line": 52,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787319971077
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Serenity Mode enabled",
+          "line": 2112,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787319971164
+        },
+        {
+          "level": 1,
+          "message": "[SerenityHub] Gamepad callbacks registered",
+          "line": 895,
+          "sourceId": "http://127.0.0.1:4177/src/ui/serenity-hub/SerenityHub.js",
+          "t": 1787319971164
+        },
+        {
+          "level": 1,
+          "message": "✨ Serenity Hub initialized with gamepad support",
+          "line": 88,
+          "sourceId": "http://127.0.0.1:4177/src/ui/serenity-hub/SerenityHub.js",
+          "t": 1787319971164
+        },
+        {
+          "level": 1,
+          "message": "✅ Global Serenity Hub initialized",
+          "line": 2620,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319971164
+        },
+        {
+          "level": 1,
+          "message": "✨ [Cosmic Cursor] Mounted",
+          "line": 438,
+          "sourceId": "http://127.0.0.1:4177/src/ui/components/custom-cursor.js",
+          "t": 1787319971167
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPath] Path built with 39 control points",
+          "line": 136,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyPathRenderer.js?t=1787314598840",
+          "t": 1787319971339
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] Detected monitor refresh rate: 120Hz (measured: 115)",
+          "line": 164,
+          "sourceId": "http://127.0.0.1:4177/src/core/frame-rate-controller.js",
+          "t": 1787319972170
+        },
+        {
+          "level": 1,
+          "message": "[LevelNodes] Created 59 level nodes in batches with instancing",
+          "line": 473,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/LevelNodeManager.js?t=1787314598840",
+          "t": 1787319972170
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed threshold breach shaders",
+          "line": 1957,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319972674
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed corridor field shaders",
+          "line": 1957,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319972842
+        },
+        {
+          "level": 1,
+          "message": "[MainMenuPlayerCard] Initialized",
+          "line": 353,
+          "sourceId": "http://127.0.0.1:4177/src/ui/components/main-menu-player-card.js",
+          "t": 1787319972976
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed chapter 1 shaders",
+          "line": 1915,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319973017
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] No IPC available - running in offline mode",
+          "line": 256,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787319973313
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] switchTheme called: forest",
+          "line": 923,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319973382
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] switchTheme called: forest",
+          "line": 956,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319973383
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Loading theme: forest",
+          "line": 983,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319973383
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Loading theme \"forest\" from disk",
+          "line": 684,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319973383
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme \"forest\" loaded. Cache: 1/2",
+          "line": 778,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319973391
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme loaded: forest",
+          "line": 996,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319973391
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme activation deferred (themes are suspended)",
+          "line": 1002,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319973391
+        },
+        {
+          "level": 1,
+          "message": "✅ Initial theme loaded: forest",
+          "line": 2761,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319973391
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed one world shaders",
+          "line": 1957,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319973435
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] compile-breakdown ch1=1911 one-world=1038 corridor=445 breach=277 ch2=0 +4.9s",
+          "line": 52,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787319973435
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyWarmup] sample 0 @progress 0.000 took 343ms",
+          "line": 3268,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319973779
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyWarmup] fast-start: focus chapter warmed; far chapters + post variants warm on first visit",
+          "line": 3350,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319973779
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Journey warm-up complete (chapters + seams warmed through render path)",
+          "line": 3358,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319973779
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] total 5236ms | renderer 418 | world 1768 | creates 574 | path 26 | nodes 812 | post+director 188 | compiles 930 | warmup 344",
+          "line": 64,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787319973780
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Initialized successfully",
+          "line": 1090,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319973780
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Three.js board initialized",
+          "line": 3518,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319973780
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:reveal-container: 0ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319973780
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:create-board-overlay: 1ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319973781
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:reveal-board: 1ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319973781
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:board-init: 5242ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319973781
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:focus-selected-level: 0ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319973781
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:overlay-wait: 0ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319973781
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787319973997
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787319973997
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787319973997
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:overlay-dismiss: 870ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319974651
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] board visible 6311ms after overlay show",
+          "line": 3360,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319974651
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:board-visible: 6111ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319974651
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Background loading chapters: 3,4,5,6,7,8",
+          "line": 900,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js?t=1787318436515",
+          "t": 1787319974652
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Debug: Use window.testOdysseyLevel(levelId) to test a specific level",
+          "line": 426,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319974652
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Mode activated",
+          "line": 429,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319974652
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Progress: 0%",
+          "line": 430,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319974652
+        },
+        {
+          "level": 1,
+          "message": "[Main] Mode activated: odyssey",
+          "line": 2680,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319974652
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Mode odyssey activated successfully",
+          "line": 231,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319974652
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Starting mode: odyssey [object Object]",
+          "line": 258,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319974652
+        },
+        {
+          "level": 1,
+          "message": "[odyssey] Starting game...",
+          "line": 93,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/BaseGameMode.js",
+          "t": 1787319974652
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 6 environment",
+          "line": 701,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js?t=1787318436515",
+          "t": 1787319976564
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] onStart called - entering level",
+          "line": 456,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319977020
+        },
+        {
+          "level": 1,
+          "message": "[Main] Mode started: odyssey",
+          "line": 2684,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319977020
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Mode odyssey started successfully",
+          "line": 297,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787318436515",
+          "t": 1787319977020
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 7 environment",
+          "line": 701,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js?t=1787318436515",
+          "t": 1787319979194
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 8 environment",
+          "line": 701,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js?t=1787318436515",
+          "t": 1787319979303
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] All chapters loaded in background",
+          "line": 913,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js?t=1787318436515",
+          "t": 1787319979633
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Drain render-warmed chapter 6 in 441ms",
+          "line": 1433,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319982442
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Drain render-warmed chapter 7 in 140ms",
+          "line": 1433,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319984136
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Drain render-warmed chapter 8 in 137ms",
+          "line": 1433,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319985147
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyWarmup] background render-warm complete",
+          "line": 1548,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787318436515",
+          "t": 1787319986125
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme \"forest\" found in cache",
+          "line": 638,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319986507
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Pre-warming theme (hidden): forest",
+          "line": 1301,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319986507
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] start() called, state: initialized theme: forest",
+          "line": 187,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787319986508
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Starting theme: forest",
+          "line": 215,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787319986508
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Shared renderer: WebGLRenderer",
+          "line": 216,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787319986508
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Has loadTheme? function",
+          "line": 220,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787319986508
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Pre-warming theme container (hidden): forest",
+          "line": 235,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787319986508
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Calling loadTheme for: forest",
+          "line": 254,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787319986508
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] loadTheme called: forest",
+          "line": 1184,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787319986508
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Clearing theme-owned renderer resources",
+          "line": 1186,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787319986508
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Theme start complete: forest",
+          "line": 330,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787319986509
+        },
+        {
+          "level": 1,
+          "message": "[WarpTransition] Orb-portal renderer created",
+          "line": 64,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/transitions/WarpTransitionRenderer.js?t=1787313254598",
+          "t": 1787319987278
+        },
+        {
+          "level": 1,
+          "message": "[WarpTransition] Scene initialized",
+          "line": 117,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/transitions/WarpTransitionRenderer.js?t=1787313254598",
+          "t": 1787319987336
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:preinit-warp: 63ms",
+          "line": 3736,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787318436515",
+          "t": 1787319987341
+        },
+        {
+          "level": 1,
+          "message": "[ThemeTransition] Warp renderer pre-initialized",
+          "line": 302,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/ThemeTransitionManager.js?t=1787313254599",
+          "t": 1787319987403
+        },
+        {
+          "level": 1,
+          "message": "✅ Performance monitoring started (Press F3 to toggle)",
+          "line": 1661,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319987556
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Metrics reset",
+          "line": 367,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319987556
+        },
+        {
+          "level": 1,
+          "message": "🔄 Metrics reset",
+          "line": 1684,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787319987556
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Pausing theme: forest",
+          "line": 1369,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787319987919
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme pre-warmed + parked for instant first entry: forest",
+          "line": 1408,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787319987919
+        },
+        {
+          "level": 1,
+          "message": "[Main] First-entry theme warm-up complete: forest",
+          "line": 2909,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787318436515",
+          "t": 1787319987919
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787320012607
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787320012607
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787320012607
+        },
+        {
+          "level": 1,
+          "message": "📊 Performance Report",
+          "line": 1227,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787320017643
+        },
+        {
+          "level": 1,
+          "message": "Summary: [object Object]",
+          "line": 1228,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787320017644
+        },
+        {
+          "level": 1,
+          "message": "FPS: [object Object]",
+          "line": 1229,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787320017644
+        },
+        {
+          "level": 1,
+          "message": "Frame Time: [object Object]",
+          "line": 1230,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787320017644
+        },
+        {
+          "level": 1,
+          "message": "Performance: [object Object]",
+          "line": 1231,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787320017644
+        },
+        {
+          "level": 1,
+          "message": "Memory: [object Object]",
+          "line": 1232,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787320017644
+        },
+        {
+          "level": 1,
+          "message": "GPU: [object Object]",
+          "line": 1233,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787320017644
+        },
+        {
+          "level": 1,
+          "message": "console.groupEnd",
+          "line": 1234,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787320017644
+        }
+      ]
+    }
+  ]
+}

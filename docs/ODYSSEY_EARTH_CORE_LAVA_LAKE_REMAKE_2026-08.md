@@ -2,6 +2,35 @@
 
 Status: synthesis of Design A (minimal 3D bake of the calibrated primitive), Design B (look-first 2D texture stack) and their adversarial critiques. Numbers marked **measured** come from the instruments named in ADR-0016 or from the plan/findings docs; **twin** numbers come from the critics' CPU ports (analysis aids, not instruments); everything else is **est.**/**unmeasured**. Nothing in the repo was modified for this document.
 
+## 0. Status (2026-08-21) — Stage 1 SHIPPED (default on); Stage 2 pending
+
+| gate (§4) | instrument | result |
+|---|---|---|
+| F1 compile, lake pipeline, Electron cold, RTX | `odyssey-pipeline-probe.mjs` by label | **234 ms** (analytic 1,602 ms, the chapter's slowest pipeline; target ≤ 400) ✓ |
+| compile, isolated salted WGSL (Chrome) | playground + `createRenderPipelineAsync` | 1,257 → **84 ms** |
+| ch1 `compile-breakdown` | same probe | 2,008 → 1,460 ms (startup wall-clock unchanged on the RTX: after the fan-out the lake no longer gates the barrier) |
+| G1 GPU Lane B (Vega 8), entry station | `odyssey-gpu-split.mjs --lane B --low-power --seek 0 --chapters 1` | lake **4.45 → 1.96 ms** of a 7.60 ms frame (−56 %, −2.5 ms/frame); drift 0.20 ms; draws 80/74/80/80 ✓ |
+| G2 GPU Lane A (RTX 3070) | `--lane A --seek 0` | lake **0.79 → 0.20 ms** of 1.97 ms (−75 %); drift 0 ✓ |
+| B-crust / B-mid / B-hot (playground top split, `debug=2`) | tier masks per half | crust 72.3 / 70.3 %, mid 27.2 / 29.7 %, hot 0 / 0, bloom 0.5 / 0 % (±6 / ±3 / ±1.5 allowed) ✓ |
+| B-tile | crust-mask row autocorrelation, top pose, t = 9 and 120 | no peak at the 36 u (−0.13) or 100 u (−0.17) pitch; max beyond 100 px ≤ −0.03 ✓ |
+| B12 WebGL2 lane | playground `?forceWebGL=1`, baked arm | identical frame, console clean ✓ |
+| in-game entry station, p = 0, t = 9 | Chrome, frozen clock | sky 0.192 / lake 0.088 — inside the analytic realization band (0.157–0.258 / 0.084–0.097); console clean |
+| bake | browser Worker | 0.8 s, CRC **7503dec8** = the Node bake (bit-identical); 10 unit tests incl. the quantile-map proof |
+| F2 compile on the Vega 8 | probe `--low-power` | **382 ms** (≤ 600) ✓ |
+| F5 / F6 perf-driver cells (`r185p1lake`, AGGREGATE.md) | `perf-driver.sh` n = 3 | startup flat (the lake left the RTX critical path with the fan-out, so F5's "−1.2 s" premise no longer applies); `creates` +41 ms ✓; post-reveal p99 cold 2.11 → 1.70 s, warm 2.77 → 1.30 s |
+| B-crust / B-mid / B-hot at the chapter entry station, t = 9 / 40 / 120 | `odyssey-chapter-capture.mjs --url-flag earthCoreLakeDebug=2` | crust −1.8…−3.2, mid +0.8…+2.0, hot +0.9…+1.2 pts ✓ (stations ≥ 0.333 have no lake in frame) |
+| B-void / B-rim / B-basin | in-game screenshot, p = 0, t = 9 | rim band present, basin pools present, no void — judged by eye, not by metric (the chapter post colours every pixel red, so the lake mask cannot be isolated in-game; the playground masks are the metric) |
+
+Landed: `shared/odyssey-lake-noise-math.js`, `shared/odyssey-lake-noise-bake.js`,
+`shared/lake-noise.worker.js`, `createLavaFloorTSL(options.noise | noiseSource | debug)`,
+`?earthCoreLakeBake=1|0` (**default ON since 2026-08-21; `=0` is the escape hatch**), `?earthCoreLakeDebug=2`,
+playground `earth-core-lake.effect.js`, gpu-split configurations `no-lake` / `lake-baked`
+(`lakeMs` / `lakeBakedMs`), `tests/unit/earth-core-lake-noise-bake.test.js`.
+
+One deviation from §2.5: the quantile map is fitted with 400k samples and 4 iterations (the
+design said 10⁶ / 3–5); the sampled tail matches to P(v>0.7) 0.0012 / 0.0012, so the smaller
+fit is sufficient and keeps the Worker bake at 0.8–1.6 s.
+
 ---
 
 ## 1. Executive answer
