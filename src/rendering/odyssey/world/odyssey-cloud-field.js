@@ -503,7 +503,15 @@ export function sculptCloudMass(spec, detail) {
  * @param {ReadonlyArray<object>} specs each with a `lod` key naming a CLOUD_FIELD_LOD_DETAIL entry
  * @returns {{ geometry: THREE.BufferGeometry, triangles: number, masses: number }}
  */
-export function buildCloudFieldGeometry(specs, railSamples = null) {
+/**
+ * Pure half of {@link buildCloudFieldGeometry}: the sculpted field as plain typed arrays (no
+ * BufferGeometry), so the bake can run in the world-bake Worker and be transferred. Same maths,
+ * same order; the wrapper adds the attributes and the bounding sphere.
+ * @param {object[]} specs
+ * @param {Array<{x:number,y:number,z:number}>|null} [railSamples]
+ * @returns {{position: Float32Array, normal: Float32Array, centre: Float32Array, colour: Float32Array, lobeInfo: Float32Array, triangles: number, masses: number}}
+ */
+export function buildCloudFieldGeometryData(specs, railSamples = null) {
     const parts = specs.map((spec) => {
         // The spec's `lod` is a floor the author can raise, never a ceiling: when the rail is
         // known, a mass that subtends MORE than its label claims is promoted. A hand-authored
@@ -534,14 +542,30 @@ export function buildCloudFieldGeometry(specs, railSamples = null) {
         off4 += p.lobeInfo.length;
     });
 
+    return {
+        position, normal, centre, colour, lobeInfo, triangles: verts / 3, masses: specs.length,
+    };
+}
+
+/** The ArrayBuffers of a {@link buildCloudFieldGeometryData} result, for a transfer list. */
+export function cloudFieldGeometryDataBuffers(d) {
+    return [d.position.buffer, d.normal.buffer, d.centre.buffer, d.colour.buffer, d.lobeInfo.buffer];
+}
+
+/** Wrap sculpted arrays as the cloud-field BufferGeometry (attributes + bounding sphere). */
+export function wrapCloudFieldGeometry(d) {
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
-    geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
-    geometry.setAttribute('aMassCentre', new THREE.BufferAttribute(centre, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colour, 3));
-    geometry.setAttribute('aLobe', new THREE.BufferAttribute(lobeInfo, 4));
+    geometry.setAttribute('position', new THREE.BufferAttribute(d.position, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(d.normal, 3));
+    geometry.setAttribute('aMassCentre', new THREE.BufferAttribute(d.centre, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(d.colour, 3));
+    geometry.setAttribute('aLobe', new THREE.BufferAttribute(d.lobeInfo, 4));
     geometry.computeBoundingSphere();
-    return { geometry, triangles: verts / 3, masses: specs.length };
+    return { geometry, triangles: d.triangles, masses: d.masses };
+}
+
+export function buildCloudFieldGeometry(specs, railSamples = null, baked = null) {
+    return wrapCloudFieldGeometry(baked ?? buildCloudFieldGeometryData(specs, railSamples));
 }
 
 /**

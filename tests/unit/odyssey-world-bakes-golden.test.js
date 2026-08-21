@@ -7,6 +7,14 @@ import {
 } from '../../src/rendering/odyssey/world/odyssey-ground-bakes.js';
 import { bakeOdysseyCloudField } from '../../src/rendering/odyssey/world/odyssey-world-renderer.js';
 
+// ── Item 2.1 (2026-08-21): the two bakes that were NOT pinned — relief and macro — now are, so the
+// worker port (odyssey-world-bake.worker.js) can be held byte-identical. Low-res arguments keep
+// the suite fast; the math is resolution-agnostic (same functions, same constants).
+import {
+    bakeReliefData, bakeMacroData, bakeDetailNormalData, bakeWorldTextureData, makeReliefSampler,
+    worldTextureDataBuffers,
+} from '../../src/rendering/odyssey/world/odyssey-world-bake-data.js';
+
 /**
  * GOLDEN OUTPUT SUITE for the One World boot bakes.
  *
@@ -109,5 +117,42 @@ describe('cloud silhouette bake', () => {
         expect(baked.stats.p50).toBeLessThan(baked.stats.p90);
         expect(baked.stats.p50).toBeGreaterThan(0);
         expect(baked.stats.p90).toBeLessThan(1);
+    });
+});
+
+describe('relief + macro + detail bakes (pure halves)', () => {
+    it('pins the relief texels and the CPU mirror at 96²', () => {
+        const a = bakeReliefData(96);
+        const b = bakeReliefData(96);
+        expect(sha(a.data)).toBe(sha(b.data));
+        expect(sha(a.data)).toBe('3effb252e0bae73a4d16d0f536424714');
+        expect(sha(a.total)).toBe('77e344efed2b8a4ea583f53643a62801');
+        expect(a.data.length).toBe(96 * 96 * 4);
+        expect(a.total.length).toBe(96 * 96);
+        const sample = makeReliefSampler(a);
+        // A grid point is hit exactly: (i, j) = (10, 20) → x = origin + 10·step.
+        expect(sample(a.origin + (10 * a.step), a.origin + (20 * a.step))).toBeCloseTo(a.total[(20 * 96) + 10], 6);
+        expect(Number.isFinite(sample(-4500, 4500))).toBe(true);
+    });
+
+    it('pins the macro texels at 64²', () => {
+        const m = bakeMacroData(64);
+        expect(m.data.length).toBe(64 * 64 * 4);
+        expect(sha(m.data)).toBe('2ba80c1e790a61c08a162b3e304d9b6d');
+    });
+
+    it('bakeWorldTextureData returns every plate with transferable buffers and per-stage timings', () => {
+        const baked = bakeWorldTextureData({ reliefRes: 64, shadowRes: 32 });
+        expect(baked.relief.res).toBe(64);
+        expect(baked.sunFields.res).toBe(32);
+        expect(baked.atlas.res).toBe(GROUND_ATLAS_RES);
+        expect(baked.detail.res).toBe(256);
+        expect(baked.macro.res).toBe(512);
+        expect(Object.keys(baked.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'total']);
+        const buffers = worldTextureDataBuffers(baked);
+        expect(buffers.length).toBe(10);
+        buffers.forEach((b) => expect(b).toBeInstanceOf(ArrayBuffer));
+        // Detail bake is the pinned cloud silhouette's host: same field, same stats.
+        expect(sha(baked.detail.data)).toBe(sha(bakeDetailNormalData().data));
     });
 });
