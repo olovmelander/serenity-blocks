@@ -2653,22 +2653,6 @@ class SerenityBlocks {
 
         const savedMode = this.settingsManager?.get()?.gameMode || GAME_MODES.SINGLE_PLAYER;
 
-        // APP BOOT (2026-08-21): three (1.75 MB) is no longer on the menu's boot path (the chunk
-        // graph was welding it there through absorbed shared modules), so its evaluation moved to
-        // the first mode/theme that imports it. Every mode and every WebGPU theme needs it, so
-        // warm it at MENU idle — evaluated, not just fetched — through the browser-idle helper
-        // (the deferred-task queue is gated behind the first interaction on Electron, which is
-        // exactly the click this must beat). ?noThreeWarm=1 skips it for A/B.
-        const noThreeWarm = typeof window !== 'undefined'
-            && new URLSearchParams(window.location?.search || '').get('noThreeWarm') === '1';
-        if (!isPackagedWindowsSafeMode() && !noThreeWarm) {
-            scheduleBrowserIdleTask(async () => {
-                const start = performance.now();
-                await import('three/webgpu');
-                performanceMonitor.recordEvent('startup_three_warmed', { ms: Math.round(performance.now() - start) });
-            }, { delayMs: 0, timeout: 1500 });
-        }
-
         if (savedMode === GAME_MODES.ODYSSEY) {
             performanceMonitor.recordEvent('startup_mode_warmup_skipped', {
                 safeMode: false,
@@ -5086,8 +5070,28 @@ let app = null;
 /**
  * Initialize and start the application
  */
+// APP BOOT (2026-08-21): three (1.75 MB) is no longer on the menu's static boot path — the chunk
+// graph had been welding it there through absorbed shared modules (vite.config.js). Every mode
+// and every WebGPU theme needs it, so its chunk is requested as the FIRST thing bootstrap does:
+// it fetches and compiles off the main thread and evaluates whenever it lands — during init,
+// as before — so a click the instant the menu appears never pays it serially. ?noThreeWarm=1
+// opts out (A/B: menu-first vs mode-first).
+function warmThreeEarly() {
+    if (typeof window === 'undefined') return;
+    try {
+        if (new URLSearchParams(window.location?.search || '').get('noThreeWarm') === '1') return;
+    } catch { /* no location */ }
+    const start = performance.now();
+    import('three/webgpu').then(() => {
+        performanceMonitor.recordEvent('startup_three_warmed', { ms: Math.round(performance.now() - start) });
+    }).catch((error) => {
+        console.warn('[Startup] three warm failed (a mode will load it on demand):', error?.message || error);
+    });
+}
+
 async function bootstrap() {
     let startupPipeline = null;
+    warmThreeEarly();
 
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');

@@ -335,13 +335,12 @@ export class EnhancedBreathingIndicator {
      */
     _preloadWebGL() {
         const preload = () => {
-            // Warm the renderer MODULE (three + post passes) at idle so the first start() does
-            // not wait on the chunk; the renderer itself is still lazy-created on first start()
-            // (SB-07) — an unstarted indicator owns no WebGL context.
-            if (!this.threeRenderer) {
-                loadBreathingRendererModule().catch(() => {});
-                return;
-            }
+            // Renderer is lazy-created on first start() (SB-07); nothing to preload before then.
+            // Deliberately NO idle warm of the renderer MODULE either: it pulls the classic three
+            // build (a second 1.2 MB bundle next to three/webgpu) and an idle warm landed inside
+            // the Odyssey startup's compile pool (+0.5 s measured, 2026-08-21). The first start()
+            // — a deliberate action in Serenity mode — loads it on demand.
+            if (!this.threeRenderer) return;
             console.log('[EnhancedBreathingIndicator] Preloading Three.js resources...');
             this.threeRenderer.init();
         };
