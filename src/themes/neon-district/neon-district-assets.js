@@ -81,6 +81,9 @@ export class NeonDistrictAssets {
         this.textureLoader = new THREE.TextureLoader(this.loadingManager);
         this.renderer = null;
         this.isWebGPU = false;
+        // Renderer KIND: WebGPURenderer runs the node system on both its WebGPU
+        // and WebGL2 backends - node materials must be chosen by this, not isWebGPU.
+        this.usesNodeMaterials = false;
         this.ktx2Ready = false;
 
         // KTX2 Loader setup
@@ -114,6 +117,7 @@ export class NeonDistrictAssets {
         if (!renderer) return;
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
         if (!this.ktx2Ready) {
             this.ktx2Loader.detectSupport(renderer);
             this.ktx2Ready = true;
@@ -424,7 +428,7 @@ export class NeonDistrictAssets {
      * Create all materials - EXACTLY like SynthCity does
      */
     applyEmissiveNode(material) {
-        if (!this.isWebGPU || !material) return;
+        if (!this.usesNodeMaterials || !material) return;
         if (Array.isArray(material)) {
             material.forEach((mat) => this.applyEmissiveNode(mat));
             return;
@@ -458,7 +462,7 @@ export class NeonDistrictAssets {
 
     createAllMaterials() {
         const envMap = this.getTexture('env_night');
-        const MaterialClass = this.isWebGPU ? THREE.MeshPhongNodeMaterial : THREE.MeshPhongMaterial;
+        const MaterialClass = this.usesNodeMaterials ? THREE.MeshPhongNodeMaterial : THREE.MeshPhongMaterial;
 
         // ═══════════════════════════════════════════════════════════════════════════
         // GROUND MATERIAL - with emissive color reflections
@@ -597,7 +601,7 @@ export class NeonDistrictAssets {
             });
         }
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             Object.values(this.materials).forEach((mat) => this.applyEmissiveNode(mat));
         }
 
@@ -747,6 +751,7 @@ export class NeonDistrictAssets {
         this.loadingManager = null;
         this.renderer = null;
         this.isWebGPU = false;
+        this.usesNodeMaterials = false;
         this.ktx2Ready = false;
         console.log('[NeonDistrictAssets] Disposed all assets');
     }
