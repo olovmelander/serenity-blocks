@@ -182,6 +182,14 @@ function makeUrl() {
     // Background loading is intentionally NOT pinned here — it is measured, not locked
     // (pin explicitly with --disable-background-loading).
     if (!ALLOW_ADAPTIVE) params.set('odysseyDisableAdaptiveQuality', '1');
+    // Extra flags for A/B cells (mirrors odyssey-chapter-capture.mjs --url-flag): the CLI form
+    // `--url-flag a=1,b=0` or, because perf-driver.sh fixes its argument list, the env var
+    // ODYSSEY_PERF_URL_FLAGS. Recorded in the manifest URL, so a cell cannot pass as the default.
+    String(args['url-flag'] || args.urlFlag || process.env.ODYSSEY_PERF_URL_FLAGS || '')
+        .split(',').filter(Boolean).forEach((pair) => {
+            const [k, v = '1'] = pair.split('=');
+            if (k.trim()) params.set(k.trim(), v.trim());
+        });
     params.set('odysseyPixelRatio', String(PIXEL_RATIO));
     if (args.forceWebgl || args.forceWebGL) params.set('forceWebGL', '1');
     if (args.disableBackgroundWarm) params.set('odysseyPerfDisableBackgroundWarm', '1');

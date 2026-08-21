@@ -265,3 +265,20 @@ backend: r181=webgpu r185=webgpu r185p1=webgpu
 | JS heap MB | 211.8 (203.3–212.9, n=3) | 193.7 (189.6–213.7, n=3) | 229.5 (184.8–231.7, n=3) | -9% | 8% | 19% |
 backend: r181=webgpu r185=webgpu r185p1=webgpu
 
+---
+
+## r185p1lake — Phase 1 + the baked lava lake (2026-08-21, same day and driver as r185p1)
+
+**Tree:** r185p1 with `?earthCoreLakeBake=1` (the cell's manifest URL carries the flag; now the
+default). Design and gate table: `docs/ODYSSEY_EARTH_CORE_LAVA_LAKE_REMAKE_2026-08.md` §0.
+
+**Reading (r185p1lake vs r185p1):** startup wall-clock is flat (cold 5,462 vs 5,316 ms; warm
+5,283 vs 5,186; board visible 6,488 vs 6,444) — after the fan-out the lake's 1.6 s compile was no
+longer on the RTX critical path, so removing it (234 ms) buys little there; `creates` +41 ms is the
+4 MiB placeholder texture + Worker start (gate F6 ≤ +100). What the cells DO show is the
+post-reveal window: cold frame p99 2,110 → 1,703 ms and max 2,972 → 2,003; warm p99 2,768 → 1,299
+and max 3,325 → 2,052; idle long-task max 3,076 → 2,155 — the light-set re-creations of item 2.9
+now re-create a cheap pipeline. The fill saving is on the GPU lanes, not in these CPU-bound cells:
+`gpu-split-laneb-lake-entry.json` (Vega 8) lake 4.45 → 1.96 ms of a 7.60 ms frame;
+`gpu-split-lanea-lake-entry.json` (RTX) 0.79 → 0.20 ms. Content match holds (80 / 104 draws).
+

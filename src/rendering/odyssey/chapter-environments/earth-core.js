@@ -1353,19 +1353,25 @@ export function createEarthCoreEnvironment(options = {}) {
  * lowered, low-displacement opaque lake the camera looks ACROSS (validated TSL
  * builder). Glow sprites are dimmed/shrunk for the value hierarchy (~70% dark rock).
  */
-// Lake noise source flag (docs/ODYSSEY_EARTH_CORE_LAVA_LAKE_REMAKE_2026-08.md §2.6). Read at BUILD
-// time, like ?earthCoreBakeNoise: `?earthCoreLakeBake=1|0` (dev URL) over
-// `localStorage['serenity.earthCoreLakeBake']` (packaged Electron). Default OFF until the
-// design's gates pass; the analytic arm is the shipped lake. `?earthCoreLakeDebug=2` (URL only)
-// builds the tier-ID variant for mask statistics in captures.
+// Lake noise source flag (docs/ODYSSEY_EARTH_CORE_LAVA_LAKE_REMAKE_2026-08.md §2.6, §0 gates).
+// Read at BUILD time, like ?earthCoreBakeNoise: `?earthCoreLakeBake=1|0` (dev URL) over
+// `localStorage['serenity.earthCoreLakeBake']` (packaged Electron). **Default ON since
+// 2026-08-21**: the baked lake passed every measured gate — lake pipeline compile 1,602 → 234 ms
+// (RTX, cold; 382 ms on the Vega 8), lake fill 4.45 → 1.96 ms of the iGPU frame and 0.79 → 0.20 ms
+// on the RTX, tier masks within ±3 pts of the analytic lake, no tiling signature, WebGL2 lane
+// clean, bake bit-identical (CRC 7503dec8). `=0` keeps the analytic lake one release as the
+// escape hatch; there is no Worker in vitest, so node (no `window`) stays analytic and the
+// environment/drawable-budget tests never bake. `?earthCoreLakeDebug=2` (URL only) builds the
+// tier-ID variant for mask statistics in captures.
 function _readLakeNoiseOptions() {
     const out = { noise: 'analytic', debug: 0 };
     if (typeof window === 'undefined') return out;
+    out.noise = 'baked';
     try {
         const params = new URLSearchParams(window.location.search);
         const url = params.get('earthCoreLakeBake');
         const ls = window.localStorage && window.localStorage.getItem('serenity.earthCoreLakeBake');
-        if (url === '1' || (url !== '0' && ls === '1')) out.noise = 'baked';
+        if (url === '0' || (url !== '1' && ls === '0')) out.noise = 'analytic';
         if (params.get('earthCoreLakeDebug') === '2') out.debug = 2;
     } catch { /* URL/localStorage unavailable — defaults */ }
     return out;
