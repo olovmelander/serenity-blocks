@@ -365,6 +365,11 @@ export class OdysseyBoardController {
         // Suppressed during capture-restricted runs. When ON it OWNS residency, so the
         // background chapter loader + full background render-warm are disabled (below) to avoid
         // fighting the evictor. NOT auto-enabled on the RTX/keep-alive path — flag-only.
+        // Item 2.15 (default ON; ?odysseyDeferSeamCompiles=0 restores the pre-reveal barrier):
+        // the corridor field, the seam breach and One World compile AFTER the reveal through the
+        // live-loop path, so chapter 1 and the board do not share the driver with them.
+        this.deferSeamCompiles = !readBooleanUrlFlag('odysseyDeferSeamCompilesOff')
+            && readUrlValue('odysseyDeferSeamCompiles') !== '0';
         // Item 2.11 (default ON; ?odysseyLiveCompile=0 falls back to the synchronous render-warm
         // alone): background chapters compile through the live-loop-safe compileAsync path
         // BEFORE their render-warm, so the warm creates no pipelines.
@@ -1157,6 +1162,7 @@ export class OdysseyBoardController {
         // compileAsync, which does not pay the real first-render compile + GPU upload). Fixes
         // the hitch for chapters 4-8 in every mode, and for the deferred chapters in fast-start.
         this._startBackgroundRenderWarm();
+        this._drainDeferredCompiles();
 
         trace.summary();
         console.log('[OdysseyBoard] Initialized successfully');
@@ -2160,8 +2166,55 @@ export class OdysseyBoardController {
         };
     }
 
+    /**
+     * ITEM 2.15: compile the groups the REVEAL frame does not draw — the corridor field, the
+     * seam breach, One World — after the board is up, through item 2.11's live-loop path
+     * (`compileGroupThroughPost(..., { live: true })`: the scene-pass binding is applied only
+     * for compileAsync's synchronous prologue and the drained builds' reads are answered from
+     * it, so nothing is bound across a yield and every pipeline is created asynchronously).
+     *
+     * NOT idle-gated, and in first-needed order: the corridor and the breach draw at the first
+     * chapter transition, which a player can reach a second or two after the reveal, so they
+     * start immediately and One World (act-gated, a whole act away) follows.
+     * @private
+     */
+    async _drainDeferredCompiles() {
+        const queue = this._deferredCompileGroups;
+        this._deferredCompileGroups = null;
+        if (!queue?.length) return;
+        for (const { label, group } of queue) {
+            const target = group();
+            if (!target) continue;
+            const startedAt = performance.now();
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                await this._prewarmGroup(target, `${label} (post-reveal)`);
+            } catch (error) {
+                console.warn(`[OdysseyBoard] deferred compile failed for ${label}:`, error?.message || error);
+            }
+            this._compileTimings[`${label}-post`] = Math.round(performance.now() - startedAt);
+            if (!this.isActive) return; // torn down mid-queue
+        }
+        console.log('[OdysseyBoard] post-reveal compiles done', JSON.stringify(this._compileTimings));
+    }
+
     async _prewarmGroup(group, label = 'group') {
         if (!group || !this.renderer || !this.scene || !this.camera) return;
+        // UNDER THE LIVE LOOP (item 2.15) the deep-reveal below must NOT run: it would make the
+        // group visible for the whole compile, so live frames would DRAW it — a corridor and a
+        // whole world popping in at p=0, and every not-yet-compiled pipeline created synchronously
+        // on a visible frame (13 of them, measured). The live path reveals each object only for
+        // compileAsync's synchronous prologue instead (compileObjectsFannedOut's includeHidden +
+        // launchCompileInScenePassPrologue), which is exactly what this reveal was for.
+        if (this._renderLoopActive()) {
+            try {
+                await this._compileGroupThroughPost(group, { live: true });
+                console.log(`[OdysseyBoard] Prewarmed ${label} shaders (live loop)`);
+            } catch (error) {
+                console.warn(`[OdysseyBoard] Shader prewarm failed for ${label}:`, error);
+            }
+            return;
+        }
         const previousVisibility = group.visible;
         // Force EVERY descendant visible + frustum-uncullable during compile: groups like
         // the corridor field toggle per-chapter sub-groups by .visible, and compileAsync
@@ -2465,12 +2518,15 @@ export class OdysseyBoardController {
                 // Compile them during load — joining the parallel startup compile pool when
                 // one is open (their driver compiles overlap the main-thread setup work; the
                 // pool barrier in initialize() awaits them before the warm-up replay).
-                const corridorWarm = this._prewarmGroup(this.corridorField?.group, 'corridor field');
-                const breachWarm = this._prewarmGroup(this.thresholdDirector?.group, 'threshold breach');
+                // When they are deferred (item 2.15) these are not started at all — the
+                // post-reveal queue compiles the same groups through the live-loop path.
+                const deferred = this.deferSeamCompiles && !!this._compilePool;
+                const corridorWarm = deferred ? null : this._prewarmGroup(this.corridorField?.group, 'corridor field');
+                const breachWarm = deferred ? null : this._prewarmGroup(this.thresholdDirector?.group, 'threshold breach');
                 // The world is not a chapter env group either, so it misses the same prewarm
                 // and would compile four materials on the first Act II frame — the whole point
                 // of collapsing 66 materials into 4 is lost if they land as a cold stall.
-                const worldWarm = this._prewarmGroup(this.oneWorld?.group, 'one world');
+                const worldWarm = deferred ? null : this._prewarmGroup(this.oneWorld?.group, 'one world');
                 // The board's OWN presentation — path tube/core/glow + chapter rings, the 55
                 // level nodes and their instanced glass/glow/lock/star meshes, the starfield —
                 // is added straight to the scene, outside every group above, so nothing
@@ -2481,12 +2537,28 @@ export class OdysseyBoardController {
                 // compileAsync costs ~22 ms, so the covered groups are excluded, not re-walked).
                 const boardWarm = this._prewarmGroup(this._boardPresentationGroup(), 'board presentation');
                 if (this._compilePool) {
-                    this._compilePool.push(
-                        this._timedCompile('corridor', corridorWarm),
-                        this._timedCompile('breach', breachWarm),
-                        this._timedCompile('one-world', worldWarm),
-                        this._timedCompile('board', boardWarm),
-                    );
+                    // ITEM 2.15: only what the REVEAL FRAME draws stays inside the barrier —
+                    // chapter 1 (pushed above) and the board presentation (path, level nodes,
+                    // starfield). The corridor field and the seam breach draw at the first
+                    // TRANSITION and One World is act-gated invisible at p=0, yet all three were
+                    // competing with chapter 1 for driver compile bandwidth before the board could
+                    // appear (compile-breakdown: ch1 2,543 ms next to one-world 1,944, corridor
+                    // 1,023, breach 559). Item 2.11 made compiling under the live loop safe, so
+                    // they now go through that path right after the reveal, in first-needed order.
+                    this._compilePool.push(this._timedCompile('board', boardWarm));
+                    if (this.deferSeamCompiles) {
+                        this._deferredCompileGroups = [
+                            { label: 'corridor', group: () => this.corridorField?.group },
+                            { label: 'breach', group: () => this.thresholdDirector?.group },
+                            { label: 'one-world', group: () => this.oneWorld?.group },
+                        ];
+                    } else {
+                        this._compilePool.push(
+                            this._timedCompile('corridor', corridorWarm),
+                            this._timedCompile('breach', breachWarm),
+                            this._timedCompile('one-world', worldWarm),
+                        );
+                    }
                 } else {
                     await corridorWarm;
                     await breachWarm;
