@@ -912,9 +912,68 @@ object's node graph on the main thread between yields, so a wider pool moves tha
 `await initRenderer()` was 320 ms of main-thread idle during which the world-bake workers had the
 cores to themselves. Removing a wait that was covering another critical path does not help; the
 time reappears in `nodes` (which awaits the relief stage) and `world`, plus contention. It ships
-behind `?gpuWarm=1` until the bake starts at menu time.
+behind `?gpuWarm=1`; the menu-time bake that was supposed to unlock it was measured and
+rejected (next section), so there is no route to switching it on.
 
 Together with item 2.15's rejected first cut, these three say the same thing: **from `renderer`
 through `world` the Odyssey startup is bound by the world bake, and `compiles` is bound by
 main-thread node building** — not by GPU compile parallelism. That is what plan row 2.16 now
 targets.
+
+## r185p1spike / r185p1spikegpu — the menu-time world bake, closed (2026-08-22)
+
+Plan row 2.16 lever (a) was "start the world bake while the player is on the menu", wanted less
+for its own sake than as the thing that would let item 2.5 (`?gpuWarm=1`) finally pay: the device
+warm hands the `renderer` bucket back 281 ms and then loses 420 because the board reaches the
+world step earlier and waits on a bake that has not landed.
+
+**Measured as an upper bound, not as the design.** Rather than build the two-phase loader the row
+described, a throwaway spike prewarmed **all six lanes** at menu idle (MENU_VISIBLE + 250 ms via
+`scheduleBrowserIdleTask`) and the board adopted the handle wholesale — no cache key, no lane
+split, no cancellation — so nothing about the join could contaminate the number. The board did
+verify what it adopted: same two resolutions and the same 48 rail samples, and it logged
+`[BakeSpike] claimed` on every run, so the "the rail is computable at menu time" assumption
+(`ODYSSEY_LAYOUT_DATA.controlPoints` and `ODYSSEY_PATH_DATA.controlPoints` are byte-identical,
+39 points) is confirmed rather than assumed. A gate was set before the runs: ship only if the
+paired cell reached **≤ 2,597 ms** (baseline − 250).
+
+| median, load-cold | r185p1world4 (baseline) | r185p1spike (bake at menu) | r185p1gpuwarm (device warm) | r185p1spikegpu (both) |
+|---|---|---|---|---|
+| startup total | **2,847** | 4,013 | 3,267 | 3,785 |
+| board visible | **3,850** | 4,999 | 4,257 | 4,872 |
+| `renderer` | 323 | 422 | **42** | **42** |
+| `creates` | 421 | 482 | 513 | 559 |
+| `nodes` | 88 | 126 | 406 | 192 |
+| `world` | 150 | 192 | 798 | 656 |
+| `compiles` | **1,417** | 2,147 | 1,137 | 1,901 |
+
+**+1,166 ms on its own, +938 ms paired.** The gate was missed by 1,188 ms, and the concept is
+worse alone than coupled — there is no reading of this in which it ships.
+
+**Why, from the same runs.** The bake does not go faster in the menu window; it goes *slower*, and
+by a lot. Its own worker wall went **868 ms → 2,027–2,269 ms**, while the lead it bought was only
+**479–850 ms** (the six dynamic imports the prewarm needs cost 400–770 ms before `startWorldBake`
+is even called). So the board still waited **1,676–2,047 ms** for it, against 23–34 ms at baseline
+— and the workers were still running deep into the compile phase, which is where the +730 ms of
+`compiles` in both spike cells comes from: they take cores from the 6-wide compile pool. Note the
+lanes themselves are only ~20–25 % slower (`lane:plates` 524 → 564, `lane:cloudField` 641 → 800);
+almost the whole 1.2 s gap is spawn and scheduling latency on a busy main thread.
+
+**The generalisable finding: the menu window is not idle.** It is the busiest stretch of the app
+boot — three's evaluation, Phaser, the intro's WebGPU scene, the deferred initial theme at +900 ms,
+the first AudioContext. Work moved there does not get a free core; it gets a contended one, lands
+*later in absolute time* than the same work started at board t=0, and drags the boot it was
+supposed to help. This is the fourth measurement in a row (fan-out 20, three-group deferral, the
+device warm, this) to say the startup does not have idle capacity waiting to be exploited.
+
+**Caveat, stated plainly.** These are dev-server numbers, where each module Worker spawns from
+unbundled ESM; a packaged build spawns from one ~107 KB chunk, so the absolute penalty overstates
+production. It does not change the verdict — the margin is 1.2 s, the direction is set by CPU
+contention rather than spawn cost alone, and the *ceiling* if every millisecond of contention
+vanished is still only baseline − 281 ms, against a bake that stalls the critical path by 23–34 ms
+today. Re-open only with a production-preview measurement that contradicts the mechanism.
+
+**Consequences.** Plan row 2.16 lever (a) is closed. Item 2.5 stays opt-in behind `?gpuWarm=1`
+with no path to switching it on — the unlock it was waiting for does not exist. The startup work
+now goes where the arithmetic points: `compiles` is 1,417 ms of a 2,847 ms cold start, and inside
+it chapter 1 is ~2,000 ms of wall in a 6-wide pool. That is 50× the prize this row was chasing.
