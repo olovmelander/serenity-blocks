@@ -1988,6 +1988,17 @@ export class OdysseyBoardController {
     }
 
     /** @private */
+    /**
+     * Fan-out width for the startup compiles (item 2.16). `?odysseyCompileWidth=N` overrides the
+     * module default, which was picked when four groups shared the driver; chapter 1 now has it
+     * nearly to itself (item 2.15), so the right width is worth re-measuring per machine.
+     * @private
+     */
+    _compileWidth() {
+        const raw = Number.parseInt(readUrlValue('odysseyCompileWidth'), 10);
+        return Number.isFinite(raw) && raw > 0 ? Math.min(raw, 32) : undefined;
+    }
+
     _compileGroupThroughPost(group, options = {}) {
         // r185: resolves false (compile skipped) when the loop is live and post is active,
         // UNLESS `options.live` — item 2.11's live-loop path, which answers the deferred
@@ -2001,7 +2012,7 @@ export class OdysseyBoardController {
             this.camera,
             group,
             this._renderLoopActive(),
-            options,
+            { concurrency: this._compileWidth(), ...options },
         );
     }
 
