@@ -312,6 +312,14 @@ function createVolcanicSmoke(uniforms, count, staging = null) {
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
     material.side = THREE.DoubleSide;
+    // FLAT SURFACE, ONE PASS (plan item: forceSinglePass audit, 2026-08-22). `transparent +
+    // DoubleSide` makes three draw the object TWICE — BackSide then FrontSide (Renderer.js
+    // renderObject / _renderTransparents) — which exists so a CLOSED transparent shell sorts
+    // against itself. Every surface here is a single facet (a billboard quad, a plane, an open
+    // cone) with depthWrite off, so the second pass re-shades the same fragments: it doubles the
+    // fill and, because the passes differ only in `material.side`, it compiles a SECOND pipeline
+    // per material (33 of them across the startup groups). Precedent: odyssey-planet-aurora.js.
+    material.forceSinglePass = true;
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const smoke = new THREE.Mesh(geometry, material);
@@ -390,6 +398,7 @@ function createEmberStars(uniforms, count) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
@@ -566,6 +575,7 @@ function createRisingEmbers(uniforms, count, staging = null) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
@@ -653,6 +663,7 @@ function createNearCameraEmbers(uniforms, count, yLow, yHigh) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true; // brightest near sparks bloom (capped by glow)
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
@@ -789,6 +800,7 @@ function createMagmaCloudDeck(uniforms, count, corridorHigh) {
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const deck = new THREE.Mesh(geometry, material);
@@ -1491,6 +1503,7 @@ function createLavaSplashDecal(width = 80, depth = 36, opacity = 0.36) {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         side: THREE.DoubleSide,
+        forceSinglePass: true,
     });
     material.userData.emitsBloom = true;
 
@@ -1580,6 +1593,7 @@ function createParticleCraterRim(uniforms) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
