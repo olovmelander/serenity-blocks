@@ -5016,12 +5016,19 @@ async function bootstrap() {
     let startupPipeline = null;
     // APP BOOT (2026-08-21): request the three chunk first thing (off the static boot path).
     warmThreeEarly();
-    // ITEM 2.5: the GPUDevice every WebGPU theme and the Odyssey board need costs ~0.3-0.4 s to
-    // request and depends on nothing but the adapter, so ask for it now — the menu is DOM-only and
-    // never touches it. Failures resolve to null and the renderer requests its own, as before.
-    // ?noGpuWarm=1 opts out (A/B).
+    // ITEM 2.5: the GPUDevice costs ~0.3-0.4 s to request and depends on nothing but the adapter,
+    // so it CAN be requested here, while the menu (which is DOM-only) is up —
+    // rendering/webgpu-device-warm.js, and the board injects whatever is ready.
+    //
+    // OPT-IN (?gpuWarm=1) UNTIL THE WORLD BAKE STARTS EARLIER. Measured n=3 on 2026-08-22: the
+    // renderer bucket falls 323 -> 42 ms and the whole saving is eaten twice over (startup total
+    // 2,847 -> 3,267; nodes 88 -> 406, world 150 -> 798). The reason is that Odyssey's startup is
+    // BAKE-BOUND: `await initRenderer()` was 320 ms during which the main thread sat idle and the
+    // world-bake workers ran unimpeded, so deleting that wait does not shorten the critical path —
+    // it just moves the same time into `nodes` (which awaits the relief stage) and `world`, and
+    // costs extra core contention on top. Switch this on together with a menu-time bake start.
     try {
-        if (new URLSearchParams(window.location?.search || '').get('noGpuWarm') !== '1') {
+        if (new URLSearchParams(window.location?.search || '').get('gpuWarm') === '1') {
             warmWebGpuDevice().then((device) => {
                 if (device) performanceMonitor.recordEvent('startup_gpu_device_warmed', { ms: warmWebGpuDeviceMs() });
             });
