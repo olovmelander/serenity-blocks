@@ -48,16 +48,16 @@ describe('earth-core drawable budget (Wave 3b ratchet)', () => {
             .forEach(([k, v]) => console.log(`  ${String(v).padStart(3)}  ${k}`));
         expect(meshes + sprites + instanced, 'drawable ceiling — consolidate before adding').toBeLessThanOrEqual(55);
         expect(meshes + sprites + instanced).toBeGreaterThan(0);
-        // MATERIAL ceiling (2026-08-22). Chapter 1's pre-reveal compile barrier measures ~1,900 ms
-        // over these materials — ~76-90 ms EACH, of which only ~4-6 ms is main-thread node building
-        // (~125 nodes/ms). The rest is per-material fixed cost: bind groups, pipeline descriptor,
-        // WGSL assembly, DXC scheduling. So the count is the lever, not graph size — sharing the
-        // chapel's molten pocket with the six node pockets (26 -> 25) measured -91 ms on ch1 and
-        // -98 ms on cold startup, while a 40 % node-count reduction was worth an estimated ~10 ms.
-        // Ratcheted 25 -> 23 when the three basin coronas stopped building one copy each of the
-        // same 15-node sprite graph — which is also the proof the cost is per-material and NOT
-        // per-node: a 15-node material is ~0.1 ms of node building.
-        // Share an existing material before adding a new one.
-        expect(materials.size, 'material ceiling — each one is ~90 ms of the reveal').toBeLessThanOrEqual(23);
+        // MATERIAL ceiling (2026-08-23). Chapter 1s pre-reveal compile barrier is ~1,850 ms over
+        // these materials, and removing one is worth roughly **30 ms of fixed cost plus a term that
+        // scales with its graph**: measured, one 903-node material was -90 ms cold and two 15-node
+        // sprite materials were -59 ms together (~30 ms each). Main-thread NODE BUILDING is not the
+        // driver either way - that runs at ~125 nodes/ms, so 903 nodes is ~7 ms of it; the rest is
+        // per-material fixed work (bind groups, pipeline descriptor) plus WGSL assembly and DXC time
+        // that grows with the shader. So BOTH count and graph size matter, and the cheapest wins are
+        // whole materials that were never distinct in the first place.
+        // Ratcheted 26 -> 25 (selenite chapel shares the node pockets molten material) -> 23 (three
+        // basin coronas share one sprite material). Share an existing material before adding a new one.
+        expect(materials.size, 'material ceiling - each one costs ~30 ms + its graph').toBeLessThanOrEqual(23);
     });
 });
