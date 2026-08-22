@@ -73,7 +73,14 @@ function construct(type, init = {}) {
     const intensity = init.intensity ?? 1;
     switch (type) {
     case 'PointLight': return new THREE.PointLight(color, intensity, init.distance ?? 0, init.decay ?? 2);
-    case 'SpotLight': return new THREE.SpotLight(color, intensity, init.distance ?? 0, init.angle ?? Math.PI / 3, init.penumbra ?? 0, init.decay ?? 2);
+    case 'SpotLight': return new THREE.SpotLight(
+        color,
+        intensity,
+        init.distance ?? 0,
+        init.angle ?? Math.PI / 3,
+        init.penumbra ?? 0,
+        init.decay ?? 2,
+    );
     case 'DirectionalLight': return new THREE.DirectionalLight(color, intensity);
     case 'HemisphereLight': return new THREE.HemisphereLight(color, init.groundColor ?? 0xffffff, intensity);
     case 'AmbientLight':
@@ -190,7 +197,8 @@ export function syncChapterLightSlots(active) {
                 _pool.overflow += 1;
                 if (!_pool.warnedOverflow) {
                     _pool.warnedOverflow = true;
-                    console.warn(`[ChapterLightPool] more active ${type}s than rig slots (${slots[type].length}) — light dropped; widen deriveRigSlots`);
+                    console.warn(`[ChapterLightPool] more active ${type}s than rig slots (${slots[type].length})`
+                        + ' — light dropped; widen deriveRigSlots');
                 }
                 continue;
             }

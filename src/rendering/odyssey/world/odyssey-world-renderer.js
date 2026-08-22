@@ -813,7 +813,8 @@ export function createOdysseyWorld({
     // The world plate: sun visibility (R, unchanged) plus the three fields that ARE the
     // painting — wide occlusion, moisture, and the island's colour zone. Deciles are logged so
     // a rebake cannot silently flatten a field the whole palette hangs off.
-    const sunFields = bakeGroundSunFields(relief.sample, q.shadowRes, preTex.sunFields?.res === q.shadowRes ? preTex.sunFields : null);
+    const prebakedSunFields = preTex.sunFields?.res === q.shadowRes ? preTex.sunFields : null;
+    const sunFields = bakeGroundSunFields(relief.sample, q.shadowRes, prebakedSunFields);
     const sunVisTex = sunFields.tex;
     const groundAtlas = bakeGroundAtlas(undefined, preTex.atlas ?? null);
     const groundTex = groundAtlas.tex;

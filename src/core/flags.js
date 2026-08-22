@@ -136,7 +136,8 @@ export const FLAG_REGISTRY = [
         name: 'winterLegacy', default: false, purpose: 'force legacy WebGL winter scene vs Wonderland rebuild', kind: 'refactor', graduationBar: 'delete after Wonderland ships a full release without regression', reader: 'local',
     },
 
-    // ── Odyssey (local readers in OdysseyMode.js / OdysseyBoardController.js / LevelNodeManager.js) ──
+    // ── Odyssey (local readers in OdysseyMode.js / odyssey-url-flags.js / OdysseyBoardController.js /
+    //    LevelNodeManager.js) ──
     {
         name: 'odysseyKeepBoard', default: true, purpose: 'keep WebGPU board resident across level entry/return', kind: 'refactor', graduationBar: 'Odyssey masterplan — delete the non-resident path after a stable release', reader: 'local',
     },
@@ -168,7 +169,13 @@ export const FLAG_REGISTRY = [
         name: 'odysseyWarpPreinit', default: 'defer', purpose: 'warp transition pre-init timing A/B (immediate|defer|off)', kind: 'refactor', graduationBar: 'A/B lever — pick a winner and delete', reader: 'local',
     },
     {
-        name: 'odysseySharpen', default: true, purpose: 'RCAS sharpen (r185 SharpenNode) on DRS-upscaled Odyssey output (rollback when 0)', kind: 'refactor', graduationBar: 'three r185 upgrade plan §11 item 4 — delete the opt-out after the sharpen survives a stable release at the 0.65 DRS floor', reader: 'local',
+        name: 'odysseySharpen',
+        default: true,
+        purpose: 'RCAS sharpen (r185 SharpenNode) on DRS-upscaled Odyssey output (rollback when 0)',
+        kind: 'refactor',
+        graduationBar: 'three r185 upgrade plan §11 item 4 — delete the opt-out after the sharpen survives '
+            + 'a stable release at the 0.65 DRS floor',
+        reader: 'local',
     },
     {
         name: 'owmDirtyCheck', default: true, purpose: 'opponent mini-board dirty-check repaint skip (rollback when 0)', kind: 'refactor', graduationBar: 'delete after a stable release with dirty-check on', reader: 'local',

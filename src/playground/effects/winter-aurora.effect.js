@@ -19,7 +19,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, Loop, float, vec2, vec3, vec4, uniform,
-    mix, clamp, abs, fract, sin, cos, smoothstep, max, pow, exp, dot, atan,
+    mix, clamp, abs, fract, sin, cos, smoothstep, max, pow, exp, atan,
     normalize, positionWorld, cameraPosition,
 } from 'three/tsl';
 

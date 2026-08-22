@@ -1192,7 +1192,9 @@ export function createSurfaceWorldEnvironment() {
     // Hemisphere sky/ground bounce — gives the now-LIT vegetation (MeshLambertNode trees)
     // a natural fill so shadow sides read as lush green, not black silhouettes. Only the lit
     // foliage responds; the unlit terrain/GLB props are unaffected, so the grade is unchanged.
-    const hemiFill = acquireChapterLight(3, 'HemisphereLight', { color: 0xcfe4ff, groundColor: 0x5a7a44, intensity: 0.75 });
+    const hemiFill = acquireChapterLight(3, 'HemisphereLight', {
+        color: 0xcfe4ff, groundColor: 0x5a7a44, intensity: 0.75,
+    });
     group.add(hemiFill);
     group.userData.hemiFill = hemiFill;
     // Creative plan item 6: the season MOVES the key — spring gold → autumn amber →

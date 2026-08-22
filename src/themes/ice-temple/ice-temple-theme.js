@@ -2997,7 +2997,9 @@ export default class IceTempleTheme extends BaseTheme {
     probeCapabilities() {
         const maxColorAttachments = this.renderer?.capabilities?.maxColorAttachments ?? 1;
         const supportsCompute = this.isWebGPU && typeof this.renderer?.compute === 'function';
-        const supportsPost = this.isWebGPU ? typeof (WEBGPU_MODULE?.RenderPipeline ?? WEBGPU_MODULE?.PostProcessing) === 'function' : true;
+        const supportsPost = this.isWebGPU
+            ? typeof (WEBGPU_MODULE?.RenderPipeline ?? WEBGPU_MODULE?.PostProcessing) === 'function'
+            : true;
 
         this.capabilities = {
             isWebGPU: this.isWebGPU,

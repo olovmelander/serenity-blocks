@@ -26,10 +26,14 @@ import * as THREE from 'three/webgpu';
 import {
     Fn, float, vec2, vec3, vec4, uniform, attribute, instanceIndex, uv,
     mix, clamp, abs, sin, cos, pow, max, min, dot, cross, normalize, smoothstep, fract,
-    atan, length, dFdx, dFdy, positionGeometry, positionLocal, positionWorld, normalWorld, cameraPosition,
+    atan, length, dFdx, dFdy, positionGeometry, positionLocal, positionWorld, cameraPosition,
     reflector, mx_noise_float, pass, mrt, output, emissive, viewportUV,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 // Reuse Chapter 3's skinned songbirds (goldfinch + swallow) — same species the old
 // summer theme used, but the pipeline-authored flapping versions from Odyssey.
 import { loadOdysseyGltfCached } from '../../rendering/odyssey/chapter-environments/shared/odyssey-gltf-loader.js';
@@ -37,11 +41,7 @@ import { getChapter3FlyingBirdAssetById } from '../../rendering/odyssey/chapter-
 import { createSummerTrees } from '../../themes/summer/rendering/summer-trees.js';
 import { createSummerGameplayFX } from '../../themes/summer/rendering/summer-gameplay-fx.js';
 import { SummerGameplayRouting } from '../../themes/summer/composition/summer-gameplay-routing.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import summerFloraUrl from '../../themes/summer/assets/summer_flora.glb?url';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 import midsummerPoleUrl from '../../themes/summer/assets/midsummer_pole.glb?url';
 import cottageUrl from '../../themes/summer/assets/swedish_cottage.glb?url';
