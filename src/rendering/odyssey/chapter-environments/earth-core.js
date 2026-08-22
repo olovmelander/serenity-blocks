@@ -1473,10 +1473,16 @@ function createLavaFloor(uniforms, basins = []) {
     // Basin corona glows — the legacy radiance over each molten pool: a warm heat-haze
     // halo hovering just ABOVE the surface line (camera-facing, so it reads over the
     // opaque lake instead of being depth-culled beneath it).
+    // ONE material for all three coronas — the arguments were byte-identical on every iteration
+    // (same texture, tint, opacity and uOpacity), so the forEach was building three copies of the
+    // same 15-node graph. Only scale and position differ per basin, and nothing mutates the
+    // material. Same trick as sharedClusterGlowMaterial above; a material is ~76-90 ms of the
+    // pre-reveal compile barrier REGARDLESS of graph size, because the cost is per-material fixed
+    // work (bind groups, pipeline descriptor, WGSL assembly, DXC scheduling) rather than node
+    // building (~125 nodes/ms — a 15-node graph is ~0.1 ms of it).
+    const sharedBasinGlowMaterial = makeGlowSpriteMaterial(glowTexture, 0xffb347, 0.34, uniforms.uOpacity);
     basins.forEach((basin) => {
-        const basinGlow = new THREE.Sprite(
-            makeGlowSpriteMaterial(glowTexture, 0xffb347, 0.34, uniforms.uOpacity),
-        );
+        const basinGlow = new THREE.Sprite(sharedBasinGlowMaterial);
         basinGlow.userData.baseScale = basin.r * 2.2;
         basinGlow.position.set(basin.x, LAVA_LAKE_Y + 1.6, basin.z);
         group.add(basinGlow);
