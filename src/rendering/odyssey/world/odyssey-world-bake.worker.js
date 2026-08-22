@@ -24,6 +24,7 @@ import {
     bakeMacroData, makeReliefSampler,
 } from './odyssey-world-bake-data.js';
 import { buildCloudFieldGeometryData, cloudFieldGeometryDataBuffers } from './odyssey-cloud-field.js';
+import { scatterZonedForest } from './odyssey-forest-scatter.js';
 
 const now = () => performance.now();
 
@@ -35,7 +36,7 @@ function post(stage, payload, transfer, ms) {
 self.onmessage = (event) => {
     const {
         lane = 'all', reliefRes, shadowRes, cloudSpecs = null, railSamples = null,
-        jStart = 0, jEnd = 0, relief: reliefIn = null,
+        jStart = 0, jEnd = 0, relief: reliefIn = null, scatter: scatterOptions = null,
     } = event.data || {};
     const t0 = now();
     try {
@@ -43,6 +44,14 @@ self.onmessage = (event) => {
             // One horizontal band of the relief bake (the plate splits per texel).
             const band = bakeReliefBand(reliefRes, jStart, jEnd);
             post('reliefBand', { band }, [band.data.buffer, band.total.buffer], now() - t0);
+        }
+        if (lane === 'scatter') {
+            // The forest scatter is pure arithmetic over the height mirror + the rail
+            // (odyssey-forest-scatter.js imports no three), so it runs here while the main
+            // thread builds clipmaps and material graphs; the geometry and InstancedMeshes it
+            // feeds still happen there.
+            const zoned = scatterZonedForest(makeReliefSampler(reliefIn), scatterOptions);
+            post('scatter', { zoned }, undefined, now() - t0);
         }
         if (lane === 'sunFields') {
             // The sun march needs the WHOLE plate (and normalises over it), so it stays one job;

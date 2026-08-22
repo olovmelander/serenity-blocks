@@ -17,6 +17,7 @@ import {
 } from '../../src/rendering/odyssey/world/odyssey-world-bake-data.js';
 import { ODYSSEY_CLOUD_FIELD_SPECS } from '../../src/rendering/odyssey/world/odyssey-cloud-field-specs.js';
 import { buildCloudFieldGeometryData } from '../../src/rendering/odyssey/world/odyssey-cloud-field.js';
+import { scatterZonedForest } from '../../src/rendering/odyssey/world/odyssey-forest-scatter.js';
 import { ODYSSEY_WORLD_QUALITY, createOdysseyWorld } from '../../src/rendering/odyssey/world/odyssey-world-renderer.js';
 
 const sha = (typed) => createHash('sha256')
@@ -35,7 +36,7 @@ describe('world bake loader — synchronous twin', () => {
         expect(sha(out.textures.macro.data)).toBe(sha(bakeMacroData().data));
         expect(out.cloudField.masses).toBe(2);
         expect(sha(out.cloudField.position)).toBe(sha(buildCloudFieldGeometryData(ODYSSEY_CLOUD_FIELD_SPECS.slice(0, 2), RAIL).position));
-        expect(Object.keys(out.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'cloudField', 'total']);
+        expect(Object.keys(out.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'cloudField', 'scatter', 'total']);
     });
 
     it('startWorldBake without a Worker resolves its stages lazily, on the first await', async () => {
@@ -52,6 +53,27 @@ describe('world bake loader — synchronous twin', () => {
         expect(all.textures.sunFields.res).toBe(24);
         expect(sha(all.relief.data)).toBe(sha(relief.data)); // one bake, shared by every stage
         expect(makeReliefSampler(all.relief)(0, 0)).toBeTypeOf('number');
+    });
+});
+
+describe('forest scatter lane', () => {
+    it('runs the same scatter the world would have run itself (options passed through verbatim)', () => {
+        const scatterOptions = {
+            spacing: 24, seaLevel: 0, rail: RAIL, visibilityCull: true, forceLod: null, lodDistance: { hero: 200, mid: 520 },
+        };
+        const out = bakeWorldSync({
+            reliefRes: 96, shadowRes: 32, cloudField: false, scatter: scatterOptions,
+        });
+        const direct = scatterZonedForest(makeReliefSampler(out.relief), scatterOptions);
+        expect(out.scatter.stats).toEqual(direct.stats);
+        expect(out.scatter.placements.length).toBe(direct.placements.length);
+        expect([...out.scatter.buckets.keys()].sort()).toEqual([...direct.buckets.keys()].sort());
+        expect(out.ms.scatter).toBeGreaterThanOrEqual(0);
+    });
+
+    it('is skipped (null) when the world does not build a forest', () => {
+        const out = bakeWorldSync({ reliefRes: 64, shadowRes: 24, cloudField: false });
+        expect(out.scatter).toBeNull();
     });
 });
 
@@ -74,7 +96,7 @@ describe('createOdysseyWorld({ prebaked })', () => {
             },
         });
         expect(fromBake.stats.prebaked).toEqual({
-            relief: true, textures: true, cloudField: true, viaWorker: true, workerMs: baked.ms,
+            relief: true, textures: true, cloudField: true, scatter: false, viaWorker: true, workerMs: baked.ms,
         });
         expect(direct.stats.prebaked).toBeNull();
         // The wrap is a few ms; a re-bake would be hundreds (the 'relief' span covers all five).

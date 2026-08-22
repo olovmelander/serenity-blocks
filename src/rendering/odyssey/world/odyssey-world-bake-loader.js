@@ -21,6 +21,7 @@ import {
     makeReliefSampler, mergeReliefBands, reliefBandRanges,
 } from './odyssey-world-bake-data.js';
 import { buildCloudFieldGeometryData } from './odyssey-cloud-field.js';
+import { scatterZonedForest } from './odyssey-forest-scatter.js';
 
 function deferred() {
     let resolve; let reject;
@@ -33,7 +34,7 @@ function deferred() {
  * tests; the stages resolve immediately.
  */
 export function bakeWorldSync({
-    reliefRes, shadowRes, cloudSpecs = null, railSamples = null, cloudField = false,
+    reliefRes, shadowRes, cloudSpecs = null, railSamples = null, cloudField = false, scatter = null,
 }) {
     const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
     const t0 = now();
@@ -49,12 +50,15 @@ export function bakeWorldSync({
     const t5 = now();
     const field = cloudField && Array.isArray(cloudSpecs) ? buildCloudFieldGeometryData(cloudSpecs, railSamples) : null;
     const t6 = now();
+    const zoned = scatter ? scatterZonedForest(makeReliefSampler(relief), scatter) : null;
+    const t7 = now();
     return {
         relief,
         textures: {
             sunFields, atlas, detail, macro,
         },
         cloudField: field,
+        scatter: zoned,
         ms: {
             relief: +(t1 - t0).toFixed(1),
             sunFields: +(t2 - t1).toFixed(1),
@@ -62,7 +66,8 @@ export function bakeWorldSync({
             detail: +(t4 - t3).toFixed(1),
             macro: +(t5 - t4).toFixed(1),
             cloudField: +(t6 - t5).toFixed(1),
-            total: +(t6 - t0).toFixed(1),
+            scatter: +(t7 - t6).toFixed(1),
+            total: +(t7 - t0).toFixed(1),
         },
     };
 }
@@ -77,13 +82,20 @@ export function startWorldBake(request) {
     const relief = deferred();
     const textures = deferred();
     const cloudField = deferred();
+    const scatter = deferred();
     const done = deferred();
     const startedAt = typeof performance !== 'undefined' ? performance.now() : 0;
     const handle = {
-        relief: relief.promise, textures: textures.promise, cloudField: cloudField.promise, done: done.promise, viaWorker: false, startedAt,
+        relief: relief.promise,
+        textures: textures.promise,
+        cloudField: cloudField.promise,
+        scatter: scatter.promise,
+        done: done.promise,
+        viaWorker: false,
+        startedAt,
     };
     // Promises nobody awaits must not surface as unhandled rejections (the fallback re-runs).
-    [relief, textures, cloudField, done].forEach((d) => d.promise.catch(() => {}));
+    [relief, textures, cloudField, scatter, done].forEach((d) => d.promise.catch(() => {}));
 
     let settled = false;
     const runSync = () => {
@@ -94,9 +106,10 @@ export function startWorldBake(request) {
             relief.resolve(out.relief);
             textures.resolve(out.textures);
             cloudField.resolve(out.cloudField);
+            scatter.resolve(out.scatter);
             done.resolve({ ms: out.ms, viaWorker: false });
         } catch (error) {
-            [relief, textures, cloudField, done].forEach((d) => d.reject(error));
+            [relief, textures, cloudField, scatter, done].forEach((d) => d.reject(error));
         }
     };
 
@@ -108,7 +121,7 @@ export function startWorldBake(request) {
         // the caller's synchronous prologue is not charged, and the bake runs exactly where the
         // old synchronous build did. (An overridden `.then` would not work — `await` on a native
         // promise bypasses it.)
-        for (const [key, d] of [['relief', relief], ['textures', textures], ['cloudField', cloudField], ['done', done]]) {
+        for (const [key, d] of [['relief', relief], ['textures', textures], ['cloudField', cloudField], ['scatter', scatter], ['done', done]]) {
             Object.defineProperty(handle, key, {
                 enumerable: true,
                 configurable: true,
@@ -178,10 +191,18 @@ export function startWorldBake(request) {
     const ranges = reliefBandRanges(request.reliefRes, bandCount);
     const bands = [];
     let hostWorker = null;
+    let scatterWorker = null;
     ranges.forEach((range, bandIndex) => {
         const worker = spawn({
             lane: 'reliefBand', reliefRes: request.reliefRes, jStart: range.jStart, jEnd: range.jEnd,
         }, undefined, (msg) => {
+            if (msg.stage === 'scatter') {
+                ms.scatter = msg.ms;
+                if (scatterWorker) scatterWorker.__odysseyRetired = true;
+                else if (hostWorker) hostWorker.__odysseyRetired = true;
+                scatter.resolve(msg.zoned);
+                return;
+            }
             if (msg.stage === 'sunFields') {
                 ms.sunFields = msg.ms;
                 plates.sunFields = msg.sunFields;
@@ -205,6 +226,22 @@ export function startWorldBake(request) {
                     total: mirror, res: merged.res, step: merged.step, origin: merged.origin,
                 },
             };
+            if (request.scatter) {
+                // The scatter needs the same mirror; a second copy so both jobs own theirs.
+                const scatterMirror = merged.total.slice();
+                const scatterJob = {
+                    lane: 'scatter',
+                    scatter: request.scatter,
+                    relief: {
+                        total: scatterMirror, res: merged.res, step: merged.step, origin: merged.origin,
+                    },
+                };
+                const target = scatterWorker || hostWorker;
+                if (target) target.postMessage(scatterJob, [scatterMirror.buffer]);
+                else spawn(scatterJob, [scatterMirror.buffer], () => {});
+            } else {
+                scatter.resolve(null);
+            }
             if (hostWorker) hostWorker.postMessage(sunJob, [mirror.buffer]);
             else {
                 spawn(sunJob, [mirror.buffer], (sunMsg) => {
@@ -214,8 +251,9 @@ export function startWorldBake(request) {
                     resolveTexturesWhenComplete();
                 });
             }
-        }, { keepAlive: bandIndex === 0 });
+        }, { keepAlive: bandIndex <= 1 });
         if (bandIndex === 0 && worker) hostWorker = worker;
+        if (bandIndex === 1 && worker) scatterWorker = worker;
     });
 
     // Lane N+1 — the three plates that depend on nothing.
@@ -239,7 +277,7 @@ export function startWorldBake(request) {
         cloudField.resolve(null);
     }
 
-    Promise.all([relief.promise, textures.promise, cloudField.promise]).then(() => {
+    Promise.all([relief.promise, textures.promise, cloudField.promise, scatter.promise]).then(() => {
         if (failed || settled) return;
         settled = true;
         ms.total = Math.round((typeof performance !== 'undefined' ? performance.now() : 0) - startedAt);
@@ -254,10 +292,10 @@ export function startWorldBake(request) {
  * @param {ReturnType<typeof startWorldBake>} handle
  */
 export async function awaitWorldBake(handle) {
-    const [relief, textures, cloudField, done] = await Promise.all([
-        handle.relief, handle.textures, handle.cloudField, handle.done,
+    const [relief, textures, cloudField, scatter, done] = await Promise.all([
+        handle.relief, handle.textures, handle.cloudField, handle.scatter, handle.done,
     ]);
     return {
-        relief, textures, cloudField, ms: done.ms, viaWorker: done.viaWorker,
+        relief, textures, cloudField, scatter, ms: done.ms, viaWorker: done.viaWorker,
     };
 }
