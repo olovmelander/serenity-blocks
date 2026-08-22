@@ -1,0 +1,4688 @@
+{
+  "manifest": {
+    "schemaVersion": 2,
+    "date": "2026-08-22T11:56:28.701Z",
+    "commit": "2c93ab620e7f3e6799e971befdd5e4afe32fa5dd",
+    "script": "scripts/odyssey-perf-session.mjs",
+    "argv": [
+      "--scenario",
+      "load",
+      "--cache",
+      "cold",
+      "--profile-dir",
+      "C:/Users/olov_/repos/serenity-blocks/artifacts/odyssey/perf-profiles/committed-cold-fresh",
+      "--output",
+      "C:/Users/olov_/repos/serenity-blocks/reports/odyssey-perf/rtx3070-r181-vs-r185/r185p1barrier-load-cold-1.json",
+      "--port",
+      "4177",
+      "--quality",
+      "Extreme",
+      "--target-frame-rate",
+      "240",
+      "--warmup-mode",
+      "current",
+      "--duration",
+      "30000",
+      "--pan-duration",
+      "2200",
+      "--width",
+      "1280",
+      "--height",
+      "720",
+      "--runs",
+      "1",
+      "--reset-profile"
+    ],
+    "backend": {
+      "isWebGPU": true,
+      "isWebGL": false,
+      "name": "webgpu"
+    },
+    "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "machine": {
+      "platform": "win32",
+      "release": "10.0.26200",
+      "arch": "x64",
+      "cpuModel": "AMD Ryzen 7 5800H with Radeon Graphics         ",
+      "cpuCount": 16,
+      "totalMemBytes": 64269381632
+    },
+    "gpu": {
+      "vendor": "nvidia",
+      "architecture": "ampere",
+      "description": ""
+    },
+    "url": "http://127.0.0.1:4177/?skipIntro=1&odysseyPerfRun=1&odysseyPerfScenario=load&odysseyWarmupMode=current&odysseyPerfRefreshTarget=240&odysseyOverlay=0&odysseyDisableAdaptiveQuality=1&odysseyPixelRatio=1",
+    "pins": {
+      "adaptive": "disabled",
+      "dpr": 1,
+      "backgroundLoading": "default-on (measured, not pinned)"
+    },
+    "session": {
+      "cacheMode": "cold",
+      "scenario": "load",
+      "quality": "Extreme",
+      "targetFrameRate": 240,
+      "warmupMode": "current",
+      "durationMs": 30000,
+      "panDurationMs": 2200,
+      "reloadCycles": 0,
+      "runs": 1,
+      "width": 1280,
+      "height": 720,
+      "profileDir": "artifacts\\odyssey\\perf-profiles\\committed-cold-fresh",
+      "coldCacheCaveat": null
+    }
+  },
+  "aggregate": {
+    "runCount": 1,
+    "metrics": {
+      "boardVisibleMs": {
+        "count": 1,
+        "median": 4291,
+        "p95": 4291,
+        "p99": 4291,
+        "min": 4291,
+        "max": 4291,
+        "values": [
+          4291
+        ]
+      },
+      "startup.totalMs": {
+        "count": 1,
+        "median": 3329,
+        "p95": 3329,
+        "p99": 3329,
+        "min": 3329,
+        "max": 3329,
+        "values": [
+          3329
+        ]
+      },
+      "startup.warmupMs": {
+        "count": 1,
+        "median": 196,
+        "p95": 196,
+        "p99": 196,
+        "min": 196,
+        "max": 196,
+        "values": [
+          196
+        ]
+      },
+      "frame.p50": {
+        "count": 1,
+        "median": 12.200000000186265,
+        "p95": 12.200000000186265,
+        "p99": 12.200000000186265,
+        "min": 12.200000000186265,
+        "max": 12.200000000186265,
+        "values": [
+          12.200000000186265
+        ]
+      },
+      "frame.p95": {
+        "count": 1,
+        "median": 57.40000000037253,
+        "p95": 57.40000000037253,
+        "p99": 57.40000000037253,
+        "min": 57.40000000037253,
+        "max": 57.40000000037253,
+        "values": [
+          57.40000000037253
+        ]
+      },
+      "frame.p99": {
+        "count": 1,
+        "median": 187.90000000037253,
+        "p95": 187.90000000037253,
+        "p99": 187.90000000037253,
+        "min": 187.90000000037253,
+        "max": 187.90000000037253,
+        "values": [
+          187.90000000037253
+        ]
+      },
+      "frame.max": {
+        "count": 1,
+        "median": 533.0999999996275,
+        "p95": 533.0999999996275,
+        "p99": 533.0999999996275,
+        "min": 533.0999999996275,
+        "max": 533.0999999996275,
+        "values": [
+          533.0999999996275
+        ]
+      },
+      "overBudget": {
+        "count": 1,
+        "median": 543,
+        "p95": 543,
+        "p99": 543,
+        "min": 543,
+        "max": 543,
+        "values": [
+          543
+        ]
+      },
+      "spikes": {
+        "count": 1,
+        "median": 53,
+        "p95": 53,
+        "p99": 53,
+        "min": 53,
+        "max": 53,
+        "values": [
+          53
+        ]
+      },
+      "drawCalls.p50": {
+        "count": 1,
+        "median": 69,
+        "p95": 69,
+        "p99": 69,
+        "min": 69,
+        "max": 69,
+        "values": [
+          69
+        ]
+      },
+      "drawCalls.max": {
+        "count": 1,
+        "median": 69,
+        "p95": 69,
+        "p99": 69,
+        "min": 69,
+        "max": 69,
+        "values": [
+          69
+        ]
+      },
+      "triangles.p50": {
+        "count": 1,
+        "median": 242849,
+        "p95": 242849,
+        "p99": 242849,
+        "min": 242849,
+        "max": 242849,
+        "values": [
+          242849
+        ]
+      },
+      "triangles.max": {
+        "count": 1,
+        "median": 242849,
+        "p95": 242849,
+        "p99": 242849,
+        "min": 242849,
+        "max": 242849,
+        "values": [
+          242849
+        ]
+      },
+      "longTasks.count": {
+        "count": 1,
+        "median": 47,
+        "p95": 47,
+        "p99": 47,
+        "min": 47,
+        "max": 47,
+        "values": [
+          47
+        ]
+      },
+      "longTasks.totalMs": {
+        "count": 1,
+        "median": 6936,
+        "p95": 6936,
+        "p99": 6936,
+        "min": 6936,
+        "max": 6936,
+        "values": [
+          6936
+        ]
+      },
+      "longTasks.maxMs": {
+        "count": 1,
+        "median": 754,
+        "p95": 754,
+        "p99": 754,
+        "min": 754,
+        "max": 754,
+        "values": [
+          754
+        ]
+      },
+      "memory.usedJSHeapSizeMB": {
+        "count": 1,
+        "median": 194.87018394470215,
+        "p95": 194.87018394470215,
+        "p99": 194.87018394470215,
+        "min": 194.87018394470215,
+        "max": 194.87018394470215,
+        "values": [
+          194.87018394470215
+        ]
+      },
+      "gpuMemory.totalMB": {
+        "count": 1,
+        "median": 66.53174495697021,
+        "p95": 66.53174495697021,
+        "p99": 66.53174495697021,
+        "min": 66.53174495697021,
+        "max": 66.53174495697021,
+        "values": [
+          66.53174495697021
+        ]
+      },
+      "gpuMemory.texturesMB": {
+        "count": 1,
+        "median": 48.6463680267334,
+        "p95": 48.6463680267334,
+        "p99": 48.6463680267334,
+        "min": 48.6463680267334,
+        "max": 48.6463680267334,
+        "values": [
+          48.6463680267334
+        ]
+      },
+      "gpuMemory.attributesMB": {
+        "count": 1,
+        "median": 11.836822509765625,
+        "p95": 11.836822509765625,
+        "p99": 11.836822509765625,
+        "min": 11.836822509765625,
+        "max": 11.836822509765625,
+        "values": [
+          11.836822509765625
+        ]
+      },
+      "gpuMemory.indexAttributesMB": {
+        "count": 1,
+        "median": 4.252349853515625,
+        "p95": 4.252349853515625,
+        "p99": 4.252349853515625,
+        "min": 4.252349853515625,
+        "max": 4.252349853515625,
+        "values": [
+          4.252349853515625
+        ]
+      },
+      "gpuMemory.storageAttributesMB": {
+        "count": 1,
+        "median": 0,
+        "p95": 0,
+        "p99": 0,
+        "min": 0,
+        "max": 0,
+        "values": [
+          0
+        ]
+      },
+      "gpuMemory.uniformBuffersMB": {
+        "count": 1,
+        "median": 0.4435577392578125,
+        "p95": 0.4435577392578125,
+        "p99": 0.4435577392578125,
+        "min": 0.4435577392578125,
+        "max": 0.4435577392578125,
+        "values": [
+          0.4435577392578125
+        ]
+      },
+      "gpuMemory.programsMB": {
+        "count": 1,
+        "median": 1.352646827697754,
+        "p95": 1.352646827697754,
+        "p99": 1.352646827697754,
+        "min": 1.352646827697754,
+        "max": 1.352646827697754,
+        "values": [
+          1.352646827697754
+        ]
+      },
+      "gpuMemory.renderTargets": {
+        "count": 1,
+        "median": 9,
+        "p95": 9,
+        "p99": 9,
+        "min": 9,
+        "max": 9,
+        "values": [
+          9
+        ]
+      },
+      "gpuMemory.scenarioGrowthMB": null
+    }
+  },
+  "runs": [
+    {
+      "runIndex": 0,
+      "label": "cold:load",
+      "cacheMode": "cold",
+      "scenario": "load",
+      "quality": "Extreme",
+      "targetFrameRate": 240,
+      "warmupMode": "current",
+      "durationMs": 30000,
+      "panDurationMs": 2200,
+      "reloadCycles": 0,
+      "gpuMemoryCycles": [],
+      "parsedConsole": {
+        "startupLine": "[OdysseyStartup] total 3329ms | renderer 429 | creates 459 | path 27 | nodes 94 | world 644 | post+director 175 | compiles 1250 | warmup 196",
+        "boardVisibleLine": "[OdysseyStartup] board visible 4291ms after overlay show",
+        "startup": {
+          "totalMs": 3329,
+          "buckets": {
+            "renderer": 429,
+            "creates": 459,
+            "path": 27,
+            "nodes": 94,
+            "world": 644,
+            "post+director": 175,
+            "compiles": 1250,
+            "warmup": 196
+          }
+        },
+        "boardVisibleMs": 4291,
+        "warmupLines": [
+          "[OdysseyWarmup] fast-start: focus chapter + lean post variants warmed in 138ms; far chapters + lens variants warm on first visit"
+        ],
+        "warnings": []
+      },
+      "browser": {
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "ampere",
+          "description": ""
+        },
+        "pipelines": {
+          "count": 170,
+          "sumMs": 27612,
+          "top": [
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_112",
+              "ms": 815,
+              "at": 10070,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_37",
+              "ms": 752,
+              "at": 5905,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_30",
+              "ms": 723,
+              "at": 5274,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardNodeMaterial_41",
+              "ms": 722,
+              "at": 6159,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_73",
+              "ms": 624,
+              "at": 8814,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_20",
+              "ms": 614,
+              "at": 5996,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_73",
+              "ms": 566,
+              "at": 8873,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_73",
+              "ms": 555,
+              "at": 8883,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_73",
+              "ms": 547,
+              "at": 8891,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_73",
+              "ms": 533,
+              "at": 8905,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_SpriteNodeMaterial_26",
+              "ms": 521,
+              "at": 4769,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_29",
+              "ms": 518,
+              "at": 4783,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshStandardMaterial_48",
+              "ms": 474,
+              "at": 5684,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_22",
+              "ms": 462,
+              "at": 4754,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_earth-core-lake-baked-flow_23",
+              "ms": 456,
+              "at": 4760,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            }
+          ],
+          "sync": [
+            {
+              "label": "mipmap-rgba8unorm-2d-array",
+              "at": 4764,
+              "targets": "rgba8unorm",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_74",
+              "at": 6933,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_77",
+              "at": 6942,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_MeshBasicNodeMaterial_76",
+              "at": 6947,
+              "targets": "rgba16float",
+              "samples": 4,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_Bloom_highPass_98",
+              "at": 6950,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_Bloom_separable_99",
+              "at": 6954,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_Bloom_separable_100",
+              "at": 6956,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_Bloom_separable_101",
+              "at": 6958,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_Bloom_comp_102",
+              "at": 6961,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_RenderPipeline_17",
+              "at": 6962,
+              "targets": "bgra8unorm",
+              "samples": 1,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_RenderPipeline_17",
+              "at": 6968,
+              "targets": "bgra8unorm",
+              "samples": 1,
+              "depth": "depth24plus"
+            },
+            {
+              "label": "renderPipeline_Bloom_highPass_98",
+              "at": 7096,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_Bloom_comp_102",
+              "at": 7100,
+              "targets": "rgba16float",
+              "samples": 1,
+              "depth": null
+            },
+            {
+              "label": "renderPipeline_RenderPipeline_17",
+              "at": 7100,
+              "targets": "bgra8unorm",
+              "samples": 1,
+              "depth": "depth24plus"
+            }
+          ],
+          "asyncShapes": [
+            "rgba16float|4|depth24plus"
+          ]
+        },
+        "keyTrace": null,
+        "boot": {
+          "menuVisibleMs": 1409,
+          "menuReadyMs": 1409,
+          "boardInitEndMs": 7114,
+          "boardVisibleMs": 7987
+        },
+        "keyTraceState": null,
+        "location": "http://127.0.0.1:4177/?skipIntro=1&odysseyPerfRun=1&odysseyPerfScenario=load&odysseyWarmupMode=current&odysseyPerfRefreshTarget=240&odysseyOverlay=0&odysseyDisableAdaptiveQuality=1&odysseyPixelRatio=1",
+        "devicePixelRatio": 1,
+        "gpuMemory": {
+          "atReset": null,
+          "atEnd": {
+            "total": 69763591,
+            "texturesSize": 51009414,
+            "attributesSize": 12411808,
+            "indexAttributesSize": 4458912,
+            "storageAttributesSize": 0,
+            "indirectStorageAttributesSize": 0,
+            "uniformBuffersSize": 465104,
+            "readbackBuffersSize": 0,
+            "programsSize": 1418353,
+            "renderTargets": 9,
+            "textures": 32,
+            "geometries": 222,
+            "programs": 279,
+            "atMs": 12667
+          }
+        },
+        "gpu": null,
+        "backend": {
+          "isWebGPU": true,
+          "isWebGL": false,
+          "name": "webgpu"
+        },
+        "webglRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "perf": {
+          "metrics": {
+            "fps": 109.89010988336199,
+            "avgFPS": 78.05385716142248,
+            "minFPS": 1.8758206715451113,
+            "maxFPS": 232.55813954495753,
+            "frameTime": 9.100000000558794,
+            "avgFrameTime": 12.81166666666977,
+            "maxFrameTime": 533.0999999996275,
+            "updateTime": 0,
+            "renderTime": 0,
+            "inputLatency": 0,
+            "memoryUsed": 205.85897064208984,
+            "frameDrops": 72,
+            "totalFrames": 543,
+            "contextRestoreCount": 0,
+            "themeSwitchCount": 1,
+            "memoryLimit": 4095.75,
+            "memoryTotal": 263.8528633117676
+          },
+          "rollingPercentiles": {
+            "p50": 12,
+            "p95": 28.899999999441206,
+            "p99": 40
+          },
+          "frameTimeSummary": {
+            "count": 543,
+            "budgetMs": 4.166666666666667,
+            "p50": 12.200000000186265,
+            "p95": 57.40000000037253,
+            "p99": 187.90000000037253,
+            "max": 533.0999999996275,
+            "overBudget": 543,
+            "overBudgetPct": 100
+          },
+          "counters": {
+            "calls": 69,
+            "triangles": 242849,
+            "geometries": 222,
+            "textures": 32,
+            "programs": 0,
+            "callsAvg": 69,
+            "trianglesAvg": 242849,
+            "callsP50": 69,
+            "callsMax": 69,
+            "trianglesP50": 242849,
+            "trianglesMax": 242849
+          },
+          "spikes": [
+            {
+              "t": 1772,
+              "ms": 187.9,
+              "fps": 5.3,
+              "p50Before": 11.8
+            },
+            {
+              "t": 2002,
+              "ms": 200.9,
+              "fps": 5,
+              "p50Before": 11.8
+            },
+            {
+              "t": 2074,
+              "ms": 71.7,
+              "fps": 13.9,
+              "p50Before": 23.3
+            },
+            {
+              "t": 2130,
+              "ms": 55.6,
+              "fps": 18,
+              "p50Before": 23.3
+            },
+            {
+              "t": 2222,
+              "ms": 92.3,
+              "fps": 10.8,
+              "p50Before": 55.6
+            },
+            {
+              "t": 2286,
+              "ms": 52.4,
+              "fps": 19.1,
+              "p50Before": 55.6
+            },
+            {
+              "t": 2335,
+              "ms": 49.4,
+              "fps": 20.2,
+              "p50Before": 52.4
+            },
+            {
+              "t": 2645,
+              "ms": 49.9,
+              "fps": 20,
+              "p50Before": 8.4
+            },
+            {
+              "t": 2682,
+              "ms": 37.3,
+              "fps": 26.8,
+              "p50Before": 8.4
+            },
+            {
+              "t": 3360,
+              "ms": 152.4,
+              "fps": 6.6,
+              "p50Before": 8
+            },
+            {
+              "t": 3519,
+              "ms": 33.5,
+              "fps": 29.9,
+              "p50Before": 8.2
+            },
+            {
+              "t": 3622,
+              "ms": 77.5,
+              "fps": 12.9,
+              "p50Before": 8.2
+            },
+            {
+              "t": 3720,
+              "ms": 47.5,
+              "fps": 21.1,
+              "p50Before": 8.3
+            },
+            {
+              "t": 3830,
+              "ms": 74.1,
+              "fps": 13.5,
+              "p50Before": 8.6
+            },
+            {
+              "t": 3898,
+              "ms": 45,
+              "fps": 22.2,
+              "p50Before": 9.9
+            },
+            {
+              "t": 4134,
+              "ms": 168.8,
+              "fps": 5.9,
+              "p50Before": 10.4
+            },
+            {
+              "t": 4233,
+              "ms": 63.2,
+              "fps": 15.8,
+              "p50Before": 11.2
+            },
+            {
+              "t": 4682,
+              "ms": 343.5,
+              "fps": 2.9,
+              "p50Before": 12.5
+            },
+            {
+              "t": 4800,
+              "ms": 117.8,
+              "fps": 8.5,
+              "p50Before": 12.5
+            },
+            {
+              "t": 4902,
+              "ms": 42.7,
+              "fps": 23.4,
+              "p50Before": 12.9
+            },
+            {
+              "t": 4979,
+              "ms": 77.3,
+              "fps": 12.9,
+              "p50Before": 13.2
+            },
+            {
+              "t": 5095,
+              "ms": 115.7,
+              "fps": 8.6,
+              "p50Before": 13.4
+            },
+            {
+              "t": 5209,
+              "ms": 114.5,
+              "fps": 8.7,
+              "p50Before": 13.4
+            },
+            {
+              "t": 5285,
+              "ms": 75.9,
+              "fps": 13.2,
+              "p50Before": 13.6
+            },
+            {
+              "t": 5464,
+              "ms": 140.1,
+              "fps": 7.1,
+              "p50Before": 14.5
+            },
+            {
+              "t": 5652,
+              "ms": 188.4,
+              "fps": 5.3,
+              "p50Before": 14.5
+            },
+            {
+              "t": 5706,
+              "ms": 54.5,
+              "fps": 18.3,
+              "p50Before": 15.5,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": false,
+                "complete": false,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 0,
+                "triangles": 0,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 15,
+                "textures": 9
+              }
+            },
+            {
+              "t": 5744,
+              "ms": 37.5,
+              "fps": 26.7,
+              "p50Before": 16,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": false,
+                "complete": false,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 0,
+                "triangles": 0,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 15,
+                "textures": 9
+              }
+            },
+            {
+              "t": 5812,
+              "ms": 46.2,
+              "fps": 21.6,
+              "p50Before": 16.8,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": false,
+                "complete": false,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 0,
+                "triangles": 0,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 16,
+                "textures": 9
+              }
+            },
+            {
+              "t": 5906,
+              "ms": 94,
+              "fps": 10.6,
+              "p50Before": 17.2,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": false,
+                "complete": false,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 0,
+                "triangles": 0,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 18,
+                "textures": 9
+              }
+            },
+            {
+              "t": 6001,
+              "ms": 95,
+              "fps": 10.5,
+              "p50Before": 17.2,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": false,
+                "complete": false,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 0,
+                "triangles": 0,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 31,
+                "textures": 11
+              }
+            },
+            {
+              "t": 6160,
+              "ms": 57.4,
+              "fps": 17.4,
+              "p50Before": 20.3,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": false,
+                "complete": false,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 0,
+                "triangles": 0,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 34,
+                "textures": 12
+              }
+            },
+            {
+              "t": 6231,
+              "ms": 43.9,
+              "fps": 22.8,
+              "p50Before": 22.8,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": false,
+                "complete": false,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 0,
+                "triangles": 0,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 37,
+                "textures": 13
+              }
+            },
+            {
+              "t": 6342,
+              "ms": 78.3,
+              "fps": 12.8,
+              "p50Before": 22.1,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": false,
+                "complete": false,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 1,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 0,
+                "triangles": 0,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 39,
+                "textures": 14
+              }
+            },
+            {
+              "t": 6969,
+              "ms": 70.2,
+              "fps": 14.2,
+              "p50Before": 9.9,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 3.713064699600838e-8,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": false,
+                "complete": false,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|0",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 63,
+                "triangles": 238060,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 59,
+                "textures": 24
+              }
+            },
+            {
+              "t": 7081,
+              "ms": 111.9,
+              "fps": 8.9,
+              "p50Before": 9.9,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 3.713064699600838e-8,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": false,
+                "complete": false,
+                "current": null,
+                "pending": 0
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|0",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 0,
+                "triangles": 0,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 59,
+                "textures": 24
+              }
+            },
+            {
+              "t": 7370,
+              "ms": 288.4,
+              "fps": 3.5,
+              "p50Before": 9.9,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": null,
+                "pending": 4
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 63,
+                "triangles": 238060,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 65,
+                "textures": 24
+              }
+            },
+            {
+              "t": 7449,
+              "ms": 79.4,
+              "fps": 12.6,
+              "p50Before": 9.9,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.000001210980246143236,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": null,
+                "pending": 4
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 65,
+                "textures": 24
+              }
+            },
+            {
+              "t": 7541,
+              "ms": 78.6,
+              "fps": 12.7,
+              "p50Before": 10.3,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.000004985885868849309,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": null,
+                "pending": 4
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 65,
+                "textures": 24
+              }
+            },
+            {
+              "t": 7580,
+              "ms": 38.8,
+              "fps": 25.8,
+              "p50Before": 10.3,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.000010955697911498103,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": null,
+                "pending": 4
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 68,
+                "textures": 24
+              }
+            },
+            {
+              "t": 7635,
+              "ms": 35.4,
+              "fps": 28.2,
+              "p50Before": 10.3,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.000020198850996493287,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": null,
+                "pending": 4
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 70,
+                "textures": 24
+              }
+            },
+            {
+              "t": 7904,
+              "ms": 63.2,
+              "fps": 15.8,
+              "p50Before": 10.8,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.00010248216696707341,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": null,
+                "pending": 4
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 79,
+                "textures": 29
+              }
+            },
+            {
+              "t": 7959,
+              "ms": 34.4,
+              "fps": 29.1,
+              "p50Before": 10.8,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.0001410539030425847,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": null,
+                "pending": 3
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 79,
+                "textures": 29
+              }
+            },
+            {
+              "t": 8194,
+              "ms": 36.4,
+              "fps": 27.5,
+              "p50Before": 12.8,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.0003121631394242966,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": 6,
+                "pending": 3
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 85,
+                "textures": 29
+              }
+            },
+            {
+              "t": 8892,
+              "ms": 44.9,
+              "fps": 22.3,
+              "p50Before": 17.4,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.0011119208848006986,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 1,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": 6,
+                "pending": 3
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 113,
+                "textures": 29
+              }
+            },
+            {
+              "t": 9425,
+              "ms": 533.1,
+              "fps": 1.9,
+              "p50Before": 17.7,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.0011782616376822307,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 2,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": 6,
+                "pending": 3
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 114,
+                "textures": 29
+              }
+            },
+            {
+              "t": 9506,
+              "ms": 54.2,
+              "fps": 18.5,
+              "p50Before": 17.7,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.0012849302449877043,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 2,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": 6,
+                "pending": 3
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 120,
+                "textures": 29
+              }
+            },
+            {
+              "t": 9693,
+              "ms": 35.5,
+              "fps": 28.2,
+              "p50Before": 15.9,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.0015750735159375507,
+              "settled": true,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 2,
+              "isPrewarming": false,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": 6,
+                "pending": 3
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 121,
+                "textures": 29
+              }
+            },
+            {
+              "t": 9815,
+              "ms": 40.7,
+              "fps": 24.6,
+              "p50Before": 13.9,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.0017496085736732703,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 1,
+              "isPrewarming": true,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": 6,
+                "pending": 3
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 62,
+                "triangles": 238059,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 127,
+                "textures": 29
+              }
+            },
+            {
+              "t": 11318,
+              "ms": 39.6,
+              "fps": 25.3,
+              "p50Before": 10.6,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.004151591913133507,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 1,
+              "isPrewarming": true,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": 7,
+                "pending": 2
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 68,
+                "triangles": 241377,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 159,
+                "textures": 32
+              }
+            },
+            {
+              "t": 11459,
+              "ms": 37.3,
+              "fps": 26.8,
+              "p50Before": 11,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.0043864589277908565,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 2,
+              "isPrewarming": true,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": 7,
+                "pending": 2
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 68,
+                "triangles": 241377,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 167,
+                "textures": 32
+              }
+            },
+            {
+              "t": 12293,
+              "ms": 40,
+              "fps": 25,
+              "p50Before": 10.6,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.005747437062069626,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 0,
+              "isPrewarming": true,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": 8,
+                "pending": 1
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 69,
+                "triangles": 242849,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 200,
+                "textures": 32
+              }
+            },
+            {
+              "t": 12614,
+              "ms": 37.9,
+              "fps": 26.4,
+              "p50Before": 11.4,
+              "source": "odyssey",
+              "spike": true,
+              "warmupMode": "current",
+              "targetFrameRate": 240,
+              "adaptiveTargetFrameRate": 120,
+              "detectedRefreshRate": 120,
+              "backend": "webgpu",
+              "quality": "Extreme",
+              "activeChapter": 1,
+              "boundaryId": null,
+              "inSeam": false,
+              "seamProgress": 0,
+              "progress": 0.006277687851424417,
+              "settled": false,
+              "pendingChapterLoads": 0,
+              "prewarmQueue": 1,
+              "isPrewarming": true,
+              "bgRenderWarm": {
+                "started": true,
+                "complete": false,
+                "current": 8,
+                "pending": 1
+              },
+              "adaptive": {
+                "renderScale": 1,
+                "baselineRenderScale": 1,
+                "pressureTier": 0,
+                "bloomScale": 0.5,
+                "bloomEnabled": true,
+                "postQuality": 1
+              },
+              "post": {
+                "active": true,
+                "useMRT": false,
+                "enableBloom": true,
+                "bloomAllowed": true,
+                "bloomScale": 0.25,
+                "activeVariantKey": "0|1",
+                "outputVariants": 2,
+                "postChromaScale": 1,
+                "postGrainScale": 1,
+                "sharpenEnabled": true,
+                "sharpenAmount": 0,
+                "sharpenActive": false
+              },
+              "canvas": {
+                "width": 1280,
+                "height": 720,
+                "clientWidth": 1280,
+                "clientHeight": 720
+              },
+              "render": {
+                "calls": 69,
+                "triangles": 242849,
+                "timestamp": 0
+              },
+              "memory": {
+                "geometries": 219,
+                "textures": 32
+              }
+            }
+          ],
+          "topSections": [],
+          "report": {
+            "summary": {
+              "uptime": "11.14s",
+              "totalFrames": 543,
+              "frameDropRate": "13.26%"
+            },
+            "fps": {
+              "current": "109.9",
+              "average": "78.1",
+              "low1Pct": "25.0",
+              "low5Pct": "34.6"
+            },
+            "frameTime": {
+              "current": "9.10ms",
+              "average": "12.81ms",
+              "max": "533.10ms",
+              "budget": "16.67ms"
+            },
+            "performance": {
+              "updateTime": "0.00ms",
+              "renderTime": "0.00ms",
+              "inputLatency": "0.00ms"
+            },
+            "memory": {
+              "current": "205.86MB",
+              "history": "62.60MB - 220.67MB"
+            },
+            "gpu": {
+              "webglRenderer": "Google Inc. (NVIDIA) - ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+              "desktopDiagnostics": null
+            },
+            "performancePolicy": null
+          },
+          "longTasks": {
+            "count": 47,
+            "totalMs": 6936,
+            "maxMs": 754,
+            "recent": [
+              {
+                "kind": "loaf",
+                "t": 72,
+                "ms": 93
+              },
+              {
+                "kind": "loaf",
+                "t": 165,
+                "ms": 79
+              },
+              {
+                "kind": "longtask",
+                "t": 1031,
+                "ms": 156
+              },
+              {
+                "kind": "loaf",
+                "t": 264,
+                "ms": 754,
+                "src": "http://127.0.0.1:4177/src/main.js?t=1787399606477"
+              },
+              {
+                "kind": "longtask",
+                "t": 1197,
+                "ms": 71
+              },
+              {
+                "kind": "loaf",
+                "t": 1019,
+                "ms": 168,
+                "src": "FrameRequestCallback"
+              },
+              {
+                "kind": "longtask",
+                "t": 1288,
+                "ms": 122
+              },
+              {
+                "kind": "loaf",
+                "t": 1195,
+                "ms": 76,
+                "src": "http://127.0.0.1:4177/src/audio/sound-manager.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 1286,
+                "ms": 151,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/phaser.js?v=31f0ac1a"
+              },
+              {
+                "kind": "loaf",
+                "t": 1486,
+                "ms": 64
+              },
+              {
+                "kind": "loaf",
+                "t": 1589,
+                "ms": 188
+              },
+              {
+                "kind": "loaf",
+                "t": 1806,
+                "ms": 201
+              },
+              {
+                "kind": "loaf",
+                "t": 2008,
+                "ms": 69
+              },
+              {
+                "kind": "loaf",
+                "t": 2078,
+                "ms": 55
+              },
+              {
+                "kind": "loaf",
+                "t": 2134,
+                "ms": 92
+              },
+              {
+                "kind": "loaf",
+                "t": 2237,
+                "ms": 52
+              },
+              {
+                "kind": "loaf",
+                "t": 3211,
+                "ms": 153
+              },
+              {
+                "kind": "loaf",
+                "t": 3550,
+                "ms": 76
+              },
+              {
+                "kind": "loaf",
+                "t": 3771,
+                "ms": 63,
+                "src": "http://127.0.0.1:4177/src/ui/cinematic-loading-overlay.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 3973,
+                "ms": 162
+              },
+              {
+                "kind": "loaf",
+                "t": 4176,
+                "ms": 61,
+                "src": "//127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477"
+              },
+              {
+                "kind": "longtask",
+                "t": 4345,
+                "ms": 335
+              },
+              {
+                "kind": "loaf",
+                "t": 4345,
+                "ms": 340,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/chapter-environments/registry.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 4686,
+                "ms": 117,
+                "src": "//127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477"
+              },
+              {
+                "kind": "loaf",
+                "t": 4911,
+                "ms": 73
+              },
+              {
+                "kind": "loaf",
+                "t": 4986,
+                "ms": 114,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/world/odyssey-world-bake-loader.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 5101,
+                "ms": 113
+              },
+              {
+                "kind": "longtask",
+                "t": 5328,
+                "ms": 134
+              },
+              {
+                "kind": "longtask",
+                "t": 5469,
+                "ms": 180
+              },
+              {
+                "kind": "loaf",
+                "t": 5216,
+                "ms": 72,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-WIK7AUJJ.js?v=31f0ac1a"
+              },
+              {
+                "kind": "loaf",
+                "t": 5328,
+                "ms": 139,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/world/odyssey-world-bake-loader.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 5469,
+                "ms": 184,
+                "src": "//127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477"
+              },
+              {
+                "kind": "loaf",
+                "t": 5655,
+                "ms": 59,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-WIK7AUJJ.js?v=31f0ac1a"
+              },
+              {
+                "kind": "loaf",
+                "t": 5818,
+                "ms": 93,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-WIK7AUJJ.js?v=31f0ac1a"
+              },
+              {
+                "kind": "loaf",
+                "t": 5912,
+                "ms": 96,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-WIK7AUJJ.js?v=31f0ac1a"
+              },
+              {
+                "kind": "loaf",
+                "t": 6110,
+                "ms": 54,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-WIK7AUJJ.js?v=31f0ac1a"
+              },
+              {
+                "kind": "loaf",
+                "t": 6269,
+                "ms": 79,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-WIK7AUJJ.js?v=31f0ac1a"
+              },
+              {
+                "kind": "longtask",
+                "t": 7080,
+                "ms": 61
+              },
+              {
+                "kind": "loaf",
+                "t": 6904,
+                "ms": 69,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-WIK7AUJJ.js?v=31f0ac1a"
+              },
+              {
+                "kind": "loaf",
+                "t": 6975,
+                "ms": 165,
+                "src": "FrameRequestCallback"
+              },
+              {
+                "kind": "loaf",
+                "t": 7141,
+                "ms": 240,
+                "src": "//127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477"
+              },
+              {
+                "kind": "loaf",
+                "t": 7384,
+                "ms": 74
+              },
+              {
+                "kind": "loaf",
+                "t": 7471,
+                "ms": 77
+              },
+              {
+                "kind": "loaf",
+                "t": 7848,
+                "ms": 62,
+                "src": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-WIK7AUJJ.js?v=31f0ac1a"
+              },
+              {
+                "kind": "longtask",
+                "t": 8905,
+                "ms": 519
+              },
+              {
+                "kind": "loaf",
+                "t": 8898,
+                "ms": 532,
+                "src": "http://127.0.0.1:4177/src/rendering/odyssey/chapter-environments/registry.js"
+              },
+              {
+                "kind": "loaf",
+                "t": 9460,
+                "ms": 53
+              }
+            ]
+          },
+          "releaseGates": {
+            "frameTime": {
+              "p50": 12,
+              "p95": 28.899999999441206,
+              "p99": 40
+            },
+            "fps": {
+              "p50": 87.71929824991378,
+              "p05": 42.194092828330675
+            },
+            "memory": {
+              "currentMb": 205.85897064208984,
+              "peakMb": 220.67268180847168
+            },
+            "themeSwitches": {
+              "count": 1,
+              "maxDurationMs": 4.3999999994412065
+            },
+            "runtime": {
+              "contextRestoreCount": 0,
+              "recentEvents": [
+                {
+                  "type": "startup_deferred_task_completed",
+                  "timestamp": 1787399792124,
+                  "payload": {
+                    "label": "global-serenity-hub"
+                  }
+                },
+                {
+                  "type": "startup_deferred-services-ready",
+                  "timestamp": 1787399792422,
+                  "payload": {
+                    "reason": "menu-idle"
+                  }
+                },
+                {
+                  "type": "startup_deferred_task_started",
+                  "timestamp": 1787399794668,
+                  "payload": {
+                    "label": "main-menu-player-card"
+                  }
+                },
+                {
+                  "type": "startup_deferred_task_completed",
+                  "timestamp": 1787399794671,
+                  "payload": {
+                    "label": "main-menu-player-card"
+                  }
+                },
+                {
+                  "type": "startup_deferred_task_started",
+                  "timestamp": 1787399794753,
+                  "payload": {
+                    "label": "initial-theme-warmup"
+                  }
+                },
+                {
+                  "type": "startup_initial_theme_started",
+                  "timestamp": 1787399794753,
+                  "payload": {
+                    "theme": "forest"
+                  }
+                },
+                {
+                  "type": "theme_switch",
+                  "timestamp": 1787399794759,
+                  "payload": {
+                    "fromTheme": "forest",
+                    "toTheme": "forest",
+                    "durationMs": 4.3999999994412065
+                  }
+                },
+                {
+                  "type": "startup_initial_theme_ready",
+                  "timestamp": 1787399794759,
+                  "payload": {
+                    "theme": "forest",
+                    "durationMs": 5.6000000005587935
+                  }
+                },
+                {
+                  "type": "startup_initial-theme-ready",
+                  "timestamp": 1787399794759,
+                  "payload": {}
+                },
+                {
+                  "type": "startup_deferred_task_completed",
+                  "timestamp": 1787399794759,
+                  "payload": {
+                    "label": "initial-theme-warmup"
+                  }
+                }
+              ]
+            },
+            "network": null
+          },
+          "memory": {
+            "usedJSHeapSize": 204336198,
+            "totalJSHeapSize": 277487074,
+            "jsHeapSizeLimit": 4294705152
+          }
+        },
+        "odyssey": {
+          "label": "cold:load",
+          "cacheMode": "cold",
+          "scenario": "load",
+          "targetFrameRate": 240,
+          "warpPreinit": {
+            "mode": "defer",
+            "complete": false,
+            "scheduled": true
+          },
+          "timestamp": "2026-08-22T11:56:41.662Z",
+          "odyssey": {
+            "source": "odyssey",
+            "spike": false,
+            "warmupMode": "current",
+            "targetFrameRate": 240,
+            "adaptiveTargetFrameRate": 120,
+            "detectedRefreshRate": 120,
+            "backend": "webgpu",
+            "quality": "Extreme",
+            "activeChapter": 1,
+            "boundaryId": null,
+            "inSeam": false,
+            "seamProgress": 0,
+            "progress": 0.0063957806890449055,
+            "settled": false,
+            "pendingChapterLoads": 0,
+            "prewarmQueue": 1,
+            "isPrewarming": true,
+            "bgRenderWarm": {
+              "started": true,
+              "complete": false,
+              "current": 8,
+              "pending": 1
+            },
+            "adaptive": {
+              "renderScale": 1,
+              "baselineRenderScale": 1,
+              "pressureTier": 0,
+              "bloomScale": 0.5,
+              "bloomEnabled": true,
+              "postQuality": 1
+            },
+            "post": {
+              "active": true,
+              "useMRT": false,
+              "enableBloom": true,
+              "bloomAllowed": true,
+              "bloomScale": 0.25,
+              "activeVariantKey": "0|1",
+              "outputVariants": 2,
+              "postChromaScale": 1,
+              "postGrainScale": 1,
+              "sharpenEnabled": true,
+              "sharpenAmount": 0,
+              "sharpenActive": false
+            },
+            "canvas": {
+              "width": 1280,
+              "height": 720,
+              "clientWidth": 1280,
+              "clientHeight": 720
+            },
+            "render": {
+              "calls": 69,
+              "triangles": 242849,
+              "timestamp": 0
+            },
+            "memory": {
+              "geometries": 222,
+              "textures": 32
+            }
+          },
+          "warmup": {
+            "mode": "current",
+            "skipped": false,
+            "syncGpu": false,
+            "sampleCount": 1,
+            "renderFrameMs": 56.80000000074506,
+            "yieldMs": 0,
+            "gpuSyncMs": 0,
+            "variantsMs": 138.09999999962747,
+            "totalMs": 195.5,
+            "samples": [
+              {
+                "index": 0,
+                "progress": 0,
+                "renderFrameMs": 57,
+                "gpuSyncMs": 0,
+                "yieldMs": 0,
+                "totalMs": 57
+              }
+            ]
+          },
+          "startupMeasures": [
+            {
+              "name": "odyssey:mode:board-visible",
+              "duration": 4215
+            },
+            {
+              "name": "odyssey:mode:board-init",
+              "duration": 3342
+            },
+            {
+              "name": "odyssey:renderer",
+              "duration": 429
+            },
+            {
+              "name": "odyssey:creates",
+              "duration": 459
+            },
+            {
+              "name": "odyssey:path",
+              "duration": 27
+            },
+            {
+              "name": "odyssey:nodes",
+              "duration": 94
+            },
+            {
+              "name": "odyssey:world",
+              "duration": 644
+            },
+            {
+              "name": "odyssey:post+director",
+              "duration": 175
+            },
+            {
+              "name": "odyssey:compiles",
+              "duration": 1250
+            },
+            {
+              "name": "odyssey:warmup",
+              "duration": 196
+            },
+            {
+              "name": "odyssey:mode:reveal-container",
+              "duration": 0
+            },
+            {
+              "name": "odyssey:mode:reveal-board",
+              "duration": 1
+            },
+            {
+              "name": "odyssey:mode:create-board-overlay",
+              "duration": 1
+            },
+            {
+              "name": "odyssey:mode:focus-selected-level",
+              "duration": 0
+            },
+            {
+              "name": "odyssey:mode:overlay-wait",
+              "duration": 0
+            },
+            {
+              "name": "odyssey:mode:overlay-dismiss",
+              "duration": 872
+            }
+          ]
+        }
+      },
+      "consoleLines": [
+        {
+          "level": 0,
+          "message": "[vite] connecting...",
+          "line": 495,
+          "sourceId": "http://127.0.0.1:4177/@vite/client",
+          "t": 1787399789124
+        },
+        {
+          "level": 0,
+          "message": "[vite] connected.",
+          "line": 618,
+          "sourceId": "http://127.0.0.1:4177/@vite/client",
+          "t": 1787399789127
+        },
+        {
+          "level": 2,
+          "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+          "line": 2,
+          "sourceId": "node:electron/js2c/sandbox_bundle",
+          "t": 1787399789215
+        },
+        {
+          "level": 1,
+          "message": "[ObjectPool] Initialized with 100 objects (max: 500)",
+          "line": 45,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787399789706
+        },
+        {
+          "level": 1,
+          "message": "[ObjectPool] Initialized with 50 objects (max: 200)",
+          "line": 45,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787399789706
+        },
+        {
+          "level": 1,
+          "message": "[ObjectPool] Initialized with 40 objects (max: 160)",
+          "line": 45,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787399789706
+        },
+        {
+          "level": 1,
+          "message": "💡 Object pools available:",
+          "line": 304,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787399789706
+        },
+        {
+          "level": 1,
+          "message": "  window.objectPools.status() - View pool statistics",
+          "line": 305,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787399789706
+        },
+        {
+          "level": 1,
+          "message": "  window.objectPools.clear()  - Clear all pools",
+          "line": 306,
+          "sourceId": "http://127.0.0.1:4177/src/utils/object-pool.js",
+          "t": 1787399789706
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Initialized",
+          "line": 204,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399789707
+        },
+        {
+          "level": 1,
+          "message": "💡 Performance monitor available:",
+          "line": 1725,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399789709
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.start()  - Start monitoring with overlay",
+          "line": 1726,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399789709
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.stop()   - Stop monitoring",
+          "line": 1727,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399789709
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.toggle() - Toggle overlay (or press F3)",
+          "line": 1728,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399789710
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.setQuality(mode) - Set quality mode display",
+          "line": 1729,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399789710
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.report() - Generate detailed report",
+          "line": 1730,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399789710
+        },
+        {
+          "level": 1,
+          "message": "  window.perfMonitor.export() - Export metrics to JSON",
+          "line": 1731,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399789710
+        },
+        {
+          "level": 1,
+          "message": "💡 Asset manager available: window.assetManager.logStatus()",
+          "line": 481,
+          "sourceId": "http://127.0.0.1:4177/src/utils/asset-manager.js",
+          "t": 1787399789711
+        },
+        {
+          "level": 1,
+          "message": "🚀 Bootstrapping Serenity Blocks...",
+          "line": 5020,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399789714
+        },
+        {
+          "level": 1,
+          "message": "🎮 Initializing Serenity Blocks...",
+          "line": 814,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399789983
+        },
+        {
+          "level": 1,
+          "message": "Canvas initialized: Phaser container ready, block size: 40px",
+          "line": 1553,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399789984
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Constructor - canvas element: [object HTMLCanvasElement]",
+          "line": 676,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787399789984
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] WebGL context created successfully",
+          "line": 698,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787399790094
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Canvas resized to: 1280 x 720 (Auto)",
+          "line": 877,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787399790132
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Resize handler throttled to 100ms",
+          "line": 716,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787399790132
+        },
+        {
+          "level": 1,
+          "message": "[TextureManager] Initialized (max: 20 textures)",
+          "line": 40,
+          "sourceId": "http://127.0.0.1:4177/src/utils/texture-manager.js",
+          "t": 1787399790132
+        },
+        {
+          "level": 1,
+          "message": "[BufferManager] Initialized",
+          "line": 349,
+          "sourceId": "http://127.0.0.1:4177/src/utils/texture-manager.js",
+          "t": 1787399790132
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] GPU resource managers initialized",
+          "line": 781,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787399790132
+        },
+        {
+          "level": 1,
+          "message": "%c[GPU] Active Renderer: color: #00ff00; font-weight: bold; Google Inc. (NVIDIA) - ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+          "line": 746,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787399790133
+        },
+        {
+          "level": 1,
+          "message": "⏭️ Skipping intro animation (URL flag or reduced motion)...",
+          "line": 5110,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790134
+        },
+        {
+          "level": 1,
+          "message": "✅ Loaded 36 songs from songs.json",
+          "line": 29,
+          "sourceId": "http://127.0.0.1:4177/src/audio/music-loader.js",
+          "t": 1787399790142
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Starting initialization... [object Object]",
+          "line": 1581,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790308
+        },
+        {
+          "level": 1,
+          "message": "[BackgroundScene] Creating new Phaser 4 scene class",
+          "line": 31,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/background-scene.js",
+          "t": 1787399790308
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Creating scene class for Phaser 4",
+          "line": 36,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787399790308
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Creating new Phaser 4 scene class",
+          "line": 42,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787399790309
+        },
+        {
+          "level": 1,
+          "message": "[MultiplayerBoardScene] Creating scene class for Phaser 4",
+          "line": 57,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/multiplayer/board-panel.js",
+          "t": 1787399790309
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Returning cached class",
+          "line": 38,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787399790309
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Creating game with config: [object Object]",
+          "line": 1712,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790309
+        },
+        {
+          "level": 1,
+          "message": "%cPhaser v4.1.0 (WebGL | Web Audio)%c https://phaser.io/v401 color: #ffffff; background-image: url(\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAOCAYAAAAmL5yKAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAARBJREFUeNpi/P//P0OHsPB/BiCoePuWkYFEwALSXJElzMBgLwE2CNkQxgWr/yMr/p8QimlBu5DQ//+8vBBco/ofzAe6imH+qv/53/6jYJAYSA4ZoxoANYTPKhiuCQZwGcJU+e4dqpMmvsDq14krV2MPAxDha2CMKvoXoiE/PBQUDgQD8j82UFae9B9bOIC8B9UD9gIjjIMN7Ns6lWHn4XMoYu62RgxO3tkMjIyMII2MYAOAtmFVhA+ADHf2ycGMRhANjUq8YO+WKWCvgAORIV8CkpDCrzIwsLIymC1qAtuAD4Bsh3sBmqAY3qcGwL2AC4DCpKtzHlgzOLWihwEuzTCN0GhDJHeYC4gByBphACDAAH2dDIxdjr+VAAAAAElFTkSuQmCC\"), linear-gradient(to bottom, #000814, #001d3d, #003566); background-repeat: no-repeat; background-position: 4px center, 0 0; padding: 2px 6px 2px 24px; background: transparent",
+          "line": 8451,
+          "sourceId": "http://127.0.0.1:4177/node_modules/.vite/deps/phaser.js?v=31f0ac1a",
+          "t": 1787399790338
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Game instance created successfully",
+          "line": 1722,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790340
+        },
+        {
+          "level": 1,
+          "message": "[DisplayManager] Initialized [object Object]",
+          "line": 2326,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790341
+        },
+        {
+          "level": 1,
+          "message": "[Display] Applying display settings: [object Object]",
+          "line": 1799,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790342
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Global render scale set to: 1",
+          "line": 27,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787399790342
+        },
+        {
+          "level": 1,
+          "message": "[Display] Render scale set to: 1 (effective DPR: 1)",
+          "line": 1808,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790342
+        },
+        {
+          "level": 1,
+          "message": "[BaseTheme] Global antialiasing set to: true",
+          "line": 44,
+          "sourceId": "http://127.0.0.1:4177/src/themes/base-theme.js",
+          "t": 1787399790342
+        },
+        {
+          "level": 1,
+          "message": "[Display] Antialiasing set to: true",
+          "line": 1814,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790342
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Setting internal resolution: 1600x852 (auto)",
+          "line": 893,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787399790342
+        },
+        {
+          "level": 1,
+          "message": "[WebGLRenderer] Canvas resized to: 1280 x 720 (Auto)",
+          "line": 877,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/renderer.js",
+          "t": 1787399790342
+        },
+        {
+          "level": 1,
+          "message": "[DisplayManager] Setting display mode: windowed [object Object]",
+          "line": 95,
+          "sourceId": "http://127.0.0.1:4177/src/core/display-manager.js",
+          "t": 1787399790343
+        },
+        {
+          "level": 1,
+          "message": "[FPS] Performance monitor hidden",
+          "line": 1897,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790343
+        },
+        {
+          "level": 1,
+          "message": "[Display] Display settings applied successfully",
+          "line": 1847,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790343
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] VSync enabled",
+          "line": 203,
+          "sourceId": "http://127.0.0.1:4177/src/core/frame-rate-controller.js",
+          "t": 1787399790343
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] Target FPS set to 60",
+          "line": 194,
+          "sourceId": "http://127.0.0.1:4177/src/core/frame-rate-controller.js",
+          "t": 1787399790343
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] Updated Phaser FPS target to 60",
+          "line": 1133,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790344
+        },
+        {
+          "level": 1,
+          "message": "[Settings] Frame rate settings applied: [object Object]",
+          "line": 1146,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790344
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Initialized with asset and audio managers",
+          "line": 127,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399790346
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+          "line": 1479,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399790346
+        },
+        {
+          "level": 1,
+          "message": "[InputController] Initialized High-Precision DAS",
+          "line": 83,
+          "sourceId": "http://127.0.0.1:4177/src/ui/controls.js",
+          "t": 1787399790346
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Controller manager initialized",
+          "line": 207,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787399790347
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Gamepad support initialized",
+          "line": 236,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787399790348
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Updated custom bindings",
+          "line": 2093,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787399790348
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Updated deadzone to 0.25",
+          "line": 2102,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787399790348
+        },
+        {
+          "level": 1,
+          "message": "✅ All managers initialized",
+          "line": 2467,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790349
+        },
+        {
+          "level": 1,
+          "message": "[Main] Initializing GameModeManager...",
+          "line": 2606,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790349
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: single (Single Player)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399790349
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: local-multiplayer (Local Multiplayer)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399790349
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: online-multiplayer (Online Multiplayer)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399790349
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: serenity (Serenity)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399790349
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: infinity (Infinity)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399790349
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Registered lazy mode: odyssey (Odyssey)",
+          "line": 98,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399790350
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Initialized with modes: single,local-multiplayer,online-multiplayer,serenity,infinity,odyssey",
+          "line": 42,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399790350
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+          "line": 1479,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399790350
+        },
+        {
+          "level": 1,
+          "message": "[RichPresenceManager] Initialized with GameModeManager",
+          "line": 120,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/rich-presence-manager.js",
+          "t": 1787399790350
+        },
+        {
+          "level": 1,
+          "message": "✅ GameModeManager initialized",
+          "line": 2696,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790351
+        },
+        {
+          "level": 1,
+          "message": "[Keyboard] Setting up keyboard controls",
+          "line": 503,
+          "sourceId": "http://127.0.0.1:4177/src/ui/controls.js",
+          "t": 1787399790357
+        },
+        {
+          "level": 1,
+          "message": "[Keyboard] Keyboard controls initialized",
+          "line": 789,
+          "sourceId": "http://127.0.0.1:4177/src/ui/controls.js",
+          "t": 1787399790358
+        },
+        {
+          "level": 1,
+          "message": "[Main] Skipping legacy Player 2 keyboard controls (handled by InputController)",
+          "line": 3969,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790358
+        },
+        {
+          "level": 1,
+          "message": "[Visibility] Background tab throttling initialized: reduce",
+          "line": 1360,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790359
+        },
+        {
+          "level": 1,
+          "message": "✅ Serenity Blocks initialized successfully!",
+          "line": 859,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790359
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+          "line": 1479,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399790360
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Menu navigation enabled",
+          "line": 948,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787399790360
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Cleared previous button states",
+          "line": 957,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787399790360
+        },
+        {
+          "level": 1,
+          "message": "🎨 Tetromino style: Default colors",
+          "line": 232,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/tetromino-style-manager.js",
+          "t": 1787399790402
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Preload complete",
+          "line": 96,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787399790407
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Graphics layers created successfully",
+          "line": 342,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787399790409
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] Scene created: BoardScene",
+          "line": 132,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787399790409
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Creating scene...",
+          "line": 114,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787399790409
+        },
+        {
+          "level": 1,
+          "message": "[BaseBoardScene] ✅ MULTIPLAYER OPTIMIZATION ACTIVE: Graphics cleared once per frame in update()",
+          "line": 828,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/base-board-scene.js",
+          "t": 1787399790409
+        },
+        {
+          "level": 1,
+          "message": "[BoardScene] Scene created successfully",
+          "line": 116,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/phaser/board-scene.js",
+          "t": 1787399790409
+        },
+        {
+          "level": 1,
+          "message": "[Phaser 4 Init] Post-boot callback started",
+          "line": 1659,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790410
+        },
+        {
+          "level": 1,
+          "message": "✅ Phaser 4 game initialized successfully",
+          "line": 1688,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790410
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Canvas dimensions: 400 x 800",
+          "line": 1689,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790410
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Logical size: 400 x 800",
+          "line": 1690,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790410
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Device pixel ratio: 1",
+          "line": 1691,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790410
+        },
+        {
+          "level": 1,
+          "message": "  ├─ Board config: ROWS: 20 HIDDEN_ROWS: 4",
+          "line": 1692,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790410
+        },
+        {
+          "level": 1,
+          "message": "  └─ Scenes loaded: BoardScene, BackgroundScene",
+          "line": 1693,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790410
+        },
+        {
+          "level": 1,
+          "message": "[Startup] Menu ready in 644ms; intro skipped in 0ms",
+          "line": 5253,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790412
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Game mode selection enabled",
+          "line": 740,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787399790412
+        },
+        {
+          "level": 1,
+          "message": "💡 Steam service available: window.steamService.getStatus()",
+          "line": 5315,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790413
+        },
+        {
+          "level": 1,
+          "message": "🧪 Test functions available:",
+          "line": 5715,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790413
+        },
+        {
+          "level": 1,
+          "message": "  - window.testMultiplayer(numPlayers) - Create test lobby with dummy players",
+          "line": 5716,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790413
+        },
+        {
+          "level": 1,
+          "message": "    Example: testMultiplayer(5)",
+          "line": 5717,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790413
+        },
+        {
+          "level": 1,
+          "message": "  - window.testLobby(numPlayers) - Create ready lobby without auto-start",
+          "line": 5718,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790413
+        },
+        {
+          "level": 1,
+          "message": "    Example: testLobby(8)",
+          "line": 5719,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790413
+        },
+        {
+          "level": 1,
+          "message": "  - window.testPostMatch(numPlayers) - Show match results modal",
+          "line": 5720,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790413
+        },
+        {
+          "level": 1,
+          "message": "    Example: testPostMatch(9)",
+          "line": 5721,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790413
+        },
+        {
+          "level": 1,
+          "message": "  - LOCAL 2P (no Steam): open ?localMp=host and ?localMp=join in two windows",
+          "line": 5722,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399790413
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Focused first element: [object HTMLDivElement]",
+          "line": 980,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787399790512
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Metrics reset",
+          "line": 367,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399790515
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Enabled",
+          "line": 236,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399790515
+        },
+        {
+          "level": 1,
+          "message": "✅ Performance monitoring started (Press F3 to toggle)",
+          "line": 1661,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399790517
+        },
+        {
+          "level": 1,
+          "message": "[PerformanceMonitor] Metrics reset",
+          "line": 367,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399790517
+        },
+        {
+          "level": 1,
+          "message": "🔄 Metrics reset",
+          "line": 1684,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399790517
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Loaded mode: single (Single Player)",
+          "line": 142,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399791416
+        },
+        {
+          "level": 1,
+          "message": "[FrameRate] Detected monitor refresh rate: 120Hz (measured: 125)",
+          "line": 164,
+          "sourceId": "http://127.0.0.1:4177/src/core/frame-rate-controller.js",
+          "t": 1787399791768
+        },
+        {
+          "level": 1,
+          "message": "[Main] Initializing global Serenity Hub...",
+          "line": 2541,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399791963
+        },
+        {
+          "level": 1,
+          "message": "[Gamepad] Serenity Mode enabled",
+          "line": 2112,
+          "sourceId": "http://127.0.0.1:4177/src/ui/gamepad-controller.js",
+          "t": 1787399792123
+        },
+        {
+          "level": 1,
+          "message": "[SerenityHub] Gamepad callbacks registered",
+          "line": 895,
+          "sourceId": "http://127.0.0.1:4177/src/ui/serenity-hub/SerenityHub.js",
+          "t": 1787399792123
+        },
+        {
+          "level": 1,
+          "message": "✨ Serenity Hub initialized with gamepad support",
+          "line": 88,
+          "sourceId": "http://127.0.0.1:4177/src/ui/serenity-hub/SerenityHub.js",
+          "t": 1787399792123
+        },
+        {
+          "level": 1,
+          "message": "✅ Global Serenity Hub initialized",
+          "line": 2589,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399792123
+        },
+        {
+          "level": 1,
+          "message": "[EnhancedBreathingIndicator] Elements created with stunning design",
+          "line": 266,
+          "sourceId": "http://127.0.0.1:4177/src/ui/effects/enhanced-breathing-indicator.js",
+          "t": 1787399792420
+        },
+        {
+          "level": 1,
+          "message": "[LevelRegistry] Loaded 59 levels in 8 chapters",
+          "line": 58,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/LevelRegistry.js",
+          "t": 1787399792643
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyState] No saved progress found, starting fresh",
+          "line": 157,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/OdysseyStateManager.js",
+          "t": 1787399792643
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Loaded mode: odyssey (Odyssey Mode)",
+          "line": 142,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399792644
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Activating mode: odyssey",
+          "line": 224,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399792644
+        },
+        {
+          "level": 1,
+          "message": "[odyssey] Mode activated",
+          "line": 76,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/BaseGameMode.js",
+          "t": 1787399792644
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Activating Odyssey Mode...",
+          "line": 303,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399792645
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyState] No saved progress found, starting fresh",
+          "line": 157,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/OdysseyStateManager.js",
+          "t": 1787399792645
+        },
+        {
+          "level": 1,
+          "message": "[ThemeTransition] Manager initialized",
+          "line": 39,
+          "sourceId": "http://127.0.0.1:4177/src/core/odyssey/ThemeTransitionManager.js",
+          "t": 1787399792647
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Showing board view",
+          "line": 3247,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399792723
+        },
+        {
+          "level": 2,
+          "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+          "line": 297,
+          "sourceId": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-WIK7AUJJ.js?v=31f0ac1a",
+          "t": 1787399792726
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Controller created",
+          "line": 632,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399792730
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Initializing...",
+          "line": 648,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399792732
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] world-bake started (worker) +0.0s",
+          "line": 52,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787399792747
+        },
+        {
+          "level": 2,
+          "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+          "line": 43880,
+          "sourceId": "http://127.0.0.1:4177/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+          "t": 1787399792764
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Renderer backend: WebGPU",
+          "line": 2296,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399793160
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] OdysseyTslPipeline initialized (Extreme)",
+          "line": 2380,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399793176
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created",
+          "line": 487,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787399793179
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Startup chapter set: 1, 2 (eager window; 6 deferred to background)",
+          "line": 770,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399793179
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Atmosphere light rig hoisted before compile pool (odysseyLightsFirst)",
+          "line": 2428,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399793182
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 1 environment",
+          "line": 715,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787399793595
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] create ch1 took 413ms +0.9s",
+          "line": 52,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787399793595
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPath] Path built with 39 control points",
+          "line": 136,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyPathRenderer.js",
+          "t": 1787399793665
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] world-bake relief landed +995ms +1.0s",
+          "line": 52,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787399793740
+        },
+        {
+          "level": 1,
+          "message": "✨ [Cosmic Cursor] Mounted",
+          "line": 438,
+          "sourceId": "http://127.0.0.1:4177/src/ui/components/custom-cursor.js",
+          "t": 1787399793758
+        },
+        {
+          "level": 1,
+          "message": "[LevelNodes] Created 59 level nodes in batches with instancing",
+          "line": 473,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/LevelNodeManager.js",
+          "t": 1787399793769
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] world-bake landed +1534ms {\"atlas\":111.4,\"detail\":166.5,\"band:0\":387.4,\"lane:reliefBand\":336.8,\"band:684\":287.5,\"band:342\":336.6,\"macro\":348,\"lane:plates\":626.1,\"cloudField\":738.6,\"lane:cloudField\":739,\"scatter\":158.5,\"lane:scatter\":181.7,\"sunFields\":536.4,\"total\":1534} +1.5s",
+          "line": 52,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787399794278
+        },
+        {
+          "level": 1,
+          "message": "[world] cloud silhouette histogram {\"k\":2.062,\"p10\":0.433,\"p50\":0.5486,\"p90\":0.713}",
+          "line": 424,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/world/odyssey-world-renderer.js",
+          "t": 1787399794282
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] One World enabled — {\"quality\":\"high\",\"groundTriangles\":241088,\"reach\":26214.4,\"trees\":7039,\"forestChunks\":40,\"forestV2\":{\"trees\":7039,\"draws\":40,\"chunks\":12,\"maxVariantsPerChunk\":6,\"bySpecies\":{\"S4-gold-birch\":2543,\"S3-subalpine-fir\":1770,\"S6-red-maple\":873,\"S5-cypress-spike\":290,\"S2-workhorse-pine\":314,\"S1-shore-broadleaf\":1139,\"S7-pink-blossom\":110},\"byLod\":{\"hero\":670,\"mid\":2572,\"far\":3797}},\"materials\":4,\"heroClouds\":0,\"heroTriangles\":0,\"cloudField\":true,\"cloudFieldMasses\":52,\"cloudFieldTriangles\":31880,\"applyExposure\":false,\"outputScale\":0.82,\"outputSaturation\":0.72,\"clouds\":false,\"godRays\":7,\"motes\":640,\"fish\":110,\"skyRadius\":3600,\"bakeMs\":{\"relief\":1.4,\"total\":131.8},\"prebaked\":{\"relief\":true,\"textures\":true,\"cloudField\":true,\"scatter\":true,\"viaWorker\":true,\"workerMs\":{\"atlas\":111.4,\"detail\":166.5,\"band:0\":387.4,\"lane:reliefBand\":336.8,\"band:684\":287.5,\"band:342\":336.6,\"macro\":348,\"lane:plates\":626.1,\"cloudField\":738.6,\"lane:cloudField\":739,\"scatter\":158.5,\"lane:scatter\":181.7,\"sunFields\":536.4,\"total\":1534}}}",
+          "line": 1036,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399794413
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] No IPC available - running in offline mode",
+          "line": 256,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787399794636
+        },
+        {
+          "level": 1,
+          "message": "[MainMenuPlayerCard] Initialized",
+          "line": 353,
+          "sourceId": "http://127.0.0.1:4177/src/ui/components/main-menu-player-card.js",
+          "t": 1787399794670
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] switchTheme called: forest",
+          "line": 923,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399794753
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] switchTheme called: forest",
+          "line": 956,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399794753
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Loading theme: forest",
+          "line": 983,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399794753
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Loading theme \"forest\" from disk",
+          "line": 684,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399794754
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme \"forest\" loaded. Cache: 1/2",
+          "line": 778,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399794758
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme loaded: forest",
+          "line": 996,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399794758
+        },
+        {
+          "level": 1,
+          "message": "[ThemeManager] Theme activation deferred (themes are suspended)",
+          "line": 1002,
+          "sourceId": "http://127.0.0.1:4177/src/themes/theme-manager.js",
+          "t": 1787399794758
+        },
+        {
+          "level": 1,
+          "message": "✅ Initial theme loaded: forest",
+          "line": 2730,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399794758
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed board presentation shaders",
+          "line": 2241,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399795534
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed chapter 1 shaders",
+          "line": 2084,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399795855
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] compile-breakdown ch1=2224 board=936 ch2=0 +3.1s",
+          "line": 52,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787399795855
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyWarmup] fast-start: focus chapter + lean post variants warmed in 138ms; far chapters + lens variants warm on first visit",
+          "line": 3676,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399796051
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Journey warm-up complete (chapters + seams warmed through render path)",
+          "line": 3684,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399796051
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] total 3329ms | renderer 429 | creates 459 | path 27 | nodes 94 | world 644 | post+director 175 | compiles 1250 | warmup 196",
+          "line": 64,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/odyssey-startup-trace.js",
+          "t": 1787399796064
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Initialized successfully",
+          "line": 1168,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399796064
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Three.js board initialized",
+          "line": 3465,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796064
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:reveal-container: 0ms",
+          "line": 3683,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796064
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:create-board-overlay: 1ms",
+          "line": 3683,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796065
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:reveal-board: 1ms",
+          "line": 3683,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796065
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:board-init: 3342ms",
+          "line": 3683,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796065
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:focus-selected-level: 0ms",
+          "line": 3683,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796065
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:overlay-wait: 0ms",
+          "line": 3683,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796065
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787399796165
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787399796165
+        },
+        {
+          "level": 1,
+          "message": "[SteamService] Queued action: cloudWrite",
+          "line": 794,
+          "sourceId": "http://127.0.0.1:4177/src/core/steam/steam-service.js",
+          "t": 1787399796165
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed corridor (post-reveal) shaders (live loop)",
+          "line": 2212,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399796658
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed breach (post-reveal) shaders (live loop)",
+          "line": 2212,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399796799
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:overlay-dismiss: 872ms",
+          "line": 3683,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796938
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyStartup] board visible 4291ms after overlay show",
+          "line": 3307,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796938
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyPerf] odyssey:mode:board-visible: 4215ms",
+          "line": 3683,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796938
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Background loading chapters: 3,4,5,6,7,8",
+          "line": 915,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787399796938
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Debug: Use window.testOdysseyLevel(levelId) to test a specific level",
+          "line": 375,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796938
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Mode activated",
+          "line": 378,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796938
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] Progress: 0%",
+          "line": 379,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399796939
+        },
+        {
+          "level": 1,
+          "message": "[Main] Mode activated: odyssey",
+          "line": 2649,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399796940
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Mode odyssey activated successfully",
+          "line": 231,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399796940
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Starting mode: odyssey [object Object]",
+          "line": 258,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399796940
+        },
+        {
+          "level": 1,
+          "message": "[odyssey] Starting game...",
+          "line": 93,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/BaseGameMode.js",
+          "t": 1787399796940
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 6 environment",
+          "line": 715,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787399798375
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed one-world (post-reveal) shaders (live loop)",
+          "line": 2212,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399798573
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] post-reveal compiles done {\"ch2\":0,\"board\":936,\"ch1\":2224,\"corridor-post\":605,\"breach-post\":141,\"one-world-post\":1774}",
+          "line": 2198,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399798573
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 7 environment",
+          "line": 715,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787399798640
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] Created chapter 8 environment",
+          "line": 715,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787399798797
+        },
+        {
+          "level": 1,
+          "message": "[ChapterEnvironmentManager] All chapters loaded in background",
+          "line": 928,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/ChapterEnvironmentManager.js",
+          "t": 1787399798872
+        },
+        {
+          "level": 1,
+          "message": "[Odyssey] onStart called - entering level",
+          "line": 403,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/OdysseyMode.js?t=1787399606477",
+          "t": 1787399799256
+        },
+        {
+          "level": 1,
+          "message": "[Main] Mode started: odyssey",
+          "line": 2653,
+          "sourceId": "http://127.0.0.1:4177/src/main.js?t=1787399606477",
+          "t": 1787399799257
+        },
+        {
+          "level": 1,
+          "message": "[GameModeManager] Mode odyssey started successfully",
+          "line": 297,
+          "sourceId": "http://127.0.0.1:4177/src/core/game-modes/GameModeManager.js?t=1787399606477",
+          "t": 1787399799257
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed chapter 6 shaders (live loop)",
+          "line": 2040,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399799861
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Drain render-warmed chapter 6 in 4ms",
+          "line": 1553,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399799865
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Prewarmed chapter 7 shaders (live loop)",
+          "line": 2040,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399800846
+        },
+        {
+          "level": 1,
+          "message": "[OdysseyBoard] Drain render-warmed chapter 7 in 5ms",
+          "line": 1553,
+          "sourceId": "http://127.0.0.1:4177/src/rendering/odyssey/OdysseyBoardController.js?t=1787399606477",
+          "t": 1787399800851
+        },
+        {
+          "level": 1,
+          "message": "📊 Performance Report",
+          "line": 1227,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399801660
+        },
+        {
+          "level": 1,
+          "message": "Summary: [object Object]",
+          "line": 1228,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399801660
+        },
+        {
+          "level": 1,
+          "message": "FPS: [object Object]",
+          "line": 1229,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399801660
+        },
+        {
+          "level": 1,
+          "message": "Frame Time: [object Object]",
+          "line": 1230,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399801660
+        },
+        {
+          "level": 1,
+          "message": "Performance: [object Object]",
+          "line": 1231,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399801660
+        },
+        {
+          "level": 1,
+          "message": "Memory: [object Object]",
+          "line": 1232,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399801661
+        },
+        {
+          "level": 1,
+          "message": "GPU: [object Object]",
+          "line": 1233,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399801661
+        },
+        {
+          "level": 1,
+          "message": "console.groupEnd",
+          "line": 1234,
+          "sourceId": "http://127.0.0.1:4177/src/utils/performance-monitor.js",
+          "t": 1787399801661
+        }
+      ]
+    }
+  ]
+}
