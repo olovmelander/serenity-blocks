@@ -204,8 +204,14 @@ export function startWorldBake(request) {
         }, undefined, (msg) => {
             if (msg.stage === 'scatter') {
                 ms.scatter = msg.ms;
+                // Retire only a DEDICATED scatter worker. At ?odysseyBakeBands=1 there is no band 1,
+                // so the scatter ran on the HOST — which still owes the sun march queued behind it.
+                // Retiring the host here made the scatter job's own {stage:"done"} terminate it
+                // mid-march: sunFields never arrived, `textures` never resolved, and the board sat
+                // in `await awaitWorldBake(...)` forever (terminate() raises nothing, so abort() and
+                // the synchronous twin never fired either). The host is retired by its own
+                // 'sunFields' branch below, which is the correct point.
                 if (scatterWorker) scatterWorker.__odysseyRetired = true;
-                else if (hostWorker) hostWorker.__odysseyRetired = true;
                 scatter.resolve(msg.zoned);
                 return;
             }
