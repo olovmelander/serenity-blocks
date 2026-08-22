@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
-    positionGeometry, positionLocal, positionWorld, cameraPosition, length, smoothstep, mix, vec3, vec4, uniform, clamp, sin, cos,
-    modelWorldMatrix,
+    positionGeometry, positionLocal, positionWorld, cameraPosition, length, smoothstep, mix, vec3, vec4, uniform,
+    clamp, sin, cos, modelWorldMatrix,
 } from 'three/tsl';
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -112,8 +112,10 @@ import {
     setActiveDesktopPerformancePolicy,
 } from './utils/desktop-performance-policy.js';
 import { createBootStageCoordinator } from './utils/boot-stage-coordinator.js';
+import { warmThreeEarly, deferThemeWarmWhileOdysseyLoads } from './utils/startup-warm.js';
 
 import { CustomCursor } from './ui/components/custom-cursor.js';
+import { formatGpuRemediationHtml } from './ui/desktop-gpu-remediation.js';
 import { installCosmicSelects, uninstallCosmicSelects } from './ui/components/cosmic-select.js';
 import { initEnhancedBreathingIndicator } from './ui/effects/enhanced-breathing-indicator.js';
 
@@ -288,39 +290,6 @@ function updateDesktopRuntimeBodyClasses(runtimeConfig = desktopRuntimeConfig, p
     } else {
         delete body.dataset.desktopQualityTier;
     }
-}
-
-function formatGpuRemediationHtml(gpuHealth = null) {
-    const renderer = gpuHealth?.renderer ? `<div class="desktop-gpu-remediation__meta">Renderer: ${gpuHealth.renderer}</div>` : '';
-    const adapter = gpuHealth?.activeAdapter?.name
-        ? `<div class="desktop-gpu-remediation__meta">Adapter: ${gpuHealth.activeAdapter.name}</div>`
-        : '';
-    const driver = gpuHealth?.driverVersion
-        ? `<div class="desktop-gpu-remediation__meta">Driver: ${gpuHealth.driverVendor || 'Unknown'} ${gpuHealth.driverVersion}</div>`
-        : '';
-    const reasons = Array.isArray(gpuHealth?.reasons) && gpuHealth.reasons.length > 0
-        ? `<div class="desktop-gpu-remediation__detail">Issue: ${gpuHealth.reasons.join(', ')}</div>`
-        : '';
-    const instructions = Array.isArray(gpuHealth?.remediation) && gpuHealth.remediation.length > 0
-        ? gpuHealth.remediation.map((step) => `<li>${step}</li>`).join('')
-        : '<li>Switch the app to High performance in Windows Graphics Settings and relaunch.</li>';
-
-    return `
-        <div class="desktop-gpu-remediation__header">
-            <strong>Desktop GPU Fallback Active</strong>
-            <button type="button" class="desktop-gpu-remediation__dismiss" aria-label="Dismiss GPU guidance">×</button>
-        </div>
-        <div class="desktop-gpu-remediation__body">
-            <div class="desktop-gpu-remediation__status">
-                The packaged app detected a ${gpuHealth?.status || 'degraded'} Windows GPU path and lowered desktop quality to protect stability.
-            </div>
-            ${renderer}
-            ${adapter}
-            ${driver}
-            ${reasons}
-            <ol class="desktop-gpu-remediation__steps">${instructions}</ol>
-        </div>
-    `;
 }
 
 function updateDesktopGpuRemediationPanel(gpuHealth = null) {
@@ -2652,7 +2621,6 @@ class SerenityBlocks {
         });
 
         const savedMode = this.settingsManager?.get()?.gameMode || GAME_MODES.SINGLE_PLAYER;
-
         if (savedMode === GAME_MODES.ODYSSEY) {
             performanceMonitor.recordEvent('startup_mode_warmup_skipped', {
                 safeMode: false,
@@ -2879,15 +2847,9 @@ class SerenityBlocks {
                 return;
             }
 
-            // If the player went straight into Odyssey, its board is background-building
-            // chapters and compiling their shaders for the first ~20s after reveal. Warming a
-            // SECOND WebGPU scene concurrently doubles up the exact contention that shows as
-            // multi-second mid-play freezes (profiled 2026-08-17: a conserved ~3-4s of session
-            // work landing on whichever compile await was open). Yield the window: wait for the
-            // board's pipeline to go quiet, capped so this can never hang the warm forever.
-            // Skipping the warm entirely would also be safe — the loading-overlay resume
-            // safety-net makes an unwarmed first entry identical to the no-warm path.
-            await this._deferThemeWarmWhileOdysseyLoads(25000);
+            // Straight-into-Odyssey: stay out of the board's ~20s post-reveal compile window
+            // (a concurrent second WebGPU scene compile = mid-play freezes; see startup-warm.js).
+            await deferThemeWarmWhileOdysseyLoads(this.gameModeManager, 25000);
 
             // Warm the selected theme regardless of its performance class. Heavy WebGPU
             // themes avoid a ~0.4-0.8s cold-build freeze on first entry; light themes are
@@ -2910,27 +2872,6 @@ class SerenityBlocks {
             console.log(`[Main] First-entry theme warm-up ${warmed ? 'complete' : 'skipped'}: ${themeName}`);
         } catch (error) {
             console.warn('[Main] Initial theme warm-up failed (non-fatal):', error);
-        }
-    }
-
-    /**
-     * Wait (bounded) while the active Odyssey board is still background-building, so the
-     * first-entry theme warm-up does not compile a second WebGPU scene on top of it.
-     * Resolves immediately when the current mode is not Odyssey, when the mode cannot
-     * report quiet, or once it does. @private
-     * @param {number} [maxWaitMs] hard cap on the wait
-     * @returns {Promise<void>}
-     */
-    async _deferThemeWarmWhileOdysseyLoads(maxWaitMs = 25000) {
-        const startedAt = Date.now();
-        for (;;) {
-            if (this.gameModeManager?.getCurrentModeId?.() !== 'odyssey') return;
-            const mode = this.gameModeManager?.getCurrentMode?.();
-            if (typeof mode?.isBackgroundPipelineQuiet !== 'function') return;
-            if (mode.isBackgroundPipelineQuiet()) return;
-            if (Date.now() - startedAt > maxWaitMs) return;
-            // eslint-disable-next-line no-await-in-loop
-            await new Promise((resolve) => { setTimeout(resolve, 500); });
         }
     }
 
@@ -5070,27 +5011,9 @@ let app = null;
 /**
  * Initialize and start the application
  */
-// APP BOOT (2026-08-21): three (1.75 MB) is no longer on the menu's static boot path — the chunk
-// graph had been welding it there through absorbed shared modules (vite.config.js). Every mode
-// and every WebGPU theme needs it, so its chunk is requested as the FIRST thing bootstrap does:
-// it fetches and compiles off the main thread and evaluates whenever it lands — during init,
-// as before — so a click the instant the menu appears never pays it serially. ?noThreeWarm=1
-// opts out (A/B: menu-first vs mode-first).
-function warmThreeEarly() {
-    if (typeof window === 'undefined') return;
-    try {
-        if (new URLSearchParams(window.location?.search || '').get('noThreeWarm') === '1') return;
-    } catch { /* no location */ }
-    const start = performance.now();
-    import('three/webgpu').then(() => {
-        performanceMonitor.recordEvent('startup_three_warmed', { ms: Math.round(performance.now() - start) });
-    }).catch((error) => {
-        console.warn('[Startup] three warm failed (a mode will load it on demand):', error?.message || error);
-    });
-}
-
 async function bootstrap() {
     let startupPipeline = null;
+    // APP BOOT (2026-08-21): request the three chunk first thing (off the static boot path).
     warmThreeEarly();
 
     try {

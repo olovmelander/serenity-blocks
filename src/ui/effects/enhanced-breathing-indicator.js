@@ -374,7 +374,8 @@ export class EnhancedBreathingIndicator {
             this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
             this.threeRenderer.start();
         } else {
-            const startToken = (this._rendererStartToken = (this._rendererStartToken || 0) + 1);
+            this._rendererStartToken = (this._rendererStartToken || 0) + 1;
+            const startToken = this._rendererStartToken;
             loadBreathingRendererModule().then(({ ThreeJSBreathingRenderer }) => {
                 if (!this.isActive || startToken !== this._rendererStartToken) return; // stopped meanwhile
                 if (!this.threeRenderer) this.threeRenderer = new ThreeJSBreathingRenderer(this.visualContainer);

@@ -332,9 +332,28 @@ export function beginDeferredSideCapture(renderer) {
     const originalGetForRender = pipelines?.getForRender;
     /** @type {Map<object, {original: number, captured: number}>} material → sides while its drained item builds */
     const pending = new Map();
-    renderer._createObjectPipeline = function odysseyCreateObjectPipeline(object, material, scene, camera, lightsNode, group, clippingContext, passId) {
+    renderer._createObjectPipeline = function odysseyCreateObjectPipeline(
+        object,
+        material,
+        scene,
+        camera,
+        lightsNode,
+        group,
+        clippingContext,
+        passId,
+    ) {
         if (!Array.isArray(this._compilationPromises) || !material) {
-            return originalCreate.call(this, object, material, scene, camera, lightsNode, group, clippingContext, passId);
+            return originalCreate.call(
+                this,
+                object,
+                material,
+                scene,
+                camera,
+                lightsNode,
+                group,
+                clippingContext,
+                passId,
+            );
         }
         const { side } = material;
         this._compilationPromises.push({
@@ -489,7 +508,8 @@ export async function compileObjectsFannedOut(
     let chainId = 0;
     for (const [key, bucket] of byMaterial) {
         const materials = Array.isArray(bucket[0].material) ? bucket[0].material : [bucket[0].material];
-        const twoPass = materials.some((m) => m && m.transparent === true && m.side === DOUBLE_SIDE && m.forceSinglePass !== true);
+        const twoPass = materials.some((m) => m && m.transparent === true
+            && m.side === DOUBLE_SIDE && m.forceSinglePass !== true);
         chainId += 1;
         const instance = twoPass ? key.split('|')[0] : `#${chainId}`;
         let chain = byInstance.get(instance);
@@ -572,7 +592,9 @@ export async function compileObjectsFannedOut(
  * @returns {?Function} release
  */
 export function beginLiveCompileReads(renderer, binding) {
-    if (!renderer || typeof renderer.getRenderTarget !== 'function' || typeof renderer.getMRT !== 'function') return null;
+    if (!renderer || typeof renderer.getRenderTarget !== 'function' || typeof renderer.getMRT !== 'function') {
+        return null;
+    }
     const existing = renderer.__odysseyLiveCompileReads;
     if (existing) {
         existing.count += 1;

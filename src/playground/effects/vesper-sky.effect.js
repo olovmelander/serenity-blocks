@@ -18,7 +18,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, float, vec2, vec3, uniform, normalize, positionLocal,
-    clamp, smoothstep, abs, mix, sin, floor, fract, dot, atan, pow, max, length,
+    smoothstep, abs, mix, sin, floor, fract, dot, atan, pow, max, length,
 } from 'three/tsl';
 
 export const meta = {

@@ -937,11 +937,12 @@ export default class StellarVelocityTheme extends BaseTheme {
             const collectPassTiming = (label, computeNode) => {
                 // r185 renames hasTimestamp(uid) → hasTimestampQuery(uid); hasTimestamp becomes a
                 // boolean capability getter there (truthy), so guarding on it and calling it would throw.
-                const hasTimestampFn = typeof backend?.hasTimestampQuery === 'function'
-                    ? (uid) => backend.hasTimestampQuery(uid)
-                    : typeof backend?.hasTimestamp === 'function'
-                        ? (uid) => backend.hasTimestamp(uid)
-                        : null;
+                let hasTimestampFn = null;
+                if (typeof backend?.hasTimestampQuery === 'function') {
+                    hasTimestampFn = (uid) => backend.hasTimestampQuery(uid);
+                } else if (typeof backend?.hasTimestamp === 'function') {
+                    hasTimestampFn = (uid) => backend.hasTimestamp(uid);
+                }
                 if (!computeNode || !backend?.getTimestampUID || !hasTimestampFn || !backend?.getTimestamp) return;
                 try {
                     const uid = backend.getTimestampUID(computeNode);

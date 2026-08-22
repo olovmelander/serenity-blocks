@@ -495,7 +495,8 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     }
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.name = `earth-core-lake-${noiseMode}${uFlowDir ? '-flow' : ''}${rimCrustBias > 0 ? '-rim' : ''}${debugTiers ? '-debug' : ''}`;
+    material.name = `earth-core-lake-${noiseMode}${uFlowDir ? '-flow' : ''}`
+        + `${rimCrustBias > 0 ? '-rim' : ''}${debugTiers ? '-debug' : ''}`;
     material.positionNode = displaced;
     material.colorNode = color;
     material.transparent = false;
