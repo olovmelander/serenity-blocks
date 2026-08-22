@@ -1,8 +1,8 @@
 /**
  * Stillwater post pipeline — selective ivory bloom and one unified film grade.
  *
- * r181 contract:
- * - THREE.PostProcessing (not RenderPipeline)
+ * r185 contract:
+ * - THREE.RenderPipeline (the r183+ name for the former PostProcessing)
  * - MRT emissive bloom is constructed only on tiers that enable it
  * - Low/Minimal construct neither MRT, BloomNode, nor a 3D LUT
  * - outputColorTransform is disabled because renderOutput performs the single
@@ -36,6 +36,7 @@ import {
     createStillwaterPainterlyMask,
 } from './stillwater-painterly.js';
 import { getStillwaterQualityProfile } from '../stillwater-quality.js';
+import { withEmissiveMaterialBlending } from '../../shared/mrt-blend.js';
 
 const DEFAULT_BLOOM_STRENGTH = 0.48;
 const DEFAULT_BLOOM_RADIUS = 0.62;
@@ -247,10 +248,10 @@ export class StillwaterPipeline {
         renderer.toneMapping = THREE.NoToneMapping;
         renderer.toneMappingExposure = 1;
 
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
         this.scenePass = pass(scene, camera);
         if (this.config.useMRT) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
+            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
 
         const sceneColor = this.scenePass.getTextureNode('output');
@@ -271,13 +272,10 @@ export class StillwaterPipeline {
             // Three wide glow mips are enough for Stillwater's restrained ivory
             // aura; the two widest default mips add fill without useful structure.
             this.bloomNode._nMips = 3;
-            const baseSetSize = this.bloomNode.setSize.bind(this.bloomNode);
-            this.bloomNode.setSize = (width, height) => {
-                baseSetSize(
-                    Math.max(1, Math.round(width * this.config.bloomScale)),
-                    Math.max(1, Math.round(height * this.config.bloomScale)),
-                );
-            };
+            // Reduced-res internal targets through the r185 public API. The old
+            // setSize monkey-patch would now scale twice: r185's setSize itself
+            // multiplies by _resolutionScale (default 0.5).
+            this.bloomNode.setResolutionScale(this.config.bloomScale);
             // Second tap: a tight, near-neutral core. A single bloom is forced to
             // choose between a foggy screen-wide veil and hot dots; two taps give
             // the lantern and the spirit a crisp core inside a large soft halo,
@@ -292,13 +290,7 @@ export class StillwaterPipeline {
                 0.85,
             );
             this.bloomCoreNode._nMips = 2;
-            const coreSetSize = this.bloomCoreNode.setSize.bind(this.bloomCoreNode);
-            this.bloomCoreNode.setSize = (width, height) => {
-                coreSetSize(
-                    Math.max(1, Math.round(width * this.config.bloomScale)),
-                    Math.max(1, Math.round(height * this.config.bloomScale)),
-                );
-            };
+            this.bloomCoreNode.setResolutionScale(this.config.bloomScale);
             this.bloomCombined = this.bloomNode.rgb
                 .mul(vec3(1.06, 0.97, 0.86))
                 .add(this.bloomCoreNode.rgb);
@@ -381,7 +373,7 @@ export class StillwaterPipeline {
             nonEmissiveBloomRejected: this.config.useBloom,
             toneMapping: 'ACESFilmic',
             outputTransformCount: 1,
-            postClass: 'THREE.PostProcessing',
+            postClass: 'THREE.RenderPipeline',
             disposed: this.disposed,
         };
     }

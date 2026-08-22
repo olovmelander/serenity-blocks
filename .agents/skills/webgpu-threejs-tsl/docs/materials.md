@@ -158,6 +158,10 @@ const wave = positionLocal.x.add(time).sin().mul(0.1);
 material.positionNode = positionLocal.add(vec3(0, wave, 0));
 ```
 
+On instanced/batched/skinned meshes, `positionLocal` inside `positionNode` is
+**post-transform** in r185 (raw geometry in r181) — prefer the portable idiom:
+masks/pivots/phases from `positionGeometry`, output `positionLocal.add(displacement)`.
+
 ### Custom Vertex Shader
 
 ```javascript

@@ -10,7 +10,16 @@
  * - Multiple breathing techniques with descriptions
  */
 
-import { ThreeJSBreathingRenderer } from './threejs-breathing-renderer.js';
+// APP BOOT (2026-08-21): the three.js breathing renderer is the ONLY static path from main.js
+// to 'three' (1.75 MB) — it welded three onto the menu's boot closure although nothing draws it
+// until the indicator starts. Loaded on first use (and warmed at idle) instead.
+let rendererModulePromise = null;
+function loadBreathingRendererModule() {
+    if (!rendererModulePromise) {
+        rendererModulePromise = import('./threejs-breathing-renderer.js');
+    }
+    return rendererModulePromise;
+}
 
 export class EnhancedBreathingIndicator {
     constructor(container) {
@@ -327,6 +336,10 @@ export class EnhancedBreathingIndicator {
     _preloadWebGL() {
         const preload = () => {
             // Renderer is lazy-created on first start() (SB-07); nothing to preload before then.
+            // Deliberately NO idle warm of the renderer MODULE either: it pulls the classic three
+            // build (a second 1.2 MB bundle next to three/webgpu) and an idle warm landed inside
+            // the Odyssey startup's compile pool (+0.5 s measured, 2026-08-21). The first start()
+            // — a deliberate action in Serenity mode — loads it on demand.
             if (!this.threeRenderer) return;
             console.log('[EnhancedBreathingIndicator] Preloading Three.js resources...');
             this.threeRenderer.init();
@@ -354,13 +367,25 @@ export class EnhancedBreathingIndicator {
         console.log('[EnhancedBreathingIndicator] Starting with technique:', this.currentTechnique);
         this.isActive = true;
 
-        // Lazily create the Three.js renderer on first use (SB-07)
-        if (!this.threeRenderer) {
-            this.threeRenderer = new ThreeJSBreathingRenderer(this.visualContainer);
+        // Lazily create the Three.js renderer on first use (SB-07) — from a lazily LOADED
+        // module: the first start() attaches it when the chunk resolves (warmed at idle).
+        if (this.threeRenderer) {
+            this.threeRenderer.init();
+            this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
+            this.threeRenderer.start();
+        } else {
+            this._rendererStartToken = (this._rendererStartToken || 0) + 1;
+            const startToken = this._rendererStartToken;
+            loadBreathingRendererModule().then(({ ThreeJSBreathingRenderer }) => {
+                if (!this.isActive || startToken !== this._rendererStartToken) return; // stopped meanwhile
+                if (!this.threeRenderer) this.threeRenderer = new ThreeJSBreathingRenderer(this.visualContainer);
+                this.threeRenderer.init();
+                this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
+                this.threeRenderer.start();
+            }).catch((error) => {
+                console.warn('[EnhancedBreathingIndicator] Three.js renderer unavailable:', error?.message || error);
+            });
         }
-        this.threeRenderer.init();
-        this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
-        this.threeRenderer.start();
 
         // Show backdrop, indicator, and hover area
         this.backdrop.style.display = 'block';

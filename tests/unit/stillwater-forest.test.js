@@ -252,7 +252,9 @@ describe('Stillwater Wave 4 forest and flora', () => {
         expect(forestSource).not.toMatch(/\bTHREE\.ShaderMaterial\b/);
         expect(forestSource).not.toMatch(/\bTHREE\.Points\b|\bTHREE\.PointsNodeMaterial\b/);
         expect(forestSource).not.toMatch(/\bTHREE\.PointLight\b/);
-        expect(forestSource).not.toMatch(/\bTHREE\.PostProcessing\b|\bbloom\s*\(/);
+        expect(forestSource).not.toMatch(
+            /\bTHREE\.(?:PostProcessing|RenderPipeline)\b|\bbloom\s*\(/,
+        );
         expect(reversedSmoothsteps(forestSource)).toEqual([]);
     });
 

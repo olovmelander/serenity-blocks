@@ -1,9 +1,9 @@
-# Built-in Noise & Utility Nodes (three r181)
+# Built-in Noise & Utility Nodes (three r185)
 
 Three ships a full noise library and a set of UV/instancing/blend utilities as TSL
 nodes. **Reach for these before hand-rolling `fract(sin(dot(...)))` hashes** — they
 are battle-tested, WGSL-optimized, and free to import. Everything below is verified
-exported in the installed r181 (`node_modules/three/src/Three.TSL.js`).
+exported in the installed 0.185.1 (`node_modules/three/src/Three.TSL.js`).
 
 ## Noise nodes
 
@@ -70,7 +70,10 @@ material.someNode = instancedBufferAttribute(phaseAttr);
 ```
 
 Reminder from the gotcha table: inside instanced materials, local-space masks must
-use `positionGeometry` — `positionLocal` is already instance-transformed in r181.
+use `positionGeometry` — in r185 the instance/batch/skin matrices are applied *before*
+`positionNode` runs, so `positionLocal` inside it is already instance-transformed
+(inverted vs r181, which ran `positionNode` on raw geometry first). Portable idiom:
+masks/pivots/phases from `positionGeometry`, output `positionLocal.add(displacement)`.
 
 ## Billboarding
 

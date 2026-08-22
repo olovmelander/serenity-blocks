@@ -7,6 +7,12 @@
 //   --disable-background-loading when isolating).
 // - Collects long-task / heap / release-gate evidence (null when a hook is
 //   absent — never throws).
+// - GPU-memory leak gate (three r185 Info.memory byte accounting, plan §11 item
+//   3): samples `renderer.info.memory` once at each perf reset (= scenario window
+//   start, after the runtime is clean), once per --reload-cycles boot, and once at
+//   collection. `gpuMemory.scenarioGrowthMB` = end minus reset on the SAME renderer
+//   — the leak signal; `gpuMemory.totalMB` = resident footprint at collection.
+//   A renderer without byte fields (WebGL2 fallback, r181) yields null, never NaN.
 // - --runs N repeats the single-run flow with a fresh page per run and emits a
 //   per-metric aggregate (median/p95/min/max) alongside every raw run payload.
 // - Every output embeds a machine manifest (OS/CPU/RAM/GPU adapter/commit/
@@ -58,6 +64,11 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 const SESSION_DATE = new Date();
 
 const PORT = Number(args.port || process.env.ODYSSEY_PERF_PORT || 4177);
+// --menu-dwell <ms>: wait for the menu to be VISIBLE, then this long, before activating Odyssey —
+// a player's reaction time. Default 0 keeps the historical cells' semantics (activation the
+// instant gameModeManager exists, before the menu is even painted), which is the pessimistic
+// case for anything warmed at menu idle (three's evaluation since 2026-08-21).
+const MENU_DWELL_MS = Math.max(0, Number(args.menuDwell || process.env.ODYSSEY_PERF_MENU_DWELL || 0));
 const BASE_URL = String(args.baseUrl || process.env.ODYSSEY_PERF_BASE_URL || `http://127.0.0.1:${PORT}`);
 const SCENARIO = String(args.scenario || process.env.ODYSSEY_PERF_SCENARIO || 'load');
 const CACHE_MODE = String(args.cache || process.env.ODYSSEY_PERF_CACHE || 'cold');
@@ -176,6 +187,14 @@ function makeUrl() {
     // Background loading is intentionally NOT pinned here — it is measured, not locked
     // (pin explicitly with --disable-background-loading).
     if (!ALLOW_ADAPTIVE) params.set('odysseyDisableAdaptiveQuality', '1');
+    // Extra flags for A/B cells (mirrors odyssey-chapter-capture.mjs --url-flag): the CLI form
+    // `--url-flag a=1,b=0` or, because perf-driver.sh fixes its argument list, the env var
+    // ODYSSEY_PERF_URL_FLAGS. Recorded in the manifest URL, so a cell cannot pass as the default.
+    String(args['url-flag'] || args.urlFlag || process.env.ODYSSEY_PERF_URL_FLAGS || '')
+        .split(',').filter(Boolean).forEach((pair) => {
+            const [k, v = '1'] = pair.split('=');
+            if (k.trim()) params.set(k.trim(), v.trim());
+        });
     params.set('odysseyPixelRatio', String(PIXEL_RATIO));
     if (args.forceWebgl || args.forceWebGL) params.set('forceWebGL', '1');
     if (args.disableBackgroundWarm) params.set('odysseyPerfDisableBackgroundWarm', '1');
@@ -260,6 +279,36 @@ async function waitFor(win, predicateSource, timeoutMs = 140000) {
     return false;
 }
 
+/** In-page probe source: one snapshot of the board renderer's `info.memory` byte
+ * accounting (three r185 `renderers/common/Info.js`). Field names are the
+ * renderer's own — `*Size` are bytes, `renderTargets`/`textures`/`geometries`/
+ * `programs` are counts (r185 has no renderTargetsSize). Every field is
+ * finite-or-null so an r181 / WebGL2 `info.memory` (counts only) reads
+ * `total: null` = "no byte accounting", never NaN. Null when no renderer. */
+const GPU_MEMORY_PROBE = `(() => {
+    try {
+        const mem = window.odysseyMode?.boardController?.renderer?.info?.memory;
+        if (!mem || typeof mem !== 'object') return null;
+        const num = (v) => (Number.isFinite(v) ? v : null);
+        return {
+            total: num(mem.total),
+            texturesSize: num(mem.texturesSize),
+            attributesSize: num(mem.attributesSize),
+            indexAttributesSize: num(mem.indexAttributesSize),
+            storageAttributesSize: num(mem.storageAttributesSize),
+            indirectStorageAttributesSize: num(mem.indirectStorageAttributesSize),
+            uniformBuffersSize: num(mem.uniformBuffersSize),
+            readbackBuffersSize: num(mem.readbackBuffersSize),
+            programsSize: num(mem.programsSize),
+            renderTargets: num(mem.renderTargets),
+            textures: num(mem.textures),
+            geometries: num(mem.geometries),
+            programs: num(mem.programs),
+            atMs: performance.now(),
+        };
+    } catch { return null; }
+})()`;
+
 async function resetPerf(win, label) {
     await execute(win, `
         (() => {
@@ -268,12 +317,57 @@ async function resetPerf(win, label) {
             window.perfMonitor?.reset?.();
             window.perfMonitor?.clearSpikes?.();
             window.perfMonitor?.event?.('odyssey-perf-reset', { label: ${JSON.stringify(label)} });
+            // GPU-memory "before" sample, same renderer as collectResult's "after".
+            // The :load reset precedes the renderer (null); scenario resets overwrite it.
+            window.__odysseyPerfGpuMemoryAtReset = ${GPU_MEMORY_PROBE};
             return true;
         })();
     `);
 }
 
+// ── CPU profile of the boot + activation (opt-in: --cpu-profile <file.cpuprofile>) ────────────
+// Attaches the CDP Profiler to the window BEFORE navigation and stops it once the board is active,
+// so the app-boot long tasks (entry evaluation, Phaser/three module evaluation, main.js top-level)
+// can be attributed by function UNDER ELECTRON's V8 — a Chrome trace of the same build shows a
+// different (faster) picture, and the harness is the shipping engine. Names are real against the
+// dev server; minified against a preview build (still attributable per chunk + line/column).
+const CPU_PROFILE_FILE = args.cpuProfile ? path.resolve(String(args.cpuProfile)) : null;
+function startCpuProfile(win) {
+    if (!CPU_PROFILE_FILE) return null;
+    const dbg = win.webContents.debugger;
+    // Attaching before any navigation hangs (no renderer process yet); 'did-navigate' fires at
+    // commit, before the module entry has been fetched, so the whole boot is still captured.
+    const started = new Promise((resolve) => {
+        win.webContents.once('did-navigate', async () => {
+            try {
+                dbg.attach('1.3');
+                await dbg.sendCommand('Profiler.enable');
+                await dbg.sendCommand('Profiler.setSamplingInterval', { interval: 250 });
+                await dbg.sendCommand('Profiler.start');
+                resolve(dbg);
+            } catch (error) {
+                console.warn('[odyssey-perf] cpu profile unavailable:', error?.message || error);
+                resolve(null);
+            }
+        });
+    });
+    return started;
+}
+async function stopCpuProfile(started) {
+    const dbg = started ? await started : null;
+    if (!dbg) return;
+    try {
+        const { profile } = await dbg.sendCommand('Profiler.stop');
+        await writeFile(CPU_PROFILE_FILE, JSON.stringify(profile));
+        console.log(`[odyssey-perf] wrote cpu profile ${path.relative(process.cwd(), CPU_PROFILE_FILE)}`);
+        dbg.detach();
+    } catch (error) {
+        console.warn('[odyssey-perf] cpu profile stop failed:', error?.message || error);
+    }
+}
+
 async function bootstrapOdyssey(win, { resetBeforeActivate = true } = {}) {
+    win.__cpuProfiler = startCpuProfile(win);
     await win.loadURL(makeUrl());
     const ready = await waitFor(win, 'window.serenityBlocks?.gameModeManager', 140000);
     if (!ready) throw new Error('gameModeManager not ready');
@@ -297,6 +391,150 @@ async function bootstrapOdyssey(win, { resetBeforeActivate = true } = {}) {
 
     if (resetBeforeActivate) await resetPerf(win, `${CACHE_MODE}:${SCENARIO}:load`);
 
+    // Per-pipeline compile timing (2026-08-21). Installed BEFORE the mode creates its device so
+    // every `createRenderPipelineAsync` of the run is timed by label
+    // (`renderPipeline_<MaterialType>_<material.id>`). This is the instrument that found the
+    // 7 s lava-lake shader; without it the `compiles` bucket is one opaque number.
+    await execute(win, `
+        (() => {
+            if (window.__odysseyPipelineTimes || typeof GPUDevice === 'undefined') return false;
+            const rec = []; window.__odysseyPipelineTimes = rec;
+            const shape = (desc) => ({
+                targets: (desc?.fragment?.targets || []).map((t) => (t ? t.format : null)).join(','),
+                samples: desc?.multisample?.count ?? 1,
+                depth: desc?.depthStencil?.format ?? null,
+            });
+            const orig = GPUDevice.prototype.createRenderPipelineAsync;
+            GPUDevice.prototype.createRenderPipelineAsync = function (desc) {
+                const t = performance.now();
+                // Capture label + shape NOW: three reuses one module-level descriptor object and
+                // mutates it for the next pipeline before this promise resolves.
+                const label = (desc && desc.label) || '?';
+                const shp = shape(desc);
+                const p = orig.call(this, desc);
+                p.then(() => rec.push({ label, ms: Math.round(performance.now() - t), at: Math.round(t), ...shp }), () => {});
+                return p;
+            };
+            // SYNC creations are the ones that stall: the call returns at once but the GPU
+            // process blocks on the compile at first draw — a multi-second rAF gap with NO
+            // main-thread long task. Recorded with ms = -1 so they are distinguishable.
+            const origSync = GPUDevice.prototype.createRenderPipeline;
+            GPUDevice.prototype.createRenderPipeline = function (desc) {
+                rec.push({ label: (desc && desc.label) || '?', ms: -1, at: Math.round(performance.now()), sync: true, ...shape(desc) });
+                return origSync.call(this, desc);
+            };
+            return true;
+        })();
+    `);
+
+    // Renderer-level KEY TRACE (opt-in: ODYSSEY_PERF_KEY_TRACE=1). The GPU hook above sees
+    // descriptors; this one sees WHY three builds a pipeline: it wraps `Pipelines.getForRender`
+    // on the board renderer as soon as it exists and records, per build, the render object's
+    // material + dynamic cache keys, render-context id, lights key and the renderer call depth —
+    // so a prewarm/live mismatch can be read off instead of inferred.
+    if (process.env.ODYSSEY_PERF_KEY_TRACE === '1') {
+        await execute(win, `
+            (() => {
+                if (window.__odysseyKeyTrace) return false;
+                const rec = []; window.__odysseyKeyTrace = rec;
+                const state = { found: false, err: null, via: null }; window.__odysseyKeyTraceState = state;
+                // Setter traps instead of a poll: a 1 ms interval starves under the startup's long
+                // tasks and hooked in AFTER the prewarm and first live frame (measured 2026-08-21).
+                let r = null;
+                const wrapPipelines = (pipes) => {
+                    if (!pipes || pipes.__odysseyTraced) return;
+                    pipes.__odysseyTraced = true; state.found = true;
+                    // Hook the CREATION point, not the cache size: a re-create releases the old
+                    // pipeline and makes a new one in the same call (size unchanged), and that is
+                    // exactly the case being diagnosed. "prev" is the render object's previous
+                    // pipeline, so a record with prev* tells rebuild-vs-first-build, and whether
+                    // the PROGRAMS changed (code differs) or only the backend key (state/formats).
+                    const origGet = pipes.getForRender;
+                    let current = null;
+                    pipes.getForRender = function (ro, promises) {
+                        current = { ro, prev: this.get(ro)?.pipeline ?? null, promises };
+                        try { return origGet.call(this, ro, promises); } finally { current = null; }
+                    };
+                    const origCreate = pipes._getRenderPipeline;
+                    pipes._getRenderPipeline = function (ro, sv, sf, cacheKey, promises) {
+                        const prev = current?.ro === ro ? current.prev : null;
+                        let lightsKey = null;
+                        try { lightsKey = ro.lightsNode?.getCacheKey?.(true) ?? null; } catch {}
+                        const keyTail = (k) => (typeof k === 'string' ? k.slice(k.indexOf(',', k.indexOf(',') + 1) + 1) : null);
+                        rec.push({
+                            at: Math.round(performance.now()),
+                            label: (ro.material?.name || ro.material?.type) + '_' + ro.material?.id,
+                            async: Array.isArray(promises),
+                            ctx: ro.context?.id, depth: r._callDepth,
+                            mat: ro.getMaterialCacheKey(), dyn: ro.getDynamicCacheKey(), initial: ro.initialCacheKey,
+                            lightsKey, lights: ro.lightsNode?._lights?.length ?? null,
+                            programs: sv?.id + '/' + sf?.id,
+                            prevPrograms: prev ? prev.vertexProgram?.id + '/' + prev.fragmentProgram?.id : null,
+                            backendKey: keyTail(cacheKey), prevBackendKey: prev ? keyTail(prev.cacheKey) : null,
+                            geo: ro.geometry?.id, obj: ro.object?.id,
+                        });
+                        return origCreate.call(this, ro, sv, sf, cacheKey, promises);
+                    };
+                };
+                const trapRenderer = (renderer) => {
+                    if (!renderer || renderer.__odysseyKeyTrapped) return;
+                    renderer.__odysseyKeyTrapped = true;
+                    r = renderer;
+                    let pipes = renderer._pipelines;
+                    wrapPipelines(pipes);
+                    Object.defineProperty(renderer, '_pipelines', {
+                        configurable: true, enumerable: true,
+                        get() { return pipes; },
+                        set(v) { pipes = v; wrapPipelines(v); },
+                    });
+                };
+                const trapController = (bc) => {
+                    if (!bc || bc.__odysseyKeyTrapped) return;
+                    bc.__odysseyKeyTrapped = true;
+                    let renderer = bc.renderer;
+                    trapRenderer(renderer);
+                    Object.defineProperty(bc, 'renderer', {
+                        configurable: true, enumerable: true,
+                        get() { return renderer; },
+                        set(v) { renderer = v; trapRenderer(v); },
+                    });
+                };
+                const trapMode = (mode) => {
+                    if (!mode || mode.__odysseyKeyTrapped) return;
+                    mode.__odysseyKeyTrapped = true;
+                    let bc = mode.boardController;
+                    trapController(bc);
+                    Object.defineProperty(mode, 'boardController', {
+                        configurable: true, enumerable: true,
+                        get() { return bc; },
+                        set(v) { bc = v; trapController(v); },
+                    });
+                };
+                try {
+                    // OdysseyMode.onActivate awaits the board (renderer init, prewarm, first
+                    // frames) BEFORE it assigns window.odysseyMode, so trap the instance at the
+                    // game-mode manager: _ensureMode resolves it before onActivate runs.
+                    const gm = window.serenityBlocks?.gameModeManager;
+                    if (!gm || typeof gm._ensureMode !== 'function') throw new Error('no gameModeManager._ensureMode');
+                    const origEnsure = gm._ensureMode;
+                    gm._ensureMode = async function (modeId) {
+                        const mode = await origEnsure.call(this, modeId);
+                        if (modeId === 'odyssey') trapMode(mode);
+                        return mode;
+                    };
+                    trapMode(gm.getMode?.('odyssey'));
+                    state.via = 'gameModeManager._ensureMode';
+                } catch (e) { state.err = String(e); }
+                return true;
+            })();
+        `);
+    }
+
+    if (MENU_DWELL_MS > 0) {
+        const menuShown = await waitFor(win, "(window.__serenityStartupTrace || []).some((e) => e?.phase === 'startup-pipeline:menu-visible')", 60000);
+        if (!menuShown) console.warn('[odyssey-perf] menu-visible never traced; dwelling from now');
+        await delay(MENU_DWELL_MS);
+    }
     const boot = await execute(win, `
         (async () => {
             const gm = window.serenityBlocks.gameModeManager;
@@ -308,6 +546,8 @@ async function bootstrapOdyssey(win, { resetBeforeActivate = true } = {}) {
     if (!boot) throw new Error('Odyssey activation failed');
 
     const active = await waitFor(win, 'window.odysseyMode?.boardController?.isActive', 180000);
+    await stopCpuProfile(win.__cpuProfiler);
+    win.__cpuProfiler = null;
     if (!active) throw new Error('Odyssey board did not become active');
     await delay(300);
 }
@@ -444,14 +684,70 @@ async function runScenario(win) {
     return null;
 }
 
-async function collectResult(win, runIndex) {
+async function collectResult(win, runIndex, gpuMemoryCycles = []) {
     const browser = await execute(win, `
-        (() => {
+        (async () => {
             const target = ${JSON.stringify(TARGET_FRAME_RATE)};
             const bc = window.odysseyMode?.boardController;
+            // The adapter the page ACTUALLY gets. three 0.185.1's WebGPUBackend never stores
+            // its adapter, so the renderer-side probe further down is always null on r185.
+            const adapterInfo = await (async () => {
+                try {
+                    const a = await navigator.gpu?.requestAdapter?.();
+                    if (!a?.info) return null;
+                    return {
+                        vendor: a.info.vendor ?? null,
+                        architecture: a.info.architecture ?? null,
+                        description: a.info.description ?? null,
+                    };
+                } catch { return null; }
+            })();
+            const pipes = (window.__odysseyPipelineTimes || []).slice();
+            const asyncPipes = pipes.filter((p) => !p.sync);
+            const syncPipes = pipes.filter((p) => p.sync);
+            const pipelines = pipes.length ? {
+                count: asyncPipes.length,
+                sumMs: asyncPipes.reduce((acc, p) => acc + p.ms, 0),
+                top: asyncPipes.slice().sort((a, b) => b.ms - a.ms).slice(0, 15),
+                // Every synchronous creation, in order: these compile on the GPU process at
+                // first draw and are the usual cause of post-reveal frame stalls.
+                sync: syncPipes.map((p) => ({ label: p.label, at: p.at, targets: p.targets, samples: p.samples, depth: p.depth })),
+                asyncShapes: [...new Set(asyncPipes.map((p) => [p.targets, p.samples, p.depth].join('|')))],
+            } : null;
             return {
+                adapter: adapterInfo,
+                pipelines,
+                keyTrace: window.__odysseyKeyTrace ? window.__odysseyKeyTrace.slice() : null,
+                // Page-relative (navigation start = 0) boot milestones, so work that MOVES across
+                // the menu click (e.g. three's evaluation, 2026-08-21) is visible end to end:
+                // startup.totalMs alone starts at the click.
+                boot: (() => {
+                    const measureEnd = (name) => {
+                        const m = performance.getEntriesByName(name, 'measure').slice(-1)[0];
+                        return m ? Math.round(m.startTime + m.duration) : null;
+                    };
+                    const traceAt = (phase) => {
+                        const entry = (window.__serenityStartupTrace || []).find((e) => e?.phase === phase);
+                        return entry && Number.isFinite(entry.t) ? Math.round(entry.t) : null;
+                    };
+                    return {
+                        menuVisibleMs: traceAt('startup-pipeline:menu-visible'),
+                        menuReadyMs: traceAt('startup-pipeline:menu-ready'),
+                        boardInitEndMs: measureEnd('odyssey:mode:board-init'),
+                        boardVisibleMs: measureEnd('odyssey:mode:board-visible'),
+                    };
+                })(),
+                keyTraceState: window.__odysseyKeyTraceState ?? null,
                 location: window.location.href,
                 devicePixelRatio: window.devicePixelRatio,
+                // r185 Info.memory byte accounting on the board renderer: the sample
+                // taken at the scenario's perf reset and the one taken now. Both are
+                // the SAME renderer instance, so atEnd.total - atReset.total is
+                // resident growth over the scenario window (the leak gate).
+                gpuMemory: {
+                    atReset: window.__odysseyPerfGpuMemoryAtReset ?? null,
+                    atEnd: ${GPU_MEMORY_PROBE},
+                },
                 // Machine-manifest GPU identity as the page sees it (three.js WebGPU
                 // backend adapter). Nullable — WebGL2 fallback / older builds have none.
                 gpu: (() => {
@@ -545,6 +841,9 @@ async function collectResult(win, runIndex) {
         durationMs: DURATION_MS,
         panDurationMs: PAN_DURATION_MS,
         reloadCycles: RELOAD_CYCLES,
+        // One Info.memory sample per --reload-cycles boot (each cycle is a fresh
+        // page, so these are per-boot footprints, NOT a same-renderer series).
+        gpuMemoryCycles,
         parsedConsole: parseConsole(consoleLines),
         browser,
         consoleLines: [...consoleLines],
@@ -619,6 +918,31 @@ function extractRunMetrics(run) {
         'memory.usedJSHeapSizeMB': perf.memory?.usedJSHeapSize != null
             ? finiteOrNull(perf.memory.usedJSHeapSize / (1024 * 1024))
             : null,
+        ...extractGpuMemoryMetrics(run),
+    };
+}
+
+/** r185 Info.memory bytes → MB metrics. Names mirror the renderer's fields
+ * (`texturesSize` → `gpuMemory.texturesMB`); `renderTargets` is a count (r185
+ * tracks no renderTargetsSize). Missing byte accounting yields null everywhere. */
+function extractGpuMemoryMetrics(run) {
+    const atEnd = run?.browser?.gpuMemory?.atEnd || null;
+    const atReset = run?.browser?.gpuMemory?.atReset || null;
+    const toMB = (bytes) => (bytes == null ? null : finiteOrNull(bytes / (1024 * 1024)));
+    return {
+        'gpuMemory.totalMB': toMB(atEnd?.total),
+        'gpuMemory.texturesMB': toMB(atEnd?.texturesSize),
+        'gpuMemory.attributesMB': toMB(atEnd?.attributesSize),
+        'gpuMemory.indexAttributesMB': toMB(atEnd?.indexAttributesSize),
+        'gpuMemory.storageAttributesMB': toMB(atEnd?.storageAttributesSize),
+        'gpuMemory.uniformBuffersMB': toMB(atEnd?.uniformBuffersSize),
+        'gpuMemory.programsMB': toMB(atEnd?.programsSize),
+        'gpuMemory.renderTargets': finiteOrNull(atEnd?.renderTargets),
+        // Leak gate: same-renderer growth between the scenario's perf reset and
+        // collection. Null for the load scenario (its only reset precedes the renderer).
+        'gpuMemory.scenarioGrowthMB': (atEnd?.total != null && atReset?.total != null)
+            ? toMB(atEnd.total - atReset.total)
+            : null,
     };
 }
 
@@ -657,7 +981,7 @@ function buildAggregate(runs) {
  * identity or they are not comparable). GPU identity comes from the page. */
 function buildManifest(runs) {
     const cpus = os.cpus() || [];
-    const gpu = runs.map((run) => run?.browser?.gpu).find((info) => info) ?? null;
+    const gpu = runs.map((run) => run?.browser?.gpu || run?.browser?.adapter).find((info) => info) ?? null;
     const backend = runs.map((run) => run?.browser?.backend).find(Boolean) ?? null;
     const webglRenderer = runs.map((run) => run?.browser?.webglRenderer).find(Boolean) ?? null;
     return {
@@ -707,22 +1031,26 @@ function buildManifest(runs) {
 }
 
 async function runDegradeCycles(win) {
+    const samples = [];
     for (let cycle = 0; cycle < RELOAD_CYCLES; cycle += 1) {
         await bootstrapOdyssey(win, { resetBeforeActivate: false });
         await delay(1000);
+        samples.push({ cycle, memory: await execute(win, GPU_MEMORY_PROBE) });
     }
+    return samples;
 }
 
 async function runOnce(runIndex) {
     consoleLines.length = 0;
     const win = createWindow();
     try {
+        let gpuMemoryCycles = [];
         if (RELOAD_CYCLES > 0) {
-            await runDegradeCycles(win);
+            gpuMemoryCycles = await runDegradeCycles(win);
         }
         await bootstrapOdyssey(win, { resetBeforeActivate: true });
         await runScenario(win);
-        const result = await collectResult(win, runIndex);
+        const result = await collectResult(win, runIndex, gpuMemoryCycles);
         if (SCREENSHOT_PATH) {
             const image = await win.webContents.capturePage();
             await mkdir(path.dirname(SCREENSHOT_PATH), { recursive: true });

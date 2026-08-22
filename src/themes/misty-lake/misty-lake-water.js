@@ -633,6 +633,10 @@ class MistyLakeWater extends Mesh {
             renderTarget.dispose();
             material.dispose();
             if (scope.geometry) scope.geometry.dispose();
+            // This instance property shadows the prototype chain, so chain
+            // explicitly: r186 adds Object3D.dispose() (mrdoob/three.js#34141);
+            // r185 has none, so the optional call is a no-op today. Keep it last.
+            Mesh.prototype.dispose?.call(scope);
         };
 
         scope.setReflectionTargetSize = function (width, height) {

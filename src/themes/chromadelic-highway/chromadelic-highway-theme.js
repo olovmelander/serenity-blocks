@@ -854,7 +854,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
     probeCapabilities() {
         const maxColorAttachments = this.renderer?.capabilities?.maxColorAttachments ?? 1;
-        const supportsPost = this.isWebGPU ? typeof THREE_WEBGPU.PostProcessing === 'function' : true;
+        const supportsPost = this.isWebGPU
+            ? typeof (THREE_WEBGPU.RenderPipeline ?? THREE_WEBGPU.PostProcessing) === 'function'
+            : true;
         const supportsMRT = this.isWebGPU && maxColorAttachments > 1;
         const supportsCompute = this.isWebGPU && typeof this.renderer?.compute === 'function';
 

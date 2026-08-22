@@ -1,4 +1,4 @@
-# Scene Techniques (three r181, repo-proven)
+# Scene Techniques (three r185, repo-proven)
 
 High-impact building blocks for this game's themes. Each section names the working
 repo reference to copy from — prefer that over inventing a variant.
@@ -111,7 +111,7 @@ postProcessing.outputNode = renderOutput(graded, THREE.NoToneMapping);
 ```
 
 **Why `outputColorTransform = false`:** left at its default (`true`),
-`PostProcessing` wraps your `outputNode` in a *second* `renderOutput` using the
+`RenderPipeline` wraps your `outputNode` in a *second* `renderOutput` using the
 **renderer's** toneMapping — under an ACES renderer your hand-applied grade gets
 tone-mapped twice, and your inner `NoToneMapping` does nothing. It only looks
 right in the playground because the playground renderer happens to be

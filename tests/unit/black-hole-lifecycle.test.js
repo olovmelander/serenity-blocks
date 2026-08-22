@@ -42,6 +42,7 @@ describe('Black Hole lifecycle ownership', () => {
             getTimestamp: vi.fn(),
             getTimestampUID: vi.fn(),
             hasTimestamp: vi.fn(),
+            hasTimestampQuery: vi.fn(),
             trackTimestamp: true,
         };
         const renderer = {

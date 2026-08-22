@@ -137,8 +137,9 @@ function createScene() {
 }
 
 function setupPostProcessing() {
-  // Create post-processing instance (r181 class — RenderPipeline is the r183 rename)
-  postProcessing = new THREE.PostProcessing(renderer);
+  // Create post-processing instance. r185: RenderPipeline is the real class
+  // (PostProcessing is a deprecated warn-once alias — the repo-wide rename has landed).
+  postProcessing = new THREE.RenderPipeline(renderer);
 
   // Create scene pass
   const scenePass = pass(scene, camera);

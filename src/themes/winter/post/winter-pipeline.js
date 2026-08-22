@@ -2,7 +2,7 @@
 /**
  * Winter AAA — Cinematic Temporal Post + Frost (Phase 3)
  *
- * Modern TSL post stack on THREE.PostProcessing (r181), modeled on the shipped
+ * Modern TSL post stack on THREE.RenderPipeline, modeled on the shipped
  * Electric Dreams V3 pipeline, winter-tuned. Replaces the old bloom + cold
  * vignette + 4-tap god-ray WinterPost.
  *
@@ -47,6 +47,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../../shared/mrt-blend.js';
 
 export class WinterPipeline {
     constructor(renderer, scene, camera, params = {}) {
@@ -57,13 +58,13 @@ export class WinterPipeline {
         this.bloomScale = params.bloomScale ?? 0.6;
         this.size = { width: 0, height: 0 };
 
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
         const scenePass = pass(scene, camera);
         this.scenePass = scenePass;
 
         let bloomSource;
         if (this.useMRT) {
-            scenePass.setMRT(mrt({ output, emissive }));
+            scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
             bloomSource = scenePass.getTextureNode('emissive');
         } else {
             bloomSource = scenePass.getTextureNode('output');

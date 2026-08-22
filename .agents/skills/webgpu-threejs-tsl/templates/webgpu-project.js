@@ -219,7 +219,7 @@ let postProcessing;
 function setupPostProcessing() {
   // Uncomment and customize as needed
 
-  // postProcessing = new THREE.PostProcessing(renderer);  // r181 class name
+  // postProcessing = new THREE.RenderPipeline(renderer);  // r185: real class name (PostProcessing is a deprecated warn-once alias — the repo-wide rename has landed)
   // const scenePass = pass(scene, camera);
   // const sceneColor = scenePass.getTextureNode('output');
   //

@@ -37,6 +37,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
@@ -398,16 +399,16 @@ export function createMountainPeaksEnvironment(options = {}) {
     // PAINTERLY-ASCENT REPALETTE (2026-08, Wave B): bright DAYLIGHT rig (was cold ambient + a moon
     // key). Neutral-cool bright ambient fills the snow luminously, and the former "moon" is now a
     // warm-white SUN matching Ch3's key so the alpine climb reads as the same bright afternoon.
-    const ambient = new THREE.AmbientLight(0xbfd4e8, 0.6);
+    const ambient = acquireChapterLight(4, 'AmbientLight', { color: 0xbfd4e8, intensity: 0.6 });
     group.add(ambient);
 
-    const moonLight = new THREE.DirectionalLight(0xfff4e0, 0.95); // warm-white daylight sun (was moon 0xcfe6ff)
+    const moonLight = acquireChapterLight(4, 'DirectionalLight', { color: 0xfff4e0, intensity: 0.95 }); // warm-white daylight sun (was moon 0xcfe6ff)
     moonLight.position.set(50, 100, 50);
     group.add(moonLight);
 
     // Faint warm rim fill from the alpenglow side to echo the rose on the peak tops
     // without flattening the overall cool key.
-    const alpenFill = new THREE.DirectionalLight(0xffb59a, 0.18);
+    const alpenFill = acquireChapterLight(4, 'DirectionalLight', { color: 0xffb59a, intensity: 0.18 });
     alpenFill.position.set(-60, 40, 30);
     group.add(alpenFill);
 

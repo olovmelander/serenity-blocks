@@ -9,7 +9,8 @@
     "dev:playground": "vite --open /playground.html",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "vite build",
+    "build": "vite build && node scripts/check-boot-closure.mjs",
+    "check:boot-closure": "node scripts/check-boot-closure.mjs --print",
     "preview": "vite preview",
     "electron": "electron electron/main.js",
     "dev:electron": "node scripts/run-electron.mjs --dev electron/main.js",
@@ -133,7 +134,7 @@
     "ez-steam-api": "0.57.1",
     "phaser": "^4.1.0",
     "steamworks.js": "0.4.0",
-    "three": "^0.181.2"
+    "three": "0.185.1"
   },
   "overrides": {
     "koffi": "2.15.1"

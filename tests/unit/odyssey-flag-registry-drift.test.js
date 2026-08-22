@@ -32,6 +32,7 @@ function readSource(relPath) {
 }
 
 const ODYSSEY_MODE = 'src/core/game-modes/OdysseyMode.js';
+const ODYSSEY_URL_FLAGS = 'src/core/odyssey/odyssey-url-flags.js';
 const BOARD_CONTROLLER = 'src/rendering/odyssey/OdysseyBoardController.js';
 const LEVEL_NODE_MANAGER = 'src/rendering/odyssey/LevelNodeManager.js';
 
@@ -60,7 +61,7 @@ function optOutBoolean(name, file, pattern) {
 const CALL_SITES = {
     odysseyKeepBoard: optOutBoolean(
         'odysseyKeepBoard',
-        ODYSSEY_MODE,
+        ODYSSEY_URL_FLAGS,
         /get\('odysseyKeepBoard'\);[\s\S]{0,120}?raw === '0' \|\| raw === 'false' \|\| raw === 'off'[\s\S]{0,220}?return true;/,
     ),
     odysseyChapterEvict: optInBoolean('odysseyChapterEvict'),
@@ -93,6 +94,11 @@ const CALL_SITES = {
         pattern: /get\('odysseyWarpPreinit'\);[\s\S]{0,400}?return 'defer';/,
         idiom: "_resolveWarpPreinitMode() — absent/invalid → 'defer'",
     },
+    odysseySharpen: optOutBoolean(
+        'odysseySharpen',
+        BOARD_CONTROLLER,
+        /get\('odysseySharpen'\);[\s\S]{0,200}?sharpenFlag === '0' \|\| sharpenFlag === 'false' \|\| sharpenFlag === 'off'/,
+    ),
 };
 
 const odysseyFlags = FLAG_REGISTRY.filter((flag) => flag.name.startsWith('odyssey'));

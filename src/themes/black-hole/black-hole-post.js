@@ -26,6 +26,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 const BLOOM_DOWNSAMPLE_MIN = 0.25;
 const BLOOM_DOWNSAMPLE_MAX = 1.0;
@@ -65,11 +66,11 @@ export class BlackHolePost {
         this.bloomDownsample = sanitizeBloomDownsample(params.bloomDownsample, 0.8);
         this.enableLensing = params.enableLensing === true;
         this.enableChromatic = params.enableChromatic ?? true;
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
 
         this.scenePass = pass(scene, camera);
         if (this.useMRT) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
+            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
 
         const sceneColor = this.scenePass.getTextureNode('output');

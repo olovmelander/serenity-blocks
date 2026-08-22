@@ -1659,7 +1659,7 @@ export function create({
             .sub(0.5).mul(uGrain);
         graded = clamp(graded.add(grain), 0.0, 1.0);
 
-        const postProcessing = new THREE.PostProcessing(renderer);
+        const postProcessing = new THREE.RenderPipeline(renderer);
         postProcessing.outputNode = graded;
         postProcessing.needsUpdate = true;
 
@@ -1900,7 +1900,8 @@ export function create({
         render() { if (post) post.render(); else renderer.render(scene, camera); },
         renderAsync() {
             if (post) return post.renderAsync();
-            return renderer.renderAsync(scene, camera);
+            renderer.render(scene, camera); // host awaited renderer.init() before mounting
+            return Promise.resolve();
         },
         resize(w, h) { post?.setSize(w, h); },
         pulse: applyPulse,

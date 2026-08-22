@@ -106,7 +106,7 @@ describe('Stillwater Wave 1/2/3 playground contracts', () => {
             /new\s+THREE\.Points\b|THREE\.PointsNodeMaterial\b/,
         );
         expect(compositionExecutableSource).not.toMatch(
-            /THREE\.PostProcessing\b|\bbloom\s*\(|\bpass\s*\(/,
+            /THREE\.(?:PostProcessing|RenderPipeline)\b|\bbloom\s*\(|\bpass\s*\(/,
         );
     });
 
@@ -139,7 +139,7 @@ describe('Stillwater Wave 1/2/3 playground contracts', () => {
         expect(waterSource).toMatch(/\bmaterialXNoiseVec3\s*\(/);
         expect(waterSource).toMatch(/\bmaterialXWorley\s*\(/);
         expect(waterSource).toContain('const calmMask = smoothstep(');
-        expect(waterSource).toContain('post = new THREE.PostProcessing(renderer);');
+        expect(waterSource).toContain('post = new THREE.RenderPipeline(renderer);');
         expect(waterSource).toContain('if (postEnabled)');
         expect(waterSource).toContain('toneMapping(THREE.ACESFilmicToneMapping');
         expect(waterSource).toContain('post.outputColorTransform = false;');

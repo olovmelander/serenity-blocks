@@ -64,6 +64,29 @@ eventBus.on(EVENTS.PERFORMANCE_DOWNSCALE, () => {
 });
 
 /**
+ * Stop a WebGPU renderer issuing new timestamp queries and collect the resolves
+ * still in flight on its query pools (three r185 `WebGPUTimestampQueryPool#pendingResolve`).
+ * Returns [] for WebGL renderers, mocks, or an idle backend — callers treat that
+ * as "safe to release synchronously".
+ * @param {any} renderer
+ * @returns {Promise<any>[]}
+ */
+function collectPendingTimestampResolves(renderer) {
+    const backend = renderer?.backend;
+    if (!backend || backend.isWebGPUBackend !== true) return [];
+    try {
+        backend.trackTimestamp = false;
+    } catch (error) {
+        /* read-only mock — nothing to quiesce */
+    }
+    const pools = backend.timestampQueryPool;
+    if (!pools || typeof pools !== 'object') return [];
+    return Object.values(pools)
+        .map((pool) => pool?.pendingResolve)
+        .filter((pending) => pending && typeof pending.then === 'function');
+}
+
+/**
  * Abstract base class for all themes
  * Each theme should extend this class and implement its methods
  */
@@ -345,11 +368,11 @@ export class BaseTheme {
      * `visible = false` until an event reveals them.
      *
      * Such objects are skipped by `compileAsync` and by every warm render
-     * (three r181 `Renderer._projectObject` returns early on `visible === false`,
-     * and `compileAsync` uses that same traversal), so their pipelines compile
-     * on the first gameplay frame that reveals them — a 70-190ms GPU stall with
-     * no JS longtask. A theme that declares its FX root gets those pipelines
-     * compiled during its masked warm window instead.
+     * (three `Renderer._projectObject` returns early on `visible === false` —
+     * r185 Renderer.js:3082 — and `compileAsync` uses that same traversal), so
+     * their pipelines compile on the first gameplay frame that reveals them — a
+     * 70-190ms GPU stall with no JS longtask. A theme that declares its FX root
+     * gets those pipelines compiled during its masked warm window instead.
      *
      * See src/themes/shared/warm-hidden-drawables.js.
      * @returns {Array<any>}
@@ -361,10 +384,12 @@ export class BaseTheme {
     /**
      * True when this theme's scene pass renders into a multi-target (MRT)
      * framebuffer. A bare `compileAsync(scene, camera)` is unsafe on such
-     * themes — it binds no render target, so it caches a one-output shader that
-     * is then reused for the multi-attachment pass, which poisons the pipeline
-     * cache and blanks the affected objects. Consumers must skip bare sweeps
-     * when this is true.
+     * themes — it compiles with no MRT bound (r181 bound no target at all;
+     * r185 falls back to the internal single-output framebuffer, Renderer.js:
+     * 909-911, and its deferred builds read live `getMRT()` = null), so it
+     * caches a one-output shader that is then reused for the multi-attachment
+     * pass, which poisons the pipeline cache and blanks the affected objects.
+     * Consumers must skip bare sweeps when this is true.
      * @returns {boolean}
      */
     usesMrtScenePass() {
@@ -591,19 +616,39 @@ export class BaseTheme {
                 console.warn(`[BaseTheme] Failed to stop renderer loop for ${this.name}:`, error);
             }
         }
-        if (typeof renderer.dispose === 'function') {
-            try {
-                renderer.dispose();
-            } catch (error) {
-                console.warn(`[BaseTheme] Failed to dispose renderer for ${this.name}:`, error);
+        const releaseGpu = () => {
+            if (typeof renderer.dispose === 'function') {
+                try {
+                    renderer.dispose();
+                } catch (error) {
+                    console.warn(`[BaseTheme] Failed to dispose renderer for ${this.name}:`, error);
+                }
             }
-        }
-        if (typeof renderer.forceContextLoss === 'function') {
-            try {
-                renderer.forceContextLoss();
-            } catch (error) {
-                console.warn(`[BaseTheme] Failed to force WebGL context loss for ${this.name}:`, error);
+            if (typeof renderer.forceContextLoss === 'function') {
+                try {
+                    renderer.forceContextLoss();
+                } catch (error) {
+                    console.warn(`[BaseTheme] Failed to force WebGL context loss for ${this.name}:`, error);
+                }
             }
+        };
+        // three r185: WebGPUBackend.dispose() fires the timestamp pools' ASYNC
+        // dispose() without awaiting it and then destroys the owned device, so
+        // an in-flight resolveTimestampsAsync() (black-hole samples its GPU-timed
+        // DRS at 15 Hz, compute at 2 Hz) rejects against a dead device and three
+        // logs "Error resolving queries" — once per pool. r181 never destroyed
+        // the device here, which is why this never surfaced. Quiesce first and
+        // defer ONLY the GPU release until pending resolves settle (bounded so a
+        // stuck query can never wedge teardown); loop stop, canvas detach and
+        // the reference clear below stay synchronous.
+        const pendingResolves = collectPendingTimestampResolves(renderer);
+        if (pendingResolves.length > 0) {
+            Promise.race([
+                Promise.allSettled(pendingResolves),
+                new Promise((resolve) => { setTimeout(resolve, 300); }),
+            ]).then(releaseGpu, releaseGpu);
+        } else {
+            releaseGpu();
         }
         try {
             if (domElement?.parentNode) {

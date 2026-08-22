@@ -3245,9 +3245,9 @@ export default class NeonDuskTheme extends BaseTheme {
                 c.uFlareIntensity.value = flareBase * (0.5 + this.effectState.sunPulseIntensity * 1.2);
             }
             this.composer.render();
-        } else if (this.isWebGPU && typeof this.renderer.renderAsync === 'function') {
-            this.renderer.renderAsync(this.scene, this.camera);
         } else {
+            // Both backends: renderer.init() was awaited in initRenderer() before
+            // animate() starts, so the deprecated renderAsync() shim is not needed.
             this.renderer.render(this.scene, this.camera);
         }
 

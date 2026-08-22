@@ -1,10 +1,10 @@
 {
   "note": "Architecture ratchet baselines (Phase 3d) — shrink-only, see scripts/architecture-fitness-check.mjs. Each metric cites its plan section/ADR there. Never raise a baseline silently: a raise requires its own commit naming the plan-mandated change (see 2026-07-10 reconciliation: +1 main / +2 LMM / +2 OnlineMP were the §4.4 viewport + §4.6 emit-helper import lines; 2026-07-14: +1 main for the §4.6 main.js emit-helper import).",
-  "capturedAt": "2026-08-12",
+  "capturedAt": "2026-08-22",
   "metrics": {
     "lines:ffa-p2p-game-state": 4556,
-    "lines:main": 5777,
-    "lines:OdysseyMode": 4915,
+    "lines:main": 5752,
+    "lines:OdysseyMode": 4879,
     "lines:LocalMultiplayerMode": 3933,
     "lines:OnlineMultiplayerMode": 3250,
     "shader-material:hits": 358,
@@ -12,7 +12,7 @@
     "core-nondeterminism": 223,
     "core-dom-globals": 526,
     "core-raf-drivers": 31,
-    "resize-listeners": 52,
+    "resize-listeners": 51,
     "event-bus-files": 1,
     "board-write-sites": 17,
     "das-algorithm-clones": 0

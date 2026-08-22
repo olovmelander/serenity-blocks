@@ -4,7 +4,7 @@
  *
  * Part of the Odyssey AAA WebGPU migration (P-post). See docs/ODYSSEY_AAA_MASTER_PLAN.md §3.5.
  * The cinematic post stack for the converted board, modeled on the shipped
- * winter/electric-dreams-v3 TSL pipelines (THREE.PostProcessing node graph). Replaces the
+ * winter/electric-dreams-v3 TSL pipelines (THREE.RenderPipeline node graph). Replaces the
  * legacy EffectComposer + UnrealBloomPass + GLSL ShaderPass chain (which WebGPURenderer
  * cannot run).
  *
@@ -32,7 +32,15 @@
  *   5. Arc-modulated vignette (display-space, post-tonemap) — focuses the eye on the
  *      path/node; STRONGER in the introspective beats (Deep Ocean ch2, Black Hole ch7),
  *      LIGHTER in the open beats (Mountains ch4, Sky ch5). Director-driven (uVignette).
- *   6. Film grain + dither (anti-banding) — always last.
+ *   6. Film grain + dither (anti-banding) — last of the graded graph.
+ *   7. RCAS sharpen (three r185 SharpenNode, DRS only) — OUTSIDE the graded graph, on its
+ *      rendered result. Odyssey drives dynamic resolution through renderer.setPixelRatio,
+ *      so at the 0.65 floor the canvas is a bilinear upscale of a 0.65× frame; a 5-tap
+ *      contrast-adaptive sharpen on that frame (before the browser upscale) buys back the
+ *      perceived detail for one cheap pass. Amount ramps from 0 at scale ≥ 0.95 to
+ *      SHARPEN_MAX_AMOUNT at the 0.65 floor; at 0 the node is NOT in the graph at all (see
+ *      _selectVariant), so full-resolution frames are byte-identical to the pre-sharpen
+ *      pipeline. Driven by setRenderScale() from the board's DRS sites.
  *
  * All strengths are uniforms; update()/updateDynamic() are fed per-frame from the
  * OdysseyDirector (exposure / bloom / grade tint / chroma / vignette) so the post breathes
@@ -54,6 +62,7 @@ import {
     mrt,
     output,
     pass,
+    renderOutput,
     sin,
     smoothstep,
     uniform,
@@ -63,11 +72,22 @@ import {
     viewportUV,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 import { disposeBloomNodeDeep } from '../../../themes/shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../../../themes/shared/mrt-blend.js';
 
 // A6: seam-bloom accent multiplier. Was effectively 0.5 (a white flash hiding the old hard
 // portal cut). Cut to a fraction of that so the ecotone blend reads instead of blowing out.
 const SEAM_BLOOM_BOOST = 0.1;
+
+// ── RCAS sharpen ramp (plan §11 item 4; three r185 SharpenNode) ─────────────────
+// `scale` is the LIVE render scale (applied pixel ratio ÷ the tier's full-res ratio).
+// Amount is the fraction of RCAS's maximum lobe: SharpenNode's `sharpness` is in
+// halving-stops (0 = max, 1 = half, 2 = quarter — NOT zero), so amount a maps to
+// sharpness = -log2(a) and a = 0 means "detach the node" rather than "sharpness 2".
+const SHARPEN_SCALE_FULL = 0.95; // at/above this scale the frame is left untouched (no node)
+const SHARPEN_SCALE_FLOOR = 0.65; // the board's DRS legibility floor — full ramp here
+const SHARPEN_MAX_AMOUNT = 0.35; // lobe fraction at the floor (≈ sharpness 1.5 stops)
 
 // ── Master film stock (constant across all 8 chapters) ──────────────────────────
 // The single look every chapter shares. Tasteful, display-space, post-ACES — these are
@@ -235,7 +255,7 @@ export class OdysseyTslPipeline {
         this._bloomAllowed = this.enableBloom;
         this._baseGrain = params.grain ?? 0.012; // grain anchor the scale multiplies; halved 2026-07-05 (was 0.022 → softened/veiled the frame)
 
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
         // MEADOW-ALIASING FIX (2026-08): QW1 dropped renderer-level MSAA (antialias:false)
         // and let the post grain soften edges — but the Ch3 wildflower carpet is thousands
         // of 1-3px vertex-coloured petals, and with zero scene-pass samples they alias into
@@ -256,7 +276,7 @@ export class OdysseyTslPipeline {
         if (this.enableBloom) {
             let bloomSource;
             if (this.useMRT) {
-                scenePass.setMRT(mrt({ output, emissive }));
+                scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
                 bloomSource = scenePass.getTextureNode('emissive');
             } else {
                 bloomSource = scenePass.getTextureNode('output');
@@ -368,6 +388,31 @@ export class OdysseyTslPipeline {
         // build, no GPU cost until selected — so we precompute the ones this tier can reach.
         this._outputVariants = new Map();
         this._activeVariantKey = null;
+
+        // ── RCAS sharpen on DRS'd output (r185 SharpenNode; plan §11 item 4) ──────────
+        // A THIRD, orthogonal layer over the lens|bloom variants: when the live render
+        // scale is below SHARPEN_SCALE_FULL the bound output node becomes
+        // sharpen(rtt(renderOutput(<variant>))) — the graded graph plus the display
+        // transform (sRGB encode) renders to a HalfFloat RTT at the DRS'd drawing-buffer
+        // size, the 5-tap RCAS reads it with textureLoad (1:1 texels) in the PERCEPTUAL
+        // domain FSR designed it for, and the canvas quad copies the result untouched
+        // (postProcessing.outputColorTransform is switched off while the wrapper is bound,
+        // so nothing is encoded twice). At amount 0 the wrapper is NOT bound: the plain
+        // variant is, with outputColorTransform back on, exactly as before —
+        // the TSL gotcha is that a zero uniform never dead-code-eliminates a pass, so the
+        // gate is a JS graph swap (edge-triggered, same path as the lens/bloom swaps).
+        // Memory is bounded to ONE wrapper (2 RTs at DRS size): a base-variant change
+        // while sharpened disposes the old wrapper and builds a new one (one recompile,
+        // same cadence as the base swap it rides on). Not warmed at startup — the first
+        // DRS drop pays one compile of three trivial quad pipelines.
+        this._sharpenEnabled = params.sharpen !== false; // ?odysseySharpen=0 opt-out (controller)
+        this._sharpenMaxAmount = Number.isFinite(params.sharpenMaxAmount)
+            ? Math.min(1, Math.max(0, params.sharpenMaxAmount))
+            : SHARPEN_MAX_AMOUNT;
+        this._sharpenAmount = 0; // 0 = detached; (0,1] = RCAS lobe fraction
+        this._activeSharpen = false; // whether the bound node is the sharpen wrapper
+        this._sharpenSlot = null; // { key, node } — the single cached wrapper
+        this.uSharpness = uniform(2.0); // RCAS stops; rewritten by setSharpenAmount()
         // Default look: lean graph (no lens), bloom on iff this tier enables bloom. Matches
         // the legacy behaviour for chapters 1–6/8 with the lens uniforms left at their no-op
         // defaults, so first paint is visually identical to before.
@@ -391,13 +436,23 @@ export class OdysseyTslPipeline {
      * previously active variant afterwards (re-bind of a cached node — no recompile).
      * @param {Function|null} yieldFn optional async yield between renders (keeps the
      *   loading overlay animating)
+     * @param {{lensStates?: boolean[], skipActive?: boolean}} [options] which lens variants to
+     *   warm; fast-start passes `lensStates: [false], skipActive: true` — the lean pair only
+     *   (bloom on/off) minus the variant already live (the warm sample rendered it), so the ch7
+     *   lens branch warms on first visit. Measured 2026-08-21 (plan item 2.12): the bloom node's
+     *   five quad passes were the only pipelines still created synchronously on the first live
+     *   post frame (~49 ms); the director's bloom weight is 0 at p=0, so the sample bound no-bloom.
      */
-    async warmOutputVariants(yieldFn = null) {
+    async warmOutputVariants(yieldFn = null, options = {}) {
         const savedKey = this._activeVariantKey;
         const bloomStates = this.bloomNode ? [true, false] : [false];
+        const lensStates = Array.isArray(options.lensStates) && options.lensStates.length
+            ? options.lensStates
+            : [false, true];
         const warmed = new Set();
+        if (options.skipActive && savedKey) warmed.add(savedKey);
         /* eslint-disable no-await-in-loop */
-        for (const withLens of [false, true]) {
+        for (const withLens of lensStates) {
             for (const withBloom of bloomStates) {
                 const key = OdysseyTslPipeline._variantKey(withLens, withBloom);
                 if (warmed.has(key)) continue;
@@ -428,16 +483,102 @@ export class OdysseyTslPipeline {
         // Bloom can only be requested if the node exists (enableBloom tier).
         const wantBloom = withBloom && this.bloomNode !== null;
         const key = OdysseyTslPipeline._variantKey(withLens, wantBloom);
-        if (key === this._activeVariantKey) return; // already bound — no recompile
+        // Sharpen rides on top of the base key (see constructor): amount 0 ⇒ plain variant.
+        const wantSharpen = this._sharpenAmount > 0;
+        if (key === this._activeVariantKey && wantSharpen === this._activeSharpen) return; // already bound — no recompile
 
         let node = this._outputVariants.get(key);
         if (!node) {
             node = this._buildOutputNode(withLens, wantBloom);
             this._outputVariants.set(key, node);
         }
+        if (wantSharpen) node = this._sharpenVariant(key, node);
         this.postProcessing.outputNode = node;
+        // The wrapper carries the display transform itself (see _sharpenVariant), so the
+        // canvas quad must copy its texture untouched; the plain variant keeps the
+        // RenderPipeline's own renderOutput() exactly as before.
+        this.postProcessing.outputColorTransform = !wantSharpen;
         this.postProcessing.needsUpdate = true; // recompiles the post material (edge only)
         this._activeVariantKey = key;
+        this._activeSharpen = wantSharpen;
+    }
+
+    /**
+     * Return the RCAS wrapper `sharpen(rtt(renderOutput(baseNode)))` for a base variant,
+     * reusing the single cached slot when it already wraps this key and otherwise disposing
+     * the old wrapper's two render targets + quad materials before building the new one.
+     * @param {string} key base variant key ('lens|bloom')
+     * @param {*} baseNode the cached base vec4 output node
+     * @returns {*} SharpenNode (a vec4 TempNode)
+     * @private
+     */
+    _sharpenVariant(key, baseNode) {
+        const slot = this._sharpenSlot;
+        if (slot && slot.key === key) return slot.node;
+        if (slot) OdysseyTslPipeline._disposeSharpenWrapper(slot.node);
+        // Apply the display transform INSIDE the wrapper (what RenderPipeline would have
+        // appended: no tone mapping — the graph's ACES already ran — then the working→output
+        // sRGB encode) so RCAS sees the perceptual frame. sharpen() wraps its non-texture
+        // input in an auto-resizing HalfFloat RTTNode (convertToTexture) — that RTT is what
+        // RCAS textureLoads, texel-for-texel.
+        const encoded = renderOutput(
+            baseNode,
+            THREE.NoToneMapping,
+            this.renderer?.outputColorSpace || THREE.SRGBColorSpace,
+        );
+        const node = sharpen(encoded, this.uSharpness);
+        this._sharpenSlot = { key, node };
+        return node;
+    }
+
+    /** Free a sharpen wrapper: its RCAS RT + material and the RTT it reads. @private */
+    static _disposeSharpenWrapper(node) {
+        if (!node) return;
+        const rttNode = node.textureNode; // RTTNode (TextureNode subclass; no dispose())
+        rttNode?.renderTarget?.dispose?.();
+        rttNode?._quadMesh?.material?.dispose?.();
+        node.dispose?.();
+    }
+
+    /**
+     * Re-run the variant selection for the currently bound lens|bloom key (used when the
+     * sharpen layer toggles outside update(), e.g. from a DRS change between frames).
+     * @private
+     */
+    _reselectActiveVariant() {
+        if (!this._activeVariantKey) return;
+        const [lensFlag, bloomFlag] = this._activeVariantKey.split('|');
+        this._selectVariant(lensFlag === '1', bloomFlag === '1');
+    }
+
+    /**
+     * DRS follow-through (plan §11 item 4): tell the pipeline the LIVE render scale (applied
+     * pixel ratio ÷ the tier's full-resolution pixel ratio; 1 = native). Maps it onto the
+     * RCAS amount — 0 at/above SHARPEN_SCALE_FULL (node detached, frame untouched), ramping
+     * linearly to the max amount at SHARPEN_SCALE_FLOOR and held there below. Call after
+     * every renderer.setPixelRatio that changes the scale (edge events — never per-frame).
+     * @param {number} scale
+     */
+    setRenderScale(scale) {
+        if (!Number.isFinite(scale)) return;
+        const t = (SHARPEN_SCALE_FULL - scale) / (SHARPEN_SCALE_FULL - SHARPEN_SCALE_FLOOR);
+        this.setSharpenAmount(this._sharpenMaxAmount * Math.min(1, Math.max(0, t)));
+    }
+
+    /**
+     * Direct RCAS amount: 0 detaches the sharpen wrapper (plain variant bound — identical
+     * output to a pipeline without the feature); (0,1] is the fraction of RCAS's maximum
+     * lobe (SharpenNode sharpness = -log2(amount) halving-stops). Forced to 0 when the
+     * feature is disabled (params.sharpen:false / ?odysseySharpen=0). Edge-triggered: the
+     * graph only swaps when the 0 ↔ >0 state flips; amount changes within (0,1] are a
+     * uniform write.
+     * @param {number} amount
+     */
+    setSharpenAmount(amount) {
+        const a = this._sharpenEnabled && Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 0;
+        this._sharpenAmount = a;
+        if (a > 0) this.uSharpness.value = -Math.log2(a);
+        this._reselectActiveVariant();
     }
 
     /**
@@ -966,6 +1107,9 @@ export class OdysseyTslPipeline {
             outputVariants: this._outputVariants.size,
             postChromaScale: this._postChromaScale,
             postGrainScale: this._postGrainScale,
+            sharpenEnabled: this._sharpenEnabled,
+            sharpenAmount: this._sharpenAmount,
+            sharpenActive: this._activeSharpen,
         };
     }
 
@@ -989,6 +1133,8 @@ export class OdysseyTslPipeline {
     dispose() {
         this.scenePass.dispose?.();
         disposeBloomNodeDeep(this.bloomNode); // null on the no-bloom (enableBloom:false) tier
+        OdysseyTslPipeline._disposeSharpenWrapper(this._sharpenSlot?.node); // null unless DRS ever dropped
+        this._sharpenSlot = null;
         this.postProcessing.dispose?.();
     }
 }

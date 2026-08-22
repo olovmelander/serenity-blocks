@@ -82,6 +82,50 @@ export function buildPointWarmSamples({ position = 0 } = {}) {
 }
 
 /**
+ * Early-journey positions whose FIRST VISIBLE FRAME was measured landing mid-traverse as a
+ * hitch under fast-start's single p=0 warm sample (audit 2026-08-17, masterplan F1): the steam
+ * quench reveals at p≈0.005, Earth Core's lava fall + splash at p≈0.031, the ENTIRE One World
+ * group at its act gate p≈0.043, the threshold/breach director across the 1→2 seam
+ * (p≈0.043-0.087), and the forest chunk uploads at p≈0.185-0.20. The values below bracket each
+ * of those (a sample slightly PAST a reveal threshold is what forces its first real render);
+ * the in-between points keep the scrub from skipping any other progress-gated state.
+ */
+export const ODYSSEY_MOTION_WARM_SAMPLES = Object.freeze([
+    0, 0.006, 0.016, 0.032, 0.045, 0.056, 0.07, 0.09, 0.125, 0.16, 0.19, 0.21,
+]);
+
+/**
+ * Build the MOTION warm sample list for fast-start: a short scrub through the stretch ahead of
+ * the reveal position, so motion-triggered first-visible-frame costs are paid behind the
+ * loading overlay instead of on a live frame. A static point sample cannot cover these — that
+ * is the measured lesson fast-start originally shipped without.
+ *
+ * Fresh/early starts (the overwhelmingly common case) use the authored early-journey list
+ * above. A resume deeper into the journey warms a short RELATIVE sweep ahead of the player
+ * instead — the authored points are absolute path features and are far behind by then.
+ *
+ * @param {{position?: number, aheadWindow?: number}} options reveal position; how far ahead a
+ *   deep-resume sweep reaches (defaults to the authored window's span).
+ * @returns {number[]} ascending samples in [0, 1], starting at the reveal position
+ */
+export function buildMotionWarmSamples({ position = 0, aheadWindow = 0.21 } = {}) {
+    const p = Number.isFinite(Number(position)) ? Math.min(1, Math.max(0, Number(position))) : 0;
+    const window = Number.isFinite(Number(aheadWindow)) && Number(aheadWindow) > 0
+        ? Number(aheadWindow)
+        : 0.21;
+
+    const samples = new Set([p]);
+    if (p <= 0.05) {
+        // Early start: the authored reveal list, from the reveal position onward.
+        ODYSSEY_MOTION_WARM_SAMPLES.forEach((s) => { if (s >= p) samples.add(s); });
+    } else {
+        // Deep resume: a short relative sweep ahead of the player.
+        [0.015, 0.04, 0.08, 0.14, window].forEach((d) => samples.add(Math.min(1, p + d)));
+    }
+    return [...samples].sort((a, b) => a - b);
+}
+
+/**
  * Build the chapter visit order for the POST-REVEAL background render-warm sweep.
  *
  * Two rules, both learned from a measured failure (2026-08-17):

@@ -27,6 +27,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 export class StellarVelocityPost {
     constructor(renderer, scene, camera, params = {}) {
@@ -39,11 +40,11 @@ export class StellarVelocityPost {
         this.lastRenderCostMs = 0;
         this.enableTiming = params.enableTiming !== false;
 
-        this.postProcessing = new THREE_WEBGPU.PostProcessing(renderer);
+        this.postProcessing = new THREE_WEBGPU.RenderPipeline(renderer);
         this.scenePass = pass(scene, camera);
         if (this.useMRT) {
             try {
-                this.scenePass.setMRT(mrt({ output, emissive }));
+                this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
             } catch (error) {
                 this.mrtInitError = error;
                 this.useMRT = false;

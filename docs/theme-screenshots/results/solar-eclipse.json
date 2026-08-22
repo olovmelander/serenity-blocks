@@ -1,0 +1,1605 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-21T06:32:04.566Z",
+  "runId": "2026-08-21T06-12-57-693Z",
+  "theme": "solar-eclipse",
+  "themeMeta": {
+    "displayName": "Solar Eclipse",
+    "module": "./solar-eclipse/solar-eclipse-theme.js",
+    "resourceProfile": "heavy-gpu",
+    "performanceClass": "heavy"
+  },
+  "anchorTheme": "forest",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "passed": true,
+  "config": {
+    "width": 1920,
+    "height": 1080,
+    "settleMs": 2000,
+    "bootstrapTimeoutMs": 180000,
+    "switchTimeoutMs": 90000,
+    "readyTimeoutMs": 30000,
+    "processIsolation": "one-theme-per-electron-process"
+  },
+  "gpuDiagnostics": {
+    "gpuInfo": {
+      "auxAttributes": {
+        "amdSwitchable": false,
+        "canSupportThreadedTextureMailbox": false,
+        "directMLFeatureLevel": "Not supported",
+        "dx12FeatureLevel": "Not supported",
+        "glImplementationParts": "(gl=none,angle=none)",
+        "glResetNotificationStrategy": 0,
+        "hardwareSupportsVulkan": false,
+        "inProcessGpu": true,
+        "initializationTime": 0,
+        "isAsan": false,
+        "isClangCoverage": false,
+        "jpegDecodeAcceleratorSupported": false,
+        "optimus": false,
+        "overlayInfo": {
+          "bgra8OverlaySupport": "NONE",
+          "directComposition": false,
+          "nv12OverlaySupport": "NONE",
+          "p010OverlaySupport": "NONE",
+          "rgb10a2OverlaySupport": "NONE",
+          "supportsOverlays": false,
+          "yuy2OverlaySupport": "NONE"
+        },
+        "passthroughCmdDecoder": false,
+        "sandboxed": false,
+        "skiaBackendType": "None",
+        "subpixelFontRendering": true,
+        "supportsD3dSharedImages": false,
+        "supportsDirectML": false,
+        "supportsDx12": false,
+        "supportsVulkan": false,
+        "targetCpuBits": 64,
+        "visibilityCallbackCallCount": 0,
+        "vulkanVersion": "Not supported"
+      },
+      "gpuDevice": [
+        {
+          "active": false,
+          "deviceId": 5688,
+          "deviceString": "AMD Radeon(TM) Graphics",
+          "driverVersion": "31.0.12044.3",
+          "gpuPreference": 2,
+          "revision": 197,
+          "subSysId": 978261930,
+          "vendorId": 4098
+        },
+        {
+          "active": false,
+          "deviceId": 9437,
+          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "driverVersion": "32.0.15.7247",
+          "gpuPreference": 3,
+          "revision": 161,
+          "subSysId": 978261930,
+          "vendorId": 4318
+        },
+        {
+          "active": false,
+          "deviceId": 140,
+          "deviceString": "Microsoft Basic Render Driver",
+          "driverVersion": "10.0.26100.8972",
+          "gpuPreference": 0,
+          "revision": 0,
+          "subSysId": 0,
+          "vendorId": 5140
+        }
+      ]
+    },
+    "featureStatus": {
+      "2d_canvas": "disabled_software",
+      "direct_rendering_display_compositor": "disabled_off_ok",
+      "gpu_compositing": "disabled_software",
+      "multiple_raster_threads": "enabled_on",
+      "opengl": "disabled_off",
+      "rasterization": "disabled_software",
+      "raw_draw": "disabled_off_ok",
+      "skia_graphite": "disabled_off",
+      "trees_in_viz": "disabled_off",
+      "video_decode": "disabled_software",
+      "video_encode": "disabled_software",
+      "vulkan": "disabled_off",
+      "webgl": "disabled_off",
+      "webgl2": "disabled_off",
+      "webgpu": "disabled_off",
+      "webnn": "disabled_off"
+    }
+  },
+  "boot": {
+    "ok": true,
+    "modeId": "single",
+    "modeRunning": true,
+    "gameStateReady": true,
+    "sessionGeneration": 1,
+    "deterministicPauseApplied": true,
+    "initialTheme": "forest",
+    "hubReady": true
+  },
+  "lifecycle": {
+    "ok": true,
+    "checks": [
+      {
+        "id": "deterministic-gameplay-freeze-installed",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "deterministic-gameplay-paused-before-switches",
+        "passed": true,
+        "details": {
+          "sameMode": true,
+          "running": true,
+          "paused": true
+        }
+      },
+      {
+        "id": "switch-result-initial-anchor",
+        "passed": true,
+        "details": {
+          "actual": "forest",
+          "expected": "forest"
+        }
+      },
+      {
+        "id": "active-name-initial-anchor",
+        "passed": true,
+        "details": {
+          "actual": "forest",
+          "expected": "forest"
+        }
+      },
+      {
+        "id": "active-instance-name-initial-anchor",
+        "passed": true,
+        "details": {
+          "actual": "forest",
+          "expected": "forest"
+        }
+      },
+      {
+        "id": "active-flag-initial-anchor",
+        "passed": true,
+        "details": {
+          "actual": true
+        }
+      },
+      {
+        "id": "running-lifecycle-initial-anchor",
+        "passed": true,
+        "details": {
+          "actual": "running"
+        }
+      },
+      {
+        "id": "not-cleaned-initial-anchor",
+        "passed": true,
+        "details": {
+          "actual": false
+        }
+      },
+      {
+        "id": "active-cache-identity-initial-anchor",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "no-pending-theme-initial-anchor",
+        "passed": true,
+        "details": {
+          "pendingName": null,
+          "hasPendingInstance": false
+        }
+      },
+      {
+        "id": "single-active-container-initial-anchor",
+        "passed": true,
+        "details": [
+          "forest-theme"
+        ]
+      },
+      {
+        "id": "critical-ready-initial-anchor",
+        "passed": true,
+        "details": {
+          "value": true
+        }
+      },
+      {
+        "id": "hub-themes-tab-ready",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "target-theme-card-present",
+        "passed": true,
+        "details": {
+          "themeId": "solar-eclipse"
+        }
+      },
+      {
+        "id": "theme-card-selection-started",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "theme-card-selection-settled",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "theme-card-applied-target",
+        "passed": true,
+        "details": {
+          "actual": "solar-eclipse",
+          "expected": "solar-eclipse"
+        }
+      },
+      {
+        "id": "theme-card-active-state",
+        "passed": true,
+        "details": {
+          "activeClass": true,
+          "ariaPressed": "true"
+        }
+      },
+      {
+        "id": "theme-setting-committed",
+        "passed": true,
+        "details": {
+          "actual": "solar-eclipse",
+          "expected": "solar-eclipse"
+        }
+      },
+      {
+        "id": "deterministic-gameplay-paused-after-card-hide",
+        "passed": true,
+        "details": {
+          "sameMode": true,
+          "running": true,
+          "paused": true
+        }
+      },
+      {
+        "id": "active-name-first-target",
+        "passed": true,
+        "details": {
+          "actual": "solar-eclipse",
+          "expected": "solar-eclipse"
+        }
+      },
+      {
+        "id": "active-instance-name-first-target",
+        "passed": true,
+        "details": {
+          "actual": "solar-eclipse",
+          "expected": "solar-eclipse"
+        }
+      },
+      {
+        "id": "active-flag-first-target",
+        "passed": true,
+        "details": {
+          "actual": true
+        }
+      },
+      {
+        "id": "running-lifecycle-first-target",
+        "passed": true,
+        "details": {
+          "actual": "running"
+        }
+      },
+      {
+        "id": "not-cleaned-first-target",
+        "passed": true,
+        "details": {
+          "actual": false
+        }
+      },
+      {
+        "id": "active-cache-identity-first-target",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "no-pending-theme-first-target",
+        "passed": true,
+        "details": {
+          "pendingName": null,
+          "hasPendingInstance": false
+        }
+      },
+      {
+        "id": "single-active-container-first-target",
+        "passed": true,
+        "details": [
+          "solar-eclipse-theme"
+        ]
+      },
+      {
+        "id": "critical-ready-first-target",
+        "passed": true,
+        "details": {
+          "value": true
+        }
+      },
+      {
+        "id": "first-target-render-activity",
+        "passed": true,
+        "details": {
+          "evidenceType": "theme-owned-renderer",
+          "supported": true,
+          "renderCalls": 17,
+          "sharedRendererMatchesThemeReference": true,
+          "themeOwnedHeartbeatAvailable": true,
+          "themeOwnedHeartbeatObserved": true,
+          "heartbeatFields": [
+            "animationIds",
+            "animationFrameId"
+          ],
+          "changedHeartbeatFields": [
+            "animationIds",
+            "animationFrameId"
+          ],
+          "sharedRendererHeartbeatAvailable": false,
+          "sharedRendererHeartbeatObserved": false,
+          "sharedRendererHeartbeatFields": [],
+          "changedSharedRendererHeartbeatFields": []
+        }
+      },
+      {
+        "id": "mode-id-after-first-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "mode-identity-after-first-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "game-state-identity-after-first-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "active-session-identity-after-first-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "session-generation-after-first-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "mode-running-after-first-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "mode-paused-after-first-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "no-mode-lifecycle-call-after-first-target",
+        "passed": true,
+        "details": {
+          "manager": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplay": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          }
+        }
+      },
+      {
+        "id": "no-gameplay-restart-signal-after-first-target",
+        "passed": true,
+        "details": {
+          "gameStateReset": 0,
+          "boardSceneRestart": 0,
+          "boardSceneStart": 0,
+          "phaserBoardSceneStart": 0
+        }
+      },
+      {
+        "id": "switch-result-cleanup-anchor",
+        "passed": true,
+        "details": {
+          "actual": "forest",
+          "expected": "forest"
+        }
+      },
+      {
+        "id": "active-name-cleanup-anchor",
+        "passed": true,
+        "details": {
+          "actual": "forest",
+          "expected": "forest"
+        }
+      },
+      {
+        "id": "active-instance-name-cleanup-anchor",
+        "passed": true,
+        "details": {
+          "actual": "forest",
+          "expected": "forest"
+        }
+      },
+      {
+        "id": "active-flag-cleanup-anchor",
+        "passed": true,
+        "details": {
+          "actual": true
+        }
+      },
+      {
+        "id": "running-lifecycle-cleanup-anchor",
+        "passed": true,
+        "details": {
+          "actual": "running"
+        }
+      },
+      {
+        "id": "not-cleaned-cleanup-anchor",
+        "passed": true,
+        "details": {
+          "actual": false
+        }
+      },
+      {
+        "id": "active-cache-identity-cleanup-anchor",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "no-pending-theme-cleanup-anchor",
+        "passed": true,
+        "details": {
+          "pendingName": null,
+          "hasPendingInstance": false
+        }
+      },
+      {
+        "id": "single-active-container-cleanup-anchor",
+        "passed": true,
+        "details": [
+          "forest-theme"
+        ]
+      },
+      {
+        "id": "critical-ready-cleanup-anchor",
+        "passed": true,
+        "details": {
+          "value": true
+        }
+      },
+      {
+        "id": "outgoing-cleanup-complete",
+        "passed": true,
+        "details": {
+          "actual": true
+        }
+      },
+      {
+        "id": "outgoing-inactive",
+        "passed": true,
+        "details": {
+          "actual": false
+        }
+      },
+      {
+        "id": "outgoing-stopped",
+        "passed": true,
+        "details": {
+          "actual": "stopped"
+        }
+      },
+      {
+        "id": "outgoing-evicted",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "outgoing-not-manager-owned",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "outgoing-animationIds-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
+        "id": "outgoing-eventUnsubscribers-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
+        "id": "outgoing-containers-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
+        "id": "outgoing-webglLayers-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
+        "id": "outgoing-scene-released",
+        "passed": true,
+        "details": {
+          "hasScene": false
+        }
+      },
+      {
+        "id": "outgoing-shared-renderer-released",
+        "passed": true,
+        "details": {
+          "hasSharedRenderer": false
+        }
+      },
+      {
+        "id": "outgoing-dedicated-renderer-terminal",
+        "passed": true,
+        "details": {
+          "fieldCleared": true,
+          "terminalMarker": false,
+          "canvasConnected": false
+        }
+      },
+      {
+        "id": "outgoing-camera-terminal",
+        "passed": true,
+        "details": {
+          "fieldCleared": true,
+          "terminalMarker": false,
+          "type": null
+        }
+      },
+      {
+        "id": "outgoing-post-terminal",
+        "passed": true,
+        "details": {
+          "fieldCleared": true,
+          "terminalMarker": false,
+          "type": null
+        }
+      },
+      {
+        "id": "outgoing-postProcessing-terminal",
+        "passed": true,
+        "details": {
+          "fieldCleared": true,
+          "terminalMarker": false,
+          "type": null
+        }
+      },
+      {
+        "id": "outgoing-postComposer-terminal",
+        "passed": true,
+        "details": {
+          "fieldCleared": true,
+          "terminalMarker": false,
+          "type": null
+        }
+      },
+      {
+        "id": "outgoing-composer-terminal",
+        "passed": true,
+        "details": {
+          "fieldCleared": true,
+          "terminalMarker": false,
+          "type": null
+        }
+      },
+      {
+        "id": "outgoing-simulator-terminal",
+        "passed": true,
+        "details": {
+          "fieldCleared": true,
+          "terminalMarker": false,
+          "type": null
+        }
+      },
+      {
+        "id": "outgoing-particleSystem-terminal",
+        "passed": true,
+        "details": {
+          "fieldCleared": true,
+          "terminalMarker": false,
+          "type": null
+        }
+      },
+      {
+        "id": "outgoing-registered-containers-retired",
+        "passed": true,
+        "details": {
+          "registeredCount": 0
+        }
+      },
+      {
+        "id": "outgoing-canvases-disconnected",
+        "passed": true,
+        "details": {
+          "added": 4,
+          "connected": 0
+        }
+      },
+      {
+        "id": "outgoing-container-inactive",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "outgoing-container-descendants-restored",
+        "passed": true,
+        "details": {
+          "baseline": 0,
+          "actual": 0
+        }
+      },
+      {
+        "id": "outgoing-container-canvases-restored",
+        "passed": true,
+        "details": {
+          "baseline": 0,
+          "actual": 0
+        }
+      },
+      {
+        "id": "mode-id-after-cleanup",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "mode-identity-after-cleanup",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "game-state-identity-after-cleanup",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "active-session-identity-after-cleanup",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "session-generation-after-cleanup",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "mode-running-after-cleanup",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "mode-paused-after-cleanup",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "no-mode-lifecycle-call-after-cleanup",
+        "passed": true,
+        "details": {
+          "manager": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplay": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          }
+        }
+      },
+      {
+        "id": "no-gameplay-restart-signal-after-cleanup",
+        "passed": true,
+        "details": {
+          "gameStateReset": 0,
+          "boardSceneRestart": 0,
+          "boardSceneStart": 0,
+          "phaserBoardSceneStart": 0
+        }
+      },
+      {
+        "id": "second-target-selection",
+        "passed": true,
+        "details": {
+          "activeThemeName": "solar-eclipse"
+        }
+      },
+      {
+        "id": "deterministic-gameplay-paused-after-second-selection",
+        "passed": true,
+        "details": {
+          "sameMode": true,
+          "running": true,
+          "paused": true
+        }
+      },
+      {
+        "id": "active-name-second-target",
+        "passed": true,
+        "details": {
+          "actual": "solar-eclipse",
+          "expected": "solar-eclipse"
+        }
+      },
+      {
+        "id": "active-instance-name-second-target",
+        "passed": true,
+        "details": {
+          "actual": "solar-eclipse",
+          "expected": "solar-eclipse"
+        }
+      },
+      {
+        "id": "active-flag-second-target",
+        "passed": true,
+        "details": {
+          "actual": true
+        }
+      },
+      {
+        "id": "running-lifecycle-second-target",
+        "passed": true,
+        "details": {
+          "actual": "running"
+        }
+      },
+      {
+        "id": "not-cleaned-second-target",
+        "passed": true,
+        "details": {
+          "actual": false
+        }
+      },
+      {
+        "id": "active-cache-identity-second-target",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "no-pending-theme-second-target",
+        "passed": true,
+        "details": {
+          "pendingName": null,
+          "hasPendingInstance": false
+        }
+      },
+      {
+        "id": "single-active-container-second-target",
+        "passed": true,
+        "details": [
+          "solar-eclipse-theme"
+        ]
+      },
+      {
+        "id": "critical-ready-second-target",
+        "passed": true,
+        "details": {
+          "value": true
+        }
+      },
+      {
+        "id": "fresh-second-instance",
+        "passed": true,
+        "details": null
+      },
+      {
+        "id": "second-target-render-activity",
+        "passed": true,
+        "details": {
+          "evidenceType": "theme-owned-renderer",
+          "supported": true,
+          "renderCalls": 17,
+          "sharedRendererMatchesThemeReference": true,
+          "themeOwnedHeartbeatAvailable": true,
+          "themeOwnedHeartbeatObserved": true,
+          "heartbeatFields": [
+            "animationIds",
+            "animationFrameId"
+          ],
+          "changedHeartbeatFields": [
+            "animationIds",
+            "animationFrameId"
+          ],
+          "sharedRendererHeartbeatAvailable": false,
+          "sharedRendererHeartbeatObserved": false,
+          "sharedRendererHeartbeatFields": [],
+          "changedSharedRendererHeartbeatFields": []
+        }
+      },
+      {
+        "id": "mode-id-after-second-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "mode-identity-after-second-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "game-state-identity-after-second-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "active-session-identity-after-second-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "session-generation-after-second-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "mode-running-after-second-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "mode-paused-after-second-target",
+        "passed": true,
+        "details": {
+          "modeId": "single",
+          "sameMode": true,
+          "sameGameState": true,
+          "sameActiveSession": true,
+          "sameSessionGeneration": true,
+          "running": true,
+          "paused": true,
+          "lifecycleCalls": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplayLifecycleCalls": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          },
+          "restartSignals": {
+            "gameStateReset": 0,
+            "boardSceneRestart": 0,
+            "boardSceneStart": 0,
+            "phaserBoardSceneStart": 0
+          }
+        }
+      },
+      {
+        "id": "no-mode-lifecycle-call-after-second-target",
+        "passed": true,
+        "details": {
+          "manager": {
+            "activateMode": 0,
+            "startCurrentMode": 0,
+            "stopCurrentMode": 0,
+            "deactivateCurrentMode": 0
+          },
+          "gameplay": {
+            "appStartGame": 0,
+            "modeOnActivate": 0,
+            "modeOnStart": 0,
+            "modeOnStop": 0,
+            "modeOnDeactivate": 0
+          }
+        }
+      },
+      {
+        "id": "no-gameplay-restart-signal-after-second-target",
+        "passed": true,
+        "details": {
+          "gameStateReset": 0,
+          "boardSceneRestart": 0,
+          "boardSceneStart": 0,
+          "phaserBoardSceneStart": 0
+        }
+      }
+    ],
+    "timings": {
+      "initial-anchor": 0.19999999995343387,
+      "firstTargetSelection": 211.30000000004657,
+      "cleanup-anchor": 41.60000000009313,
+      "secondTargetSelection": 50.4000000001397
+    },
+    "mode": {
+      "modeId": "single",
+      "sameMode": true,
+      "sameGameState": true,
+      "sameActiveSession": true,
+      "sameSessionGeneration": true,
+      "running": true,
+      "paused": true,
+      "lifecycleCalls": {
+        "activateMode": 0,
+        "startCurrentMode": 0,
+        "stopCurrentMode": 0,
+        "deactivateCurrentMode": 0
+      },
+      "gameplayLifecycleCalls": {
+        "appStartGame": 0,
+        "modeOnActivate": 0,
+        "modeOnStart": 0,
+        "modeOnStop": 0,
+        "modeOnDeactivate": 0
+      },
+      "restartSignals": {
+        "gameStateReset": 0,
+        "boardSceneRestart": 0,
+        "boardSceneStart": 0,
+        "phaserBoardSceneStart": 0
+      }
+    },
+    "firstRenderProbe": {
+      "evidenceType": "theme-owned-renderer",
+      "supported": true,
+      "renderCalls": 17,
+      "sharedRendererMatchesThemeReference": true,
+      "themeOwnedHeartbeatAvailable": true,
+      "themeOwnedHeartbeatObserved": true,
+      "heartbeatFields": [
+        "animationIds",
+        "animationFrameId"
+      ],
+      "changedHeartbeatFields": [
+        "animationIds",
+        "animationFrameId"
+      ],
+      "sharedRendererHeartbeatAvailable": false,
+      "sharedRendererHeartbeatObserved": false,
+      "sharedRendererHeartbeatFields": [],
+      "changedSharedRendererHeartbeatFields": []
+    },
+    "secondRenderProbe": {
+      "evidenceType": "theme-owned-renderer",
+      "supported": true,
+      "renderCalls": 17,
+      "sharedRendererMatchesThemeReference": true,
+      "themeOwnedHeartbeatAvailable": true,
+      "themeOwnedHeartbeatObserved": true,
+      "heartbeatFields": [
+        "animationIds",
+        "animationFrameId"
+      ],
+      "changedHeartbeatFields": [
+        "animationIds",
+        "animationFrameId"
+      ],
+      "sharedRendererHeartbeatAvailable": false,
+      "sharedRendererHeartbeatObserved": false,
+      "sharedRendererHeartbeatFields": [],
+      "changedSharedRendererHeartbeatFields": []
+    },
+    "secondSelectionReturned": null,
+    "activeTheme": {
+      "name": "solar-eclipse",
+      "instanceName": "solar-eclipse",
+      "isActive": true,
+      "lifecycleState": "running",
+      "activeContainerIds": [
+        "solar-eclipse-theme"
+      ]
+    }
+  },
+  "screenshot": {
+    "path": "docs\\theme-screenshots\\solar-eclipse.png",
+    "passed": true,
+    "width": 1584,
+    "height": 787,
+    "byteLength": 4986432,
+    "samples": 20107,
+    "luminance": {
+      "min": 0.1444,
+      "max": 254.99999999999997,
+      "mean": 81.87773440095624,
+      "range": 254.85559999999998,
+      "variance": 8803.70853831759
+    }
+  },
+  "console": {
+    "ok": true,
+    "entryCount": 168,
+    "warningCount": 2,
+    "errorCount": 0,
+    "processFailureCount": 0,
+    "shaderPipelineFailureCount": 0,
+    "patternFailures": [],
+    "errorSamples": [],
+    "warningSamples": [
+      {
+        "timestamp": "2026-08-21T06:31:52.181Z",
+        "level": 2,
+        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "line": 5,
+        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+      },
+      {
+        "timestamp": "2026-08-21T06:31:57.422Z",
+        "level": 2,
+        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "line": 5,
+        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+      }
+    ],
+    "processFailures": []
+  },
+  "fatalError": null
+}

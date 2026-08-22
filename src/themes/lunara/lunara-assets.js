@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as WEBGPU from 'three/webgpu';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 const BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/';
 const TEXTURE_BASE = `${BASE_URL}textures/lunara/`;
@@ -132,7 +132,7 @@ export function loadLunaraHdriEnvironment(renderer, scene, onReady = null) {
     if (!renderer || !scene) return null;
 
     let disposed = false;
-    const loader = new RGBELoader();
+    const loader = new HDRLoader();
     loader.load(
         HDRI_URL,
         (texture) => {

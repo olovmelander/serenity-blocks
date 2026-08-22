@@ -10,15 +10,15 @@ import {
 import {
     ODYSSEY_NORTH_LAKE,
     ODYSSEY_SEA_LEVEL,
-    odysseyWorldDetailWeight,
-    odysseyWorldMacro,
-    odysseyWorldRelief,
 } from './odyssey-world-height.js';
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
-import { createTilingValueNoise } from './odyssey-tiling-noise.js';
 import {
     GROUND_ATLAS_WORLD, bakeGroundAtlas, bakeGroundSunFields,
 } from './odyssey-ground-bakes.js';
+import {
+    RELIEF_EXTENT, bakeDetailNormalData, bakeMacroData, bakeOdysseyCloudField, bakeReliefData,
+    makeReliefSampler,
+} from './odyssey-world-bake-data.js';
 import {
     ODYSSEY_GROUND_DISTANCE,
     ODYSSEY_GROUND_DRYNESS,
@@ -45,6 +45,9 @@ import {
     ODYSSEY_COLOUR_SCRIPT,
     ODYSSEY_WATER_RAMP,
 } from '../odyssey-colour-script.js';
+
+// The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
+export { bakeOdysseyCloudField };
 
 /**
  * THE ODYSSEY ACT II WORLD.
@@ -102,7 +105,7 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
     },
 });
 
-const RELIEF_EXTENT = 9000;
+// RELIEF_EXTENT is exported by odyssey-world-bake-data.js (shared with the worker).
 
 // ── ground paint constants (ground plan §4) ──────────────────────────────────────
 // The measured palette, shadow models, strata and distance windows live in
@@ -388,388 +391,35 @@ const WATER_SCRIPT_END = ODYSSEY_COLOUR_SCRIPT
 
 // ── bakes ────────────────────────────────────────────────────────────────────────
 
-function buildReliefBake(reliefRes) {
-    const step = RELIEF_EXTENT / (reliefRes - 1);
-    const origin = -RELIEF_EXTENT / 2;
+// ── bakes (pure halves live in odyssey-world-bake-data.js; these wrap arrays as textures) ─────
 
-    // The only place the noise is evaluated. Deriving everything else from this grid rather
-    // than recomputing cost 352 ms of pure duplicate work when it was done twice.
-    const relief = new Float32Array(reliefRes * reliefRes);
-    for (let j = 0; j < reliefRes; j += 1) {
-        const z = origin + (j * step);
-        for (let i = 0; i < reliefRes; i += 1) {
-            relief[(j * reliefRes) + i] = odysseyWorldRelief(origin + (i * step), z);
-        }
-    }
-    const at = (i, j) => relief[(Math.max(0, Math.min(reliefRes - 1, j)) * reliefRes)
-        + Math.max(0, Math.min(reliefRes - 1, i))];
-
-    // AUX: derivatives central-differenced from the BAKED heights, never re-evaluated
-    // analytically, so lighting describes exactly the surface the vertex shader displaces to.
-    // A carries CURVATURE — the discrete Laplacian, mean(4-neighbours) - centre, divided by the
-    // step so it is dimensionless. Positive is concave (a gully, the neighbours stand above
-    // you), negative convex (a ridge). It is the difference between a landform that reads as
-    // rock and one that reads as a smooth pile: first derivatives only tell the light which
-    // way a face points, and every face of a cone points somewhere plausible. The channel was
-    // already allocated and written as a literal zero, so this costs bake time and nothing
-    // else — no VRAM, no bandwidth, no extra fetch.
-    const data = new Uint16Array(reliefRes * reliefRes * 4);
-    for (let j = 0; j < reliefRes; j += 1) {
-        for (let i = 0; i < reliefRes; i += 1) {
-            const idx = ((j * reliefRes) + i) * 4;
-            data[idx] = THREE.DataUtils.toHalfFloat(relief[(j * reliefRes) + i]);
-            data[idx + 1] = THREE.DataUtils.toHalfFloat((at(i + 1, j) - at(i - 1, j)) / (2 * step));
-            data[idx + 2] = THREE.DataUtils.toHalfFloat((at(i, j + 1) - at(i, j - 1)) / (2 * step));
-            const neighbourMean = (at(i + 1, j) + at(i - 1, j) + at(i, j + 1) + at(i, j - 1)) / 4;
-            data[idx + 3] = THREE.DataUtils.toHalfFloat(
-                (neighbourMean - relief[(j * reliefRes) + i]) / step,
-            );
-        }
-    }
-    // Half-float is filterable everywhere with no feature request; float32-filterable is
-    // optional in WebGPU and r181's fallback covers only DataTexture, not render targets.
-    const tex = new THREE.DataTexture(data, reliefRes, reliefRes, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
-
-    // CPU mirror of the DRAWN height, derived — no noise re-evaluation.
-    const total = new Float32Array(reliefRes * reliefRes);
-    for (let j = 0; j < reliefRes; j += 1) {
-        const z = origin + (j * step);
-        for (let i = 0; i < reliefRes; i += 1) {
-            const x = origin + (i * step);
-            total[(j * reliefRes) + i] = odysseyWorldMacro(x, z)
-                + (relief[(j * reliefRes) + i] * odysseyWorldDetailWeight(x, z));
-        }
-    }
-    const sample = (x, z) => {
-        const gx = Math.max(0, Math.min(reliefRes - 1.001, (x - origin) / step));
-        const gz = Math.max(0, Math.min(reliefRes - 1.001, (z - origin) / step));
-        const i0 = Math.floor(gx);
-        const j0 = Math.floor(gz);
-        const fx = gx - i0;
-        const fz = gz - j0;
-        const i1 = Math.min(reliefRes - 1, i0 + 1);
-        const j1 = Math.min(reliefRes - 1, j0 + 1);
-        const a = total[(j0 * reliefRes) + i0];
-        const b = total[(j0 * reliefRes) + i1];
-        const c = total[(j1 * reliefRes) + i0];
-        const d = total[(j1 * reliefRes) + i1];
-        return (((a * (1 - fx)) + (b * fx)) * (1 - fz)) + (((c * (1 - fx)) + (d * fx)) * fz);
-    };
-    return { tex, sample };
-}
-
-/**
- * MACRO TEXTURE — [macro height, detail weight, dMacro/dx, dMacro/dz] at 512².
- *
- * This bake exists to DELETE the analytic macro from the shaders. The massif smooth-max fold,
- * expressed in TSL and referenced through varyings, hit a three r181 builder pathology:
- * build TIME scaled with (fold size × fragment references) — measured at 129 s for the water
- * material and 27 s for the ground, ~156 s of frozen tab on every load, uncached, while the
- * emitted WGSL stayed ~6 KB. `.toVar()` inside the fold changed nothing (the builder walks
- * through Var and Varying nodes), so the durable fix is for the fold to not exist at build
- * time at all: the CPU already evaluates the same functions for the mirror, the macro is
- * smooth by construction (512² over 9,000 u = 17.6 u texels under bilinear), and the shader
- * cost is one fetch it was already paying next door. After this, the world compiles in ~1 s.
- */
-function bakeMacroTexture(res = 512) {
-    const step = RELIEF_EXTENT / (res - 1);
-    const origin = -RELIEF_EXTENT / 2;
-    const e = 4;
-    const data = new Uint16Array(res * res * 4);
-    for (let j = 0; j < res; j += 1) {
-        const z = origin + (j * step);
-        for (let i = 0; i < res; i += 1) {
-            const x = origin + (i * step);
-            const idx = ((j * res) + i) * 4;
-            data[idx] = THREE.DataUtils.toHalfFloat(odysseyWorldMacro(x, z));
-            data[idx + 1] = THREE.DataUtils.toHalfFloat(odysseyWorldDetailWeight(x, z));
-            data[idx + 2] = THREE.DataUtils.toHalfFloat(
-                (odysseyWorldMacro(x + e, z) - odysseyWorldMacro(x - e, z)) / (2 * e),
-            );
-            data[idx + 3] = THREE.DataUtils.toHalfFloat(
-                (odysseyWorldMacro(x, z + e) - odysseyWorldMacro(x, z - e)) / (2 * e),
-            );
-        }
-    }
+function halfFloatTexture(data, res, wrapping) {
     const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.HalfFloatType);
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.wrapS = wrapping;
+    tex.wrapT = wrapping;
     tex.generateMipmaps = false;
     tex.needsUpdate = true;
     return tex;
 }
 
-/**
- * THE CLOUD SILHOUETTE FIELD (.a of the detail bake) — cloud plan Wave 1b.
- *
- * WHAT WAS WRONG. This channel used to be one octave of value noise (`vn(i, j, 1/96)`), and a
- * coverage threshold across value noise produces amoebae: soft, round-cornered, featureless
- * blobs with no top, no bottom and no edge. That is the entire reason Act II's sky reads as
- * salt-and-pepper static — no amount of shading can put a cloud shape into a field that has
- * none. The Ghibli/Witness distillation is explicit that the silhouette is where all the
- * frequency lives and the interior stays flat, so the fix belongs HERE, in the field, not in
- * the fragment shader.
- *
- * WHAT IT IS NOW. A union of discs at three scales — the cauliflower construction every
- * reference uses: 2-4 primary lobes that carry the read, secondaries riding on them, and
- * sparse tertiary scallops. `max()` of a domed falloff means the iso-contour of the union is
- * an arc-of-circles boundary, so ANY threshold through this field cuts a scalloped silhouette
- * by construction, at every coverage level. Sizes and spacing are irregular by mandate
- * (evenly-sized lobes read as soap bubbles). An inverted-ridge term fills the flanks between
- * lobes so they are not dead flat.
- *
- * TILING. The texture is 256^2 and repeats every ~488 world units at the deck's coarsest UV
- * scale, so stamped shapes WILL recur — the research critic flagged exactly this. Two defences:
- * distances wrap toroidally (no seam at the tile edge), and the deck samples this field at
- * three scales whose ratios are irrational-ish, so the recurrences of the three never line up.
- *
- * @param {number} res texture resolution
- * @param {(x:number,y:number,freq:number)=>number} vn the caller's tiling value-noise sampler
- * @returns {Float32Array} the silhouette field, histogram-matched (see bakeDetailNormal)
- */
-/**
- * HISTOGRAM-MATCH the silhouette field so the shipped calibration survives the rebake.
- *
- * The deck's coverage thresholds (0.63 broken cumulus / 0.40 near-solid) and the vertex gate's
- * bands were placed against a MEASURED distribution of the summed density: p10 0.42, p50 0.58,
- * p90 0.70. Swap the field underneath them and those numbers stop meaning what the comments
- * say — coverage moves everywhere and every band needs re-tuning by eye, which is how a "look"
- * change quietly becomes a fortnight.
- *
- * So the new field is remapped by RANK onto a target marginal, and the target's spread is
- * SOLVED so that the quantity the thresholds actually see — the three-octave sum the fragment
- * stage computes — lands back on the measured percentiles. Rank-remapping is monotonic, so it
- * cannot disturb the silhouette geometry: it changes what the contour heights are called, never
- * where the contours are.
- *
- * The research critic's objection is the reason for the solve: matching ONE octave's marginals
- * does not bound the SUM's distribution. Matching the sum directly is the answer to it.
- *
- * ⚠️ RANK REMAPPING IS ONLY MONOTONIC IF TIES ARE HANDLED. This field is 64 % exact zeros and
- * the first version ranked them individually, which turned one input value into a texel-order
- * ramp across the tile — see `applyK`. A rank remap of a field with a large tied mass is a
- * trap; the same applies to any future bake that thresholds or gates its source.
- *
- * @param {Float32Array} field raw silhouette field (mutated in place)
- * @param {number} res texture resolution
- * @returns {{k:number, p10:number, p50:number, p90:number}} the solved stretch and the sum's
- *          achieved percentiles, for the assertion in the caller
- */
-function matchCloudHistogram(field, res) {
-    const n = res * res;
-    const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => field[a] - field[b]);
-    // Target marginal: piecewise-linear through the three MEASURED percentiles, extended to
-    // the tails. Expressed as an offset from the median so the stretch pivots on it.
-    const targetQ = (u) => {
-        if (u <= 0.10) return 0.386 + ((u / 0.10) * (0.42 - 0.386));
-        if (u <= 0.50) return 0.42 + (((u - 0.10) / 0.40) * (0.58 - 0.42));
-        if (u <= 0.90) return 0.58 + (((u - 0.50) / 0.40) * (0.70 - 0.58));
-        return 0.70 + (((u - 0.90) / 0.10) * (0.73 - 0.70));
-    };
-    const matched = new Float32Array(n);
-    // TIES MAP TO ONE VALUE — average-rank remapping, and it is load-bearing, not pedantry.
-    // MEASURED 2026-08-13: 64.3 % of this field is EXACTLY zero (the sky between the disc
-    // clusters, where the ridge term is gated off too). Giving each tied texel its own rank
-    // `r` handed those 42,172 identical inputs 42,172 DIFFERENT outputs, spanning 0.256 to
-    // 0.652 — and because `Array.prototype.sort` is stable, the order of the tie block is
-    // texel order, so the field's own "empty sky" became a RAMP in row-major order that
-    // stepped 0.394 at the wrap. The deck's whole anti-aliased alpha edge is 0.060 wide, so
-    // that was a 6.6x razor line drawn across the sky every 488 world units, plus a coverage
-    // gradient inside every tile that no threshold comment described. Averaging the rank over
-    // each tied group keeps the map monotonic and makes it a function of the VALUE, which is
-    // the only thing a histogram match is allowed to be a function of.
-    const applyK = (k) => {
-        let r = 0;
-        while (r < n) {
-            const value = field[order[r]];
-            let end = r + 1;
-            while (end < n && field[order[end]] === value) end += 1;
-            const u = ((r + end) / 2) / n;
-            const target = 0.58 + ((targetQ(u) - 0.58) * k);
-            for (let t = r; t < end; t += 1) matched[order[t]] = target;
-            r = end;
-        }
-    };
-    // Bilinear, wrapping — the same filtering the GPU will do.
-    const sample = (u, v) => {
-        const x = ((((u * res) % res) + res) % res);
-        const y = ((((v * res) % res) + res) % res);
-        const x0 = Math.floor(x);
-        const y0 = Math.floor(y);
-        const fx = x - x0;
-        const fy = y - y0;
-        const x1 = (x0 + 1) % res;
-        const y1 = (y0 + 1) % res;
-        const a = matched[(y0 * res) + x0];
-        const b = matched[(y0 * res) + x1];
-        const c = matched[(y1 * res) + x0];
-        const d = matched[(y1 * res) + x1];
-        return (((a * (1 - fx)) + (b * fx)) * (1 - fy)) + (((c * (1 - fx)) + (d * fx)) * fy);
-    };
-    // The fragment stage's own octave scales and offsets (odyssey-world-renderer cloud deck).
-    const sumAt = (wx, wz) => (sample(wx * 0.00205, wz * 0.00205) * 0.52)
-        + (sample((wx * 0.00560) + 0.31, (wz * 0.00560) + 0.77) * 0.32)
-        + (sample((wx * 0.01420) + 0.58, (wz * 0.01420) + 0.12) * 0.16);
-    const SAMPLES = 8192;
-    const pct = () => {
-        const vals = new Float64Array(SAMPLES);
-        let sd = 0x2545f491;
-        const r = () => {
-            sd = Math.imul(sd ^ (sd >>> 15), 2246822519);
-            sd = (sd + 0x6d2b79f5) >>> 0;
-            return ((sd ^ (sd >>> 13)) >>> 0) / 4294967296;
-        };
-        for (let i = 0; i < SAMPLES; i += 1) vals[i] = sumAt(r() * 24000, r() * 24000);
-        vals.sort();
-        return {
-            p10: vals[Math.floor(SAMPLES * 0.10)],
-            p50: vals[Math.floor(SAMPLES * 0.50)],
-            p90: vals[Math.floor(SAMPLES * 0.90)],
-        };
-    };
-    // Solve the stretch so the SUM's p90-p10 spread reproduces the measured 0.28. Averaging
-    // three octaves narrows the distribution, so k > 1 is expected.
-    let lo = 0.5;
-    let hi = 6.0;
-    let best = null;
-    for (let it = 0; it < 22; it += 1) {
-        const k = (lo + hi) / 2;
-        applyK(k);
-        best = pct();
-        if ((best.p90 - best.p10) < 0.28) lo = k; else hi = k;
-        best.k = k;
-    }
-    field.set(matched);
-    return best;
+/** Relief + derivatives texture and the CPU mirror sampler; `baked` skips the bake. */
+function buildReliefBake(reliefRes, baked = null) {
+    const d = baked ?? bakeReliefData(reliefRes);
+    // Half-float is filterable everywhere with no feature request; float32-filterable is
+    // optional in WebGPU and r181's fallback covers only DataTexture, not render targets.
+    return { tex: halfFloatTexture(d.data, d.res, THREE.ClampToEdgeWrapping), sample: makeReliefSampler(d) };
 }
 
-function bakeCloudSilhouette(res, vn) {
-    // Deterministic placement: the same sky every boot, and reproducible captures.
-    let seed = 0x9e3779b9;
-    const rnd = () => {
-        seed = Math.imul(seed ^ (seed >>> 15), 2246822519);
-        seed = (seed + 0x6d2b79f5) >>> 0;
-        return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296;
-    };
-    // DISCS ARE PLACED IN CLUSTERS, NOT SPREAD. The first cut scattered 77 discs uniformly
-    // across the tile and the field came out above threshold almost everywhere: one connected
-    // overcast mass rather than separate clouds (capture-confirmed — the sky filled in). A
-    // cloud is a CLUSTER of lobes with sky around it, so each cluster gets its own 2-4
-    // primaries, the secondaries ride those primaries' rims, and the tertiaries scallop the
-    // crown. The gaps between clusters are the sky, and they only exist if the clusters are
-    // placed sparsely on purpose.
-    // NOTE this field is a PLAN view: the deck is a horizontal sheet, so what the viewer reads
-    // as the cloud's outline is this field's contour seen from below or above. The Ghibli
-    // "flat base" rule belongs to vertical faces and does not apply here; the scalloped
-    // contour does, and that is exactly what a union of discs produces.
-    const discs = [];
-    const push = (x, y, r) => discs.push({ x: x * res, y: y * res, r: r * res });
-    // SCALE, set against the owner's Witness reference. That sky is a FEW BIG clouds in
-    // generous blue, and each one is big enough that you can count its lobes; the first cut
-    // gave many small puffs — a mackerel sky, right grammar at the wrong size. So: 2 clusters
-    // per tile instead of 3, primaries roughly doubled (0.070-0.115 -> 0.125-0.190 of the
-    // tile), and the satellites scaled with them so the lobe HIERARCHY is preserved — a
-    // cloud must still read as primaries carrying secondaries carrying scallops, just larger.
-    // Cluster spreads grow with the lobes for the same reason.
-    // In world terms at the coarsest octave (tile ~488 u) a primary lobe is now ~120-185 u
-    // across rather than ~68-112, and there are fewer of them.
-    const CLUSTERS = 2;
-    for (let c = 0; c < CLUSTERS; c += 1) {
-        const cx = rnd();
-        const cy = rnd();
-        const primaries = 2 + Math.floor(rnd() * 3); // 2-4 lobes carry the read
-        for (let i = 0; i < primaries; i += 1) {
-            push(cx + ((rnd() - 0.5) * 0.26), cy + ((rnd() - 0.5) * 0.26), 0.125 + (rnd() * 0.065));
-        }
-        const secondaries = 5 + Math.floor(rnd() * 4);
-        for (let i = 0; i < secondaries; i += 1) {
-            push(cx + ((rnd() - 0.5) * 0.40), cy + ((rnd() - 0.5) * 0.40), 0.058 + (rnd() * 0.048));
-        }
-        const tertiaries = 10 + Math.floor(rnd() * 7);
-        for (let i = 0; i < tertiaries; i += 1) {
-            push(cx + ((rnd() - 0.5) * 0.50), cy + ((rnd() - 0.5) * 0.50), 0.024 + (rnd() * 0.026));
-        }
-    }
-    const out = new Float32Array(res * res);
-    const half = res / 2;
-    for (let j = 0; j < res; j += 1) {
-        for (let i = 0; i < res; i += 1) {
-            let m = 0;
-            for (let d = 0; d < discs.length; d += 1) {
-                const disc = discs[d];
-                let dx = Math.abs(i - disc.x);
-                if (dx > half) dx = res - dx;
-                let dy = Math.abs(j - disc.y);
-                if (dy > half) dy = res - dy;
-                const dist = Math.sqrt((dx * dx) + (dy * dy));
-                if (dist < disc.r) {
-                    // sqrt dome: circular iso-contours, and a shoulder that stays fat near the
-                    // rim so the union's boundary is an arc rather than a soft ramp.
-                    const f = Math.sqrt(1 - (dist / disc.r));
-                    if (f > m) m = f;
-                }
-            }
-            // The ridge term is DETAIL ON the lobes, not a second cloud layer: gate it by the
-            // disc field so it cannot raise the gaps between clusters back above threshold.
-            const ridge = 1 - Math.abs((2 * vn(i, j, 1 / 26)) - 1);
-            out[(j * res) + i] = (0.80 * m) + (0.20 * ridge * m);
-        }
-    }
-    return out;
+function bakeMacroTexture(res = 512, baked = null) {
+    const d = baked ?? bakeMacroData(res);
+    return halfFloatTexture(d.data, d.res, THREE.ClampToEdgeWrapping);
 }
 
-/**
- * The deck's silhouette field, baked and calibrated — the `.a` channel of the detail texture.
- *
- * EXPORTED FOR ITS UNIT GUARD (odyssey-cloud-field.test.js), because this field shipped two
- * defects that a screenshot could only show as "a straight line in the sky at ch5" and that
- * cost three bisect sessions between them: a value noise that did not tile, and a rank remap
- * that gave 42,172 tied texels 42,172 different values in texel order. Both are properties of
- * the FIELD, testable in milliseconds without a GPU, and neither was testable at all while
- * this lived inside `bakeDetailNormal` as two closures.
- *
- * @param {number} [res] texture resolution
- * @returns {{field: Float32Array, stats: {k:number,p10:number,p50:number,p90:number}}}
- */
-export function bakeOdysseyCloudField(res = 256) {
-    const field = bakeCloudSilhouette(res, createTilingValueNoise(res));
-    const stats = matchCloudHistogram(field, res);
-    return { field, stats };
-}
-
-function bakeDetailNormal(res = 256) {
-    // THE NOISE MUST TILE, and until 2026-08-13 this one did not — see odyssey-tiling-noise.js
-    // for the mechanism and the measured 48x seam step it put across the cloud silhouette.
-    // EVERY channel of this texture is sampled with RepeatWrapping by something: .rg by the
-    // ground's bump and the water's ripples, .b by the terrain's snow jitter and the deck's
-    // vertex billow, .a by all three of the deck's density octaves. One non-tiling sampler
-    // therefore drew a straight discontinuity across five surfaces at once.
-    const vn = createTilingValueNoise(res);
-    const field = new Float32Array(res * res);
-    for (let j = 0; j < res; j += 1) {
-        for (let i = 0; i < res; i += 1) {
-            field[(j * res) + i] = (vn(i, j, 1 / 32) * 0.65) + (vn(i, j, 1 / 11) * 0.35);
-        }
-    }
-    const at = (i, j) => field[((((j % res) + res) % res) * res) + (((i % res) + res) % res)];
-    // RG are DERIVATIVES — signed, centred on zero — for the ground's bump term. BA carry the
-    // scalar field itself at two frequencies, which the bake already computed and used to throw
-    // away. The cloud deck needs a DENSITY, and reading it off the derivative channels gives a
-    // field centred on zero that no coverage threshold can ever cross: the deck rendered
-    // completely empty until this was widened. One texture, one fetch path, both uses served.
-    // Rebake calibration guard: the sum the thresholds actually see must land back on the
-    // measured p10/p50/p90 = 0.42/0.58/0.70, or 0.63/0.40 and the gate bands silently change
-    // meaning. Logged rather than thrown — a sky that is a little off is a tuning note, not a
-    // reason to refuse to boot — and asserted in odyssey-cloud-field.test.js.
-    const { field: coarse, stats: cloudStats } = bakeOdysseyCloudField(res);
+function bakeDetailNormal(res = 256, baked = null) {
+    const d = baked ?? bakeDetailNormalData(res);
+    const { cloudStats } = d;
     // eslint-disable-next-line no-console
     console.log('[world] cloud silhouette histogram', JSON.stringify({
         k: Number(cloudStats.k.toFixed(3)),
@@ -777,27 +427,8 @@ function bakeDetailNormal(res = 256) {
         p50: Number(cloudStats.p50.toFixed(4)),
         p90: Number(cloudStats.p90.toFixed(4)),
     }));
-    const data = new Uint16Array(res * res * 4);
-    for (let j = 0; j < res; j += 1) {
-        for (let i = 0; i < res; i += 1) {
-            const idx = ((j * res) + i) * 4;
-            data[idx] = THREE.DataUtils.toHalfFloat((at(i + 1, j) - at(i - 1, j)) * 0.5);
-            data[idx + 1] = THREE.DataUtils.toHalfFloat((at(i, j + 1) - at(i, j - 1)) * 0.5);
-            data[idx + 2] = THREE.DataUtils.toHalfFloat(field[(j * res) + i]);
-            data[idx + 3] = THREE.DataUtils.toHalfFloat(coarse[(j * res) + i]);
-        }
-    }
-    const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
-    return tex;
+    return halfFloatTexture(d.data, d.res, THREE.RepeatWrapping);
 }
-
-// ── vegetation ───────────────────────────────────────────────────────────────────
 
 /**
  * THE PAINT PROBE (forest plan Wave 0b) — the cheapest possible falsifier of the whole
@@ -1168,21 +799,28 @@ export function createOdysseyWorld({
     flatGround = false,
     cloudDebug = null,
     skyRadius = null, railSamples = [],
+    // Item 2.1: bakes landed by odyssey-world-bake-loader.js (Worker or its synchronous twin).
+    // `{ relief, textures: { sunFields, atlas, detail, macro }, cloudField }`; any missing
+    // piece is baked right here, synchronously, as before — one code path, pinned by goldens.
+    prebaked = null,
 } = {}) {
     const q = ODYSSEY_WORLD_QUALITY[quality] || ODYSSEY_WORLD_QUALITY.high;
     const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
-    const relief = buildReliefBake(q.reliefRes);
+    const pre = prebaked || {};
+    const preTex = pre.textures || {};
+    const relief = buildReliefBake(q.reliefRes, pre.relief?.res === q.reliefRes ? pre.relief : null);
     // The world plate: sun visibility (R, unchanged) plus the three fields that ARE the
     // painting — wide occlusion, moisture, and the island's colour zone. Deciles are logged so
     // a rebake cannot silently flatten a field the whole palette hangs off.
-    const sunFields = bakeGroundSunFields(relief.sample, q.shadowRes);
+    const prebakedSunFields = preTex.sunFields?.res === q.shadowRes ? preTex.sunFields : null;
+    const sunFields = bakeGroundSunFields(relief.sample, q.shadowRes, prebakedSunFields);
     const sunVisTex = sunFields.tex;
-    const groundAtlas = bakeGroundAtlas();
+    const groundAtlas = bakeGroundAtlas(undefined, preTex.atlas ?? null);
     const groundTex = groundAtlas.tex;
     const atlasAvg = groundAtlas.avg;
-    const detailTex = bakeDetailNormal();
-    const macroTex = bakeMacroTexture();
+    const detailTex = bakeDetailNormal(undefined, preTex.detail ?? null);
+    const macroTex = bakeMacroTexture(undefined, preTex.macro ?? null);
     const heightTex = relief.tex;
     const t1 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
@@ -2745,7 +2383,11 @@ export function createOdysseyWorld({
     //
     // The four tones below are the DECK'S OWN, referenced rather than copied, so heroes and
     // sheet cannot drift apart and there is no second colour tuning to get wrong.
-    const heroBuild = buildHeroCloudGeometry(ODYSSEY_HERO_CLOUD_SPECS, { tertiaries: true });
+    // Built only when mounted: with heroes retired (default false) this sculpt was pure boot CPU
+    // for a geometry that was disposed unseen (item 2.1 profile, 2026-08-21).
+    const heroBuild = heroes
+        ? buildHeroCloudGeometry(ODYSSEY_HERO_CLOUD_SPECS, { tertiaries: true })
+        : { geometry: new THREE.BufferGeometry(), triangles: 0 };
     const heroMat = new THREE.MeshBasicNodeMaterial();
     const hN = normalWorld.toVar('heroN');
     const hSun = dot(hN, uSunDir).toVar('heroSun');
@@ -2959,7 +2601,9 @@ export function createOdysseyWorld({
         const fieldSpecs = cloudFieldCount > 0
             ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount)
             : ODYSSEY_CLOUD_FIELD_SPECS;
-        fieldProbeBuild = buildCloudFieldGeometry(fieldSpecs, railSamples);
+        // A worker-sculpted field is used only if it was sculpted for THIS spec slice.
+        const preField = pre.cloudField && pre.cloudField.masses === fieldSpecs.length ? pre.cloudField : null;
+        fieldProbeBuild = buildCloudFieldGeometry(fieldSpecs, railSamples, preField);
         fieldProbeMesh = new THREE.Mesh(fieldProbeBuild.geometry, fieldMat);
         // Same three invariants as the heroes: unculled (a breathing +-1 draw voids pairs via
         // the content-match guard), static matrix, opaque queue.
@@ -3777,6 +3421,14 @@ export function createOdysseyWorld({
         fish: fishMesh ? 110 : 0,
         skyRadius: domeRadius,
         bakeMs: { relief: +(t1 - t0).toFixed(1), total: +(t2 - t0).toFixed(1) },
+        // Item 2.1: which bakes arrived pre-baked (worker) — 'relief' above is then the wrap cost.
+        prebaked: prebaked ? {
+            relief: pre.relief?.res === q.reliefRes,
+            textures: !!(preTex.sunFields && preTex.atlas && preTex.detail && preTex.macro),
+            cloudField: !!pre.cloudField,
+            viaWorker: !!pre.viaWorker,
+            workerMs: pre.ms ?? null,
+        } : null,
     };
 
     return {
@@ -3784,6 +3436,10 @@ export function createOdysseyWorld({
         stats,
         state,
         heightAt: relief.sample,
+        /** The five boot-bake textures, in bake order (tests pin their bytes; never mutate). */
+        bakeTextures: Object.freeze({
+            height: heightTex, sunVis: sunVisTex, atlas: groundTex, detail: detailTex, macro: macroTex,
+        }),
         fog: fogState,
         /**
          * THE DEPARTURE FADE (Wave 1B). `setDepartureFade(t, colour)` pulls the whole world

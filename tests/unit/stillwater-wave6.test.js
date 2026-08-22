@@ -249,10 +249,10 @@ describe('Stillwater Wave 6 atmosphere and post contracts', () => {
     });
 
     it('owns a single-transform MRT post graph and deep-disposes bloom and LUT resources', () => {
-        expect(pipelineSource).toContain('new THREE.PostProcessing(renderer)');
-        expect(pipelineSource).not.toContain('THREE.RenderPipeline');
+        expect(pipelineSource).toContain('new THREE.RenderPipeline(renderer)');
+        expect(pipelineSource).not.toContain('new THREE.PostProcessing(');
         expect(pipelineSource).toContain(
-            'this.scenePass.setMRT(mrt({ output, emissive }))',
+            'this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })))',
         );
         expect(pipelineSource).toContain('this.scenePass.getTextureNode(\'emissive\')');
         expect(pipelineSource).toContain('this.bloomNode = bloom(');

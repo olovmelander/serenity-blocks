@@ -15,7 +15,9 @@
  * or setRenderer()), the overlay also surfaces the per-frame GPU cost so the lag/seam
  * problem can be measured before any fix is claimed:
  *   - renderer.info.render.{drawCalls, triangles, calls}
- *   - renderer.info.memory.{geometries, textures}
+ *   - renderer.info.memory.{geometries, textures}, plus the three r185 byte
+ *     accounting {total, texturesSize, attributesSize, renderTargets} as a
+ *     "vram" line in MiB — omitted entirely when the renderer lacks `total`
  *   - renderer.info.render.timestamp (GPU ms; only shown when populated, i.e. when
  *     the renderer was built with trackTimestamp:true and resolveTimestampsAsync()
  *     is being called each frame — wired by OdysseyBoardController, owned elsewhere)
@@ -190,6 +192,14 @@ export class OdysseyDebugOverlay {
             `calls     ${formatCount(calls)}`,
             `mem       geo ${formatCount(geoms)}  tex ${formatCount(texes)}`,
         ];
+        // three r185 Info.memory byte accounting (total / texturesSize /
+        // attributesSize are bytes; renderTargets is a count — r185 tracks no
+        // renderTargetsSize). Absent on r181-shaped or WebGL2 renderers → omitted.
+        const totalMB = bytesToMB(mem.total);
+        if (totalMB !== null) {
+            lines.push(`vram      ${fmtMB(totalMB)}  tex ${fmtMB(bytesToMB(mem.texturesSize))}`
+                + `  attr ${fmtMB(bytesToMB(mem.attributesSize))}  rt ${formatCount(toInt(mem.renderTargets))}`);
+        }
         return lines;
     }
 
@@ -300,6 +310,17 @@ function formatCount(n) {
     if (abs >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
     if (abs >= 1e4) return `${(n / 1e3).toFixed(1)}k`;
     return `${n}`;
+}
+
+/** Bytes → MiB, or null when the renderer has no byte accounting (never NaN). */
+function bytesToMB(bytes) {
+    return Number.isFinite(bytes) ? bytes / (1024 * 1024) : null;
+}
+
+/** MiB formatter for the vram line; null reads as "—". */
+function fmtMB(mb) {
+    if (mb === null || !Number.isFinite(mb)) return '—';
+    return `${mb.toFixed(mb >= 100 ? 0 : 1)}MB`;
 }
 
 /** Frame-time formatter for the seam marker. */

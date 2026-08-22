@@ -1231,6 +1231,8 @@ export default class StellarDriftTheme extends BaseTheme {
 
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(capacity * 3), 3));
+            // Constant centre uv for the node material's uv()-based soft-circle mask (see createDustRing).
+            geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(capacity * 2).fill(0.5), 2));
 
             const materialData = createStellarNebulaBurstMaterial({
                 isWebGPU: this.isWebGPU,
@@ -1299,7 +1301,7 @@ export default class StellarDriftTheme extends BaseTheme {
     probeCapabilities() {
         const maxColorAttachments = this.renderer?.capabilities?.maxColorAttachments ?? 1;
         const supportsPost = this.isWebGPU
-            ? typeof THREE_WEBGPU.PostProcessing === 'function'
+            ? typeof (THREE_WEBGPU.RenderPipeline ?? THREE_WEBGPU.PostProcessing) === 'function'
             : true;
         const supportsMRT = this.isWebGPU && maxColorAttachments > 1;
         const supportsCompute = this.isWebGPU && typeof this.renderer?.compute === 'function';
@@ -3954,6 +3956,13 @@ export default class StellarDriftTheme extends BaseTheme {
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        // Constant centre uv: the PointsNodeMaterial reads uv() for its soft-circle mask, but
+        // WebGPU point primitives carry no per-fragment uv. Without the attribute TSL warns
+        // ("Vertex attribute "uv" not found") and substitutes vec2(0) -> mask 0 -> invisible.
+        // DECIDED 2026-08-21: keep these layers VISIBLE (the material author's intent; they
+        // had been silently masked out on both r181 and r185). For pixel-parity with pre-
+        // upgrade footage, fill(0) instead — the warning stays silenced either way.
+        geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(particleCount * 2).fill(0.5), 2));
 
         this.dustRingCompute = null;
         if (this.shouldUseCompute()) {
@@ -4043,6 +4052,8 @@ export default class StellarDriftTheme extends BaseTheme {
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        // Constant centre uv for the node material's uv()-based soft-circle mask (see createDustRing).
+        geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(particleCount * 2).fill(0.5), 2));
 
         this.ambientParticleCompute = null;
         if (this.shouldUseCompute()) {

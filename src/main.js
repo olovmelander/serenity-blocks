@@ -112,8 +112,10 @@ import {
     setActiveDesktopPerformancePolicy,
 } from './utils/desktop-performance-policy.js';
 import { createBootStageCoordinator } from './utils/boot-stage-coordinator.js';
+import { warmThreeEarly, deferThemeWarmWhileOdysseyLoads } from './utils/startup-warm.js';
 
 import { CustomCursor } from './ui/components/custom-cursor.js';
+import { formatGpuRemediationHtml } from './ui/desktop-gpu-remediation.js';
 import { installCosmicSelects, uninstallCosmicSelects } from './ui/components/cosmic-select.js';
 import { initEnhancedBreathingIndicator } from './ui/effects/enhanced-breathing-indicator.js';
 
@@ -288,39 +290,6 @@ function updateDesktopRuntimeBodyClasses(runtimeConfig = desktopRuntimeConfig, p
     } else {
         delete body.dataset.desktopQualityTier;
     }
-}
-
-function formatGpuRemediationHtml(gpuHealth = null) {
-    const renderer = gpuHealth?.renderer ? `<div class="desktop-gpu-remediation__meta">Renderer: ${gpuHealth.renderer}</div>` : '';
-    const adapter = gpuHealth?.activeAdapter?.name
-        ? `<div class="desktop-gpu-remediation__meta">Adapter: ${gpuHealth.activeAdapter.name}</div>`
-        : '';
-    const driver = gpuHealth?.driverVersion
-        ? `<div class="desktop-gpu-remediation__meta">Driver: ${gpuHealth.driverVendor || 'Unknown'} ${gpuHealth.driverVersion}</div>`
-        : '';
-    const reasons = Array.isArray(gpuHealth?.reasons) && gpuHealth.reasons.length > 0
-        ? `<div class="desktop-gpu-remediation__detail">Issue: ${gpuHealth.reasons.join(', ')}</div>`
-        : '';
-    const instructions = Array.isArray(gpuHealth?.remediation) && gpuHealth.remediation.length > 0
-        ? gpuHealth.remediation.map((step) => `<li>${step}</li>`).join('')
-        : '<li>Switch the app to High performance in Windows Graphics Settings and relaunch.</li>';
-
-    return `
-        <div class="desktop-gpu-remediation__header">
-            <strong>Desktop GPU Fallback Active</strong>
-            <button type="button" class="desktop-gpu-remediation__dismiss" aria-label="Dismiss GPU guidance">×</button>
-        </div>
-        <div class="desktop-gpu-remediation__body">
-            <div class="desktop-gpu-remediation__status">
-                The packaged app detected a ${gpuHealth?.status || 'degraded'} Windows GPU path and lowered desktop quality to protect stability.
-            </div>
-            ${renderer}
-            ${adapter}
-            ${driver}
-            ${reasons}
-            <ol class="desktop-gpu-remediation__steps">${instructions}</ol>
-        </div>
-    `;
 }
 
 function updateDesktopGpuRemediationPanel(gpuHealth = null) {
@@ -2878,6 +2847,10 @@ class SerenityBlocks {
                 return;
             }
 
+            // Straight-into-Odyssey: stay out of the board's ~20s post-reveal compile window
+            // (a concurrent second WebGPU scene compile = mid-play freezes; see startup-warm.js).
+            await deferThemeWarmWhileOdysseyLoads(this.gameModeManager, 25000);
+
             // Warm the selected theme regardless of its performance class. Heavy WebGPU
             // themes avoid a ~0.4-0.8s cold-build freeze on first entry; light themes are
             // already fast, but warming them too keeps first-entry uniform for ALL ~70
@@ -5040,6 +5013,8 @@ let app = null;
  */
 async function bootstrap() {
     let startupPipeline = null;
+    // APP BOOT (2026-08-21): request the three chunk first thing (off the static boot path).
+    warmThreeEarly();
 
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');

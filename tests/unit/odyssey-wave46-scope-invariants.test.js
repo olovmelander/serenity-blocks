@@ -32,12 +32,15 @@ describe('Wave 4 — the canonical chain has live consumers outside the suppress
         expect(winter).toMatch(/mountainCpuDisplacement|mountainColorNode|resolveMountainTreatment/);
     });
 
-    it('canonical-mountain-range is reachable from playground effects, which SHIP', () => {
-        // vite.config.js registers playground.html as a rollup input, so these effects and
-        // everything they import are part of the production bundle — deleting the module
-        // breaks `vite build`, not just a dev page.
+    it('canonical-mountain-range is reachable from playground effects (a DEV page since 2026-08-21)', () => {
+        // The playground is no longer a production rollup input (app boot, 2026-08-21: its
+        // static graph reached Odyssey chapter modules and Rollup merged them into the
+        // playground entry chunk, so the game's lazy chapter loads ran the playground's init).
+        // The effects still exist for the dev page, and six themes import effects directly —
+        // so deleting the module still breaks real builds, just through the themes now.
         const vite = read('vite.config.js');
-        expect(vite).toMatch(/playground: path\.resolve\(projectRoot, 'playground\.html'\)/);
+        expect(vite).not.toMatch(/playground: path.resolve(projectRoot, 'playground.html')/);
+        expect(vite).toMatch(/no longer a production input/);
         const effects = readdirSync(path.join(ROOT, 'src/playground/effects'))
             .filter((f) => f.endsWith('.effect.js'))
             .filter((f) => read(`src/playground/effects/${f}`).includes('canonical-mountain-range'));

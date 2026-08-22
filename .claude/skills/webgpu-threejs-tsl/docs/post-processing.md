@@ -1,11 +1,13 @@
-# TSL Post-Processing (three r181)
+# TSL Post-Processing (three r185)
 
 Post-processing applies effects to the rendered image via a node graph.
 
-> **r181 API:** the class is `THREE.PostProcessing`. `THREE.RenderPipeline` is an
-> r183 rename that does NOT exist in this repo's three — using it throws
-> `RenderPipeline is not a constructor`. This repo has 15+ working `-post.js`
-> pipelines (e.g. `src/themes/wolfhour/wolfhour-post.js`,
+> **r185 API:** the class was renamed `RenderPipeline` in r183; `THREE.PostProcessing`
+> is a fully-functional deprecated alias that logs one warnOnce per pipeline.
+> **Repo policy: construct `RenderPipeline`** — the repo-wide rename has landed, so a
+> `PostProcessing` deprecation warning now indicates a stray un-renamed site that
+> needs fixing. This repo has 15+ working
+> `-post.js` pipelines (e.g. `src/themes/wolfhour/wolfhour-post.js`,
 > `src/themes/fluid-dreams/fluid-dreams-post.js`) — copy those, not web samples.
 
 ## Basic Setup
@@ -17,7 +19,7 @@ import { pass } from 'three/tsl';
 const renderer = new THREE.WebGPURenderer();
 await renderer.init();
 
-const postProcessing = new THREE.PostProcessing(renderer);
+const postProcessing = new THREE.RenderPipeline(renderer);
 
 const scenePass = pass(scene, camera);
 const scenePassColor = scenePass.getTextureNode('output');
@@ -29,9 +31,9 @@ function animate() {
 }
 ```
 
-## Built-in Effects (import paths verified against r181)
+## Built-in Effects (import paths verified against r185)
 
-All display effects live under `three/addons/tsl/display/`. r181 filenames are
+All display effects live under `three/addons/tsl/display/`. The filenames are
 inconsistent (`BloomNode.js` vs `Sepia.js` vs `boxBlur.js`) — the table is the
 source of truth:
 
@@ -65,9 +67,10 @@ source of truth:
 | `sobel` | `SobelOperatorNode.js` | edge detect |
 | `pixelationPass` | `PixelationPassNode.js` | pixelate (replaces `pass()`) |
 
-**Not in r181** (don't import — the files don't exist): `godrays`, `retroPass`,
-`bilateralBlur`, and the `texture3DLoad`/`texture3DLevel` TSL exports. They arrive
-in r182/r183.
+**New since the r181 pin** (now available in r185): `GodraysNode.js`, `RetroPassNode.js`,
+`BilateralBlurNode.js` — plus `CRT.js`, `SharpenNode.js`, `radialBlur.js`, `FSR1Node.js`,
+`TAAUNode.js`. Still **not** exported: the `texture3DLoad`/`texture3DLevel` TSL
+functions (only `texture3D` exists) — don't import them.
 
 ### Bloom (the repo's most-used effect)
 
@@ -84,6 +87,9 @@ postProcessing.outputNode = scenePassColor.add(bloomPass);
 
 `threshold`/`strength`/`radius` are uniform nodes — set `.value` at runtime; don't
 replace the properties with new `uniform()` objects.
+
+r185: `BloomNode.dispose()` now disposes its own materials, and the new public
+`setResolutionScale(scale)` replaces the old half-res `setSize` monkey-patching.
 
 ### Depth of Field
 
@@ -177,6 +183,20 @@ scenePass.setMRT(mrt({
 const colorTexture = scenePass.getTextureNode('output');
 const emissiveTexture = scenePass.getTextureNode('emissive');
 ```
+
+> **r185 blending change:** MRT **secondary attachments default to `NoBlending`** —
+> additive/transparent materials keep blending on the color attachment but *stomp*
+> the emissive attachment (glows stop blooming, or write black over what's behind).
+> Restore material blending on the emissive target with the repo helper:
+>
+> ```javascript
+> import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js'; // from a theme dir; repo path: src/themes/shared/mrt-blend.js
+> scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
+> ```
+>
+> Internally it does `setBlendMode('emissive', new BlendMode(MaterialBlending))` and
+> patches the upstream `merge()` blendModes bug (merged MRT nodes drop blend modes).
+> Use the helper — don't hand-roll the `setBlendMode` call.
 
 ### Selective Bloom with MRT
 
