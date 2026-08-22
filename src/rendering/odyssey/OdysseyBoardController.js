@@ -14,13 +14,14 @@ import { ODYSSEY_WORLD_QUALITY, createOdysseyWorld } from './world/odyssey-world
 import { awaitWorldBake, startWorldBake } from './world/odyssey-world-bake-loader.js';
 import { makeReliefSampler } from './world/odyssey-world-bake-data.js';
 import { ODYSSEY_CLOUD_FIELD_SPECS } from './world/odyssey-cloud-field-specs.js';
+import { forestLodDistanceForTier } from './world/odyssey-forest-species.js';
 import {
     ONE_WORLD_APPLY_EXPOSURE,
     ONE_WORLD_OUTPUT_SCALE,
     ONE_WORLD_OUTPUT_SATURATION,
     ONE_WORLD_SKY_RADIUS,
 } from './world/odyssey-world-grade.js';
-import { ODYSSEY_BREACH_P } from './world/odyssey-world-height.js';
+import { ODYSSEY_BREACH_P, ODYSSEY_SEA_LEVEL } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { isWorldVisibleAtProgress, worldAtmosphericThin, worldDepartureFade } from './world/odyssey-world-act-gate.js';
 import {
@@ -673,6 +674,7 @@ export class OdysseyBoardController {
                 cloudSpecs: this._worldBakeOptions.cloudSpecs,
                 railSamples: this._worldBakeOptions.railSamples,
                 cloudField: this._worldBakeOptions.cloudField,
+                scatter: this._worldBakeOptions.scatter,
                 forceSync: readBooleanUrlFlag('odysseyWorldBakeSync'),
             })
             : null;
@@ -2120,8 +2122,21 @@ export class OdysseyBoardController {
             const pt = getOdysseyPathPointAt(i / 47);
             return { x: pt.x, y: pt.y, z: pt.z }; // plain points: structured-clone friendly
         });
+        // The forest scatter runs in the bake worker (it needs only the height mirror and the
+        // rail); createOdysseyWorld builds the same options object and uses the landed result.
+        const forestLodValue = readUrlValue('odysseyForestLod');
+        const scatter = readBooleanUrlFlag('odysseyWorldNoForest') || readBooleanUrlFlag('odysseyWorldForestV1')
+            ? null
+            : {
+                spacing: q.treeSpacing,
+                seaLevel: ODYSSEY_SEA_LEVEL,
+                rail: railSamples,
+                visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
+                forceLod: ['hero', 'mid', 'far'].includes(forestLodValue) ? forestLodValue : null,
+                lodDistance: forestLodDistanceForTier(this.qualityName),
+            };
         return {
-            weakLane, q, cloudField, cloudFieldCount, cloudSpecs, railSamples,
+            weakLane, q, cloudField, cloudFieldCount, cloudSpecs, railSamples, scatter,
         };
     }
 

@@ -3284,14 +3284,21 @@ export function createOdysseyWorld({
     // forest whichever one is mounted, or `?odysseyWorldNoForest=1` prices a half-empty world
     // and the differential silently means something else.
     if (forest && forestV2) {
-        const zoned = scatterZonedForest(relief.sample, {
+        // The scatter is pure arithmetic over the height mirror and the rail, so the world-bake
+        // worker runs it while this thread builds clipmaps and material graphs (item 2.1
+        // follow-up). `prebaked.scatter` is trusted only when the bake was asked for THIS tree
+        // count and LOD policy — the loader is handed the same options object.
+        const scatterOptions = {
             spacing: q.treeSpacing,
             seaLevel: ODYSSEY_SEA_LEVEL,
             rail: railSamples,
             visibilityCull,
             forceLod: forestLod,
             lodDistance: forestLodDistanceForTier(qualityTier),
-        });
+        };
+        const zoned = pre.scatter && pre.scatter.stats?.trees > 0
+            ? pre.scatter
+            : scatterZonedForest(relief.sample, scatterOptions);
         // One geometry per (species, LOD) — growth stages ride the instance matrix, because a
         // stage is defined as pure height/width multipliers (see the scatter's header).
         // ⚠️ THREE SEEDED VARIANTS PER (SPECIES, LOD), NOT ONE. The first cut cached a single
@@ -3433,6 +3440,7 @@ export function createOdysseyWorld({
             relief: pre.relief?.res === q.reliefRes,
             textures: !!(preTex.sunFields && preTex.atlas && preTex.detail && preTex.macro),
             cloudField: !!pre.cloudField,
+            scatter: !!pre.scatter,
             viaWorker: !!pre.viaWorker,
             workerMs: pre.ms ?? null,
         } : null,
