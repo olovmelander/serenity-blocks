@@ -48,5 +48,13 @@ describe('earth-core drawable budget (Wave 3b ratchet)', () => {
             .forEach(([k, v]) => console.log(`  ${String(v).padStart(3)}  ${k}`));
         expect(meshes + sprites + instanced, 'drawable ceiling — consolidate before adding').toBeLessThanOrEqual(55);
         expect(meshes + sprites + instanced).toBeGreaterThan(0);
+        // MATERIAL ceiling (2026-08-22). Chapter 1's pre-reveal compile barrier measures ~1,900 ms
+        // over these materials — ~76-90 ms EACH, of which only ~4-6 ms is main-thread node building
+        // (~125 nodes/ms). The rest is per-material fixed cost: bind groups, pipeline descriptor,
+        // WGSL assembly, DXC scheduling. So the count is the lever, not graph size — sharing the
+        // chapel's molten pocket with the six node pockets (26 -> 25) measured -91 ms on ch1 and
+        // -98 ms on cold startup, while a 40 % node-count reduction was worth an estimated ~10 ms.
+        // Share an existing material before adding a new one.
+        expect(materials.size, 'material ceiling — each one is ~90 ms of the reveal').toBeLessThanOrEqual(25);
     });
 });
