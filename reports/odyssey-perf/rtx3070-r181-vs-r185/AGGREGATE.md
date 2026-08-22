@@ -977,3 +977,74 @@ today. Re-open only with a production-preview measurement that contradicts the m
 with no path to switching it on — the unlock it was waiting for does not exist. The startup work
 now goes where the arithmetic points: `compiles` is 1,417 ms of a 2,847 ms cold start, and inside
 it chapter 1 is ~2,000 ms of wall in a 6-wide pool. That is 50× the prize this row was chasing.
+
+## r185p1mat25 — what `compiles` is actually made of, and the first material deleted (2026-08-22)
+
+Row 2.16b opened with the wrong model. `compiles` was described as "mostly main-thread node
+building for chapter 1", inferred from the fan-out-20 result. Measuring it directly says something
+sharper, and it changes what is worth doing.
+
+**The cost model, measured two ways.** Chapter 1's materials were counted by walking
+`Node._getChildren` from every material's node slots in a stubbed Node build: **26 materials,
+7,843 authored TSL nodes**. Building the same graphs through three's real `WGSLNodeBuilder` puts
+the marginal cost of node building at **6.5–8.4 µs per node (~125 nodes/ms)**. So the whole
+chapter's node building is ~50–65 ms of a **1,990 ms** pre-reveal barrier: about **76 ms per
+material**, of which only ~4–6 ms is graph construction. The remaining ~95 % is per-material fixed
+cost — bind groups, pipeline descriptor, WGSL assembly, DXC scheduling. **The lever is the number
+of materials before the reveal, not the size of their graphs.**
+
+A second correction: the per-pipeline ms table this ledger has been quoting is a **queueing**
+profile, not a cost profile. `createRenderPipelineAsync`'s promise cannot resolve while the main
+thread is building the next material's graph, so a 15-node `SpriteNodeMaterial` shows up in the
+same ~600 ms band as a 1,103-node one. Read pipeline rows as "when did the main thread next come
+up for air", never as "what this shader cost".
+
+**The change.** `createSeleniteChamber` called `createMoltenPocketTSL` without `options.material`,
+so the chapel built a seventh, byte-identical copy of the `isColumn=false` molten graph — 903
+nodes carrying the whole `moltenRockField` — for exactly one mesh. The six node pockets already
+shared one. Hoisting `sharedPocketMaterial` up one level and threading it into both takes chapter 1
+to **25 materials / 6,940 nodes**.
+
+| median, load-cold, n = 3 | r185p1world4 | r185p1mat25 |
+|---|---|---|
+| startup total | 2,847 (2,825–2,867) | **2,749** (2,692–2,795) |
+| `compiles` | 1,417 | **1,322** |
+| compile-breakdown `ch1` | 1,990 (1,942–2,008) | **1,899** (1,888–1,934) |
+| board visible | 3,850 | **3,700** |
+
+**−98 ms cold, −91 ms on ch1, for one material** — and every run in the new cell beats every run in
+the baseline on both totals, so the separation is clean at n = 3. The model predicted ~76 ms; it
+came in at ~90.
+
+**Verified as a visual no-op, structurally.** The chapter builder calls unseeded `Math.random()`
+61 times, so captures are nondeterministic run to run — a control capture of *identical* code
+produced byte-different PNGs and a different triangle count, which is why a pixel diff cannot
+settle this. With `Math.random` replaced by a seeded PRNG and the chapter built twice, all **53
+drawables are byte-identical** — same geometry position hashes, transforms, blending, side and
+depth state — and the only difference is the material count. On the GPU side, mean-luma across 20
+frames moved less between before and after (max 2.34, mean 1.27) than between two runs of the same
+code (max 5.98, mean 2.06), and draw calls are unchanged.
+
+**Three larger proposals were rejected, one of them dangerous.** Wrapping `moltenRockField` and the
+baked-noise samplers in `Fn(...).setLayout(...)` promised a 40 % node cut and would have shipped
+**invalid WGSL**. r185 caches a layout Fn's generated body in a module-level WeakMap keyed by
+backend → shaderNode; on a cache hit the body is never re-flowed, so `getUniformFromNode` never
+runs in the second material's builder and no texture binding is registered there — while binding
+names come from a per-builder counter. Material A declares `var nodeUniform0 : texture_3d<f32>`;
+material B includes the same cached body, calls `textureSample(nodeUniform0, …)`, declares no
+texture, and its own `nodeUniform0` is an unrelated f32. Dawn rejects it — a dead chapter 1. It was
+reproduced against the real `WGSLNodeBuilder`, and the reason the repo's existing emission harness
+could not see it is that `buildFragment` gives every material a **fresh** stub renderer, so each
+gets its own function cache — the inverse of the running app.
+
+`tests/unit/odyssey-tsl-fn-binding-guard.test.js` now pins the rule (*a layout-carrying `Fn` may
+not close over a texture or sampler unless it is instantiated per material*), including a positive
+control that fails if the detector stops detecting. The shared noise lib is unaffected — every
+helper in it is pure math, which is why `snoise3` may keep being shared. The third rejection was
+hoisting three identical basin sprite materials: real, but priced against pipeline count, and
+r185 already collapses identical shader sources to one `ProgrammableStage`.
+
+**What this points at next.** 25 materials × ~76–90 ms is the whole barrier. Every further material
+that can be shared or moved past the reveal is worth roughly another 90 ms, and chapter 1 still
+holds seven 15-node `SpriteNodeMaterial` instances plus two buckets (the lava fall and its splash)
+that the reveal frame provably does not draw.
