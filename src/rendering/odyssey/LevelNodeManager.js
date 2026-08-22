@@ -811,24 +811,52 @@ export class LevelNodeManager {
         this.coreArrayTexture.generateMipmaps = false;
         this.coreArrayTexture.needsUpdate = true;
         // Async back-fill: decode each distinct icon and blit it into its layer.
-        this.iconUrlToLayer.forEach((layer, url) => {
-            this.textureLoader.load(url, (tex) => {
-                try {
-                    const canvas = document.createElement('canvas');
+        //
+        // Item 2.4 (2026-08-21): this used to be a TextureLoader per icon, each with its own
+        // 256² canvas, a synchronous decode inside drawImage, and `needsUpdate = true` — which
+        // re-uploads the WHOLE array (SZ²·4·layers ≈ 4.5 MB, once per icon ≈ 70 MB) to land one
+        // layer. Now: `img.decode()` decodes off the main thread (and handles the SVG icons that
+        // createImageBitmap does not), ONE canvas is reused for every icon, and
+        // `addLayerUpdate(layer)` makes the backend write just that layer
+        // (WebGPUTextureUtils.js:621-629, which clears the set after the upload).
+        this._backfillCoreAtlas(SZ);
+    }
+
+    /**
+     * Decode each distinct icon and blit it into its atlas layer, off the boot path.
+     * @param {number} SZ atlas layer size in px
+     * @private
+     */
+    _backfillCoreAtlas(SZ) {
+        if (typeof document === 'undefined' || this.iconUrlToLayer.size === 0) return;
+        let canvas = null;
+        let ctx = null;
+        const blit = async (url, layer) => {
+            try {
+                const image = new Image();
+                image.decoding = 'async';
+                image.src = url;
+                await image.decode();
+                if (!this.coreArrayTexture) return; // disposed while decoding
+                if (!ctx) {
+                    canvas = document.createElement('canvas');
                     canvas.width = SZ;
                     canvas.height = SZ;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(tex.image, 0, 0, SZ, SZ); // normalize any size → SZ²
-                    const img = ctx.getImageData(0, 0, SZ, SZ).data;
-                    this.coreArrayTexture.image.data.set(img, layer * SZ * SZ * 4);
-                    this.coreArrayTexture.needsUpdate = true;
-                    tex.dispose(); // only needed the decoded pixels
-                    this._markUploadDirty(); // re-run update() so aCore.x flips to the real layer
-                } catch (err) {
-                    console.warn('[LevelNodes] core atlas blit failed for', url, err);
+                    ctx = canvas.getContext('2d', { willReadFrequently: true });
                 }
-            });
-        });
+                ctx.clearRect(0, 0, SZ, SZ);
+                ctx.drawImage(image, 0, 0, SZ, SZ); // normalize any size → SZ²
+                const img = ctx.getImageData(0, 0, SZ, SZ).data;
+                this.coreArrayTexture.image.data.set(img, layer * SZ * SZ * 4);
+                this.coreArrayTexture.addLayerUpdate?.(layer);
+                this.coreArrayTexture.needsUpdate = true;
+                this._markUploadDirty(); // re-run update() so aCore.x flips to the real layer
+            } catch (err) {
+                console.warn('[LevelNodes] core atlas blit failed for', url, err);
+            }
+        };
+        // Fire and forget: blit() swallows its own errors, so no rejection can escape.
+        this.iconUrlToLayer.forEach((layer, url) => { blit(url, layer); });
     }
 
     /** LEVER 1 — the single InstancedMesh that draws all inner cores (8-buffer-safe: sphere

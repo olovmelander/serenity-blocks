@@ -12,7 +12,7 @@ import { bakeOdysseyCloudField } from '../../src/rendering/odyssey/world/odyssey
 // the suite fast; the math is resolution-agnostic (same functions, same constants).
 import {
     bakeReliefData, bakeMacroData, bakeDetailNormalData, bakeWorldTextureData, makeReliefSampler,
-    worldTextureDataBuffers,
+    worldTextureDataBuffers, bakeReliefBand, mergeReliefBands, reliefBandRanges,
 } from '../../src/rendering/odyssey/world/odyssey-world-bake-data.js';
 
 /**
@@ -154,5 +154,38 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         buffers.forEach((b) => expect(b).toBeInstanceOf(ArrayBuffer));
         // Detail bake is the pinned cloud silhouette's host: same field, same stats.
         expect(sha(baked.detail.data)).toBe(sha(bakeDetailNormalData().data));
+    });
+});
+
+// Item 2.4 (2026-08-21): the relief bake runs as parallel row BANDS in the worker lanes, so the
+// concatenation of bands must be byte-identical to the whole bake — that identity is what lets the
+// split be a pure scheduling change. Small resolutions keep the suite fast; the maths is
+// resolution-agnostic (same functions, same constants, same order).
+describe('relief bands (parallel bake lanes)', () => {
+    it('merge to exactly the whole-plate bake for every band count', () => {
+        for (const res of [64, 96]) {
+            const whole = bakeReliefData(res);
+            for (const count of [1, 2, 3, 4]) {
+                const bands = reliefBandRanges(res, count)
+                    .map((range) => bakeReliefBand(res, range.jStart, range.jEnd));
+                const merged = mergeReliefBands(bands, res);
+                expect(sha(merged.data), `data res=${res} bands=${count}`).toBe(sha(whole.data));
+                expect(sha(merged.total), `total res=${res} bands=${count}`).toBe(sha(whole.total));
+                expect(merged.step).toBe(whole.step);
+                expect(merged.origin).toBe(whole.origin);
+            }
+        }
+    });
+
+    it('covers every row exactly once, whatever the band count', () => {
+        for (const count of [1, 2, 3, 5, 7]) {
+            const ranges = reliefBandRanges(64, count);
+            expect(ranges[0].jStart).toBe(0);
+            expect(ranges.at(-1).jEnd).toBe(64);
+            ranges.forEach((range, i) => {
+                expect(range.jEnd).toBeGreaterThan(range.jStart);
+                if (i > 0) expect(range.jStart).toBe(ranges[i - 1].jEnd);
+            });
+        }
     });
 });

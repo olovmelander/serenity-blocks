@@ -84,6 +84,96 @@ export function bakeReliefData(reliefRes) {
 }
 
 /**
+ * ONE HORIZONTAL BAND of {@link bakeReliefData}, rows [jStart, jEnd) — the same arithmetic in
+ * the same order, so concatenated bands are byte-identical to the whole bake (pinned by
+ * tests/unit/odyssey-world-bakes-golden.test.js).
+ *
+ * WHY (plan item 2.4, 2026-08-21): once the startup CPU steps stopped costing a second of
+ * yield latency, the world bake became the critical path and its longest lane is the
+ * dependency chain relief → sunFields. The noise, the derivative pack and the CPU height
+ * mirror are all PER TEXEL, so the relief half splits across workers; only the sun march (which
+ * needs the whole plate, and normalises over it) stays whole.
+ *
+ * The pack reads the four neighbours of each texel, so a band computes one HALO row of noise on
+ * each side (clamped at the plate edges exactly as the whole bake clamps).
+ * @param {number} reliefRes
+ * @param {number} jStart first row of the band (inclusive)
+ * @param {number} jEnd last row of the band (exclusive)
+ * @returns {{data: Uint16Array, total: Float32Array, jStart: number, jEnd: number, res: number}}
+ */
+export function bakeReliefBand(reliefRes, jStart, jEnd) {
+    const step = RELIEF_EXTENT / (reliefRes - 1);
+    const origin = -RELIEF_EXTENT / 2;
+    const j0 = Math.max(0, jStart - 1); // halo row above
+    const j1 = Math.min(reliefRes, jEnd + 1); // halo row below
+    const rows = j1 - j0;
+
+    const relief = new Float32Array(rows * reliefRes);
+    for (let j = j0; j < j1; j += 1) {
+        const z = origin + (j * step);
+        for (let i = 0; i < reliefRes; i += 1) {
+            relief[((j - j0) * reliefRes) + i] = odysseyWorldRelief(origin + (i * step), z);
+        }
+    }
+    // Same clamp as the whole bake, expressed against the local rows.
+    const at = (i, j) => relief[((Math.max(j0, Math.min(j1 - 1, j)) - j0) * reliefRes)
+        + Math.max(0, Math.min(reliefRes - 1, i))];
+
+    const bandRows = jEnd - jStart;
+    const data = new Uint16Array(bandRows * reliefRes * 4);
+    const total = new Float32Array(bandRows * reliefRes);
+    for (let j = jStart; j < jEnd; j += 1) {
+        const z = origin + (j * step);
+        for (let i = 0; i < reliefRes; i += 1) {
+            const local = ((j - jStart) * reliefRes) + i;
+            const centre = relief[((j - j0) * reliefRes) + i];
+            const idx = local * 4;
+            data[idx] = DataUtils.toHalfFloat(centre);
+            data[idx + 1] = DataUtils.toHalfFloat((at(i + 1, j) - at(i - 1, j)) / (2 * step));
+            data[idx + 2] = DataUtils.toHalfFloat((at(i, j + 1) - at(i, j - 1)) / (2 * step));
+            const neighbourMean = (at(i + 1, j) + at(i - 1, j) + at(i, j + 1) + at(i, j - 1)) / 4;
+            data[idx + 3] = DataUtils.toHalfFloat((neighbourMean - centre) / step);
+            const x = origin + (i * step);
+            total[local] = odysseyWorldMacro(x, z) + (centre * odysseyWorldDetailWeight(x, z));
+        }
+    }
+    return {
+        data, total, jStart, jEnd, res: reliefRes,
+    };
+}
+
+/**
+ * Concatenate {@link bakeReliefBand} results (any order) into a whole-plate relief bake.
+ * @param {Array<{data: Uint16Array, total: Float32Array, jStart: number, jEnd: number}>} bands
+ * @param {number} reliefRes
+ */
+export function mergeReliefBands(bands, reliefRes) {
+    const data = new Uint16Array(reliefRes * reliefRes * 4);
+    const total = new Float32Array(reliefRes * reliefRes);
+    for (const band of bands) {
+        data.set(band.data, band.jStart * reliefRes * 4);
+        total.set(band.total, band.jStart * reliefRes);
+    }
+    return {
+        data,
+        total,
+        res: reliefRes,
+        step: RELIEF_EXTENT / (reliefRes - 1),
+        origin: -RELIEF_EXTENT / 2,
+    };
+}
+
+/** Row ranges for `count` bands over `reliefRes` rows (last band takes the remainder). */
+export function reliefBandRanges(reliefRes, count) {
+    const per = Math.ceil(reliefRes / count);
+    const ranges = [];
+    for (let jStart = 0; jStart < reliefRes; jStart += per) {
+        ranges.push({ jStart, jEnd: Math.min(reliefRes, jStart + per) });
+    }
+    return ranges;
+}
+
+/**
  * The CPU mirror of the drawn height as a bilinear sampler over a baked `total` grid — built
  * on whichever thread holds the array (the worker result is transferred, the sampler rebuilt).
  * @param {{total: Float32Array, res: number, step: number, origin: number}} relief
