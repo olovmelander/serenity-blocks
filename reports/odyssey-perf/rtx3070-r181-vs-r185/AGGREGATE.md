@@ -885,3 +885,36 @@ backend: r181=webgpu r185=webgpu r185p1=webgpu r185p1barrier=webgpu r185p1boot=w
 | triangles p50 | 255159 (255123–255179, n=3) | 255195 (255195–255207, n=3) | 255183 (255163–255207, n=3) | 242825 (242821–242849, n=3) | 259957 (255227–259985, n=3) | 238087 (238059–242845, n=3) | 255207 (255159–255211, n=3) | 255159 (255147–255191, n=3) | 259949 (259937–259989, n=3) | 242849 (238047–242861, n=3) | 259973 (255183–259985, n=3) | 259965 (259957–259985, n=3) | 242861 (242845–242865, n=3) | 0% | 0% | -0% | -5% | -5% | 2% | 2% | -7% | -7% | 0% | 0% | 0% | -0% | 2% | 2% | -5% | -5% | 2% | 2% | 2% | 2% | -5% | -5% |
 | JS heap MB | 211.8 (203.3–212.9, n=3) | 193.7 (189.6–213.7, n=3) | 229.5 (184.8–231.7, n=3) | 208.2 (196.3–211.4, n=3) | 213.0 (203.3–225.9, n=3) | 204.2 (199.3–211.4, n=3) | 207.1 (197.4–207.8, n=3) | 226.5 (223.2–229.0, n=3) | 228.4 (216.0–231.7, n=3) | 212.8 (202.0–215.0, n=3) | 223.4 (204.0–232.2, n=3) | 212.9 (201.5–215.4, n=3) | 217.7 (214.1–220.1, n=3) | -9% | 8% | 19% | -2% | 8% | 1% | 10% | -4% | 5% | -2% | 7% | 7% | 17% | 8% | 18% | 0% | 10% | 5% | 15% | 0% | 10% | 3% | 12% |
 backend: r181=webgpu r185=webgpu r185p1=webgpu r185p1barrier=webgpu r185p1boot=webgpu r185p1forest=webgpu r185p1lake=webgpu r185p1light=webgpu r185p1live=webgpu r185p1nodes=webgpu r185p1world=webgpu r185p1world2=webgpu r185p1world4=webgpu
+
+
+---
+
+## r185p1width20 / r185p1gpuwarm — two negative results worth keeping (2026-08-22)
+
+Both are measured against `r185p1world4` (same code, one change each), 1.5 s menu dwell, n = 3.
+
+| median | r185p1world4 | r185p1width20 (fan-out 20) | r185p1gpuwarm (device warmed at boot) |
+|---|---|---|---|
+| load-cold startup | **2,847** | 3,338 | 3,267 |
+| load-cold board visible | **3,850** | 4,394 | 4,257 |
+| cold `renderer` | 323 | 382 | **42** |
+| cold `nodes` | 88 | 188 | 406 |
+| cold `world` | 150 | 819 | 798 |
+| cold `compiles` | 1,417 | **858** | 1,137 |
+| load-warm p99 | 141 | 254 | 169 |
+
+**Width 20** halves the `compiles` bucket and loses half a second overall: r185 builds each render
+object's node graph on the main thread between yields, so a wider pool moves that work into
+`nodes`, `world` and `creates` rather than removing it. The default (6) stands;
+`?odysseyCompileWidth=N` remains for re-measuring on other machines.
+
+**The device warm** does what it says — `renderer` 323 → 42 ms — and still loses 420 ms, because
+`await initRenderer()` was 320 ms of main-thread idle during which the world-bake workers had the
+cores to themselves. Removing a wait that was covering another critical path does not help; the
+time reappears in `nodes` (which awaits the relief stage) and `world`, plus contention. It ships
+behind `?gpuWarm=1` until the bake starts at menu time.
+
+Together with item 2.15's rejected first cut, these three say the same thing: **from `renderer`
+through `world` the Odyssey startup is bound by the world bake, and `compiles` is bound by
+main-thread node building** — not by GPU compile parallelism. That is what plan row 2.16 now
+targets.
