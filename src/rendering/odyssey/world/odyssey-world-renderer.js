@@ -1914,6 +1914,12 @@ export function createOdysseyWorld({
     waterMat.depthWrite = false;
     waterMat.alphaTest = 0.004;
     waterMat.side = THREE.DoubleSide;
+    // NOT forceSinglePass, deliberately (2026-08-22 audit): every other transparent DoubleSide
+    // surface in the startup groups is a single facet or additively blended, so the
+    // BackSide/FrontSide split is provably redundant there. The water is neither — it is a
+    // displaced sheet with NORMAL blending that the rail passes UNDER (the sunken stretch
+    // with the god rays and fish), so where the surface folds over itself the two passes
+    // composite far-then-near. Keeping the split costs one pipeline and buys correct order.
     // MEASUREMENT LEVER (see the `water` option): when off, the mesh is never created, so the
     // sea costs zero draws, zero vertex work, zero fill AND zero pipeline compile. The TSL
     // node objects above are plain JS until a material they feed is rendered, so building them
@@ -2674,6 +2680,7 @@ export function createOdysseyWorld({
         rayMat.blending = THREE.AdditiveBlending;
         rayMat.depthWrite = false;
         rayMat.side = THREE.DoubleSide;
+        rayMat.forceSinglePass = true;
         rayMat.fog = false;
 
         const hash01 = (n) => {
