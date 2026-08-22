@@ -1048,3 +1048,64 @@ r185 already collapses identical shader sources to one `ProgrammableStage`.
 that can be shared or moved past the reveal is worth roughly another 90 ms, and chapter 1 still
 holds seven 15-node `SpriteNodeMaterial` instances plus two buckets (the lava fall and its splash)
 that the reveal frame provably does not draw.
+
+## r185p1mat23 — the per-material cost is ~30 ms + a graph term, and a sprite experiment that failed (2026-08-23)
+
+The previous section priced a material at "~76 ms, regardless of graph size" and said the count was
+the lever, not the graph. That was an average (1,990 ms ÷ 26 materials) doing the work of a rate,
+and this cell corrects it.
+
+**The cell.** The three basin coronas built one copy each of the same 15-node sprite graph, with
+byte-identical arguments inside a `forEach`. Sharing one takes chapter 1 to 23 materials.
+
+| median, load-cold | r185p1world4 (n=3) | r185p1mat25 (n=3) | r185p1mat23 (n=5) |
+|---|---|---|---|
+| startup total | 2,847 (2,825–2,867) | 2,749 (2,692–2,795) | **2,690** (2,646–2,699) |
+| `compiles` | 1,417 | 1,322 | **1,262** |
+| compile-breakdown `ch1` | 1,990 | 1,899 | **1,849** |
+| compile-breakdown `board` | 1,075 | 991 | **949** |
+
+**A first pass at this cell read FLAT (2,752) and was discarded**: it was measured while an agent
+workflow was running, and the spread gave it away — 217 ms across three runs, against 53 ms for the
+quiet n=5 re-run. The ledger's own rule (commit, quiet machine, then drive) exists for this; the
+contaminated cell is not in the reports directory.
+
+**The corrected model.** One 903-node material was worth ~90 ms. Two 15-node materials are worth
+59 ms together, i.e. **~30 ms each**. So a material costs roughly **30 ms of fixed work plus a term
+that grows with its graph** — not a flat ~76-90 ms, and not node-building time either (that runs at
+~125 nodes/ms, so 903 nodes is ~7 ms of the 90). The fixed part is bind groups, pipeline descriptor
+and WGSL assembly; the variable part is DXC time on a bigger shader. Cumulative for the two dedupes:
+**cold 2,847 → 2,690 ms (−157), ch1 1,990 → 1,849.**
+
+### The glow-sprite unification — built, measured as a regression, reverted
+
+Chapter 1 had five structurally identical 15-node `SpriteNodeMaterial`s that differed only in the
+tint and alpha CONSTANTS baked into their graphs. r185's `UserDataNode` moves those to the sprites
+(`userData('glowTint','color')`), so five materials become two — one per glow texture — for a
+predicted ~90 ms.
+
+It was built, and it is wrong. Every check short of looking at it passed:
+
+- 23 → 20 materials, 53 drawables unchanged, and the structural diff (seeded PRNG) touched only
+  `basalt-colonnade-walls`, the one drawable that already differs between two runs of unmodified code.
+- A new test built three sprites carrying different tints through the real `WGSLNodeBuilder` on one
+  shared backend and confirmed **byte-identical WGSL** plus no constant-folded tint — so they really
+  would have been one pipeline.
+- Full suite green, 3,713 tests.
+
+The screenshot killed it. Mean luma across 20 frames moved **max 85.9 / mean 19.6** against a
+same-code run-to-run reference of max 5.98 / mean 2.06, and the frames are washed out in flat
+orange: the large additive glows (the ambient sprite is 120 units across) render at full intensity,
+so the per-object alpha is not arriving even though every sprite is seated and `UserDataNode`
+carries `updateType = OBJECT` and reads `state.object.userData`. Draw calls are unchanged, so
+nothing appeared or vanished — the values are simply not per-object in practice on this path.
+
+**The lesson, and it is the second time this session.** Identical WGSL proves the pipeline is
+shared; it does not prove the uniforms reach the shader. A test can confirm a mechanism's *shape*
+and still be blind to whether it *works*, exactly as a Worker stub that never replies could not see
+a hang. ADR-0007's screenshot requirement is what caught this, on a change that three independent
+static checks had cleared.
+
+Consequence for the census: the "sprite unification" candidates (5→1 and 5→2, the two largest
+numbers on that list at 340 ms and 255 ms) are **not available as written**, and anything else
+resting on `UserDataNode` per-object values needs a rendered frame before it is believed.
