@@ -186,6 +186,12 @@ export function startWorldBake(request) {
     };
 
     // Lane 1..N — relief bands, merged here, then the sun march on the merged mirror.
+    // Band count. More bands shorten the relief half of the only dependency chain (bands -> sun
+    // march) but each one is another module Worker to spawn, and spawning is NOT free: measured
+    // 2026-08-22 on the dev server, the bake wall was 1,388 ms at 3 bands, 1,412 at 6 and 1,514 at
+    // 8 — the split paid for itself and no more. Three it is (two on small machines);
+    // ?odysseyBakeBands=N re-measures it anywhere (a packaged build spawns from one 107 KB chunk,
+    // so its knee may sit higher).
     const cores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
     const bandCount = Math.max(1, Math.min(request.bandCount ?? (cores >= 8 ? 3 : 2), 8));
     const ranges = reliefBandRanges(request.reliefRes, bandCount);
