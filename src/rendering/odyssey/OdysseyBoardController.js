@@ -23,6 +23,7 @@ import {
 } from './world/odyssey-world-grade.js';
 import { ODYSSEY_BREACH_P, ODYSSEY_SEA_LEVEL } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
+import { warmWebGpuDevice } from '../webgpu-device-warm.js';
 import { isWorldVisibleAtProgress, worldAtmosphericThin, worldDepartureFade } from './world/odyssey-world-act-gate.js';
 import {
     STEAM_QUENCH_EXIT_HALF_WIDTH,
@@ -679,6 +680,7 @@ export class OdysseyBoardController {
                 cloudSpecs: this._worldBakeOptions.cloudSpecs,
                 railSamples: this._worldBakeOptions.railSamples,
                 cloudField: this._worldBakeOptions.cloudField,
+                bandCount: Number.parseInt(readUrlValue('odysseyBakeBands'), 10) || undefined,
                 scatter: this._worldBakeOptions.scatter,
                 forceSync: readBooleanUrlFlag('odysseyWorldBakeSync'),
             })
@@ -2276,7 +2278,15 @@ export class OdysseyBoardController {
         // WebGPU with automatic WebGL2 fallback (one TSL codebase runs on both backends).
         // ?forceWebGL=1 forces the WebGL2 backend for QA/parity testing.
         const forceWebGL = new URLSearchParams(window.location.search).get('forceWebGL') === '1';
+        const powerPreference = readBooleanUrlFlag('odysseyLowPowerGpu') ? 'low-power' : 'high-performance';
+        // ITEM 2.5: requestAdapter + requestDevice is ~97 % of this bucket and depends on nothing
+        // the board knows, so it was started while the menu was up (rendering/webgpu-device-warm.js).
+        // Await it here — it is normally long resolved — and hand the device to three, which then
+        // skips its own request. three does NOT destroy an injected device (dispose() guards on
+        // parameters.device), so it survives a board teardown and the next entry reuses it.
+        const warmDevice = forceWebGL ? null : await warmWebGpuDevice({ powerPreference });
         this.renderer = new THREE.WebGPURenderer({
+            ...(warmDevice ? { device: warmDevice } : {}),
             // QW1: scene-pass MSAA dropped (antialias:false). Edges are softened by the post
             // graph (ACES + grade + grain); MSAA on a full-res HalfFloat scene RT was a ~4×
             // sample multiplier on the heaviest pass. Biggest steady-state GPU win.
@@ -2287,7 +2297,7 @@ export class OdysseyBoardController {
             // 'high-performance' gets handed the discrete part no matter what Chromium's
             // force_low_power_gpu switch says — the measurement would silently be Lane A
             // again, at Lane B's resolution, and nobody would be able to tell from the file.
-            powerPreference: readBooleanUrlFlag('odysseyLowPowerGpu') ? 'low-power' : 'high-performance',
+            powerPreference,
             // Batch0: enable GPU timestamp tracking so renderer.info.render.timestamp is
             // populated (resolved after each render). ONLY when the ?odysseyAAA debug overlay is
             // active — otherwise the query pool fills and overflows (the renderer tracks queries

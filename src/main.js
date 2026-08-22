@@ -113,6 +113,7 @@ import {
 } from './utils/desktop-performance-policy.js';
 import { createBootStageCoordinator } from './utils/boot-stage-coordinator.js';
 import { warmThreeEarly, deferThemeWarmWhileOdysseyLoads } from './utils/startup-warm.js';
+import { warmWebGpuDevice, warmWebGpuDeviceMs } from './rendering/webgpu-device-warm.js';
 
 import { CustomCursor } from './ui/components/custom-cursor.js';
 import { formatGpuRemediationHtml } from './ui/desktop-gpu-remediation.js';
@@ -5015,6 +5016,17 @@ async function bootstrap() {
     let startupPipeline = null;
     // APP BOOT (2026-08-21): request the three chunk first thing (off the static boot path).
     warmThreeEarly();
+    // ITEM 2.5: the GPUDevice every WebGPU theme and the Odyssey board need costs ~0.3-0.4 s to
+    // request and depends on nothing but the adapter, so ask for it now — the menu is DOM-only and
+    // never touches it. Failures resolve to null and the renderer requests its own, as before.
+    // ?noGpuWarm=1 opts out (A/B).
+    try {
+        if (new URLSearchParams(window.location?.search || '').get('noGpuWarm') !== '1') {
+            warmWebGpuDevice().then((device) => {
+                if (device) performanceMonitor.recordEvent('startup_gpu_device_warmed', { ms: warmWebGpuDeviceMs() });
+            });
+        }
+    } catch { /* no location / no navigator.gpu — the renderer requests its own */ }
 
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
