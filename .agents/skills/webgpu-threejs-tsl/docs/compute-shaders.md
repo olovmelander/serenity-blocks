@@ -452,7 +452,7 @@ instead and build the clip-space position yourself — see the working pattern i
 ### Point/Sprite Particles with Computed Positions
 
 For `PointsNodeMaterial`/`SpriteNodeMaterial`, `positionNode` means the particle
-**center** (unlike mesh materials, where it replaces vertex positions). The r181
+**center** (unlike mesh materials, where it replaces vertex positions). The r185
 pattern for instanced particles is a `THREE.Sprite` with the storage buffer bound
 via `.toAttribute()`:
 
@@ -474,7 +474,7 @@ scene.add(particles);
 // IMPORTANT: Always initialize the renderer first
 await renderer.init();
 
-// Synchronous compute (preferred since r181)
+// Synchronous compute (preferred since r181; unchanged in r185)
 renderer.compute(computeShader);
 
 // Multiple computes
@@ -482,7 +482,7 @@ renderer.compute(computeInit);
 renderer.compute(computePhysics);
 renderer.compute(computeCollisions);
 
-// Note: computeAsync() is deprecated since r181.
+// Note: computeAsync() has been deprecated since r181 (still deprecated in r185).
 // Use await renderer.init() at startup, then renderer.compute() synchronously.
 ```
 

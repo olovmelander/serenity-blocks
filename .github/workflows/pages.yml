@@ -84,6 +84,12 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
+      # Shipped-artifact IP-string gate (tetris_legal_review.md v4.0, P0.7). It
+      # scans public/ + index.html + dist/, so it MUST run after the build or it
+      # silently skips the built bundles — which is where a mark token actually
+      # reaches users. Previously defined as an npm script but wired into no
+      # workflow, so it had never run in CI.
+      - run: npm run check:ip-strings
       - run: npm run check:pages-artifact
       - uses: actions/upload-pages-artifact@v5
         with:

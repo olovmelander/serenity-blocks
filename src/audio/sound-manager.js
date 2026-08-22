@@ -63,6 +63,7 @@ export class SoundManager {
         this.preloadedTrackKey = null;
         this.lastAnalyzerBootstrapAtMs = 0;
         this.analyzerBootstrapCooldownMs = 800;
+        this._deferredAnalysisHandle = null;
         this.lastAnalyzerBootstrapError = null;
         this.lastAudioAnalysis = {
             bassEnergy: 0,
@@ -273,6 +274,33 @@ export class SoundManager {
             beatDetected: false,
         };
         this.lastAnalyzerBootstrapError = null;
+    }
+
+    /**
+     * Attach the analyser graph at idle (creating the AudioContext then) — never on the boot
+     * path. Idempotent; `?audioAnalysisSync=1` restores the synchronous attach for A/B.
+     */
+    scheduleDeferredAudioAnalysis() {
+        if (this.audioContext || this._deferredAnalysisHandle) return;
+        let sync = false;
+        try {
+            sync = typeof window !== 'undefined'
+                && new URLSearchParams(window.location?.search || '').get('audioAnalysisSync') === '1';
+        } catch { /* no window */ }
+        if (sync || typeof window === 'undefined') {
+            this.ensureAudioAnalysisReady({ force: true });
+            return;
+        }
+        const run = () => {
+            this._deferredAnalysisHandle = null;
+            if (!this.audioElement) return;
+            this.ensureAudioAnalysisReady({ force: true });
+        };
+        if (typeof window.requestIdleCallback === 'function') {
+            this._deferredAnalysisHandle = window.requestIdleCallback(run, { timeout: 2500 });
+        } else {
+            this._deferredAnalysisHandle = setTimeout(run, 1200);
+        }
     }
 
     ensureAudioAnalysisReady({ force = false } = {}) {
@@ -827,7 +855,17 @@ export class SoundManager {
         this.audioElement.muted = this.isMuted;
         this.audioElement.loop = false;
 
-        this.ensureAudioAnalysisReady({ force: true });
+        // The analyser (music-reactive visuals) needs the AudioContext; the music does not. On a
+        // cold boot `new AudioContext()` blocks the main thread while the audio service starts —
+        // measured 346 ms on the menu's first track (Electron CPU profile, 2026-08-21; 60 ms in a
+        // bare window, the rest is contention with the GPU process starting alongside). So the
+        // FIRST context is created at idle, after the track is already playing; once it exists
+        // the analyser attaches synchronously as before.
+        if (this.audioContext) {
+            this.ensureAudioAnalysisReady({ force: true });
+        } else {
+            this.scheduleDeferredAudioAnalysis();
+        }
 
         this.playPromise = this.audioElement.play();
         if (this.playPromise !== undefined) {

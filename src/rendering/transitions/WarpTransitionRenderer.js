@@ -1212,6 +1212,33 @@ export class WarpTransitionRenderer {
     // ═══════════════════════════════════════════════════════════════
 
     /**
+     * Compile every program in the warp scene WITHOUT stalling the GPU process, then render the
+     * hidden prewarm frame. The classic `WebGLRenderer.compileAsync` uses
+     * KHR_parallel_shader_compile, so ANGLE's GLSL→HLSL→FXC work for the five noise-heavy
+     * ShaderMaterials runs on its compiler threads; a plain `prewarmFrame()` first-render compiled
+     * them synchronously on the GPU process's main thread and froze EVERY renderer sharing it —
+     * measured 2.9–5.9 s frame stalls ~10 s after the Odyssey board appeared (perf session
+     * `preinit-warp`, cold ANGLE cache; 126–500 ms when cached). Resolves when the prewarm frame
+     * has rendered; falls back to the synchronous prewarm when compileAsync is unavailable.
+     * @returns {Promise<void>}
+     */
+    async prewarmAsync() {
+        if (!this.scene) {
+            this.init();
+        }
+        if (!this.renderer || !this.scene || !this.camera) return;
+        if (typeof this.renderer.compileAsync === 'function') {
+            try {
+                await this.renderer.compileAsync(this.scene, this.camera);
+            } catch {
+                // Fall through: the synchronous prewarm below still compiles whatever is missing.
+            }
+        }
+        if (!this.renderer || !this.scene) return; // disposed while compiling
+        this.prewarmFrame();
+    }
+
+    /**
      * Render one hidden frame to prewarm shaders/material programs.
      */
     prewarmFrame() {

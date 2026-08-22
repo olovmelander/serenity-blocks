@@ -435,6 +435,8 @@ export class OdysseyCameraController {
         this.mode = 'follow'; // 'follow' | 'free' | 'focus'
         this.currentPosition = this.startPosition; // Start framed toward Level 1
         this.targetPosition = this.startPosition;
+        // Travel frontier — 1 means "no limit". Only the board lowers it.
+        this.travelFrontier = 1;
         this.lookAtTarget = new THREE.Vector3();
         this.lookAtOffset = new THREE.Vector3();
         this.freeCameraQuaternion = new THREE.Quaternion();
@@ -528,6 +530,12 @@ export class OdysseyCameraController {
             magneticRadius: 0.004,
             magneticFriction: 0.45,
             idleAutoDrift: options.idleAutoDrift !== false,
+            // TRAVEL FRONTIER (see odyssey-travel-frontier.js): the furthest progress the player
+            // is currently allowed to reach, so travel can never enter a chapter that is not
+            // prepared. 1 = no limit; the board pushes a lower value while a chapter ahead is
+            // still building. Applied ONLY to the two continuous player-travel paths — manual
+            // scroll and the cinematic auto-drift — never to travelToPosition/focus, which are
+            // deliberate navigation (entering a level) rather than travel.
             autoDriftScale: 0.55,
             beatDriftScale: 0.55,
             freeCamera: {
@@ -796,7 +804,7 @@ export class OdysseyCameraController {
         this.targetPosition = THREE.MathUtils.clamp(
             this.targetPosition + effectiveDelta * this.config.scrollSpeed,
             this.config.minPosition,
-            this.config.maxPosition,
+            this.maxTravelPosition(),
         );
         this.travelModel.lastInputAt = performance.now();
         this.travelModel.inputVelocity += effectiveDelta * this.config.scrollSpeed * 2.4;
@@ -1468,7 +1476,9 @@ export class OdysseyCameraController {
         }
 
         const dt = Math.max(0, deltaTime || 0);
-        if (dt <= 0 || this.targetPosition >= this.config.maxPosition) {
+        // Stop integrating at the frontier too, so drift velocity does not accumulate against
+        // a wall and then lurch the moment the chapter ahead becomes ready.
+        if (dt <= 0 || this.targetPosition >= this.maxTravelPosition()) {
             return;
         }
 
@@ -1501,8 +1511,31 @@ export class OdysseyCameraController {
         this.targetPosition = THREE.MathUtils.clamp(
             this.targetPosition + this.travelModel.velocity * dt,
             this.config.minPosition,
-            this.config.maxPosition,
+            this.maxTravelPosition(),
         );
+    }
+
+    /**
+     * The furthest position continuous travel may currently reach: the journey end, or the
+     * board's travel frontier when a chapter ahead is not yet prepared.
+     * @returns {number} max travel progress
+     */
+    maxTravelPosition() {
+        const frontier = Number.isFinite(this.travelFrontier) ? this.travelFrontier : 1;
+        return Math.min(this.config.maxPosition, frontier);
+    }
+
+    /**
+     * Set the travel frontier (see odyssey-travel-frontier.js). Clamps the TARGET only — never
+     * currentPosition — so a frontier that retreats behind the player stops travel rather than
+     * yanking them backwards.
+     * @param {number} frontier max reachable progress, or 1 for no limit
+     */
+    setTravelFrontier(frontier) {
+        this.travelFrontier = Number.isFinite(frontier) ? frontier : 1;
+        if (this.targetPosition > this.travelFrontier) {
+            this.targetPosition = Math.max(this.currentPosition, this.travelFrontier);
+        }
     }
 
     updateFollow(deltaTime) {

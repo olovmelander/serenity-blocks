@@ -1,15 +1,61 @@
 {
-  "generatedAt": "2026-06-21T09:37:12.883Z",
-  "totalThemes": 1,
-  "captured": 1,
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-21T09:23:20.711Z",
+  "startedAt": "2026-08-21T09:22:03.932Z",
+  "runId": "2026-08-21T09-22-03-932Z",
+  "baseUrl": "http://127.0.0.1:4174/",
+  "registryThemeCount": 61,
+  "selectedThemeCount": 2,
+  "completedThemeCount": 2,
+  "passed": 2,
   "failed": 0,
-  "settleTimeMs": 25000,
+  "interrupted": false,
+  "execution": {
+    "concurrency": 1,
+    "processIsolation": "fresh-electron-process-per-theme",
+    "productionBuild": true,
+    "externalServer": false,
+    "cooldownMs": 2000,
+    "failureCooldownMs": 15000
+  },
+  "selectedThemes": [
+    "neon-district",
+    "golden-forest"
+  ],
   "results": [
     {
-      "theme": "lunara",
+      "theme": "neon-district",
+      "displayName": "Neon District",
+      "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\lunara.png",
-      "error": null
+      "screenshot": "docs\\theme-screenshots\\neon-district.png",
+      "report": "docs\\theme-screenshots\\results\\neon-district.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "golden-forest",
+      "displayName": "Golden Forest",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\golden-forest.png",
+      "report": "docs\\theme-screenshots\\results\\golden-forest.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
     }
   ]
 }

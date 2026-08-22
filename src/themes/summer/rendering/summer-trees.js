@@ -7,8 +7,10 @@
  * the meadow effect (`makeTreeMat`), so the trees share the scene's `uTime`/`uBreeze`
  * clock and its `shade()`/`distFog()` look. Per-instance world-XZ phase (`aWorldXZ`)
  * desyncs neighbouring trees and feeds the world-coherent gust — the same instancing
- * pattern the grass/flowers use (positionNode runs before instanceMatrix, so wind bends
- * in LOCAL tree space and the gust is sampled at the per-instance attribute).
+ * pattern the grass/flowers use (wind mask from positionGeometry, output =
+ * positionLocal.add(bend): identical on r181, where the instanceMatrix applies after
+ * positionNode, and keeps instance placement on r185, where it applies before; the
+ * gust is sampled at the per-instance attribute).
  *
  * Geometry comes from summer-flora.js (unit-height templates, baked vertex colour); the
  * InstancedMesh scale sets each tree's world height.

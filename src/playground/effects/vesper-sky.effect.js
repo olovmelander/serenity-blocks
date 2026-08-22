@@ -18,7 +18,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, float, vec2, vec3, uniform, normalize, positionLocal,
-    clamp, smoothstep, abs, mix, sin, floor, fract, dot, atan2, pow, max, length,
+    smoothstep, abs, mix, sin, floor, fract, dot, atan, pow, max, length,
 } from 'three/tsl';
 
 export const meta = {
@@ -73,7 +73,7 @@ export function create({ scene, params }) {
 
     // Faint cool aurora smear sitting just above the horizon band.
     const auroraBand = smoothstep(0.02, 0.13, y).mul(smoothstep(0.44, 0.11, y));
-    const auroraWave = sin(atan2(dir.x, dir.z).mul(7.0).add(uTime.mul(0.15))).mul(0.5).add(0.5);
+    const auroraWave = sin(atan(dir.x, dir.z).mul(7.0).add(uTime.mul(0.15))).mul(0.5).add(0.5);
     sky = sky.add(cAurora.mul(auroraBand).mul(auroraWave).mul(0.07));
 
     // ── procedural stars — round points via sub-cell distance falloff ──
@@ -81,7 +81,7 @@ export function create({ scene, params }) {
     const hash22 = Fn(([p]) => fract(
         sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))).mul(43758.5453),
     ));
-    const lon = atan2(dir.x, dir.z);
+    const lon = atan(dir.x, dir.z);
     // Star-field cell coords (denser vertically so cells read roughly square on-screen).
     const P = vec2(lon.mul(30.0), y.mul(48.0));
     const id = floor(P);

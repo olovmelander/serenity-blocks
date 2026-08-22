@@ -26,17 +26,18 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 export class FluidDreamsPost {
     constructor(renderer, scene, camera, params = {}) {
         this.renderer = renderer;
         this.useMRT = params.useMRT ?? true;
         this.bloomDownsample = params.bloomDownsample ?? 0.65;
-        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.postProcessing = new THREE.RenderPipeline(renderer);
 
         this.scenePass = pass(scene, camera);
         if (this.useMRT) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
+            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
 
         const sceneColor = this.scenePass.getTextureNode('output');
@@ -132,10 +133,10 @@ export class FluidDreamsPost {
         return this.postProcessing.render();
     }
 
+    // Promise-returning alias kept for callers that await a render. The renderer is
+    // init-awaited by the theme before this post is constructed, so the deprecated
+    // RenderPipeline.renderAsync() (warnOnce + await init + render) is not needed.
     renderAsync() {
-        if (typeof this.postProcessing.renderAsync === 'function') {
-            return this.postProcessing.renderAsync();
-        }
         return Promise.resolve(this.postProcessing.render());
     }
 

@@ -28,7 +28,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, float, vec3, uniform,
-    mix, clamp, abs, sin, smoothstep, max, pow, dot, atan2,
+    mix, clamp, abs, sin, smoothstep, max, pow, dot, atan,
     normalize, positionLocal, normalWorld, positionWorld, cameraPosition,
     texture, normalMap, uv, reflector,
 } from 'three/tsl';
@@ -211,7 +211,7 @@ export function create({ scene, params }) {
     // Crepuscular sun-shafts: analytic angular streaks radiating from the sun,
     // brightest near it, slowly turning — dawn light breaking over the ridges.
     const perp = rd.sub(uSunDir.mul(dot(rd, uSunDir)));
-    const rayAngle = atan2(dot(perp, uSunUp), dot(perp, uSunRight));
+    const rayAngle = atan(dot(perp, uSunUp), dot(perp, uSunRight));
     const rayA = pow(sin(rayAngle.mul(22.0).add(uTime.mul(0.03))).mul(0.5).add(0.5), float(2.6));
     const rayB = pow(sin(rayAngle.mul(13.0).sub(uTime.mul(0.021)).add(1.7)).mul(0.5).add(0.5), float(2.0));
     const rays = rayA.mul(0.65).add(rayB.mul(0.35));

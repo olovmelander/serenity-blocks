@@ -17,15 +17,19 @@ Three things do the heavy lifting:
 There is **no** official Three.js or Khronos/WebGPU MCP (verified). This pairing is the
 closest thing to a "best practice" stack.
 
-### Same setup across all three agents
+### Setup: Claude Code is wired; Codex and Antigravity are not
 
-The skill + chrome-devtools MCP are installed in **Claude Code, Codex, and Antigravity** —
-all three use the identical `SKILL.md` format and the same `cmd /c npx` MCP pattern on
-Windows. Locations: Claude Code `~/.claude.json` + `<repo>/.claude/skills/`; Codex
-`~/.codex/config.toml` + `~/.codex/skills/`; Antigravity `~/.gemini/config/mcp_config.json`
-+ `<repo>/.agents/skills/`. The playground is tool-agnostic — any of them can drive it.
-(Antigravity's IDE has a native agentic browser, so it can screenshot the playground
-without even needing the MCP.)
+Claude Code gets the MCP **from the repo**: [`.mcp.json`](../.mcp.json) declares
+`chrome-devtools` using the `cmd /c npx` pattern Windows requires, pinned to a known-good
+version. Because it is committed, a fresh clone has the visual loop with no per-machine
+setup — approve the server once when Claude Code prompts, then reload the session. The
+skill sits in `<repo>/.claude/skills/webgpu-threejs-tsl/`.
+
+Codex and Antigravity read the same skill from `<repo>/.agents/skills/`, but neither has
+the screenshot MCP wired up (verified 2026-08-19: `~/.codex/config.toml` declares only
+`playwright`, and `~/.gemini/config/mcp_config.json` is empty) — so they cannot close the
+visual loop through this MCP today. Antigravity's IDE has a native agentic browser and can
+screenshot the playground without it. The playground itself is tool-agnostic.
 
 ---
 

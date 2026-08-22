@@ -19,7 +19,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, Loop, float, vec2, vec3, vec4, uniform,
-    mix, clamp, abs, fract, sin, cos, smoothstep, max, pow, exp, dot, atan2,
+    mix, clamp, abs, fract, sin, cos, smoothstep, max, pow, exp, atan,
     normalize, positionWorld, cameraPosition,
 } from 'three/tsl';
 
@@ -129,7 +129,7 @@ export function create({ scene, params }) {
     // Vertical PILLAR mask: irregular drifting shafts as a function of the
     // horizontal view angle only → straight vertical light pillars (the painted
     // reference look) that we carve into the soft curtain band.
-    const az = atan2(rd.x, rd.z);
+    const az = atan(rd.x, rd.z);
     const s1 = sin(az.mul(16.0).add(uTime.mul(0.14)));
     const s2 = sin(az.mul(33.0).sub(uTime.mul(0.09)));
     const s3 = sin(az.mul(6.0).add(1.7));

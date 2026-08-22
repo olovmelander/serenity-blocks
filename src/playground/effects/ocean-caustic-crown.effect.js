@@ -163,7 +163,7 @@ export function create({ scene, camera, renderer }) {
     const scenePass = pass(scene, camera);
     const sceneColor = scenePass.getTextureNode('output');
     const bloomNode = bloom(sceneColor, 0.14, 0.36, 0.72);
-    const post = new THREE.PostProcessing(renderer);
+    const post = new THREE.RenderPipeline(renderer);
     post.outputColorTransform = false;
     const graded = toneMapping(
         THREE.ACESFilmicToneMapping,

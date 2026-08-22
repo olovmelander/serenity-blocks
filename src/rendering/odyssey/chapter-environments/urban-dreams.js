@@ -38,6 +38,7 @@ import {
     uv,
     vec3,
 } from 'three/tsl';
+import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import {
     getChapterPathRange,
     getOdysseyPathCurve,
@@ -564,7 +565,7 @@ export function createUrbanDreamsEnvironment() {
 
     // Subtle cool ambient so the facades cohere as one city against true black instead
     // of scattered bright blocks; the cyan-leaning tint ties the lit windows together.
-    group.add(new THREE.AmbientLight(0x101a2a, 0.45));
+    group.add(acquireChapterLight(8, 'AmbientLight', { color: 0x101a2a, intensity: 0.45 }));
 
     // Anchor to the path's FULL centre (x/y/z), not just Y, so the city corridor, ring
     // gates and spire stay aligned to the route and the path never clips chapter geometry.

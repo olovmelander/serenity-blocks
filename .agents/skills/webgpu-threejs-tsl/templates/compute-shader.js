@@ -198,7 +198,7 @@ function createPointsVisualization(scene) {
 
   // Position from compute buffer. For Points/Sprite materials, positionNode is
   // the particle CENTER; bind the storage buffer per-instance via toAttribute().
-  // The r181 pattern for GPU particles is an instanced THREE.Sprite — no dummy
+  // The r185 pattern for GPU particles is an instanced THREE.Sprite — no dummy
   // BufferGeometry needed.
   material.positionNode = positions.toAttribute();
 

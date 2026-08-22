@@ -53,6 +53,7 @@ import {
     createFirstHeartTSL,
 } from './earth-core.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { acquireChapterLight } from './shared/chapter-light-pool.js';
 
 /**
  * Earth Core environment configuration
@@ -820,6 +821,8 @@ export function createEarthCoreEnvironment(options = {}) {
         uTime: uniform(0),
         uPulseIntensity: uniform(0),
         uDescent: uniform(0),
+        // S2-a — unit vector (xz) from the lava-fall seat toward the lake centre; set once at build.
+        uLakeFlowDir: uniform(new THREE.Vector3(1, 0, 0.5).normalize()),
         // Seam choreography (0 until ~86% of the chapter, 1 at the 1→2 boundary):
         // drives the lake-vein quench, ember→steam shift, geode sink-and-fade, and the
         // First Heart's blackbody walk-down. Chapter-authored, distinct from uOpacity.
@@ -941,6 +944,17 @@ export function createEarthCoreEnvironment(options = {}) {
             r: [30, 38, 34][i],
         };
     });
+    // The LAVA-FALL seat is resolved here, before the lake, because the lake's flow direction is
+    // "from the fall toward the lake centre" (S2-a, docs/ODYSSEY_EARTH_CORE_LAVA_LAKE_REMAKE_2026-08.md
+    // §2.8; the Act I plan's "bias lake flow FROM the fall toward camera"). The hero itself is
+    // still staged in step 11 below, from these same values.
+    const fallStation = 0.72;
+    const fallFrame = staging.frame(fallStation);
+    const fallBase = staging.lakeAt(fallStation, { lateral: 8, forward: 10 });
+    const lakeFlowDir = new THREE.Vector3(-fallBase.x, 0, -fallBase.z);
+    if (lakeFlowDir.lengthSq() < 1e-6) lakeFlowDir.set(1, 0, 0.5);
+    lakeFlowDir.normalize();
+    uniforms.uLakeFlowDir.value.copy(lakeFlowDir);
     const lavaFloor = createLavaFloor(uniforms, basins);
     if (!noLake) group.add(lavaFloor);
     group.userData.lavaFloor = lavaFloor;
@@ -1026,9 +1040,6 @@ export function createEarthCoreEnvironment(options = {}) {
     // 11. LAVA-FALL hero — staged as the chapter landmark, not another orange strip.
     // Two crossed planes form one volumetric fall so it reads from the moving camera,
     // seated into a horizontal splash decal on the lifted lake.
-    const fallStation = 0.72;
-    const fallFrame = staging.frame(fallStation);
-    const fallBase = staging.lakeAt(fallStation, { lateral: 8, forward: 10 });
     const fallScale = 0.28;
     const fallHeight = 220 * fallScale;
     const lavaFallGroup = new THREE.Group();
@@ -1353,9 +1364,45 @@ export function createEarthCoreEnvironment(options = {}) {
  * lowered, low-displacement opaque lake the camera looks ACROSS (validated TSL
  * builder). Glow sprites are dimmed/shrunk for the value hierarchy (~70% dark rock).
  */
+// Lake noise source flag (docs/ODYSSEY_EARTH_CORE_LAVA_LAKE_REMAKE_2026-08.md §2.6, §0 gates).
+// Read at BUILD time, like ?earthCoreBakeNoise: `?earthCoreLakeBake=1|0` (dev URL) over
+// `localStorage['serenity.earthCoreLakeBake']` (packaged Electron). **Default ON since
+// 2026-08-21**: the baked lake passed every measured gate — lake pipeline compile 1,602 → 234 ms
+// (RTX, cold; 382 ms on the Vega 8), lake fill 4.45 → 1.96 ms of the iGPU frame and 0.79 → 0.20 ms
+// on the RTX, tier masks within ±3 pts of the analytic lake, no tiling signature, WebGL2 lane
+// clean, bake bit-identical (CRC 7503dec8). `=0` keeps the analytic lake one release as the
+// escape hatch; there is no Worker in vitest, so node (no `window`) stays analytic and the
+// environment/drawable-budget tests never bake. `?earthCoreLakeDebug=2` (URL only) builds the
+// tier-ID variant for mask statistics in captures.
+function _readLakeNoiseOptions() {
+    const out = {
+        noise: 'analytic', debug: 0, flowDir: false, rimCrust: false,
+    };
+    if (typeof window === 'undefined') return out;
+    out.noise = 'baked';
+    out.flowDir = true;
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const url = params.get('earthCoreLakeBake');
+        const ls = window.localStorage && window.localStorage.getItem('serenity.earthCoreLakeBake');
+        if (url === '0' || (url !== '1' && ls === '0')) out.noise = 'analytic';
+        if (params.get('earthCoreLakeDebug') === '2') out.debug = 2;
+        // S2-a (flow from the fall): `?earthCoreLakeFlowDir=1|0`, default ON since 2026-08-21 —
+        // block-matched motion between t = 9 and t = 11 confirmed the rivers pour from the fall
+        // seat toward the viewer (after a sign fix the measurement caught); a rigid translation
+        // of each field, so thresholds/marginals are untouched.
+        if (params.get('earthCoreLakeFlowDir') === '0') out.flowDir = false;
+        // S2-c (crust rises toward the rim): `?earthCoreLakeRimCrust=1|0`, default OFF until its
+        // screenshot gate passes.
+        out.rimCrust = params.get('earthCoreLakeRimCrust') === '1';
+    } catch { /* URL/localStorage unavailable — defaults */ }
+    return out;
+}
+
 function createLavaFloor(uniforms, basins = []) {
     const group = new THREE.Group();
     group.name = 'lava-floor';
+    const lakeNoise = _readLakeNoiseOptions();
 
     // Main lava LAKE — wide (360 square), lifted (y=-10), opaque, NormalBlending lake the
     // camera looks across. The basin list revives the legacy floor's molten-sea reads
@@ -1365,7 +1412,14 @@ function createLavaFloor(uniforms, basins = []) {
         uniforms.uTime,
         uniforms.uPulseIntensity,
         uniforms.uDescent,
-        { basins, uSeam: uniforms.uSeam },
+        {
+            basins,
+            uSeam: uniforms.uSeam,
+            noise: lakeNoise.noise,
+            debug: lakeNoise.debug,
+            uFlowDir: lakeNoise.flowDir ? uniforms.uLakeFlowDir : null,
+            rimCrustBias: lakeNoise.rimCrust ? 0.12 : 0,
+        },
     );
     group.add(lavaSurface);
 
@@ -2034,20 +2088,20 @@ function setupVolcanicLighting(group) {
 
     // Warm ambient — lifted 0.10→0.14 to recover a little of the global fill the four
     // accent lights gave the dark rock, while keeping the ~70% near-black value target.
-    const ambient = new THREE.AmbientLight(0x0f0b18, 0.14); // cool-purple ambient light for cooler shadows (changed from warm 0x1a0600)
+    const ambient = acquireChapterLight(1, 'AmbientLight', { color: 0x0f0b18, intensity: 0.14 }); // cool-purple ambient light for cooler shadows (changed from warm 0x1a0600)
     group.add(ambient);
     group.userData.ambient = ambient;
 
     // KEY 1 — Central lava lake point light (main light source) — range 220→150 so the
     // light pools on the lake and the surrounding vault falls dark.
-    const lavaLight = new THREE.PointLight(0xff5511, 2.9, 150);
+    const lavaLight = acquireChapterLight(1, 'PointLight', { color: 0xff5511, intensity: 2.9, distance: 150 });
     lavaLight.position.set(0, LAVA_LAKE_Y + 4, 0); // just above the lake
     group.add(lavaLight);
     group.userData.lavaLight = lavaLight;
 
     // KEY 2 — Secondary lava glow (softer, larger radius) — also absorbs the warm tint
     // the cut crater accents contributed, lifted 1.35→1.55.
-    const lavaGlow = new THREE.PointLight(0xff7722, 1.55, 220);
+    const lavaGlow = acquireChapterLight(1, 'PointLight', { color: 0xff7722, intensity: 1.55, distance: 220 });
     lavaGlow.position.set(0, LAVA_LAKE_Y + 2, 0);
     group.add(lavaGlow);
     group.userData.lavaGlow = lavaGlow;

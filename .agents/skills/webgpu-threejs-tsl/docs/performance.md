@@ -6,7 +6,7 @@ Apply in order: **measure → gate → trim fill → trim CPU**.
 
 ## 1. Measure first — GPU timestamps, not FPS guesses
 
-FPS conflates CPU and GPU. r181 has real GPU timing (WebGPU `timestamp-query`):
+FPS conflates CPU and GPU. r185 has real GPU timing (WebGPU `timestamp-query`):
 
 ```javascript
 const renderer = new THREE.WebGPURenderer({ trackTimestamp: true });
@@ -17,6 +17,12 @@ await renderer.resolveTimestampsAsync('render');
 await renderer.resolveTimestampsAsync('compute');
 console.log(renderer.info.render.timestamp, renderer.info.compute.timestamp); // ms on GPU
 ```
+
+> **r185 backend API change:** `backend.hasTimestamp(uid)` was renamed
+> `backend.hasTimestampQuery(uid)`. `hasTimestamp` still exists but is now a boolean
+> **capability getter** — calling it like a function is a TypeError, and a bare
+> truthiness check (`if (backend.hasTimestamp)`) silently changed meaning from
+> "this uid has a query" to "timestamps are supported at all".
 
 Quick bound diagnosis without tooling:
 - **Shrink the window / drop `setPixelRatio`** → FPS jumps = fill-bound (most themes

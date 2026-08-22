@@ -309,7 +309,7 @@ export class IceTempleShardBurstCompute {
 
             const spawnTime = spawnPos.w;
             // A particle is initialized if its internal timestamp matches the spawn buffer timestamp
-            const isInitialized = pos.w.equals(spawnTime);
+            const isInitialized = pos.w.equal(spawnTime);
             // We only want to initialize if the CPU told us to spawn (spawnMisc.y > 0.5) and we haven't yet
             const justSpawned = spawnMisc.y.greaterThan(0.5).and(isInitialized.not());
 

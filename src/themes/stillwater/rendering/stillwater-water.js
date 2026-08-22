@@ -1746,7 +1746,7 @@ export function createStillwaterWater({
         );
         const graded = aces.rgb.mul(tealShadow).add(warmHighlight).mul(vignette);
         const finalColor = gradeMode === 'aces' ? aces.rgb : graded;
-        post = new THREE.PostProcessing(renderer);
+        post = new THREE.RenderPipeline(renderer);
         post.outputColorTransform = false;
         post.outputNode = renderOutput(
             vec4(finalColor, aces.a),

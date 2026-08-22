@@ -34,8 +34,8 @@ export function isEffectWarmEnabled() {
 
 /**
  * Prewarm the active theme's gameplay-effect render pipelines under the level-load blackout.
- * @param {object} theme the active theme — expected to expose `.scene` (+ optionally
- *   `.renderer` with `compileAsync` and `.camera`). Anything missing → the pass no-ops.
+ * @param {object} theme the active theme — expected to expose `.scene` with a running
+ *   render loop. Anything missing → the pass no-ops.
  * @returns {Promise<void>} resolves once the warm frames have rendered + visibility is restored.
  */
 export async function prewarmActiveThemeEffects(theme) {
@@ -52,17 +52,14 @@ export async function prewarmActiveThemeEffects(theme) {
         });
         if (hidden.length === 0) return;
 
-        // Compile scene-pass materials of the now-visible meshes up front (no display). Bounded like
-        // the rAF wait below: a stalled / never-settling compile (device-loss, GPU BeginFrame
-        // starvation) must not hang level start, so race it against a timeout.
-        if (typeof theme.renderer?.compileAsync === 'function' && theme.camera) {
-            await Promise.race([
-                theme.renderer.compileAsync(scene, theme.camera).catch(() => {}),
-                new Promise((r) => { setTimeout(r, 250); }),
-            ]);
-        }
+        // r185 removed the up-front compileAsync race this pass used to run: r185's compileAsync
+        // defers node builds into a main-thread-yielding loop that reads live renderer state, so
+        // under the theme's running loop it could poison the builder cache — and "racing" it with
+        // a 250ms timeout only ABANDONED a build loop that kept mutating shared caches for
+        // seconds. The masked render frames below were always the real warm (selective-bloom /
+        // MRT variants only compile on a real render); they are the whole warm now.
         // Let the theme's own render loop draw a few masked frames so the selective-bloom / MRT
-        // variant pipelines (which need a real render) compile now. Timeout-bounded so a throttled
+        // variant pipelines compile now. Timeout-bounded so a throttled
         // rAF (backgrounded tab) can never stall level prep.
         await new Promise((resolve) => {
             if (typeof requestAnimationFrame !== 'function') { resolve(); return; }

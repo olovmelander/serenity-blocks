@@ -1,0 +1,266 @@
+{
+  "stamp": "2026-08-17T15-50-06-837Z",
+  "protocol": {
+    "runs": 5,
+    "endP": 0.8,
+    "scrollMs": 20000,
+    "settleMs": 12000,
+    "isolation": "process-per-run"
+  },
+  "variants": [
+    {
+      "name": "base",
+      "flags": ""
+    }
+  ],
+  "summary": {
+    "base": {
+      "boardInitMs": {
+        "n": 5,
+        "median": 3416,
+        "p25": 3401,
+        "p75": 3467,
+        "min": 3376,
+        "max": 3510
+      },
+      "boardVisibleMs": {
+        "n": 5,
+        "median": 4388,
+        "p25": 4341,
+        "p75": 4522,
+        "min": 4332,
+        "max": 4524
+      },
+      "fwdTotalStallMs": {
+        "n": 5,
+        "median": 1795,
+        "p25": 1791,
+        "p75": 1802,
+        "min": 1744,
+        "max": 2172
+      },
+      "fwdGaps100": {
+        "n": 5,
+        "median": 5,
+        "p25": 5,
+        "p75": 6,
+        "min": 4,
+        "max": 6
+      },
+      "fwdWorstMs": {
+        "n": 5,
+        "median": 487,
+        "p25": 484,
+        "p75": 501,
+        "min": 483,
+        "max": 650
+      },
+      "bwdTotalStallMs": {
+        "n": 5,
+        "median": 0,
+        "p25": 0,
+        "p75": 0,
+        "min": 0,
+        "max": 0
+      },
+      "warmedAll": 5,
+      "sweepComplete": 5,
+      "validationErrors": 0,
+      "usableRuns": 5
+    }
+  },
+  "results": [
+    {
+      "variant": "base",
+      "tag": "warmup",
+      "boardInitMs": 3230,
+      "boardVisibleMs": 4285,
+      "forward": {
+        "gaps50": 7,
+        "gaps100": 5,
+        "worstMs": 488,
+        "totalStallMs": 1697
+      },
+      "backward": {
+        "gaps50": 0,
+        "gaps100": 0,
+        "worstMs": 0,
+        "totalStallMs": 0
+      },
+      "renderWarmedAll": true,
+      "renderWarmed": {
+        "1": true,
+        "6": true,
+        "7": true,
+        "8": true
+      },
+      "bgRenderWarmComplete": true,
+      "bgRenderWarmLogged": true,
+      "warmCompleteAt": null,
+      "finalPosition": 0.0006058865860949161,
+      "validationErrors": 0,
+      "error": null,
+      "spawnAttempt": 1
+    },
+    {
+      "variant": "base",
+      "tag": "measured",
+      "boardInitMs": 3416,
+      "boardVisibleMs": 4341,
+      "forward": {
+        "gaps50": 6,
+        "gaps100": 4,
+        "worstMs": 650,
+        "totalStallMs": 1795
+      },
+      "backward": {
+        "gaps50": 0,
+        "gaps100": 0,
+        "worstMs": 0,
+        "totalStallMs": 0
+      },
+      "renderWarmedAll": true,
+      "renderWarmed": {
+        "1": true,
+        "6": true,
+        "7": true,
+        "8": true
+      },
+      "bgRenderWarmComplete": true,
+      "bgRenderWarmLogged": true,
+      "warmCompleteAt": null,
+      "finalPosition": 0.0006039026549452566,
+      "validationErrors": 0,
+      "error": null,
+      "spawnAttempt": 1
+    },
+    {
+      "variant": "base",
+      "tag": "measured",
+      "boardInitMs": 3510,
+      "boardVisibleMs": 4524,
+      "forward": {
+        "gaps50": 7,
+        "gaps100": 6,
+        "worstMs": 483,
+        "totalStallMs": 1744
+      },
+      "backward": {
+        "gaps50": 0,
+        "gaps100": 0,
+        "worstMs": 0,
+        "totalStallMs": 0
+      },
+      "renderWarmedAll": true,
+      "renderWarmed": {
+        "1": true,
+        "6": true,
+        "7": true,
+        "8": true
+      },
+      "bgRenderWarmComplete": true,
+      "bgRenderWarmLogged": true,
+      "warmCompleteAt": null,
+      "finalPosition": 0.0006056206066279925,
+      "validationErrors": 0,
+      "error": null,
+      "spawnAttempt": 1
+    },
+    {
+      "variant": "base",
+      "tag": "measured",
+      "boardInitMs": 3401,
+      "boardVisibleMs": 4332,
+      "forward": {
+        "gaps50": 8,
+        "gaps100": 6,
+        "worstMs": 484,
+        "totalStallMs": 2172
+      },
+      "backward": {
+        "gaps50": 0,
+        "gaps100": 0,
+        "worstMs": 0,
+        "totalStallMs": 0
+      },
+      "renderWarmedAll": true,
+      "renderWarmed": {
+        "1": true,
+        "6": true,
+        "7": true,
+        "8": true
+      },
+      "bgRenderWarmComplete": true,
+      "bgRenderWarmLogged": true,
+      "warmCompleteAt": null,
+      "finalPosition": 0.000596944887202568,
+      "validationErrors": 0,
+      "error": null,
+      "spawnAttempt": 1
+    },
+    {
+      "variant": "base",
+      "tag": "measured",
+      "boardInitMs": 3376,
+      "boardVisibleMs": 4388,
+      "forward": {
+        "gaps50": 7,
+        "gaps100": 5,
+        "worstMs": 501,
+        "totalStallMs": 1802
+      },
+      "backward": {
+        "gaps50": 0,
+        "gaps100": 0,
+        "worstMs": 0,
+        "totalStallMs": 0
+      },
+      "renderWarmedAll": true,
+      "renderWarmed": {
+        "1": true,
+        "6": true,
+        "7": true,
+        "8": true
+      },
+      "bgRenderWarmComplete": true,
+      "bgRenderWarmLogged": true,
+      "warmCompleteAt": null,
+      "finalPosition": 0.00060547087512764,
+      "validationErrors": 0,
+      "error": null,
+      "spawnAttempt": 1
+    },
+    {
+      "variant": "base",
+      "tag": "measured",
+      "boardInitMs": 3467,
+      "boardVisibleMs": 4522,
+      "forward": {
+        "gaps50": 7,
+        "gaps100": 5,
+        "worstMs": 487,
+        "totalStallMs": 1791
+      },
+      "backward": {
+        "gaps50": 0,
+        "gaps100": 0,
+        "worstMs": 0,
+        "totalStallMs": 0
+      },
+      "renderWarmedAll": true,
+      "renderWarmed": {
+        "1": true,
+        "6": true,
+        "7": true,
+        "8": true
+      },
+      "bgRenderWarmComplete": true,
+      "bgRenderWarmLogged": true,
+      "warmCompleteAt": null,
+      "finalPosition": 0.0006073297179885573,
+      "validationErrors": 0,
+      "error": null,
+      "spawnAttempt": 1
+    }
+  ]
+}

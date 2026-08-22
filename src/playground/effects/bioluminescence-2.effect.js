@@ -41,7 +41,7 @@ import * as THREE from 'three/webgpu';
 import {
     float, vec2, vec3, vec4, uniform, attribute, instanceIndex, uv,
     mix, clamp, sin, cos, pow, max, dot, cross, normalize, smoothstep,
-    fract, atan, length, dFdx, dFdy, positionLocal, positionWorld,
+    fract, atan, length, dFdx, dFdy, positionGeometry, positionLocal, positionWorld,
     cameraPosition, mx_noise_float, texture, pass, mrt, output, emissive, viewportUV,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
@@ -50,6 +50,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 import caveTreeUrl from '../../themes/bioluminescence-2/assets/cave_tree.glb?url';
 import caveRocksUrl from '../../themes/bioluminescence-2/assets/cave_rocks.glb?url';
+import { withEmissiveMaterialBlending } from '../../themes/shared/mrt-blend.js';
 
 export const meta = {
     id: 'bioluminescence-2',
@@ -191,7 +192,7 @@ export function create({
         mat.emissiveNode = emi.mul(float(1.0).sub(f)); // Apply fog to emissive!
         mat.side = T.DoubleSide;
         if (sway > 0) {
-            const yN = clamp(positionLocal.y.div(height), 0.0, 1.0);
+            const yN = clamp(positionGeometry.y.div(height), 0.0, 1.0);
             const bend = sin(uTime.mul(1.05).add(phase.mul(6.2831))).mul(sway).mul(yN.mul(yN));
             const bend2 = sin(uTime.mul(0.43).add(phase.mul(11.0))).mul(sway * 0.5).mul(yN);
             mat.positionNode = positionLocal.add(vec3(bend.add(bend2), float(0.0), bend.mul(0.4)));
@@ -1788,11 +1789,11 @@ export function create({
     const useBloom = !P.has('nobloom');
     if (useBloom) {
         const useMRT = P.has('mrt');
-        postProcessing = new T.PostProcessing(renderer);
+        postProcessing = new T.RenderPipeline(renderer);
         const scenePass = pass(scene, camera);
         let bloomSource;
         if (useMRT) {
-            scenePass.setMRT(mrt({ output, emissive }));
+            scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
             bloomSource = scenePass.getTextureNode('emissive');
         } else {
             bloomSource = scenePass.getTextureNode('output');
@@ -1872,8 +1873,10 @@ export function create({
             else renderer.render(scene, camera);
         },
         renderAsync() {
-            if (postProcessing) return postProcessing.renderAsync();
-            return renderer.renderAsync(scene, camera);
+            // Host awaited renderer.init() before mounting; sync render, Promise-shaped.
+            if (postProcessing) postProcessing.render();
+            else renderer.render(scene, camera);
+            return Promise.resolve();
         },
         resize() { /* camera aspect handled by host */ },
         dispose() {

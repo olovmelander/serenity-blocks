@@ -50,6 +50,7 @@ import {
     vec2,
     vec3,
 } from 'three/tsl';
+import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import { fbm2, hash21 } from './shared/odyssey-tsl-noise.js';
 import {
     billboardVerticalWorld,
@@ -817,7 +818,7 @@ export function createNeonCitySpireTSL(uTime, uEnergy) {
     group.userData.shockRing = shockRing;
 
     // Beacon light atop the spire — left as-is.
-    const beacon = new THREE.PointLight(0xff66c4, 0.8, 520);
+    const beacon = acquireChapterLight(8, 'PointLight', { color: 0xff66c4, intensity: 0.8, distance: 520 });
     beacon.position.set(0, CROWN_Y + 14, 0);
     group.add(beacon);
     group.userData.beacon = beacon;

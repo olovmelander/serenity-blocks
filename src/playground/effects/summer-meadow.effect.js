@@ -15,20 +15,25 @@
  * 100% in the vertex shader (zero per-frame JS), concentrated in the visible
  * foreground wedge. See docs/SUMMER_MIDSUMMER_MASTERPIECE_PLAN.md.
  *
- * ⚠️ TSL gotcha (load-bearing): a material's positionNode runs BEFORE the
- * InstancedMesh instanceMatrix is applied, and instanceMatrixNode is not exposed.
- * So wind bend is done in LOCAL blade space (bend amount from positionLocal.y);
- * world-coherent gusts sample noise at a per-instance `aWorldXZ` attribute we set
- * on the CPU at build time. instanceMatrix then places/rotates the bent blade.
+ * ⚠️ TSL gotcha (load-bearing): the instanceMatrix-vs-positionNode order differs
+ * by three.js version — r181 applies the instance matrix AFTER positionNode, r185
+ * BEFORE (positionLocal is post-instance there). Portable idiom used here: wind
+ * masks from positionGeometry (raw geometry on both), output = positionLocal
+ * .add(bend) so instance placement survives on both; world-coherent gusts sample
+ * noise at a per-instance `aWorldXZ` attribute we set on the CPU at build time.
  */
 import * as THREE from 'three/webgpu';
 import {
     Fn, float, vec2, vec3, vec4, uniform, attribute, instanceIndex, uv,
     mix, clamp, abs, sin, cos, pow, max, min, dot, cross, normalize, smoothstep, fract,
-    atan2, length, dFdx, dFdy, positionLocal, positionWorld, normalWorld, cameraPosition,
+    atan, length, dFdx, dFdy, positionGeometry, positionLocal, positionWorld, cameraPosition,
     reflector, mx_noise_float, pass, mrt, output, emissive, viewportUV,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 // Reuse Chapter 3's skinned songbirds (goldfinch + swallow) — same species the old
 // summer theme used, but the pipeline-authored flapping versions from Odyssey.
 import { loadOdysseyGltfCached } from '../../rendering/odyssey/chapter-environments/shared/odyssey-gltf-loader.js';
@@ -36,15 +41,12 @@ import { getChapter3FlyingBirdAssetById } from '../../rendering/odyssey/chapter-
 import { createSummerTrees } from '../../themes/summer/rendering/summer-trees.js';
 import { createSummerGameplayFX } from '../../themes/summer/rendering/summer-gameplay-fx.js';
 import { SummerGameplayRouting } from '../../themes/summer/composition/summer-gameplay-routing.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import summerFloraUrl from '../../themes/summer/assets/summer_flora.glb?url';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 import midsummerPoleUrl from '../../themes/summer/assets/midsummer_pole.glb?url';
 import cottageUrl from '../../themes/summer/assets/swedish_cottage.glb?url';
 import dockBoatUrl from '../../themes/summer/assets/dock_boat.glb?url';
+import { withEmissiveMaterialBlending } from '../../themes/shared/mrt-blend.js';
 
 function makeDracoLoader() {
     const d = new DRACOLoader();
@@ -155,7 +157,7 @@ export function create({
     // muted it). The HDRI is used purely for glossy REFLECTIONS — the cottage windows
     // mirror the warm sky. No scene-wide PBR re-grade.
     renderer.toneMapping = T.NoToneMapping;
-    new RGBELoader().load('/hdri/belfast_sunset_puresky_2k.hdr', (hdr) => {
+    new HDRLoader().load('/hdri/belfast_sunset_puresky_2k.hdr', (hdr) => {
         hdr.mapping = T.EquirectangularReflectionMapping;
         try {
             const pmrem = new T.PMREMGenerator(renderer);
@@ -246,7 +248,7 @@ export function create({
         // Several soft horizontal cloud layers stacked low in the sky, warm peach →
         // coral → cream, drifting slowly toward the sun. The low "hero" band is the
         // most solid; upper bands break into wispier gaps for layered depth.
-        const cloudX = atan2(dir.z, dir.x);
+        const cloudX = atan(dir.z, dir.x);
         const fbm2 = (uu, vv) => {
             const a = mx_noise_float(vec3(uu, vv, 0.0));
             const b = mx_noise_float(vec3(uu.mul(2.4).add(5.1), vv.mul(2.4), 2.0));
@@ -280,7 +282,7 @@ export function create({
 
         // Analytic crepuscular sun-shafts (god rays) — angular streaks around the sun.
         const perp = dir.sub(uSunDir.mul(dot(dir, uSunDir)));
-        const rayAngle = atan2(dot(perp, uSunUp), dot(perp, uSunRight));
+        const rayAngle = atan(dot(perp, uSunUp), dot(perp, uSunRight));
         const rayA = pow(sin(rayAngle.mul(20.0).add(uTime.mul(0.03))).mul(0.5).add(0.5), float(2.6));
         const rayB = pow(sin(rayAngle.mul(12.0).sub(uTime.mul(0.02)).add(1.7)).mul(0.5).add(0.5), float(2.0));
         const rays = rayA.mul(0.6).add(rayB.mul(0.4));
@@ -404,7 +406,7 @@ export function create({
         const ex = cx.div(ax), ez = cz.div(az);
         let er = length(vec2(ex, ez));
         er = er.add(smoothstep(30.0, 92.0, wx).mul(0.42)); // right-side pinch → tapering tongue
-        const ang = atan2(ez, ex);
+        const ang = atan(ez, ex);
         const bay = smoothstep(2.5, 3.06, ang.abs()).mul(0.13); // left cove (|ang|~π = -x side)
         const nearBulge = smoothstep(0.0, 54.0, cz).mul(0.05); // belly the near shore toward camera
         const wob = sin(ang.mul(3.0)).mul(0.022).add(sin(ang.mul(5.0).add(1.3)).mul(0.014));
@@ -433,7 +435,8 @@ export function create({
     // ═══ MEADOW — instanced Blender grass TUFTS, wind-animated (THE CRUX) ═════════
     // Geometry = the Blender F_Grass tuft (baked root→tip vertex colour), loaded from the
     // GLB. Wind bends in LOCAL space with a world-coherent gust sampled at the per-instance
-    // aWorldXZ attribute (gotcha: positionNode runs before instanceMatrix).
+    // aWorldXZ attribute (mask from positionGeometry, output = positionLocal.add(bend):
+    // identical on r181 and keeps instance placement on r185).
     const buildGrassTufts = (tuftGeo) => {
         if (!tuftGeo) return;
         const GRASS = Math.max(1500, parseInt(P.get('grass'), 10) || 11000);
@@ -444,7 +447,7 @@ export function create({
 
         const wxz = attribute('aWorldXZ', 'vec2');
         const ph = wxz.x.mul(0.6).add(wxz.y.mul(0.45));
-        const heightFrac = clamp(positionLocal.y.div(TUFT_H), 0.0, 1.0);
+        const heightFrac = clamp(positionGeometry.y.div(TUFT_H), 0.0, 1.0);
         const sway = sin(uTime.mul(1.1).add(ph)).mul(0.13);
         const gustN = mx_noise_float(vec3(wxz.x.mul(0.045).add(uTime.mul(0.16)), wxz.y.mul(0.045), 0.0));
         const gust = gustN.mul(0.2).mul(uBreeze.mul(1.8).add(0.55));
@@ -494,7 +497,7 @@ export function create({
         height, amp, stiff, flutter, freq = 1.0,
     }) => {
         const mat = track(new T.MeshBasicNodeMaterial());
-        const yN = clamp(positionLocal.y.div(height), 0.0, 1.0);
+        const yN = clamp(positionGeometry.y.div(height), 0.0, 1.0);
         const mask = pow(yN, float(stiff));
         const wxz = attribute('aWorldXZ', 'vec2');
         const ph = wxz.x.mul(0.6).add(wxz.y.mul(0.45));
@@ -793,7 +796,8 @@ export function create({
         const kind = fract(sin(fi.mul(57.31)).mul(4517.1));
         const isFly = smoothstep(0.60, 0.64, kind); // ~0 = pollen, ~1 = firefly (~36% are flies)
 
-        // Slow organic multi-frequency drift (positionNode runs pre-instanceMatrix).
+        // Slow organic multi-frequency drift (output = positionLocal.add(drift):
+        // instance placement survives r181's post- and r185's pre-applied instanceMatrix).
         const t = uTime.add(ph.mul(6.283));
         const drift = vec3(
             sin(t.mul(0.5)).mul(0.6).add(sin(t.mul(0.21).add(ph2.mul(6.0))).mul(0.3)),
@@ -977,9 +981,9 @@ export function create({
     let postProcessing = null;
     let bloomNode = null;
     if (P.has('bloom')) {
-        postProcessing = new T.PostProcessing(renderer);
+        postProcessing = new T.RenderPipeline(renderer);
         const scenePass = pass(scene, camera);
-        scenePass.setMRT(mrt({ output, emissive }));
+        scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         const sceneColor = scenePass.getTextureNode('output');
         const emissiveTex = scenePass.getTextureNode('emissive');
         bloomNode = bloom(emissiveTex, 0.45, 0.66, 0.0); // threshold 0 — emissive is already only the glow
@@ -1143,8 +1147,10 @@ export function create({
             else renderer.render(scene, camera);
         },
         renderAsync() {
-            if (postProcessing) return postProcessing.renderAsync();
-            return renderer.renderAsync(scene, camera);
+            // Host awaited renderer.init() before mounting; sync render, Promise-shaped.
+            if (postProcessing) postProcessing.render();
+            else renderer.render(scene, camera);
+            return Promise.resolve();
         },
         // Bridge for the theme wrapper: push SeasonDirector state into uniforms.
         setReactive(s) {

@@ -428,15 +428,37 @@ export function createStillwaterRuntime({
             mistEnabled: true,
             reducedMotion,
         });
-        // Volumetric moonshafts are OFF by default: the r181 VolumeNodeMaterial
-        // scattering graph currently emits `scatteringDensity * null` in WGSL on
-        // this configuration, which is a shader error, and shipping a broken
-        // shader to keep a feature nominally "done" is worse than shipping
-        // without it. Opt in with `?shafts=1` to continue debugging.
-        // The module and its two hard-won r181 gotchas are retained in
-        // rendering/stillwater-shafts.js.
+        // Volumetric moonshafts — UNBLOCKED by the three r185 upgrade
+        // (2026-08-20). The r181 parker: this repo never enables shadow maps,
+        // so AnalyticLightNode left `shadowNode` null and r181's volumetric
+        // model multiplied by it unconditionally — the `scatteringDensity *
+        // null` WGSL error. r185 guards that multiply, and the module is
+        // retuned against r185's front-to-back accumulation (iterate via the
+        // `stillwater-moonshafts` playground effect). DECIDED 2026-08-21: ships
+        // OPT-IN (`?shafts=1`). From the fixed channel camera the volume reads as a
+        // moonlit veil rather than the Bauer beams the module was written for —
+        // beam striping needs the light slanted ACROSS the view (MOON_DIRECTION),
+        // which moves the visible moon disc: an art-direction pass, not a switch.
+        // The carve needs a live shadow map and registered casters, both scoped
+        // to the opt-in below so the default path pays nothing.
         if (qualityProfile.bloom && !reducedMotion && readToggle(params, 'shafts', false)) {
+            renderer.shadowMap.enabled = true;
             shafts = createStillwaterShafts({ root: scene });
+            // The carve is the canopy's silhouette: only marked casters render
+            // into the moon SpotLight's shadow map. The far forest sits beyond
+            // the volume — the near/hero wood is what cuts the light.
+            const shaftCasterRoots = new Set([
+                'stillwater-hero-root-flare-trees',
+                'stillwater-authored-hero-trunks',
+                'stillwater-instanced-mid-tree-variants',
+                'stillwater-instanced-canopy-language',
+            ]);
+            scene.traverse((obj) => {
+                if (!shaftCasterRoots.has(obj.name)) return;
+                obj.traverse((child) => {
+                    if (child.isMesh || child.isInstancedMesh) child.castShadow = true;
+                });
+            });
         }
 
         reactions = createStillwaterReactions({

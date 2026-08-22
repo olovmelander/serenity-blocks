@@ -10,7 +10,10 @@ import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { LevelNodeManager } from './LevelNodeManager.js';
 import { PerfRing } from '../../utils/perf-ring.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
-import { createOdysseyWorld } from './world/odyssey-world-renderer.js';
+import { ODYSSEY_WORLD_QUALITY, createOdysseyWorld } from './world/odyssey-world-renderer.js';
+import { awaitWorldBake, startWorldBake } from './world/odyssey-world-bake-loader.js';
+import { makeReliefSampler } from './world/odyssey-world-bake-data.js';
+import { ODYSSEY_CLOUD_FIELD_SPECS } from './world/odyssey-cloud-field-specs.js';
 import {
     ONE_WORLD_APPLY_EXPOSURE,
     ONE_WORLD_OUTPUT_SCALE,
@@ -41,8 +44,13 @@ import { setOdysseyGltfRenderer } from './chapter-environments/shared/odyssey-gl
 import { getOdysseyPathPointAt, resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
 import { createStartupTrace } from './odyssey-startup-trace.js';
 import {
-    buildChapterWarmSamples, buildJourneyWarmSamples, buildPointWarmSamples, buildRenderWarmOrder,
+    buildChapterWarmSamples,
+    buildJourneyWarmSamples,
+    buildMotionWarmSamples,
+    buildPointWarmSamples,
+    buildRenderWarmOrder,
 } from './odyssey-warmup-plan.js';
+import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-frontier.js';
 import {
     normalizeOdysseyWarmupMode,
     resolveOdysseyAdaptiveFrameRate,
@@ -344,12 +352,23 @@ export class OdysseyBoardController {
             fastStartOff: readBooleanUrlFlag('odysseyFastStartOff'),
         });
         this._fastStart = this.warmupMode === 'current';
+        // PHASE A (masterplan): motion warm — fast-start scrubs p=0..0.21 behind the overlay
+        // instead of warming a single static sample, covering the measured first-visible-frame
+        // reveals (steam quench, lava fall, the One World act gate, the breach director, the
+        // forest crossing). Opt-in for the A/B (?odysseyMotionWarm=1); graduates to default
+        // when the patient-protocol criterion is met with non-overlapping IQRs.
+        this._motionWarm = this._fastStart && readBooleanUrlFlag('odysseyMotionWarm');
         this._skipPreRevealWarmup = this.warmupMode === 'off';
         this.focusChapter = Number.isFinite(options.focusChapter) ? options.focusChapter : null;
         // LEVER 2 — chapter LRU eviction (default OFF; opt-in ?odysseyChapterEvict=1, window N=2).
         // Suppressed during capture-restricted runs. When ON it OWNS residency, so the
         // background chapter loader + full background render-warm are disabled (below) to avoid
         // fighting the evictor. NOT auto-enabled on the RTX/keep-alive path — flag-only.
+        // Item 2.11 (default ON; ?odysseyLiveCompile=0 falls back to the synchronous render-warm
+        // alone): background chapters compile through the live-loop-safe compileAsync path
+        // BEFORE their render-warm, so the warm creates no pipelines.
+        this.liveCompileEnabled = !readBooleanUrlFlag('odysseyLiveCompileOff')
+            && readUrlValue('odysseyLiveCompile') !== '0';
         this.chapterEvictionEnabled = (options.chapterEviction === true
             || readBooleanUrlFlag('odysseyChapterEvict'))
             && !this.restrictStartupChapterLoading;
@@ -551,6 +570,21 @@ export class OdysseyBoardController {
         // Compared against travelModel.inputVelocity, which excludes the cinematic auto-drift —
         // see _isScrollIdle for why the positional test cannot be used for this.
         this.scrollIdleThreshold = 0.004;
+        // Travel gate (opt-in `?odysseyTravelGate=1`) — see _updateTravelFrontier.
+        this._travelGateEnabled = readBooleanUrlFlag('odysseyTravelGate');
+        // RETIRED BY THE r185 DRAIN REWORK: the background drain no longer runs compileAsync
+        // batches (unsafe on r185 — see warmup/post-target-compile.js) and render-warms exactly
+        // one chapter per tick, so this knob currently drives nothing. Field + flag kept so the
+        // registry stays stable and a future batched warm can re-adopt it.
+        this._prewarmConcurrency = Math.max(
+            1,
+            Number.parseInt(readUrlValue('odysseyPrewarmConcurrency'), 10) || 3,
+        );
+        this._frontierHoldSince = 0;
+        // Release a stuck hold quickly. This is a UX judgement, not a safety margin: a player
+        // pushing against the frontier would rather take one hitch than be unable to move, so the
+        // window is short. 2.5s still lets a nearly-ready chapter land without the player noticing.
+        this._frontierHoldReleaseMs = Number.parseFloat(readUrlValue('odysseyTravelGateReleaseMs')) || 2500;
         this.globalEnvProgressThreshold = 0.0005;
         this.globalEnvMaxIntervalMs = 33;
         this.lastGlobalEnvUpdateTime = 0;
@@ -627,6 +661,25 @@ export class OdysseyBoardController {
         // compiles are launched in parallel).
         const serialInit = new URLSearchParams(window.location.search).get('odysseySerialInit') === '1';
 
+        // Item 2.1: start the One World bakes NOW — before the renderer's requestAdapter/
+        // requestDevice wait, chapter 1's creation, the path and the nodes — in a Worker (or the
+        // synchronous twin on its first await). Every input is already known here; the world is
+        // assembled after the nodes from the landed arrays (world/odyssey-world-bake-loader.js).
+        this._worldBakeOptions = this.oneWorldEnabled ? this._readWorldBuildOptions() : null;
+        this._worldBake = this.oneWorldEnabled
+            ? startWorldBake({
+                reliefRes: this._worldBakeOptions.q.reliefRes,
+                shadowRes: this._worldBakeOptions.q.shadowRes,
+                cloudSpecs: this._worldBakeOptions.cloudSpecs,
+                railSamples: this._worldBakeOptions.railSamples,
+                cloudField: this._worldBakeOptions.cloudField,
+                forceSync: readBooleanUrlFlag('odysseyWorldBakeSync'),
+            })
+            : null;
+        if (this._worldBake) {
+            trace.event(`world-bake started (${this._worldBake.viaWorker ? 'worker' : 'sync twin'})`);
+        }
+
         // ─── Step 1: Lightweight Three.js shell (very fast) ───
         trace.begin('renderer');
         await this.initRenderer();
@@ -645,15 +698,17 @@ export class OdysseyBoardController {
         this.setupPostProcessing();
         trace.end('renderer');
 
-        // Yield — let the loading overlay render & animate smoothly
-        await this._yieldToMain();
+        // Yield — let the loading overlay breathe (a TASK, not two frames: item 2.4)
+        await this._yieldTask();
 
         // ─── Steps 2+3: Create chapter environments, compiling in PARALLEL ───
         // Default startup creates and warms the whole journey to prevent first-visit hitches.
         // Capture sessions can pass ?odysseyCaptureChapters=... to load only a local chapter
-        // window and keep weak GPUs out of the TDR danger zone. compileAsync snapshots its
-        // renderables and restores shared renderer state synchronously BEFORE its only await,
-        // so launches can overlap safely; the pool barrier sits before the warm-up replay.
+        // window and keep weak GPUs out of the TDR danger zone. Overlapped launches are safe
+        // because compileGroupThroughPost holds ONE refcounted post-target binding across all
+        // concurrent awaits (r185: node builds are deferred and read live renderer state, so
+        // the binding must outlive every compile); the pool barrier sits before the warm-up
+        // replay.
         this.environmentManager = new ChapterEnvironmentManager(this.scene, this.renderer, {
             chapterPositions: this.presentationLayout.chapterPositions,
             chapterLOD: this.chapterLodEnabled,
@@ -664,14 +719,207 @@ export class OdysseyBoardController {
             suppressedChapters: this.oneWorldEnabled ? ONE_WORLD_CHAPTERS : [],
         });
 
+        // TRACE BLIND SPOT FIX (masterplan F5): the ~1.2s One World build used to sit in the
+        // untraced gap between 'renderer' and 'creates', so the startup summary's parts never
+        // added up to its total and the cost was mis-attributed. Named span so regressions in
+        // the world build are visible in every [OdysseyStartup] line.
+        // Item 2.1 (2026-08-21): the One World is built AFTER the nodes — see the 'world' span
+        // below. Its bakes started before the renderer (this._worldBake) and land while the
+        // renderer, chapter 1, the path and the nodes are built.
+        const compilePool = [];
+        this._compilePool = serialInit ? null : compilePool;
+        this._compileTimings = {}; // OD-05 scoping: per-item compile ms, emitted after the barrier
+        trace.begin('creates');
+        this.environmentManager.qualitySettings = {
+            ...this.environmentManager.qualitySettings,
+            particleCount: this.qualityPreset.particleCount,
+        };
+        const chapterPositions = this.presentationLayout.chapterPositions || [];
+        const totalChapters = Math.max(
+            1,
+            chapterPositions.length > 0 && chapterPositions[chapterPositions.length - 1] >= 0.999
+                ? chapterPositions.length - 1
+                : (chapterPositions.length || 8),
+        );
+        const allChapterIds = Array.from({ length: totalChapters }, (_, index) => index + 1);
+        let startupChapterIds = allChapterIds;
+        let startupScopeLabel = '';
+        // When restricted to a subset, the warm-up must also restrict to it (else it scrolls
+        // into deferred chapters and lazily creates them). null = warm the full journey.
+        this._activeStartupChapterIds = null;
+        if (this.restrictStartupChapterLoading) {
+            startupChapterIds = parseChapterIdList(this.captureChapterIds, totalChapters);
+            startupScopeLabel = ' (capture scoped)';
+        } else if (this.startupChapterWindow && this.backgroundChapterLoadingEnabled) {
+            // Only window when background loading is on, so the deferred chapters WILL load.
+            const windowed = this.startupChapterWindow
+                .filter((id) => Number.isFinite(id) && id >= 1 && id <= totalChapters);
+            if (windowed.length > 0 && windowed.length < allChapterIds.length) {
+                startupChapterIds = Array.from(new Set(windowed)).sort((a, b) => a - b);
+                startupScopeLabel = ` (eager window; ${allChapterIds.length - startupChapterIds.length} deferred to background)`;
+                this._activeStartupChapterIds = startupChapterIds;
+            }
+        }
+        console.log(`[OdysseyBoard] Startup chapter set: ${startupChapterIds.join(', ')}${startupScopeLabel}`);
+
+        // A2 EXPERIMENT (?odysseyLightsFirst=1, default OFF): hoist the global atmosphere
+        // light rig + build ALL chapter environments (reparenting every chapter's lights into
+        // the persistent rig) BEFORE launching any chapter compileAsync, so each prewarm
+        // specializes on the FINAL scene light set. The persistent rig "keeps the light set
+        // constant" only once every chapter is created — the default interleaved loop compiles
+        // chapter 1 before chapters 2..8's lights exist, so the first real render re-specializes
+        // the lit pipelines on the grown light-set hash (the ~5.5s/chapter warm suspect). Two
+        // passes are required: a single interleaved pass can't see the not-yet-created chapters'
+        // lights. Opt-in until a cold Electron boot A/B confirms the win (warm Dawn cache hides
+        // the compile cost, so this can only be measured cold).
+        const lightsFirst = this.aaaPostActive && readBooleanUrlFlag('odysseyLightsFirst');
+        // 2026-08-21 — the atmosphere rig hoist is the DEFAULT now (`?odysseyLightsLate=1` restores
+        // the old order for A/B). The A2 experiment could never be proven because three other
+        // light-set changes (chapters 6/7/8 created in the background, each reparenting new
+        // lights) re-created every pipeline anyway; the chapter light pool (2.9) removed those,
+        // and the per-pipeline instrument then showed exactly ONE remaining re-creation wave —
+        // ~50 sync createRenderPipeline calls on the first live post frame — whose only cause
+        // left is this rig being born in setupDirector() after the compile barrier. The
+        // two-pass compile ordering below is no longer needed for a constant light set and
+        // stays opt-in.
+        if (this.aaaPostActive && !readBooleanUrlFlag('odysseyLightsLate')) {
+            this._createAtmosphereLightRig();
+        }
+
+        /* eslint-disable no-await-in-loop */
+        for (const ch of startupChapterIds) {
+            const createStart = performance.now();
+            await this.environmentManager.createChapterEnvironment(ch);
+            const createMs = performance.now() - createStart;
+            // Diagnostic: surface unusually heavy CPU bakes so the trace pinpoints which
+            // chapter to optimize next (only logs outliers — no per-boot spam).
+            if (createMs > 150) {
+                trace.event(`create ch${ch} took ${Math.round(createMs)}ms`);
+            }
+            // Default path: launch this chapter's compile immediately (interleaved with the
+            // next chapter's create). In lightsFirst mode, defer ALL compiles to pass 2 below.
+            if (!lightsFirst) {
+                if (serialInit) {
+                    await this._prewarmChapterEnvironment(ch);
+                } else {
+                    compilePool.push(this._timedCompile(`ch${ch}`, this._prewarmChapterEnvironment(ch)));
+                }
+            }
+            await this._yieldTask();
+        }
+        if (lightsFirst) {
+            // Pass 2 — the full light set (atmosphere + every chapter's reparented lights) is
+            // now resident, so every chapter pipeline compiles against the light-set hash it
+            // will actually render with. No first-render re-specialization.
+            for (const ch of startupChapterIds) {
+                if (serialInit) {
+                    await this._prewarmChapterEnvironment(ch);
+                } else {
+                    compilePool.push(this._timedCompile(`ch${ch}`, this._prewarmChapterEnvironment(ch)));
+                }
+                await this._yieldTask();
+            }
+        }
+        /* eslint-enable no-await-in-loop */
+        this.environmentManager.updateVisibility(this.environmentManager.cameraProgress, { mode: 'progress' });
+
+        // LEVER 2 — hand residency to the manager once the startup window is built. The
+        // onRecreated hook re-queues prewarm + an offscreen render-warm so a chapter re-entering
+        // the window is GPU-ready before it draws (no first-visit compile hitch on re-approach).
+        if (this.chapterEvictionEnabled && this.environmentManager) {
+            this.environmentManager.setChapterEviction({
+                enabled: true,
+                window: this.chapterEvictionWindow,
+                onRecreated: (chapterId) => {
+                    const env = this.environmentManager.environments.get(chapterId);
+                    if (env) env._renderWarmed = false;
+                    this._queueChapterPrewarm(chapterId);
+                    if (env && this.isActive) {
+                        // Warm AFTER the async prewarm compile resolves. Rendering synchronously in
+                        // the SAME tick we queued the prewarm is a GUARANTEED (not merely racy)
+                        // setPipeline(undefined) throw — the same warm-render-beats-compile bug the
+                        // background sweep now guards (compileAsync leaves .pipeline undefined until
+                        // its promise resolves). Defer with a bounded prewarmed-poll.
+                        this._deferRenderWarm(chapterId, env, 0);
+                    }
+                },
+            });
+        }
+        trace.end('creates');
+
+        // ─── Step 4: Build path ───
+        // Diegetic per-chapter path is part of the default cinematic journey.
+        trace.begin('path');
+        this.pathRenderer = new OdysseyPathRenderer(this.scene, { aaa: this.cinematicJourneyActive });
+        await this.pathRenderer.buildPath({
+            ...ODYSSEY_PATH_DATA,
+            controlPoints: this.presentationLayout.controlPoints,
+            chapterPositions: this.presentationLayout.chapterPositions,
+        });
+        trace.end('path');
+
+        await this._yieldTask();
+
+        // ─── Step 5: Create level nodes (55 nodes) ───
+        trace.begin('nodes');
+        this.nodeManager = new LevelNodeManager(this.scene, this.pathRenderer.pathCurve);
+        this.nodeManager.setCamera(this.camera);
+        // Node focal hierarchy + per-world shells ride the same always-on spine.
+        this.nodeManager.setAAAVisualsEnabled(this.cinematicJourneyActive);
+        // ONE WORLD Wave 3: level orbs consult the CPU mirror of the drawn ground, so a node
+        // can never sit inside a rise the shader displaced above the spline. Act II only —
+        // outside it the chapters own their ground, and Ch1's nodes are UNDER the terrain.
+        if (this._worldBake) {
+            // Item 2.1: the height mirror comes straight from the relief stage — the first the
+            // worker posts — so the nodes never wait for the whole world. A failed bake leaves
+            // the nodes unseated exactly as a failed world build did; the world step below
+            // then bakes synchronously and reports the failure.
+            try {
+                const relief = await this._worldBake.relief;
+                trace.event(`world-bake relief landed +${Math.round(performance.now() - this._worldBake.startedAt)}ms`);
+                const cp = this.presentationLayout.chapterPositions;
+                this.nodeManager.setGroundSampler(makeReliefSampler(relief), {
+                    clearance: 7,
+                    rangeStart: cp[1],
+                    rangeEnd: cp[5],
+                });
+            } catch (error) {
+                console.warn('[OdysseyBoard] world bake (relief) failed before the nodes:', error?.message || error);
+            }
+        }
+        await this.nodeManager.createNodes(this.levelData, this._yieldTask.bind(this));
+        this.nodeManager.updateFromProgress(this.progressData);
+
+        // A/B lever, applied HERE so it works on its own (fixed 2026-08-12). It used to be
+        // read only inside _sampleGpuProfile, i.e. ?odysseyHideLevelNodes=1 was a silent
+        // no-op unless ?odysseyGpuProfile=1 was also passed — so anyone running the
+        // comparison by hand from the URL measured two identical frames and concluded the
+        // level nodes were free.
+        if (this.hideLevelNodes) this.nodeManager.setAllVisible(false);
+
+        trace.end('nodes');
+
+        trace.begin('world');
         if (this.oneWorldEnabled) {
             // A feature flag must never be able to brick boot. If the world fails to build we
             // log it and fall back to the shipped chapter environments rather than leaving the
             // journey with no ground at all — the failure mode that cost a capture cycle here
             // was a silent throw inside init, which just hangs bootstrap with no diagnostic.
             try {
-                const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
+                const { weakLane } = this._worldBakeOptions ?? this._readWorldBuildOptions();
+                // Landed bakes (or the synchronous twin's); a bake that failed outright falls
+                // through to createOdysseyWorld's own synchronous bakes via prebaked = null.
+                let prebaked = null;
+                if (this._worldBake) {
+                    try {
+                        prebaked = await awaitWorldBake(this._worldBake);
+                        trace.event(`world-bake landed +${Math.round(performance.now() - this._worldBake.startedAt)}ms ${JSON.stringify(prebaked.ms)}`);
+                    } catch (error) {
+                        console.warn('[OdysseyBoard] world bake failed; baking on the main thread:', error?.message || error);
+                    }
+                }
                 this.oneWorld = createOdysseyWorld({
+                    prebaked,
                     quality: weakLane ? 'low' : 'high',
                     // The forest's hero band rides FOREST_LOD_DISTANCE_BY_TIER. Flattened to
                     // 200 on every tier by owner direction 2026-08-15 (post-carve, the island
@@ -762,14 +1010,17 @@ export class OdysseyBoardController {
                     // The shipped Act II sky since 2026-08-14. `?odysseyWorldNoCloudField=1`
                     // removes it for bisects; `?odysseyWorldCloudSheet=1` brings the retired
                     // flat sheet back alongside or instead.
+                    // (Same reads as _readWorldBuildOptions — the bake and the build agree.)
                     cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
                     // REVIEW LEVER (temporary, colour pass): pick a north-lake water
                     // palette so the GRADED capture harness can shoot the arms without a
                     // tree edit between runs. Unset ships the default.
                     lakeTint: readUrlValue('lakeTint') || '',
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
-                    // Seat the Ch2 god-ray shafts along the real rail's submerged stretch.
-                    railSamples: Array.from(
+                    // Seat the Ch2 god-ray shafts along the real rail's submerged stretch — the
+                    // SAME 48 plain points the bake used (item 2.1), so the worker's cloud LOD
+                    // promotion and the main thread's seating agree.
+                    railSamples: this._worldBakeOptions?.railSamples ?? Array.from(
                         { length: 48 },
                         (_, i) => getOdysseyPathPointAt(i / 47),
                     ),
@@ -780,6 +1031,9 @@ export class OdysseyBoardController {
                 console.error('[OdysseyBoard] One World failed to build; falling back', error);
                 this.oneWorld = null;
                 this.oneWorldEnabled = false;
+                // The world now builds AFTER the startup chapter creates (item 2.1), so lifting
+                // the suppression here no longer re-creates chapters 2-5 in the startup loop;
+                // the background loader picks them up (they are outside the startup set).
                 this.environmentManager.suppressedChapters = new Set();
                 // LOUD, after the fallback is arranged (Wave 4/6 audit prerequisite): a
                 // player-visible banner + a persisted localStorage log. Silent recovery is
@@ -791,159 +1045,9 @@ export class OdysseyBoardController {
                 } catch { /* diagnostic only — never let reporting hurt the fallback */ }
             }
         }
-        const compilePool = [];
-        this._compilePool = serialInit ? null : compilePool;
-        this._compileTimings = {}; // OD-05 scoping: per-item compile ms, emitted after the barrier
-        trace.begin('creates');
-        this.environmentManager.qualitySettings = {
-            ...this.environmentManager.qualitySettings,
-            particleCount: this.qualityPreset.particleCount,
-        };
-        const chapterPositions = this.presentationLayout.chapterPositions || [];
-        const totalChapters = Math.max(
-            1,
-            chapterPositions.length > 0 && chapterPositions[chapterPositions.length - 1] >= 0.999
-                ? chapterPositions.length - 1
-                : (chapterPositions.length || 8),
-        );
-        const allChapterIds = Array.from({ length: totalChapters }, (_, index) => index + 1);
-        let startupChapterIds = allChapterIds;
-        let startupScopeLabel = '';
-        // When restricted to a subset, the warm-up must also restrict to it (else it scrolls
-        // into deferred chapters and lazily creates them). null = warm the full journey.
-        this._activeStartupChapterIds = null;
-        if (this.restrictStartupChapterLoading) {
-            startupChapterIds = parseChapterIdList(this.captureChapterIds, totalChapters);
-            startupScopeLabel = ' (capture scoped)';
-        } else if (this.startupChapterWindow && this.backgroundChapterLoadingEnabled) {
-            // Only window when background loading is on, so the deferred chapters WILL load.
-            const windowed = this.startupChapterWindow
-                .filter((id) => Number.isFinite(id) && id >= 1 && id <= totalChapters);
-            if (windowed.length > 0 && windowed.length < allChapterIds.length) {
-                startupChapterIds = Array.from(new Set(windowed)).sort((a, b) => a - b);
-                startupScopeLabel = ` (eager window; ${allChapterIds.length - startupChapterIds.length} deferred to background)`;
-                this._activeStartupChapterIds = startupChapterIds;
-            }
-        }
-        console.log(`[OdysseyBoard] Startup chapter set: ${startupChapterIds.join(', ')}${startupScopeLabel}`);
+        trace.end('world');
 
-        // A2 EXPERIMENT (?odysseyLightsFirst=1, default OFF): hoist the global atmosphere
-        // light rig + build ALL chapter environments (reparenting every chapter's lights into
-        // the persistent rig) BEFORE launching any chapter compileAsync, so each prewarm
-        // specializes on the FINAL scene light set. The persistent rig "keeps the light set
-        // constant" only once every chapter is created — the default interleaved loop compiles
-        // chapter 1 before chapters 2..8's lights exist, so the first real render re-specializes
-        // the lit pipelines on the grown light-set hash (the ~5.5s/chapter warm suspect). Two
-        // passes are required: a single interleaved pass can't see the not-yet-created chapters'
-        // lights. Opt-in until a cold Electron boot A/B confirms the win (warm Dawn cache hides
-        // the compile cost, so this can only be measured cold).
-        const lightsFirst = this.aaaPostActive && readBooleanUrlFlag('odysseyLightsFirst');
-        if (lightsFirst) {
-            this._createAtmosphereLightRig();
-        }
-
-        /* eslint-disable no-await-in-loop */
-        for (const ch of startupChapterIds) {
-            const createStart = performance.now();
-            await this.environmentManager.createChapterEnvironment(ch);
-            const createMs = performance.now() - createStart;
-            // Diagnostic: surface unusually heavy CPU bakes so the trace pinpoints which
-            // chapter to optimize next (only logs outliers — no per-boot spam).
-            if (createMs > 150) {
-                trace.event(`create ch${ch} took ${Math.round(createMs)}ms`);
-            }
-            // Default path: launch this chapter's compile immediately (interleaved with the
-            // next chapter's create). In lightsFirst mode, defer ALL compiles to pass 2 below.
-            if (!lightsFirst) {
-                if (serialInit) {
-                    await this._prewarmChapterEnvironment(ch);
-                } else {
-                    compilePool.push(this._timedCompile(`ch${ch}`, this._prewarmChapterEnvironment(ch)));
-                }
-            }
-            await this._yieldToMain();
-        }
-        if (lightsFirst) {
-            // Pass 2 — the full light set (atmosphere + every chapter's reparented lights) is
-            // now resident, so every chapter pipeline compiles against the light-set hash it
-            // will actually render with. No first-render re-specialization.
-            for (const ch of startupChapterIds) {
-                if (serialInit) {
-                    await this._prewarmChapterEnvironment(ch);
-                } else {
-                    compilePool.push(this._timedCompile(`ch${ch}`, this._prewarmChapterEnvironment(ch)));
-                }
-                await this._yieldToMain();
-            }
-        }
-        /* eslint-enable no-await-in-loop */
-        this.environmentManager.updateVisibility(this.environmentManager.cameraProgress, { mode: 'progress' });
-
-        // LEVER 2 — hand residency to the manager once the startup window is built. The
-        // onRecreated hook re-queues prewarm + an offscreen render-warm so a chapter re-entering
-        // the window is GPU-ready before it draws (no first-visit compile hitch on re-approach).
-        if (this.chapterEvictionEnabled && this.environmentManager) {
-            this.environmentManager.setChapterEviction({
-                enabled: true,
-                window: this.chapterEvictionWindow,
-                onRecreated: (chapterId) => {
-                    const env = this.environmentManager.environments.get(chapterId);
-                    if (env) env._renderWarmed = false;
-                    this._queueChapterPrewarm(chapterId);
-                    if (env && this.isActive) {
-                        // Warm AFTER the async prewarm compile resolves. Rendering synchronously in
-                        // the SAME tick we queued the prewarm is a GUARANTEED (not merely racy)
-                        // setPipeline(undefined) throw — the same warm-render-beats-compile bug the
-                        // background sweep now guards (compileAsync leaves .pipeline undefined until
-                        // its promise resolves). Defer with a bounded prewarmed-poll.
-                        this._deferRenderWarm(chapterId, env, 0);
-                    }
-                },
-            });
-        }
-        trace.end('creates');
-
-        // ─── Step 4: Build path ───
-        // Diegetic per-chapter path is part of the default cinematic journey.
-        trace.begin('path');
-        this.pathRenderer = new OdysseyPathRenderer(this.scene, { aaa: this.cinematicJourneyActive });
-        await this.pathRenderer.buildPath({
-            ...ODYSSEY_PATH_DATA,
-            controlPoints: this.presentationLayout.controlPoints,
-            chapterPositions: this.presentationLayout.chapterPositions,
-        });
-        trace.end('path');
-
-        await this._yieldToMain();
-
-        // ─── Step 5: Create level nodes (55 nodes) ───
-        trace.begin('nodes');
-        this.nodeManager = new LevelNodeManager(this.scene, this.pathRenderer.pathCurve);
-        this.nodeManager.setCamera(this.camera);
-        // Node focal hierarchy + per-world shells ride the same always-on spine.
-        this.nodeManager.setAAAVisualsEnabled(this.cinematicJourneyActive);
-        // ONE WORLD Wave 3: level orbs consult the CPU mirror of the drawn ground, so a node
-        // can never sit inside a rise the shader displaced above the spline. Act II only —
-        // outside it the chapters own their ground, and Ch1's nodes are UNDER the terrain.
-        if (this.oneWorld) {
-            const cp = this.presentationLayout.chapterPositions;
-            this.nodeManager.setGroundSampler(this.oneWorld.heightAt, {
-                clearance: 7,
-                rangeStart: cp[1],
-                rangeEnd: cp[5],
-            });
-        }
-        await this.nodeManager.createNodes(this.levelData, this._yieldToMain.bind(this));
-        this.nodeManager.updateFromProgress(this.progressData);
-        // A/B lever, applied HERE so it works on its own (fixed 2026-08-12). It used to be
-        // read only inside _sampleGpuProfile, i.e. ?odysseyHideLevelNodes=1 was a silent
-        // no-op unless ?odysseyGpuProfile=1 was also passed — so anyone running the
-        // comparison by hand from the URL measured two identical frames and concluded the
-        // level nodes were free.
-        if (this.hideLevelNodes) this.nodeManager.setAllVisible(false);
-        trace.end('nodes');
-
-        await this._yieldToMain();
+        await this._yieldTask();
 
         // ─── Step 6: Camera, post-processing, lighting, interaction ───
         this.cameraController = new OdysseyCameraController(
@@ -1003,7 +1107,7 @@ export class OdysseyBoardController {
         this._applyChapterMusic(1, { reason: 'odyssey-board-initial' });
         trace.end('post+director');
 
-        await this._yieldToMain();
+        await this._yieldTask();
 
         if (this.editorMode) {
             await this.initializeLayoutEditor();
@@ -1072,6 +1176,41 @@ export class OdysseyBoardController {
             requestAnimationFrame(() => {
                 requestAnimationFrame(resolve);
             });
+        });
+    }
+
+    /**
+     * A CHEAP yield for the CPU-only startup steps (plan item 2.4).
+     *
+     * {@link _yieldToMain} waits TWO animation frames. That is right where the yield paces GPU
+     * work (the warm-up replay renders a frame per step), but the startup CPU steps — chapter
+     * creates, the path, the 55 level nodes in batches of 5, the world hand-off — yield only so
+     * the loading overlay can breathe, and they paid 2 frames each. During startup a frame is
+     * 40–60 ms (chapter compiles and the world worker are in flight), so the 11 node batches
+     * alone cost most of the ~1 s `nodes` bucket for < 50 ms of work.
+     *
+     * The overlay does not need those frames: its ring/star animations are pure CSS
+     * `transform`/`opacity` keyframes (cinematic-loading-overlay.js:741-761), i.e.
+     * compositor-driven, and they keep running while the main thread works. What a yield must
+     * actually provide is a TASK boundary — the event loop then gets its rendering opportunity
+     * and input is not stuck. `scheduler.yield()` (Chrome >= 129, so Electron 38) resumes at
+     * continuation priority, ahead of ordinary posted tasks; a MessageChannel round-trip is the
+     * fallback.
+     * @returns {Promise<void>}
+     * @private
+     */
+    _yieldTask() {
+        const scheduler = typeof globalThis !== 'undefined' ? globalThis.scheduler : null;
+        if (scheduler && typeof scheduler.yield === 'function') {
+            return scheduler.yield();
+        }
+        return new Promise((resolve) => {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = () => {
+                channel.port1.close();
+                resolve();
+            };
+            channel.port2.postMessage(null);
         });
     }
 
@@ -1276,6 +1415,55 @@ export class OdysseyBoardController {
         return false;
     }
 
+    /**
+     * THE GALAXY GUARANTEE — push the travel frontier to the camera so the player can never
+     * scroll into a chapter that is not prepared (see odyssey-travel-frontier.js for why this,
+     * rather than a longer loading screen, is the right reading of "do it the Galaxy way").
+     *
+     * Opt-in for now (`?odysseyTravelGate=1`): this changes where the player may go, which is a
+     * gameplay-visible contract, and it has not yet been verified in-game. Same pattern One World
+     * shipped under before it became the default.
+     * @private
+     */
+    _updateTravelFrontier() {
+        if (!this._travelGateEnabled || !this.cameraController) return;
+        const chapterPositions = this.presentationLayout?.chapterPositions || [];
+        const suppressed = this.environmentManager?.suppressedChapters;
+        const environments = this.environmentManager?.environments;
+
+        let frontier = computeTravelFrontier({
+            chapterPositions,
+            isChapterReady: (chapterId) => {
+                // Chapters One World owns have no environment of their own — the world is built
+                // in full before reveal, so that whole stretch is ready by construction.
+                if (suppressed?.has?.(chapterId)) return true;
+                const env = environments?.get(chapterId);
+                return !!(env && env._renderWarmed);
+            },
+        });
+
+        // ANTI-SOFTLOCK. Being stuck is a worse bug than the stutter this prevents, so a hold that
+        // outlasts the grace window releases and takes the hitch. It also logs: a release means
+        // the warm pipeline failed to keep ahead of the player, which is the single most useful
+        // diagnostic this system can emit.
+        const position = this.cameraController.currentPosition;
+        if (isHeldAtFrontier(position, frontier)) {
+            if (!this._frontierHoldSince) {
+                this._frontierHoldSince = performance.now();
+            } else if (performance.now() - this._frontierHoldSince > this._frontierHoldReleaseMs) {
+                console.warn(
+                    `[OdysseyTravelGate] released a ${Math.round(this._frontierHoldReleaseMs)}ms hold at `
+                    + `p=${position.toFixed(3)} — warm pipeline did not keep ahead of the player`,
+                );
+                this._frontierHoldSince = 0;
+                frontier = 1;
+            }
+        } else {
+            this._frontierHoldSince = 0;
+        }
+        this.cameraController.setTravelFrontier(frontier);
+    }
+
     _queueChapterPrewarm(chapterId) {
         if (!Number.isFinite(chapterId)) return;
         if (this.queuedPrewarmChapters.has(chapterId)) return;
@@ -1300,37 +1488,77 @@ export class OdysseyBoardController {
     }
 
     async _drainPrewarmQueue() {
-        if (!this.isActive || this.isPrewarming || this.prewarmQueue.length === 0) return;
+        if (this.isPrewarming || this.prewarmQueue.length === 0) return;
+        // A drain that fires while the board is not yet active (the pre-reveal warm queues
+        // chapters via _ensureBoundaryAssets) must RESCHEDULE, not dead-end: the old plain
+        // return left the queued ids stuck in the dedupe set with no timer, so their
+        // compileAsync could be dropped for the whole session and land as a synchronous
+        // compile on a live frame (scouts' verified strand bug, 2026-08-17).
+        if (!this.isActive) {
+            this._schedulePrewarmDrain(400);
+            return;
+        }
         if (!this._canRunBackgroundTask()) {
             this._schedulePrewarmDrain(160);
             return;
         }
 
-        // AAA warm pipeline (Stage 3): compile the queued chapters CONCURRENTLY instead of
-        // one-at-a-time. compileAsync is a background-thread GPU op that pipelines, so the old
-        // serial drain let ONE slow chapter (surface-world's ~15-material compile) block every
-        // later chapter's compile for many seconds — the player then scrolls into ch4-8 before
-        // they are prewarmed = the first-visit hitch. Firing the whole pending set at once during
-        // idle (this path only runs when idle + camera-settled + frame-healthy, so the concurrent
-        // GPU burst does not contend with an active scroll) gets them all ready in ~max(compile)
-        // instead of sum(compile). Nearest-to-player first so the closest chapters resolve soonest.
+        // r185 rework (2026-08-20) + item 2.11 (2026-08-21). r185's compileAsync defers every
+        // object's node build into a main-thread-yielding loop that reads the LIVE renderer
+        // target/MRT at build time, so from 08-20 this drain ran ONLY the synchronous
+        // private-target render-warm — which paid each chapter's pipeline compile synchronously
+        // (78 sync creations for chapters 6–8, 1.4–1.8 s idle-gated stalls, r185p1light cells).
+        // Now the drain first compiles the chapter through the live-loop-safe path
+        // (_prewarmChapterEnvironment → compileGroupUnderLiveLoop: the deferred builds' reads
+        // are answered per item, nothing is bound across a yield — see post-target-compile.js),
+        // then runs the same render-warm, which creates no pipelines any more (~4 ms: GPU
+        // uploads + first update()). One chapter per tick, nearest-to-player first, idle-gated
+        // by _canRunBackgroundTask above; ?odysseyLiveCompile=0 restores the 08-20 behaviour.
         const focus = Number.isFinite(this.focusChapter) ? this.focusChapter : 1;
         this.prewarmQueue.sort((a, b) => Math.abs(a - focus) - Math.abs(b - focus));
-        // Bounded concurrency: compile up to N nearest chapters at once so a slow chapter
-        // (surface-world's ~15-material compile) never serially blocks the rest, WITHOUT an
-        // unbounded GPU burst that would starve the create loop / stutter the orient-pause.
-        const batch = this.prewarmQueue.splice(0, 3);
+        const batch = this.prewarmQueue.splice(0, 1);
         batch.forEach((ch) => this.queuedPrewarmChapters.delete(ch));
         this.isPrewarming = true;
 
         try {
-            await Promise.all(batch.map((ch) => this._prewarmChapterEnvironment(ch)));
+            for (const ch of batch) {
+                const env = this.environmentManager?.environments?.get(ch);
+                if (!env || env._renderWarmed) continue;
+                if (!env.prewarmed && this.liveCompileEnabled) {
+                    const compileStart = performance.now();
+                    // eslint-disable-next-line no-await-in-loop
+                    await this._prewarmChapterEnvironment(ch);
+                    this._liveCompileTimings = this._liveCompileTimings || {};
+                    this._liveCompileTimings[ch] = Math.round(performance.now() - compileStart);
+                    // The chapter may have been evicted / the board torn down while compiling.
+                    if (!this.isActive || this.environmentManager?.environments?.get(ch) !== env) continue;
+                }
+                const warmStart = performance.now();
+                const warmed = this._renderWarmChapterOffscreen(ch, env);
+                if (warmed) {
+                    // A successful warm RENDER builds strictly more than a compile did:
+                    // pipelines, GPU uploads, first update(). Mark both flags so the
+                    // post-reveal sweep and the scroll-in fallback skip this chapter.
+                    env.prewarmed = true;
+                    env._renderWarmed = true;
+                    const warmMs = Math.round(performance.now() - warmStart);
+                    console.log(`[OdysseyBoard] Drain render-warmed chapter ${ch} in ${warmMs}ms`);
+                } else {
+                    // Warm failed (device/pipeline race) — re-queue bounded, like the sweep.
+                    this._drainWarmRetries = this._drainWarmRetries || {};
+                    this._drainWarmRetries[ch] = (this._drainWarmRetries[ch] || 0) + 1;
+                    if (this._drainWarmRetries[ch] <= 5 && !this.queuedPrewarmChapters.has(ch)) {
+                        this.prewarmQueue.push(ch);
+                        this.queuedPrewarmChapters.add(ch);
+                    }
+                }
+            }
         } finally {
             this.isPrewarming = false;
         }
 
         if (this.prewarmQueue.length > 0) {
-            this._schedulePrewarmDrain(60);
+            this._schedulePrewarmDrain(180);
         }
     }
 
@@ -1493,13 +1721,25 @@ export class OdysseyBoardController {
                 // sweep should simply wait; the bound exists only so a stuck/rejected compile can
                 // never leave _bgRenderWarmComplete false forever (the adaptive controller gates
                 // on it). ~30 x 200ms = 6s, matching the original grace — but non-blocking now.
-                if (this._bgWarmWaits[ch] <= 30) {
+                // Item 2.11: with the live-loop compile on, the drain owns every un-compiled
+                // chapter (compile, then the cheap warm) — the sweep must never "warm anyway",
+                // that is exactly the synchronous compile this item removes. Queue it (dedupes)
+                // and rotate; the bound still lets the sweep COMPLETE if a compile never lands.
+                if (this.liveCompileEnabled) this._queueChapterPrewarm(ch);
+                if (this._bgWarmWaits[ch] <= (this.liveCompileEnabled ? 90 : 30)) {
                     // Head-of-line rule again: a chapter still compiling must not hold up a
                     // chapter that is already compiled and ready to warm.
                     idx += 1;
                     order.push(ch);
                     this._bgRenderWarmPending = Math.max(0, order.length - idx);
                     setTimeout(step, 200);
+                    return;
+                }
+                if (this.liveCompileEnabled) {
+                    console.warn(`[OdysseyWarmup] chapter ${ch} compile never landed — left to first visit`);
+                    idx += 1;
+                    this._bgRenderWarmPending = Math.max(0, order.length - idx);
+                    setTimeout(step, 75);
                     return;
                 }
                 console.warn(`[OdysseyWarmup] chapter ${ch} still not prewarmed after grace window — warming anyway`);
@@ -1548,6 +1788,11 @@ export class OdysseyBoardController {
             setTimeout(() => this._deferRenderWarm(chapterId, env, attempt + 1), 200);
             return;
         }
+        // Item 2.11: the drain compiles then warms; never fall back to a synchronous compile here.
+        if (!env.prewarmed && this.liveCompileEnabled) {
+            this._queueChapterPrewarm(chapterId);
+            return;
+        }
         this._renderWarmChapterOffscreen(chapterId, env);
         env._renderWarmed = true;
     }
@@ -1576,9 +1821,18 @@ export class OdysseyBoardController {
         let succeeded = false;
         const prevVisible = group.visible;
         const frustumOverrides = [];
+        // Same deep-reveal as _prewarmChapterEnvironment (masterplan F2): the render-warm must
+        // draw progress-gated sub-objects too, or their first real draw lands on a live frame.
         group.traverse((child) => {
+            if (child === group) return;
+            // NEVER reveal lights: they compile nothing, and a revealed light enters the render
+            // list — the lights key (light ids, count) then differs from the live pass, the warm
+            // builds a different program, and three disposes one side's pipelines when the key
+            // flips back (chapter-light-pool.js: the pool's lights are VIRTUAL, visible=false).
+            if (child.isLight) return;
+            frustumOverrides.push({ child, visible: child.visible, frustumCulled: child.frustumCulled });
+            child.visible = true;
             if (child?.isMesh || child?.isPoints || child?.isLine || child?.isSprite) {
-                frustumOverrides.push({ child, frustumCulled: child.frustumCulled });
                 child.frustumCulled = false;
             }
         });
@@ -1604,7 +1858,8 @@ export class OdysseyBoardController {
         } finally {
             this._endPostTargetCompile(saved);
             group.visible = prevVisible;
-            frustumOverrides.forEach(({ child, frustumCulled }) => {
+            frustumOverrides.forEach(({ child, visible, frustumCulled }) => {
+                child.visible = visible;
                 child.frustumCulled = frustumCulled;
             });
         }
@@ -1725,7 +1980,12 @@ export class OdysseyBoardController {
     }
 
     /** @private */
-    _compileGroupThroughPost(group) {
+    _compileGroupThroughPost(group, options = {}) {
+        // r185: resolves false (compile skipped) when the loop is live and post is active,
+        // UNLESS `options.live` — item 2.11's live-loop path, which answers the deferred
+        // builds' target/MRT reads per item instead of binding anything across a yield
+        // (post-target-compile.js, "Item 2.11"). Without it, background warming belonged to
+        // the synchronous private-target render-warm alone.
         return compileGroupThroughPost(
             this.renderer,
             this.postProcessingStack,
@@ -1733,10 +1993,7 @@ export class OdysseyBoardController {
             this.camera,
             group,
             this._renderLoopActive(),
-            // Background compiles (loop live) bind the private target so they build POST-format
-            // pipelines asynchronously, instead of canvas-format ones that leave the real compile
-            // to land synchronously in the render-warm.
-            this._getWarmRenderTarget(),
+            options,
         );
     }
 
@@ -1761,12 +2018,43 @@ export class OdysseyBoardController {
         if (!env || env.prewarmed) return;
 
         const { group } = env;
+
+        // LIVE loop (item 2.11): the compile module reveals each object for compileAsync's
+        // synchronous prologue only — revealing the whole (far, hidden) chapter across the
+        // await would make every live frame DRAW it, frustum-uncullable, with pipelines that
+        // do not exist yet. No deep-reveal here; `live` selects compileGroupUnderLiveLoop.
+        if (this._renderLoopActive()) {
+            if (!this.liveCompileEnabled) return;
+            try {
+                const compiled = await this._compileGroupThroughPost(group, { live: true });
+                if (compiled) {
+                    env.prewarmed = true;
+                    console.log(`[OdysseyBoard] Prewarmed chapter ${chapterId} shaders (live loop)`);
+                }
+            } catch (error) {
+                console.warn(`[OdysseyBoard] Live shader prewarm failed for chapter ${chapterId}:`, error);
+            }
+            return;
+        }
+
         const previousGroupVisibility = group.visible;
         const frustumOverrides = [];
 
+        // Reveal EVERY descendant, exactly as _prewarmGroup deliberately does: chapters gate
+        // sub-objects on .visible until a progress threshold (Earth Core's lava fall, the steam
+        // quench), and compileAsync skips invisible objects — so before this fix those
+        // sub-objects were UNWARMABLE BY DESIGN and paid their compile on the first live frame
+        // past their threshold (audit 2026-08-17, masterplan F2).
         group.traverse((child) => {
+            if (child === group) return;
+            // NEVER reveal lights: they compile nothing, and a revealed light enters the render
+            // list — the lights key (light ids, count) then differs from the live pass, the warm
+            // builds a different program, and three disposes one side's pipelines when the key
+            // flips back (chapter-light-pool.js: the pool's lights are VIRTUAL, visible=false).
+            if (child.isLight) return;
+            frustumOverrides.push({ child, visible: child.visible, frustumCulled: child.frustumCulled });
+            child.visible = true;
             if (child?.isMesh || child?.isPoints || child?.isLine || child?.isSprite) {
-                frustumOverrides.push({ child, frustumCulled: child.frustumCulled });
                 child.frustumCulled = false;
             }
         });
@@ -1777,16 +2065,24 @@ export class OdysseyBoardController {
 
             // Structural: TARGETED compile of just this chapter's group instead of the whole
             // scene, against the POST pass target (the pipelines the chapter actually uses
-            // live). Compilation is async (createRenderPipelineAsync) — never blocks main.
-            await this._compileGroupThroughPost(group);
+            // live). Compilation is async — r185 yields to main between objects, never blocks.
+            // Concurrent pool launches share one refcounted binding inside
+            // compileGroupThroughPost (r185 holds it across the whole await; the module
+            // restores only after the last pooled compile resolves — see its file header).
+            const compiled = await this._compileGroupThroughPost(group);
 
-            env.prewarmed = true;
-            console.log(`[OdysseyBoard] Prewarmed chapter ${chapterId} shaders`);
+            if (compiled) {
+                env.prewarmed = true;
+                console.log(`[OdysseyBoard] Prewarmed chapter ${chapterId} shaders`);
+            }
+            // compiled === false: loop live + post active — compileAsync is unsafe on r185.
+            // Leave env.prewarmed false; the background render-warm owns this chapter now.
         } catch (error) {
             console.warn(`[OdysseyBoard] Shader prewarm failed for chapter ${chapterId}:`, error);
         } finally {
             group.visible = previousGroupVisibility;
-            frustumOverrides.forEach(({ child, frustumCulled }) => {
+            frustumOverrides.forEach(({ child, visible, frustumCulled }) => {
+                child.visible = visible;
                 child.frustumCulled = frustumCulled;
             });
         }
@@ -1799,6 +2095,56 @@ export class OdysseyBoardController {
      * its prior state. Used for the seam-only breach + the corridor field, whose pipelines
      * would otherwise compile on the FIRST chapter transition (the first-transition hitch).
      */
+    /**
+     * A traverse-only stand-in for "everything the board added straight to the scene": the
+     * scene's direct children except the groups other prewarms already cover (chapter
+     * environments, One World, corridor field, threshold breach) and non-renderables. Exposes
+     * just what _prewarmGroup / compileObjectsFannedOut read: `traverse` and `visible`.
+     * @private
+     */
+    /**
+     * Item 2.1: the inputs the One World bake and build share — read once, before the renderer,
+     * so the Worker and `createOdysseyWorld` agree on quality, the cloud-field spec slice and
+     * the 48 rail samples (the path layout is set just before this runs).
+     * @private
+     */
+    _readWorldBuildOptions() {
+        const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
+        const q = ODYSSEY_WORLD_QUALITY[weakLane ? 'low' : 'high'] || ODYSSEY_WORLD_QUALITY.high;
+        const cloudField = !readBooleanUrlFlag('odysseyWorldNoCloudField');
+        const cloudFieldCount = Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0;
+        const cloudSpecs = cloudFieldCount > 0
+            ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount)
+            : ODYSSEY_CLOUD_FIELD_SPECS;
+        const railSamples = Array.from({ length: 48 }, (_, i) => {
+            const pt = getOdysseyPathPointAt(i / 47);
+            return { x: pt.x, y: pt.y, z: pt.z }; // plain points: structured-clone friendly
+        });
+        return {
+            weakLane, q, cloudField, cloudFieldCount, cloudSpecs, railSamples,
+        };
+    }
+
+    _boardPresentationGroup() {
+        if (!this.scene) return null;
+        const covered = new Set([
+            this.environmentManager?.environmentGroup,
+            this.oneWorld?.group,
+            this.corridorField?.group,
+            this.thresholdDirector?.group,
+        ].filter(Boolean));
+        const roots = this.scene.children.filter((child) => !covered.has(child)
+            && !child.isLight && !child.isCamera);
+        if (roots.length === 0) return null;
+        return {
+            visible: true,
+            traverse(callback) {
+                callback(this);
+                roots.forEach((root) => root.traverse(callback));
+            },
+        };
+    }
+
     async _prewarmGroup(group, label = 'group') {
         if (!group || !this.renderer || !this.scene || !this.camera) return;
         const previousVisibility = group.visible;
@@ -1808,6 +2154,11 @@ export class OdysseyBoardController {
         const overrides = [];
         group.traverse((child) => {
             if (child === group) return;
+            // NEVER reveal lights: they compile nothing, and a revealed light enters the render
+            // list — the lights key (light ids, count) then differs from the live pass, the warm
+            // builds a different program, and three disposes one side's pipelines when the key
+            // flips back (chapter-light-pool.js: the pool's lights are VIRTUAL, visible=false).
+            if (child.isLight) return;
             overrides.push({ child, visible: child.visible, frustumCulled: child.frustumCulled });
             child.visible = true;
             if (child.isMesh || child.isPoints || child.isLine || child.isSprite) {
@@ -1926,6 +2277,12 @@ export class OdysseyBoardController {
             const bloomScale = Number.isFinite(bloomScaleOverride)
                 ? Math.min(1, Math.max(0.1, bloomScaleOverride))
                 : ODYSSEY_BLOOM_SCALE;
+            // RCAS sharpen on DRS'd output (three r185 SharpenNode; upgrade plan §11 item 4).
+            // Default ON; opt out with ?odysseySharpen=0 (A/B at a low ?odysseyPixelRatio).
+            // ?odysseySharpenMax=<0..1> overrides the lobe fraction reached at the 0.65 floor.
+            const sharpenFlag = getUrlSearchParams()?.get('odysseySharpen');
+            const sharpenEnabled = !(sharpenFlag === '0' || sharpenFlag === 'false' || sharpenFlag === 'off');
+            const sharpenMaxOverride = Number.parseFloat(readUrlValue('odysseySharpenMax'));
             // WebGPU TSL post graph: bloom + ACES + per-chapter grade + CA + vignette + grain.
             // API-compatible with the old PostProcessingStack (update/render/resize/seam/dispose).
             this.postProcessingStack = new OdysseyTslPipeline(this.renderer, this.scene, this.camera, {
@@ -1942,11 +2299,14 @@ export class OdysseyBoardController {
                 // the sub-pixel wildflower geometry needs real sample coverage; lower tiers
                 // keep QW1's zero-sample pass (the iGPU budget that motivated it).
                 sceneSamples: ['High', 'Ultra', 'Extreme'].includes(this.qualityName) ? 4 : 0,
+                sharpen: sharpenEnabled,
+                sharpenMaxAmount: Number.isFinite(sharpenMaxOverride) ? sharpenMaxOverride : undefined,
             });
             if (Number.isFinite(postQualityOverride)) {
                 this.postProcessingStack.setPostQuality(postQualityOverride);
             }
             this.postProcessingStack.setSize(this.container.clientWidth, this.container.clientHeight);
+            this._syncOutputSharpen(); // the policy / ?odysseyPixelRatio may already start below 1
             this.composer = null;
             this.bloomPass = null;
             console.log(`[OdysseyBoard] OdysseyTslPipeline initialized (${this.qualityName})`);
@@ -2096,16 +2456,27 @@ export class OdysseyBoardController {
                 // and would compile four materials on the first Act II frame — the whole point
                 // of collapsing 66 materials into 4 is lost if they land as a cold stall.
                 const worldWarm = this._prewarmGroup(this.oneWorld?.group, 'one world');
+                // The board's OWN presentation — path tube/core/glow + chapter rings, the 55
+                // level nodes and their instanced glass/glow/lock/star meshes, the starfield —
+                // is added straight to the scene, outside every group above, so nothing
+                // compiled it: measured 2026-08-21 (renderer key trace) as the 14 pipelines
+                // still created synchronously on the first live frame once every re-create
+                // cause was gone. A pseudo-group over the scene's direct children minus the
+                // groups already in the pool compiles exactly that residue (each cache-hit
+                // compileAsync costs ~22 ms, so the covered groups are excluded, not re-walked).
+                const boardWarm = this._prewarmGroup(this._boardPresentationGroup(), 'board presentation');
                 if (this._compilePool) {
                     this._compilePool.push(
                         this._timedCompile('corridor', corridorWarm),
                         this._timedCompile('breach', breachWarm),
                         this._timedCompile('one-world', worldWarm),
+                        this._timedCompile('board', boardWarm),
                     );
                 } else {
                     await corridorWarm;
                     await breachWarm;
                     await worldWarm;
+                    await boardWarm;
                 }
             }
 
@@ -2360,6 +2731,7 @@ export class OdysseyBoardController {
         } else if (this.composer) {
             this.composer.setSize(width, height);
         }
+        this._syncOutputSharpen();
     }
 
     /**
@@ -2392,6 +2764,30 @@ export class OdysseyBoardController {
         } else if (this.composer?.setSize) {
             this.composer.setSize(width, height);
         }
+        this._syncOutputSharpen();
+    }
+
+    /**
+     * RCAS sharpen follow-through (three r185 SharpenNode; upgrade plan §11 item 4): hand
+     * the TSL pipeline the LIVE render scale — the pixel ratio the renderer actually applied
+     * over this tier's full-resolution ratio — so it attaches contrast-adaptive sharpening
+     * only while the output is being upscaled (DRS below 0.95, or a low ?odysseyPixelRatio
+     * override; the floor 0.65 reaches the full amount). Call after every setPixelRatio site
+     * once the pipeline exists; edge events only (DRS is debounced, resize is user-driven).
+     * No-op without the TSL pipeline (legacy/no-post paths).
+     * @private
+     */
+    _syncOutputSharpen() {
+        const pipeline = this.postProcessingStack;
+        if (!pipeline?.setRenderScale || typeof this.renderer?.getPixelRatio !== 'function') return;
+        const fullPixelRatio = computeScenePixelRatio({
+            renderScale: 1,
+            devicePixelRatio: window.devicePixelRatio || 1,
+            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
+            sceneType: 'odyssey',
+            qualityTier: this.qualityName,
+        });
+        pipeline.setRenderScale(fullPixelRatio > 0 ? this.renderer.getPixelRatio() / fullPixelRatio : 1);
     }
 
     /**
@@ -2648,6 +3044,10 @@ export class OdysseyBoardController {
             this.cameraController?.setDirectorState?.(previousDirectorState);
         }
 
+        // Publish the travel frontier BEFORE the camera integrates this frame, so a chapter that
+        // is not ready is never entered even for one frame.
+        this._updateTravelFrontier();
+
         // Feed director state to the path so it flows toward the head and reacts to beats.
         this.cameraController?.update(delta);
         const cameraProgress = this.cameraController?.getCurrentPosition() ?? 0;
@@ -2708,7 +3108,10 @@ export class OdysseyBoardController {
         // frame as before (correctness at transitions is preserved).
         const nowMs = performance.now();
         const inSeam = blendState?.inSeam === true || this.activeSeamBoundaryId !== null;
-        const settled = this._isCameraSettled() && !inSeam;
+        // Never throttle position-work during a warm SCRUB: the scrub teleports the camera, so
+        // it reads as trivially "settled", and a throttled sample can silently skip the seam /
+        // visibility work it exists to warm (audit 2026-08-17, masterplan F2).
+        const settled = !this._isWarmingUp && this._isCameraSettled() && !inSeam;
         const runPositionWork = !settled
             || (nowMs - this.lastPositionWorkAtMs) >= this.positionWorkIntervalMs;
 
@@ -3031,7 +3434,9 @@ export class OdysseyBoardController {
             if (Number.isFinite(cc.currentPosition)) fastStartPosition = cc.currentPosition;
             else if (Number.isFinite(savedPos)) fastStartPosition = savedPos;
             const steps = this._fastStart
-                ? buildPointWarmSamples({ position: fastStartPosition })
+                ? (this._motionWarm
+                    ? buildMotionWarmSamples({ position: fastStartPosition })
+                    : buildPointWarmSamples({ position: fastStartPosition }))
                 : warmChapterIds
                     ? buildChapterWarmSamples({
                         chapterPositions: this.presentationLayout?.chapterPositions || [],
@@ -3040,7 +3445,7 @@ export class OdysseyBoardController {
                     : buildJourneyWarmSamples({
                         chapterPositions: this.presentationLayout?.chapterPositions || [],
                     });
-            const shouldYieldDuringWarmup = !this._fastStart;
+            const shouldYieldDuringWarmup = !this._fastStart || this._motionWarm;
 
             // The warm-up renders the whole journey, but only chapters that were actually
             // CREATED have a backdrop to compile/upload — uncreated (deferred) chapters'
@@ -3090,6 +3495,71 @@ export class OdysseyBoardController {
                     console.log(`[OdysseyWarmup] sample ${i} @progress ${where} took ${sampleMs}ms`);
                 }
             }
+            // MOTION WARM, CONTINUOUS LEG (Phase A iteration 2). The teleport samples above
+            // pay first-RENDER costs, but the diagnostic run showed the band's surviving gaps
+            // sit at the exact p-values the samples visited (0.031/0.043/0.046/0.14): the core
+            // of the band is TRANSITION-STATE work — the breach veil, the act-gate dissolve —
+            // that exists only while a crossing is actually in progress, which a teleported
+            // camera never triggers (backward-zero proves the cost is one-time). So after the
+            // samples, DRIVE the camera continuously 0→0.21 through the real follow/seam path,
+            // exactly like live scrolling, still behind the overlay.
+            if (this._motionWarm && Number.isFinite(fastStartPosition) && fastStartPosition <= 0.05) {
+                const driveStart = performance.now();
+                // RESET THE TRANSITION STATE FIRST (the scouts' verified finding): the teleport
+                // samples above end at p=0.21 and leave the chapter/seam machinery believing the
+                // journey is already there — so without this reset the drive's crossings fire NO
+                // chapter change, NO breach entry and NO camera beats, and the first GENUINE
+                // crossings (with their GPU first-draws of the breach veil, the beat-widened
+                // frustum, the lava reveal) happen on live frames instead. Same calls as the
+                // final restore uses.
+                cc.currentPosition = fastStartPosition;
+                cc.targetPosition = fastStartPosition;
+                this.thresholdDirector?.clearSeamPhase?.();
+                this.environmentManager?.updateVisibility?.(fastStartPosition, { mode: 'progress' });
+                this.renderFrame(1 / 60);
+                cc.targetPosition = Math.min(1, 0.21);
+                let driveFrames = 0;
+                warmupStats.driveGaps = [];
+                // ~84 frames at the live velocity cap; hard bound so a stalled lerp can't
+                // hold the overlay hostage.
+                while (cc.currentPosition < 0.205 && driveFrames < 300) {
+                    const frameStart = performance.now();
+                    this.renderFrame(1 / 60);
+                    const frameMs = performance.now() - frameStart;
+                    // Which drive frames are expensive, and WHERE: the discriminator for whether
+                    // the drive actually triggers the live pass's path-locked costs.
+                    if (frameMs > 100 && warmupStats.driveGaps.length < 20) {
+                        warmupStats.driveGaps.push({
+                            p: +cc.currentPosition.toFixed(4),
+                            ms: Math.round(frameMs),
+                        });
+                    }
+                    driveFrames += 1;
+                    if (driveFrames % 6 === 0) {
+                        // eslint-disable-next-line no-await-in-loop
+                        await this._yieldToMain();
+                    }
+                }
+                // Let the transition ENVELOPES finish: the FOV pulse (1.5s) and vista beat
+                // (1.45s) run on wall-clock, and the last chapter change (ch2->ch3 at p=0.1427)
+                // fires ~0.5s before the drive ends — so without a tail, the beat-widened
+                // frustum content never draws during the warm and pays its first draw live.
+                const tailStart = performance.now();
+                let tailFrames = 0;
+                while (performance.now() - tailStart < 1400 && tailFrames < 120) {
+                    this.renderFrame(1 / 60);
+                    tailFrames += 1;
+                    if (tailFrames % 6 === 0) {
+                        // eslint-disable-next-line no-await-in-loop
+                        await this._yieldToMain();
+                    }
+                }
+                warmupStats.driveFrames = driveFrames;
+                warmupStats.tailFrames = tailFrames;
+                warmupStats.driveMs = Math.round(performance.now() - driveStart);
+                console.log(`[OdysseyWarmup] continuous drive: ${driveFrames} frames `
+                    + `to p=${cc.currentPosition.toFixed(3)} in ${warmupStats.driveMs}ms`);
+            }
             // Mark the chapters this pre-reveal warm covered, so the post-reveal background
             // render-warm skips them (no redundant re-render).
             for (const ch of (warmChapterIds || [])) {
@@ -3103,8 +3573,20 @@ export class OdysseyBoardController {
             // pre-reveal there.) Fast-start intentionally skips the full matrix: the focus
             // sample already warmed the ACTIVE variant, and the far variants (ch7 lens /
             // dark no-bloom) warm on first visit to those far chapters — the fast-start trade.
-            if (this._fastStart) {
-                console.log('[OdysseyWarmup] fast-start: focus chapter warmed; far chapters + post variants warm on first visit');
+            if (this._fastStart && !this._motionWarm) {
+                // Item 2.12: the bloom node's five quad passes were the last pipelines created
+                // synchronously on the first live post frame (the director's bloom weight is 0
+                // at the warm sample's p=0, so the sample bound the no-bloom variant). Warm the
+                // lean pair (bloom on/off, lens off) minus the live one — one render + the
+                // restore, ~150 ms behind the overlay (the compiles are synchronous quads);
+                // the ch7 lens variants still warm on first visit (the fast-start trade).
+                const variantStart = performance.now();
+                await this.postProcessingStack?.warmOutputVariants?.(
+                    this._yieldToMain.bind(this),
+                    { lensStates: [false], skipActive: true },
+                );
+                warmupStats.variantsMs = performance.now() - variantStart;
+                console.log(`[OdysseyWarmup] fast-start: focus chapter + lean post variants warmed in ${Math.round(warmupStats.variantsMs)}ms; far chapters + lens variants warm on first visit`);
             } else {
                 const variantStart = performance.now();
                 await this.postProcessingStack?.warmOutputVariants?.(this._yieldToMain.bind(this));

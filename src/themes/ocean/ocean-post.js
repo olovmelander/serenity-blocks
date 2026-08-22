@@ -2,7 +2,7 @@
 /**
  * Ocean Theme — Post-Processing
  *
- * WebGPU path: THREE.PostProcessing + MRT(output, emissive) + bloom +
+ * WebGPU path: THREE.RenderPipeline + MRT(output, emissive) + bloom +
  *   linear-depth absorption fog + TSL Loop god rays + chromatic aberration +
  *   ACES tonemap + Abzu grade + vignette + Extreme-only DOF.
  *
@@ -48,6 +48,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { tslAbzuGrade } from './ocean-tsl-helpers.js';
+import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
 // 5-tap Poisson disc sample offsets (unit disc)
 const POISSON_TAPS = [
@@ -64,7 +65,7 @@ export class OceanPost {
         this.useMRT = params.useMRT ?? true;
         this.sceneScale = params.sceneScale ?? 1.0;
         this.bloomScale = params.bloomScale ?? 0.6;
-        this.postProcessing = new THREE_GPU.PostProcessing(renderer);
+        this.postProcessing = new THREE_GPU.RenderPipeline(renderer);
 
         // Scene pass + MRT
         this.scenePass = pass(scene, camera);
@@ -73,7 +74,7 @@ export class OceanPost {
         // persistent way to retain Ocean's tier-authored internal scene scale.
         this.scenePass.setResolutionScale(this.sceneScale);
         if (this.useMRT) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
+            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
 
         const sceneColor = this.scenePass.getTextureNode('output');

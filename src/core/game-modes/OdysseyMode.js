@@ -80,65 +80,14 @@ import {
     waitForCinematicLoadingOverlayPresented,
 } from '../../ui/cinematic-loading-overlay.js';
 import { getOdysseyThemePresentationPalette } from '../odyssey/theme-presentation.js';
+import {
+    isOdysseyLayoutEditorEnabled,
+    isOdysseyDebugExposureEnabled,
+    readOdysseyKeepBoardFlag,
+} from '../odyssey/odyssey-url-flags.js';
 import { shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 import { installOdysseyLegacyInputWrapper } from '../../ui/odyssey/legacy-input-wrapper.js';
 import { showRetryVeil, hideRetryVeil, clearRetryVeil } from '../../ui/odyssey/retry-veil.js';
-
-function isOdysseyLayoutEditorEnabled() {
-    if (!import.meta.env.DEV || typeof window === 'undefined') {
-        return false;
-    }
-
-    try {
-        const search = new URLSearchParams(window.location?.search || '');
-        return search.get('odysseyEditor') === '1';
-    } catch {
-        return false;
-    }
-}
-
-/**
- * Whether to expose the console debug handles (window.odysseyMode / window.testOdysseyLevel).
- * These are DEV/tooling only — testOdysseyLevel unlocks levels into the real save, so it must
- * never ship to players (Steam leaderboard is console-gameable otherwise; masterplan §2 #4).
- * Allowed in a DEV build, or when a capture/validation harness flag is present so the offline
- * screenshot/perf tooling keeps working against any build mode.
- * @returns {boolean}
- */
-function isOdysseyDebugExposureEnabled() {
-    if (typeof window === 'undefined') return false;
-    if (import.meta.env.DEV) return true;
-    try {
-        const search = new URLSearchParams(window.location?.search || '');
-        return search.get('odysseyAAA') === '1'
-            || search.get('odysseyDebug') === '1'
-            || search.has('odysseyCaptureChapters');
-    } catch {
-        return false;
-    }
-}
-
-/**
- * Loading-optimization Phase 1: keep the WebGPU board resident across level
- * entry/return instead of disposing + rebuilding it (the cold-start cost, paid twice).
- * Default ON. Disable with ?odysseyKeepBoard=0 if VRAM/TDR pressure shows up — that
- * restores the exact previous dispose-and-rebuild behaviour.
- */
-function readOdysseyKeepBoardFlag() {
-    if (typeof window === 'undefined') {
-        return true;
-    }
-    try {
-        const search = new URLSearchParams(window.location?.search || '');
-        const raw = search.get('odysseyKeepBoard');
-        if (raw === '0' || raw === 'false' || raw === 'off') {
-            return false;
-        }
-    } catch {
-        // fall through to default
-    }
-    return true;
-}
 
 /**
  * OdysseyMode - Narrative-driven progression through themed levels
@@ -428,6 +377,21 @@ export class OdysseyMode extends BaseGameMode {
 
         console.log('[Odyssey] Mode activated');
         console.log(`[Odyssey] Progress: ${this.odysseyState.getOverallProgress()}%`);
+    }
+
+    /**
+     * Is the board's post-reveal background pipeline (chapter creation + shader prewarm +
+     * render-warm) finished? `false` while the board is still building — that is the contested
+     * span a concurrent WebGPU compile (the first-entry theme warm, see
+     * utils/startup-warm.js) must stay out of. `_bgRenderWarmComplete` is guaranteed to become
+     * true (the sweep's rotations are bounded), so waiting on this cannot hang; callers should
+     * still cap their wait.
+     * @returns {boolean} true when background loading has gone quiet
+     */
+    isBackgroundPipelineQuiet() {
+        const bc = this.boardController;
+        if (!bc || !bc.isActive) return false;
+        return bc._bgRenderWarmComplete === true;
     }
 
     /**

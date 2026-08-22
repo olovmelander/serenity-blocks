@@ -1,5 +1,23 @@
 # Asset pipeline — Blackwell (RTX 5080 Laptop) rebuild plan
 
+> ⛔ **ORPHANED — do not execute this plan (2026-08-19).** The Blackwell machine it targets
+> died. The current dev machine is a Legion 82JU: Ryzen 7 5800H + **RTX 3070 Laptop 8 GB**,
+> Ampere **sm_86**. That invalidates the plan's two load-bearing decisions:
+>
+> - **TRELLIS.2-4B at Q8 is sized to "fit 16 GB" — it will not fit 8 GB.** Running it here
+>   means dropping to Q4/Q5 and eating the quality loss, which was the whole reason
+>   TRELLIS.2 was chosen over the alternatives. Re-decide before installing anything.
+> - **The entire Blackwell risk section is moot.** The `flexgemm` / sm_120 silent-failure
+>   bug, and the prebuilt cp311 wheels that work around it, are Blackwell-specific. Ampere
+>   sm_86 is supported directly by stock PyTorch cu12x — the plan's hardest problem does not
+>   exist on this hardware.
+>
+> `C:\AI` (ComfyUI, stable-audio-3, sfx-foundry, hf-cache) lived on the dead machine and is
+> absent here. Still live on the 82JU: WSL2 Ubuntu with `~/miniconda3/envs/{hunyuan3d,
+> triposr, unirig}`, so the TripoSR + UniRig path via `scripts/triposr-gen.sh` and
+> `scripts/unirig-gen.sh` remains usable — run those **from inside WSL**, since `$HOME`
+> resolves to the Windows profile under Git Bash.
+
 **Machine:** Legion Pro 7 Gen 10 — Ryzen 9 9955HX3D + RTX 5080 Laptop **16 GB GDDR7**, Blackwell, compute capability **sm_120**.
 **Host:** Windows 11 + WSL2 (Ubuntu) + miniconda; plus a native **Windows ComfyUI** (C:\AI).
 **Goal:** best-in-class, free, fully-local **photo → 3D mesh → rigged GLB** pipeline for game assets, **maximum quality**.

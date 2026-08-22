@@ -44,6 +44,7 @@ import {
     uniformArray,
     vec2,
     vec3,
+    viewportDepthTexture,
     viewportTexture,
 } from 'three/tsl';
 
@@ -546,14 +547,14 @@ export function createKoiPondWater({
         samples: getKoiPondRendererSampleCount(renderer),
     });
     const useViewportDepth = refractionDepthMode === 'viewport';
-    // r181's viewportDepthTexture() owns module-global mutable texture state.
-    // A theme rebuild can cross render targets during warmup, so keep the depth
-    // capture local to this water instance (the equivalent isolation landed
-    // upstream after this repo's pinned Three release). WebGPU also cannot copy
-    // or normally sample its multisampled depth attachment: r181 creates a
-    // single-sample destination and emits an invalid 4x -> 1x copy. MSAA and
-    // ANGLE therefore retain the authored analytic bowl depth while still
-    // using the resolved viewport color for refraction.
+    // r185's viewportDepthTexture() accepts a per-instance depth texture as its
+    // 3rd argument — the isolation this file previously hand-wired through
+    // viewportTexture. Bare viewportDepthTexture() calls still fall back to a
+    // module-global shared texture, and a theme rebuild can cross render
+    // targets during warmup, so the local capture stays deliberately. WebGPU
+    // also cannot copy or normally sample its multisampled depth attachment:
+    // MSAA and ANGLE therefore retain the authored analytic bowl depth while
+    // still using the resolved viewport color for refraction.
     const viewportDepth = useViewportDepth ? new THREE.DepthTexture() : null;
     const root = new THREE.Group();
     root.name = 'koi-pond-water-study';
@@ -1194,7 +1195,7 @@ export function createKoiPondWater({
             let sceneDepth = null;
             if (useViewportDepth) {
                 surfaceDepth = linearDepth();
-                sceneDepth = linearDepth(viewportTexture(
+                sceneDepth = linearDepth(viewportDepthTexture(
                     candidateUv,
                     null,
                     viewportDepth,

@@ -272,6 +272,15 @@ const CONFIGURATIONS = [
         flags: { odysseyNoCloudBank: '1' },
         note: 'the ch5->6 limb bank is never built (draws + fill + vertex + pipeline compile)',
     },
+    // THE LAVA LAKE (docs/ODYSSEY_EARTH_CORE_LAVA_LAKE_REMAKE_2026-08.md §4, gate G1/G2). Prices
+    // the lake's fill on each lane: `no-lake` withholds the mesh (earth-core.js bisect lever),
+    // `lake-baked` swaps its 19 analytic simplex bodies per fragment for 19 fetches of the
+    // periodic R16F 3D texture. Run at the entry station, where the lake fills the lower frame:
+    //   --lane B --low-power --seek 0 --chapters 1 --only baseline,no-lake,lake-baked,baseline-repeat
+    // Accept (design §4): lakeBakedMs ≤ 0.5 × lakeMs with the differential ≥ 4 timer ticks and
+    // baseline drift ≤ 25 % of the saving.
+    { id: 'no-lake', flags: { earthCoreNoLake: '1' }, note: 'the Earth Core lava lake is not built' },
+    { id: 'lake-baked', flags: { earthCoreLakeBake: '1' }, note: 'lake noise from the baked 3D texture' },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
 
@@ -544,6 +553,12 @@ function buildSplit(results) {
         // ...and cloudFieldMs flips the OTHER way for the same reason: the field is shipped
         // now, so its lever REMOVES it and the cost is baseline minus configuration.
         cloudFieldMs: delta('baseline', 'no-cloud-field'),
+        // THE LAVA LAKE (design §4 gate G1/G2): both figures are costs. lakeMs is the shipped
+        // analytic lake (baseline minus no-lake); lakeBakedMs is the baked lake's cost on the
+        // same frame (lake-baked minus no-lake). Measured 2026-08-21 at the entry station:
+        // Lane B (Vega 8) 4.45 → 1.96 ms of a 7.6 ms frame; Lane A (RTX 3070) 0.79 → 0.20 ms.
+        lakeMs: delta('baseline', 'no-lake'),
+        lakeBakedMs: delta('lake-baked', 'no-lake'),
         // NOT `baseline - cloud-field-half`. `cloud-field-half` truncates the spec table to
         // its first 26 masses, so that subtraction would price the UPPER 26 (the satellites,
         // which are far-LOD and tiny) and read as 'half the field is nearly free'. The cost
