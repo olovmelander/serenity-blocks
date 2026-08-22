@@ -54,7 +54,10 @@ describe('earth-core drawable budget (Wave 3b ratchet)', () => {
         // WGSL assembly, DXC scheduling. So the count is the lever, not graph size — sharing the
         // chapel's molten pocket with the six node pockets (26 -> 25) measured -91 ms on ch1 and
         // -98 ms on cold startup, while a 40 % node-count reduction was worth an estimated ~10 ms.
+        // Ratcheted 25 -> 23 when the three basin coronas stopped building one copy each of the
+        // same 15-node sprite graph — which is also the proof the cost is per-material and NOT
+        // per-node: a 15-node material is ~0.1 ms of node building.
         // Share an existing material before adding a new one.
-        expect(materials.size, 'material ceiling — each one is ~90 ms of the reveal').toBeLessThanOrEqual(25);
+        expect(materials.size, 'material ceiling — each one is ~90 ms of the reveal').toBeLessThanOrEqual(23);
     });
 });
