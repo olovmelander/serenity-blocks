@@ -698,8 +698,8 @@ export class OdysseyBoardController {
         this.setupPostProcessing();
         trace.end('renderer');
 
-        // Yield — let the loading overlay render & animate smoothly
-        await this._yieldToMain();
+        // Yield — let the loading overlay breathe (a TASK, not two frames: item 2.4)
+        await this._yieldTask();
 
         // ─── Steps 2+3: Create chapter environments, compiling in PARALLEL ───
         // Default startup creates and warms the whole journey to prevent first-visit hitches.
@@ -805,7 +805,7 @@ export class OdysseyBoardController {
                     compilePool.push(this._timedCompile(`ch${ch}`, this._prewarmChapterEnvironment(ch)));
                 }
             }
-            await this._yieldToMain();
+            await this._yieldTask();
         }
         if (lightsFirst) {
             // Pass 2 — the full light set (atmosphere + every chapter's reparented lights) is
@@ -817,7 +817,7 @@ export class OdysseyBoardController {
                 } else {
                     compilePool.push(this._timedCompile(`ch${ch}`, this._prewarmChapterEnvironment(ch)));
                 }
-                await this._yieldToMain();
+                await this._yieldTask();
             }
         }
         /* eslint-enable no-await-in-loop */
@@ -858,7 +858,7 @@ export class OdysseyBoardController {
         });
         trace.end('path');
 
-        await this._yieldToMain();
+        await this._yieldTask();
 
         // ─── Step 5: Create level nodes (55 nodes) ───
         trace.begin('nodes');
@@ -887,7 +887,7 @@ export class OdysseyBoardController {
                 console.warn('[OdysseyBoard] world bake (relief) failed before the nodes:', error?.message || error);
             }
         }
-        await this.nodeManager.createNodes(this.levelData, this._yieldToMain.bind(this));
+        await this.nodeManager.createNodes(this.levelData, this._yieldTask.bind(this));
         this.nodeManager.updateFromProgress(this.progressData);
 
         // A/B lever, applied HERE so it works on its own (fixed 2026-08-12). It used to be
@@ -1047,7 +1047,7 @@ export class OdysseyBoardController {
         }
         trace.end('world');
 
-        await this._yieldToMain();
+        await this._yieldTask();
 
         // ─── Step 6: Camera, post-processing, lighting, interaction ───
         this.cameraController = new OdysseyCameraController(
@@ -1107,7 +1107,7 @@ export class OdysseyBoardController {
         this._applyChapterMusic(1, { reason: 'odyssey-board-initial' });
         trace.end('post+director');
 
-        await this._yieldToMain();
+        await this._yieldTask();
 
         if (this.editorMode) {
             await this.initializeLayoutEditor();
@@ -1176,6 +1176,41 @@ export class OdysseyBoardController {
             requestAnimationFrame(() => {
                 requestAnimationFrame(resolve);
             });
+        });
+    }
+
+    /**
+     * A CHEAP yield for the CPU-only startup steps (plan item 2.4).
+     *
+     * {@link _yieldToMain} waits TWO animation frames. That is right where the yield paces GPU
+     * work (the warm-up replay renders a frame per step), but the startup CPU steps — chapter
+     * creates, the path, the 55 level nodes in batches of 5, the world hand-off — yield only so
+     * the loading overlay can breathe, and they paid 2 frames each. During startup a frame is
+     * 40–60 ms (chapter compiles and the world worker are in flight), so the 11 node batches
+     * alone cost most of the ~1 s `nodes` bucket for < 50 ms of work.
+     *
+     * The overlay does not need those frames: its ring/star animations are pure CSS
+     * `transform`/`opacity` keyframes (cinematic-loading-overlay.js:741-761), i.e.
+     * compositor-driven, and they keep running while the main thread works. What a yield must
+     * actually provide is a TASK boundary — the event loop then gets its rendering opportunity
+     * and input is not stuck. `scheduler.yield()` (Chrome >= 129, so Electron 38) resumes at
+     * continuation priority, ahead of ordinary posted tasks; a MessageChannel round-trip is the
+     * fallback.
+     * @returns {Promise<void>}
+     * @private
+     */
+    _yieldTask() {
+        const scheduler = typeof globalThis !== 'undefined' ? globalThis.scheduler : null;
+        if (scheduler && typeof scheduler.yield === 'function') {
+            return scheduler.yield();
+        }
+        return new Promise((resolve) => {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = () => {
+                channel.port1.close();
+                resolve();
+            };
+            channel.port2.postMessage(null);
         });
     }
 
