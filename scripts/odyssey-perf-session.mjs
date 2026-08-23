@@ -23,6 +23,7 @@ import { mkdir, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { execSync } from 'child_process';
+import { summarizeCpuProfile } from './lib/cpu-profile-summary.mjs';
 
 const ROOT = process.cwd();
 const args = parseArgs(process.argv.slice(2));
@@ -144,7 +145,20 @@ Toggles passed through to the page:
   --post-quality <v> --gpu-sync
 
 Infra:
-  --port <n> --base-url <url> --profile-dir <dir> --reset-profile --hide --verbose --help`);
+  --port <n> --base-url <url> --profile-dir <dir> --reset-profile --hide --verbose --help
+
+CPU profile (plan item 4.1):
+  --cpu-profile <file.cpuprofile>   record a V8 CPU profile (also writes <file>.summary.json)
+  --cpu-profile-window boot|idle    boot (default) = entry+activation; idle = the pinned frame
+  --cpu-profile-interval <us>       sampling period; default 250 boot / 100 idle
+  --cpu-profile-duration <ms>       idle recording length (default 10000), counted toward --duration
+  --capture-chapters <csv>          e.g. 1,2,3 — must NOT go through --url-flag (comma-split)
+
+  Idle example (matches the gpu-split station):
+    --scenario idle --idle-position 0.051 --capture-chapters 1,2,3 \\
+    --cpu-profile reports/odyssey-perf/cpu-idle-ch1-lanea.cpuprofile --cpu-profile-window idle
+  Do NOT combine --cpu-profile-window idle with --reload-cycles (a second Profiler.start on an
+  already-recording session), nor with ?odysseyGpuProfile=1 (harness overhead in the trace).`);
 }
 
 function parseArgs(argv) {
@@ -195,6 +209,13 @@ function makeUrl() {
             const [k, v = '1'] = pair.split('=');
             if (k.trim()) params.set(k.trim(), v.trim());
         });
+    // --capture-chapters 1,2,3 needs its OWN flag: the --url-flag passthrough above splits on
+    // commas to separate pairs, so `--url-flag odysseyCaptureChapters=1,2,3` silently becomes
+    // `odysseyCaptureChapters=1` plus two junk params — the run would load all eight chapters
+    // while the manifest claimed a three-chapter window. Same defect via ODYSSEY_PERF_URL_FLAGS.
+    // Matching the window gpu-split uses is what makes a CPU profile comparable to a GPU split.
+    const captureChapters = String(args.captureChapters || '').trim();
+    if (captureChapters) params.set('odysseyCaptureChapters', captureChapters);
     params.set('odysseyPixelRatio', String(PIXEL_RATIO));
     if (args.forceWebgl || args.forceWebGL) params.set('forceWebGL', '1');
     if (args.disableBackgroundWarm) params.set('odysseyPerfDisableBackgroundWarm', '1');
@@ -332,7 +353,28 @@ async function resetPerf(win, label) {
 // different (faster) picture, and the harness is the shipping engine. Names are real against the
 // dev server; minified against a preview build (still attributable per chunk + line/column).
 const CPU_PROFILE_FILE = args.cpuProfile ? path.resolve(String(args.cpuProfile)) : null;
-function startCpuProfile(win) {
+// PLAN ITEM 4.1. The boot window above is not the only interesting one — and for Phase 4 it is
+// the wrong one. Lane A's idle frame is ~11 ms wall of which the GPU is ~1.44 ms, so ~9.5 ms a
+// frame is CPU that has never been attributed, and the plan states nothing else in Phase 4 is
+// admissible until that profile exists. `--cpu-profile-window idle` moves the capture to the
+// pinned station, AFTER activation and after resetPerf, so it records steady state instead of
+// boot. Default stays 'boot' so every existing Phase 7 invocation is byte-compatible.
+const CPU_PROFILE_WINDOW = String(args.cpuProfileWindow || 'boot').toLowerCase();
+// Microseconds. 250 (the boot default) over 10 s is 40k samples — statistically fine for totals,
+// but only ~44 samples per 11 ms frame. 100 gives ~110, which is what makes per-frame structure
+// visible: whether Bindings._update is one 0.2 ms block or thirty scattered leaves. Going below
+// 100 is not recommended — V8's sampler busy-spins at these periods on Windows and pegs a core.
+const CPU_PROFILE_DEFAULT_INTERVAL_US = CPU_PROFILE_WINDOW === 'idle' ? 100 : 250;
+const CPU_PROFILE_INTERVAL_US = Number(args.cpuProfileInterval) > 0
+    ? Number(args.cpuProfileInterval)
+    : CPU_PROFILE_DEFAULT_INTERVAL_US;
+// Decoupled from --duration: at 100 us a 10 s window is ~100k samples / ~1 MB of JSON, and a
+// 30 s one is ~6 MB. The idle profile does not get longer just because the cell does.
+const CPU_PROFILE_DURATION_MS = Number(args.cpuProfileDuration) > 0
+    ? Number(args.cpuProfileDuration)
+    : 10000;
+
+function attachCpuProfiler(win) {
     if (!CPU_PROFILE_FILE) return null;
     const dbg = win.webContents.debugger;
     // Attaching before any navigation hangs (no renderer process yet); 'did-navigate' fires at
@@ -342,8 +384,9 @@ function startCpuProfile(win) {
             try {
                 dbg.attach('1.3');
                 await dbg.sendCommand('Profiler.enable');
-                await dbg.sendCommand('Profiler.setSamplingInterval', { interval: 250 });
-                await dbg.sendCommand('Profiler.start');
+                await dbg.sendCommand('Profiler.setSamplingInterval', { interval: CPU_PROFILE_INTERVAL_US });
+                // The idle window starts its own recording later, at the pinned station.
+                if (CPU_PROFILE_WINDOW !== 'idle') await dbg.sendCommand('Profiler.start');
                 resolve(dbg);
             } catch (error) {
                 console.warn('[odyssey-perf] cpu profile unavailable:', error?.message || error);
@@ -360,14 +403,58 @@ async function stopCpuProfile(started) {
         const { profile } = await dbg.sendCommand('Profiler.stop');
         await writeFile(CPU_PROFILE_FILE, JSON.stringify(profile));
         console.log(`[odyssey-perf] wrote cpu profile ${path.relative(process.cwd(), CPU_PROFILE_FILE)}`);
+        // Sidecar summary, matching the convention in reports/perf-audit-2026-07-16/results/
+        // (a .cpuprofile beside its reduced .json). A 1 MB profile is not readable by eye; this
+        // is the self-time table plan item 4.1 actually asks for.
+        const summary = summarizeCpuProfile(profile);
+        if (summary) {
+            const sidecar = `${CPU_PROFILE_FILE.replace(/\.cpuprofile$/, '')}.summary.json`;
+            await writeFile(sidecar, JSON.stringify({
+                window: CPU_PROFILE_WINDOW,
+                requestedIntervalUs: CPU_PROFILE_INTERVAL_US,
+                ...summary,
+            }, null, 1));
+            console.log(`[odyssey-perf] cpu ${CPU_PROFILE_WINDOW}: busy ${summary.busyPct}% `
+                + `gc ${summary.gcPct}% · ${summary.totalSamples} samples @ `
+                + `${summary.effectiveIntervalUs} us effective (asked ${CPU_PROFILE_INTERVAL_US})`);
+            // A large gap between asked and effective means V8 clamped the sampler, and every
+            // selfMs in the sidecar is scaled against a cadence that never happened.
+            if (summary.effectiveIntervalUs > CPU_PROFILE_INTERVAL_US * 3) {
+                console.warn('[odyssey-perf] sampler was CLAMPED — treat selfMs as unscaled');
+            }
+        }
         dbg.detach();
     } catch (error) {
         console.warn('[odyssey-perf] cpu profile stop failed:', error?.message || error);
     }
 }
 
+/**
+ * PLAN ITEM 4.1 — record the idle frame at the pinned station.
+ *
+ * Called from runIdle AFTER the station pin and resetPerf, so the samples describe steady state.
+ * Deliberately NOT combined with ?odysseyGpuProfile=1: that path allocates a promise chain per
+ * frame and sorts a 600-sample ring at 4 Hz, which would put harness overhead into the very
+ * self-time table this exists to read.
+ */
+async function recordIdleCpuProfile(win) {
+    const dbg = win.__cpuProfiler ? await win.__cpuProfiler : null;
+    if (!dbg || CPU_PROFILE_WINDOW !== 'idle') return false;
+    try {
+        await dbg.sendCommand('Profiler.start');
+    } catch (error) {
+        console.warn('[odyssey-perf] idle cpu profile start failed:', error?.message || error);
+        return false;
+    }
+    console.log(`[odyssey-perf] cpu profile (idle) recording ${CPU_PROFILE_DURATION_MS} ms...`);
+    await delay(CPU_PROFILE_DURATION_MS);
+    await stopCpuProfile(win.__cpuProfiler);
+    win.__cpuProfiler = null;
+    return true;
+}
+
 async function bootstrapOdyssey(win, { resetBeforeActivate = true } = {}) {
-    win.__cpuProfiler = startCpuProfile(win);
+    win.__cpuProfiler = attachCpuProfiler(win);
     await win.loadURL(makeUrl());
     const ready = await waitFor(win, 'window.serenityBlocks?.gameModeManager', 140000);
     if (!ready) throw new Error('gameModeManager not ready');
@@ -546,8 +633,11 @@ async function bootstrapOdyssey(win, { resetBeforeActivate = true } = {}) {
     if (!boot) throw new Error('Odyssey activation failed');
 
     const active = await waitFor(win, 'window.odysseyMode?.boardController?.isActive', 180000);
-    await stopCpuProfile(win.__cpuProfiler);
-    win.__cpuProfiler = null;
+    // The idle window keeps the debugger attached — runIdle starts its recording at the station.
+    if (CPU_PROFILE_WINDOW !== 'idle') {
+        await stopCpuProfile(win.__cpuProfiler);
+        win.__cpuProfiler = null;
+    }
     if (!active) throw new Error('Odyssey board did not become active');
     await delay(300);
 }
@@ -615,7 +705,11 @@ async function runIdle(win) {
         await delay(100);
     }
     await resetPerf(win, `${CACHE_MODE}:${SCENARIO}:idle`);
-    await delay(DURATION_MS);
+    // PLAN ITEM 4.1 — profile the steady-state frame, not the boot. Runs inside the idle window
+    // (after the station pin above and after resetPerf), and its duration is counted toward
+    // DURATION_MS so the cell's own timing is unchanged by whether profiling is on.
+    const profiled = await recordIdleCpuProfile(win);
+    await delay(profiled ? Math.max(0, DURATION_MS - CPU_PROFILE_DURATION_MS) : DURATION_MS);
 }
 
 async function runScroll(win) {

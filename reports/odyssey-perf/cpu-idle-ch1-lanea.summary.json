@@ -1,0 +1,338 @@
+{
+ "window": "idle",
+ "requestedIntervalUs": 100,
+ "totalSamples": 17526,
+ "totalTimeUs": 10329590,
+ "effectiveIntervalUs": 589.4,
+ "busyPct": 26.9,
+ "gcPct": 0.21,
+ "targets": {
+  "three.renderObjectDirect": {
+   "fn": "_renderObjectDirect",
+   "nodes": 8,
+   "hits": 379,
+   "selfPct": 2.17,
+   "selfMs": 223.378
+  },
+  "three.bindingsUpdate": {
+   "fn": "_update",
+   "nodes": 8,
+   "hits": 213,
+   "selfPct": 1.22,
+   "selfMs": 125.539
+  },
+  "three.updateForRender": {
+   "fn": "updateForRender",
+   "nodes": 6,
+   "hits": 233,
+   "selfPct": 1.33,
+   "selfMs": 137.327
+  },
+  "three.updateMatrixWorld": {
+   "fn": "updateMatrixWorld",
+   "nodes": 19,
+   "hits": 180,
+   "selfPct": 1.03,
+   "selfMs": 106.089
+  },
+  "three.draw": {
+   "fn": "_draw",
+   "nodes": 8,
+   "hits": 96,
+   "selfPct": 0.56,
+   "selfMs": 56.581
+  },
+  "gpu.writeBuffer": {
+   "fn": "writeBuffer",
+   "nodes": 8,
+   "hits": 182,
+   "selfPct": 1.04,
+   "selfMs": 107.268
+  },
+  "gpu.submit": {
+   "fn": "submit",
+   "nodes": 7,
+   "hits": 171,
+   "selfPct": 0.98,
+   "selfMs": 100.786
+  },
+  "gpu.setVertexBuffer": {
+   "fn": "setVertexBuffer",
+   "nodes": 6,
+   "hits": 111,
+   "selfPct": 0.63,
+   "selfMs": 65.422
+  },
+  "dom.getBoundingClientRect": {
+   "fn": "getBoundingClientRect",
+   "nodes": 1,
+   "hits": 61,
+   "selfPct": 0.35,
+   "selfMs": 35.953
+  },
+  "audio.getByteFrequencyData": {
+   "fn": "getByteFrequencyData",
+   "nodes": 1,
+   "hits": 40,
+   "selfPct": 0.23,
+   "selfMs": 23.575
+  },
+  "app.animate": {
+   "fn": "animate",
+   "nodes": 1,
+   "hits": 16,
+   "selfPct": 0.09,
+   "selfMs": 9.43
+  },
+  "app.renderFrame": {
+   "fn": "renderFrame",
+   "nodes": 1,
+   "hits": 26,
+   "selfPct": 0.15,
+   "selfMs": 15.324
+  },
+  "app.update": null
+ },
+ "top": [
+  {
+   "fn": "_renderObjectDirect",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 31333,
+   "hits": 143,
+   "selfPct": 0.82,
+   "selfMs": 84.282
+  },
+  {
+   "fn": "updateForRender",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 27659,
+   "hits": 94,
+   "selfPct": 0.54,
+   "selfMs": 55.402
+  },
+  {
+   "fn": "_renderObjectDirect",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 31333,
+   "hits": 93,
+   "selfPct": 0.53,
+   "selfMs": 54.813
+  },
+  {
+   "fn": "_update",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 15844,
+   "hits": 89,
+   "selfPct": 0.51,
+   "selfMs": 52.455
+  },
+  {
+   "fn": "submit",
+   "url": "",
+   "line": -1,
+   "hits": 79,
+   "selfPct": 0.45,
+   "selfMs": 46.562
+  },
+  {
+   "fn": "update",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 31720,
+   "hits": 75,
+   "selfPct": 0.43,
+   "selfMs": 44.204
+  },
+  {
+   "fn": "updateForRender",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 27659,
+   "hits": 73,
+   "selfPct": 0.42,
+   "selfMs": 43.025
+  },
+  {
+   "fn": "get",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 14635,
+   "hits": 63,
+   "selfPct": 0.36,
+   "selfMs": 37.131
+  },
+  {
+   "fn": "writeBuffer",
+   "url": "",
+   "line": -1,
+   "hits": 62,
+   "selfPct": 0.35,
+   "selfMs": 36.542
+  },
+  {
+   "fn": "getBoundingClientRect",
+   "url": "",
+   "line": -1,
+   "hits": 61,
+   "selfPct": 0.35,
+   "selfMs": 35.953
+  },
+  {
+   "fn": "writeBuffer",
+   "url": "",
+   "line": -1,
+   "hits": 60,
+   "selfPct": 0.34,
+   "selfMs": 35.363
+  },
+  {
+   "fn": "setVertexBuffer",
+   "url": "",
+   "line": -1,
+   "hits": 55,
+   "selfPct": 0.31,
+   "selfMs": 32.416
+  },
+  {
+   "fn": "_update",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 15844,
+   "hits": 49,
+   "selfPct": 0.28,
+   "selfMs": 28.88
+  },
+  {
+   "fn": "_renderObjectDirect",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 31333,
+   "hits": 48,
+   "selfPct": 0.27,
+   "selfMs": 28.291
+  },
+  {
+   "fn": "submit",
+   "url": "",
+   "line": -1,
+   "hits": 46,
+   "selfPct": 0.26,
+   "selfMs": 27.112
+  },
+  {
+   "fn": "update",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 31720,
+   "hits": 40,
+   "selfPct": 0.23,
+   "selfMs": 23.575
+  },
+  {
+   "fn": "getByteFrequencyData",
+   "url": "",
+   "line": -1,
+   "hits": 40,
+   "selfPct": 0.23,
+   "selfMs": 23.575
+  },
+  {
+   "fn": "_draw",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 44808,
+   "hits": 38,
+   "selfPct": 0.22,
+   "selfMs": 22.397
+  },
+  {
+   "fn": "_projectObject",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 30983,
+   "hits": 38,
+   "selfPct": 0.22,
+   "selfMs": 22.397
+  },
+  {
+   "fn": "beginRenderPass",
+   "url": "",
+   "line": -1,
+   "hits": 36,
+   "selfPct": 0.21,
+   "selfMs": 21.218
+  },
+  {
+   "fn": "_renderObjectDirect",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 31333,
+   "hits": 35,
+   "selfPct": 0.2,
+   "selfMs": 20.629
+  },
+  {
+   "fn": "updateMatrixWorld",
+   "url": "/node_modules/.vite/deps/chunk-WIK7AUJJ.js?v=31f0ac1a",
+   "line": 7272,
+   "hits": 35,
+   "selfPct": 0.2,
+   "selfMs": 20.629
+  },
+  {
+   "fn": "setVertexBuffer",
+   "url": "",
+   "line": -1,
+   "hits": 33,
+   "selfPct": 0.19,
+   "selfMs": 19.45
+  },
+  {
+   "fn": "get",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 14635,
+   "hits": 32,
+   "selfPct": 0.18,
+   "selfMs": 18.86
+  },
+  {
+   "fn": "updateNumber",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 31759,
+   "hits": 30,
+   "selfPct": 0.17,
+   "selfMs": 17.682
+  },
+  {
+   "fn": "update",
+   "url": "/src/rendering/renderer.js",
+   "line": 366,
+   "hits": 29,
+   "selfPct": 0.17,
+   "selfMs": 17.092
+  },
+  {
+   "fn": "_renderScene",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 29958,
+   "hits": 29,
+   "selfPct": 0.17,
+   "selfMs": 17.092
+  },
+  {
+   "fn": "update",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 31720,
+   "hits": 29,
+   "selfPct": 0.17,
+   "selfMs": 17.092
+  },
+  {
+   "fn": "_renderObjectDirect",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 31333,
+   "hits": 29,
+   "selfPct": 0.17,
+   "selfMs": 17.092
+  },
+  {
+   "fn": "_update",
+   "url": "/node_modules/.vite/deps/chunk-CP2IQJR5.js?v=31f0ac1a",
+   "line": 15844,
+   "hits": 28,
+   "selfPct": 0.16,
+   "selfMs": 16.503
+  }
+ ]
+}
