@@ -9,6 +9,7 @@ import * as THREE from 'three/webgpu';
 import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { LevelNodeManager } from './LevelNodeManager.js';
 import { PerfRing } from '../../utils/perf-ring.js';
+import { createPassLabelInspector, passLabelFor } from './composition/odyssey-pass-label-inspector.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { ODYSSEY_WORLD_QUALITY, createOdysseyWorld } from './world/odyssey-world-renderer.js';
 import { awaitWorldBake, startWorldBake } from './world/odyssey-world-bake-loader.js';
@@ -319,9 +320,20 @@ export function shouldRouteOdysseyWheel({
 /**
  * Frame number encoded in a three timestamp uid, or NaN when the shape is not recognised.
  *
- * three builds the uid as `<prefix>:<contextId>:f<frame>` (Backend.js `getTimestampUID`), so
- * the part before `:f` identifies the PASS and is stable across frames, while the suffix
- * distinguishes the frames a pass has been measured in.
+ * CORRECTION (this comment previously claimed the opposite, and that error is why the first
+ * capture's keys were trusted as pass identities). three builds the uid as
+ * `r:<frameCalls>:<RenderContext.id>:f<frame>` — renderers/common/Backend.js composes
+ * `prefix + ':' + abstractRenderContext.id + ':f' + frame` where `prefix` is itself
+ * `'r:' + this.renderer.info.render.frameCalls`. NEITHER half before `:f` is a pass identity:
+ *
+ *   - `frameCalls` is the render call's ORDINAL within the frame, so it renumbers the moment
+ *     the number of calls AHEAD of a pass changes — which this pipeline does routinely, when
+ *     the bloom node detaches or the RCAS wrapper attaches under DRS.
+ *   - `RenderContext.id` is a CACHE BUCKET keyed by `<attachmentState>-<mrt>-<callDepth>`
+ *     (renderers/common/RenderContexts.js), so all eight bloom targets share ONE id, and the
+ *     RCAS RTT shares the SCENE pass's id whenever sceneSamples is 0.
+ *
+ * So use this only for the FRAME. Names come from _installPassLabelInspector.
  * @param {string} uid
  * @returns {number}
  */
@@ -331,6 +343,13 @@ function frameOfTimestampUID(uid) {
     const frame = Number(uid.slice(at + 2));
     return Number.isFinite(frame) ? frame : NaN;
 }
+
+// How many frames of `uid -> pass name` to retain. The timestamp resolve that consumes a label
+// lands several frames after the render that produced it (the readback is a GPUBuffer.mapAsync),
+// so a single frame is not enough; 12 is generous against that latency and still bounded at
+// ~10 passes/frame. A resolve later than this falls back to the raw ordinal key for that sample,
+// which shows up as a stray `r:N:M` row rather than a WRONG attribution.
+const PASS_LABEL_FRAMES = 12;
 
 /**
  * OdysseyBoardController - Main Three.js scene for level selection
@@ -437,6 +456,19 @@ export class OdysseyBoardController {
         // Lane A frame is ~22 timestamp ticks total (65.536 us quantum), far too coarse for the
         // 0.0-0.3 ms per-object deltas an A/B is asked to resolve.
         this._gpuPassRings = this.gpuProfileEnabled ? new Map() : null;
+        // WAVE -1c — `uid -> human pass name`, written on the render path by the inspector hook
+        // (_installPassLabelInspector) and consumed by _recordPassTimestamps. Keyed by the FULL
+        // uid, frame included, because that is what the query pool keys its durations by.
+        this._passLabels = this.gpuProfileEnabled ? new Map() : null;
+        // The frame currently being labelled, plus per-frame occurrence counts so a target
+        // written twice in one frame (bloom composites back into _renderTargetsHorizontal[0])
+        // gets a distinct name instead of silently overwriting the first pass's label.
+        this._passLabelFrame = NaN;
+        this._passLabelSeen = new Map();
+        // Audit trail: the raw `r:<call>:<ctxId>` keys that fed each named ring. A name that
+        // collects more than one is PROOF the ordinal drifted — the bug this wave fixes.
+        this._passUidKeys = this.gpuProfileEnabled ? new Map() : null;
+        this._passLabelInspector = null;
         if (this.gpuProfileRing && typeof window !== 'undefined') {
             // The harness discards everything sampled during startup: a cold pipeline compile
             // is a real cost but a STARTUP cost, and averaging it into steady state hides both.
@@ -454,6 +486,10 @@ export class OdysseyBoardController {
                 // Per-pass rings share the aggregate ring's measurement window, or a startup
                 // compile would sit in the pass split after being discarded from the total.
                 this._gpuPassRings?.clear();
+                this._passUidKeys?.clear();
+                this._passLabels?.clear();
+                this._passLabelSeen.clear();
+                this._passLabelFrame = NaN;
             };
         }
         this._gpuProfileLastSummary = 0;
@@ -2344,6 +2380,12 @@ export class OdysseyBoardController {
             trackTimestamp: isOdysseyAAADebugEnabled() || readBooleanUrlFlag('odysseyGpuProfile'),
         });
         await this.renderer.init();
+        // WAVE -1c — name the passes the timestamp pool measures. AFTER init(): the renderer
+        // constructs its own default InspectorBase and calls its init() from inside the init
+        // promise, so replacing the slot afterwards is the clean seam. Gated on the profile flag
+        // (not on trackTimestamp, which the ?odysseyAAA overlay also turns on) so the render-path
+        // callback exists only in runs that actually read passes[].
+        if (this.gpuProfileEnabled) this._installPassLabelInspector();
         this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = this.renderer.backend?.isWebGLBackend === true;
         // Tonemapping happens in the TSL post graph (manual ACES) → renderer stays linear.
@@ -3023,6 +3065,67 @@ export class OdysseyBoardController {
     }
 
     /**
+     * WAVE -1c — name the render passes the timestamp pool measures.
+     *
+     * The uid three keys durations by encodes an ORDINAL and a format CACHE BUCKET, not a pass
+     * (see frameOfTimestampUID). The renderer hands out the missing identity on a public hook:
+     * it calls `this.inspector.beginRender(uid, scene, camera, renderTarget)` two lines after it
+     * builds the uid. The render target IS the pass. So: install an inspector, resolve a stable
+     * name from the target, and key the rings by that name instead.
+     * @private
+     */
+    _installPassLabelInspector() {
+        const { renderer } = this;
+        if (!renderer || this._passLabelInspector) return;
+        // Returns null when the installed three does not export InspectorBase — the instrument
+        // then degrades to the raw ordinal keys rather than throwing.
+        const inspector = createPassLabelInspector(
+            (uid, scene, renderTarget) => this._notePassLabel(uid, scene, renderTarget),
+        );
+        if (!inspector) return;
+        this._passLabelInspector = inspector;
+        renderer.inspector = inspector;
+    }
+
+    /**
+     * Record `uid -> pass name` for one render call. This runs on the RENDER path, ~10x a frame,
+     * so it stays O(1) and free of steady-state allocation.
+     *
+     * Frame boundaries come from the uid's own `:f<frame>` suffix, NOT from inspector
+     * begin()/finish(): three fires those around its animation loop callback, which is null here
+     * because the board drives its own requestAnimationFrame.
+     * @private
+     */
+    _notePassLabel(uid, scene, renderTarget) {
+        const labels = this._passLabels;
+        if (!labels || typeof uid !== 'string') return;
+        const frame = frameOfTimestampUID(uid);
+        if (frame !== this._passLabelFrame) {
+            this._passLabelFrame = frame;
+            this._passLabelSeen.clear();
+            // Bounded: labels for frames no resolve ever folded would otherwise accumulate.
+            if (labels.size > 16 * PASS_LABEL_FRAMES) {
+                labels.forEach((_label, key) => {
+                    if (!(frameOfTimestampUID(key) > frame - PASS_LABEL_FRAMES)) labels.delete(key);
+                });
+            }
+        }
+        const base = this._passLabelFor(renderTarget, scene);
+        const seen = (this._passLabelSeen.get(base) ?? 0) + 1;
+        this._passLabelSeen.set(base, seen);
+        labels.set(uid, seen === 1 ? base : `${base}#${seen}`);
+    }
+
+    /**
+     * A stable name for the render target a pass writes to. Rules and rationale live with the
+     * implementation in composition/odyssey-pass-label-inspector.js.
+     * @private
+     */
+    _passLabelFor(renderTarget, scene) {
+        return passLabelFor(renderTarget, scene, this.postProcessingStack?.scenePass?.renderTarget);
+    }
+
+    /**
      * WAVE -1b — fold one resolve's PER-PASS durations into their rings.
      *
      * three 0.185.1 keeps a resolved duration per render-pass uid — `timestamps.set(uid,
@@ -3053,13 +3156,27 @@ export class OdysseyBoardController {
         map.forEach((ms, uid) => {
             if (frameOfTimestampUID(uid) !== newest) return;
             if (!Number.isFinite(ms) || ms <= 0) return;
-            const key = uid.slice(0, uid.lastIndexOf(':f'));
+            const rawKey = uid.slice(0, uid.lastIndexOf(':f'));
+            // The raw `r:<frameCalls>:<contextId>` key is an ORDINAL plus a format bucket, not
+            // an identity — it renumbers whenever the count of render calls ahead of a pass
+            // changes. Prefer the name the inspector recorded for this exact uid; fall back to
+            // the raw key so a late resolve degrades to the old behaviour instead of being lost.
+            const key = this._passLabels?.get(uid) ?? rawKey;
             let ring = rings.get(key);
             if (!ring) {
                 ring = new PerfRing(600);
                 rings.set(key, ring);
             }
             ring.push(ms);
+            this._passLabels?.delete(uid);
+            if (this._passUidKeys) {
+                let seen = this._passUidKeys.get(key);
+                if (!seen) {
+                    seen = new Set();
+                    this._passUidKeys.set(key, seen);
+                }
+                seen.add(rawKey);
+            }
         });
     }
 
@@ -3077,7 +3194,13 @@ export class OdysseyBoardController {
         const out = [];
         rings.forEach((ring, pass) => {
             const summary = ring.summarize();
-            if (summary.samples > 0) out.push({ pass, ...summary });
+            if (summary.samples > 0) {
+                // uidKeys is the audit trail: more than one entry means three renumbered this
+                // pass's ordinal mid-run, which is exactly why the key is a name and not that
+                // ordinal. Keeping it visible makes the drift checkable, not inferred.
+                const uidKeys = this._passUidKeys?.get(pass);
+                out.push({ pass, uidKeys: uidKeys ? [...uidKeys] : null, ...summary });
+            }
         });
         if (out.length === 0) return null;
         out.sort((a, b) => (b.p50 ?? 0) - (a.p50 ?? 0));
