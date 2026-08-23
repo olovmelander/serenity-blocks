@@ -98,6 +98,13 @@ const ONE_WORLD_DEPARTURE_TARGET = new THREE.Color(0x05060f);
 // governs, and the adaptive controller rides renderScale beneath it (user low-res report
 // 2026-07-05). A DPR>1.5 panel is still clamped so 4K/retina can't runaway the fill cost.
 const ODYSSEY_MAX_PIXEL_RATIO = 1.5;
+// The board's own render-scale floor. BELOW this the browser upscale turns the Ch3 meadow to
+// mush, so _applyRenderScale clamps here regardless of what the policy proposes. It is exported
+// because the adaptive controller must be TOLD this floor: a controller that thinks it can reach
+// 0.5 spends three 12 s recovery cooldowns proposing 0.55/0.60/0.65 — all clamped to the same
+// 0.65 — before a single pixel comes back. SHARPEN_SCALE_FLOOR in odyssey-tsl-pipeline.js is the
+// same number for the same reason; keep them in step.
+export const ODYSSEY_RENDER_SCALE_FLOOR = 0.65;
 const DRS_FRAME_WINDOW = 60; // rolling frames used for the p95/p99 estimate.
 const DRS_EVAL_INTERVAL_MS = 1000; // evaluate at ~1Hz (policy cooldowns gate actual changes).
 const DRS_TARGET_FRAME_RATE = 60;
@@ -570,6 +577,9 @@ export class OdysseyBoardController {
             evalIntervalMs: DRS_EVAL_INTERVAL_MS,
             baselineRenderScale: this._drs.baselineRenderScale,
             renderScale: this._drs.renderScale,
+            // Tell the controller the floor THIS board clamps to, or it burns whole cooldowns
+            // proposing steps _applyRenderScale silently discards (36 s of dead recovery).
+            resolutionFloor: ODYSSEY_RENDER_SCALE_FLOOR,
             evaluateResolution: evaluateDynamicResolutionAdjustment,
         });
         // Reused ctx for the per-frame adaptive update (NO per-frame allocation). applyRenderScale
@@ -2424,6 +2434,11 @@ export class OdysseyBoardController {
                 this.postProcessingStack.setPostQuality(postQualityOverride);
             }
             this.postProcessingStack.setSize(this.container.clientWidth, this.container.clientHeight);
+            // Seat the ladder's tier-0 bloom target to what the pipeline was ACTUALLY authored
+            // with. Read it back off the pipeline rather than re-deriving it, so a
+            // ?odysseyPerfBloomScale override is honoured instead of being stomped to the
+            // controller's hardcoded 0.5 the first time a pressure episode recovers.
+            this.adaptiveQuality?.setBaselineBloomScale(this.postProcessingStack.bloomScale);
             this._syncOutputSharpen(); // the policy / ?odysseyPixelRatio may already start below 1
             this.composer = null;
             this.bloomPass = null;
@@ -2887,7 +2902,7 @@ export class OdysseyBoardController {
         // policy floor (0.5), but below ~0.65 the browser upscale turns the Ch3 meadow's
         // fine detail into visible pixel blocks. Clamp Odyssey only; when pinned here the
         // adaptive tier ladder escalates to its bloom-shed / post-soften rungs instead.
-        const clampedRenderScale = Math.max(renderScale, 0.65);
+        const clampedRenderScale = Math.max(renderScale, ODYSSEY_RENDER_SCALE_FLOOR);
         this._drs.renderScale = clampedRenderScale;
         const width = this.container?.clientWidth || 1;
         const height = this.container?.clientHeight || 1;

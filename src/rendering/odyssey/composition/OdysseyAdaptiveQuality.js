@@ -90,6 +90,12 @@ export class OdysseyAdaptiveQuality {
         const baseline = Number.isFinite(opts.baselineRenderScale) ? opts.baselineRenderScale : 1;
         this.baselineRenderScale = baseline; // ceiling (the preset cap); never exceeded.
         this.renderScale = Number.isFinite(opts.renderScale) ? opts.renderScale : baseline;
+        // The floor the CONSUMER actually clamps to. Defaults to the policy's own 0.5 so every
+        // existing caller keeps its behaviour; the Odyssey board passes its stricter legibility
+        // floor (ODYSSEY_RENDER_SCALE_FLOOR) because it clamps there regardless. A controller
+        // that does not know the real floor spends whole cooldowns proposing steps its consumer
+        // silently discards — 36 s of "recovering" with no pixel ever returning.
+        this.resolutionFloor = Number.isFinite(opts.resolutionFloor) ? opts.resolutionFloor : 0.5;
         this._lastScaleChangeAt = 0;
         this._stableSince = 0;
 
@@ -109,7 +115,15 @@ export class OdysseyAdaptiveQuality {
 
         // Latched applied state so we only call pipeline knobs on an actual transition (the
         // pipeline methods are themselves edge-safe, but this keeps the hot path quiet).
-        this._appliedBloomScale = BLOOM_SCALE_FULL;
+        // The pipeline's AUTHORED bloom scale — the value tier 0 must RESTORE, not a constant.
+        // Defaults to BLOOM_SCALE_FULL so existing callers/tests are unchanged; the board seats
+        // the real value (ODYSSEY_BLOOM_SCALE, or the ?odysseyPerfBloomScale override) through
+        // setBaselineBloomScale once the pipeline exists. Latching a hardcoded 0.5 against a
+        // pipeline authored at 0.25 is what made tier-0 recovery RAISE bloom above authored.
+        this._baselineBloomScale = Number.isFinite(opts.baselineBloomScale)
+            ? opts.baselineBloomScale
+            : BLOOM_SCALE_FULL;
+        this._appliedBloomScale = this._baselineBloomScale;
         this._appliedBloomEnabled = true;
         this._appliedPostQuality = 1;
     }
@@ -131,6 +145,19 @@ export class OdysseyAdaptiveQuality {
         this.baselineRenderScale = baselineRenderScale;
         if (this.renderScale > baselineRenderScale) this.renderScale = baselineRenderScale;
         this._stableSince = 0;
+    }
+
+    /**
+     * Seat the AUTHORED bloom scale the ladder must return to at tier 0. The board calls this
+     * once the post pipeline exists, reading the value back off the pipeline so the
+     * ?odysseyPerfBloomScale override is honoured too — otherwise a perf A/B that dips and
+     * recovers silently stops measuring the scale it asked for.
+     * @param {number} scale
+     */
+    setBaselineBloomScale(scale) {
+        if (!Number.isFinite(scale)) return;
+        this._baselineBloomScale = Math.min(1, Math.max(0.1, scale));
+        if (this._pressureTier === 0) this._appliedBloomScale = this._baselineBloomScale;
     }
 
     /** @returns {number} the current live render scale (Tier 0). */
@@ -267,8 +294,16 @@ export class OdysseyAdaptiveQuality {
             changed = false;
             next = this.renderScale;
         }
-        // Never exceed the preset ceiling.
-        if (next > this.baselineRenderScale) next = this.baselineRenderScale;
+        // Clamp into [floor, ceiling] in ONE expression — order matters. Clamping up to the
+        // floor after clamping down to the ceiling could re-raise `next` above the ceiling once
+        // a preset seats a baseline below the floor (getPackagedWindowsRecommendedSettings
+        // already returns 0.65 for a 9 MP display), so the ceiling must win.
+        next = Math.min(this.baselineRenderScale, Math.max(next, this._resolutionFloor()));
+        // Re-test AFTER clamping: this is what kills the dead step. At the floor the policy
+        // keeps proposing a lower scale, the clamp puts it back, and `changed` must go false so
+        // no cooldown is stamped — otherwise every discarded proposal costs a full window and
+        // `atFloor` never latches, delaying the bloom/post ladder that is the actual relief.
+        changed = changed && next !== this.renderScale;
 
         if (changed) {
             this.renderScale = next;
@@ -282,13 +317,14 @@ export class OdysseyAdaptiveQuality {
     }
 
     /**
-     * The render-scale floor the policy clamps to. Mirrors the policy's 0.5 clamp; exposed as
-     * a method so a custom policy could tighten it without the controller drifting.
+     * The render-scale floor this controller's CONSUMER actually clamps to — not the policy's.
+     * Defaults to the policy's own 0.5; the Odyssey board seats 0.65 because `_applyRenderScale`
+     * clamps there for legibility. Proposing a step below the consumer's floor is not a smaller
+     * picture, it is a discarded write plus a wasted cooldown.
      * @private
      */
-    // eslint-disable-next-line class-methods-use-this
     _resolutionFloor() {
-        return 0.5;
+        return this.resolutionFloor;
     }
 
     /**
@@ -301,7 +337,11 @@ export class OdysseyAdaptiveQuality {
         const tier = this._pressureTier;
 
         // Derive the target state for each knob from the single tier cursor.
-        const bloomScale = tier >= 1 ? BLOOM_SCALE_FLOOR : BLOOM_SCALE_FULL;
+        // Math.min is what makes the ratchet impossible: a shed tier can never ask for MORE
+        // bloom than the authored baseline, and tier 0 restores exactly the baseline.
+        const bloomScale = tier >= 1
+            ? Math.min(BLOOM_SCALE_FLOOR, this._baselineBloomScale)
+            : this._baselineBloomScale;
         const bloomEnabled = tier < 2;
         // Tier 3 softens post extras to half; Tier 4 disables them.
         let postQuality = 1;
