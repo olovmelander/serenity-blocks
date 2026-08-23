@@ -310,6 +310,22 @@ export function shouldRouteOdysseyWheel({
 }
 
 /**
+ * Frame number encoded in a three timestamp uid, or NaN when the shape is not recognised.
+ *
+ * three builds the uid as `<prefix>:<contextId>:f<frame>` (Backend.js `getTimestampUID`), so
+ * the part before `:f` identifies the PASS and is stable across frames, while the suffix
+ * distinguishes the frames a pass has been measured in.
+ * @param {string} uid
+ * @returns {number}
+ */
+function frameOfTimestampUID(uid) {
+    const at = typeof uid === 'string' ? uid.lastIndexOf(':f') : -1;
+    if (at < 0) return NaN;
+    const frame = Number(uid.slice(at + 2));
+    return Number.isFinite(frame) ? frame : NaN;
+}
+
+/**
  * OdysseyBoardController - Main Three.js scene for level selection
  */
 export class OdysseyBoardController {
@@ -404,6 +420,16 @@ export class OdysseyBoardController {
         // enable the debug overlay — and then measured a frame with the overlay in it.
         this.gpuProfileEnabled = readBooleanUrlFlag('odysseyGpuProfile');
         this.gpuProfileRing = this.gpuProfileEnabled ? new PerfRing(600) : null;
+        // WAVE -1b — one ring PER RENDER PASS, from the same resolves that feed the aggregate
+        // ring above. three 0.185.1 retains a resolved duration per pass uid
+        // (WebGPUTimestampQueryPool `this.timestamps.set(uid, duration)`); only the per-frame
+        // SUM is published as info.render.timestamp, which is why the split used to be taken as
+        // an A/B matrix across runs. It no longer has to be: the scene pass, each bloom mip and
+        // the composite each carry their own GPU ms, so a SINGLE run splits the frame — with no
+        // differential to subtract and no baseline drift to bound. That matters here because a
+        // Lane A frame is ~22 timestamp ticks total (65.536 us quantum), far too coarse for the
+        // 0.0-0.3 ms per-object deltas an A/B is asked to resolve.
+        this._gpuPassRings = this.gpuProfileEnabled ? new Map() : null;
         if (this.gpuProfileRing && typeof window !== 'undefined') {
             // The harness discards everything sampled during startup: a cold pipeline compile
             // is a real cost but a STARTUP cost, and averaging it into steady state hides both.
@@ -418,6 +444,9 @@ export class OdysseyBoardController {
                 // NOTE: keep this AFTER the epoch bump — odyssey-gpu-profile-sampling.test.js
                 // reads the first 700 chars of this function to prove the bump is here.
                 this._drawCallsRange = null;
+                // Per-pass rings share the aggregate ring's measurement window, or a startup
+                // compile would sit in the pass split after being discarded from the total.
+                this._gpuPassRings?.clear();
             };
         }
         this._gpuProfileLastSummary = 0;
@@ -2970,6 +2999,8 @@ export class OdysseyBoardController {
                 if (this.gpuProfileRing && epoch === this._gpuTimestampEpoch
                     && Number.isFinite(ts) && ts > 0) {
                     this.gpuProfileRing.push(ts);
+                    // Same resolve, same guards — the per-pass durations this resolve produced.
+                    this._recordPassTimestamps(renderType);
                 }
             })
             .catch(() => {})
@@ -2977,12 +3008,76 @@ export class OdysseyBoardController {
     }
 
     /**
+     * WAVE -1b — fold one resolve's PER-PASS durations into their rings.
+     *
+     * three 0.185.1 keeps a resolved duration per render-pass uid — `timestamps.set(uid,
+     * duration)` in renderers/webgpu/utils/WebGPUTimestampQueryPool.js — with the uid built as
+     * `<prefix>:<contextId>:f<frame>` by renderers/common/Backend.js and one query pair
+     * allocated per pass by WebGPUBackend's `initTimestampQuery`. Only the per-frame SUM is
+     * published as `info.render.timestamp`; the split is already measured and thrown away.
+     *
+     * `<prefix>:<contextId>` is the pass key. Earlier frames' entries stay in the Map, so only
+     * the newest frame is folded in — otherwise a pass that stopped rendering would keep
+     * contributing its final value forever and read as a live cost.
+     *
+     * Read through the public field rather than `backend.getTimestamp(uid)` because the uids
+     * are not enumerable from outside, and `getTimestamp` warns on a miss.
+     * @param {string} renderType
+     * @private
+     */
+    _recordPassTimestamps(renderType) {
+        const rings = this._gpuPassRings;
+        const map = this.renderer?.backend?.timestampQueryPool?.[renderType]?.timestamps;
+        if (!rings || !map || typeof map.forEach !== 'function' || map.size === 0) return;
+        let newest = -Infinity;
+        map.forEach((_ms, uid) => {
+            const frame = frameOfTimestampUID(uid);
+            if (frame > newest) newest = frame;
+        });
+        if (!Number.isFinite(newest)) return;
+        map.forEach((ms, uid) => {
+            if (frameOfTimestampUID(uid) !== newest) return;
+            if (!Number.isFinite(ms) || ms <= 0) return;
+            const key = uid.slice(0, uid.lastIndexOf(':f'));
+            let ring = rings.get(key);
+            if (!ring) {
+                ring = new PerfRing(600);
+                rings.set(key, ring);
+            }
+            ring.push(ms);
+        });
+    }
+
+    /**
+     * Percentiles per render pass, largest p50 first; null before anything has resolved.
+     *
+     * This is the answer to "which pass owns the frame" WITHOUT an A/B: the passes sum to the
+     * frame, so a share is read directly rather than inferred from a difference of two runs.
+     * @returns {Array<object>|null}
+     * @private
+     */
+    _summarizePassTimestamps() {
+        const rings = this._gpuPassRings;
+        if (!rings || rings.size === 0) return null;
+        const out = [];
+        rings.forEach((ring, pass) => {
+            const summary = ring.summarize();
+            if (summary.samples > 0) out.push({ pass, ...summary });
+        });
+        if (out.length === 0) return null;
+        out.sort((a, b) => (b.p50 ?? 0) - (a.p50 ?? 0));
+        return out;
+    }
+
+    /**
      * WAVE -1 — record this frame's GPU time and publish a throttled percentile summary.
      *
-     * `renderer.info.render.timestamp` is one aggregate number per frame, and WebGPU exposes
-     * no per-pass scope through three's API, so the "split" the wave asks for is obtained as
-     * an A/B MATRIX across runs (bloom off, post off, level nodes hidden, ...) rather than as
-     * nested timestamp scopes. Each configuration is one run; the differences are the split.
+     * `renderer.info.render.timestamp` is one aggregate number per frame. The per-PASS split
+     * is published alongside it as `summary.passes` (see _recordPassTimestamps) — three
+     * 0.185.1 retains a duration per pass uid, so the split no longer needs the A/B MATRIX
+     * across runs (bloom off, post off, level nodes hidden, ...) that this comment used to
+     * mandate. Keep the matrix for what it is still the only instrument for: pricing an
+     * OBJECT, which no pass boundary isolates.
      *
      * Sampling is per-frame and allocation-free; the O(n log n) summary is throttled to ~4 Hz
      * and parked on window for the harness to read.
@@ -3007,6 +3102,16 @@ export class OdysseyBoardController {
         summary.oneWorld = !!this.oneWorld;
         summary.levelNodesHidden = !!this.hideLevelNodes;
         summary.quality = this.qualityName ?? null;
+        // The per-pass split of the same window the percentiles above summarise.
+        summary.passes = this._summarizePassTimestamps();
+        // Texture/render-target counts and r185's byte accounting (Info.js `memory`). A
+        // configuration that silently destroys and recreates a render target per frame shows
+        // up as a churning renderTargets count, which no timing differential would name.
+        summary.textures = this._perfCounters?.textures ?? null;
+        const gpuMemory = this.renderer?.info?.memory;
+        summary.renderTargets = gpuMemory?.renderTargets ?? null;
+        summary.vramBytes = gpuMemory?.total ?? null;
+        summary.texturesBytes = gpuMemory?.texturesSize ?? null;
         if (typeof window !== 'undefined') window.__ODYSSEY_GPU_PROFILE__ = summary;
     }
 
