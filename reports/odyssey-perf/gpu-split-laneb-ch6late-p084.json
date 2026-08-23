@@ -1,0 +1,327 @@
+{
+  "wave": -1,
+  "generatedAt": "2026-08-23T13:24:25.950Z",
+  "lane": "B",
+  "configurationsRun": "restricted",
+  "quality": "Medium",
+  "adapter": {
+    "vendor": "amd",
+    "architecture": "gcn-5",
+    "device": "",
+    "description": ""
+  },
+  "warmupRun": true,
+  "lowPower": true,
+  "powerPreference": "low-power",
+  "laneAdapterMismatch": null,
+  "resolution": "1280x720",
+  "seekProgress": 0.84,
+  "captureChapters": "6,7,8",
+  "discipline": "p50/p99 from a fixed 600-sample ring; no mean is recorded anywhere",
+  "configurations": [
+    {
+      "id": "baseline",
+      "note": "everything on",
+      "samples": 228,
+      "p50": 1.0485760000000002,
+      "p95": 1.2451840000000003,
+      "p99": 1.7039360000000001,
+      "min": 0.9175040000000001,
+      "max": 1.835008,
+      "drawCalls": 57,
+      "drawCallsMin": 57,
+      "drawCallsMax": 57,
+      "triangles": 246955,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium",
+      "passes": [
+        {
+          "pass": "scene",
+          "uidKeys": [
+            "r:2:0"
+          ],
+          "samples": 228,
+          "p50": 0.65536,
+          "p95": 0.720896,
+          "p99": 0.720896,
+          "min": 0.589824,
+          "max": 1.441792
+        },
+        {
+          "pass": "canvas",
+          "uidKeys": [
+            "r:1:1"
+          ],
+          "samples": 228,
+          "p50": 0.32768,
+          "p95": 0.32768,
+          "p99": 0.65536,
+          "min": 0.262144,
+          "max": 0.786432
+        },
+        {
+          "pass": "bloom.bright",
+          "uidKeys": [
+            "r:3:2"
+          ],
+          "samples": 160,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.h2",
+          "uidKeys": [
+            "r:8:2"
+          ],
+          "samples": 33,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.v2",
+          "uidKeys": [
+            "r:9:2"
+          ],
+          "samples": 20,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.v0",
+          "uidKeys": [
+            "r:5:2"
+          ],
+          "samples": 28,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.h0#2",
+          "uidKeys": [
+            "r:10:2"
+          ],
+          "samples": 21,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.h0",
+          "uidKeys": [
+            "r:4:2"
+          ],
+          "samples": 24,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.h1",
+          "uidKeys": [
+            "r:6:2"
+          ],
+          "samples": 28,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.v1",
+          "uidKeys": [
+            "r:7:2"
+          ],
+          "samples": 22,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        }
+      ],
+      "textures": 24,
+      "renderTargets": 9,
+      "vramBytes": 59109437,
+      "texturesBytes": 41061662
+    },
+    {
+      "id": "baseline-repeat",
+      "note": "drift check against the first baseline",
+      "samples": 183,
+      "p50": 1.0485760000000002,
+      "p95": 1.245184,
+      "p99": 1.572864,
+      "min": 0.8519680000000001,
+      "max": 1.7039360000000001,
+      "drawCalls": 57,
+      "drawCallsMin": 57,
+      "drawCallsMax": 57,
+      "triangles": 246955,
+      "oneWorld": true,
+      "levelNodesHidden": false,
+      "quality": "Medium",
+      "passes": [
+        {
+          "pass": "scene",
+          "uidKeys": [
+            "r:2:0"
+          ],
+          "samples": 183,
+          "p50": 0.65536,
+          "p95": 0.720896,
+          "p99": 0.720896,
+          "min": 0.589824,
+          "max": 1.179648
+        },
+        {
+          "pass": "canvas",
+          "uidKeys": [
+            "r:1:1"
+          ],
+          "samples": 183,
+          "p50": 0.32768,
+          "p95": 0.32768,
+          "p99": 0.524288,
+          "min": 0.262144,
+          "max": 0.786432
+        },
+        {
+          "pass": "bloom.bright",
+          "uidKeys": [
+            "r:3:2"
+          ],
+          "samples": 136,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.h0#2",
+          "uidKeys": [
+            "r:10:2"
+          ],
+          "samples": 36,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.h1",
+          "uidKeys": [
+            "r:6:2"
+          ],
+          "samples": 22,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.v2",
+          "uidKeys": [
+            "r:9:2"
+          ],
+          "samples": 17,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.h0",
+          "uidKeys": [
+            "r:4:2"
+          ],
+          "samples": 15,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.v0",
+          "uidKeys": [
+            "r:5:2"
+          ],
+          "samples": 24,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.v1",
+          "uidKeys": [
+            "r:7:2"
+          ],
+          "samples": 12,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        },
+        {
+          "pass": "bloom.h2",
+          "uidKeys": [
+            "r:8:2"
+          ],
+          "samples": 8,
+          "p50": 0.065536,
+          "p95": 0.065536,
+          "p99": 0.065536,
+          "min": 0.065536,
+          "max": 0.065536
+        }
+      ],
+      "textures": 24,
+      "renderTargets": 9,
+      "vramBytes": 59109437,
+      "texturesBytes": 41061662
+    }
+  ],
+  "split": {
+    "bloomMs": null,
+    "levelNodesMs": null,
+    "waterMs": null,
+    "cloudsMs": null,
+    "heroesMs": null,
+    "cloudFieldMs": null,
+    "lakeMs": null,
+    "lakeBakedMs": null,
+    "cloudFieldHalfMs": null,
+    "forestMs": null,
+    "forestV1Ms": null,
+    "groundFragMs": null,
+    "oneWorldSavingMs": null,
+    "baselineDriftMs": 0,
+    "baselineDriftVoidReason": null,
+    "note": "Differential, not per-pass: each figure is baseline p50 minus that configuration p50 — except heroesMs and cloudsMs, whose levers ADD a retired system, so they are the configuration minus baseline. Positive always means cost. Overlapping costs are attributed to whichever system is removed first, and baselineDriftMs bounds how much of any figure could be drift rather than signal. baselineDriftMs is null when the two baselines did not render comparable scenes — see baselineDriftVoidReason."
+  }
+}
