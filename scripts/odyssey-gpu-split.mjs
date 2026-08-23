@@ -287,6 +287,19 @@ const CONFIGURATIONS = [
     // Accept (design §4): lakeBakedMs ≤ 0.5 × lakeMs with the differential ≥ 4 timer ticks and
     // baseline drift ≤ 25 % of the saving.
     { id: 'no-lake', flags: { earthCoreNoLake: '1' }, note: 'the Earth Core lava lake is not built' },
+    // SPLIT LEVER. `no-lake` withholds SIX draws: the 360x360 lake plane AND five large additive
+    // glow sprites (ambient 120u, inner 70u, three basin coronas 66-84u, all frustumCulled=false
+    // and depthWrite=false). So `lakeMs` is plane PLUS sprite fill, and the split between them
+    // was unknown. It matters because the fixes are opposite: a cheaper lake shader, versus
+    // simply cutting sprites. Run the trio in ONE cooled session so all three share a baseline:
+    //   --lane B --low-power --seek 0 --chapters 1 --flags odysseyHideLevelNodes=1     //     --only baseline,no-lake,no-lake-glows,baseline-repeat
+    // Liveness gate: no-lake drops SIX draws, no-lake-glows drops exactly FIVE. A five-draw drop
+    // is the proof the lever hit the sprites and only the sprites.
+    {
+        id: 'no-lake-glows',
+        flags: { earthCoreNoLakeGlows: '1' },
+        note: 'the lake plane still draws; its five additive glow sprites are withheld',
+    },
     { id: 'lake-baked', flags: { earthCoreLakeBake: '1' }, note: 'lake noise from the baked 3D texture' },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
@@ -566,6 +579,16 @@ function buildSplit(results) {
         // Lane B (Vega 8) 4.45 → 1.96 ms of a 7.6 ms frame; Lane A (RTX 3070) 0.79 → 0.20 ms.
         lakeMs: delta('baseline', 'no-lake'),
         lakeBakedMs: delta('lake-baked', 'no-lake'),
+        // The five additive glow sprites alone (baseline minus the same frame without them).
+        lakeGlowsMs: delta('baseline', 'no-lake-glows'),
+        // The lake PLANE alone, by subtraction: the whole group minus the sprite share. Report
+        // it only when both levers ran in the same session — across sessions the two baselines
+        // are different frames and the subtraction is meaningless.
+        lakePlaneMs: (Number.isFinite(byId.baseline)
+            && Number.isFinite(byId['no-lake'])
+            && Number.isFinite(byId['no-lake-glows']))
+            ? +(byId['no-lake-glows'] - byId['no-lake']).toFixed(3)
+            : null,
         // NOT `baseline - cloud-field-half`. `cloud-field-half` truncates the spec table to
         // its first 26 masses, so that subtraction would price the UPPER 26 (the satellites,
         // which are far-LOD and tiny) and read as 'half the field is nearly free'. The cost
