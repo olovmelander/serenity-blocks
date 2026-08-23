@@ -933,6 +933,12 @@ export function createEarthCoreEnvironment(options = {}) {
     };
     const noBackdrop = readBisect('earthCoreNoBackdrop');
     const noLake = readBisect('earthCoreNoLake');
+    // SPLIT LEVER. ?earthCoreNoLake bundles SIX draws — the 360x360 lake plane AND five large
+    // additive glow sprites (ambient 120u, inner 70u, three basin coronas 66-84u, all
+    // frustumCulled=false). So the measured "lake cost" is plane PLUS sprites, and the split
+    // between them was unknown, which matters because the two have opposite fixes: cheaper
+    // shader on the plane, versus simply cutting sprites. This lever withholds ONLY the sprites.
+    const noLakeGlows = readBisect('earthCoreNoLakeGlows');
     const noHaze = readBisect('earthCoreNoHaze');
 
     // 1. Create background sphere (enhanced with lava glow)
@@ -967,7 +973,7 @@ export function createEarthCoreEnvironment(options = {}) {
     if (lakeFlowDir.lengthSq() < 1e-6) lakeFlowDir.set(1, 0, 0.5);
     lakeFlowDir.normalize();
     uniforms.uLakeFlowDir.value.copy(lakeFlowDir);
-    const lavaFloor = createLavaFloor(uniforms, basins);
+    const lavaFloor = createLavaFloor(uniforms, basins, { addGlows: !noLakeGlows });
     if (!noLake) group.add(lavaFloor);
     group.userData.lavaFloor = lavaFloor;
 
@@ -1426,7 +1432,7 @@ function _readLakeNoiseOptions() {
     return out;
 }
 
-function createLavaFloor(uniforms, basins = []) {
+function createLavaFloor(uniforms, basins = [], { addGlows = true } = {}) {
     const group = new THREE.Group();
     group.name = 'lava-floor';
     const lakeNoise = _readLakeNoiseOptions();
@@ -1459,14 +1465,12 @@ function createLavaFloor(uniforms, basins = []) {
     );
     ambientGlow.userData.baseScale = 120;
     ambientGlow.position.y = LAVA_LAKE_Y - 2;
-    group.add(ambientGlow);
 
     const innerGlow = new THREE.Sprite(
         makeGlowSpriteMaterial(glowTexture, 0xffaa00, 0.28, uniforms.uOpacity),
     );
     innerGlow.userData.baseScale = 70;
     innerGlow.position.y = LAVA_LAKE_Y - 1;
-    group.add(innerGlow);
 
     const glows = [ambientGlow, innerGlow];
 
@@ -1485,7 +1489,6 @@ function createLavaFloor(uniforms, basins = []) {
         const basinGlow = new THREE.Sprite(sharedBasinGlowMaterial);
         basinGlow.userData.baseScale = basin.r * 2.2;
         basinGlow.position.set(basin.x, LAVA_LAKE_Y + 1.6, basin.z);
-        group.add(basinGlow);
         glows.push(basinGlow);
     });
 
@@ -1498,6 +1501,16 @@ function createLavaFloor(uniforms, basins = []) {
         // content-matched pairs (with orbs shown it read as 92<->93; same single source).
         // The cavern surrounds the camera, so culling these bought nothing.
         sprite.frustumCulled = false;
+        // The ONE place the glow sprites are parented (they used to be added at their three
+        // construction sites). Keeping it here means the ?earthCoreNoLakeGlows lever is a single
+        // gate, and the sprites still land in the same order relative to each other and after
+        // the opaque lake surface, so the transparent draw order is unchanged.
+        //
+        // Withheld, not skipped: the sprites and their materials are still BUILT, exactly as
+        // ?earthCoreNoLake withholds the whole group. A material that never renders never gets a
+        // pipeline, so both levers price draws + fill + that pipeline — and neither disturbs the
+        // worker noise bake, which runs unconditionally.
+        if (addGlows) group.add(sprite);
     });
 
     group.userData.glows = glows;
