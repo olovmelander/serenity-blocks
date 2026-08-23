@@ -3154,7 +3154,23 @@ export class OdysseyBoardController {
         });
         if (!Number.isFinite(newest)) return;
         map.forEach((ms, uid) => {
-            if (frameOfTimestampUID(uid) !== newest) return;
+            const frame = frameOfTimestampUID(uid);
+            // PRUNE, and work around an upstream leak while we are here. three's pool does
+            // `timestamps.set(uid, duration)` and NEVER clears the Map — TimestampQueryPool
+            // creates it once and _resolveQueries resets only the query index and offsets. Since
+            // the uid carries `:f<frame>`, every pass of every frame adds a permanent entry:
+            // ~10 a frame at 60 Hz is ~36k a minute for the life of the page, and this method
+            // scans the whole thing per resolve. That makes the profiler a growing CPU cost
+            // inside the very runs whose open question is unexplained CPU — and it means a long
+            // run's later samples are not comparable to its earlier ones.
+            //
+            // Safe to delete: nothing inside three reads this Map. It exists for external
+            // `getTimestamp(uid)` / `hasTimestampQuery(uid)` lookups and we are the only
+            // consumer. Anything at or BELOW the frame being folded is finished with, because
+            // this method always folds the newest frame and never revisits an older one.
+            // Deleting the current key during Map.forEach is well-defined.
+            if (frame <= newest) map.delete(uid);
+            if (frame !== newest) return;
             if (!Number.isFinite(ms) || ms <= 0) return;
             const rawKey = uid.slice(0, uid.lastIndexOf(':f'));
             // The raw `r:<frameCalls>:<contextId>` key is an ORDINAL plus a format bucket, not
