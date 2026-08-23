@@ -19,7 +19,21 @@
  * getBlendMode() reads `this.blendModes` (:115), so the merged node reverts
  * to the NoBlending default. ensureMrtMergePreservesBlendModes() patches
  * merge() once, module-wide, to move the stray `blendings` map onto
- * `blendModes`; if upstream fixes merge(), the wrapper degrades to a no-op.
+ * `blendModes`. Note `blendings` is written at that ONE line and read nowhere
+ * else in three — a dead write, which is why the loss is silent.
+ *
+ * UPSTREAM STATUS, verified 2026-08-23 — DELETION CANDIDATE, NOT PERMANENT.
+ * Already FIXED on three's `dev`: merge() now assigns `mrtTarget.blendModes`
+ * (and gained a `clearColors` merge alongside it). It is in NO release yet —
+ * 0.185.1 is still the latest published version — so this patch is required
+ * today. Do not file it upstream; it is fixed, just unreleased.
+ *
+ * On the move to r186+, DELETE this module and its call sites rather than
+ * carrying it. The wrapper is already inert against a fixed three: it acts only
+ * `if (merged.hasOwnProperty('blendings'))`, which a fixed merge() never sets.
+ * So an upgrade will silently stop exercising it, and a patch nobody notices has
+ * stopped running is worse than no patch. Re-verify emissive accumulation with a
+ * selective-bloom capture at that point either way (ADR-0007).
  */
 
 import { BlendMode, MaterialBlending } from 'three/webgpu';

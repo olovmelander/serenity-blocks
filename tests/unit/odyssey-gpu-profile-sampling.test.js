@@ -150,9 +150,9 @@ describe('the quality-preset table declares only levers it actually reads', () =
             BOARD.indexOf('const ODYSSEY_BLOOM_SCALE'),
         );
         ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'].forEach((tier) => {
-            expect(table).toMatch(new RegExp(`${tier}: \{[^}]*enableBloom`));
-            expect(table).toMatch(new RegExp(`${tier}: \{[^}]*particleCount`));
-            expect(table).toMatch(new RegExp(`${tier}: \{[^}]*starCount`));
+            expect(table).toMatch(new RegExp(`${tier}: \\{[^}]*enableBloom`));
+            expect(table).toMatch(new RegExp(`${tier}: \\{[^}]*particleCount`));
+            expect(table).toMatch(new RegExp(`${tier}: \\{[^}]*starCount`));
         });
     });
 });
