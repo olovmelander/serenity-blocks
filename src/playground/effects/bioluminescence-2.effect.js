@@ -1786,6 +1786,8 @@ export function create({
     // ═══ POST — non-MRT thresholded bloom + ACES + violet/cyan grade + vignette ════
     let postProcessing = null;
     let bloomNode = null;
+    // Published to the theme wrapper for its warm compile — see `getPostStack` on the runtime.
+    let postStack = null;
     const useBloom = !P.has('nobloom');
     if (useBloom) {
         const useMRT = P.has('mrt');
@@ -1821,6 +1823,10 @@ export function create({
         const sat = mix(vec3(luma), toned, float(1.28));
         const dth = fract(sin(dot(vuv.mul(317.0), vec2(127.1, 269.5))).mul(43758.5)).sub(0.5).mul(0.004);
         postProcessing.outputNode = vec4(clamp(sat.add(vec3(dth)), 0.0, 1.0), 1.0);
+        // Exposed for the theme's warm compile: `compileGroupThroughPost` reads
+        // `postProcessingStack.scenePass.renderTarget` and `.getMRT()` and nothing else
+        // (post-target-compile.js:72-86), so publishing the pass is the whole contract.
+        postStack = { scenePass };
     }
 
     // ── pointer parallax + camera ───────────────────────────────────────────────
@@ -1868,6 +1874,7 @@ export function create({
             if (typeof s.pulse === 'number') uPulse.value = s.pulse;
             if (s.accent) uAccent.value.set(s.accent.r, s.accent.g, s.accent.b);
         },
+        getPostStack: () => postStack,
         render() {
             if (postProcessing) postProcessing.render();
             else renderer.render(scene, camera);

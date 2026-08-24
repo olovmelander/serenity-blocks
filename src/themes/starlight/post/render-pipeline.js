@@ -133,6 +133,11 @@ export class StarlightPostPipeline {
         this.lastRenderCostMs = 0;
         this.mrtEnabled = params.useMRT !== false;
         this.postProcessing = null;
+        // Published for the theme's warm compile: `compileGroupThroughPost` reads
+        // `postProcessingStack.scenePass.renderTarget` and `.getMRT()` and nothing else, so
+        // publishing the pass IS the whole contract. Stays null on the non-WebGPU early return
+        // and on a failed `_setupWebGPU`, which is exactly when the theme renders without post.
+        this.scenePass = null;
 
         if (renderer?.backend?.isWebGPUBackend !== true) {
             console.warn('[Starlight] Post pipeline requires WebGPU; skipping (rendering without post)');
@@ -149,6 +154,7 @@ export class StarlightPostPipeline {
     _setupWebGPU(params) {
         this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
+        this.scenePass = scenePass;
 
         let bloomSource;
         try {
@@ -307,5 +313,6 @@ export class StarlightPostPipeline {
         disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing = null;
         this.bloomNode = null;
+        this.scenePass = null;
     }
 }
