@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T15:42:49.043Z",
-  "runId": "2026-08-24T15-02-46-550Z",
+  "generatedAt": "2026-08-24T16:04:26.818Z",
+  "runId": "2026-08-24T15-50-19-419Z",
   "theme": "blood-moon",
   "themeMeta": {
     "displayName": "Blood Moon",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-24T15-02-46-550Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-24T15-50-19-419Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -135,10 +135,10 @@
     "samples": 20107,
     "luminance": {
       "min": 0.5696,
-      "max": 252.83399999999997,
-      "mean": 13.997568140448081,
-      "range": 252.26439999999997,
-      "variance": 575.3772060728434
+      "max": 254.99999999999997,
+      "mean": 17.8661594171182,
+      "range": 254.43039999999996,
+      "variance": 799.6373551723111
     }
   },
   "console": {
@@ -152,21 +152,21 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-24T15:42:20.412Z",
+        "timestamp": "2026-08-24T16:03:58.192Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-24T15:42:38.177Z",
+        "timestamp": "2026-08-24T16:04:15.906Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-24T15:42:46.728Z",
+        "timestamp": "2026-08-24T16:04:24.477Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -177,8 +177,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-24T15:42:46.748Z",
-    "runId": "2026-08-24T15-02-46-550Z",
+    "generatedAt": "2026-08-24T16:04:24.504Z",
+    "runId": "2026-08-24T15-50-19-419Z",
     "theme": "blood-moon",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -328,135 +328,136 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 705.7
+          "atMs": 704.8
         },
         {
           "kind": "webgl",
-          "atMs": 1055.6
+          "atMs": 1073.8
         },
         {
           "kind": "2d",
-          "atMs": 1055.8
+          "atMs": 1073.9
         },
         {
           "kind": "2d",
-          "atMs": 1056.6
+          "atMs": 1075.1
         },
         {
           "kind": "2d",
-          "atMs": 1093.1
+          "atMs": 1111.3
         },
         {
           "kind": "webgl",
-          "atMs": 1100.7
+          "atMs": 1119
         },
         {
           "kind": "2d",
-          "atMs": 1157.7
+          "atMs": 1177.3
         },
         {
           "kind": "2d",
-          "atMs": 1157.8
+          "atMs": 1177.3
         },
         {
           "kind": "2d",
-          "atMs": 1158.8
+          "atMs": 1178.5
         },
         {
           "kind": "2d",
-          "atMs": 1158.8
+          "atMs": 1178.5
         },
         {
           "kind": "2d",
-          "atMs": 1171.5
+          "atMs": 1188.1
         },
         {
           "kind": "2d",
-          "atMs": 1732.5
+          "atMs": 1893.1
         },
         {
           "kind": "2d",
-          "atMs": 1740.9
+          "atMs": 1901.9
         },
         {
           "kind": "2d",
-          "atMs": 1746.4
+          "atMs": 1907.3
         },
         {
           "kind": "2d",
-          "atMs": 1752.6
+          "atMs": 1912.8
         },
         {
           "kind": "2d",
-          "atMs": 1757.8
+          "atMs": 1917.9
         },
         {
           "kind": "2d",
-          "atMs": 1762.9
+          "atMs": 1922.6
         },
         {
           "kind": "2d",
-          "atMs": 1865.3
+          "atMs": 2020.6
         },
         {
           "kind": "2d",
-          "atMs": 1871.5
+          "atMs": 2030
         },
         {
           "kind": "2d",
-          "atMs": 1876.9
+          "atMs": 2038.7
         },
         {
           "kind": "2d",
-          "atMs": 4066.6
+          "atMs": 4083.5
         },
         {
           "kind": "2d",
-          "atMs": 4066.7
+          "atMs": 4083.6
         },
         {
           "kind": "webgl2",
-          "atMs": 4417.3
+          "atMs": 4519.9
         },
         {
           "kind": "2d",
-          "atMs": 4445
+          "atMs": 4547.5
         },
         {
           "kind": "2d",
-          "atMs": 4445.5
+          "atMs": 4548
         },
         {
           "kind": "2d",
-          "atMs": 4445.7
+          "atMs": 4548.1
         },
         {
           "kind": "2d",
-          "atMs": 4445.8
+          "atMs": 4548.2
         },
         {
           "kind": "2d",
-          "atMs": 4445.9
+          "atMs": 4548.3
         },
         {
           "kind": "2d",
-          "atMs": 4446
+          "atMs": 4548.4
         },
         {
           "kind": "2d",
-          "atMs": 6002.5
+          "atMs": 6055
         },
         {
           "kind": "2d",
-          "atMs": 6007.3
+          "atMs": 6059.5
         },
         {
           "kind": "2d",
-          "atMs": 6011.2
+          "atMs": 6063.5
         }
       ],
       "wrapped": [
-        "renderer"
+        "renderer",
+        "post"
       ],
       "usesMrtScenePass": false
     },
@@ -491,38 +492,38 @@
       "visit2SyncCount": 0
     },
     "switchTimings": {
-      "switchWallMs": 1634.9,
+      "switchWallMs": 1570.4,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 24.3,
-      "rendererCreatedMs": 48,
-      "criticalReadyMs": 1635.1,
-      "firstRenderCallMs": 77,
-      "firstFrameGpuCompleteMs": 3728.9,
+      "createSceneEnterMs": 11.1,
+      "rendererCreatedMs": 34,
+      "criticalReadyMs": 1570.4,
+      "firstRenderCallMs": 63,
+      "firstFrameGpuCompleteMs": 3651.3,
       "firstFrameGpuCompleteMethod": "fenceSync",
-      "firstFrameRafMs": 3736.7,
-      "visit2SwitchWallMs": 369.3
+      "firstFrameRafMs": 3658.7,
+      "visit2SwitchWallMs": 376.1
     },
     "idle": {
-      "windowMs": 10003.2,
-      "framesObserved": 1314,
+      "windowMs": 10006.7,
+      "framesObserved": 1307,
       "wall": {
-        "samples": 1313,
+        "samples": 1306,
         "p50": 7.6,
         "p95": 8.2,
         "p99": 8.6,
         "min": 7,
-        "max": 8.8,
+        "max": 9.1,
         "budgetMs": 16.667,
         "overBudget": 0
       },
       "cpuSubmitMs": {
-        "samples": 1314,
-        "p50": 0.3,
-        "p95": 0.4,
-        "p99": 0.5,
-        "min": 0.1,
-        "max": 0.6
+        "samples": 1307,
+        "p50": 0.6,
+        "p95": 0.8,
+        "p99": 1,
+        "min": 0.3,
+        "max": 1.6
       },
       "gpuMs": {
         "samples": 0,
@@ -566,15 +567,15 @@
       "contentGuardAdmissible": false
     },
     "memory": {
-      "peakHeapMB": 31.48,
-      "p50HeapMB": 28.57,
+      "peakHeapMB": 30.4,
+      "p50HeapMB": 28.35,
       "heapSamples": 40,
-      "heapDrops": 12,
+      "heapDrops": 13,
       "allocBytesPerFrame": null,
-      "allocVoidReason": "12 GC(s) inside the window",
-      "gcPerSecond": 1.2,
-      "gcCount": 12,
-      "cdpHeapDeltaBytes": 3776528,
+      "allocVoidReason": "13 GC(s) inside the window",
+      "gcPerSecond": 1.299,
+      "gcCount": 13,
+      "cdpHeapDeltaBytes": 2313388,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {
@@ -588,7 +589,9 @@
     },
     "console": {
       "errorCount": 0,
-      "warningCount": 3
+      "warningCount": 3,
+      "instrumentInducedErrorCount": 0,
+      "genuineErrorCount": 0
     },
     "admissible": true,
     "inadmissibleReasons": [],

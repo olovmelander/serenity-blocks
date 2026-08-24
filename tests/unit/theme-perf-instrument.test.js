@@ -78,6 +78,15 @@ describe('theme perf bootstrap source', () => {
         expect(THEME_PERF_BOOTSTRAP).toContain('reset ? rr.drawCalls : Math.max(0, rr.drawCalls - preD)');
     });
 
+    it('owns Info before the backend guard, so a classic renderer is not skipped', () => {
+        // A classic THREE.WebGLRenderer has no .backend, so arming behind that guard bailed
+        // forever and every classic theme reported 0 draws. Ownership must precede it.
+        const arm = THEME_PERF_BOOTSTRAP.slice(THEME_PERF_BOOTSTRAP.indexOf('S.armWhenReady = '));
+        expect(arm.indexOf('S.ownInfo(renderer)')).toBeLessThan(arm.indexOf('const backend = renderer.backend'));
+        expect(arm.indexOf('classic-webgl-renderer-has-no-timestamp-api'))
+            .toBeLessThan(arm.indexOf('const backend = renderer.backend'));
+    });
+
     it('re-wraps render entries each lane frame, since post graphs are built after the renderer', () => {
         expect(THEME_PERF_BOOTSTRAP).toContain('if (S.renderer) S.wrapRenderEntries(S.renderer);');
     });
