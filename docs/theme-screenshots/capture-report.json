@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-24T18:20:10.328Z",
-  "startedAt": "2026-08-24T18:19:40.181Z",
-  "runId": "2026-08-24T18-19-40-180Z",
+  "generatedAt": "2026-08-24T18:41:32.427Z",
+  "startedAt": "2026-08-24T18:41:03.398Z",
+  "runId": "2026-08-24T18-41-03-398Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,16 +23,16 @@
     "perfTargetFps": null
   },
   "selectedThemes": [
-    "stillwater"
+    "vesper-chrysalis"
   ],
   "results": [
     {
-      "theme": "stillwater",
-      "displayName": "Stillwater",
+      "theme": "vesper-chrysalis",
+      "displayName": "Vesper Chrysalis",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\stillwater.png",
-      "report": "docs\\theme-screenshots\\results\\stillwater.json",
+      "screenshot": "docs\\theme-screenshots\\vesper-chrysalis.png",
+      "report": "docs\\theme-screenshots\\results\\vesper-chrysalis.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": null,

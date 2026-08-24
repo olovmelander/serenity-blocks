@@ -2311,3 +2311,71 @@ Rows 3 (hold the mask across a rendered frame), 4 (reflector compile), 5 (drop 4
 composite quad) and 7 (rewrite the pinned test's rationale) from the Stage-3 plan are untouched.
 Row 5 is now *measurable* for the first time, because row 6 unlocked the GPU axis
 (`idle.gpuMs.p95` 0.786 ms).
+
+
+## 14. vesper-chrysalis — 6,350 ms → 3,064 ms (−51.8 %)
+
+**Landed 2026-08-24.** Commit `6f85c8c3` (change) + this section (evidence).
+Cells: [`reports/theme-perf-vesper-ab/`](../reports/theme-perf-vesper-ab/).
+
+### What was wrong
+
+Simpler than stillwater and the same root cause: `createScene` built the scene and went straight to
+`startAnimationLoop` with **no compile of any kind**. 0 async / 103 sync pipelines, 5,760 ms of GPU
+compile landing after the switch promise had already resolved.
+
+Three parts, all required together: the effect exposes `scenePass` on its post object (the recipe
+reads `postProcessingStack.scenePass.renderTarget` and `.getMRT()` and nothing else), the runtime
+surfaces `getPostStack()`, and `createScene` awaits `compileGroupThroughPost` before starting the
+loop — with `renderTarget.samples` pinned to `renderer.samples` first, since `PassNode.setup()` has
+not run at warm time and the WebGPU pipeline cache key hashes sample count.
+
+### The measurement (n = 3, medians, RTX 3070, cold cache per run)
+
+| field | before | after ×3 | median |
+|---|---:|---|---:|
+| **`firstFrameGpuDoneMs`** | **6,350** | 3,068 / 3,025 / 3,064 | **3,064** |
+| `switchWallMs` | 713 | 2,240 / 2,253 / 2,228 | 2,240 |
+| `pipelines.asyncCount` | 0 | 44 / 44 / 44 | 44 |
+| `pipelines.syncCount` | 103 | 62 / 62 / 62 | 62 |
+| `pipelines.asyncMaxMs` | 0 | — | 1,263 |
+
+Guards: `drawCalls.p50` 257 → 257, `triangles.p50` 116,109 → 116,109, `contentMatch` true,
+`pipelinesAfterFirstFrame` 0 → 0, `console.errorCount` 0 → 0, `idle.gpuMs.p95` 1.114 → 1.114.
+
+**ADR-0007:** PASS, 0 console errors, 0 pattern failures. Luminance mean 33.448 → 33.890 (+1.3 %),
+range 241.7 identical, variance 958.9 → 973.4 (+1.5 %) — frame-to-frame variation under an unfrozen
+clock, no structural change.
+
+### An instrument caveat this A/B surfaced — read it before trusting any idle-frame delta
+
+`idle.wall.p95` read **8.7 ms before and 15.9 ms after**, which looks like a 2× regression and is
+not one. The same *unmodified* code measured **15.9 ms** in the pre-correction fleet sweep:
+
+| run | code | wall p50 | wall p95 | frames / 10 s | GPU p95 |
+|---|---|---:|---:|---:|---:|
+| pre-correction sweep | unmodified | 8.1 | 15.9 | 919 (~92 fps) | 1.049 |
+| A/B before | unmodified | 7.6 | **8.7** | 1,243 (~124 fps) | 1.114 |
+| A/B after | modified | 8.1 | 15.9 | 914 (~91 fps) | 1.114 |
+
+GPU p95 is identical across all three. The theme lands in either the ~120 fps or the ~90 fps pacing
+bucket depending on the run, and nothing in the change moves it — this is the fleet-wide bimodality
+of §11 showing up *within a single theme across runs*. **A single-run `idle.wall.p95` comparison is
+therefore not a valid A/B axis on this fleet.** Use `idle.gpuMs.p95` and `idle.cpuSubmitMs.p95`,
+which are stable, and treat wall p95 as a pacing observation. The four other themes that sit at
+~15.9 (black-hole, chiral-gold, chromadelic-highway, neon-district) should be assumed subject to the
+same lottery until someone measures them n≥3.
+
+### What is not done
+
+The reflector sample-count alignment, `forceSinglePass` on the nine additive billboards, the bloom
+`setResolutionScale` swap (plan 4.8) and the PMREM light-sphere material collapse are all untouched
+and separately measurable. 62 pipelines still compile synchronously, in shapes
+`rgba16float|1|depth24plus`, `rgba16float|1|null` and `rgba8unorm-srgb|1|null` — the first two are
+the reflector's own target, the same structural residue stillwater has.
+
+**Plan row 3.5 is explicitly rejected for this theme.** It names `waterMat` (10 `mx_noise` over an
+8000×8000 plane) but `mx_noise.js` carries `setLayout` throughout, so those are ten *calls to a real
+WGSL function*, not ten inlined bodies — structurally the opposite of the layout-less helpers Part A
+correctly flagged elsewhere. On the compile axis it is one program of 103; on the frame axis the
+theme measures 1.114 ms GPU p95 against a 9 ms budget.
