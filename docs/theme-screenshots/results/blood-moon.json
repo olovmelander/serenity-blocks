@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T16:20:28.549Z",
-  "runId": "2026-08-24T16-07-03-735Z",
+  "generatedAt": "2026-08-24T16:36:37.130Z",
+  "runId": "2026-08-24T16-23-12-723Z",
   "theme": "blood-moon",
   "themeMeta": {
     "displayName": "Blood Moon",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-24T16-07-03-735Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-24T16-23-12-723Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -136,9 +136,9 @@
     "luminance": {
       "min": 0.5696,
       "max": 254.99999999999997,
-      "mean": 16.310664534738866,
+      "mean": 11.384115512010096,
       "range": 254.43039999999996,
-      "variance": 738.0987223129137
+      "variance": 345.8419224309475
     }
   },
   "console": {
@@ -152,21 +152,21 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-24T16:20:00.047Z",
+        "timestamp": "2026-08-24T16:36:08.589Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-24T16:20:17.685Z",
+        "timestamp": "2026-08-24T16:36:26.279Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-24T16:20:26.223Z",
+        "timestamp": "2026-08-24T16:36:34.821Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -177,8 +177,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-24T16:20:26.243Z",
-    "runId": "2026-08-24T16-07-03-735Z",
+    "generatedAt": "2026-08-24T16:36:34.846Z",
+    "runId": "2026-08-24T16-23-12-723Z",
     "theme": "blood-moon",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -328,131 +328,131 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 678.8
+          "atMs": 703.2
         },
         {
           "kind": "webgl",
-          "atMs": 786.2
+          "atMs": 1064
         },
         {
           "kind": "2d",
-          "atMs": 786.3
+          "atMs": 1064.1
         },
         {
           "kind": "2d",
-          "atMs": 787.7
+          "atMs": 1065.1
         },
         {
           "kind": "2d",
-          "atMs": 823
+          "atMs": 1099.8
         },
         {
           "kind": "webgl",
-          "atMs": 830.1
+          "atMs": 1107.4
         },
         {
           "kind": "2d",
-          "atMs": 883.9
+          "atMs": 1164.8
         },
         {
           "kind": "2d",
-          "atMs": 883.9
+          "atMs": 1164.9
         },
         {
           "kind": "2d",
-          "atMs": 885.2
+          "atMs": 1165.7
         },
         {
           "kind": "2d",
-          "atMs": 885.3
+          "atMs": 1165.7
         },
         {
           "kind": "2d",
-          "atMs": 896.1
+          "atMs": 1178.1
         },
         {
           "kind": "2d",
-          "atMs": 1753.4
+          "atMs": 1766
         },
         {
           "kind": "2d",
-          "atMs": 1761.7
+          "atMs": 1774.8
         },
         {
           "kind": "2d",
-          "atMs": 1767.3
+          "atMs": 1780.7
         },
         {
           "kind": "2d",
-          "atMs": 1773.8
+          "atMs": 1787.2
         },
         {
           "kind": "2d",
-          "atMs": 1779.2
+          "atMs": 1792.7
         },
         {
           "kind": "2d",
-          "atMs": 1784.5
+          "atMs": 1798.1
         },
         {
           "kind": "2d",
-          "atMs": 1876.1
+          "atMs": 1888.7
         },
         {
           "kind": "2d",
-          "atMs": 1882.1
+          "atMs": 1894.8
         },
         {
           "kind": "2d",
-          "atMs": 1887
+          "atMs": 1900
         },
         {
           "kind": "2d",
-          "atMs": 3794
+          "atMs": 4072.3
         },
         {
           "kind": "2d",
-          "atMs": 3794
+          "atMs": 4072.3
         },
         {
           "kind": "webgl2",
-          "atMs": 4289.1
+          "atMs": 4420.9
         },
         {
           "kind": "2d",
-          "atMs": 4316.9
+          "atMs": 4448.2
         },
         {
           "kind": "2d",
-          "atMs": 4317.2
+          "atMs": 4448.5
         },
         {
           "kind": "2d",
-          "atMs": 4317.3
+          "atMs": 4448.6
         },
         {
           "kind": "2d",
-          "atMs": 4317.5
+          "atMs": 4448.7
         },
         {
           "kind": "2d",
-          "atMs": 4317.6
+          "atMs": 4448.9
         },
         {
           "kind": "2d",
-          "atMs": 4317.6
+          "atMs": 4449
         },
         {
           "kind": "2d",
-          "atMs": 5777.9
+          "atMs": 5944
         },
         {
           "kind": "2d",
-          "atMs": 5782.4
+          "atMs": 5948.4
         },
         {
           "kind": "2d",
-          "atMs": 5786.6
+          "atMs": 5952.2
         }
       ],
       "wrapped": [
@@ -492,20 +492,20 @@
       "visit2SyncCount": 0
     },
     "switchTimings": {
-      "switchWallMs": 1525.4,
+      "switchWallMs": 1561.2,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 11.6,
-      "rendererCreatedMs": 34.2,
-      "criticalReadyMs": 1525.4,
-      "firstRenderCallMs": 62.6,
-      "firstFrameGpuCompleteMs": 3593.1,
+      "createSceneEnterMs": 13.4,
+      "rendererCreatedMs": 37.3,
+      "criticalReadyMs": 1561.2,
+      "firstRenderCallMs": 66.6,
+      "firstFrameGpuCompleteMs": 3643.1,
       "firstFrameGpuCompleteMethod": "fenceSync",
-      "firstFrameRafMs": 3601.1,
-      "visit2SwitchWallMs": 358.8
+      "firstFrameRafMs": 3650.7,
+      "visit2SwitchWallMs": 359.4
     },
     "idle": {
-      "windowMs": 10006.7,
+      "windowMs": 10002.2,
       "framesObserved": 1317,
       "wall": {
         "samples": 1316,
@@ -513,16 +513,16 @@
         "p95": 8.2,
         "p99": 8.5,
         "min": 7,
-        "max": 18,
+        "max": 8.7,
         "budgetMs": 16.667,
-        "overBudget": 1
+        "overBudget": 0
       },
       "cpuSubmitMs": {
         "samples": 1317,
         "p50": 0.6,
         "p95": 0.8,
         "p99": 1,
-        "min": 0.2,
+        "min": 0.3,
         "max": 1.3
       },
       "gpuMs": {
@@ -545,46 +545,46 @@
     },
     "content": {
       "drawCalls": {
-        "p50": null,
-        "min": null,
-        "max": null
+        "p50": 44,
+        "min": 43,
+        "max": 44
       },
       "triangles": {
-        "p50": null,
-        "min": null,
-        "max": null
+        "p50": 4547,
+        "min": 4546,
+        "max": 4547
       },
       "steadyState": false,
       "infoOwnership": "contested",
       "geometries": 30,
       "textures": 22,
       "visit2": {
-        "drawCalls": null,
-        "triangles": null
+        "drawCalls": 28,
+        "triangles": 4531
       },
       "contentMatch": false,
-      "contentMismatchReason": "no draw calls observed — content guard cannot run",
+      "contentMismatchReason": "draw calls differ (v1=44, v2=28)",
       "contentGuardAdmissible": false
     },
     "memory": {
-      "peakHeapMB": 32,
-      "p50HeapMB": 29.11,
+      "peakHeapMB": 30.74,
+      "p50HeapMB": 28.36,
       "heapSamples": 40,
-      "heapDrops": 13,
+      "heapDrops": 14,
       "allocBytesPerFrame": null,
-      "allocVoidReason": "13 GC(s) inside the window",
-      "gcPerSecond": 1.299,
-      "gcCount": 13,
-      "cdpHeapDeltaBytes": 6107920,
+      "allocVoidReason": "14 GC(s) inside the window",
+      "gcPerSecond": 1.4,
+      "gcCount": 14,
+      "cdpHeapDeltaBytes": 2381380,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {
       "visitGpuP50DeltaMs": null,
       "visitWallP95DeltaMs": null,
-      "voidReason": "no draw calls observed — content guard cannot run",
+      "voidReason": "draw calls differ (v1=44, v2=28)",
       "admissible": false,
       "inadmissibleReasons": [
-        "content guard: no draw calls observed — content guard cannot run"
+        "content guard: draw calls differ (v1=44, v2=28)"
       ]
     },
     "console": {

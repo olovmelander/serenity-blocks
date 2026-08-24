@@ -394,6 +394,40 @@ export function buildPerfVisitSource({
 
   // Wait for the compile to go quiet rather than for a fixed time: a theme that compiles
   // synchronously on its first frames is exactly the case a fixed wait would truncate.
+  // TRUE first-frame fence, taken BEFORE the compile-quiet wait.
+  //
+  // The mark below it (t7) sits after a loop that sleeps 2000-2100 ms with no new pipeline, so it
+  // answers "when had everything quiesced", not "when did the first frame land". Both are worth
+  // having, but only this one is a latency a player experiences. Kept separate rather than
+  // reinterpreted, because a mark whose name does not match what it brackets is how a wrong number
+  // gets quoted as fact (ADR-0016).
+  stage('firstFrameFence');
+  let firstFrameMethod = null;
+  try {
+    const r0 = S.renderer;
+    if (r0 && r0.backend && r0.backend.isWebGPUBackend && r0.backend.device) {
+      const d0 = await bounded(r0.backend.device.queue.onSubmittedWorkDone(), 60000, 'firstFrameFence');
+      firstFrameMethod = (d0 && d0.__timeout) ? 'onSubmittedWorkDone-timeout' : 'queue.onSubmittedWorkDone';
+    } else {
+      const gl0 = (r0 && r0.backend && r0.backend.gl)
+        || (r0 && typeof r0.getContext === 'function' ? r0.getContext() : null);
+      if (gl0 && typeof gl0.fenceSync === 'function') {
+        const s0 = gl0.fenceSync(gl0.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl0.flush();
+        for (let i = 0; i < 600; i += 1) {
+          const st = gl0.clientWaitSync(s0, 0, 0);
+          if (st === gl0.ALREADY_SIGNALED || st === gl0.CONDITION_SATISFIED) break;
+          await new Promise((res) => requestAnimationFrame(res));
+        }
+        gl0.deleteSync(s0);
+        firstFrameMethod = 'fenceSync';
+      } else {
+        firstFrameMethod = gl0 ? 'webgl1-no-fence-sync' : 'no-gpu-context';
+      }
+    }
+  } catch (_) { firstFrameMethod = 'probe-threw'; }
+  S.mark('t6b_firstFrameGpuDone');
+
   stage('compileQuiet');
   const capAt = performance.now() + ${compileCapMs};
   let lastCount = -1;
@@ -491,6 +525,7 @@ export function buildPerfVisitSource({
       } catch (_) { return null; }
     })(),
     gpuDoneMethod,
+    firstFrameMethod,
     compilePipes,
     idlePipes: S.pipes.length - compilePipes.length,
     rings: {
@@ -645,8 +680,14 @@ export function reduceVisit(raw, { targetFps = 60 } = {}) {
             rendererCreatedMs: round(delta(raw.marks, 't3_rendererCreated')),
             criticalReadyMs: round(delta(raw.marks, 't5_criticalReady')),
             firstRenderCallMs: round(delta(raw.marks, 't6_firstRenderCall')),
-            firstFrameGpuCompleteMs: round(delta(raw.marks, 't7_firstGpuWorkDone')),
-            firstFrameGpuCompleteMethod: raw.gpuDoneMethod ?? null,
+            // The player-facing one: GPU work for the first frame done, no quiesce wait in it.
+            firstFrameGpuDoneMs: round(delta(raw.marks, 't6b_firstFrameGpuDone')),
+            firstFrameGpuDoneMethod: raw.firstFrameMethod ?? null,
+            // Includes the 2000-2100 ms compile-quiet wait BY CONSTRUCTION. Useful for "when did
+            // this theme stop creating pipelines and finish them", useless as a latency.
+            allQuiescedGpuDoneMs: round(delta(raw.marks, 't7_firstGpuWorkDone')),
+            allQuiescedGpuDoneMethod: raw.gpuDoneMethod ?? null,
+            quietWaitFloorMs: 2000,
             firstFrameRafMs: round(delta(raw.marks, 't8_firstRafAfterGpu')),
         },
         pipelines: {

@@ -20,52 +20,52 @@ Adapter(s) observed: `ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x00002
 | 10 | cosmic-noir | WebGPURenderer | 122 | 18 | 941 | 3029 | 8.20 | 2.30 | 0.721 | 59 | 1.00 | ✓ |
 | 11 | stellar-velocity | WebGPURenderer | 96 | 23 | 764 | 2965 | 8.20 | 3.50 | — | 147 | 2.00 | ✗ |
 | 12 | chiral-gold | WebGPURenderer | 59 | 17 | 649 | 2690 | 16.00 | 2.20 | 0.459 | 60 | 1.60 | ✓ |
-| 13 | pyrestorm | WebGLRenderer | 0 | 0 | 2107 | 4181 | 8.20 | 1.10 | — | — | 1.20 | ✓ |
-| 14 | moonrise-summit | WebGLRenderer | 0 | 0 | 1575 | 3650 | 8.20 | 0.90 | — | — | 1.10 | ✓ |
-| 15 | blood-moon | WebGLRenderer | 0 | 0 | 1525 | 3593 | 8.20 | 0.80 | — | — | 1.30 | ✓ |
-| 16 | lunara | WebGPURenderer | 0 | 73 | 966 | 6087 | 8.20 | 3.20 | 1.573 | 149 | 0.50 | ✓ |
-| 17 | crystal-cave | WebGLRenderer | 0 | 0 | 960 | 3068 | 8.20 | 5.00 | — | — | 1.50 | ✓ |
-| 18 | sakura-twilight | WebGLRenderer | 0 | 0 | 936 | 3041 | 8.20 | 0.50 | — | — | 1.10 | ✓ |
-| 19 | rainy-window | WebGLRenderer | 0 | 0 | 769 | 2849 | 8.20 | 0.80 | — | — | 2.20 | ✓ |
-| 20 | halcyon-apex | WebGPURenderer | 0 | 62 | 756 | 2811 | 8.20 | 4.50 | 0.852 | 461 | 0.40 | ✓ |
+| 13 | pyrestorm | WebGLRenderer | 0 | 0 | 2145 | 4240 | 8.20 | 1.10 | — | 55 | 1.30 | ✓ |
+| 14 | moonrise-summit | WebGLRenderer | 0 | 0 | 1566 | 3672 | 8.20 | 1.00 | — | 34 | 1.20 | ✓ |
+| 15 | blood-moon | WebGLRenderer | 0 | 0 | 1561 | 3643 | 8.20 | 0.80 | — | 44 | 1.40 | ✓ |
+| 16 | crystal-cave | WebGLRenderer | 0 | 0 | 978 | 3061 | 8.20 | 4.90 | — | 443 | 1.40 | ✓ |
+| 17 | lunara | WebGPURenderer | 0 | 73 | 966 | 6087 | 8.20 | 3.20 | 1.573 | 149 | 0.50 | ✓ |
+| 18 | sakura-twilight | WebGLRenderer | 0 | 0 | 926 | 3021 | 8.20 | 0.50 | — | 22 | 1.10 | ✓ |
+| 19 | halcyon-apex | WebGPURenderer | 0 | 62 | 756 | 2811 | 8.20 | 4.50 | 0.852 | 461 | 0.40 | ✓ |
+| 20 | rainy-window | WebGLRenderer | 0 | 0 | 748 | 2831 | 8.30 | 0.70 | — | 16 | 2.10 | ✓ |
 | 21 | vesper-chrysalis | WebGPURenderer | 0 | 103 | 718 | 6478 | 15.90 | 5.80 | 1.049 | 257 | 0.50 | ✓ |
 | 22 | stillwater | WebGPURenderer | 0 | 58 | 715 | 10492 | 8.30 | 3.60 | — | 131 | 0.70 | ✗ |
 | 23 | sky-children | WebGPURenderer | 0 | 34 | 611 | 4596 | 8.20 | 2.80 | 0.983 | 143 | 0.60 | ✓ |
 | 24 | neon-dusk | WebGPURenderer | 0 | 28 | 579 | 2693 | 8.20 | 2.30 | 0.918 | 111 | 1.50 | ✓ |
-| 25 | geode | WebGLRenderer | 0 | 0 | 545 | 2636 | 8.20 | 2.80 | — | — | 2.30 | ✓ |
-| 26 | cinder-drift | WebGLRenderer | 0 | 0 | 535 | 2616 | 8.20 | 0.20 | — | — | 1.10 | ✓ |
-| 27 | sunset | WebGLRenderer | 0 | 0 | 501 | 2585 | 8.20 | 1.00 | — | — | 1.30 | ✓ |
+| 25 | cinder-drift | WebGLRenderer | 0 | 0 | 547 | 2622 | 8.20 | 0.20 | — | 11 | 1.10 | ✓ |
+| 26 | geode | WebGLRenderer | 0 | 0 | 538 | 2609 | 8.20 | 2.80 | — | 199 | 2.30 | ✓ |
+| 27 | sunset | WebGLRenderer | 0 | 0 | 516 | 2592 | 8.10 | 1.00 | — | 30 | 1.30 | ✓ |
 | 28 | bioluminescence-2 | WebGPURenderer | 0 | 174 | 488 | 3939 | 8.30 | 5.00 | 1.245 | 501 | 0.40 | ✓ |
 | 29 | summer | WebGPURenderer | 0 | 121 | 451 | 5881 | 8.30 | 2.90 | 2.425 | 278 | 0.40 | ✓ |
 | 30 | fluid-dreams | WebGPURenderer | 0 | 14 | 426 | 3986 | 8.20 | 2.10 | 1.442 | 42 | 1.00 | ✓ |
-| 31 | singing-bowl | WebGLRenderer | 0 | 0 | 395 | 2487 | 8.30 | 1.10 | — | — | 1.20 | ✓ |
+| 31 | singing-bowl | WebGLRenderer | 0 | 0 | 399 | 2481 | 8.20 | 1.00 | — | 46 | 1.10 | ✓ |
 | 32 | winter | WebGPURenderer | 0 | 26 | 393 | 5410 | 8.20 | 2.30 | 2.163 | 63 | 0.80 | ✓ |
 | 33 | starlight | WebGPURenderer | 0 | 14 | 378 | 3426 | 8.20 | 1.90 | 2.359 | 37 | 0.90 | ✓ |
 | 34 | synthwave-sunset | WebGPURenderer | 0 | 23 | 378 | 2452 | 8.30 | 2.90 | 0.655 | 221 | 2.10 | ✓ |
-| 35 | nimbus-veil | WebGLRenderer | 0 | 0 | 364 | 2454 | 8.20 | 0.80 | — | — | 1.50 | ✓ |
+| 35 | nimbus-veil | WebGLRenderer | 0 | 0 | 363 | 2451 | 8.20 | 0.80 | — | 32 | 1.50 | ✓ |
 | 36 | black-hole | WebGPURenderer | 0 | 21 | 346 | 2496 | 16.00 | 1.90 | 0.328 | 47 | 1.50 | ✓ |
 | 37 | electric-dreams-v3 | WebGPURenderer | 0 | 11 | 331 | 2394 | 8.30 | 1.90 | 2.228 | 31 | 1.20 | ✓ |
 | 38 | himalayan-peak | WebGPURenderer | 0 | 14 | 326 | 2430 | 8.20 | 2.70 | 1.442 | 39 | 0.70 | ✓ |
-| 39 | galaxy | WebGLRenderer | 0 | 0 | 296 | 2378 | 8.20 | 0.20 | — | — | 0.90 | ✓ |
-| 40 | fall | WebGLRenderer | 0 | 0 | 289 | 2371 | 8.20 | 0.80 | — | — | 1.20 | ✓ |
+| 39 | fall | WebGLRenderer | 0 | 0 | 304 | 2362 | 8.20 | 0.80 | — | 23 | 1.20 | ✓ |
+| 40 | galaxy | WebGLRenderer | 0 | 0 | 292 | 2366 | 8.20 | 0.20 | — | 12 | 1.10 | ✓ |
 | 41 | astral-weave | WebGPURenderer | 0 | 27 | 278 | 3028 | 8.20 | 3.70 | 1.245 | 241 | 0.40 | ✓ |
-| 42 | bioluminescence | WebGLRenderer | 0 | 0 | 266 | 2285 | 8.20 | 5.80 | — | — | 0.60 | ✓ |
+| 42 | bioluminescence | WebGLRenderer | 0 | 0 | 261 | 2314 | 8.20 | 5.70 | — | 226 | 0.80 | ✓ |
 | 43 | shifting-sands | WebGPURenderer | 0 | 18 | 259 | 2438 | 8.20 | 2.00 | 1.245 | 55 | 1.00 | ✓ |
-| 44 | aurora | WebGLRenderer | 0 | 0 | 255 | 2334 | 8.10 | 0.20 | — | — | 1.20 | ✓ |
+| 44 | aurora | WebGLRenderer | 0 | 0 | 258 | 2325 | 8.20 | 0.20 | — | 13 | 1.20 | ✓ |
 | 45 | aether-tides | — | 0 | 0 | 242 | 2321 | 8.20 | — | — | — | 1.20 | ✓ |
 | 46 | verdant-hills | WebGPURenderer | 0 | 6 | 235 | 2443 | 8.20 | 1.10 | 1.180 | 113 | 1.30 | ✓ |
 | 47 | serenity-warp | WebGPURenderer | 0 | 46 | 232 | 3095 | 8.30 | 2.30 | 2.032 | 71 | 0.50 | ✓ |
-| 48 | supernova | WebGLRenderer | 0 | 0 | 228 | 2296 | 8.20 | 0.20 | — | — | 1.00 | ✓ |
-| 49 | void-ember | — | 0 | 7 | 228 | 2329 | 8.20 | — | — | — | 1.30 | ✓ |
-| 50 | chromatic-impasto | — | 0 | 0 | 221 | 2299 | 8.20 | — | — | — | 1.10 | ✓ |
-| 51 | voltage-storm | — | 0 | 0 | 210 | 2301 | 8.20 | — | — | — | 1.50 | ✓ |
-| 52 | nebula-flow | — | 0 | 0 | 209 | 2289 | 8.20 | — | — | — | 1.20 | ✓ |
+| 48 | void-ember | — | 0 | 7 | 228 | 2329 | 8.20 | — | — | — | 1.30 | ✓ |
+| 49 | chromatic-impasto | — | 0 | 0 | 221 | 2299 | 8.20 | — | — | — | 1.10 | ✓ |
+| 50 | voltage-storm | — | 0 | 0 | 210 | 2301 | 8.20 | — | — | — | 1.50 | ✓ |
+| 51 | nebula-flow | — | 0 | 0 | 209 | 2289 | 8.20 | — | — | — | 1.20 | ✓ |
+| 52 | supernova | WebGLRenderer | 0 | 0 | 200 | 2292 | 8.20 | 0.20 | — | 4 | 1.20 | ✓ |
 | 53 | tornado | WebGPURenderer | 0 | 11 | 166 | 2293 | 8.20 | 2.00 | 2.097 | 31 | 1.80 | ✓ |
 | 54 | moonlit-greenhouse | — | 0 | 0 | 93 | 2137 | 8.90 | — | — | — | 1.60 | ✓ |
-| 55 | misty-lake | WebGLRenderer | 0 | 0 | 81 | 2105 | 8.20 | 1.20 | — | — | 1.60 | ✓ |
-| 56 | solar-eclipse | WebGLRenderer | 0 | 0 | 71 | 2099 | 8.20 | 1.90 | — | — | 3.10 | ✓ |
-| 57 | waves | WebGLRenderer | 0 | 0 | 68 | 2173 | 8.20 | 0.80 | — | — | 1.20 | ✓ |
-| 58 | luminous-tides | WebGLRenderer | 0 | 0 | 68 | 2155 | 8.20 | 1.20 | — | — | 2.30 | ✓ |
+| 55 | misty-lake | WebGLRenderer | 0 | 0 | 78 | 2097 | 8.20 | 1.20 | — | 68 | 1.40 | ✓ |
+| 56 | waves | WebGLRenderer | 0 | 0 | 71 | 2094 | 8.20 | 0.80 | — | 18 | 1.20 | ✓ |
+| 57 | solar-eclipse | WebGLRenderer | 0 | 0 | 71 | 2122 | 8.20 | 2.00 | — | 68 | 2.70 | ✓ |
+| 58 | luminous-tides | WebGLRenderer | 0 | 0 | 69 | 2163 | 8.20 | 1.20 | — | 29 | 2.00 | ✓ |
 | 59 | mountain | — | 0 | 0 | 60 | 2154 | 8.20 | — | — | — | 1.30 | ✓ |
 | 60 | cosmic-chimes | — | 0 | 0 | 54 | 2147 | 8.20 | — | — | — | 1.30 | ✓ |
 | 61 | forest | — | 0 | 0 | 15 | 2082 | 8.20 | — | — | — | 1.30 | ✓ |
@@ -151,63 +151,63 @@ These carry `ms: null` by construction — the call returns before the GPU compi
 |---|---:|---:|:--:|---|
 | aether-tides | — | — | ✗ | theme owns no three renderer — nothing to content-match |
 | astral-weave | <0.065536 | 0.10 | ✓ | — |
-| aurora | — | — | ✗ | no draw calls observed — content guard cannot run |
+| aurora | — | — | ✗ | draw calls unavailable in one visit |
 | bioluminescence-2 | 0.131 | 0.20 | ✓ | — |
-| bioluminescence | — | — | ✗ | no draw calls observed — content guard cannot run |
+| bioluminescence | — | — | ✗ | draw calls differ (v1=226, v2=248) |
 | black-hole | <0.065536 | 0.10 | ✓ | — |
-| blood-moon | — | — | ✗ | no draw calls observed — content guard cannot run |
+| blood-moon | — | — | ✗ | draw calls differ (v1=44, v2=28) |
 | chiral-gold | 0.066 | 0.10 | ✓ | — |
 | chromadelic-highway | <0.065536 | 0.10 | ✓ | — |
 | chromatic-impasto | — | — | ✗ | theme owns no three renderer — nothing to content-match |
-| cinder-drift | — | — | ✗ | no draw calls observed — content guard cannot run |
+| cinder-drift | — | — | ✗ | draw calls unavailable in one visit |
 | cosmic-chimes | — | — | ✗ | theme owns no three renderer — nothing to content-match |
 | cosmic-noir | 0.787 | 18.40 | ✓ | — |
-| crystal-cave | — | — | ✗ | no draw calls observed — content guard cannot run |
+| crystal-cave | — | — | ✗ | draw calls differ (v1=443, v2=426) |
 | electric-dreams-v3 | 0.066 | 0.00 | ✓ | — |
-| fall | — | — | ✗ | no draw calls observed — content guard cannot run |
+| fall | — | — | ✗ | draw calls differ (v1=23, v2=7) |
 | fluid-dreams | <0.065536 | 0.00 | ✓ | — |
 | forest | — | — | ✗ | theme owns no three renderer — nothing to content-match |
-| galaxy | — | — | ✗ | no draw calls observed — content guard cannot run |
-| geode | — | — | ✗ | no draw calls observed — content guard cannot run |
+| galaxy | — | — | ✗ | draw calls unavailable in one visit |
+| geode | — | — | ✗ | draw calls differ (v1=199, v2=173) |
 | golden-forest | — | — | ✗ | draw calls differ (v1=782, v2=864) |
 | halcyon-apex | <0.065536 | 0.00 | ✓ | — |
 | himalayan-peak | 0.196 | 0.00 | ✓ | — |
 | ice-temple | — | — | ✗ | draw calls differ (v1=227, v2=229) |
 | koi-pond | 0.066 | 0.00 | ✓ | — |
-| luminous-tides | — | — | ✗ | no draw calls observed — content guard cannot run |
+| luminous-tides | — | — | ✗ | draw calls differ (v1=29, v2=13) |
 | lunara | <0.065536 | 0.00 | ✓ | — |
-| misty-lake | — | — | ✗ | no draw calls observed — content guard cannot run |
+| misty-lake | — | — | ✗ | draw calls differ (v1=68, v2=52) |
 | moonlit-forest | <0.065536 | 0.00 | ✓ | — |
 | moonlit-greenhouse | — | — | ✗ | theme owns no three renderer — nothing to content-match |
-| moonrise-summit | — | — | ✗ | no draw calls observed — content guard cannot run |
+| moonrise-summit | — | — | ✗ | draw calls differ (v1=34, v2=18) |
 | mountain | — | — | ✗ | theme owns no three renderer — nothing to content-match |
 | nebula-flow | — | — | ✗ | theme owns no three renderer — nothing to content-match |
 | neon-district | — | — | ✗ | draw calls differ (v1=1192, v2=1285) |
 | neon-dusk | <0.065536 | 0.00 | ✓ | — |
-| nimbus-veil | — | — | ✗ | no draw calls observed — content guard cannot run |
+| nimbus-veil | — | — | ✗ | draw calls differ (v1=32, v2=16) |
 | ocean | — | — | ✗ | draw calls differ (v1=393, v2=391) |
-| pyrestorm | — | — | ✗ | no draw calls observed — content guard cannot run |
-| rainy-window | — | — | ✗ | no draw calls observed — content guard cannot run |
-| sakura-twilight | — | — | ✗ | no draw calls observed — content guard cannot run |
+| pyrestorm | — | — | ✗ | draw calls differ (v1=55, v2=38) |
+| rainy-window | — | — | ✗ | draw calls differ (v1=16, v2=5) |
+| sakura-twilight | — | — | ✗ | draw calls unavailable in one visit |
 | serenity-warp | 0.131 | 0.00 | ✓ | — |
 | shifting-sands | <0.065536 | 0.00 | ✓ | — |
-| singing-bowl | — | — | ✗ | no draw calls observed — content guard cannot run |
+| singing-bowl | — | — | ✗ | draw calls differ (v1=46, v2=30) |
 | sky-children | — | — | ✗ | draw calls differ (v1=143, v2=137) |
-| solar-eclipse | — | — | ✗ | no draw calls observed — content guard cannot run |
+| solar-eclipse | — | — | ✗ | draw calls differ (v1=68, v2=51) |
 | starlight | 0.131 | 0.00 | ✓ | — |
 | stellar-drift | 0.131 | 0.10 | ✓ | — |
 | stellar-velocity | — | 0.00 | ✓ | — |
 | stillwater | — | 0.00 | ✓ | — |
 | summer | 0.197 | 0.10 | ✓ | — |
-| sunset | — | — | ✗ | no draw calls observed — content guard cannot run |
-| supernova | — | — | ✗ | no draw calls observed — content guard cannot run |
+| sunset | — | — | ✗ | draw calls differ (v1=30, v2=6) |
+| supernova | — | — | ✗ | draw calls unavailable in one visit |
 | synthwave-sunset | <0.065536 | 0.00 | ✓ | — |
 | tornado | <0.065536 | 0.00 | ✓ | — |
 | verdant-hills | — | — | ✗ | draw calls differ (v1=113, v2=89) |
 | vesper-chrysalis | <0.065536 | 0.00 | ✓ | — |
 | void-ember | — | — | ✗ | theme owns no three renderer — nothing to content-match |
 | voltage-storm | — | — | ✗ | theme owns no three renderer — nothing to content-match |
-| waves | — | — | ✗ | no draw calls observed — content guard cannot run |
+| waves | — | — | ✗ | draw calls differ (v1=18, v2=2) |
 | winter | 0.196 | 0.00 | ✓ | — |
 | wolfhour | 0.066 | 0.00 | ✓ | — |
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T16:12:59.981Z",
-  "runId": "2026-08-24T16-07-03-735Z",
+  "generatedAt": "2026-08-24T16:29:08.798Z",
+  "runId": "2026-08-24T16-23-12-723Z",
   "theme": "bioluminescence",
   "themeMeta": {
     "displayName": "Bioluminescence",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-24T16-07-03-735Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-24T16-23-12-723Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -134,11 +134,11 @@
     "byteLength": 4986432,
     "samples": 20107,
     "luminance": {
-      "min": 0.7152,
+      "min": 0,
       "max": 254.99999999999997,
-      "mean": 46.192990709702734,
-      "range": 254.28479999999996,
-      "variance": 2371.615665084732
+      "mean": 61.943207718703306,
+      "range": 254.99999999999997,
+      "variance": 2999.9262515634236
     }
   },
   "console": {
@@ -152,21 +152,21 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-24T16:12:33.049Z",
+        "timestamp": "2026-08-24T16:28:41.765Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-24T16:12:49.386Z",
+        "timestamp": "2026-08-24T16:28:58.130Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-24T16:12:57.642Z",
+        "timestamp": "2026-08-24T16:29:06.466Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -177,8 +177,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-24T16:12:57.684Z",
-    "runId": "2026-08-24T16-07-03-735Z",
+    "generatedAt": "2026-08-24T16:29:06.511Z",
+    "runId": "2026-08-24T16-23-12-723Z",
     "theme": "bioluminescence",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -328,51 +328,63 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 677.6
+          "atMs": 682.6
         },
         {
           "kind": "webgl",
-          "atMs": 1019.5
+          "atMs": 1033
         },
         {
           "kind": "2d",
-          "atMs": 1019.7
+          "atMs": 1033.1
         },
         {
           "kind": "2d",
-          "atMs": 1020.5
+          "atMs": 1034
         },
         {
           "kind": "2d",
-          "atMs": 1054.8
+          "atMs": 1070.6
         },
         {
           "kind": "webgl",
-          "atMs": 1062.1
+          "atMs": 1078
         },
         {
           "kind": "2d",
-          "atMs": 1116.8
+          "atMs": 1134.9
         },
         {
           "kind": "2d",
-          "atMs": 1116.8
+          "atMs": 1134.9
         },
         {
           "kind": "2d",
-          "atMs": 1117.7
+          "atMs": 1135.9
         },
         {
           "kind": "2d",
-          "atMs": 1117.7
+          "atMs": 1135.9
         },
         {
           "kind": "2d",
-          "atMs": 1120.7
+          "atMs": 1148.7
         },
         {
           "kind": "2d",
-          "atMs": 1752.1
+          "atMs": 1735
+        },
+        {
+          "kind": "2d",
+          "atMs": 1743.9
+        },
+        {
+          "kind": "2d",
+          "atMs": 1749.5
+        },
+        {
+          "kind": "2d",
+          "atMs": 1755.8
         },
         {
           "kind": "2d",
@@ -380,119 +392,107 @@
         },
         {
           "kind": "2d",
-          "atMs": 1766.9
+          "atMs": 1766.6
         },
         {
           "kind": "2d",
-          "atMs": 1773.2
+          "atMs": 1883
         },
         {
           "kind": "2d",
-          "atMs": 1778.6
+          "atMs": 1889.5
         },
         {
           "kind": "2d",
-          "atMs": 1783.9
+          "atMs": 1894.9
         },
         {
           "kind": "2d",
-          "atMs": 1885.5
+          "atMs": 4045.4
         },
         {
           "kind": "2d",
-          "atMs": 1891.9
+          "atMs": 4045.4
         },
         {
           "kind": "2d",
-          "atMs": 1897.2
+          "atMs": 4353.2
         },
         {
           "kind": "2d",
-          "atMs": 4025.8
+          "atMs": 4353.2
         },
         {
           "kind": "2d",
-          "atMs": 4025.9
+          "atMs": 4353.2
         },
         {
           "kind": "2d",
-          "atMs": 4357.8
+          "atMs": 4353.2
         },
         {
           "kind": "2d",
-          "atMs": 4357.9
+          "atMs": 4353.2
         },
         {
           "kind": "2d",
-          "atMs": 4357.9
+          "atMs": 4353.2
         },
         {
           "kind": "2d",
-          "atMs": 4357.9
+          "atMs": 4432.6
         },
         {
           "kind": "2d",
-          "atMs": 4357.9
+          "atMs": 4432.6
         },
         {
           "kind": "2d",
-          "atMs": 4357.9
+          "atMs": 4432.6
         },
         {
           "kind": "2d",
-          "atMs": 4436.6
+          "atMs": 4432.6
         },
         {
           "kind": "2d",
-          "atMs": 4436.6
+          "atMs": 4432.6
         },
         {
           "kind": "2d",
-          "atMs": 4436.6
+          "atMs": 4475
         },
         {
           "kind": "2d",
-          "atMs": 4436.7
+          "atMs": 4475
         },
         {
           "kind": "2d",
-          "atMs": 4436.7
+          "atMs": 4475
         },
         {
           "kind": "2d",
-          "atMs": 4481
+          "atMs": 4475
         },
         {
           "kind": "2d",
-          "atMs": 4481.1
-        },
-        {
-          "kind": "2d",
-          "atMs": 4481.1
-        },
-        {
-          "kind": "2d",
-          "atMs": 4481.1
-        },
-        {
-          "kind": "2d",
-          "atMs": 4481.1
+          "atMs": 4475
         },
         {
           "kind": "webgl2",
-          "atMs": 4542.3
+          "atMs": 4532.8
         },
         {
           "kind": "2d",
-          "atMs": 4601
+          "atMs": 4590.4
         },
         {
           "kind": "2d",
-          "atMs": 4605.1
+          "atMs": 4594.5
         },
         {
           "kind": "2d",
-          "atMs": 4608.6
+          "atMs": 4598
         }
       ],
       "wrapped": [
@@ -532,38 +532,38 @@
       "visit2SyncCount": 0
     },
     "switchTimings": {
-      "switchWallMs": 265.8,
+      "switchWallMs": 260.8,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 10.6,
-      "rendererCreatedMs": 207.1,
-      "criticalReadyMs": 265.9,
-      "firstRenderCallMs": 306.1,
-      "firstFrameGpuCompleteMs": 2285.1,
+      "createSceneEnterMs": 11.6,
+      "rendererCreatedMs": 204.4,
+      "criticalReadyMs": 260.8,
+      "firstRenderCallMs": 298.9,
+      "firstFrameGpuCompleteMs": 2313.5,
       "firstFrameGpuCompleteMethod": "fenceSync",
-      "firstFrameRafMs": 2292.8,
-      "visit2SwitchWallMs": 123.7
+      "firstFrameRafMs": 2321.1,
+      "visit2SwitchWallMs": 111.3
     },
     "idle": {
-      "windowMs": 10002.5,
-      "framesObserved": 1322,
+      "windowMs": 10006.9,
+      "framesObserved": 1318,
       "wall": {
-        "samples": 1321,
-        "p50": 7.5,
+        "samples": 1317,
+        "p50": 7.6,
         "p95": 8.2,
-        "p99": 8.5,
+        "p99": 8.6,
         "min": 7,
-        "max": 9,
+        "max": 8.9,
         "budgetMs": 16.667,
         "overBudget": 0
       },
       "cpuSubmitMs": {
-        "samples": 1322,
-        "p50": 5.2,
-        "p95": 5.8,
-        "p99": 6.7,
-        "min": 3.2,
-        "max": 9.4
+        "samples": 1318,
+        "p50": 5.1,
+        "p95": 5.7,
+        "p99": 6.3,
+        "min": 2.9,
+        "max": 9.3
       },
       "gpuMs": {
         "samples": 0,
@@ -585,46 +585,46 @@
     },
     "content": {
       "drawCalls": {
-        "p50": null,
-        "min": null,
-        "max": null
+        "p50": 226,
+        "min": 223,
+        "max": 227
       },
       "triangles": {
-        "p50": null,
-        "min": null,
-        "max": null
+        "p50": 122385,
+        "min": 120017,
+        "max": 123217
       },
       "steadyState": false,
       "infoOwnership": "contested",
-      "geometries": 74,
+      "geometries": 71,
       "textures": 27,
       "visit2": {
-        "drawCalls": null,
-        "triangles": null
+        "drawCalls": 248,
+        "triangles": 87599
       },
       "contentMatch": false,
-      "contentMismatchReason": "no draw calls observed — content guard cannot run",
+      "contentMismatchReason": "draw calls differ (v1=226, v2=248)",
       "contentGuardAdmissible": false
     },
     "memory": {
-      "peakHeapMB": 37.8,
-      "p50HeapMB": 33.13,
+      "peakHeapMB": 38.49,
+      "p50HeapMB": 33.43,
       "heapSamples": 40,
-      "heapDrops": 6,
+      "heapDrops": 8,
       "allocBytesPerFrame": null,
-      "allocVoidReason": "6 GC(s) inside the window",
-      "gcPerSecond": 0.6,
-      "gcCount": 6,
-      "cdpHeapDeltaBytes": 11849024,
+      "allocVoidReason": "8 GC(s) inside the window",
+      "gcPerSecond": 0.799,
+      "gcCount": 8,
+      "cdpHeapDeltaBytes": 10464300,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {
       "visitGpuP50DeltaMs": null,
       "visitWallP95DeltaMs": null,
-      "voidReason": "no draw calls observed — content guard cannot run",
+      "voidReason": "draw calls differ (v1=226, v2=248)",
       "admissible": false,
       "inadmissibleReasons": [
-        "content guard: no draw calls observed — content guard cannot run"
+        "content guard: draw calls differ (v1=226, v2=248)"
       ]
     },
     "console": {

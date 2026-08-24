@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T16:10:56.669Z",
-  "runId": "2026-08-24T16-07-03-735Z",
+  "generatedAt": "2026-08-24T16:27:05.454Z",
+  "runId": "2026-08-24T16-23-12-723Z",
   "theme": "rainy-window",
   "anchorTheme": "forest",
   "themeMeta": {
@@ -151,107 +151,107 @@
     "canvasContexts": [
       {
         "kind": "webgl",
-        "atMs": 704.3
+        "atMs": 703.4
       },
       {
         "kind": "webgl",
-        "atMs": 798.9
+        "atMs": 1110.9
       },
       {
         "kind": "2d",
-        "atMs": 799.1
+        "atMs": 1111.1
       },
       {
         "kind": "2d",
-        "atMs": 800.1
+        "atMs": 1112
       },
       {
         "kind": "2d",
-        "atMs": 835.9
+        "atMs": 1149.6
       },
       {
         "kind": "webgl",
-        "atMs": 843.6
+        "atMs": 1157
       },
       {
         "kind": "2d",
-        "atMs": 895.7
+        "atMs": 1211.2
       },
       {
         "kind": "2d",
-        "atMs": 895.8
+        "atMs": 1211.2
       },
       {
         "kind": "2d",
-        "atMs": 896.6
+        "atMs": 1212.1
       },
       {
         "kind": "2d",
-        "atMs": 896.6
+        "atMs": 1212.1
       },
       {
         "kind": "2d",
-        "atMs": 907.4
+        "atMs": 1225.3
       },
       {
         "kind": "2d",
-        "atMs": 1663.5
+        "atMs": 1806.4
       },
       {
         "kind": "2d",
-        "atMs": 1671.5
+        "atMs": 1814.5
       },
       {
         "kind": "2d",
-        "atMs": 1676.7
+        "atMs": 1820
       },
       {
         "kind": "2d",
-        "atMs": 1682.6
+        "atMs": 1826.3
       },
       {
         "kind": "2d",
-        "atMs": 1687.9
+        "atMs": 1831.8
       },
       {
         "kind": "2d",
-        "atMs": 1692.6
+        "atMs": 1837.1
       },
       {
         "kind": "2d",
-        "atMs": 1792.1
+        "atMs": 1938
       },
       {
         "kind": "2d",
-        "atMs": 1797.8
+        "atMs": 1945.1
       },
       {
         "kind": "2d",
-        "atMs": 1802.7
+        "atMs": 1951.2
       },
       {
         "kind": "2d",
-        "atMs": 3807.4
+        "atMs": 4117.8
       },
       {
         "kind": "2d",
-        "atMs": 3807.5
+        "atMs": 4117.8
       },
       {
         "kind": "webgl2",
-        "atMs": 4288.4
+        "atMs": 4437.7
       },
       {
         "kind": "2d",
-        "atMs": 5020.2
+        "atMs": 5151.4
       },
       {
         "kind": "2d",
-        "atMs": 5024.5
+        "atMs": 5155.9
       },
       {
         "kind": "2d",
-        "atMs": 5028.3
+        "atMs": 5159.3
       }
     ],
     "wrapped": [
@@ -290,38 +290,38 @@
     "visit2SyncCount": 0
   },
   "switchTimings": {
-    "switchWallMs": 768.7,
+    "switchWallMs": 747.9,
     "managerReportedMs": null,
     "queueDrainMs": null,
-    "createSceneEnterMs": 11.9,
-    "rendererCreatedMs": 35.1,
-    "criticalReadyMs": 768.7,
-    "firstRenderCallMs": 52.3,
-    "firstFrameGpuCompleteMs": 2848.8,
+    "createSceneEnterMs": 10.4,
+    "rendererCreatedMs": 32.5,
+    "criticalReadyMs": 747.9,
+    "firstRenderCallMs": 47.8,
+    "firstFrameGpuCompleteMs": 2831.1,
     "firstFrameGpuCompleteMethod": "fenceSync",
-    "firstFrameRafMs": 2856.4,
-    "visit2SwitchWallMs": 227.2
+    "firstFrameRafMs": 2839,
+    "visit2SwitchWallMs": 232.8
   },
   "idle": {
-    "windowMs": 10003.8,
-    "framesObserved": 1318,
+    "windowMs": 10000.5,
+    "framesObserved": 1311,
     "wall": {
-      "samples": 1317,
+      "samples": 1310,
       "p50": 7.6,
-      "p95": 8.2,
+      "p95": 8.3,
       "p99": 8.6,
       "min": 7,
-      "max": 8.7,
+      "max": 22.7,
       "budgetMs": 16.667,
-      "overBudget": 0
+      "overBudget": 2
     },
     "cpuSubmitMs": {
-      "samples": 1318,
-      "p50": 0.6,
-      "p95": 0.8,
-      "p99": 1,
-      "min": 0.2,
-      "max": 1.2
+      "samples": 1311,
+      "p50": 0.5,
+      "p95": 0.7,
+      "p99": 0.8,
+      "min": 0.3,
+      "max": 1.7
     },
     "gpuMs": {
       "samples": 0,
@@ -343,46 +343,46 @@
   },
   "content": {
     "drawCalls": {
-      "p50": null,
-      "min": null,
-      "max": null
+      "p50": 16,
+      "min": 16,
+      "max": 22
     },
     "triangles": {
-      "p50": null,
-      "min": null,
-      "max": null
+      "p50": 3080,
+      "min": 3080,
+      "max": 3080
     },
     "steadyState": false,
     "infoOwnership": "contested",
-    "geometries": 14,
+    "geometries": 12,
     "textures": 2,
     "visit2": {
-      "drawCalls": null,
-      "triangles": null
+      "drawCalls": 5,
+      "triangles": 1026
     },
     "contentMatch": false,
-    "contentMismatchReason": "no draw calls observed — content guard cannot run",
+    "contentMismatchReason": "draw calls differ (v1=16, v2=5)",
     "contentGuardAdmissible": false
   },
   "memory": {
-    "peakHeapMB": 31.78,
-    "p50HeapMB": 27.4,
+    "peakHeapMB": 32.39,
+    "p50HeapMB": 28.53,
     "heapSamples": 40,
-    "heapDrops": 22,
+    "heapDrops": 21,
     "allocBytesPerFrame": null,
-    "allocVoidReason": "22 GC(s) inside the window",
-    "gcPerSecond": 2.199,
-    "gcCount": 22,
-    "cdpHeapDeltaBytes": 8607100,
+    "allocVoidReason": "21 GC(s) inside the window",
+    "gcPerSecond": 2.1,
+    "gcCount": 21,
+    "cdpHeapDeltaBytes": 3560020,
     "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
   },
   "drift": {
     "visitGpuP50DeltaMs": null,
     "visitWallP95DeltaMs": null,
-    "voidReason": "no draw calls observed — content guard cannot run",
+    "voidReason": "draw calls differ (v1=16, v2=5)",
     "admissible": false,
     "inadmissibleReasons": [
-      "content guard: no draw calls observed — content guard cannot run"
+      "content guard: draw calls differ (v1=16, v2=5)"
     ]
   },
   "console": {
