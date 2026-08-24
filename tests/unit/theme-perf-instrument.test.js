@@ -69,8 +69,11 @@ describe('theme perf bootstrap source', () => {
         );
     });
 
-    it('takes ownership of renderer.info, because three only auto-resets from its own loop', () => {
-        expect(THEME_PERF_BOOTSTRAP).toContain('renderer.info.autoReset = false');
+    it('counts draws by DELTA across each render call, so a theme owning Info does not break it', () => {
+        // Reading-then-resetting fought cosmic-noir/ocean/stillwater, which own Info themselves;
+        // the first measured cell came back 0 draws. The lane must not reset Info at all.
+        expect(THEME_PERF_BOOTSTRAP).toContain('S.countAround');
+        expect(THEME_PERF_BOOTSTRAP).not.toContain('S.renderer.info.reset()');
         expect(THEME_PERF_BOOTSTRAP).toContain('S.infoResetsByTheme += 1');
     });
 });
@@ -247,6 +250,13 @@ describe('cell builder', () => {
         generatedAt: '2026-08-24T00:00:00.000Z',
     };
 
+    it('voids the content guard on 0 draws instead of passing it', () => {
+        const zero = visit({ content: { drawCalls: { p50: 0 }, triangles: { p50: 0 } } });
+        const cell = buildThemePerfCell({ ...base, visit1: zero, visit2: zero });
+        expect(cell.content.contentMatch).toBe(false);
+        expect(cell.content.contentMismatchReason).toMatch(/no draw calls observed/);
+    });
+
     it('is admissible when every guard passes', () => {
         const cell = buildThemePerfCell({ ...base, visit1: visit(), visit2: visit() });
         expect(cell.admissible).toBe(true);
@@ -270,11 +280,12 @@ describe('cell builder', () => {
         expect(cell.admissible).toBe(true);
     });
 
-    it('marks a contested Info owner inadmissible', () => {
+    it('records a theme that owns Info without disqualifying the cell', () => {
+        // Delta counting is owner-agnostic, so a theme resetting Info is provenance, not a fault.
         const v = visit({ content: { drawCalls: { p50: 61 }, triangles: { p50: 1000 }, infoOwnership: 'contested' } });
         const cell = buildThemePerfCell({ ...base, visit1: v, visit2: v });
-        expect(cell.admissible).toBe(false);
-        expect(cell.inadmissibleReasons.join(' ')).toMatch(/also resets renderer.info/);
+        expect(cell.content.infoOwnership).toBe('contested');
+        expect(cell.admissible).toBe(true);
     });
 
     it('ranks by worst pipeline first, then switch wall clock', () => {

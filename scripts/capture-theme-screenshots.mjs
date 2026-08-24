@@ -1643,22 +1643,50 @@ async function writeArtifacts(config, {
  * copies of the built-in prototypes, so a `GPUDevice.prototype` patch there is invisible to the page.
  */
 async function installThemePerfInstrument(win) {
+    // Prime a renderer process first. `debugger.sendCommand` HANGS on a window that has never
+    // navigated, because there is no renderer to answer it — the same trap
+    // `odyssey-perf-session.mjs:380` records for its CPU profiler, which works around it by
+    // attaching on 'did-navigate'. That is too late here: the bootstrap must be registered before
+    // the app's first script runs. about:blank gives us a live renderer without loading the app,
+    // and `Page.addScriptToEvaluateOnNewDocument` persists across the navigation that follows.
+    await win.loadURL('about:blank');
     const dbg = win.webContents.debugger;
     if (!dbg.isAttached()) dbg.attach('1.3');
-    await dbg.sendCommand('Page.enable');
-    await dbg.sendCommand('Runtime.enable');
-    await dbg.sendCommand('HeapProfiler.enable');
-    await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-        source: THEME_PERF_BOOTSTRAP,
-    });
+    await Promise.all(['Page.enable', 'Runtime.enable', 'HeapProfiler.enable'].map(
+        (cmd) => withTimeout(dbg.sendCommand(cmd), 15_000, `CDP ${cmd}`),
+    ));
+    await withTimeout(
+        dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: THEME_PERF_BOOTSTRAP }),
+        15_000,
+        'CDP addScriptToEvaluateOnNewDocument',
+    );
+}
+
+function perfLog(message) {
+    // Progress on stdout: the orchestrator echoes the worker, so a hang says WHERE it hung instead
+    // of producing a silent worker-timeout kill with no report (which is how the first run was lost).
+    console.log(`[ThemePerf] ${message}`);
 }
 
 async function evalInPage(win, source, timeoutMs, label) {
-    return withTimeout(
-        win.webContents.executeJavaScript(source, true),
-        timeoutMs,
-        label,
-    );
+    try {
+        return await withTimeout(
+            win.webContents.executeJavaScript(source, true),
+            timeoutMs,
+            label,
+        );
+    } catch (error) {
+        // The page keeps running after our race rejects, so ask it how far it got.
+        let stage = null;
+        try {
+            stage = await withTimeout(
+                win.webContents.executeJavaScript('window.__THEME_PERF_STAGE__ || null', true),
+                5_000,
+                'stage probe',
+            );
+        } catch { /* the page is wedged; the label alone has to do */ }
+        throw new Error(`${label} failed: ${error?.message || error}${stage ? ` (page stage: ${stage})` : ''}`);
+    }
 }
 
 /** Read the live heap without a GC in the way. Used to bracket the idle window. */
@@ -1704,23 +1732,29 @@ const PERF_ADAPTER_SOURCE = `(async () => {
  */
 async function runThemePerfLane(win, config, gpuDiagnostics) {
     const { themeId, anchorTheme } = config;
-    const visitTimeout = config.perfIdleMs + config.perfSettleMs + 240_000;
+    // Every page-side await inside the visit is itself bounded, so this is a backstop, not the
+    // primary guard. It must leave the worker enough room to still WRITE its report before the
+    // orchestrator's own timeout kills the process.
+    const visitTimeout = config.perfIdleMs + config.perfSettleMs + 200_000;
 
+    perfLog(`lane start: target=${themeId} anchor=${anchorTheme} idle=${config.perfIdleMs}ms`);
     await evalInPage(
         win,
         buildPinSource({ quality: config.perfQuality, targetFps: config.perfTargetFps }),
         20_000,
         'perf pins',
     );
+    perfLog('pinning quality/fps — done');
 
     // Park on the anchor first so visit 1 measures a real switch INTO the target.
     await evalInPage(
         win,
-        `(async () => { const m = window.themeManager || (window.app && window.app.themeManager);
+        `(async () => { const m = window.serenityBlocks && window.serenityBlocks.themeManager;
           if (m) await m.switchTheme(${JSON.stringify(anchorTheme)}, true); return true; })()`,
         config.switchTimeoutMs + 30_000,
         'perf anchor park',
     );
+    perfLog('parking on the anchor theme — done');
     await delay(config.perfSettleMs);
 
     try { await win.webContents.debugger.sendCommand('HeapProfiler.collectGarbage'); } catch { /* best effort */ }
@@ -1738,16 +1772,19 @@ async function runThemePerfLane(win, config, gpuDiagnostics) {
         visitTimeout,
         `${themeId} perf visit 1`,
     );
+    perfLog(`visit 1 done (switch ${Math.round(rawVisit1?.switchWallMs ?? -1)} ms, `
+        + `${rawVisit1?.compilePipes?.length ?? 0} pipelines, ${rawVisit1?.framesObserved ?? 0} frames)`);
     const heapAfter = await heapUsage(win);
 
     // Visit 2: same drive, a shorter idle. Content guard + drift only.
     await evalInPage(
         win,
-        `(async () => { const m = window.themeManager || (window.app && window.app.themeManager);
+        `(async () => { const m = window.serenityBlocks && window.serenityBlocks.themeManager;
           if (m) await m.switchTheme(${JSON.stringify(anchorTheme)}, true); return true; })()`,
         config.switchTimeoutMs + 30_000,
         'perf anchor return',
     );
+    perfLog('returning to the anchor — done');
     await delay(config.perfSettleMs);
     const rawVisit2 = await evalInPage(
         win,
@@ -1760,6 +1797,7 @@ async function runThemePerfLane(win, config, gpuDiagnostics) {
         visitTimeout,
         `${themeId} perf visit 2`,
     );
+    perfLog(`visit 2 done (switch ${Math.round(rawVisit2?.switchWallMs ?? -1)} ms)`);
 
     const adapter = await evalInPage(win, PERF_ADAPTER_SOURCE, 30_000, 'perf adapter probe')
         .catch(() => null);
@@ -1897,6 +1935,14 @@ async function runWorker() {
         gpuDiagnostics = await collectGpuDiagnostics();
         if (config.perf) await installThemePerfInstrument(win);
         await win.loadURL(targetUrl);
+        if (config.perf) {
+            // Assert the bootstrap really landed at document start. If it did not, every pipeline
+            // number below would be silently partial rather than absent.
+            const installed = await win.webContents.executeJavaScript('!!window.__THEME_PERF__', true)
+                .catch(() => false);
+            if (!installed) throw new Error('perf instrument did not install at document start');
+            perfLog('instrument confirmed at document start');
+        }
         boot = await executePageFunction(
             win,
             bootstrapThemeValidationPage,
