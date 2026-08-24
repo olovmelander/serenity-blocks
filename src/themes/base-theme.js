@@ -293,6 +293,14 @@ export class BaseTheme {
 
         // Override in subclass to implement theme-specific logic
         try {
+            // Theme perf lane seam (scripts/lib/theme-perf-instrument.mjs). `__THEME_PERF__` is
+            // defined only by the lane's document-start bootstrap, so with the lane absent this is
+            // one undefined property read per theme start. It has to sit HERE, before createScene:
+            // the renderer and the first pipelines are created inside that await, and the manager
+            // offers no earlier handle — `theme.renderer` is assigned in ~50 different files.
+            if (typeof window !== 'undefined' && window.__THEME_PERF__) {
+                window.__THEME_PERF__.noteThemeStart(this);
+            }
             // The generation is an explicit attempt token. Async theme code must
             // thread it through renderer initialization/fallback paths so an old
             // start cannot adopt a newer start's lifecycle after an await.
@@ -420,6 +428,12 @@ export class BaseTheme {
             themeContainer.classList.remove('active');
             themeContainer.style.removeProperty('opacity');
             themeContainer.style.removeProperty('visibility');
+        }
+
+        // Theme perf lane seam: disarm timestamp tracking BEFORE this theme's dispose path runs
+        // `collectPendingTimestampResolves`, and never re-arm on a stopped theme.
+        if (typeof window !== 'undefined' && window.__THEME_PERF__) {
+            window.__THEME_PERF__.noteThemeStop(this);
         }
 
         // Cancel all animation frames

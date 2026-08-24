@@ -104,6 +104,12 @@ import { ThemeManager } from './themes/theme-manager.js';
 import { initGridCache, clearThemeCaches } from './utils/cache.js';
 import { hexToRgb } from './utils/helpers.js';
 import { performanceMonitor } from './utils/performance-monitor.js';
+import {
+    configureDesktopPerformanceReports,
+    installDesktopBenchmarkReportHooks,
+    installFirstInteractionPerformanceReport,
+    storeDesktopPerformanceReport,
+} from './utils/desktop-performance-report.js';
 import { createRuntimeValidation, installPreloadErrorRecovery } from './utils/release-observability.js';
 import {
     createDesktopPerformancePolicy,
@@ -152,11 +158,13 @@ let desktopRuntimeConfig = {
         remediation: [],
     },
 };
-let firstInteractionReportInstalled = false;
-const desktopBenchmarkReportTimers = new Map();
-let desktopBenchmarkReportHooksInstalled = false;
+// Desktop performance-report plumbing lives in ./utils/desktop-performance-report.js
+// (plan §3d line ceiling). It reads the live runtime config through this provider,
+// which is re-read on every report — `desktopRuntimeConfig` is reassigned as the
+// Electron handshake lands.
+configureDesktopPerformanceReports({ getRuntimeConfig: () => desktopRuntimeConfig });
+
 const GPU_REMEDIATION_PANEL_ID = 'desktop-gpu-remediation-panel';
-const FIRST_INTERACTION_EVENT_TYPES = ['pointerdown', 'mousedown', 'wheel', 'keydown', 'touchstart'];
 const GAMEPLAY_DYNAMIC_RESOLUTION_MODES = new Set([
     GAME_MODES.SINGLE_PLAYER,
     GAME_MODES.LOCAL_MULTIPLAYER,
@@ -350,182 +358,6 @@ function shouldDeferInitialThemeLoad() {
 function shouldUseDesktopPerformancePolicy() {
     return desktopRuntimeConfig.isElectron
         && !isPackagedWindowsWebParityProfile();
-}
-
-function getDesktopSettingsSnapshot(appInstance = null) {
-    const settings = appInstance?.settingsManager?.get?.() || null;
-    const performancePolicy = appInstance?.desktopPerformancePolicy || globalThis.window?.desktopPerformancePolicy || null;
-    return {
-        resolution: typeof window !== 'undefined'
-            ? {
-                width: window.innerWidth,
-                height: window.innerHeight,
-                devicePixelRatio: window.devicePixelRatio || 1,
-            }
-            : null,
-        displayMode: settings?.displayMode ?? 'windowed',
-        vsyncEnabled: settings?.vsyncEnabled ?? true,
-        targetFrameRate: settings?.targetFrameRate ?? 60,
-        effectQuality: settings?.effectQuality ?? null,
-        renderScale: settings?.renderScale ?? 1,
-        backgroundTabBehavior: settings?.backgroundTabBehavior ?? null,
-        enableAntialiasing: settings?.enableAntialiasing ?? true,
-        enableBloom: settings?.enableBloom ?? true,
-        enableShadows: settings?.enableShadows ?? true,
-        particleQuality: settings?.particleQuality ?? null,
-        textureQuality: settings?.textureQuality ?? null,
-        qualityTier: performancePolicy?.qualityTier ?? settings?.effectQuality ?? null,
-        internalRenderResolution: performancePolicy?.internalRenderResolution ?? null,
-    };
-}
-
-async function storeDesktopPerformanceReport(stage, appInstance = null, extra = {}) {
-    if (!window.electronAPI?.storeDesktopPerformanceReport) {
-        return null;
-    }
-
-    let processMetrics = null;
-    try {
-        processMetrics = await window.electronAPI.getProcessMetrics?.();
-    } catch (error) {
-        console.warn(`[DesktopRuntime] Failed to fetch process metrics (${stage}):`, error?.message || error);
-    }
-
-    const snapshot = performanceMonitor.createDesktopInvestigationSnapshot({
-        stage,
-        appMode: desktopRuntimeConfig.appMode,
-        runtimeConfig: desktopRuntimeConfig,
-        runtimeProfile: desktopRuntimeConfig.windowsProfile || desktopRuntimeConfig.appMode,
-        settingsSnapshot: getDesktopSettingsSnapshot(appInstance),
-        processMetrics,
-        windowBounds: processMetrics?.windowBounds || desktopRuntimeConfig.windowBounds || null,
-        displayScaleFactor: processMetrics?.displayScaleFactor
-            ?? desktopRuntimeConfig.displayScaleFactor
-            ?? null,
-        devicePixelRatio: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : null,
-        performancePolicy: appInstance?.desktopPerformancePolicy || globalThis.window?.desktopPerformancePolicy || null,
-        monitorRefreshRate: appInstance?.frameRateController?.monitorRefreshRate || null,
-        extra,
-    });
-
-    try {
-        return await window.electronAPI.storeDesktopPerformanceReport({ stage, snapshot });
-    } catch (error) {
-        console.warn(`[DesktopRuntime] Failed to store performance report (${stage}):`, error?.message || error);
-        return null;
-    }
-}
-
-function clearScheduledDesktopPerformanceReports() {
-    desktopBenchmarkReportTimers.forEach((timeoutId) => {
-        clearTimeout(timeoutId);
-    });
-    desktopBenchmarkReportTimers.clear();
-}
-
-function scheduleDesktopPerformanceReport(stage, appInstance = null, extra = {}, delayMs = 550) {
-    if (typeof window === 'undefined') {
-        return;
-    }
-
-    const existingTimeout = desktopBenchmarkReportTimers.get(stage);
-    if (existingTimeout) {
-        clearTimeout(existingTimeout);
-    }
-
-    const timeoutId = window.setTimeout(() => {
-        desktopBenchmarkReportTimers.delete(stage);
-        void storeDesktopPerformanceReport(stage, appInstance, extra);
-    }, delayMs);
-    desktopBenchmarkReportTimers.set(stage, timeoutId);
-}
-
-function installDesktopBenchmarkReportHooks(appInstance) {
-    if (desktopBenchmarkReportHooksInstalled || typeof window === 'undefined') {
-        return;
-    }
-
-    desktopBenchmarkReportHooksInstalled = true;
-
-    const handleModalShown = (event) => {
-        const modalName = event?.detail?.modalName;
-        if (modalName === 'start') {
-            scheduleDesktopPerformanceReport('menu-idle', appInstance, {
-                modalName,
-            }, 700);
-            return;
-        }
-
-        if (modalName === 'settings') {
-            scheduleDesktopPerformanceReport('settings-open', appInstance, {
-                modalName,
-            }, 450);
-        }
-    };
-
-    const handleHubVisibilityChange = (event) => {
-        if (event?.detail?.visible) {
-            scheduleDesktopPerformanceReport('hub-open', appInstance, {
-                currentTab: event?.detail?.currentTab || null,
-            }, 450);
-        }
-    };
-
-    window.addEventListener('modalShown', handleModalShown);
-    window.addEventListener('serenityHubVisibilityChange', handleHubVisibilityChange);
-    appInstance.cleanupHandlers.push(() => {
-        window.removeEventListener('modalShown', handleModalShown);
-        window.removeEventListener('serenityHubVisibilityChange', handleHubVisibilityChange);
-        clearScheduledDesktopPerformanceReports();
-    });
-
-    const unsubscribeModeStarted = appInstance.gameModeManager?.on?.('modeStarted', ({ modeId }) => {
-        if (modeId === GAME_MODES.SINGLE_PLAYER) {
-            scheduleDesktopPerformanceReport('single-player-idle', appInstance, { modeId }, 1200);
-            return;
-        }
-
-        if (modeId === GAME_MODES.ODYSSEY) {
-            scheduleDesktopPerformanceReport('odyssey-idle', appInstance, { modeId }, 1200);
-        }
-    });
-
-    if (unsubscribeModeStarted) {
-        appInstance.cleanupHandlers.push(unsubscribeModeStarted);
-    }
-}
-
-function installFirstInteractionPerformanceReport(appInstance = null, onInteraction = null) {
-    if (firstInteractionReportInstalled || typeof window === 'undefined') {
-        return;
-    }
-
-    firstInteractionReportInstalled = true;
-    const teardown = [];
-
-    const handleInteraction = (event) => {
-        teardown.forEach((unsubscribe) => unsubscribe());
-        teardown.length = 0;
-
-        performanceMonitor.recordEvent('startup_first_interaction', {
-            inputType: event?.type || 'unknown',
-        });
-        Promise.resolve(onInteraction?.(event))
-            .catch((error) => {
-                console.warn('[Startup] Failed to activate deferred desktop services:', error);
-            })
-            .finally(() => {
-                void storeDesktopPerformanceReport('first-interaction', appInstance, {
-                    inputType: event?.type || 'unknown',
-                });
-            });
-    };
-
-    FIRST_INTERACTION_EVENT_TYPES.forEach((eventName) => {
-        const listener = (event) => handleInteraction(event);
-        window.addEventListener(eventName, listener, { capture: true, passive: true, once: true });
-        teardown.push(() => window.removeEventListener(eventName, listener, { capture: true }));
-    });
 }
 
 function setPieceLockRippleCss(colorHex) {

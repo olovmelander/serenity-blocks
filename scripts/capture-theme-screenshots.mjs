@@ -25,6 +25,13 @@ import {
     THEME_REGISTRY,
     getThemeMeta,
 } from '../src/themes/theme-registry.js';
+import {
+    THEME_PERF_BOOTSTRAP,
+    buildPerfVisitSource,
+    buildPinSource,
+    reduceVisit,
+} from './lib/theme-perf-instrument.mjs';
+import { buildThemePerfCell } from './lib/theme-perf-cell.mjs';
 
 const {
     app,
@@ -37,12 +44,19 @@ const DEFAULT_BASE_URL = 'http://127.0.0.1:4174';
 const WORKER_BOOLEAN_OPTIONS = new Set([
     'headed',
     'help',
+    'perf',
 ]);
 const WORKER_VALUE_OPTIONS = new Set([
     'base-url',
     'bootstrap-timeout-ms',
     'height',
     'out',
+    'perf-idle-ms',
+    'perf-out',
+    'perf-profile-dir',
+    'perf-quality',
+    'perf-settle-ms',
+    'perf-target-fps',
     'ready-timeout-ms',
     'run-id',
     'settle-ms',
@@ -50,6 +64,10 @@ const WORKER_VALUE_OPTIONS = new Set([
     'theme',
     'width',
 ]);
+// Module scope on purpose: the perf switches and the userData path must be set before
+// app.whenReady(), and the worker's ready handler is already past that point.
+const PERF_LANE_ENABLED = process.argv.includes('--perf')
+    || process.argv.some((a) => a === '--perf=true' || a === '--perf=1');
 const FAILURE_PATTERNS = Object.freeze([
     { id: 'wgsl', regex: /\bWGSL\b.*(?:error|invalid)|error.*\bWGSL\b/i },
     { id: 'shader_module', regex: /invalid\s+ShaderModule|shader module.*invalid/i },
@@ -75,6 +93,22 @@ const FAILURE_PATTERNS = Object.freeze([
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('enable-precise-memory-info');
+
+if (PERF_LANE_ENABLED) {
+    // Without this, Electron lands on this machine's Vega 8 iGPU: there is no UserGpuPreferences
+    // entry for electron.exe, so the default adapter is the integrated one. The lane records the
+    // adapter it actually got, but it must at least ASK for the discrete part.
+    app.commandLine.appendSwitch('force_high_performance_gpu');
+    app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+    app.commandLine.appendSwitch('force-device-scale-factor', '1');
+    const profileFlagIndex = process.argv.indexOf('--perf-profile-dir');
+    const profileDir = profileFlagIndex >= 0 ? process.argv[profileFlagIndex + 1] : null;
+    if (profileDir) {
+        // A per-theme userData dir means a per-theme Dawn shader cache, so every theme's compile
+        // numbers are cold-cache and comparable with each other.
+        app.setPath('userData', path.resolve(ROOT, profileDir));
+    }
+}
 
 app.on('window-all-closed', (event) => {
     event.preventDefault();
@@ -251,6 +285,20 @@ function createConfig(argv) {
         ),
         settleMs: parseNonNegativeInt(args['settle-ms'], 2_000, '--settle-ms'),
         headed: parseBoolean(args.headed, false),
+        perf: parseBoolean(args.perf, false),
+        perfIdleMs: parseNonNegativeInt(args['perf-idle-ms'], 20_000, '--perf-idle-ms'),
+        perfSettleMs: parseNonNegativeInt(args['perf-settle-ms'], 4_000, '--perf-settle-ms'),
+        perfQuality: typeof args['perf-quality'] === 'string' ? args['perf-quality'] : 'High',
+        perfTargetFps: parsePositiveInt(args['perf-target-fps'], 60, '--perf-target-fps'),
+        perfOutputDir: path.resolve(
+            ROOT,
+            typeof args['perf-out'] === 'string'
+                ? args['perf-out']
+                : path.join(ROOT, 'reports', 'theme-perf'),
+        ),
+        perfProfileDir: typeof args['perf-profile-dir'] === 'string'
+            ? path.resolve(ROOT, args['perf-profile-dir'])
+            : null,
     });
 }
 
@@ -321,7 +369,9 @@ function createWindow(config) {
     return new BrowserWindow({
         width: config.width,
         height: config.height,
-        show: config.headed,
+        // GPU timestamps are unavailable to an occluded surface (odyssey-gpu-split.mjs:408), so the
+        // perf lane must show its window. Recorded in the cell so a future run cannot silently differ.
+        show: config.headed || config.perf === true,
         backgroundColor: '#000000',
         webPreferences: {
             session: validationSession,
@@ -1570,6 +1620,196 @@ async function writeArtifacts(config, {
             'utf8',
         ),
     ]);
+
+    // The standalone cell, so a gate can read a directory of cells without parsing the whole
+    // validation report (the shape perf-budgets-gate.mjs already expects of a baseline dir).
+    if (report.perf) {
+        await mkdir(config.perfOutputDir, { recursive: true });
+        await writeFile(
+            path.join(config.perfOutputDir, `${config.themeId}.json`),
+            `${JSON.stringify(report.perf, null, 2)}\n`,
+            'utf8',
+        );
+    }
+}
+
+/**
+ * Install the document-start instrument through CDP.
+ *
+ * `Page.addScriptToEvaluateOnNewDocument` is the only seam that runs before the page's own
+ * scripts. An `executeJavaScript` after `loadURL` is far too late: the app builds a whole theme
+ * during boot, so its pipeline set would already have compiled unobserved. A `preload` cannot do
+ * it either — the worker runs with `contextIsolation: true`, and an isolated world has its own
+ * copies of the built-in prototypes, so a `GPUDevice.prototype` patch there is invisible to the page.
+ */
+async function installThemePerfInstrument(win) {
+    const dbg = win.webContents.debugger;
+    if (!dbg.isAttached()) dbg.attach('1.3');
+    await dbg.sendCommand('Page.enable');
+    await dbg.sendCommand('Runtime.enable');
+    await dbg.sendCommand('HeapProfiler.enable');
+    await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+        source: THEME_PERF_BOOTSTRAP,
+    });
+}
+
+async function evalInPage(win, source, timeoutMs, label) {
+    return withTimeout(
+        win.webContents.executeJavaScript(source, true),
+        timeoutMs,
+        label,
+    );
+}
+
+/** Read the live heap without a GC in the way. Used to bracket the idle window. */
+async function heapUsage(win) {
+    try {
+        const r = await win.webContents.debugger.sendCommand('Runtime.getHeapUsage');
+        return { usedSize: r.usedSize, totalSize: r.totalSize };
+    } catch {
+        return null;
+    }
+}
+
+// three 0.185.1's WebGPUBackend never stores its adapter, so the renderer-side probe is always
+// null on r185. Ask the platform directly, at COLLECTION time only — requestAdapter is GPU work
+// and must not land inside a measurement window. `webglRendererString` is the ground truth on
+// Windows, where WebGPU's adapter.info comes back empty.
+const PERF_ADAPTER_SOURCE = `(async () => {
+  const info = (a) => (a && a.info ? {
+    vendor: a.info.vendor ?? null, architecture: a.info.architecture ?? null,
+    device: a.info.device ?? null, description: a.info.description ?? null } : null);
+  let plain = null; let asThreeAsks = null;
+  try { plain = info(await navigator.gpu?.requestAdapter?.()); } catch (_) {}
+  try {
+    asThreeAsks = info(await navigator.gpu?.requestAdapter?.({
+      powerPreference: 'high-performance', featureLevel: 'compatibility', xrCompatible: false }));
+  } catch (_) {}
+  let webglRendererString = null;
+  try {
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl2') || c.getContext('webgl');
+    const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    if (gl && ext) webglRendererString = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+  } catch (_) {}
+  return { plain, asThreeAsks, webglRendererString, requestedPowerPreference: 'high-performance' };
+})()`;
+
+/**
+ * Drive both visits and build the committed cell.
+ *
+ * Visit 1 is the cold-in-process build (the boot theme is `forest`, and `anchorTheme` is chosen so
+ * the target is never the boot theme). Visit 2 exists for the content-match guard and the drift
+ * bound — not to be averaged with visit 1.
+ */
+async function runThemePerfLane(win, config, gpuDiagnostics) {
+    const { themeId, anchorTheme } = config;
+    const visitTimeout = config.perfIdleMs + config.perfSettleMs + 240_000;
+
+    await evalInPage(
+        win,
+        buildPinSource({ quality: config.perfQuality, targetFps: config.perfTargetFps }),
+        20_000,
+        'perf pins',
+    );
+
+    // Park on the anchor first so visit 1 measures a real switch INTO the target.
+    await evalInPage(
+        win,
+        `(async () => { const m = window.themeManager || (window.app && window.app.themeManager);
+          if (m) await m.switchTheme(${JSON.stringify(anchorTheme)}, true); return true; })()`,
+        config.switchTimeoutMs + 30_000,
+        'perf anchor park',
+    );
+    await delay(config.perfSettleMs);
+
+    try { await win.webContents.debugger.sendCommand('HeapProfiler.collectGarbage'); } catch { /* best effort */ }
+    await delay(150);
+    const heapBefore = await heapUsage(win);
+
+    const rawVisit1 = await evalInPage(
+        win,
+        buildPerfVisitSource({
+            themeId,
+            anchorTheme,
+            idleMs: config.perfIdleMs,
+            settleMs: config.perfSettleMs,
+        }),
+        visitTimeout,
+        `${themeId} perf visit 1`,
+    );
+    const heapAfter = await heapUsage(win);
+
+    // Visit 2: same drive, a shorter idle. Content guard + drift only.
+    await evalInPage(
+        win,
+        `(async () => { const m = window.themeManager || (window.app && window.app.themeManager);
+          if (m) await m.switchTheme(${JSON.stringify(anchorTheme)}, true); return true; })()`,
+        config.switchTimeoutMs + 30_000,
+        'perf anchor return',
+    );
+    await delay(config.perfSettleMs);
+    const rawVisit2 = await evalInPage(
+        win,
+        buildPerfVisitSource({
+            themeId,
+            anchorTheme,
+            idleMs: Math.max(4_000, Math.round(config.perfIdleMs / 3)),
+            settleMs: config.perfSettleMs,
+        }),
+        visitTimeout,
+        `${themeId} perf visit 2`,
+    );
+
+    const adapter = await evalInPage(win, PERF_ADAPTER_SOURCE, 30_000, 'perf adapter probe')
+        .catch(() => null);
+
+    const visit1 = reduceVisit(rawVisit1, { targetFps: config.perfTargetFps });
+    const visit2 = reduceVisit(rawVisit2, { targetFps: config.perfTargetFps });
+
+    // CDP heap bracket, as a cross-check on the in-page 250 ms sampler. Only an upper bound, and
+    // only when no GC ran — the in-page sampler is what detects that.
+    if (visit1 && !visit1.error && heapBefore && heapAfter) {
+        visit1.memory = {
+            ...visit1.memory,
+            cdpHeapDeltaBytes: heapAfter.usedSize - heapBefore.usedSize,
+            cdpHeapNote: 'brackets BOTH visits and the switch, not just the idle window',
+        };
+    }
+
+    return buildThemePerfCell({
+        theme: themeId,
+        anchorTheme,
+        themeMeta: config.themeMeta,
+        runId: config.runId,
+        generatedAt: new Date().toISOString(),
+        manifest: {
+            electron: process.versions.electron ?? null,
+            chrome: process.versions.chrome ?? null,
+            node: process.versions.node ?? null,
+            platform: process.platform,
+            windowPx: { width: config.width, height: config.height },
+            windowShown: true,
+            userDataDir: config.perfProfileDir
+                ? path.relative(ROOT, config.perfProfileDir) : null,
+            dawnCache: 'cold-per-theme-userdata',
+            requestedSwitches: [
+                'force_high_performance_gpu',
+                'force-device-scale-factor=1',
+                'disable-backgrounding-occluded-windows',
+                'disable-background-timer-throttling',
+                'disable-renderer-backgrounding',
+                'enable-precise-memory-info',
+            ],
+            idleMs: config.perfIdleMs,
+            quality: config.perfQuality,
+            targetFps: config.perfTargetFps,
+            electronGpuDiagnostics: gpuDiagnostics ?? null,
+        },
+        visit1,
+        visit2,
+        adapter,
+    });
 }
 
 async function runWorker() {
@@ -1595,6 +1835,7 @@ async function runWorker() {
     let win = null;
     let boot = null;
     let lifecycle = null;
+    let perf = null;
     let screenshotImage = null;
     let screenshot = null;
     let fatalError = null;
@@ -1654,6 +1895,7 @@ async function runWorker() {
         );
 
         gpuDiagnostics = await collectGpuDiagnostics();
+        if (config.perf) await installThemePerfInstrument(win);
         await win.loadURL(targetUrl);
         boot = await executePageFunction(
             win,
@@ -1669,18 +1911,27 @@ async function runWorker() {
         }
 
         consoleGateStart = consoleEntries.length;
-        lifecycle = await executePageFunction(
-            win,
-            exerciseThemeLifecyclePage,
-            {
-                themeId: config.themeId,
-                anchorTheme: config.anchorTheme,
-                switchTimeoutMs: config.switchTimeoutMs,
-                readyTimeoutMs: config.readyTimeoutMs,
-            },
-            (config.switchTimeoutMs * 4) + (config.readyTimeoutMs * 2) + 30_000,
-            `${config.themeId} lifecycle validation`,
-        );
+        if (config.perf) {
+            // The lifecycle lane drives hub cards and 104 assertions; that is the wrong driver for
+            // a measurement (extra hub DOM work and two extra switches inside the window).
+            perf = await runThemePerfLane(win, config, gpuDiagnostics);
+            lifecycle = {
+                ok: true, skipped: 'perf-lane', checks: [], timings: {},
+            };
+        } else {
+            lifecycle = await executePageFunction(
+                win,
+                exerciseThemeLifecyclePage,
+                {
+                    themeId: config.themeId,
+                    anchorTheme: config.anchorTheme,
+                    switchTimeoutMs: config.switchTimeoutMs,
+                    readyTimeoutMs: config.readyTimeoutMs,
+                },
+                (config.switchTimeoutMs * 4) + (config.readyTimeoutMs * 2) + 30_000,
+                `${config.themeId} lifecycle validation`,
+            );
+        }
 
         await executePageFunction(
             win,
@@ -1734,6 +1985,19 @@ async function runWorker() {
         && consoleSummary.ok
         && !fatalError
     );
+    if (perf) {
+        perf.console = {
+            errorCount: consoleSummary.errorCount,
+            warningCount: consoleSummary.warningCount,
+        };
+        if (consoleSummary.errorCount > 0) {
+            perf.admissible = false;
+            perf.inadmissibleReasons = [
+                ...(perf.inadmissibleReasons || []),
+                `${consoleSummary.errorCount} console error(s) during the run`,
+            ];
+        }
+    }
     const report = {
         schemaVersion: 1,
         generatedAt: new Date().toISOString(),
@@ -1762,6 +2026,7 @@ async function runWorker() {
         lifecycle,
         screenshot,
         console: consoleSummary,
+        perf,
         fatalError,
     };
 
