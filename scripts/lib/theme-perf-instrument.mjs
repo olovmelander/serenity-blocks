@@ -58,6 +58,7 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     trackTimestampArmed: false,
     timestampUnavailableReason: null,
     infoResetsByTheme: 0,
+    infoOwned: false,
     cpuAccumMs: 0,
     wrapped: [],
     rings: { wall: [], cpu: [], gpu: [], calls: [], tris: [] },
@@ -163,8 +164,35 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     S.armWhenReady(renderer, 0);
   };
 
+  // Wrapping info.reset is what tells countAround which read is correct, so it must happen for
+  // EVERY renderer kind. It used to sit below the backend guard — and a classic
+  // THREE.WebGLRenderer has no .backend at all, so that guard bailed forever and all 20 classic
+  // themes reported 0 draws. Ownership first, backend-specific arming second.
+  S.ownInfo = (renderer) => {
+    if (S.infoOwned) return;
+    try {
+      const origReset = renderer.info.reset.bind(renderer.info);
+      renderer.info.reset = function () {
+        S.infoResetsByTheme += 1;
+        S.resetDuringCall = true;
+        return origReset();
+      };
+      S.infoResetsByTheme = 0;
+      S.infoOwned = true;
+    } catch (_) { /* frozen or unusual info shape */ }
+  };
+
   S.armWhenReady = (renderer, attempt) => {
     if (S.renderer !== renderer || attempt > 600) return;
+    S.ownInfo(renderer);
+
+    // A classic renderer is fully armed at this point: it has no backend and no timestamp API in
+    // 0.185.1 (ADR-0019 — a property of the renderer KIND, not a defect and not debt).
+    if (S.kind !== 'WebGPURenderer') {
+      S.timestampUnavailableReason = 'classic-webgl-renderer-has-no-timestamp-api';
+      return;
+    }
+
     let ready = true;
     try { ready = renderer.hasInitialized ? renderer.hasInitialized() !== false : true; } catch (_) { ready = true; }
     const backend = renderer.backend;
@@ -172,9 +200,7 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
 
     S.backend = backend.isWebGPUBackend ? 'webgpu' : (backend.isWebGLBackend ? 'webgl2' : null);
 
-    if (S.kind !== 'WebGPURenderer') {
-      S.timestampUnavailableReason = 'classic-webgl-renderer-has-no-timestamp-api';
-    } else if (backend.isWebGPUBackend) {
+    if (backend.isWebGPUBackend) {
       // WebGPUBackend.init collapses trackTimestamp against feature support ONCE and never
       // re-checks, so flipping it back on without this guard would arm timestamp writes on a
       // device that cannot serve them.
@@ -191,20 +217,6 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
       S.timestampUnavailableReason = 'unknown-backend';
     }
 
-    // The lane owns Info from here: three only auto-resets from its own animation loop
-    // (common/Animation.js), and most themes run their own rAF, so an unowned read is a
-    // monotonically growing total rather than a per-frame count.
-    // Count the theme's own resets for provenance only. The lane no longer resets Info itself, so
-    // a theme that owns it is recorded, not disqualified.
-    try {
-      const origReset = renderer.info.reset.bind(renderer.info);
-      renderer.info.reset = function () {
-        S.infoResetsByTheme += 1;
-        S.resetDuringCall = true;
-        return origReset();
-      };
-      S.infoResetsByTheme = 0;
-    } catch (_) { /* classic info shape */ }
   };
 
   S.wrapRenderEntries = (renderer) => {
