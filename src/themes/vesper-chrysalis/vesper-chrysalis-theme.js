@@ -19,6 +19,7 @@ import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { create as createVesperScene } from '../../playground/effects/vesper-chrysalis.effect.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { VESPER_CHRYSALIS_TETROMINOS } from './vesper-chrysalis-tetrominos.js';
 
 function readBoolParam(...keys) {
@@ -80,9 +81,55 @@ export default class VesperChrysalisTheme extends BaseTheme {
 
         this.setupResize();
         this.setupEventListeners();
+        await this.warmRuntime();
+        if (ownerGeneration !== this.lifecycleGeneration) return;
         this.startAnimationLoop();
 
         console.log(`[VesperChrysalis] Scene created (webgpu=${this.isWebGPU})`);
+    }
+
+    /**
+     * Warm the pipelines before the loop reveals anything.
+     *
+     * MEASURED 2026-08-24 (docs/THEME_FLEET_SWEEP_2026-08.md Part B): this theme created 103
+     * pipelines and warmed NONE of them — 0 async, 103 sync — so 5,760 ms of GPU compile landed
+     * after the switch had already resolved, second-worst in the 61-theme fleet.
+     *
+     * `compileGroupThroughPost` is used rather than a bare `renderer.compileAsync(scene, camera)`
+     * because a bare call binds no render target, and r185's deferred build loop reads the live
+     * `renderer.getMRT()` per object — it would bake shaders under a key the post pass never looks
+     * up, which is waste at best and a poisoned cache at worst. The recipe holds the scene-pass
+     * target bound across the whole await. It has zero imports and is duck-typed.
+     */
+    async warmRuntime() {
+        const postStack = this.runtime?.getPostStack?.() ?? null;
+        const scenePass = postStack?.scenePass ?? null;
+        if (!this.renderer?.compileAsync || !this.scene || !this.camera) return;
+        try {
+            if (scenePass?.renderTarget) {
+                // PassNode.setup() has not run yet — it runs on the first postProcessing.render() —
+                // so the target still holds RenderTarget defaults while the live pass will take
+                // `renderer.samples`. The WebGPU pipeline cache key hashes sample count, so warming
+                // against the wrong one produces pipelines that all miss on the first live frame.
+                // This is what PassNode.js:765-767 does during setup.
+                scenePass.renderTarget.samples = this.renderer.samples;
+                scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                await compileGroupThroughPost(
+                    this.renderer,
+                    postStack,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                );
+            } else {
+                // No post stack: the theme renders straight to the canvas, so an unbound compile is
+                // the correct binding rather than a missing one.
+                await this.renderer.compileAsync(this.scene, this.camera);
+            }
+        } catch (error) {
+            console.warn('[VesperChrysalis] Pipeline precompile was incomplete:', error);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

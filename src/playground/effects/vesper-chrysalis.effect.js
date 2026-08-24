@@ -1666,6 +1666,10 @@ export function create({
         post = {
             uGrainT,
             uBloomBoost,
+            // Exposed for the theme's warm compile: compileGroupThroughPost reads
+            // `postProcessingStack.scenePass.renderTarget` and `.getMRT()` and nothing else, so
+            // publishing the pass is the whole contract.
+            scenePass,
             setSize(w, h) {
                 scenePass.setSize(w, h);
                 if (bloomNode?._separableBlurMaterials?.length) bloomNode.setSize(w, h);
@@ -1897,6 +1901,7 @@ export function create({
             }
         },
         // Own the render so the scene goes through the post pipeline (bloom + grade).
+        getPostStack: () => post,
         render() { if (post) post.render(); else renderer.render(scene, camera); },
         renderAsync() {
             if (post) return post.renderAsync();
