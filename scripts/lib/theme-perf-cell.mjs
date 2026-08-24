@@ -72,9 +72,6 @@ export function buildThemePerfCell({
     if (visit1.idle?.gpuMs?.stickySamplerSuspected) {
         inadmissible.push('GPU sample count >= frame count — sticky-sampler signature (ADR-0016)');
     }
-    if (visit1.content?.infoOwnership === 'contested') {
-        inadmissible.push('the theme also resets renderer.info — latched draw counts are a partial frame');
-    }
     if (consoleSummary && consoleSummary.errorCount > 0) {
         inadmissible.push(`${consoleSummary.errorCount} console error(s) during the run`);
     }
@@ -85,7 +82,12 @@ export function buildThemePerfCell({
         ...visit1.content, visit2: null, contentMatch: null, contentMismatchReason: null, contentGuardAdmissible: false,
     };
     if (visit2 && !visit2.error) {
-        const mismatch = contentMismatch(visit1, visit2);
+        // 0 draws is "nothing observed", not "content matched" — the first measured cell passed the
+        // guard on 0 vs 0 while telling us nothing.
+        const noContent = !(visit1.content?.drawCalls?.p50 > 0);
+        const mismatch = noContent
+            ? 'no draw calls observed — content guard cannot run'
+            : contentMismatch(visit1, visit2);
         content = {
             ...visit1.content,
             visit2: {
@@ -168,6 +170,7 @@ export function rankThemePerfCells(cells) {
             idleCpuP95: c.idle?.cpuSubmitMs?.p95 ?? null,
             idleGpuP95: c.idle?.gpuMs?.p95 ?? null,
             allocBytesPerFrame: c.memory?.allocBytesPerFrame ?? null,
+            gcPerSecond: c.memory?.gcPerSecond ?? null,
             drawCalls: c.content?.drawCalls?.p50 ?? null,
             kind: c.renderer?.kind ?? null,
         }))

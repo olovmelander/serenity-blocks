@@ -194,8 +194,9 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     // The lane owns Info from here: three only auto-resets from its own animation loop
     // (common/Animation.js), and most themes run their own rAF, so an unowned read is a
     // monotonically growing total rather than a per-frame count.
+    // Count the theme's own resets for provenance only. The lane no longer resets Info itself, so
+    // a theme that owns it is recorded, not disqualified.
     try {
-      renderer.info.autoReset = false;
       const origReset = renderer.info.reset.bind(renderer.info);
       renderer.info.reset = function () { S.infoResetsByTheme += 1; return origReset(); };
       S.infoResetsByTheme = 0;
@@ -214,9 +215,8 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
         const orig = owner[m].bind(owner);
         owner[m] = function (...args) {
           S.mark('t6_firstRenderCall');
-          S.latchFrame();
           const t = now();
-          const out = orig(...args);
+          const out = S.countAround(() => orig(...args));
           S.cpuAccumMs += now() - t;
           return out;
         };
@@ -226,19 +226,25 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     }
   };
 
-  // Latch draws/tris on the FIRST render call of each lane frame, then reset, so the counters are
-  // per-frame rather than a running total.
-  S.latchFrame = () => {
-    if (S.laneFrameId === S.latchedFrameId || !S.renderer) return;
+  // Draw counting by DELTA across each render call, accumulated per lane frame.
+  //
+  // The obvious implementation — read info.render at frame start and reset it ourselves — fights
+  // every theme that already owns Info (cosmic-noir, ocean and stillwater all set autoReset=false
+  // and reset manually), and the first measured cell came back 0 draws / "contested" because of
+  // exactly that. A delta across the call is owner-agnostic: if the theme reset in between, the
+  // post value IS this call's count, so fall back to it rather than to a negative.
+  S.frameDraws = 0;
+  S.frameTris = 0;
+  S.countAround = (fn) => {
+    const rr = S.renderer && S.renderer.info && S.renderer.info.render;
+    if (!rr) return fn();
+    const preD = rr.drawCalls; const preT = rr.triangles;
     try {
-      const rr = S.renderer.info && S.renderer.info.render;
-      if (rr) {
-        S.rings.calls.push(rr.drawCalls);
-        S.rings.tris.push(rr.triangles);
-        S.renderer.info.reset();
-      }
-    } catch (_) { /* torn down mid-frame */ }
-    S.latchedFrameId = S.laneFrameId;
+      return fn();
+    } finally {
+      S.frameDraws += rr.drawCalls >= preD ? rr.drawCalls - preD : rr.drawCalls;
+      S.frameTris += rr.triangles >= preT ? rr.triangles - preT : rr.triangles;
+    }
   };
 
   // ---- 5) GPU RESOLVE — ONE PUSH PER RESOLVED QUERY ----------------------------------------
@@ -267,6 +273,8 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     if (S.lastFrameAt) S.rings.wall.push(t - S.lastFrameAt);
     S.lastFrameAt = t;
     if (S.cpuAccumMs > 0) { S.rings.cpu.push(S.cpuAccumMs); S.cpuAccumMs = 0; }
+    if (S.frameDraws > 0) { S.rings.calls.push(S.frameDraws); S.rings.tris.push(S.frameTris); }
+    S.frameDraws = 0; S.frameTris = 0;
     S.resolveRender();
     requestAnimationFrame(S.laneTick);
   };
@@ -286,6 +294,7 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     S.heap.length = 0;
     S.longTasks = { count: 0, totalMs: 0, maxMs: 0 };
     S.laneFrameId = 0; S.latchedFrameId = -1; S.lastFrameAt = 0; S.cpuAccumMs = 0;
+    S.frameDraws = 0; S.frameTris = 0;
     S.infoResetsByTheme = 0;
     return true;
   };
@@ -305,12 +314,22 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
  */
 export function buildPerfVisitSource({
     themeId, anchorTheme, idleMs, settleMs, quietPipelineMs = 2_000, compileCapMs = 90_000,
+    switchCapMs = 120_000, criticalCapMs = 60_000,
 }) {
     return `(async () => {
   const S = window.__THEME_PERF__;
   if (!S) return { error: 'instrument-not-installed' };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const manager = window.themeManager || (window.app && window.app.themeManager);
+  // EVERY page-side await is bounded. An unbounded one cannot fail: it hangs until the ORCHESTRATOR
+  // kills the worker, which loses the whole report — exactly how the first smoke run was lost.
+  const bounded = (promise, ms, label) => Promise.race([
+    Promise.resolve(promise).catch((e) => ({ __err: String(e && e.message || e) })),
+    sleep(ms).then(() => ({ __timeout: label })),
+  ]);
+  // Progress is written to a global the worker can read after a timeout, so a hang says WHERE.
+  const stage = (name) => { window.__THEME_PERF_STAGE__ = name; };
+  stage('start');
+  const manager = window.serenityBlocks && window.serenityBlocks.themeManager;
   if (!manager) return { error: 'theme-manager-missing' };
 
   S.marks = {};
@@ -318,20 +337,26 @@ export function buildPerfVisitSource({
   window.__THEME_PERF_RESET__();
 
   S.mark('t0_requested');
+  stage('switch');
   const t0 = performance.now();
   // switchTheme directly, not the hub card: the card path adds hub DOM construction and a settle
   // poll to the measured interval, and reaches the same manager entry point anyway.
-  await manager.switchTheme(${JSON.stringify(themeId)}, true);
+  const switchOutcome = await bounded(
+    manager.switchTheme(${JSON.stringify(themeId)}, true), ${switchCapMs}, 'switchTheme',
+  );
   S.mark('t4_startResolved');
+  stage('criticalReady');
 
   const theme = manager.activeTheme || manager.currentTheme || S.theme;
+  let criticalOutcome = null;
   if (theme && typeof theme.whenCriticalReady === 'function') {
-    try { await theme.whenCriticalReady(); } catch (_) {}
+    criticalOutcome = await bounded(theme.whenCriticalReady(), ${criticalCapMs}, 'whenCriticalReady');
   }
   S.mark('t5_criticalReady');
 
   // Wait for the compile to go quiet rather than for a fixed time: a theme that compiles
   // synchronously on its first frames is exactly the case a fixed wait would truncate.
+  stage('compileQuiet');
   const capAt = performance.now() + ${compileCapMs};
   let lastCount = -1;
   let quietSince = performance.now();
@@ -342,12 +367,14 @@ export function buildPerfVisitSource({
   }
 
   // First GPU-work completion. NOT "presented" — a page cannot observe scanout.
+  stage('firstGpuWork');
   let gpuDoneMethod = null;
   try {
     const r = S.renderer;
     if (r && r.backend && r.backend.isWebGPUBackend && r.backend.device) {
-      await r.backend.device.queue.onSubmittedWorkDone();
-      gpuDoneMethod = 'queue.onSubmittedWorkDone';
+      // Bounded: a lost device never settles this, and an unbounded wait here loses the report.
+      const done = await bounded(r.backend.device.queue.onSubmittedWorkDone(), 30000, 'onSubmittedWorkDone');
+      gpuDoneMethod = (done && done.__timeout) ? 'onSubmittedWorkDone-timeout' : 'queue.onSubmittedWorkDone';
     } else {
       const gl = (r && r.backend && r.backend.gl)
         || (r && typeof r.getContext === 'function' ? r.getContext() : null);
@@ -370,6 +397,7 @@ export function buildPerfVisitSource({
   await new Promise((res) => requestAnimationFrame(res));
   S.mark('t8_firstRafAfterGpu');
 
+  stage('settle');
   const compilePipes = S.pipes.slice();
 
   await sleep(${settleMs});
@@ -380,12 +408,14 @@ export function buildPerfVisitSource({
   const heapTimer = setInterval(() => {
     try { if (performance.memory) S.heap.push(performance.memory.usedJSHeapSize); } catch (_) {}
   }, 250);
+  stage('idle');
   S.startLane();
   const windowStart = performance.now();
   const pinsAtStart = window.__THEME_PERF_PINS__ ? window.__THEME_PERF_PINS__() : null;
   await sleep(${idleMs});
   const pinsAtEnd = window.__THEME_PERF_PINS__ ? window.__THEME_PERF_PINS__() : null;
   S.stopLane();
+  stage('collect');
   clearInterval(heapTimer);
   const windowMs = performance.now() - windowStart;
 
@@ -406,8 +436,11 @@ export function buildPerfVisitSource({
     if (i) info = { geometries: i.memory && i.memory.geometries, textures: i.memory && i.memory.textures, programs: i.programs ? i.programs.length : null };
   } catch (_) {}
 
+  stage('done');
   return {
     themeId: ${JSON.stringify(themeId)},
+    switchOutcome: (switchOutcome && (switchOutcome.__timeout || switchOutcome.__err)) || null,
+    criticalOutcome: (criticalOutcome && (criticalOutcome.__timeout || criticalOutcome.__err)) || null,
     anchorTheme: ${JSON.stringify(anchorTheme)},
     marks: S.marks,
     switchWallMs: +(S.marks.t4_startResolved || 0) - +(S.marks.t0_requested || 0),
@@ -570,8 +603,8 @@ export function reduceVisit(raw, { targetFps = 60 } = {}) {
             managerReportedMs: raw.managerReportedMs ?? null,
             queueDrainMs: Number.isFinite(raw.managerReportedMs)
                 ? round(raw.switchWallMs - raw.managerReportedMs) : null,
-            createSceneEnterMs: round(raw.marks?.t2_createSceneEnter),
-            rendererCreatedMs: round(raw.marks?.t3_rendererCreated),
+            createSceneEnterMs: round(delta(raw.marks, 't2_createSceneEnter')),
+            rendererCreatedMs: round(delta(raw.marks, 't3_rendererCreated')),
             criticalReadyMs: round(delta(raw.marks, 't5_criticalReady')),
             firstRenderCallMs: round(delta(raw.marks, 't6_firstRenderCall')),
             firstFrameGpuCompleteMs: round(delta(raw.marks, 't7_firstGpuWorkDone')),
@@ -623,6 +656,11 @@ export function reduceVisit(raw, { targetFps = 60 } = {}) {
             allocBytesPerFrame: heapDrops === 0 && framesObserved > 0 && heapDeltaBytes !== null
                 ? Math.round(heapDeltaBytes / framesObserved) : null,
             allocVoidReason: allocVoidReason(heapDrops, framesObserved),
+            // A GC inside the window voids the byte figure, but the GC COUNT is itself a directly
+            // measured signal — and 'GC hitches' is the thing the ranking actually cares about.
+            // Sampled every 250 ms, so this is a floor on the true rate, never an over-count.
+            gcPerSecond: raw.windowMs > 0 ? +((heapDrops / (raw.windowMs / 1000)).toFixed(3)) : null,
+            gcCount: heapDrops,
         },
         pins: raw.pins || null,
     };

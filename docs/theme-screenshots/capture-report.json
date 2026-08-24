@@ -1,60 +1,49 @@
 {
-  "schemaVersion": 2,
-  "generatedAt": "2026-08-21T09:23:20.711Z",
-  "startedAt": "2026-08-21T09:22:03.932Z",
-  "runId": "2026-08-21T09-22-03-932Z",
+  "schemaVersion": 3,
+  "generatedAt": "2026-08-24T06:35:45.651Z",
+  "startedAt": "2026-08-24T06:28:44.827Z",
+  "runId": "2026-08-24T06-28-44-827Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
-  "selectedThemeCount": 2,
-  "completedThemeCount": 2,
-  "passed": 2,
-  "failed": 0,
+  "selectedThemeCount": 1,
+  "completedThemeCount": 1,
+  "passed": 0,
+  "failed": 1,
   "interrupted": false,
   "execution": {
     "concurrency": 1,
     "processIsolation": "fresh-electron-process-per-theme",
-    "productionBuild": true,
+    "productionBuild": false,
     "externalServer": false,
     "cooldownMs": 2000,
-    "failureCooldownMs": 15000
+    "failureCooldownMs": 15000,
+    "perfLane": true,
+    "perfIdleMs": 8000,
+    "perfQuality": "High",
+    "perfTargetFps": 60
   },
   "selectedThemes": [
-    "neon-district",
-    "golden-forest"
+    "cosmic-noir"
   ],
   "results": [
     {
-      "theme": "neon-district",
-      "displayName": "Neon District",
+      "theme": "cosmic-noir",
+      "displayName": "Cosmic Noir",
       "performanceClass": "heavy",
-      "passed": true,
-      "screenshot": "docs\\theme-screenshots\\neon-district.png",
-      "report": "docs\\theme-screenshots\\results\\neon-district.json",
-      "lifecycleFailureCount": 0,
-      "consoleErrorCount": 0,
-      "processFailureCount": 0,
-      "orchestrationError": null,
+      "passed": false,
+      "screenshot": null,
+      "report": "docs\\theme-screenshots\\results\\cosmic-noir.json",
+      "lifecycleFailureCount": null,
+      "consoleErrorCount": null,
+      "perfCell": null,
+      "perfAdmissible": null,
+      "perfInadmissibleReasons": null,
+      "processFailureCount": null,
+      "orchestrationError": "Worker report has stale run id \"2026-08-21T06-12-57-693Z\", expected \"2026-08-24T06-28-44-827Z\".",
       "workerExit": {
-        "code": 0,
+        "code": 1,
         "signal": null,
-        "timedOut": false
-      }
-    },
-    {
-      "theme": "golden-forest",
-      "displayName": "Golden Forest",
-      "performanceClass": "heavy",
-      "passed": true,
-      "screenshot": "docs\\theme-screenshots\\golden-forest.png",
-      "report": "docs\\theme-screenshots\\results\\golden-forest.json",
-      "lifecycleFailureCount": 0,
-      "consoleErrorCount": 0,
-      "processFailureCount": 0,
-      "orchestrationError": null,
-      "workerExit": {
-        "code": 0,
-        "signal": null,
-        "timedOut": false
+        "timedOut": true
       }
     }
   ]

@@ -42,7 +42,9 @@
     "perf:odyssey:nightly": "node scripts/odyssey-perf-nightly.mjs",
     "perf:budgets:gate": "node scripts/perf-budgets-gate.mjs",
     "validate:odyssey:webgpu": "node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs",
-    "bauer:metrics": "node scripts/bauer-metrics.mjs"
+    "bauer:metrics": "node scripts/bauer-metrics.mjs",
+    "capture:themes:perf": "node scripts/validate-all-themes.mjs --perf",
+    "perf:themes:aggregate": "node scripts/theme-perf-aggregate.mjs"
   },
   "build": {
     "appId": "com.serenityblocks.game",
