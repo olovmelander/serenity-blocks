@@ -2438,3 +2438,65 @@ Plan row 3.3 names lunara specifically for its empty `init()`: the HDR fetch is
 `new HDRLoader().loadAsync()`, device-free and therefore legal in a prebuild stage where adjacent
 preload could hide it. Also untouched: declaring warmup roots for the hidden reaction particles so
 their pipelines warm too. Both separately measurable.
+
+## 16. Four more zero-async themes — two wins, one wash, one regression
+
+**2026-08-24.** Cells: [`reports/theme-perf-batch4-ab/`](../reports/theme-perf-batch4-ab/), n = 3 each.
+
+The bound-compile warm had worked three times in a row. Applied to the next four zero-async themes
+it worked twice, did nothing once, and made one theme **63 % worse**. The pattern does not
+generalise, and the reason it fails is more useful than the reason it works.
+
+| theme | first frame | switch | after | async/sync | kept? |
+|---|---|---|---|---|:--:|
+| bioluminescence-2 | 3,628 → **2,273** (−37.3 %) | 496 → 1,308 | 3,132 → **960** | 0/174 → 122/52 | ✅ |
+| fluid-dreams | 3,807 → **3,015** (−20.8 %) | 409 → 2,161 | 3,398 → **838** | 0/14 → 5/10 | ✅ |
+| starlight | 3,180 → 3,257 (+2.4 %) | 379 → 1,922 | 2,801 → 1,336 | 0/14 → 10/8 | ❌ reverted |
+| summer | 3,543 → **5,791** (+63.4 %) | 421 → 2,601 | 3,122 → **3,190** | 0/121 → 10/98 | ❌ reverted |
+
+### Why summer got worse — the fallback is not a free default
+
+summer has **no live post stack**: its TSL pipeline is dead at runtime (Part A found this; the
+measurement confirms it). With no `scenePass` to bind, the patch took the unbound
+`renderer.compileAsync(scene, camera)` fallback — and that added **2,180 ms to the switch while the
+post-switch cost did not move at all** (3,122 → 3,190). It warmed 10 of 121 pipelines and none of
+them helped.
+
+That is the waste `compileGroupThroughPost` exists to prevent, seen directly rather than argued
+from documentation: builder states keyed to a render context the live path never looks up. The
+lesson for the remaining fleet is that **"no post stack" is a reason not to warm, not a reason to
+warm differently.** A theme with no bindable target should be left alone until its render path is
+understood.
+
+### Why starlight is a wash
+
+It worked, and it cost exactly what it saved: post-switch compile halved (2,801 → 1,336 ms) while
+the switch grew 1,543 ms. The +77 ms net sits inside the after-run spread of 70 ms, so this is a
+wash rather than a regression. Reverted anyway — a change that adds an await and buys nothing
+measurable does not earn its place, and leaving it in would put an unearned entry in the ledger.
+
+### Why the two winners won
+
+Both moved a large post-switch block into the masked switch **and** shrank the total.
+bioluminescence-2 warmed **122 of 174** pipelines, the highest count in any fix so far.
+fluid-dreams warmed only 5 of 14 — but those five were the scene-pass materials carrying nearly all
+the cost, including the 52-step unrolled raymarch Part A identified as the fleet's only
+lava-lake-class material, now visible at **1,630 ms** as a real async pipeline. Its remaining nine
+are bloom/RTT pipelines built by `RenderPipeline.render()`'s own node graph, which no scene-walking
+warm can reach; 5/10 is the success shape there, not a partial one.
+
+**ADR-0007:** both kept themes PASS, 0 console errors, 0 pattern failures.
+
+### Running total for the bound-compile warm
+
+Seven themes attempted, five kept:
+
+| theme | before | after | delta |
+|---|---:|---:|---:|
+| stillwater | 10,421 | 5,498 | −47.2 % |
+| vesper-chrysalis | 6,350 | 3,064 | −51.8 % |
+| lunara | 6,173 | 3,307 | −46.4 % |
+| bioluminescence-2 | 3,628 | 2,273 | −37.3 % |
+| fluid-dreams | 3,807 | 3,015 | −20.8 % |
+
+**Aggregate: 30,379 ms → 17,157 ms across five themes (−43.5 %).**

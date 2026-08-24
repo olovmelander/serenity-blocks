@@ -52,6 +52,22 @@
       "kind": "WebGPURenderer"
     },
     {
+      "theme": "fluid-dreams",
+      "admissible": true,
+      "worstPipelineMs": 1629.7,
+      "syncPipelines": 10,
+      "switchWallMs": 2178.1,
+      "firstFrameGpuDoneMs": 3014.7,
+      "allQuiescedGpuDoneMs": 5069.1,
+      "idleWallP95": 8.2,
+      "idleCpuP95": 3.1,
+      "idleGpuP95": 1.442,
+      "allocBytesPerFrame": null,
+      "gcPerSecond": 0.6,
+      "drawCalls": 61,
+      "kind": "WebGPURenderer"
+    },
+    {
       "theme": "vesper-chrysalis",
       "admissible": true,
       "worstPipelineMs": 1262.3,
@@ -145,6 +161,22 @@
       "allocBytesPerFrame": null,
       "gcPerSecond": 0.6,
       "drawCalls": 393,
+      "kind": "WebGPURenderer"
+    },
+    {
+      "theme": "bioluminescence-2",
+      "admissible": true,
+      "worstPipelineMs": 284.4,
+      "syncPipelines": 52,
+      "switchWallMs": 1319.9,
+      "firstFrameGpuDoneMs": 2275.6,
+      "allQuiescedGpuDoneMs": 4381.6,
+      "idleWallP95": 8.2,
+      "idleCpuP95": 5.2,
+      "idleGpuP95": 1.311,
+      "allocBytesPerFrame": null,
+      "gcPerSecond": 0.6,
+      "drawCalls": 501,
       "kind": "WebGPURenderer"
     },
     {
@@ -436,22 +468,6 @@
       "kind": "WebGLRenderer"
     },
     {
-      "theme": "bioluminescence-2",
-      "admissible": true,
-      "worstPipelineMs": 0,
-      "syncPipelines": 174,
-      "switchWallMs": 496,
-      "firstFrameGpuDoneMs": 3628.4,
-      "allQuiescedGpuDoneMs": 5732,
-      "idleWallP95": 8.2,
-      "idleCpuP95": 4.9,
-      "idleGpuP95": 1.18,
-      "allocBytesPerFrame": null,
-      "gcPerSecond": 0.6,
-      "drawCalls": 501,
-      "kind": "WebGPURenderer"
-    },
-    {
       "theme": "summer",
       "admissible": true,
       "worstPipelineMs": 0,
@@ -465,22 +481,6 @@
       "allocBytesPerFrame": null,
       "gcPerSecond": 0.4,
       "drawCalls": 278,
-      "kind": "WebGPURenderer"
-    },
-    {
-      "theme": "fluid-dreams",
-      "admissible": true,
-      "worstPipelineMs": 0,
-      "syncPipelines": 14,
-      "switchWallMs": 409.1,
-      "firstFrameGpuDoneMs": 3807,
-      "allQuiescedGpuDoneMs": 5852.9,
-      "idleWallP95": 8.2,
-      "idleCpuP95": 3,
-      "idleGpuP95": 1.442,
-      "allocBytesPerFrame": null,
-      "gcPerSecond": 1.1,
-      "drawCalls": 61,
       "kind": "WebGPURenderer"
     },
     {
