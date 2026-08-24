@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T15:04:54.601Z",
-  "runId": "2026-08-24T15-02-46-550Z",
+  "generatedAt": "2026-08-24T17:02:47.888Z",
+  "runId": "2026-08-24T17-00-53-492Z",
   "theme": "himalayan-peak",
   "anchorTheme": "forest",
   "themeMeta": {
@@ -151,111 +151,112 @@
     "canvasContexts": [
       {
         "kind": "webgl",
-        "atMs": 710.4
+        "atMs": 672.6
       },
       {
         "kind": "webgl",
-        "atMs": 1060.3
+        "atMs": 1065.1
       },
       {
         "kind": "2d",
-        "atMs": 1060.5
+        "atMs": 1065.3
       },
       {
         "kind": "2d",
-        "atMs": 1061.3
+        "atMs": 1066.1
       },
       {
         "kind": "2d",
-        "atMs": 1102
+        "atMs": 1113.3
       },
       {
         "kind": "webgl",
-        "atMs": 1109.3
+        "atMs": 1123.7
       },
       {
         "kind": "2d",
-        "atMs": 1163.2
+        "atMs": 1190.9
       },
       {
         "kind": "2d",
-        "atMs": 1163.3
+        "atMs": 1190.9
       },
       {
         "kind": "2d",
-        "atMs": 1164.4
+        "atMs": 1191.7
       },
       {
         "kind": "2d",
-        "atMs": 1164.5
+        "atMs": 1191.8
       },
       {
         "kind": "2d",
-        "atMs": 1178.2
+        "atMs": 1202.1
       },
       {
         "kind": "2d",
-        "atMs": 1773.7
+        "atMs": 1905.8
       },
       {
         "kind": "2d",
-        "atMs": 1782.2
+        "atMs": 1914.6
       },
       {
         "kind": "2d",
-        "atMs": 1787.6
+        "atMs": 1919.9
       },
       {
         "kind": "2d",
-        "atMs": 1793.9
+        "atMs": 1925.7
       },
       {
         "kind": "2d",
-        "atMs": 1799.1
+        "atMs": 1930.7
       },
       {
         "kind": "2d",
-        "atMs": 1804.2
+        "atMs": 1935.5
       },
       {
         "kind": "2d",
-        "atMs": 1904.5
+        "atMs": 2031.7
       },
       {
         "kind": "2d",
-        "atMs": 1910.3
+        "atMs": 2039.5
       },
       {
         "kind": "2d",
-        "atMs": 1915.7
+        "atMs": 2045
       },
       {
         "kind": "2d",
-        "atMs": 4069.5
+        "atMs": 4098.7
       },
       {
         "kind": "2d",
-        "atMs": 4069.6
+        "atMs": 4098.7
       },
       {
         "kind": "webgpu",
-        "atMs": 4558
+        "atMs": 4724
       },
       {
         "kind": "2d",
-        "atMs": 4677
+        "atMs": 4840
       },
       {
         "kind": "2d",
-        "atMs": 4681
+        "atMs": 4844
       },
       {
         "kind": "2d",
-        "atMs": 4684.4
+        "atMs": 4847.4
       }
     ],
     "wrapped": [
-      "renderer"
+      "renderer",
+      "post"
     ],
     "usesMrtScenePass": false
   },
@@ -298,7 +299,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4599.6,
+        "atMs": 4766.1,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -312,7 +313,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4601.6,
+        "atMs": 4768.3,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -326,7 +327,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4604.5,
+        "atMs": 4771.1,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -340,7 +341,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4605.9,
+        "atMs": 4772.3,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -354,7 +355,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4650,
+        "atMs": 4813.8,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -368,7 +369,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4653.2,
+        "atMs": 4817,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -382,7 +383,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4660.2,
+        "atMs": 4820.1,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -396,7 +397,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4664,
+        "atMs": 4823.8,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -410,7 +411,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4667,
+        "atMs": 4829.6,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -424,7 +425,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4669.4,
+        "atMs": 4832.1,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -438,7 +439,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4671.5,
+        "atMs": 4834.1,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -452,7 +453,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4673.4,
+        "atMs": 4836.1,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -466,7 +467,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4676,
+        "atMs": 4838.8,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -480,7 +481,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4676.5,
+        "atMs": 4839.4,
         "targets": "bgra8unorm",
         "samples": 4,
         "depth": "depth24plus"
@@ -491,46 +492,49 @@
     "visit2SyncCount": 14
   },
   "switchTimings": {
-    "switchWallMs": 325.5,
+    "switchWallMs": 350.5,
     "managerReportedMs": null,
     "queueDrainMs": null,
-    "createSceneEnterMs": 15.3,
-    "rendererCreatedMs": 163.5,
-    "criticalReadyMs": 325.5,
-    "firstRenderCallMs": 192.8,
-    "firstFrameGpuCompleteMs": 2430.1,
-    "firstFrameGpuCompleteMethod": "queue.onSubmittedWorkDone",
-    "firstFrameRafMs": 2431.8,
-    "visit2SwitchWallMs": 143.1
+    "createSceneEnterMs": 49.8,
+    "rendererCreatedMs": 192.5,
+    "criticalReadyMs": 350.6,
+    "firstRenderCallMs": 220.8,
+    "firstFrameGpuDoneMs": 938.9,
+    "firstFrameGpuDoneMethod": "queue.onSubmittedWorkDone",
+    "allQuiescedGpuDoneMs": 3029.4,
+    "allQuiescedGpuDoneMethod": "queue.onSubmittedWorkDone",
+    "quietWaitFloorMs": 2000,
+    "firstFrameRafMs": 3031.3,
+    "visit2SwitchWallMs": 145.6
   },
   "idle": {
-    "windowMs": 10003.7,
-    "framesObserved": 1291,
+    "windowMs": 10006.9,
+    "framesObserved": 1307,
     "wall": {
-      "samples": 1290,
+      "samples": 1306,
       "p50": 7.6,
       "p95": 8.2,
-      "p99": 14.5,
+      "p99": 8.5,
       "min": 7,
-      "max": 63.3,
+      "max": 67.4,
       "budgetMs": 16.667,
-      "overBudget": 2
+      "overBudget": 1
     },
     "cpuSubmitMs": {
-      "samples": 666,
-      "p50": 1.8,
-      "p95": 2.7,
-      "p99": 3.4,
-      "min": 1.2,
-      "max": 16.9
+      "samples": 661,
+      "p50": 2.7,
+      "p95": 3.3,
+      "p99": 3.9,
+      "min": 1.5,
+      "max": 26.8
     },
     "gpuMs": {
-      "samples": 1061,
+      "samples": 1161,
       "p50": 0.786,
-      "p95": 1.442,
-      "p99": 3.539,
+      "p95": 1.376,
+      "p99": 2.949,
       "min": 0.328,
-      "max": 5.964,
+      "max": 5.374,
       "quantumMs": 0.065536,
       "sampleDiscipline": "one-push-per-resolved-query",
       "stickySamplerSuspected": false
@@ -544,54 +548,57 @@
   },
   "content": {
     "drawCalls": {
-      "p50": 39,
+      "p50": 59,
       "min": 37,
-      "max": 39
+      "max": 59
     },
     "triangles": {
-      "p50": 230897,
+      "p50": 346346,
       "min": 171121,
-      "max": 230897
+      "max": 346346
     },
     "steadyState": false,
     "infoOwnership": "contested",
     "geometries": 8,
     "textures": 14,
     "visit2": {
-      "drawCalls": 39,
-      "triangles": 230897
+      "drawCalls": 59,
+      "triangles": 346346
     },
     "contentMatch": true,
     "contentMismatchReason": null,
     "contentGuardAdmissible": true
   },
   "memory": {
-    "peakHeapMB": 49.13,
-    "p50HeapMB": 40.86,
+    "peakHeapMB": 63.01,
+    "p50HeapMB": 41.74,
     "heapSamples": 40,
     "heapDrops": 7,
     "allocBytesPerFrame": null,
     "allocVoidReason": "7 GC(s) inside the window",
     "gcPerSecond": 0.7,
     "gcCount": 7,
-    "cdpHeapDeltaBytes": 10134248,
+    "cdpHeapDeltaBytes": 11708048,
     "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
   },
   "drift": {
-    "visitGpuP50DeltaMs": 0.196,
-    "visitWallP95DeltaMs": 0,
+    "visitGpuP50DeltaMs": 0.131,
+    "visitWallP95DeltaMs": 0.1,
     "voidReason": null,
     "admissible": true,
     "inadmissibleReasons": []
   },
   "console": {
     "errorCount": 0,
-    "warningCount": 6
+    "warningCount": 6,
+    "instrumentInducedErrorCount": 0,
+    "genuineErrorCount": 0
   },
   "admissible": true,
   "inadmissibleReasons": [],
   "notes": [
-    "firstFrameGpuCompleteMs is GPU-work completion, not scanout. A page cannot observe presentation.",
+    "firstFrameGpuDoneMs is GPU-work completion for the first frame, not scanout. A page cannot observe presentation.",
+    "allQuiescedGpuDoneMs INCLUDES a 2000-2100 ms compile-quiet wait by construction. It is not a latency; use firstFrameGpuDoneMs for that.",
     "pipelines.asyncSumMs is the sum of per-object awaited compiles (r185 Renderer awaits per object), not a wall-clock.",
     "pipelines.syncRows always carry ms=null: createRenderPipeline returns at once and the GPU process blocks at first draw.",
     "gpuMs is null for a classic THREE.WebGLRenderer: that renderer kind has no timestamp API in 0.185.1 (ADR-0019, ADR-0008).",

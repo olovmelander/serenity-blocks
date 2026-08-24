@@ -587,3 +587,1641 @@ One line each. Themes not in the top 8 get a verdict, not a rewrite.
 - **chromatic-impasto** (GL) — NOT a lava-lake candidate — every one of its 18 GLSL programs is under 40 lines with zero noise and zero fbm, and all 18 are pre-linked inside an awaited init() so there is no sync-pipeline stall at all. It IS a hit-list candidate on GC (getLindstromColor rebuilds a 13-object palette per call at :176, getContrastingColor rebuilds a 5-6 object palette per call at :200, normalizeColor allocates ever
 - **forest** (none) — Clean, and effectively a stub: 43 lines, an empty createScene(), a no-op init(), zero theme-owned shaders and 6 particle draws — the only things worth writing down are the dead particleConfig block and a 326 KB icon that is 99.6% of the theme directory.
 - **cosmic-chimes** (none) — CLEAN — a row and a verdict. Zero GPU renderer, zero materials, zero shaders, and zero per-frame work because the theme has no animation loop at all; the only cosmic-noir-class allocation (getEdgePosition rebuilding an 8-region table, :322) is event-driven, not idle. The single r185 look-better list is empty on purpose: there is no three.js surface here to improve.
+
+---
+
+# PART B — Stage 2: the measured sweep (2026-08-24)
+
+Status: **COMPLETE.** 61 themes measured with the theme perf lane
+([`scripts/lib/theme-perf-instrument.mjs`](../scripts/lib/theme-perf-instrument.mjs)), serially, one
+fresh Electron per theme, **one adapter for the entire run** (RTX 3070 Laptop, `force_high_performance_gpu`).
+Cells: [`reports/theme-perf/`](../reports/theme-perf/), 58 of 61 admissible. Aggregate:
+[`reports/theme-perf/AGGREGATE.md`](../reports/theme-perf/AGGREGATE.md).
+
+Everything above this line is **Part A — the Stage-1 static census**: predictions made from source
+alone, before any measurement. It is left intact rather than edited, so the predictions can be
+scored. §12 scores them. Where Part A and Part B disagree, **Part B is right**.
+
+## What the measurement changed
+
+**1. The root cause is one thing, and Stage 1 could not see it.** Seven of the top ten themes by
+post-switch cost create **zero** async pipelines: stillwater, vesper-chrysalis, lunara,
+fluid-dreams, bioluminescence-2, summer, starlight. In three 0.185.1 the only path that reaches
+`device.createRenderPipelineAsync` is `Renderer.compileAsync`, so a theme that never calls it warms
+nothing at all and pays the entire compile on the GPU at first draw. Plan row **3.1 is the phase**.
+
+**2. stillwater is the fleet's worst theme — and Part A called it "row-and-a-verdict, not a
+hit-list candidate."** 10,421 ms to first frame, 9,705 ms of it after the switch promise has already
+resolved. Part A also called its warm protocol "the template the other 24 MRT themes are missing".
+The protocol is sound for *correctness* and warms nothing: its `usesMrtScenePass()` guard makes the
+`compileAsync` branch unreachable, and its answer to "the bare compile is wrong here" was "then do
+not compile" — when [`post-target-compile.js`](../src/rendering/odyssey/warmup/post-target-compile.js)
+already holds the right answer.
+
+**3. Sync pipeline COUNT is not first-frame cost.** neon-district creates 180 sync pipelines — the
+fleet's most — and reaches its first frame in 1,713 ms, 17th. Only the pipelines the first frame
+actually needs block it; the rest compile later. The themes that block are the ones with **0 async
+and deep first-frame dependencies**, not the ones with the biggest unwarmed set.
+
+**4. The frame-time story is CPU submission, not fill.** Worst idle GPU p95 fleet-wide is 2.42 ms
+against a 9 ms budget, and no theme exceeds 16.67 ms wall. But `perf-budgets.json`
+`split.cpuMaxMs` is 6 and neon-district measures **23.3 ms** idle CPU-submit p95 at 1,856 draws,
+golden-forest 14.3 ms at 1,101 draws.
+
+**5. No lava lakes, confirmed by measurement.** Worst single async pipeline across all 61 themes is
+neon-district at 1,688 ms, then golden-forest 959, koi-pond 600. The Odyssey lake was 7,235 ms.
+Part A's adversarial pass had already demoted 13 of 21 heavy claims; the GPU agrees.
+
+## 10. Method, admissibility, and the instrument-defect record (Stage 2)
+
+### 1. How a cell is produced
+
+Every number in this document comes from one file per theme under `reports/theme-perf/<theme>.json`,
+written by the perf lane of `scripts/capture-theme-screenshots.mjs` and reduced by the two pure
+modules `scripts/lib/theme-perf-instrument.mjs` and `scripts/lib/theme-perf-cell.mjs`. The lane is
+the `--perf` mode of the existing theme-validation harness: in that mode the lifecycle assertions
+are deliberately **skipped** (`capture-theme-screenshots.mjs:1963-1970`), because driving hub cards
+and 104 assertions is the wrong driver for a measurement — it adds hub DOM work and two extra
+switches inside the window.
+
+**Run identity.** All 61 cells carry one `runId` (`2026-08-24T17-00-53-492Z`) and one manifest
+variant, `generatedAt` spanning `17:01:24.006Z` → `17:43:56.068Z` (42.5 min, median 41 s per theme,
+strictly serial):
+
+| Field | Value |
+| --- | --- |
+| Electron / Chrome | `38.8.6` / `140.0.7339.249` |
+| Window | 1920×1080, **shown** (`windowShown: true`) |
+| Pinned quality / target | `High` / 60 fps |
+| Idle window | `idleMs: 10000` (visit 1); visit 2 uses `max(4000, idle/3)` = 4,000 ms |
+| Dawn cache | `cold-per-theme-userdata` |
+| Switches requested | `force_high_performance_gpu`, `force-device-scale-factor=1`, `disable-backgrounding-occluded-windows`, `disable-background-timer-throttling`, `disable-renderer-backgrounding`, `enable-precise-memory-info` |
+| Adapter (probed per cell, identical in all 61) | `{vendor: "nvidia", architecture: "ampere"}`; `webglRendererString: "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)"` |
+
+**One theme, one Electron process, one shader cache.** `validate-all-themes.mjs:548` spawns a fresh
+worker per theme and hands it its own `userData` directory (`:320-322`), which
+`capture-theme-screenshots.mjs:111-114` installs before `app.whenReady()`. A per-theme userData dir
+is a per-theme Dawn shader cache, so every theme's compile figures are cold-cache and comparable
+with each other. A cooldown floor of 8,000 ms separates workers (`PERF_LANE_DEFAULTS`,
+`validate-all-themes.mjs:73`, applied at `:835-844`).
+
+**The instrument is installed before the page's first script.** The app builds a whole theme during
+boot, so an `executeJavaScript` after `loadURL` has already missed a theme's entire pipeline set.
+The bootstrap goes in through CDP `Page.addScriptToEvaluateOnNewDocument`
+(`capture-theme-screenshots.mjs:1649-1667`), which runs in the **main** world at document start. A
+`preload` cannot substitute: the worker sets `contextIsolation: true`, and an isolated world has its
+own copies of the built-in prototypes, so a `GPUDevice.prototype` patch there is invisible to page
+code (`theme-perf-instrument.mjs:10-16`). After navigation the worker asserts
+`!!window.__THEME_PERF__` and throws if it is false (`capture-theme-screenshots.mjs:1944-1947`) —
+an instrument that half-installed would publish silently partial pipeline counts rather than none.
+
+What the bootstrap installs: a `GPUDevice.prototype` hook on **both** pipeline creation paths
+(`theme-perf-instrument.mjs:79-106`), a `HTMLCanvasElement.getContext` census (`:110-115`), a
+`longtask` observer (`:118-126`), and theme/renderer traps armed from
+`src/themes/base-theme.js:296-303` (before `createScene`, where the renderer and the first pipelines
+are built) and `:434-437` (disarm before dispose collects in-flight resolves).
+
+**The two visits.**
+
+| Step | Where | Notes |
+| --- | --- | --- |
+| Pins injected and made observable | `buildPinSource`, `capture:1745-1751` | quality, targetFrameRate, adaptiveResolution/dynamicResolution off |
+| Park on the anchor theme, settle 4,000 ms | `capture:264, 1754-1762` | anchor is `forest`, or `mountain` when the target *is* forest, so the target is never the boot theme |
+| CDP `HeapProfiler.collectGarbage` + heap bracket | `capture:1764-1766` | cross-check on the in-page 250 ms sampler |
+| **Visit 1** — the measured one, 10,000 ms idle | `buildPerfVisitSource` | the cold-in-process build |
+| Return to anchor, settle 4,000 ms | `capture:1785-1792` | |
+| **Visit 2** — 4,000 ms idle | `capture:1793-1804` | exists for the content guard and the drift bound **only**; never averaged with visit 1 |
+| Adapter probe | `capture:1806, PERF_ADAPTER_SOURCE:1710-1730` | `requestAdapter` is GPU work, so it runs at collection time, never inside a window |
+
+Inside a visit (`theme-perf-instrument.mjs:357-556`): marks/pipes/rings are cleared, `t0_requested`
+is taken, and `manager.switchTheme(id, true)` is called **directly** rather than through a hub card
+(`:380-384`) — the card path adds hub DOM construction and a settle poll to the measured interval
+and reaches the same manager entry point anyway. Then `whenCriticalReady()`, the first-frame fence,
+the compile-quiet loop, the quiesce fence, a 4,000 ms settle, and only then
+`window.__THEME_PERF_RESET__()` (`:479`) — which **discards the compile window from the idle rings**,
+because a cold compile is a real cost but a startup cost, and averaging it into steady state hides
+both.
+
+**What is pinned, and that the pin is observed rather than assumed.** `buildPinSource`
+(`:561-588`) sets `effectQuality`/`graphicsQuality` = `High`, `targetFrameRate` = 60, and
+`adaptiveResolution`/`dynamicResolution` = false, then installs `window.__THEME_PERF_PINS__()`
+returning `{quality, targetFrameRate, devicePixelRatio, rendererPixelRatio}`. The visit samples it
+at both ends of the idle window (`:486`, `:488`) and `pinsBrokenReason` (`:776-787`) names the pin
+that moved. Observed values: `rendererPixelRatio` 1.0 on 45 cells, `null` on the 9 themes with no
+three renderer, and seven themes that run their own sub-unity scaler —
+`chromadelic-highway` 0.68, `ice-temple` 0.60, `lunara` 0.62, `sky-children` 0.99,
+`stellar-drift` 0.7135, `stellar-velocity` 0.7394 (all stable across the window), and `neon-dusk`
+0.85 → 0.80 (not stable; see §3). A stable sub-unity ratio is a property of the theme, recorded and
+admissible; a *moving* one voids the timing.
+
+**The content guard.** `contentMismatch` (`:762-774`) is the verbatim rule from
+`odyssey-gpu-split.mjs`: draw calls must match **exactly** and triangles within 2 %. It is applied
+between visit 1 and visit 2 in `buildThemePerfCell` (`theme-perf-cell.mjs:90-118`). A guard that
+passes on 0 draws vs 0 draws is not a guard, so 0 draws voids it with a reason rather than passing.
+27 of 61 cells matched exactly. 34 voided, in two classes: 9 themes own no three renderer at all
+(`"theme owns no three renderer — nothing to content-match"`) and 25 have a draw count that varies
+with time — `ocean` 393 vs 389, `ice-temple` 341 vs 344, `bioluminescence` 227 vs 224,
+`golden-forest` 1101 vs 1171, `neon-district` 1856 vs 1617, down to `waves` 18 vs 2. Two structural
+reasons for those, both honest: visit 2's idle window is 4,000 ms against visit 1's 10,000 ms, so a
+different slice of an animation is sampled; and several themes stream content in lazily. A mismatch
+**voids the differential only** and leaves the single-visit timings standing (`:107-115`) — switch
+wall clock and pipeline compiles never depended on visit 2.
+
+**The drift figure.** `drift.visitGpuP50DeltaMs` / `visitWallP95DeltaMs` are `|visit2 − visit1|`,
+published only where the content matched. Across the 36 cells with an admissible differential the
+worst GPU p50 drift is **0.197 ms** (three GPU quanta) and the worst wall p95 drift is **7.4 ms**.
+Where content did not match, both fields are `null` beside a `voidReason` naming the mismatch.
+
+**Every page-side await is bounded.** `bounded()` (`:363-366`) races each promise against a sleep;
+`stage()` (`:368`) writes progress to `window.__THEME_PERF_STAGE__`, which the worker reads back
+after any timeout (`capture:1684-1694`) so a hang reports *where* it hung. The caps: `switchTheme`
+120 s, `whenCriticalReady` 60 s, first-frame fence 60 s, quiesce fence 30 s, compile-quiet loop
+90 s, and the worker's own backstop `idleMs + settleMs + 200_000`. The reason is recorded in the
+source itself: an unbounded page-side await cannot fail — it hangs until the orchestrator kills the
+worker, which loses the whole report. That is exactly how the first smoke run was lost (§4a).
+
+### 2. What each timing field brackets
+
+All marks are relative to `t0_requested`, taken immediately before `switchTheme` is called.
+
+| Field | Ends at | What is inside it |
+| --- | --- | --- |
+| `switchWallMs` | `t4_startResolved` — the `switchTheme()` promise resolved | Scene construction and whatever the theme awaits before resolving. Nothing GPU-fenced. |
+| `criticalReadyMs` | `t5`, after `theme.whenCriticalReady()` | Theme's own readiness contract, where it has one. |
+| `firstRenderCallMs` | `t6`, first wrapped `render`/`renderAsync` entry | |
+| **`firstFrameGpuDoneMs`** | `t6b_firstFrameGpuDone` — a GPU fence taken **immediately after the first render call, before the compile-quiet loop** (`:404-429`) | switch + the first frame's GPU work. **No wait of the lane's own.** This is the player-facing latency and the field the ranking uses. |
+| `allQuiescedGpuDoneMs` | `t7_firstGpuWorkDone` — a second fence **after** the compile-quiet loop (`:432-468`) | switch + time until pipeline creation stops + **a 2,000–2,100 ms quiet wait by construction** + GPU drain. Answers "when did this theme stop creating pipelines and finish them". **Not a latency.** |
+| `firstFrameRafMs` | `t8`, first rAF after `t7` | |
+
+The compile-quiet loop polls `S.pipes.length` every 100 ms and breaks only once 2,000 ms have
+elapsed with no new pipeline (`:432-439`), capped at 90 s. Every cell carries `quietWaitFloorMs:
+2000` beside the field (`:690`) so the floor never has to be rediscovered. The floor is directly
+visible in the data: `allQuiescedGpuDoneMs − firstFrameGpuDoneMs` ranges **2,002.3 ms → 7,715.2 ms**
+across 61 cells, median **2,088.3 ms**. The cleanest demonstration is a theme that creates no
+pipeline at all — `forest`, a 24.3 ms switch, reports `allQuiescedGpuDoneMs: 2104.3`. Quoting that
+as a latency would charge the theme 2.1 s of the lane's own waiting.
+
+**Neither field is scanout.** Both are GPU-work-completion fences: `queue.onSubmittedWorkDone()` on
+a WebGPU backend, `fenceSync` + polled `clientWaitSync` on a classic renderer. A page cannot observe
+presentation, and the cell says so in `notes[0]` (`theme-perf-cell.mjs:17`). Compositing, the
+present queue and the panel's own scanout are all downstream and unmeasured.
+
+**The fence method is recorded per cell, and it changes what the field means.** Across the run:
+`queue.onSubmittedWorkDone` on 32 cells, `fenceSync` on 20, and **`no-gpu-context` on 9**. For those
+nine (the themes that own no three renderer — `aether-tides`, `chromatic-impasto`, `cosmic-chimes`,
+`forest`, `moonlit-greenhouse`, `mountain`, `nebula-flow`, `void-ember`, `voltage-storm`) the probe
+found nothing to fence and the mark was taken immediately, so `firstFrameGpuDoneMs` lands within
+0.2 ms of `switchWallMs` (`forest` 24.3/24.3, `aether-tides` 241.3/241.3). Read those as "the switch
+resolved", never as a GPU latency. `firstFrameGpuDoneMethod` is the tell, and it is in every cell.
+
+Two further fields whose names could mislead, documented in the cell's own `notes`:
+`pipelines.asyncSumMs` is the **sum** of per-object awaited compiles (r185's
+`Renderer._createObjectPipeline` queues work items for sequential execution,
+`three/src/renderers/common/Renderer.js:3752-3765`), not a wall-clock; and `pipelines.syncRows`
+always carry `ms: null`, because `createRenderPipeline` returns before the GPU compiles and the GPU
+process blocks at first draw, so any duration measured around the call is a lie
+(`theme-perf-instrument.mjs:100-105`).
+
+### 3. Admissibility
+
+`buildThemePerfCell` (`theme-perf-cell.mjs:39-155`) computes `admissible` as an AND over guards and
+names **every** failed guard in `inadmissibleReasons`, so a reader never infers why a cell is
+unusable. A `null` never travels alone; it always has a `*Reason` sibling.
+
+A cell is admissible only if all of these hold:
+
+1. Visit 1 produced a payload (`:48-61`).
+2. The pins held: `quality`, `targetFrameRate`, `devicePixelRatio` and `rendererPixelRatio` are
+   identical at both ends of the window (`:63-64`).
+3. At least one wall-frame sample in the idle window (`:66-68`).
+4. If `renderer.kind === 'WebGPURenderer'`, at least one **resolved** GPU timestamp sample
+   (`:72-76`).
+5. No sticky-sampler signature — GPU samples must be fewer than lane frames (`:77-79`). In this run
+   samples ran 291–1,198 against up to 1,326 frames; `stickySamplerSuspected` is false in all 61.
+6. No **genuine** console error. Errors the lane itself causes are separated, not swallowed:
+   arming `trackTimestamp` makes three resolve timestamp queries, and a teardown with a resolve in
+   flight loses the buffer, so three logs the rejection from a code path that does not exist without
+   the lane (`capture-theme-screenshots.mjs:74, 2038-2062`). This run recorded **0** instrument-
+   induced and **0** genuine console errors.
+7. A second visit ran (`:116-118`).
+
+**What explicitly does not disqualify a cell.** A classic `THREE.WebGLRenderer` has no timestamp API
+in 0.185.1, so its `gpuMs` is null with the reason `classic-webgl-renderer-has-no-timestamp-api` —
+a property of the renderer **kind**, not a defect and not debt (ADR-0019, ADR-0008); 20 cells.
+A theme that owns no three renderer draws nothing by design; 9 cells, admissible, with the content
+guard voided by reason. A theme that owns `Info` (`autoReset = false` and manual resets) is recorded
+as `content.infoOwnership: "contested"` — provenance, not fault. And a content mismatch voids the
+differential only.
+
+**The three inadmissible cells (58 of 61 admissible):**
+
+| Theme | `inadmissibleReasons` (verbatim) | What it means |
+| --- | --- | --- |
+| `stillwater` | `no GPU timestamp samples (no-resolved-timestamp-in-window)` | `WebGPURenderer`, `trackTimestampArmed: true`, pins held, 1,310 lane frames — and `idle.gpuMs.samples: 0`. The theme manages timestamps itself; the standing hypothesis is that it consumes the resolve first, leaving `info.render.timestamp` at 0 when the lane reads it. **That is a hypothesis, not a measurement.** Its switch timings are in the cell (`firstFrameGpuDoneMs: 10421`) and are quoted only as measured-but-inadmissible. |
+| `stellar-velocity` | `no GPU timestamp samples (no-resolved-timestamp-in-window)` | Same shape: 1,311 frames, 0 samples, pins held (its own stable 0.7394 pixel ratio). Same hypothesis, equally unconfirmed. |
+| `neon-dusk` | `pins: rendererPixelRatio moved 0.85 -> 0.7999999999999999 during the window` | Adaptive resolution engaged **despite** the pin source setting `adaptiveResolution: false` and `dynamicResolution: false` (`theme-perf-instrument.mjs:565-566`). Its GPU series is otherwise healthy (664 samples, p50 0.655, p95 0.852 ms) but the two ends of the window are not the same configuration, so the timing is disqualified. That the pin did not hold is itself a finding: this theme's scaler does not read those settings keys. |
+
+### 4. Defect record — five bugs the lane's own measurements caught
+
+Recorded because each was a **class** of error, not a typo, and because the lane's whole claim to be
+trusted rests on ADR-0016's first requirement: the instrument is verified.
+
+**(a) A CDP call that hangs forever on a window that has never navigated.** `debugger.sendCommand`
+never answers before the first navigation — there is no renderer process to reply — so the lane hung
+before it measured anything and died to the orchestrator's worker timeout with no report at all.
+Cost: **two silent 13-minute worker-timeout kills** (commit `b4b7c9cc`). The trap was already
+documented in this repo: `scripts/odyssey-perf-session.mjs:377-381` works around it by attaching on
+`'did-navigate'` — which is too late here, since the bootstrap must be registered before the app's
+first script. Fix: `loadURL('about:blank')` first to get a live renderer, then attach and register;
+`addScriptToEvaluateOnNewDocument` persists across the navigation that follows
+(`capture-theme-screenshots.mjs:1657-1666`). *Class:* an unbounded await in the harness — the one
+failure mode that destroys the evidence instead of producing a wrong number. Consequence: every
+page-side await is now bounded and stage-labelled, and `perfLog` (`:1669-1673`) puts progress on
+stdout so a hang names where it hung.
+
+**(b) The theme manager resolved at the wrong global.** The lane guessed `window.themeManager`. It
+is `window.serenityBlocks.themeManager` — which the worker's **own** bootstrap already resolves
+correctly at `capture-theme-screenshots.mjs:412`, 1,300 lines above the lane code that got it wrong
+(`b4b7c9cc`). *Class:* guessing an API that the same file already had right.
+
+**(c) Info ownership sat behind a guard requiring `renderer.backend`.** `ownInfo` — the wrapped
+`info.reset` that tells `countAround` which read is valid — was below a guard reading
+`renderer.backend`. A classic `THREE.WebGLRenderer` has no `.backend` at all, so `armWhenReady`
+retried for 600 frames and gave up: the reset wrapper was never installed and **the lane never armed
+for 20 themes** (`d0140dc4`). It also explains a second symptom nobody had connected — those cells
+carried a `null` `timestampUnavailableReason`, because that string is assigned inside the same block
+that never ran. Fix: ownership first, backend-specific arming second
+(`theme-perf-instrument.mjs:171-194`), pinned by a test asserting `ownInfo` precedes the backend
+read.
+
+**(d) The two renderer kinds do not name the draw counter the same thing.** Classic
+`WebGLInfo.render` exposes `calls` and has **no** `drawCalls`
+(`three/src/renderers/webgl/WebGLInfo.js:10-16`); r185's `common/Info.render` has both
+(`three/src/renderers/common/Info.js:67-75`). Reading `drawCalls` returned `undefined`,
+`S.frameDraws += undefined` made it `NaN`, and `NaN > 0` is `false` — so the accumulator was never
+pushed and **20 cells silently published a null draw count** (`cccafbd9`). Silent precisely because
+`NaN` fails a comparison rather than throwing. Fix: `S.drawsOf` reads the field the renderer
+actually has (`:268`) and a `Number.isFinite` guard on the accumulate (`:282-283`) stops any future
+non-finite read from poisoning it into silence the same way.
+
+(c) and (d) were the second and third attempts at the same field. The first (`4a3c8e0b`) fixed the
+*arithmetic* — classic resets `Info` at the top of every `render()`
+(`three/src/renderers/WebGLRenderer.js:1702`) so the post value **is** that call's count, while
+`WebGPURenderer` resets only from three's own animation loop
+(`three/src/renderers/common/Animation.js:75`), which most themes bypass with their own rAF, so
+there the delta is correct — without first checking whether the code computing it ran. It did not.
+
+**(e) A mark named `firstFrameGpuComplete` that was taken after the lane's own 2-second wait.** `t7`
+is marked *after* the compile-quiet loop, so the field bracketed
+`switch + time-until-pipeline-creation-stops + 2,000–2,100 ms + GPU drain` — and it had already been
+quoted as "total time to first GPU frame". Every such total carried a ≥2 s floor of the lane's own
+waiting. Caught by a reader of `stillwater`'s cell noticing the name could not mean what it said
+(`a9677376`). Fixed by splitting into two marks rather than caveating one: `firstFrameGpuDoneMs`
+fenced immediately after the first render call, and `allQuiescedGpuDoneMs` honestly named with
+`quietWaitFloorMs: 2000` recorded beside it. The relative ranking of the slowest themes survived the
+correction; the absolute numbers did not, and neither did the label.
+
+**The lesson, stated plainly.** ADR-0016 requires that anything presented as a number came from an
+instrument someone checked. This lane satisfied the *sampling-discipline* half of that from day one:
+GPU samples pushed once per resolved query with an epoch guard
+(`theme-perf-instrument.mjs:288-303`), because `Info.reset()` clears `drawCalls`/`triangles` but
+deliberately not `render.timestamp` (`three/src/renderers/common/Info.js:187-198`) — the exact
+dwell-weighted-sampler failure ADR-0016 was written about — plus a sticky-sampler detector and the
+65.536 µs quantum carried in every cell. It still shipped five bugs, and the split between them is
+the point:
+
+- **(a)–(d) were each settled by evidence already in reach**: one grep of three's source
+  (`WebGLInfo.js`, `common/Info.js`, `WebGLRenderer.js:1702`, `common/Animation.js:75`) or one grep
+  of this repo's own comments (`odyssey-perf-session.mjs:380`, `capture-theme-screenshots.mjs:412`).
+  None needed a GPU, a rerun, or a debate. Each survived to a measurement only because its failure
+  was *quiet*: a `NaN` that fails a comparison, a guard that retries and gives up, a CDP call that
+  never answers.
+- **(e) is ADR-0016's exact failure mode applied to a field name.** The instrument was verified, the
+  content guard was verified, the pins were observed — and then a number was published without
+  anyone checking what its mark bracketed. Verifying the instrument includes verifying the *label*.
+  A mark whose name does not match its endpoints is how a wrong number gets quoted as fact.
+
+The operational residue is in the data shape, not in prose: nulls carry reasons, `quietWaitFloorMs`
+ships inside every cell, `firstFrameGpuDoneMethod` says how the fence was taken, and
+`tests/unit/theme-perf-instrument.test.js` pins 34 of these behaviours — including
+"fences for the first frame BEFORE the compile-quiet wait", "reads the counter field each renderer
+kind actually exposes", and "owns Info before the backend guard, so a classic renderer is not
+skipped".
+
+### 5. What is not measured, and what another pass would need
+
+- **Per-pass GPU split — unmeasured.** `idle.gpuMs` is one timestamp per resolved `'render'` query:
+  a whole-frame figure. Nothing in these cells separates scene from post-processing, bloom, or any
+  individual pass. `renderer.usesMrtScenePass` is *recorded* per cell
+  (`theme-perf-instrument.mjs:550`) but never costed. The Odyssey lane's per-pass technique
+  (`scripts/odyssey-gpu-split.mjs`) has not been pointed at themes; doing so is a separate pass with
+  its own content guard.
+- **Lane B — unmeasured, by construction of this run.** `force_high_performance_gpu` is appended
+  whenever the lane is enabled (`capture-theme-screenshots.mjs:105`), specifically because without
+  it Electron lands on this machine's integrated part. The per-cell adapter probe returned the same
+  NVIDIA/ampere RTX 3070 Laptop GPU in **all 61** cells, so this sweep says nothing whatsoever about
+  the integrated adapter — where the CPU-submit breaches and the sync-pipeline stalls would both be
+  expected to look different. The theme lane has **no `--low-power` switch at all** (neither
+  `capture-theme-screenshots.mjs` nor `validate-all-themes.mjs` contains one), so Lane B needs a new
+  flag plus a full rerun, not a re-read.
+- **Cold vs warm Dawn cache — only the cold half exists.** Each worker got its own userData
+  directory, stamped in every manifest as `dawnCache: "cold-per-theme-userdata"`. That is exactly
+  what makes the 61 compile figures comparable *with each other*, and it also means every one of
+  them is a first-ever compile. What a player gets on a second launch — a warm Dawn cache — is
+  unmeasured, and the sync-pipeline finding in particular could land very differently there.
+- **Repeat switching within a process — unmeasured.** Visit 2 exists for the content guard and the
+  drift bound and runs a shorter (4,000 ms) idle window; it is never averaged with visit 1 and is
+  not a "warm switch" measurement.
+- **A manifest gap worth closing:** `idleMs`, `quality` and `targetFps` are stamped in every cell's
+  manifest, but `settleMs` is not — it is the lane default of 4,000 ms
+  (`validate-all-themes.mjs:68-76`) and has to be read from the source rather than the data.## 11. The fleet-wide levers, measured
+
+Stage 1 (§6 as it stood) was a static census: counts and structure, never milliseconds. This section
+replaces it with the measured run. Everything below is quoted from `reports/theme-perf/<theme>.json`
+or from a file:line that was read. Where a number does not exist, it says **unmeasured**.
+
+**The run.** 61 cells, **58 admissible, 3 inadmissible** (kept and marked — `AGGREGATE.md:3`).
+**One adapter across all 61**: `adapter.plain = {vendor:"nvidia", architecture:"ampere"}`,
+`adapter.webglRendererString = "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD)…)"`.
+Every cell carries the same pins: `quality "High"`, `targetFps 60`, `windowPx 1920×1080`,
+`idleMs 10000`, `dawnCache "cold-per-theme-userdata"`, and
+`manifest.requestedSwitches` containing `force_high_performance_gpu`.
+
+> **`perf-budgets.json:39` is now stale and should be corrected.** Its `heavyThemeWorstNote` warns
+> "the theme harness passes no `force_high_performance_gpu`, so it lands on this machine's Radeon
+> Vega 8 (Lane B)". It does pass it, and all 61 cells landed on the RTX 3070. **This is a Lane A
+> run.** Plan item 4.0 (recover Lane B) is untouched by it — fill cost is still unpriced.
+
+**Read these three metric names exactly; one of them was corrected late.**
+
+| field | what it brackets |
+|---|---|
+| `switchWallMs` | `switchTheme()` requested → its promise resolved |
+| `firstFrameGpuDoneMs` | GPU work for the **first frame** finished (`queue.onSubmittedWorkDone` / `fenceSync`, `theme-perf-instrument.mjs:405-429`). **This is the player-facing latency.** |
+| `allQuiescedGpuDoneMs` | includes a **2,000–2,100 ms compile-quiet wait by construction** (`:432-438`; `quietWaitFloorMs` is recorded in every cell). **Never quote it as a latency.** |
+
+"**after**" below always means `firstFrameGpuDoneMs − switchWallMs` — the stall a player sees *after*
+the switch has already reported success. `criticalReadyMs − switchWallMs` is ≤ 0.1 ms in every cell,
+so that gap is not theme JS finishing: it is the GPU fence.
+
+---
+
+### 11.1 (plan 3.1) — 1,457 of the fleet's 1,703 render pipelines are created **synchronously**. This is the whole phase.
+
+Plan 3.1 was written as a fix for 20 bad call sites. The measurement says it is bigger and simpler
+than that: **most of the fleet warms nothing at all.**
+
+Fleet totals across the 61 cells: **1,703 render pipelines, 1,457 synchronous (85.6 %), 246
+asynchronous, 0 failed.** Only **12 themes** reach `createRenderPipelineAsync` even once. **21 cells
+create GPU render pipelines and not one of them asynchronously.**
+
+**The mechanism, verified in the pinned source.** `Renderer._compilationPromises` is `null` by
+default (`Renderer.js:662`) and is set to an array in exactly one place — inside `compileAsync`
+(`Renderer.js:884`, assigned `:921`). `_createObjectPipeline` only queues work when it is non-null
+(`:3751-3755`) and hands it to `this._pipelines.getForRender(renderObject, this._compilationPromises)`
+(`:3785`). The backend then branches on that one argument:
+
+```
+WebGPUPipelineUtils.js:261   if ( promises === null ) {
+WebGPUPipelineUtils.js:263       pipelineData.pipeline = device.createRenderPipeline( … );   // ms: null
+WebGPUPipelineUtils.js:292       pipelinePromise = device.createRenderPipelineAsync( … );   // timed
+```
+
+So `Renderer.compileAsync` is the **only** path in 0.185.1 that reaches the async entry point. A
+theme that never calls it creates every pipeline through `:263`, where the call returns immediately
+and the GPU process blocks at first draw. The instrument records this honestly rather than guessing:
+`pipelines.syncRows` always carry `ms: null` (`theme-perf-instrument.mjs:103`, and the note in every
+cell). **A sync pipeline's cost is not zero — it is unattributable per pipeline, and it lands
+whole in the after-gap.**
+
+**The measured proof is the after-gap.** Every zero-async cell that creates pipelines, ranked:
+
+| theme | sync pipes | `switchWallMs` | `firstFrameGpuDoneMs` | **after** | ms per sync pipe |
+|---|---:|---:|---:|---:|---:|
+| stillwater ✗ | 58 | 716.4 | 10,421.0 | **9,704.6** | 167.3 |
+| vesper-chrysalis | 103 | 712.6 | 6,350.1 | **5,637.5** | 54.7 |
+| lunara | 73 | 979.3 | 6,173.3 | **5,194.0** | 71.2 |
+| fluid-dreams | 14 | 409.1 | 3,807.0 | **3,397.9** | 242.7 |
+| bioluminescence-2 | 174 | 496.0 | 3,628.4 | **3,132.4** | 18.0 |
+| summer | 121 | 421.4 | 3,543.3 | **3,121.9** | 25.8 |
+| starlight | 14 | 379.3 | 3,180.1 | **2,800.8** | 200.1 |
+| sky-children | 34 | 602.5 | 2,559.3 | **1,956.8** | 57.6 |
+| halcyon-apex | 62 | 751.9 | 2,450.5 | **1,698.6** | 27.4 |
+| black-hole | 21 | 357.1 | 1,445.9 | **1,088.8** | 51.8 |
+| neon-dusk ✗ | 28 | 573.9 | 1,401.6 | **827.7** | 29.6 |
+| electric-dreams-v3 | 11 | 341.2 | 1,121.1 | **779.9** | 70.9 |
+| synthwave-sunset | 23 | 377.6 | 1,095.1 | **717.5** | 31.2 |
+| astral-weave | 27 | 280.4 | 984.5 | **704.1** | 26.1 |
+| himalayan-peak | 14 | 350.5 | 938.9 | **588.4** | 42.0 |
+| serenity-warp | 46 | 314.2 | 779.4 | **465.2** | 10.1 |
+| winter | 26 | 398.5 | 589.7 | **191.2** | 7.4 |
+| shifting-sands | 18 | 258.8 | 404.3 | **145.5** | 8.1 |
+| verdant-hills | 6 | 262.7 | 342.7 | **80.0** | 13.3 |
+| tornado | 11 | 163.7 | 234.7 | **71.0** | 6.5 |
+| void-ember | 7 | 222.5 | 222.6 | **0.1** | 0.0 |
+
+✗ = inadmissible cell (reason in §6.6). void-ember reports `renderer.kind: null` and still creates
+7 render pipelines.
+
+**Seven of the ten worst themes by post-switch cost are in that table.** stillwater, vesper-chrysalis,
+lunara, fluid-dreams, bioluminescence-2, summer and starlight have **zero** async pipelines between
+them, and between them they carry **33.0 s of after-gap**. One root cause, one fix.
+
+Note the last column: the cost is **not** pipeline count. bioluminescence-2 pays 3,132.4 ms for 174
+pipelines (18.0 ms each); fluid-dreams pays 3,397.9 ms for **14** (242.7 ms each) and starlight
+2,800.8 ms for **14** (200.1 ms each). Counting materials predicts nothing. Only timing the compile
+does — which is precisely what the sync path forbids.
+
+**The 12 themes that do call `compileAsync` are exactly the 12 themes with a call site.** Grep of
+`src/themes/` + `src/playground/effects/` finds bare whole-scene calls in 14 themes:
+`golden-forest-theme.js:965`, `koi-pond-theme.js:461`, `ice-temple-theme.js:1353` and `:1667`,
+`neon-district-theme.js:1149`/`:1172`/`:4123`/`:4179`/`:4800`, `ocean-theme.js:1291`/`:1376`,
+`stellar-drift-theme.js:2067`, `stellar-velocity-theme.js:2006`, `chiral-gold-theme.js:825`,
+`chromadelic-highway-theme.js:1869`, `cosmic-noir-theme.js:1855`, `wolfhour-theme.js:3279`,
+`moonlit-forest-theme.js:352`, `black-hole-theme.js:3425`, `stillwater-theme.js:1174`.
+The measured async set is those 14 **minus black-hole and stillwater** — the two that guard the call
+off. `black-hole-theme.js:3422` takes the `postProcessing.render()` branch instead
+(`:3417-3420` explains why: a bare compile on the MRT path yields `targets[1] has no fragment output`
+and poisons the cache); `stillwater-theme.js:1172` gates on `if (!usesMrt)` and warms with a real
+runtime render. **Both are right about the hazard and both pay for it**: black-hole 21 sync pipes /
+1,088.8 ms after, stillwater 58 / 9,704.6 ms. They are the clearest argument in the run that the
+answer is not "call compileAsync" but "call it **bound to the target the theme actually renders
+into**" — which is the recipe.
+
+**The wasted-context signature.** Themes that call the bare form still create large numbers of sync
+pipelines alongside their async ones — ocean 51 async / **76 sync**, neon-district 34 / **180**,
+golden-forest 30 / **106**, ice-temple 11 / **28**. That is what the builder-state cache key predicts:
+`RenderObject.getMaterialCacheKey` (`RenderObject.js:730`) appends `this.context.id`
+(`RenderObject.js:840`), and contexts are keyed by attachment formats, so a canvas-bound compile
+builds states the post pass never looks up and the scene pass then rebuilds its own synchronously.
+**The one theme where async dominates is the one with a near-zero after-gap:** moonlit-forest,
+**29 async / 9 sync, after = 46.0 ms** — the fleet's existence proof. (Its switch is still 2,269.4 ms,
+because it uses the bare form; the recipe is what moves that too.) This is a *signature*, not proof;
+the discriminating experiment is one bound compile on ocean or golden-forest and a re-count of
+`pipelines.syncCount`.
+
+**And it is per switch, forever.** Every cell visits its theme twice in the same process. The second
+visit re-creates the **same pipelines**: golden-forest 106 sync / 30 async both times, koi-pond 41/35,
+bioluminescence-2 174/174, vesper-chrysalis 103/103, lunara 73/73. `switchWallMs` falls on re-entry
+(koi-pond 6,141.6 → 2,621.4; golden-forest 4,017.5 → 2,192.8 — Dawn's shader cache, not three's
+pipeline cache), but the pipeline objects are rebuilt every time. **3.1 is not a boot-time saving.
+It is paid back on every switch a player ever makes.**
+
+#### What `post-target-compile.js` offers, and what a theme must hand it
+
+`src/rendering/odyssey/warmup/post-target-compile.js` is **782 lines with zero imports** and is
+entirely duck-typed — it touches only renderer/target/scene-graph shapes. It is importable from
+`src/themes/` as-is; nothing about it is Odyssey-specific.
+
+Three entry points:
+
+- **`compileGroupThroughPost` (`:259`)** — the front door.
+  `(renderer, postProcessingStack, scene, camera, group, renderLoopActive = false, options = {})`.
+  It computes `postActive = !!postProcessingStack?.scenePass?.renderTarget` (`:269`), binds the
+  scene-pass target + MRT and **holds the binding across the entire await**, then restores when the
+  last pooled compile resolves. The header (`:15-28`) records why the r181 bind→launch→restore shape
+  is unsafe on r185: `compileAsync`'s builds are deferred and each reads the *live* `getMRT()` at
+  build time, so restoring early poisons the cache with single-output shaders. With a live render
+  loop **and** post active it refuses and returns `false` (`:268-271`) unless `options.live` routes
+  it to the live-loop path. Its own comment at `:282-291` carries the argument-order trap:
+  `compileAsync(objectToCompile, camera, targetScene)` — **first** arg projected into the render
+  list, **third** supplies lights/background. Ten of the fleet's bare sites pass `(scene, camera)`,
+  which is the whole-scene walk.
+- **`compileObjectsFannedOut` (`:462`)** — the bounded pool underneath it. Traverses the group,
+  buckets renderables by material uuid + `receiveShadow` + vertex-attribute signature, gives
+  instanced / batched / skinned objects their own bucket (`:485-497`, because three keys builder
+  state on the object there), and compiles one representative per bucket at
+  `DEFAULT_COMPILE_CONCURRENCY = 6` (`:420`). The comment at `:440-447` is a measured warning in both
+  directions: collapsing 40 instanced chunks to one call moved 39 node builds onto the first frames
+  (load p99 344 → 2,820 ms); compiling all 50 objects individually cost ~22 ms of overhead per
+  cache-hit call. **This is the piece that turns "94 materials" into a handful of real compiles.**
+- **`compileGroupUnderLiveLoop` (`:764`)** — for warming after the loop is already running. Binds
+  nothing across a yield: the scene-pass binding answers the drained builds' target/MRT *reads*
+  through instance accessors (`beginLiveCompileReads:594`, `launchCompileInScenePassPrologue:708`),
+  suspended for the synchronous extent of every render.
+
+**What a theme must pass.** Only two things it does not already have:
+
+1. **`scene`, `camera`, and a `group`** — a group is any object with `traverse`; the whole
+   `theme.scene` is legal (`:479-482` falls back to a single call when `traverse` is absent).
+2. **A post stack exposing `scenePass.renderTarget`** (and, for the live path, `scenePass.getMRT?.()`).
+   This is the only real adaptation, and it is naming, not capability: the property is
+   `postProcessing` in 29 theme files, `post` in 7, `postComposer` in 2 — the exact set
+   `base-theme.js:796-801` already enumerates for disposal. A `BaseTheme.getPostStack()` of ~6 lines
+   returning the first of those that is non-null makes every theme callable. **This is the whole of
+   the 3.1 adaptation cost.**
+
+---
+
+### 11.2 (plan 3.4) — the theme-manager's own bare whole-scene compile, `theme-manager.js:1362`
+
+```js
+// theme-manager.js:1358    // Final compile sweep for stragglers.
+// theme-manager.js:1359    if (typeof theme.renderer?.compileAsync === 'function' && theme.scene && theme.camera) {
+// theme-manager.js:1362        Promise.resolve(theme.renderer.compileAsync(theme.scene, theme.camera)),
+// theme-manager.js:1363        3000,
+```
+
+It is the bare whole-scene form — `(scene, camera)`, no third argument, no target bound — fired from
+outside the theme, after `postWarmFrames` have already run (`:1348-1356`), i.e. **while the loop is
+live and post is active**. That is exactly the case `compileGroupThroughPost` refuses at
+`post-target-compile.js:268-271`, for the reason its header documents at `:29-38`: binding a shared
+scene-pass target while the loop renders aliases its `output` texture as both sampled binding and
+render attachment and permanently poisons the device.
+
+**Measured additions from this run:**
+
+- **The `usesMrtScenePass()` guard the plan asks for would not fire.** `base-theme.js:403` returns
+  `false`, and **stillwater is the only theme in the fleet that overrides it**
+  (`stillwater-theme.js:1158`). The cell field confirms it: `renderer.usesMrtScenePass` is `true` in
+  exactly one of 61 cells and `false` in the other 60 — that `false` is the base-class default, not a
+  probe. So `:1362` runs on every MRT theme today, and adding the guard as written would change
+  nothing until the themes implement the override. **Both halves have to land.**
+- **It overrides the two themes that deliberately opted out.** black-hole (`:3422`) and stillwater
+  (`:1172`) skip their own compile on the MRT path with a documented cache-poisoning reason; the
+  manager then fires the bare sweep at them from outside.
+- **The 3 s race bounds only the wait, and this run shows what outlives it.** neon-district's largest
+  single async pipeline is **1,687.9 ms** and its `asyncSumMs` is **2,840.7 ms** — against a
+  `firstFrameGpuDoneMs` of **1,712.5 ms**. Since r185 awaits per object, the sum is a lower bound on
+  that call's wall time, so **most of neon-district's async compile is still running after the frame
+  the player is already looking at**, under a live loop, with the timeout long since expired.
+  `Renderer.js:1015-1032` has no cancellation token and retains the renderer plus every object,
+  material and geometry in the list.
+
+**Verdict for 3.4: promote it above 3.1's per-theme work, or land it in the same change.** It is an
+`S`, it is a single call site, and until it is gone every theme that adopts the bound recipe still
+gets an unbound whole-scene sweep fired at it afterwards from the manager.
+
+---
+
+### 11.3 (plan 3.3) — `init()` as a device-free prebuild stage; koi-pond is the sharpest case
+
+koi-pond is the only theme in the fleet whose cost is **inside the switch**:
+
+```
+koi-pond   switchWallMs 6,141.6   firstFrameGpuDoneMs 7,168.7   after 1,027.1
+           asyncCount 35   asyncSumMs 5,284.2   asyncMaxMs 600.2   syncCount 41
+```
+
+**6,141.6 of 7,168.7 ms — 86 % — is paid before `switchTheme()` resolves.** Two things sit in there
+and the cell separates them: `asyncSumMs 5,284.2` is the compile at
+`koi-pond-theme.js:461` (`await this.renderer.compileAsync?.(this.scene, this.camera)`, inside
+`warmRuntime`), and the asset load runs in the same construction path.
+
+The asset half is verified on disk:
+
+- `koi-pond-forest.js:553-556` is one `Promise.all` over three GLB loads:
+  `summer_birch_lod.glb` (**27,500 B**), `fir_lod.glb` (**47,832 B**) and
+  `landscape-glb.glb` (**11,787,712 B**, imported at `:49`).
+- The 11.8 MB one feeds `placeHero(hero, heroTreeCount)` (`:563`), whose count comes from
+  `KOI_POND_HERO_LIMITS` — `koi-pond-forest.js:78-85`:
+  `Minimal: 0, Low: 0, Medium: 0, High: 0, Ultra: 0, Extreme: 0`. **Zero in all six presets.**
+  The two 75 KB trees that *are* placed wait behind it in the same `Promise.all`.
+
+Meanwhile the prebuild stage the plan wants is empty everywhere. The 12 `init()` overrides do no
+asset work at all — `lunara-theme.js:452` is literally `async init() { // Lazy creation in
+createScene(). }`; `starlight-theme.js:121` and `himalayan-peak-theme.js:115` read quality settings
+and return. `base-theme.js:128` is a no-op by design.
+
+**What the measurement adds to 3.3:** the row is right, and it is worth doing on koi-pond *first for
+a reason the plan did not have* — koi-pond is the only theme whose player-visible cost is a switch
+that has not resolved yet. Everywhere else the cost is a stall after a switch that already reported
+success, which 3.2's crossfade can mask. **A switch that has not resolved cannot be masked by
+anything.** Deleting the dead 11.8 MB fetch is free and unblocks the two real trees; moving the rest
+into `init()` is the row as written.
+
+ocean is the second case and is different in kind: `switchWallMs 2,102.2`, **after 2,398.1** — its
+cost is split across both sides (51 async pipelines, `asyncSumMs 2,901.1`, plus 76 sync ones landing
+in the after-gap). ocean needs 3.1 **and** 3.3; koi-pond needs 3.3 first.
+
+---
+
+### 11.4 (plan 4.x) — the CPU is the pole, and it is submission, not fill
+
+`perf-budgets.json:32-36` sets `frameP95Ms.split` = `cpuMaxMs: 6`, `gpuMaxMs: 9` ("60hz split; scale
+proportionally"). Against that:
+
+| theme | cpuSubmit p50 | **p95** | p99 | max | draws p50 | triangles p50 | gpu p95 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| neon-district | 20.4 | **23.3** | 25.5 | 77.2 | 1,856 | 253,680 | 1.245 |
+| golden-forest | 12.7 | **14.3** | 28.1 | 50.1 | 1,101 | 1,171,716 | 1.507 |
+| ice-temple | 5.9 | **6.6** | — | — | 341 | 129,812 | 0.393 |
+| summer | 2.6 | 3.0 | — | — | 278 | **2,557,997** | 2.425 |
+
+**neon-district is 3.9× the CPU budget; golden-forest 2.4×.** No other cell exceeds 6.0.
+
+**It is submission cost, and the run proves it rather than asserting it.** Across the 52 cells with
+both a CPU sample and a draw count:
+
+- **`r(cpuSubmit p50, drawCalls p50) = 0.960`**
+- **`r(cpuSubmit p50, triangles p50) = 0.195`**
+
+Per-draw cost is roughly constant fleet-wide: neon-district 11.0 µs/draw, golden-forest 11.5,
+ocean 10.9, bioluminescence-2 9.0, halcyon-apex 8.5, ice-temple 17.3. The two-theme demonstration is
+sharper than the correlation: **summer draws 2.56 M triangles in 278 calls for 2.6 ms of CPU;
+golden-forest draws 1.17 M triangles in 1,101 calls for 12.7 ms.** Half the geometry, five times the
+CPU, four times the draws. Geometry is not what costs.
+
+**What that implies for Phase 4.** Three things, in order:
+
+1. **Plan 4.1 (CPU-profile the idle frame first) is now the load-bearing row, and it is a
+   prerequisite for quoting these numbers as budget breaches.** The instrument wraps *every* render
+   entry — `renderer`, `post`, `postProcessing`, `postComposer`, `composer`
+   (`theme-perf-instrument.mjs:224-240`) — and accumulates `now() − t` around each
+   (`:236`). A post stack whose `render()` internally drives `renderer.render()` is therefore counted
+   at both levels. The tell is in the same cell: neon-district reports `cpuSubmitMs.p95 23.3` beside
+   `wall.p50 7.8` — two numbers that cannot both be one frame's cost. **Treat 23.3 as an upper bound
+   and a rank, not a budget comparison.** The ranking and the 0.960 correlation survive the
+   double-count (it is a per-theme near-constant factor); the absolute breach does not. `_renderObjectDirect`
+   / `Bindings._update` / `writeBuffer` self-time is exactly what 4.1 was written to get.
+2. **`frameP95Ms.perSurface."heavy-theme-worst"` still stays null** (`perf-budgets.json:25`). This run
+   did not measure a theme's frame p95 — see §6.6. The metric that *should* eventually fill a cell
+   here is the **CPU-submit split**, after 4.1 attributes it.
+3. **Re-rank the Phase 4 items against the split.** 4.4 (`renderGroup` for shared per-frame uniforms)
+   and any draw-call consolidation on neon-district and golden-forest are aimed at the measured pole.
+   4.3 (FSR1) and 4.7 (ClusteredLighting for neon-district) are aimed at fill — and neon-district's
+   GPU p95 is **1.245 ms**. On this lane there is nothing there to win. Both are Lane B rows and
+   should be labelled as such rather than sequenced as if they were general.
+
+---
+
+### 11.5 (plan 4.8 / 5.x) — which "look better" rows this run supports, and which it does not
+
+**The number that governs the whole phase: GPU p95 never exceeds 2.425 ms fleet-wide** (summer; next
+are starlight 2.359, serenity-warp and tornado 2.163). The largest single GPU sample in 30 timestamped
+cells is **6.357 ms** (tornado, whose p95 is 2.163). Against `gpuMaxMs: 9`, **the fleet uses at most
+27 % of its GPU budget on Lane A, and the median theme is far under that.** Timer quantum is
+0.065536 ms, so these are real readings, not rounding.
+
+**Supported by the measurement — spend GPU, it is there:**
+
+- **4.2 (gate DRS on GPU time, not wall).** This is the strongest-evidenced row in the run, and the
+  evidence is an *inadmissible* cell. neon-dusk broke its pins: `pins.observedAtWindowStart
+  .rendererPixelRatio 0.85` → `observedAtWindowEnd 0.7999999999999999`, `pinsHeld: false`. Adaptive
+  resolution engaged **mid-window on a theme whose GPU p95 is 0.852 ms** — 10.6× under the split
+  budget. The system shed pixels while the GPU was nearly idle, caught in the act. That is 4.2's
+  thesis, measured.
+- **4.6 (supersample policy on Lane A)** and **5.3 (dispersion/iridescence on lunara, ice-temple,
+  fluid-dreams)**: their GPU p95 values are 1.769, 0.393 and 1.442 ms. There is headroom for both.
+- **5.1 (shadow softness/bias retune)** — cost 0, and the run gives no reason not to.
+- **5.2 (`GodraysNode`)**: sky-children (GPU p95 1.049) and himalayan-peak (1.376) both now produce
+  timestamp samples, so the row's own gate — "timestamp cost ≤ 0.6 ms" — is finally measurable per
+  theme. Do it in the cell, not by eye.
+
+**Not justified as a *performance* priority by this run:**
+
+- **4.8 (`BloomNode.setResolutionScale` / `PassNode.setResolutionScale`).** Keep it, but reclassify it.
+  It is **correctness and hygiene** — themes whose declared quality-preset resolution is silently
+  overwritten on the next frame are lying about their tiers, and the `0.5 × bloomDownsample` trap is
+  a real bug — but with GPU p95 at 2.425 ms worst, resolution scale buys no frames on Lane A. Its
+  frame-time payoff is a **Lane B claim and unmeasured**.
+- **4.3, 4.7** — see §6.4. Fill-bound rows on a lane that is not fill-bound.
+- **5.6 (classic-WebGL bloom parity).** Unaffected either way: it is a look-correctness row, and this
+  run cannot price it at all — all 20 classic cells report `idle.gpuMs` null because
+  `THREE.WebGLRenderer` has no timestamp API in 0.185.1 (ADR-0019, ADR-0008; the cell note says so
+  explicitly). That null is **renderer kind, not a gap**.
+- **4.9 (first-run GPU classifier).** The run is a single hardware point (one adapter, 61 cells), so
+  it says nothing for or against it. Unmeasured.
+
+**The honest summary for Phase 5**: nothing in this run argues against making themes look better, and
+several rows now have headroom numbers to spend against. What it *does* argue is that no look-better
+row should be sold as a frame-time win on Lane A, and that the phase's ordering should not be driven
+by GPU cost, because GPU cost is not the constraint here.
+
+---
+
+### 11.6 Negative results, stated as results
+
+**1. There are no lava lakes in the theme fleet.** The Odyssey's Earth Core lava floor took **7,235
+ms in one pipeline** (plan §1.2). The fleet's worst single async pipeline is **neon-district 1,687.9
+ms** (`AGGREGATE.md` rank 1), then golden-forest 958.6, koi-pond 600.2, ice-temple 583.2, wolfhour
+537.1, ocean 408.4, stellar-drift 275.0, moonlit-forest 207.2, chromadelic-highway 136.1, cosmic-noir
+122.9, stellar-velocity 97.1, chiral-gold 63.4. **Nothing is within 4× of the lake.** The fleet's
+problem is not a shader; it is 1,457 pipelines nobody warmed. *Caveat, stated because it matters:*
+those twelve are the only pipelines that could be timed at all. The 1,457 synchronous ones carry
+`ms: null` by construction, so "no lava lake" is proven for 246 pipelines and **unmeasured for 1,457**
+— it is exactly the compiles the fleet does not warm that the instrument cannot price. Routing 3.1
+is also what makes them measurable.
+
+**2. Idle frame time is pacing, not cost.** `idle.wall.p50` is between **7.5 and 8.3 ms in all 61
+cells** — 3 at 7.5, 51 at 7.6, and single cells at 7.7/7.8/7.9/8.1/8.3. That is the harness lane's own
+rAF cadence against a ~120 Hz panel (`theme-perf-instrument.mjs:309-317`), identical whether the theme
+draws 4 objects or 1,856. The p95 excursions to 15.8–15.9 (black-hole, chiral-gold,
+chromadelic-highway, neon-district) are single missed ticks, not a frame cost: `wall.overBudget` is
+**1 frame of ~1,300** in most themes, 5 of 881 in chiral-gold, and 14 of 1,004 in neon-district.
+**No theme's `wall.p95` exceeds the 16.667 ms budget.** Do not read this column as a per-theme frame
+time, and do not write it into `heavy-theme-worst` — this run measured the *lane's* cadence and the
+*theme's* CPU/GPU split, not the theme's frame p95.
+
+**3. MaterialX noise did not surface as a compile pole anywhere — but say why.** No async pipeline in
+the run is attributable to a `mx_*`-heavy theme, because **the noise-heavy themes have no async
+pipelines**: winter (30 `mx_*` calls), vesper-chrysalis (29), fluid-dreams (19), stillwater, tornado,
+starlight, synthwave-sunset, black-hole all compile 100 % synchronously. The fleet's actual timed
+poles are plain node materials — golden-forest's 958.6 ms is a `MeshBasicNodeMaterial`
+(`renderPipeline_MeshBasicNodeMaterial_45`), neon-district's 1,687.9 ms likewise
+(`renderPipeline_MeshBasicNodeMaterial_16`). And the one direct after-gap reading available for the
+worst MaterialX theme is against the row: **winter, 30 `mx_*` calls, cold Dawn cache, after = 191.2 ms
+for all 26 of its pipelines.** So: plan **3.5 is not a headline lever and the run gives no reason to
+raise it**; the three concentrated cases (`winter-materials.js:753`, vesper-chrysalis `effect:702`,
+summer `effect:235`) stay worth doing on their own merits. This is *not* a refutation — MaterialX
+compile cost is **unmeasured per pipeline** in 21 themes for the same reason everything else there is.
+Land 3.1, then re-read this result.
+
+**4. No pipeline failed and no theme errored.** `pipelines.failedCount` is 0 in all 61 cells;
+`console.genuineErrorCount` is 0 in all 61.
+
+**5. GC is not a fleet problem.** Worst `memory.gcPerSecond` is **3.0/s** (solar-eclipse), then geode
+2.6, rainy-window 2.2, synthwave-sunset 2.1. Plan 6.5's allocation ranking stands as hygiene; nothing
+here promotes it.
+
+**6. The three inadmissible cells, each with its reason — and two of them are findings.**
+
+- **stillwater** and **stellar-velocity**: `"no GPU timestamp samples
+  (no-resolved-timestamp-in-window)"`. `renderer.trackTimestampArmed` is `true` in both, so the queries
+  were armed and never landed — both themes manage timestamps themselves and most likely consume the
+  resolve before the lane's `resolveTimestampsAsync('render')` can read `info.render.timestamp`
+  (`theme-perf-instrument.mjs:286-300`). Their switch marks and pipeline census are intact; only the
+  GPU column is void. **stillwater's 10,421.0 ms `firstFrameGpuDoneMs` is quoted here as the fleet's
+  worst with that flag attached.**
+- **neon-dusk**: `"pins: rendererPixelRatio moved 0.85 -> 0.7999999999999999 during the window"`.
+  Adaptive resolution engaged mid-measurement. The cell is disqualified **and the disqualification is
+  the evidence for plan 4.2** — see §6.5.
+
+**7. Content drift is real and is why 25 cells carry a void.** `drift.admissible` is true in **36 of
+61**; `content.contentMatch` in 27. golden-forest's is typical: `"draw calls differ (v1=1101,
+v2=1171)"`. Themes with time-varying content cannot be A/B'd across visits without a frozen clock.
+Any Stage-3 before/after on 3.1 must pin content, or it will measure weather.## 12. The 61-row verdict table — measured
+
+61 cells at [`reports/theme-perf/`](../reports/theme-perf/), **58 admissible**, run serially with one
+fresh Electron per theme, **one adapter for the whole run** — `ANGLE (NVIDIA, NVIDIA GeForce RTX 3070
+Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)`, `requestedPowerPreference:
+"high-performance"`. Stage 1's matrix was Lane B on a Vega 8 iGPU and derived from switch logs (§0),
+so **absolute milliseconds below are not comparable to §5** — the rankings are.
+
+**The metric.** `first frame ms` is `switchTimings.firstFrameGpuDoneMs`: GPU work for the *first*
+frame finished, measured by `queue.onSubmittedWorkDone` on WebGPU and `fenceSync` on classic WebGL.
+This is the player-facing latency and it is the sort key. `switch ms` is `switchWallMs`
+(`switchTheme()` requested → promise resolved). `after ms` is the difference — the cost that lands
+*after* the switch promise has already told the app it is done. **`allQuiescedGpuDoneMs` is not
+quoted anywhere in this section**: it includes a 2,000–2,100 ms compile-quiet wait by construction
+(`quietWaitFloorMs` is recorded in every cell) and is not a latency.
+
+**Columns.** `kind` is `renderer.kind` — the *three.js* renderer class, so a theme that drives raw
+WebGL/WebGPU itself reads `own`. `async/sync` is `pipelines.asyncCount / pipelines.syncCount`;
+`worst pipe ms` is `pipelines.asyncMaxMs`. Sync pipelines carry `ms: null` **by construction** —
+`createRenderPipeline` returns before the GPU compiles — so a sync-heavy theme's compile cost is
+visible only as `after ms`, never as a per-pipeline number. `idle wall p95` / `cpu p95` / `gpu p95`
+are `idle.wall.p95`, `idle.cpuSubmitMs.p95`, `idle.gpuMs.p95` over a 10 s window; `draws` is
+`content.drawCalls.p50`; `GC/s` is `memory.gcPerSecond`. `—` means the field is legitimately null,
+never zero.
+
+| theme | kind | first frame ms | switch ms | after ms | async/sync | worst pipe ms | idle wall p95 | cpu p95 | gpu p95 | draws | GC/s | verdict |
+|---|---|---:|---:|---:|:---:|---:|---:|---:|---:|---:|---:|---|
+| `stillwater` † | WebGPU | 10,421 | 716 | 9,705 | 0/58 | — | 8.3 | 3.7 | — | 131 | 0.8 | **Fleet worst, by 1.45x.** 0 async / 58 sync: the warm protocol Stage 1 praised warms nothing. |
+| `koi-pond` | WebGPU | 7,169 | 6,142 | 1,027 | 35/41 | 600 | 8.2 | 4.1 | 0.721 | 128 | 0.4 | Cost is in the switch (6,142 ms), not after it. 35 async warms held; the asset is the lever. |
+| `vesper-chrysalis` | WebGPU | 6,350 | 713 | 5,638 | 0/103 | — | 8.7 | 5.5 | 1.114 | 257 | 0.5 | Second-worst post-switch cost in the fleet. 103 sync pipelines, nothing warmed. |
+| `lunara` | WebGPU | 6,173 | 979 | 5,194 | 0/73 | — | 8.3 | 4.7 | 1.769 | 224 | 0.5 | 5,194 ms after switch over 73 sync pipelines. Stage 1 named the mechanism and ranked it 15th. |
+| `golden-forest` | WebGPU | 4,553 | 4,018 | 535 | 30/106 | 959 | 8.2 | 14.3 | 1.507 | 1,101 | 0.6 | Real hit, inverted shape: 4,018 ms is the switch itself, only 535 after. 106 sync pipes cost ~5 ms each. |
+| `ocean` | WebGPU | 4,500 | 2,102 | 2,398 | 51/76 | 408 | 8.3 | 4.8 | 1.245 | 393 | 0.6 | 51 async pipelines and still 2,398 ms after — the widest warm in the fleet covers under half the cost. |
+| `fluid-dreams` | WebGPU | 3,807 | 409 | 3,398 | 0/14 | — | 8.2 | 3.0 | 1.442 | 61 | 1.1 | 243 ms of post-switch cost per sync pipeline — the fleet's steepest. Predicted mechanism exactly. |
+| `bioluminescence-2` | WebGPU | 3,628 | 496 | 3,132 | 0/174 | — | 8.2 | 4.9 | 1.180 | 501 | 0.6 | 174 sync pipelines, 0 async: the fleet's largest unwarmed set, at ~18 ms each. |
+| `summer` | WebGPU | 3,543 | 421 | 3,122 | 0/121 | — | 8.3 | 3.0 | 2.425 | 278 | 0.4 | 0/121. Also the fleet's worst idle GPU p95 at 2.425 ms — still 3.7x inside the 9 ms split. |
+| `ice-temple` | WebGPU | 3,220 | 2,093 | 1,127 | 11/28 | 583 | 8.1 | 6.6 | 0.393 | 341 | 0.5 | Confirmed. 583 ms worst pipe and 6.6 ms CPU p95, over the 6 ms split budget. |
+| `starlight` | WebGPU | 3,180 | 379 | 2,801 | 0/14 | — | 8.2 | 2.0 | 2.359 | 37 | 0.7 | 200 ms per sync pipeline over just 14 — second-steepest. Depth, not count. |
+| `sky-children` | WebGPU | 2,559 | 603 | 1,957 | 0/34 | — | 8.2 | 4.3 | 1.049 | 212 | 0.6 | 0/34, 1,957 ms after. Zero-async cliff at middling depth. |
+| `halcyon-apex` | WebGPU | 2,451 | 752 | 1,699 | 0/62 | — | 8.2 | 4.3 | 0.852 | 461 | 0.3 | 0/62. 461 draws for 25,683 triangles: the cost is compile, not content. |
+| `moonlit-forest` | WebGPU | 2,315 | 2,269 | 46 | 29/9 | 207 | 8.2 | 0.7 | 1.573 | 32 | 0.7 | **The fleet's best-shaped curve.** 29 async moved the cost into the switch; 46 ms remains after. |
+| `pyrestorm` | WebGL | 2,144 | 2,128 | 16 | — | — | 8.1 | 1.1 | — | 55 | 1.4 | Classic GL, 16 ms after switch, 1.1 ms CPU p95. The predicted frame problem does not exist. |
+| `stellar-drift` | WebGPU | 2,004 | 1,719 | 285 | 12/23 | 275 | 8.3 | 4.3 | 1.901 | 164 | 0.5 | 12/23, worst pipe 275 ms. Middling on every measured axis. |
+| `neon-district` | WebGPU | 1,713 | 1,103 | 609 | 34/180 | 1,688 | 15.8 | 23.3 | 1.245 | 1,856 | 0.9 | **Fleet's worst single pipeline (1,688 ms) and worst CPU p95 (23.3 ms at 1,856 draws)** — yet 17th on latency. |
+| `moonrise-summit` | WebGL | 1,634 | 1,626 | 8 | — | — | 8.2 | 1.0 | — | 34 | 1.0 | Classic GL by design. 8 ms after switch. Clean. |
+| `blood-moon` | WebGL | 1,593 | 1,545 | 48 | — | — | 8.2 | 0.9 | — | 44 | 1.3 | 48 ms after switch. Stage 1 called its fragment the batch densest; it never surfaced as latency. |
+| `misty-lake` | WebGL | 1,529 | 98 | 1,431 | — | — | 8.2 | 1.2 | — | 68 | 1.2 | 98 ms switch, 1,431 ms after: classic GL links its programs at first draw, not at switch. |
+| `bioluminescence` | WebGL | 1,449 | 279 | 1,170 | — | — | 8.2 | 5.7 | — | 227 | 0.6 | Same lazy-link shape: 279 ms switch, 1,170 ms after. 5.7 ms CPU p95 at 227 draws. |
+| `black-hole` | WebGPU | 1,446 | 357 | 1,089 | 0/21 | — | 15.9 | 2.9 | 0.459 | 71 | 1.4 | 0/21 — "the fleet's only correct prewarm" produced zero async pipelines. |
+| `neon-dusk` † | WebGPU | 1,402 | 574 | 828 | 0/28 | — | 8.2 | 3.5 | 0.852 | 167 | 1.1 | 0/28 confirms the mechanism; the cell is void because adaptive resolution engaged mid-window. |
+| `chromadelic-highway` | WebGPU | 1,344 | 1,225 | 119 | 14/27 | 136 | 15.9 | 5.2 | 0.393 | 257 | 1.1 | 14/27, 119 ms after. The 17 duplicate materials cost no measurable latency. |
+| `cosmic-noir` | WebGPU | 1,183 | 920 | 262 | 7/18 | 123 | 8.2 | 3.5 | 1.180 | 89 | 1.0 | 7/18, 262 ms after. Row and a verdict, as predicted. |
+| `electric-dreams-v3` | WebGPU | 1,121 | 341 | 780 | 0/11 | — | 8.2 | 1.9 | 1.966 | 31 | 1.3 | 11 sync, 780 ms after. Real, but 26th — not "the hit-list theme on compile". |
+| `synthwave-sunset` | WebGPU | 1,095 | 378 | 717 | 0/23 | — | 8.3 | 4.5 | 0.655 | 332 | 2.1 | 0/23, 717 ms after. Two narrow levers, no latency story. |
+| `wolfhour` | WebGPU | 1,079 | 549 | 529 | 7/18 | 537 | 8.2 | 3.8 | 0.786 | 95 | 0.4 | 7 async, one 537 ms pipe — the per-peak recompile is priced, and it is small. |
+| `chiral-gold` | WebGPU | 1,067 | 693 | 374 | 6/17 | 63 | 15.9 | 3.3 | 0.459 | 85 | 1.5 | 6/17. GC 1.5/s and wall p95 15.9 ms, which is pacing against a 120 Hz panel, not cost. |
+| `crystal-cave` | WebGL | 1,031 | 1,005 | 27 | — | — | 8.2 | 5.4 | — | 533 | 1.9 | 533 draws confirmed; "worst theme in the batch" refuted at 8.2 ms wall / 5.4 ms CPU. |
+| `astral-weave` | WebGPU | 985 | 280 | 704 | 0/27 | — | 8.3 | 5.3 | 1.442 | 362 | 0.4 | 362 draws — 6.4x the 57 Stage 1 counted, and still 8.3 ms wall p95. |
+| `sakura-twilight` | WebGL | 968 | 960 | 8 | — | — | 8.2 | 0.5 | — | 22 | 1.1 | 960 ms switch, 8 ms after: the 11.79 MB GLB is real and it lands inside the switch. |
+| `himalayan-peak` | WebGPU | 939 | 351 | 588 | 0/14 | — | 8.2 | 3.3 | 1.376 | 59 | 0.7 | 0/14, 588 ms after. The "cleanest fix in the fleet" is worth 0.6 s, not a rank. |
+| `stellar-velocity` † | WebGPU | 900 | 762 | 138 | 10/23 | 97 | 8.2 | 5.2 | — | 201 | 1.9 | Self-managed timestamps yielded no resolved samples. GC 1.9/s is not fleet-worst. |
+| `rainy-window` | WebGL | 806 | 780 | 26 | — | — | 8.2 | 0.8 | — | 16 | 2.2 | 16 draws, 0.8 ms CPU p95. "The most expensive idle frame by a wide margin" is flatly refuted. |
+| `serenity-warp` | WebGPU | 779 | 314 | 465 | 0/46 | — | 8.3 | 2.5 | 2.163 | 71 | 0.4 | 0/46, 465 ms after. "Hit-list candidate number one" lands 36th. |
+| `solar-eclipse` | WebGL | 755 | 86 | 668 | — | — | 8.2 | 1.9 | — | 68 | 3.0 | Fleet-worst GC at 3.0/s — which is three collections per second. 86 ms switch. |
+| `fall` | WebGL | 716 | 317 | 399 | — | — | 8.2 | 0.8 | — | 23 | 1.1 | 317 ms switch, 399 ms after. The 5.2 MB synchronous bake is inside the switch and it is affordable. |
+| `winter` | WebGPU | 590 | 399 | 191 | 0/26 | — | 8.2 | 3.6 | 2.097 | 95 | 0.8 | **Stage-1 #3 measures 39th.** The lake is never built and the compileAsync warms nothing (0/26). |
+| `geode` | WebGL | 586 | 571 | 15 | — | — | 8.2 | 2.9 | — | 201 | 2.6 | 201 draws, not 476. 8.2 ms wall p95, 2.9 ms CPU. |
+| `cinder-drift` | WebGL | 574 | 566 | 8 | — | — | 8.2 | 0.2 | — | 11 | 1.2 | 11 draws, 2 triangles, 0.2 ms CPU. The leanest cell in the fleet. |
+| `sunset` | WebGL | 554 | 520 | 34 | — | — | 8.2 | 1.0 | — | 30 | 1.2 | 1.2 GC/s, 1.0 ms CPU. The 24-Color-per-frame claim costs nothing measurable. |
+| `luminous-tides` | WebGL | 503 | 79 | 424 | — | — | 8.2 | 1.2 | — | 29 | 2.1 | 79 ms switch, 424 ms after. Lazy GLSL link again. |
+| `singing-bowl` | WebGL | 411 | 400 | 11 | — | — | 8.3 | 1.1 | — | 46 | 1.2 | 400 ms switch, 11 ms after. The Reflector traversal is invisible at 1.1 ms CPU. |
+| `waves` | WebGL | 411 | 81 | 330 | — | — | 8.2 | 0.8 | — | 18 | 1.3 | 81 ms switch, 330 ms after. Confirmed clean. |
+| `shifting-sands` | WebGPU | 404 | 259 | 146 | 0/18 | — | 8.1 | 3.1 | 1.245 | 83 | 1.0 | 0/18 despite a compileAsync call site. Cheap on every axis regardless. |
+| `nimbus-veil` | WebGL | 381 | 372 | 9 | — | — | 8.2 | 0.8 | — | 32 | 1.4 | 32 draws, 0.8 ms CPU. Clean. |
+| `verdant-hills` | WebGPU | 343 | 263 | 80 | 0/6 | — | 8.3 | 1.0 | 1.114 | 101 | 1.1 | 101 draws, not 184. 80 ms after switch. |
+| `galaxy` | WebGL | 313 | 306 | 7 | — | — | 8.3 | 0.2 | — | 12 | 1.2 | 12 draws, 0.2 ms CPU. Cheapest WebGL cell measured. |
+| `aurora` | WebGL | 274 | 267 | 7 | — | — | 8.2 | 0.2 | — | 13 | 1.2 | 13 draws, 0.2 ms CPU. Clean. |
+| `supernova` | WebGL | 261 | 206 | 55 | — | — | 8.3 | 0.2 | — | 4 | 1.2 | 4 draws — the least content in the fleet. Confirmed near-clean. |
+| `aether-tides` ‡ | own | 241 | 241 | — | — | — | 8.2 | — | — | — | 1.2 | Own renderer: no three instrument. The 43-blit frame claim is unmeasured. |
+| `tornado` | WebGPU | 235 | 164 | 71 | 0/11 | — | 8.2 | 3.0 | 2.163 | 47 | 1.8 | 0/11 despite a compileAsync call site. 71 ms after switch. |
+| `void-ember` ‡ | own | 223 | 223 | — | 0/7 | — | 8.2 | — | — | — | 1.3 | Owns its renderer yet creates 7 WebGPU pipelines. Latency unmeasurable; frame claims unmeasured. |
+| `chromatic-impasto` ‡ | own | 220 | 219 | — | — | — | 8.2 | — | — | — | 1.1 | Own renderer. GC 1.1/s. Frame and GC claims unmeasured by this lane. |
+| `nebula-flow` ‡ | own | 213 | 213 | — | — | — | 8.2 | — | — | — | 1.3 | Own renderer. The 29-blit frame claim is unmeasured. |
+| `voltage-storm` ‡ | own | 212 | 212 | — | — | — | 8.2 | — | — | — | 1.1 | Own renderer. The 42-blit frame claim is unmeasured. |
+| `moonlit-greenhouse` ‡ | own | 94 | 94 | — | — | — | 8.8 | — | — | — | 1.5 | 94 ms end to end. The toDataURL on the switch critical path costs nothing measurable. |
+| `cosmic-chimes` ‡ | own | 50 | 50 | — | — | — | 8.2 | — | — | — | 1.2 | Confirmed clean — 50 ms, no renderer, no shaders. |
+| `mountain` ‡ | own | 42 | 42 | — | — | — | 8.2 | — | — | — | 1.2 | 42 ms switch. The 59.6 MB canvas-bake claim is refuted as a latency cost. |
+| `forest` ‡ | own | 24 | 24 | — | — | — | 8.2 | — | — | — | 1.1 | Anchor theme. Stub confirmed at 24 ms. |
+
+**† Inadmissible (3).** Kept and marked, never dropped — the reason is in each cell's
+`inadmissibleReasons`:
+
+- `stillwater` — *"no GPU timestamp samples (no-resolved-timestamp-in-window)"*. The theme manages
+  its own timestamp queries and most likely consumes the resolve first. Its switch and first-frame
+  numbers stand; its `gpu p95` does not exist. **It is still the fleet's worst first-frame latency.**
+- `stellar-velocity` — same reason, same cause.
+- `neon-dusk` — *"pins: rendererPixelRatio moved 0.85 -> 0.7999999999999999 during the window"*.
+  Adaptive resolution engaged mid-measurement, which disqualifies the timing **and is itself a
+  finding**: the theme is dropping render scale at idle on an RTX 3070.
+
+**‡ Own-renderer themes (9).** `renderer.kind` is `null` and
+`switchTimings.firstFrameGpuDoneMethod` is `"no-gpu-context"` — the lane has no three.js renderer to
+instrument, so `firstFrameGpuDoneMs` falls back to `criticalReadyMs` and is **not** a GPU-completion
+measurement. `after ms` is therefore undefined, not zero, and `cpu p95` / `gpu p95` / `draws` are
+unmeasured. `void-ember` is the interesting one: it owns its renderer and still creates 7 WebGPU
+pipelines, all sync.
+
+**`gpu p95` = `—` on the 20 classic rows is renderer *kind*, not a gap.**
+`idle.gpuNullReason: "classic-webgl-renderer-has-no-timestamp-api"` — `THREE.WebGLRenderer` has no
+timestamp API in three 0.185.1. Classic is a supported lane (ADR-0008, ADR-0019), never debt.
+
+---
+
+### Stage 1 against the measurement
+
+Stage 1's §9 verdicts were written per 44-agent *batch*; superlatives scoped to "in this batch" are
+judged as such below, fleet-scoped claims are judged hard.
+
+#### CONFIRMED
+
+- **`fluid-dreams` — the single best call in Stage 1.** §4 predicted the exact shape: *"there is no
+  `compileAsync` anywhere in the theme (0 grep hits), so both compile synchronously on the first
+  rendered frame — which is exactly why its measured switch window is only 7 ms and its cost is
+  invisible in the committed matrix."* Measured: `asyncCount: 0`, `syncCount: 14`, switch **409 ms**,
+  after **3,398 ms**. That is **243 ms of post-switch cost per sync pipeline, the fleet's steepest**.
+- **`koi-pond`** — predicted #2, measured #2 (7,169 ms). Its 35 async warms held (`after` only
+  1,027 ms); the 6,142 ms is the switch itself, which is where the 11.7 MB GLB lives.
+- **`golden-forest`** — predicted #1, measured #5, and the mechanism holds: 30 async pipelines
+  summing 2,129 ms inside a 4,018 ms switch, with 106 sync pipelines costing only ~5 ms each after.
+- **`ocean` (#7 → #6) and `ice-temple` (#5 → #10)** — both real, both for the predicted reasons.
+  `ice-temple` also breaches the CPU split at **6.6 ms** (`perf-budgets.json:33`, `cpuMaxMs: 6`).
+- **`neon-district` as the pipeline-COUNT outlier** — 214 pipelines, **180 of them sync**, both
+  fleet maxima. §4's "outlier by a factor of two" is correct on count.
+- **`moonlit-forest`** — §9 called its one bare `compileAsync` *"the dominant term in this theme's
+  first-entry latency."* Measured 29 async / 9 sync, switch 2,269 ms, **after 46 ms**. The warm works
+  and it moved the entire cost into the switch. **This is the shape every other WebGPU theme should
+  have.**
+- **`starlight` is depth, `bioluminescence-2` is count** — exactly as §9 split them. `starlight`:
+  14 sync pipelines, 2,801 ms after (200 ms each, second-steepest). `bioluminescence-2`: 174 sync
+  pipelines, 3,132 ms after (~18 ms each).
+- **Every "zero `compileAsync`" call was right** — `lunara`, `vesper-chrysalis`, `sky-children`,
+  `summer`, `serenity-warp`, `himalayan-peak`, `electric-dreams-v3`, `neon-dusk`, `fluid-dreams`,
+  `halcyon-apex`, `astral-weave`, `synthwave-sunset`, `starlight` and `verdant-hills` all measure
+  `asyncCount: 0`.
+- **`sakura-twilight`'s 11.79 MB GLB** — 960 ms switch, 8 ms after. Real, and entirely inside the
+  switch.
+- **`solar-eclipse` on GC** — fleet-worst at **3.0/s**. And `cinder-drift` as "the leanest theme in
+  the batch": 11 draws, 2 triangles, 0.2 ms CPU p95.
+
+#### REFUTED
+
+- **`stillwater`. §9 — *"Row-and-a-verdict, not a hit-list candidate"*, and §4 called it the only
+  theme implementing the full warm protocol.** It is the **worst theme in the fleet by a factor of
+  1.45** over #2, at 10,421 ms, with **9,705 ms landing after the switch promise resolves**. Its cell
+  reads `asyncCount: 0`, `syncCount: 58`. The warm protocol Stage 1 held up as the fleet's model
+  produced **zero** async pipelines. Stage 1 read the source, counted a `compileAsync` call site, and
+  never asked whether the call did anything.
+- **`winter` as #3.** Measured **39th of 61** at 590 ms. The 14-`mx_noise` lake Stage 1 called *"the
+  fleet's only concentrated MaterialX lake"* sits behind a query param and was never built, and its
+  `compileAsync` produced `asyncCount: 0` over 26 sync pipelines. (Its 3,156 ms **switch-away** stall
+  is a different metric that this lane does not measure — see MISSED.)
+- **`black-hole` — *"the fleet's only correct prewarm"*.** Measured `asyncCount: 0`, `syncCount: 21`,
+  1,089 ms after switch. It warms nothing either.
+- **The frame-cost hit list, as a class.** `crystal-cave` (*"the worst theme in the batch"*,
+  ~615 draws/frame) measures 533 draws, **8.2 ms wall p95 and 5.4 ms CPU p95** — inside budget.
+  `rainy-window` (*"the most expensive idle frame in this batch by a wide margin"*) measures
+  **16 draws and 0.8 ms CPU p95**, among the cheapest cells in the fleet. `pyrestorm` (*"hit-list
+  candidate on FRAME"*, ~51,000 particle iterations per frame) measures 1.1 ms CPU p95. `sunset`'s
+  24-`THREE.Color`-per-frame allocation measures 1.2 GC/s and 1.0 ms CPU.
+- **`mountain` and `moonlit-greenhouse` on the asset / critical-path axis.** `mountain` — *"HIT-LIST
+  CANDIDATE… ~59.6 MB of Canvas2D backing store… before `createScene()` returns"* — measures a
+  **42 ms** switch, second-fastest in the fleet. `moonlit-greenhouse` — *"a synchronous 2048x1080
+  `canvas.toDataURL()` PNG encode on the theme-switch critical path"* — measures **94 ms** end to end.
+- **Static counts, in both directions.** `geode` 476 materials predicted → **201** draws measured.
+  `verdant-hills` 184 → **101**. `halcyon-apex` 91 materials → **62** pipelines. And the other way:
+  `astral-weave`'s *"57 idle draw calls against its own declared 30-call budget"* → **362 draws**,
+  6.4x the count Stage 1 used to indict it.
+- **Batch superlatives that do not survive fleet scope.** `serenity-warp` (*"hit-list candidate
+  number one in this batch"*) lands **36th**; `electric-dreams-v3` (*"THE HIT-LIST THEME of this
+  batch on compile"*) lands **26th**; `himalayan-peak` (*"HIT-LIST CANDIDATE, and the cleanest one in
+  the fleet to fix"*) lands **33rd** — its fix is worth 588 ms, a cheap win, not a rank.
+  `stellar-velocity`'s *"worst GC profile in this batch"* measures 1.9/s against `solar-eclipse`'s 3.0.
+- **The lava lake, as a fleet-wide frame.** The Odyssey hunt's 7,235 ms single pipeline has **no
+  analogue anywhere in 61 themes**. The worst measured single pipeline is `neon-district`'s
+  `renderPipeline_MeshBasicNodeMaterial_16` at **1,687.9 ms** (`atMs: 6096.3`), then `golden-forest`
+  959, `koi-pond` 600, `ice-temple` 583, `wolfhour` 537, `ocean` 408. **Nothing in the fleet is
+  within 4x of the lake.** Stage 1 suspected this in §2 ("the compile *call*, not a shader"); the
+  measurement settles it.
+
+#### MISSED ENTIRELY
+
+- **The zero-async cliff — the finding.** Stage 1 has a `bare cA` column in §5 and never ranked by
+  it. Measured: **20 of 32 WebGPU themes have `asyncCount: 0`**, and **the seven worst post-switch
+  costs in the fleet are all seven of them** — `stillwater` 9,705, `vesper-chrysalis` 5,638,
+  `lunara` 5,194, `fluid-dreams` 3,398, `bioluminescence-2` 3,132, `summer` 3,122, `starlight` 2,801.
+  The first theme with any async warm is `ocean`, at 2,398. In three 0.185.1 the only path that
+  reaches `createRenderPipelineAsync` is `Renderer.compileAsync`, so a theme that never calls it
+  warms nothing at all. **One root cause, one fix, 20 themes.**
+- **A `compileAsync` call site is not a warm.** Stage 1's §5 lists **18** WebGPU themes with at least
+  one bare `compileAsync`. Twelve produced async pipelines. **Six produced zero** — `winter`,
+  `stillwater`, `shifting-sands`, `black-hole`, `electric-dreams-v3`, `tornado`. Stage 1 counted call
+  sites and inferred warms; the effect had never been measured. This is the same error that made
+  `stillwater` look clean and `black-hole` look exemplary.
+- **Idle frame time is pacing, not cost — the whole axis is dead.** Worst idle wall p95 fleet-wide is
+  **15.9 ms** (`black-hole`, `chromadelic-highway`, `chiral-gold`) and **nothing exceeds 16.67 ms**;
+  worst idle GPU p95 is **2.425 ms** (`summer`), 3.7x inside the 9 ms split. Themes sitting near
+  16 ms are honouring the 60 Hz target against a 120 Hz panel, not doing more work. Every §9 "frame
+  hit-list" verdict was unfalsifiable at this resolution, and none of them survive it.
+- **CPU-submit is the real per-frame budget, and Stage 1 never ranked it.** `perf-budgets.json:33`
+  sets `split.cpuMaxMs: 6`. Three breaches: **`neon-district` 23.3 ms at 1,856 draws (3.9x over)**,
+  **`golden-forest` 14.3 ms at 1,101 draws**, and `ice-temple` 6.6 ms. Stage 1 ranked GC instead —
+  an axis whose fleet-wide worst is 3.0 collections per second.
+- **Classic WebGL links its programs lazily, after the switch resolves.** Six classic cells spend
+  most of their first-frame latency in `after`: `misty-lake` 98 → **1,431**, `bioluminescence`
+  279 → **1,170**, `solar-eclipse` 86 → **668**, `luminous-tides` 79 → **424**, `waves` 81 → **330**,
+  `fall` 317 → **399**. Stage 1's single `cold` column cannot see this split, so it read these themes
+  as fast.
+- **Three themes defeat the instrument.** `stillwater` and `stellar-velocity` manage their own
+  timestamp queries and produced no resolved samples; `neon-dusk` engaged adaptive resolution
+  mid-window. §8 listed what Stage 0 must settle without anticipating that the measurement itself
+  would come back with a 3-cell hole — one of them in the fleet's worst theme.
+- **Nine themes are outside the instrument entirely.** The `own`-renderer rows have no three.js
+  renderer, so `firstFrameGpuDoneMethod` is `"no-gpu-context"` and there is no CPU/GPU split, no draw
+  count and no pipeline accounting. Stage 1 nonetheless gave four of them frame-cost verdicts
+  denominated in full-screen blits per frame (`aether-tides` 43, `voltage-storm` 42, `nebula-flow`
+  29) — all **unmeasured**, then and now. Stage 1's §5 `kind` column also lists `aether-tides`,
+  `chromatic-impasto`, `nebula-flow` and `voltage-storm` as `GL`, where the lane records
+  `renderer.kind: null` for all four. That is a taxonomy difference, not a contradiction — but it
+  means §5's `kind` column cannot be used to decide which themes the WebGPU levers apply to.
+## 11. The fleet-wide levers, measured
+
+Stage 1 (§6 as it stood) was a static census: counts and structure, never milliseconds. This section
+replaces it with the measured run. Everything below is quoted from `reports/theme-perf/<theme>.json`
+or from a file:line that was read. Where a number does not exist, it says **unmeasured**.
+
+**The run.** 61 cells, **58 admissible, 3 inadmissible** (kept and marked — `AGGREGATE.md:3`).
+**One adapter across all 61**: `adapter.plain = {vendor:"nvidia", architecture:"ampere"}`,
+`adapter.webglRendererString = "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD)…)"`.
+Every cell carries the same pins: `quality "High"`, `targetFps 60`, `windowPx 1920×1080`,
+`idleMs 10000`, `dawnCache "cold-per-theme-userdata"`, and
+`manifest.requestedSwitches` containing `force_high_performance_gpu`.
+
+> **`perf-budgets.json:39` is now stale and should be corrected.** Its `heavyThemeWorstNote` warns
+> "the theme harness passes no `force_high_performance_gpu`, so it lands on this machine's Radeon
+> Vega 8 (Lane B)". It does pass it, and all 61 cells landed on the RTX 3070. **This is a Lane A
+> run.** Plan item 4.0 (recover Lane B) is untouched by it — fill cost is still unpriced.
+
+**Read these three metric names exactly; one of them was corrected late.**
+
+| field | what it brackets |
+|---|---|
+| `switchWallMs` | `switchTheme()` requested → its promise resolved |
+| `firstFrameGpuDoneMs` | GPU work for the **first frame** finished (`queue.onSubmittedWorkDone` / `fenceSync`, `theme-perf-instrument.mjs:405-429`). **This is the player-facing latency.** |
+| `allQuiescedGpuDoneMs` | includes a **2,000–2,100 ms compile-quiet wait by construction** (`:432-438`; `quietWaitFloorMs` is recorded in every cell). **Never quote it as a latency.** |
+
+"**after**" below always means `firstFrameGpuDoneMs − switchWallMs` — the stall a player sees *after*
+the switch has already reported success. `criticalReadyMs − switchWallMs` is ≤ 0.1 ms in every cell,
+so that gap is not theme JS finishing: it is the GPU fence.
+
+---
+
+### 11.1 (plan 3.1) — 1,457 of the fleet's 1,703 render pipelines are created **synchronously**. This is the whole phase.
+
+Plan 3.1 was written as a fix for 20 bad call sites. The measurement says it is bigger and simpler
+than that: **most of the fleet warms nothing at all.**
+
+Fleet totals across the 61 cells: **1,703 render pipelines, 1,457 synchronous (85.6 %), 246
+asynchronous, 0 failed.** Only **12 themes** reach `createRenderPipelineAsync` even once. **21 cells
+create GPU render pipelines and not one of them asynchronously.**
+
+**The mechanism, verified in the pinned source.** `Renderer._compilationPromises` is `null` by
+default (`Renderer.js:662`) and is set to an array in exactly one place — inside `compileAsync`
+(`Renderer.js:884`, assigned `:921`). `_createObjectPipeline` only queues work when it is non-null
+(`:3751-3755`) and hands it to `this._pipelines.getForRender(renderObject, this._compilationPromises)`
+(`:3785`). The backend then branches on that one argument:
+
+```
+WebGPUPipelineUtils.js:261   if ( promises === null ) {
+WebGPUPipelineUtils.js:263       pipelineData.pipeline = device.createRenderPipeline( … );   // ms: null
+WebGPUPipelineUtils.js:292       pipelinePromise = device.createRenderPipelineAsync( … );   // timed
+```
+
+So `Renderer.compileAsync` is the **only** path in 0.185.1 that reaches the async entry point. A
+theme that never calls it creates every pipeline through `:263`, where the call returns immediately
+and the GPU process blocks at first draw. The instrument records this honestly rather than guessing:
+`pipelines.syncRows` always carry `ms: null` (`theme-perf-instrument.mjs:103`, and the note in every
+cell). **A sync pipeline's cost is not zero — it is unattributable per pipeline, and it lands
+whole in the after-gap.**
+
+**The measured proof is the after-gap.** Every zero-async cell that creates pipelines, ranked:
+
+| theme | sync pipes | `switchWallMs` | `firstFrameGpuDoneMs` | **after** | ms per sync pipe |
+|---|---:|---:|---:|---:|---:|
+| stillwater ✗ | 58 | 716.4 | 10,421.0 | **9,704.6** | 167.3 |
+| vesper-chrysalis | 103 | 712.6 | 6,350.1 | **5,637.5** | 54.7 |
+| lunara | 73 | 979.3 | 6,173.3 | **5,194.0** | 71.2 |
+| fluid-dreams | 14 | 409.1 | 3,807.0 | **3,397.9** | 242.7 |
+| bioluminescence-2 | 174 | 496.0 | 3,628.4 | **3,132.4** | 18.0 |
+| summer | 121 | 421.4 | 3,543.3 | **3,121.9** | 25.8 |
+| starlight | 14 | 379.3 | 3,180.1 | **2,800.8** | 200.1 |
+| sky-children | 34 | 602.5 | 2,559.3 | **1,956.8** | 57.6 |
+| halcyon-apex | 62 | 751.9 | 2,450.5 | **1,698.6** | 27.4 |
+| black-hole | 21 | 357.1 | 1,445.9 | **1,088.8** | 51.8 |
+| neon-dusk ✗ | 28 | 573.9 | 1,401.6 | **827.7** | 29.6 |
+| electric-dreams-v3 | 11 | 341.2 | 1,121.1 | **779.9** | 70.9 |
+| synthwave-sunset | 23 | 377.6 | 1,095.1 | **717.5** | 31.2 |
+| astral-weave | 27 | 280.4 | 984.5 | **704.1** | 26.1 |
+| himalayan-peak | 14 | 350.5 | 938.9 | **588.4** | 42.0 |
+| serenity-warp | 46 | 314.2 | 779.4 | **465.2** | 10.1 |
+| winter | 26 | 398.5 | 589.7 | **191.2** | 7.4 |
+| shifting-sands | 18 | 258.8 | 404.3 | **145.5** | 8.1 |
+| verdant-hills | 6 | 262.7 | 342.7 | **80.0** | 13.3 |
+| tornado | 11 | 163.7 | 234.7 | **71.0** | 6.5 |
+| void-ember | 7 | 222.5 | 222.6 | **0.1** | 0.0 |
+
+✗ = inadmissible cell (reason in §6.6). void-ember reports `renderer.kind: null` and still creates
+7 render pipelines.
+
+**Seven of the ten worst themes by post-switch cost are in that table.** stillwater, vesper-chrysalis,
+lunara, fluid-dreams, bioluminescence-2, summer and starlight have **zero** async pipelines between
+them, and between them they carry **33.0 s of after-gap**. One root cause, one fix.
+
+Note the last column: the cost is **not** pipeline count. bioluminescence-2 pays 3,132.4 ms for 174
+pipelines (18.0 ms each); fluid-dreams pays 3,397.9 ms for **14** (242.7 ms each) and starlight
+2,800.8 ms for **14** (200.1 ms each). Counting materials predicts nothing. Only timing the compile
+does — which is precisely what the sync path forbids.
+
+**The 12 themes that do call `compileAsync` are exactly the 12 themes with a call site.** Grep of
+`src/themes/` + `src/playground/effects/` finds bare whole-scene calls in 14 themes:
+`golden-forest-theme.js:965`, `koi-pond-theme.js:461`, `ice-temple-theme.js:1353` and `:1667`,
+`neon-district-theme.js:1149`/`:1172`/`:4123`/`:4179`/`:4800`, `ocean-theme.js:1291`/`:1376`,
+`stellar-drift-theme.js:2067`, `stellar-velocity-theme.js:2006`, `chiral-gold-theme.js:825`,
+`chromadelic-highway-theme.js:1869`, `cosmic-noir-theme.js:1855`, `wolfhour-theme.js:3279`,
+`moonlit-forest-theme.js:352`, `black-hole-theme.js:3425`, `stillwater-theme.js:1174`.
+The measured async set is those 14 **minus black-hole and stillwater** — the two that guard the call
+off. `black-hole-theme.js:3422` takes the `postProcessing.render()` branch instead
+(`:3417-3420` explains why: a bare compile on the MRT path yields `targets[1] has no fragment output`
+and poisons the cache); `stillwater-theme.js:1172` gates on `if (!usesMrt)` and warms with a real
+runtime render. **Both are right about the hazard and both pay for it**: black-hole 21 sync pipes /
+1,088.8 ms after, stillwater 58 / 9,704.6 ms. They are the clearest argument in the run that the
+answer is not "call compileAsync" but "call it **bound to the target the theme actually renders
+into**" — which is the recipe.
+
+**The wasted-context signature.** Themes that call the bare form still create large numbers of sync
+pipelines alongside their async ones — ocean 51 async / **76 sync**, neon-district 34 / **180**,
+golden-forest 30 / **106**, ice-temple 11 / **28**. That is what the builder-state cache key predicts:
+`RenderObject.getMaterialCacheKey` (`RenderObject.js:730`) appends `this.context.id`
+(`RenderObject.js:840`), and contexts are keyed by attachment formats, so a canvas-bound compile
+builds states the post pass never looks up and the scene pass then rebuilds its own synchronously.
+**The one theme where async dominates is the one with a near-zero after-gap:** moonlit-forest,
+**29 async / 9 sync, after = 46.0 ms** — the fleet's existence proof. (Its switch is still 2,269.4 ms,
+because it uses the bare form; the recipe is what moves that too.) This is a *signature*, not proof;
+the discriminating experiment is one bound compile on ocean or golden-forest and a re-count of
+`pipelines.syncCount`.
+
+**And it is per switch, forever.** Every cell visits its theme twice in the same process. The second
+visit re-creates the **same pipelines**: golden-forest 106 sync / 30 async both times, koi-pond 41/35,
+bioluminescence-2 174/174, vesper-chrysalis 103/103, lunara 73/73. `switchWallMs` falls on re-entry
+(koi-pond 6,141.6 → 2,621.4; golden-forest 4,017.5 → 2,192.8 — Dawn's shader cache, not three's
+pipeline cache), but the pipeline objects are rebuilt every time. **3.1 is not a boot-time saving.
+It is paid back on every switch a player ever makes.**
+
+#### What `post-target-compile.js` offers, and what a theme must hand it
+
+`src/rendering/odyssey/warmup/post-target-compile.js` is **782 lines with zero imports** and is
+entirely duck-typed — it touches only renderer/target/scene-graph shapes. It is importable from
+`src/themes/` as-is; nothing about it is Odyssey-specific.
+
+Three entry points:
+
+- **`compileGroupThroughPost` (`:259`)** — the front door.
+  `(renderer, postProcessingStack, scene, camera, group, renderLoopActive = false, options = {})`.
+  It computes `postActive = !!postProcessingStack?.scenePass?.renderTarget` (`:269`), binds the
+  scene-pass target + MRT and **holds the binding across the entire await**, then restores when the
+  last pooled compile resolves. The header (`:15-28`) records why the r181 bind→launch→restore shape
+  is unsafe on r185: `compileAsync`'s builds are deferred and each reads the *live* `getMRT()` at
+  build time, so restoring early poisons the cache with single-output shaders. With a live render
+  loop **and** post active it refuses and returns `false` (`:268-271`) unless `options.live` routes
+  it to the live-loop path. Its own comment at `:282-291` carries the argument-order trap:
+  `compileAsync(objectToCompile, camera, targetScene)` — **first** arg projected into the render
+  list, **third** supplies lights/background. Ten of the fleet's bare sites pass `(scene, camera)`,
+  which is the whole-scene walk.
+- **`compileObjectsFannedOut` (`:462`)** — the bounded pool underneath it. Traverses the group,
+  buckets renderables by material uuid + `receiveShadow` + vertex-attribute signature, gives
+  instanced / batched / skinned objects their own bucket (`:485-497`, because three keys builder
+  state on the object there), and compiles one representative per bucket at
+  `DEFAULT_COMPILE_CONCURRENCY = 6` (`:420`). The comment at `:440-447` is a measured warning in both
+  directions: collapsing 40 instanced chunks to one call moved 39 node builds onto the first frames
+  (load p99 344 → 2,820 ms); compiling all 50 objects individually cost ~22 ms of overhead per
+  cache-hit call. **This is the piece that turns "94 materials" into a handful of real compiles.**
+- **`compileGroupUnderLiveLoop` (`:764`)** — for warming after the loop is already running. Binds
+  nothing across a yield: the scene-pass binding answers the drained builds' target/MRT *reads*
+  through instance accessors (`beginLiveCompileReads:594`, `launchCompileInScenePassPrologue:708`),
+  suspended for the synchronous extent of every render.
+
+**What a theme must pass.** Only two things it does not already have:
+
+1. **`scene`, `camera`, and a `group`** — a group is any object with `traverse`; the whole
+   `theme.scene` is legal (`:479-482` falls back to a single call when `traverse` is absent).
+2. **A post stack exposing `scenePass.renderTarget`** (and, for the live path, `scenePass.getMRT?.()`).
+   This is the only real adaptation, and it is naming, not capability: the property is
+   `postProcessing` in 29 theme files, `post` in 7, `postComposer` in 2 — the exact set
+   `base-theme.js:796-801` already enumerates for disposal. A `BaseTheme.getPostStack()` of ~6 lines
+   returning the first of those that is non-null makes every theme callable. **This is the whole of
+   the 3.1 adaptation cost.**
+
+---
+
+### 11.2 (plan 3.4) — the theme-manager's own bare whole-scene compile, `theme-manager.js:1362`
+
+```js
+// theme-manager.js:1358    // Final compile sweep for stragglers.
+// theme-manager.js:1359    if (typeof theme.renderer?.compileAsync === 'function' && theme.scene && theme.camera) {
+// theme-manager.js:1362        Promise.resolve(theme.renderer.compileAsync(theme.scene, theme.camera)),
+// theme-manager.js:1363        3000,
+```
+
+It is the bare whole-scene form — `(scene, camera)`, no third argument, no target bound — fired from
+outside the theme, after `postWarmFrames` have already run (`:1348-1356`), i.e. **while the loop is
+live and post is active**. That is exactly the case `compileGroupThroughPost` refuses at
+`post-target-compile.js:268-271`, for the reason its header documents at `:29-38`: binding a shared
+scene-pass target while the loop renders aliases its `output` texture as both sampled binding and
+render attachment and permanently poisons the device.
+
+**Measured additions from this run:**
+
+- **The `usesMrtScenePass()` guard the plan asks for would not fire.** `base-theme.js:403` returns
+  `false`, and **stillwater is the only theme in the fleet that overrides it**
+  (`stillwater-theme.js:1158`). The cell field confirms it: `renderer.usesMrtScenePass` is `true` in
+  exactly one of 61 cells and `false` in the other 60 — that `false` is the base-class default, not a
+  probe. So `:1362` runs on every MRT theme today, and adding the guard as written would change
+  nothing until the themes implement the override. **Both halves have to land.**
+- **It overrides the two themes that deliberately opted out.** black-hole (`:3422`) and stillwater
+  (`:1172`) skip their own compile on the MRT path with a documented cache-poisoning reason; the
+  manager then fires the bare sweep at them from outside.
+- **The 3 s race bounds only the wait, and this run shows what outlives it.** neon-district's largest
+  single async pipeline is **1,687.9 ms** and its `asyncSumMs` is **2,840.7 ms** — against a
+  `firstFrameGpuDoneMs` of **1,712.5 ms**. Since r185 awaits per object, the sum is a lower bound on
+  that call's wall time, so **most of neon-district's async compile is still running after the frame
+  the player is already looking at**, under a live loop, with the timeout long since expired.
+  `Renderer.js:1015-1032` has no cancellation token and retains the renderer plus every object,
+  material and geometry in the list.
+
+**Verdict for 3.4: promote it above 3.1's per-theme work, or land it in the same change.** It is an
+`S`, it is a single call site, and until it is gone every theme that adopts the bound recipe still
+gets an unbound whole-scene sweep fired at it afterwards from the manager.
+
+---
+
+### 11.3 (plan 3.3) — `init()` as a device-free prebuild stage; koi-pond is the sharpest case
+
+koi-pond is the only theme in the fleet whose cost is **inside the switch**:
+
+```
+koi-pond   switchWallMs 6,141.6   firstFrameGpuDoneMs 7,168.7   after 1,027.1
+           asyncCount 35   asyncSumMs 5,284.2   asyncMaxMs 600.2   syncCount 41
+```
+
+**6,141.6 of 7,168.7 ms — 86 % — is paid before `switchTheme()` resolves.** Two things sit in there
+and the cell separates them: `asyncSumMs 5,284.2` is the compile at
+`koi-pond-theme.js:461` (`await this.renderer.compileAsync?.(this.scene, this.camera)`, inside
+`warmRuntime`), and the asset load runs in the same construction path.
+
+The asset half is verified on disk:
+
+- `koi-pond-forest.js:553-556` is one `Promise.all` over three GLB loads:
+  `summer_birch_lod.glb` (**27,500 B**), `fir_lod.glb` (**47,832 B**) and
+  `landscape-glb.glb` (**11,787,712 B**, imported at `:49`).
+- The 11.8 MB one feeds `placeHero(hero, heroTreeCount)` (`:563`), whose count comes from
+  `KOI_POND_HERO_LIMITS` — `koi-pond-forest.js:78-85`:
+  `Minimal: 0, Low: 0, Medium: 0, High: 0, Ultra: 0, Extreme: 0`. **Zero in all six presets.**
+  The two 75 KB trees that *are* placed wait behind it in the same `Promise.all`.
+
+Meanwhile the prebuild stage the plan wants is empty everywhere. The 12 `init()` overrides do no
+asset work at all — `lunara-theme.js:452` is literally `async init() { // Lazy creation in
+createScene(). }`; `starlight-theme.js:121` and `himalayan-peak-theme.js:115` read quality settings
+and return. `base-theme.js:128` is a no-op by design.
+
+**What the measurement adds to 3.3:** the row is right, and it is worth doing on koi-pond *first for
+a reason the plan did not have* — koi-pond is the only theme whose player-visible cost is a switch
+that has not resolved yet. Everywhere else the cost is a stall after a switch that already reported
+success, which 3.2's crossfade can mask. **A switch that has not resolved cannot be masked by
+anything.** Deleting the dead 11.8 MB fetch is free and unblocks the two real trees; moving the rest
+into `init()` is the row as written.
+
+ocean is the second case and is different in kind: `switchWallMs 2,102.2`, **after 2,398.1** — its
+cost is split across both sides (51 async pipelines, `asyncSumMs 2,901.1`, plus 76 sync ones landing
+in the after-gap). ocean needs 3.1 **and** 3.3; koi-pond needs 3.3 first.
+
+---
+
+### 11.4 (plan 4.x) — the CPU is the pole, and it is submission, not fill
+
+`perf-budgets.json:32-36` sets `frameP95Ms.split` = `cpuMaxMs: 6`, `gpuMaxMs: 9` ("60hz split; scale
+proportionally"). Against that:
+
+| theme | cpuSubmit p50 | **p95** | p99 | max | draws p50 | triangles p50 | gpu p95 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| neon-district | 20.4 | **23.3** | 25.5 | 77.2 | 1,856 | 253,680 | 1.245 |
+| golden-forest | 12.7 | **14.3** | 28.1 | 50.1 | 1,101 | 1,171,716 | 1.507 |
+| ice-temple | 5.9 | **6.6** | — | — | 341 | 129,812 | 0.393 |
+| summer | 2.6 | 3.0 | — | — | 278 | **2,557,997** | 2.425 |
+
+**neon-district is 3.9× the CPU budget; golden-forest 2.4×.** No other cell exceeds 6.0.
+
+**It is submission cost, and the run proves it rather than asserting it.** Across the 52 cells with
+both a CPU sample and a draw count:
+
+- **`r(cpuSubmit p50, drawCalls p50) = 0.960`**
+- **`r(cpuSubmit p50, triangles p50) = 0.195`**
+
+Per-draw cost is roughly constant fleet-wide: neon-district 11.0 µs/draw, golden-forest 11.5,
+ocean 10.9, bioluminescence-2 9.0, halcyon-apex 8.5, ice-temple 17.3. The two-theme demonstration is
+sharper than the correlation: **summer draws 2.56 M triangles in 278 calls for 2.6 ms of CPU;
+golden-forest draws 1.17 M triangles in 1,101 calls for 12.7 ms.** Half the geometry, five times the
+CPU, four times the draws. Geometry is not what costs.
+
+**What that implies for Phase 4.** Three things, in order:
+
+1. **Plan 4.1 (CPU-profile the idle frame first) is now the load-bearing row, and it is a
+   prerequisite for quoting these numbers as budget breaches.** The instrument wraps *every* render
+   entry — `renderer`, `post`, `postProcessing`, `postComposer`, `composer`
+   (`theme-perf-instrument.mjs:224-240`) — and accumulates `now() − t` around each
+   (`:236`). A post stack whose `render()` internally drives `renderer.render()` is therefore counted
+   at both levels. The tell is in the same cell: neon-district reports `cpuSubmitMs.p95 23.3` beside
+   `wall.p50 7.8` — two numbers that cannot both be one frame's cost. **Treat 23.3 as an upper bound
+   and a rank, not a budget comparison.** The ranking and the 0.960 correlation survive the
+   double-count (it is a per-theme near-constant factor); the absolute breach does not. `_renderObjectDirect`
+   / `Bindings._update` / `writeBuffer` self-time is exactly what 4.1 was written to get.
+2. **`frameP95Ms.perSurface."heavy-theme-worst"` still stays null** (`perf-budgets.json:25`). This run
+   did not measure a theme's frame p95 — see §6.6. The metric that *should* eventually fill a cell
+   here is the **CPU-submit split**, after 4.1 attributes it.
+3. **Re-rank the Phase 4 items against the split.** 4.4 (`renderGroup` for shared per-frame uniforms)
+   and any draw-call consolidation on neon-district and golden-forest are aimed at the measured pole.
+   4.3 (FSR1) and 4.7 (ClusteredLighting for neon-district) are aimed at fill — and neon-district's
+   GPU p95 is **1.245 ms**. On this lane there is nothing there to win. Both are Lane B rows and
+   should be labelled as such rather than sequenced as if they were general.
+
+---
+
+### 11.5 (plan 4.8 / 5.x) — which "look better" rows this run supports, and which it does not
+
+**The number that governs the whole phase: GPU p95 never exceeds 2.425 ms fleet-wide** (summer; next
+are starlight 2.359, serenity-warp and tornado 2.163). The largest single GPU sample in 30 timestamped
+cells is **6.357 ms** (tornado, whose p95 is 2.163). Against `gpuMaxMs: 9`, **the fleet uses at most
+27 % of its GPU budget on Lane A, and the median theme is far under that.** Timer quantum is
+0.065536 ms, so these are real readings, not rounding.
+
+**Supported by the measurement — spend GPU, it is there:**
+
+- **4.2 (gate DRS on GPU time, not wall).** This is the strongest-evidenced row in the run, and the
+  evidence is an *inadmissible* cell. neon-dusk broke its pins: `pins.observedAtWindowStart
+  .rendererPixelRatio 0.85` → `observedAtWindowEnd 0.7999999999999999`, `pinsHeld: false`. Adaptive
+  resolution engaged **mid-window on a theme whose GPU p95 is 0.852 ms** — 10.6× under the split
+  budget. The system shed pixels while the GPU was nearly idle, caught in the act. That is 4.2's
+  thesis, measured.
+- **4.6 (supersample policy on Lane A)** and **5.3 (dispersion/iridescence on lunara, ice-temple,
+  fluid-dreams)**: their GPU p95 values are 1.769, 0.393 and 1.442 ms. There is headroom for both.
+- **5.1 (shadow softness/bias retune)** — cost 0, and the run gives no reason not to.
+- **5.2 (`GodraysNode`)**: sky-children (GPU p95 1.049) and himalayan-peak (1.376) both now produce
+  timestamp samples, so the row's own gate — "timestamp cost ≤ 0.6 ms" — is finally measurable per
+  theme. Do it in the cell, not by eye.
+
+**Not justified as a *performance* priority by this run:**
+
+- **4.8 (`BloomNode.setResolutionScale` / `PassNode.setResolutionScale`).** Keep it, but reclassify it.
+  It is **correctness and hygiene** — themes whose declared quality-preset resolution is silently
+  overwritten on the next frame are lying about their tiers, and the `0.5 × bloomDownsample` trap is
+  a real bug — but with GPU p95 at 2.425 ms worst, resolution scale buys no frames on Lane A. Its
+  frame-time payoff is a **Lane B claim and unmeasured**.
+- **4.3, 4.7** — see §6.4. Fill-bound rows on a lane that is not fill-bound.
+- **5.6 (classic-WebGL bloom parity).** Unaffected either way: it is a look-correctness row, and this
+  run cannot price it at all — all 20 classic cells report `idle.gpuMs` null because
+  `THREE.WebGLRenderer` has no timestamp API in 0.185.1 (ADR-0019, ADR-0008; the cell note says so
+  explicitly). That null is **renderer kind, not a gap**.
+- **4.9 (first-run GPU classifier).** The run is a single hardware point (one adapter, 61 cells), so
+  it says nothing for or against it. Unmeasured.
+
+**The honest summary for Phase 5**: nothing in this run argues against making themes look better, and
+several rows now have headroom numbers to spend against. What it *does* argue is that no look-better
+row should be sold as a frame-time win on Lane A, and that the phase's ordering should not be driven
+by GPU cost, because GPU cost is not the constraint here.
+
+---
+
+### 11.6 Negative results, stated as results
+
+**1. There are no lava lakes in the theme fleet.** The Odyssey's Earth Core lava floor took **7,235
+ms in one pipeline** (plan §1.2). The fleet's worst single async pipeline is **neon-district 1,687.9
+ms** (`AGGREGATE.md` rank 1), then golden-forest 958.6, koi-pond 600.2, ice-temple 583.2, wolfhour
+537.1, ocean 408.4, stellar-drift 275.0, moonlit-forest 207.2, chromadelic-highway 136.1, cosmic-noir
+122.9, stellar-velocity 97.1, chiral-gold 63.4. **Nothing is within 4× of the lake.** The fleet's
+problem is not a shader; it is 1,457 pipelines nobody warmed. *Caveat, stated because it matters:*
+those twelve are the only pipelines that could be timed at all. The 1,457 synchronous ones carry
+`ms: null` by construction, so "no lava lake" is proven for 246 pipelines and **unmeasured for 1,457**
+— it is exactly the compiles the fleet does not warm that the instrument cannot price. Routing 3.1
+is also what makes them measurable.
+
+**2. Idle frame time is pacing, not cost.** `idle.wall.p50` is between **7.5 and 8.3 ms in all 61
+cells** — 3 at 7.5, 51 at 7.6, and single cells at 7.7/7.8/7.9/8.1/8.3. That is the harness lane's own
+rAF cadence against a ~120 Hz panel (`theme-perf-instrument.mjs:309-317`), identical whether the theme
+draws 4 objects or 1,856. The p95 excursions to 15.8–15.9 (black-hole, chiral-gold,
+chromadelic-highway, neon-district) are single missed ticks, not a frame cost: `wall.overBudget` is
+**1 frame of ~1,300** in most themes, 5 of 881 in chiral-gold, and 14 of 1,004 in neon-district.
+**No theme's `wall.p95` exceeds the 16.667 ms budget.** Do not read this column as a per-theme frame
+time, and do not write it into `heavy-theme-worst` — this run measured the *lane's* cadence and the
+*theme's* CPU/GPU split, not the theme's frame p95.
+
+**3. MaterialX noise did not surface as a compile pole anywhere — but say why.** No async pipeline in
+the run is attributable to a `mx_*`-heavy theme, because **the noise-heavy themes have no async
+pipelines**: winter (30 `mx_*` calls), vesper-chrysalis (29), fluid-dreams (19), stillwater, tornado,
+starlight, synthwave-sunset, black-hole all compile 100 % synchronously. The fleet's actual timed
+poles are plain node materials — golden-forest's 958.6 ms is a `MeshBasicNodeMaterial`
+(`renderPipeline_MeshBasicNodeMaterial_45`), neon-district's 1,687.9 ms likewise
+(`renderPipeline_MeshBasicNodeMaterial_16`). And the one direct after-gap reading available for the
+worst MaterialX theme is against the row: **winter, 30 `mx_*` calls, cold Dawn cache, after = 191.2 ms
+for all 26 of its pipelines.** So: plan **3.5 is not a headline lever and the run gives no reason to
+raise it**; the three concentrated cases (`winter-materials.js:753`, vesper-chrysalis `effect:702`,
+summer `effect:235`) stay worth doing on their own merits. This is *not* a refutation — MaterialX
+compile cost is **unmeasured per pipeline** in 21 themes for the same reason everything else there is.
+Land 3.1, then re-read this result.
+
+**4. No pipeline failed and no theme errored.** `pipelines.failedCount` is 0 in all 61 cells;
+`console.genuineErrorCount` is 0 in all 61.
+
+**5. GC is not a fleet problem.** Worst `memory.gcPerSecond` is **3.0/s** (solar-eclipse), then geode
+2.6, rainy-window 2.2, synthwave-sunset 2.1. Plan 6.5's allocation ranking stands as hygiene; nothing
+here promotes it.
+
+**6. The three inadmissible cells, each with its reason — and two of them are findings.**
+
+- **stillwater** and **stellar-velocity**: `"no GPU timestamp samples
+  (no-resolved-timestamp-in-window)"`. `renderer.trackTimestampArmed` is `true` in both, so the queries
+  were armed and never landed — both themes manage timestamps themselves and most likely consume the
+  resolve before the lane's `resolveTimestampsAsync('render')` can read `info.render.timestamp`
+  (`theme-perf-instrument.mjs:286-300`). Their switch marks and pipeline census are intact; only the
+  GPU column is void. **stillwater's 10,421.0 ms `firstFrameGpuDoneMs` is quoted here as the fleet's
+  worst with that flag attached.**
+- **neon-dusk**: `"pins: rendererPixelRatio moved 0.85 -> 0.7999999999999999 during the window"`.
+  Adaptive resolution engaged mid-measurement. The cell is disqualified **and the disqualification is
+  the evidence for plan 4.2** — see §6.5.
+
+**7. Content drift is real and is why 25 cells carry a void.** `drift.admissible` is true in **36 of
+61**; `content.contentMatch` in 27. golden-forest's is typical: `"draw calls differ (v1=1101,
+v2=1171)"`. Themes with time-varying content cannot be A/B'd across visits without a frozen clock.
+Any Stage-3 before/after on 3.1 must pin content, or it will measure weather.
+## 12. The 61-row verdict table — measured
+
+61 cells at [`reports/theme-perf/`](../reports/theme-perf/), **58 admissible**, run serially with one
+fresh Electron per theme, **one adapter for the whole run** — `ANGLE (NVIDIA, NVIDIA GeForce RTX 3070
+Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)`, `requestedPowerPreference:
+"high-performance"`. Stage 1's matrix was Lane B on a Vega 8 iGPU and derived from switch logs (§0),
+so **absolute milliseconds below are not comparable to §5** — the rankings are.
+
+**The metric.** `first frame ms` is `switchTimings.firstFrameGpuDoneMs`: GPU work for the *first*
+frame finished, measured by `queue.onSubmittedWorkDone` on WebGPU and `fenceSync` on classic WebGL.
+This is the player-facing latency and it is the sort key. `switch ms` is `switchWallMs`
+(`switchTheme()` requested → promise resolved). `after ms` is the difference — the cost that lands
+*after* the switch promise has already told the app it is done. **`allQuiescedGpuDoneMs` is not
+quoted anywhere in this section**: it includes a 2,000–2,100 ms compile-quiet wait by construction
+(`quietWaitFloorMs` is recorded in every cell) and is not a latency.
+
+**Columns.** `kind` is `renderer.kind` — the *three.js* renderer class, so a theme that drives raw
+WebGL/WebGPU itself reads `own`. `async/sync` is `pipelines.asyncCount / pipelines.syncCount`;
+`worst pipe ms` is `pipelines.asyncMaxMs`. Sync pipelines carry `ms: null` **by construction** —
+`createRenderPipeline` returns before the GPU compiles — so a sync-heavy theme's compile cost is
+visible only as `after ms`, never as a per-pipeline number. `idle wall p95` / `cpu p95` / `gpu p95`
+are `idle.wall.p95`, `idle.cpuSubmitMs.p95`, `idle.gpuMs.p95` over a 10 s window; `draws` is
+`content.drawCalls.p50`; `GC/s` is `memory.gcPerSecond`. `—` means the field is legitimately null,
+never zero.
+
+| theme | kind | first frame ms | switch ms | after ms | async/sync | worst pipe ms | idle wall p95 | cpu p95 | gpu p95 | draws | GC/s | verdict |
+|---|---|---:|---:|---:|:---:|---:|---:|---:|---:|---:|---:|---|
+| `stillwater` † | WebGPU | 10,421 | 716 | 9,705 | 0/58 | — | 8.3 | 3.7 | — | 131 | 0.8 | **Fleet worst, by 1.45x.** 0 async / 58 sync: the warm protocol Stage 1 praised warms nothing. |
+| `koi-pond` | WebGPU | 7,169 | 6,142 | 1,027 | 35/41 | 600 | 8.2 | 4.1 | 0.721 | 128 | 0.4 | Cost is in the switch (6,142 ms), not after it. 35 async warms held; the asset is the lever. |
+| `vesper-chrysalis` | WebGPU | 6,350 | 713 | 5,638 | 0/103 | — | 8.7 | 5.5 | 1.114 | 257 | 0.5 | Second-worst post-switch cost in the fleet. 103 sync pipelines, nothing warmed. |
+| `lunara` | WebGPU | 6,173 | 979 | 5,194 | 0/73 | — | 8.3 | 4.7 | 1.769 | 224 | 0.5 | 5,194 ms after switch over 73 sync pipelines. Stage 1 named the mechanism and ranked it 15th. |
+| `golden-forest` | WebGPU | 4,553 | 4,018 | 535 | 30/106 | 959 | 8.2 | 14.3 | 1.507 | 1,101 | 0.6 | Real hit, inverted shape: 4,018 ms is the switch itself, only 535 after. 106 sync pipes cost ~5 ms each. |
+| `ocean` | WebGPU | 4,500 | 2,102 | 2,398 | 51/76 | 408 | 8.3 | 4.8 | 1.245 | 393 | 0.6 | 51 async pipelines and still 2,398 ms after — the widest warm in the fleet covers under half the cost. |
+| `fluid-dreams` | WebGPU | 3,807 | 409 | 3,398 | 0/14 | — | 8.2 | 3.0 | 1.442 | 61 | 1.1 | 243 ms of post-switch cost per sync pipeline — the fleet's steepest. Predicted mechanism exactly. |
+| `bioluminescence-2` | WebGPU | 3,628 | 496 | 3,132 | 0/174 | — | 8.2 | 4.9 | 1.180 | 501 | 0.6 | 174 sync pipelines, 0 async: the fleet's largest unwarmed set, at ~18 ms each. |
+| `summer` | WebGPU | 3,543 | 421 | 3,122 | 0/121 | — | 8.3 | 3.0 | 2.425 | 278 | 0.4 | 0/121. Also the fleet's worst idle GPU p95 at 2.425 ms — still 3.7x inside the 9 ms split. |
+| `ice-temple` | WebGPU | 3,220 | 2,093 | 1,127 | 11/28 | 583 | 8.1 | 6.6 | 0.393 | 341 | 0.5 | Confirmed. 583 ms worst pipe and 6.6 ms CPU p95, over the 6 ms split budget. |
+| `starlight` | WebGPU | 3,180 | 379 | 2,801 | 0/14 | — | 8.2 | 2.0 | 2.359 | 37 | 0.7 | 200 ms per sync pipeline over just 14 — second-steepest. Depth, not count. |
+| `sky-children` | WebGPU | 2,559 | 603 | 1,957 | 0/34 | — | 8.2 | 4.3 | 1.049 | 212 | 0.6 | 0/34, 1,957 ms after. Zero-async cliff at middling depth. |
+| `halcyon-apex` | WebGPU | 2,451 | 752 | 1,699 | 0/62 | — | 8.2 | 4.3 | 0.852 | 461 | 0.3 | 0/62. 461 draws for 25,683 triangles: the cost is compile, not content. |
+| `moonlit-forest` | WebGPU | 2,315 | 2,269 | 46 | 29/9 | 207 | 8.2 | 0.7 | 1.573 | 32 | 0.7 | **The fleet's best-shaped curve.** 29 async moved the cost into the switch; 46 ms remains after. |
+| `pyrestorm` | WebGL | 2,144 | 2,128 | 16 | — | — | 8.1 | 1.1 | — | 55 | 1.4 | Classic GL, 16 ms after switch, 1.1 ms CPU p95. The predicted frame problem does not exist. |
+| `stellar-drift` | WebGPU | 2,004 | 1,719 | 285 | 12/23 | 275 | 8.3 | 4.3 | 1.901 | 164 | 0.5 | 12/23, worst pipe 275 ms. Middling on every measured axis. |
+| `neon-district` | WebGPU | 1,713 | 1,103 | 609 | 34/180 | 1,688 | 15.8 | 23.3 | 1.245 | 1,856 | 0.9 | **Fleet's worst single pipeline (1,688 ms) and worst CPU p95 (23.3 ms at 1,856 draws)** — yet 17th on latency. |
+| `moonrise-summit` | WebGL | 1,634 | 1,626 | 8 | — | — | 8.2 | 1.0 | — | 34 | 1.0 | Classic GL by design. 8 ms after switch. Clean. |
+| `blood-moon` | WebGL | 1,593 | 1,545 | 48 | — | — | 8.2 | 0.9 | — | 44 | 1.3 | 48 ms after switch. Stage 1 called its fragment the batch densest; it never surfaced as latency. |
+| `misty-lake` | WebGL | 1,529 | 98 | 1,431 | — | — | 8.2 | 1.2 | — | 68 | 1.2 | 98 ms switch, 1,431 ms after: classic GL links its programs at first draw, not at switch. |
+| `bioluminescence` | WebGL | 1,449 | 279 | 1,170 | — | — | 8.2 | 5.7 | — | 227 | 0.6 | Same lazy-link shape: 279 ms switch, 1,170 ms after. 5.7 ms CPU p95 at 227 draws. |
+| `black-hole` | WebGPU | 1,446 | 357 | 1,089 | 0/21 | — | 15.9 | 2.9 | 0.459 | 71 | 1.4 | 0/21 — "the fleet's only correct prewarm" produced zero async pipelines. |
+| `neon-dusk` † | WebGPU | 1,402 | 574 | 828 | 0/28 | — | 8.2 | 3.5 | 0.852 | 167 | 1.1 | 0/28 confirms the mechanism; the cell is void because adaptive resolution engaged mid-window. |
+| `chromadelic-highway` | WebGPU | 1,344 | 1,225 | 119 | 14/27 | 136 | 15.9 | 5.2 | 0.393 | 257 | 1.1 | 14/27, 119 ms after. The 17 duplicate materials cost no measurable latency. |
+| `cosmic-noir` | WebGPU | 1,183 | 920 | 262 | 7/18 | 123 | 8.2 | 3.5 | 1.180 | 89 | 1.0 | 7/18, 262 ms after. Row and a verdict, as predicted. |
+| `electric-dreams-v3` | WebGPU | 1,121 | 341 | 780 | 0/11 | — | 8.2 | 1.9 | 1.966 | 31 | 1.3 | 11 sync, 780 ms after. Real, but 26th — not "the hit-list theme on compile". |
+| `synthwave-sunset` | WebGPU | 1,095 | 378 | 717 | 0/23 | — | 8.3 | 4.5 | 0.655 | 332 | 2.1 | 0/23, 717 ms after. Two narrow levers, no latency story. |
+| `wolfhour` | WebGPU | 1,079 | 549 | 529 | 7/18 | 537 | 8.2 | 3.8 | 0.786 | 95 | 0.4 | 7 async, one 537 ms pipe — the per-peak recompile is priced, and it is small. |
+| `chiral-gold` | WebGPU | 1,067 | 693 | 374 | 6/17 | 63 | 15.9 | 3.3 | 0.459 | 85 | 1.5 | 6/17. GC 1.5/s and wall p95 15.9 ms, which is pacing against a 120 Hz panel, not cost. |
+| `crystal-cave` | WebGL | 1,031 | 1,005 | 27 | — | — | 8.2 | 5.4 | — | 533 | 1.9 | 533 draws confirmed; "worst theme in the batch" refuted at 8.2 ms wall / 5.4 ms CPU. |
+| `astral-weave` | WebGPU | 985 | 280 | 704 | 0/27 | — | 8.3 | 5.3 | 1.442 | 362 | 0.4 | 362 draws — 6.4x the 57 Stage 1 counted, and still 8.3 ms wall p95. |
+| `sakura-twilight` | WebGL | 968 | 960 | 8 | — | — | 8.2 | 0.5 | — | 22 | 1.1 | 960 ms switch, 8 ms after: the 11.79 MB GLB is real and it lands inside the switch. |
+| `himalayan-peak` | WebGPU | 939 | 351 | 588 | 0/14 | — | 8.2 | 3.3 | 1.376 | 59 | 0.7 | 0/14, 588 ms after. The "cleanest fix in the fleet" is worth 0.6 s, not a rank. |
+| `stellar-velocity` † | WebGPU | 900 | 762 | 138 | 10/23 | 97 | 8.2 | 5.2 | — | 201 | 1.9 | Self-managed timestamps yielded no resolved samples. GC 1.9/s is not fleet-worst. |
+| `rainy-window` | WebGL | 806 | 780 | 26 | — | — | 8.2 | 0.8 | — | 16 | 2.2 | 16 draws, 0.8 ms CPU p95. "The most expensive idle frame by a wide margin" is flatly refuted. |
+| `serenity-warp` | WebGPU | 779 | 314 | 465 | 0/46 | — | 8.3 | 2.5 | 2.163 | 71 | 0.4 | 0/46, 465 ms after. "Hit-list candidate number one" lands 36th. |
+| `solar-eclipse` | WebGL | 755 | 86 | 668 | — | — | 8.2 | 1.9 | — | 68 | 3.0 | Fleet-worst GC at 3.0/s — which is three collections per second. 86 ms switch. |
+| `fall` | WebGL | 716 | 317 | 399 | — | — | 8.2 | 0.8 | — | 23 | 1.1 | 317 ms switch, 399 ms after. The 5.2 MB synchronous bake is inside the switch and it is affordable. |
+| `winter` | WebGPU | 590 | 399 | 191 | 0/26 | — | 8.2 | 3.6 | 2.097 | 95 | 0.8 | **Stage-1 #3 measures 39th.** The lake is never built and the compileAsync warms nothing (0/26). |
+| `geode` | WebGL | 586 | 571 | 15 | — | — | 8.2 | 2.9 | — | 201 | 2.6 | 201 draws, not 476. 8.2 ms wall p95, 2.9 ms CPU. |
+| `cinder-drift` | WebGL | 574 | 566 | 8 | — | — | 8.2 | 0.2 | — | 11 | 1.2 | 11 draws, 2 triangles, 0.2 ms CPU. The leanest cell in the fleet. |
+| `sunset` | WebGL | 554 | 520 | 34 | — | — | 8.2 | 1.0 | — | 30 | 1.2 | 1.2 GC/s, 1.0 ms CPU. The 24-Color-per-frame claim costs nothing measurable. |
+| `luminous-tides` | WebGL | 503 | 79 | 424 | — | — | 8.2 | 1.2 | — | 29 | 2.1 | 79 ms switch, 424 ms after. Lazy GLSL link again. |
+| `singing-bowl` | WebGL | 411 | 400 | 11 | — | — | 8.3 | 1.1 | — | 46 | 1.2 | 400 ms switch, 11 ms after. The Reflector traversal is invisible at 1.1 ms CPU. |
+| `waves` | WebGL | 411 | 81 | 330 | — | — | 8.2 | 0.8 | — | 18 | 1.3 | 81 ms switch, 330 ms after. Confirmed clean. |
+| `shifting-sands` | WebGPU | 404 | 259 | 146 | 0/18 | — | 8.1 | 3.1 | 1.245 | 83 | 1.0 | 0/18 despite a compileAsync call site. Cheap on every axis regardless. |
+| `nimbus-veil` | WebGL | 381 | 372 | 9 | — | — | 8.2 | 0.8 | — | 32 | 1.4 | 32 draws, 0.8 ms CPU. Clean. |
+| `verdant-hills` | WebGPU | 343 | 263 | 80 | 0/6 | — | 8.3 | 1.0 | 1.114 | 101 | 1.1 | 101 draws, not 184. 80 ms after switch. |
+| `galaxy` | WebGL | 313 | 306 | 7 | — | — | 8.3 | 0.2 | — | 12 | 1.2 | 12 draws, 0.2 ms CPU. Cheapest WebGL cell measured. |
+| `aurora` | WebGL | 274 | 267 | 7 | — | — | 8.2 | 0.2 | — | 13 | 1.2 | 13 draws, 0.2 ms CPU. Clean. |
+| `supernova` | WebGL | 261 | 206 | 55 | — | — | 8.3 | 0.2 | — | 4 | 1.2 | 4 draws — the least content in the fleet. Confirmed near-clean. |
+| `aether-tides` ‡ | own | 241 | 241 | — | — | — | 8.2 | — | — | — | 1.2 | Own renderer: no three instrument. The 43-blit frame claim is unmeasured. |
+| `tornado` | WebGPU | 235 | 164 | 71 | 0/11 | — | 8.2 | 3.0 | 2.163 | 47 | 1.8 | 0/11 despite a compileAsync call site. 71 ms after switch. |
+| `void-ember` ‡ | own | 223 | 223 | — | 0/7 | — | 8.2 | — | — | — | 1.3 | Owns its renderer yet creates 7 WebGPU pipelines. Latency unmeasurable; frame claims unmeasured. |
+| `chromatic-impasto` ‡ | own | 220 | 219 | — | — | — | 8.2 | — | — | — | 1.1 | Own renderer. GC 1.1/s. Frame and GC claims unmeasured by this lane. |
+| `nebula-flow` ‡ | own | 213 | 213 | — | — | — | 8.2 | — | — | — | 1.3 | Own renderer. The 29-blit frame claim is unmeasured. |
+| `voltage-storm` ‡ | own | 212 | 212 | — | — | — | 8.2 | — | — | — | 1.1 | Own renderer. The 42-blit frame claim is unmeasured. |
+| `moonlit-greenhouse` ‡ | own | 94 | 94 | — | — | — | 8.8 | — | — | — | 1.5 | 94 ms end to end. The toDataURL on the switch critical path costs nothing measurable. |
+| `cosmic-chimes` ‡ | own | 50 | 50 | — | — | — | 8.2 | — | — | — | 1.2 | Confirmed clean — 50 ms, no renderer, no shaders. |
+| `mountain` ‡ | own | 42 | 42 | — | — | — | 8.2 | — | — | — | 1.2 | 42 ms switch. The 59.6 MB canvas-bake claim is refuted as a latency cost. |
+| `forest` ‡ | own | 24 | 24 | — | — | — | 8.2 | — | — | — | 1.1 | Anchor theme. Stub confirmed at 24 ms. |
+
+**† Inadmissible (3).** Kept and marked, never dropped — the reason is in each cell's
+`inadmissibleReasons`:
+
+- `stillwater` — *"no GPU timestamp samples (no-resolved-timestamp-in-window)"*. The theme manages
+  its own timestamp queries and most likely consumes the resolve first. Its switch and first-frame
+  numbers stand; its `gpu p95` does not exist. **It is still the fleet's worst first-frame latency.**
+- `stellar-velocity` — same reason, same cause.
+- `neon-dusk` — *"pins: rendererPixelRatio moved 0.85 -> 0.7999999999999999 during the window"*.
+  Adaptive resolution engaged mid-measurement, which disqualifies the timing **and is itself a
+  finding**: the theme is dropping render scale at idle on an RTX 3070.
+
+**‡ Own-renderer themes (9).** `renderer.kind` is `null` and
+`switchTimings.firstFrameGpuDoneMethod` is `"no-gpu-context"` — the lane has no three.js renderer to
+instrument, so `firstFrameGpuDoneMs` falls back to `criticalReadyMs` and is **not** a GPU-completion
+measurement. `after ms` is therefore undefined, not zero, and `cpu p95` / `gpu p95` / `draws` are
+unmeasured. `void-ember` is the interesting one: it owns its renderer and still creates 7 WebGPU
+pipelines, all sync.
+
+**`gpu p95` = `—` on the 20 classic rows is renderer *kind*, not a gap.**
+`idle.gpuNullReason: "classic-webgl-renderer-has-no-timestamp-api"` — `THREE.WebGLRenderer` has no
+timestamp API in three 0.185.1. Classic is a supported lane (ADR-0008, ADR-0019), never debt.
+
+---
+
+### Stage 1 against the measurement
+
+Stage 1's §9 verdicts were written per 44-agent *batch*; superlatives scoped to "in this batch" are
+judged as such below, fleet-scoped claims are judged hard.
+
+#### CONFIRMED
+
+- **`fluid-dreams` — the single best call in Stage 1.** §4 predicted the exact shape: *"there is no
+  `compileAsync` anywhere in the theme (0 grep hits), so both compile synchronously on the first
+  rendered frame — which is exactly why its measured switch window is only 7 ms and its cost is
+  invisible in the committed matrix."* Measured: `asyncCount: 0`, `syncCount: 14`, switch **409 ms**,
+  after **3,398 ms**. That is **243 ms of post-switch cost per sync pipeline, the fleet's steepest**.
+- **`koi-pond`** — predicted #2, measured #2 (7,169 ms). Its 35 async warms held (`after` only
+  1,027 ms); the 6,142 ms is the switch itself, which is where the 11.7 MB GLB lives.
+- **`golden-forest`** — predicted #1, measured #5, and the mechanism holds: 30 async pipelines
+  summing 2,129 ms inside a 4,018 ms switch, with 106 sync pipelines costing only ~5 ms each after.
+- **`ocean` (#7 → #6) and `ice-temple` (#5 → #10)** — both real, both for the predicted reasons.
+  `ice-temple` also breaches the CPU split at **6.6 ms** (`perf-budgets.json:33`, `cpuMaxMs: 6`).
+- **`neon-district` as the pipeline-COUNT outlier** — 214 pipelines, **180 of them sync**, both
+  fleet maxima. §4's "outlier by a factor of two" is correct on count.
+- **`moonlit-forest`** — §9 called its one bare `compileAsync` *"the dominant term in this theme's
+  first-entry latency."* Measured 29 async / 9 sync, switch 2,269 ms, **after 46 ms**. The warm works
+  and it moved the entire cost into the switch. **This is the shape every other WebGPU theme should
+  have.**
+- **`starlight` is depth, `bioluminescence-2` is count** — exactly as §9 split them. `starlight`:
+  14 sync pipelines, 2,801 ms after (200 ms each, second-steepest). `bioluminescence-2`: 174 sync
+  pipelines, 3,132 ms after (~18 ms each).
+- **Every "zero `compileAsync`" call was right** — `lunara`, `vesper-chrysalis`, `sky-children`,
+  `summer`, `serenity-warp`, `himalayan-peak`, `electric-dreams-v3`, `neon-dusk`, `fluid-dreams`,
+  `halcyon-apex`, `astral-weave`, `synthwave-sunset`, `starlight` and `verdant-hills` all measure
+  `asyncCount: 0`.
+- **`sakura-twilight`'s 11.79 MB GLB** — 960 ms switch, 8 ms after. Real, and entirely inside the
+  switch.
+- **`solar-eclipse` on GC** — fleet-worst at **3.0/s**. And `cinder-drift` as "the leanest theme in
+  the batch": 11 draws, 2 triangles, 0.2 ms CPU p95.
+
+#### REFUTED
+
+- **`stillwater`. §9 — *"Row-and-a-verdict, not a hit-list candidate"*, and §4 called it the only
+  theme implementing the full warm protocol.** It is the **worst theme in the fleet by a factor of
+  1.45** over #2, at 10,421 ms, with **9,705 ms landing after the switch promise resolves**. Its cell
+  reads `asyncCount: 0`, `syncCount: 58`. The warm protocol Stage 1 held up as the fleet's model
+  produced **zero** async pipelines. Stage 1 read the source, counted a `compileAsync` call site, and
+  never asked whether the call did anything.
+- **`winter` as #3.** Measured **39th of 61** at 590 ms. The 14-`mx_noise` lake Stage 1 called *"the
+  fleet's only concentrated MaterialX lake"* sits behind a query param and was never built, and its
+  `compileAsync` produced `asyncCount: 0` over 26 sync pipelines. (Its 3,156 ms **switch-away** stall
+  is a different metric that this lane does not measure — see MISSED.)
+- **`black-hole` — *"the fleet's only correct prewarm"*.** Measured `asyncCount: 0`, `syncCount: 21`,
+  1,089 ms after switch. It warms nothing either.
+- **The frame-cost hit list, as a class.** `crystal-cave` (*"the worst theme in the batch"*,
+  ~615 draws/frame) measures 533 draws, **8.2 ms wall p95 and 5.4 ms CPU p95** — inside budget.
+  `rainy-window` (*"the most expensive idle frame in this batch by a wide margin"*) measures
+  **16 draws and 0.8 ms CPU p95**, among the cheapest cells in the fleet. `pyrestorm` (*"hit-list
+  candidate on FRAME"*, ~51,000 particle iterations per frame) measures 1.1 ms CPU p95. `sunset`'s
+  24-`THREE.Color`-per-frame allocation measures 1.2 GC/s and 1.0 ms CPU.
+- **`mountain` and `moonlit-greenhouse` on the asset / critical-path axis.** `mountain` — *"HIT-LIST
+  CANDIDATE… ~59.6 MB of Canvas2D backing store… before `createScene()` returns"* — measures a
+  **42 ms** switch, second-fastest in the fleet. `moonlit-greenhouse` — *"a synchronous 2048x1080
+  `canvas.toDataURL()` PNG encode on the theme-switch critical path"* — measures **94 ms** end to end.
+- **Static counts, in both directions.** `geode` 476 materials predicted → **201** draws measured.
+  `verdant-hills` 184 → **101**. `halcyon-apex` 91 materials → **62** pipelines. And the other way:
+  `astral-weave`'s *"57 idle draw calls against its own declared 30-call budget"* → **362 draws**,
+  6.4x the count Stage 1 used to indict it.
+- **Batch superlatives that do not survive fleet scope.** `serenity-warp` (*"hit-list candidate
+  number one in this batch"*) lands **36th**; `electric-dreams-v3` (*"THE HIT-LIST THEME of this
+  batch on compile"*) lands **26th**; `himalayan-peak` (*"HIT-LIST CANDIDATE, and the cleanest one in
+  the fleet to fix"*) lands **33rd** — its fix is worth 588 ms, a cheap win, not a rank.
+  `stellar-velocity`'s *"worst GC profile in this batch"* measures 1.9/s against `solar-eclipse`'s 3.0.
+- **The lava lake, as a fleet-wide frame.** The Odyssey hunt's 7,235 ms single pipeline has **no
+  analogue anywhere in 61 themes**. The worst measured single pipeline is `neon-district`'s
+  `renderPipeline_MeshBasicNodeMaterial_16` at **1,687.9 ms** (`atMs: 6096.3`), then `golden-forest`
+  959, `koi-pond` 600, `ice-temple` 583, `wolfhour` 537, `ocean` 408. **Nothing in the fleet is
+  within 4x of the lake.** Stage 1 suspected this in §2 ("the compile *call*, not a shader"); the
+  measurement settles it.
+
+#### MISSED ENTIRELY
+
+- **The zero-async cliff — the finding.** Stage 1 has a `bare cA` column in §5 and never ranked by
+  it. Measured: **20 of 32 WebGPU themes have `asyncCount: 0`**, and **the seven worst post-switch
+  costs in the fleet are all seven of them** — `stillwater` 9,705, `vesper-chrysalis` 5,638,
+  `lunara` 5,194, `fluid-dreams` 3,398, `bioluminescence-2` 3,132, `summer` 3,122, `starlight` 2,801.
+  The first theme with any async warm is `ocean`, at 2,398. In three 0.185.1 the only path that
+  reaches `createRenderPipelineAsync` is `Renderer.compileAsync`, so a theme that never calls it
+  warms nothing at all. **One root cause, one fix, 20 themes.**
+- **A `compileAsync` call site is not a warm.** Stage 1's §5 lists **18** WebGPU themes with at least
+  one bare `compileAsync`. Twelve produced async pipelines. **Six produced zero** — `winter`,
+  `stillwater`, `shifting-sands`, `black-hole`, `electric-dreams-v3`, `tornado`. Stage 1 counted call
+  sites and inferred warms; the effect had never been measured. This is the same error that made
+  `stillwater` look clean and `black-hole` look exemplary.
+- **Idle frame time is pacing, not cost — the whole axis is dead.** Worst idle wall p95 fleet-wide is
+  **15.9 ms** (`black-hole`, `chromadelic-highway`, `chiral-gold`) and **nothing exceeds 16.67 ms**;
+  worst idle GPU p95 is **2.425 ms** (`summer`), 3.7x inside the 9 ms split. Themes sitting near
+  16 ms are honouring the 60 Hz target against a 120 Hz panel, not doing more work. Every §9 "frame
+  hit-list" verdict was unfalsifiable at this resolution, and none of them survive it.
+- **CPU-submit is the real per-frame budget, and Stage 1 never ranked it.** `perf-budgets.json:33`
+  sets `split.cpuMaxMs: 6`. Three breaches: **`neon-district` 23.3 ms at 1,856 draws (3.9x over)**,
+  **`golden-forest` 14.3 ms at 1,101 draws**, and `ice-temple` 6.6 ms. Stage 1 ranked GC instead —
+  an axis whose fleet-wide worst is 3.0 collections per second.
+- **Classic WebGL links its programs lazily, after the switch resolves.** Six classic cells spend
+  most of their first-frame latency in `after`: `misty-lake` 98 → **1,431**, `bioluminescence`
+  279 → **1,170**, `solar-eclipse` 86 → **668**, `luminous-tides` 79 → **424**, `waves` 81 → **330**,
+  `fall` 317 → **399**. Stage 1's single `cold` column cannot see this split, so it read these themes
+  as fast.
+- **Three themes defeat the instrument.** `stillwater` and `stellar-velocity` manage their own
+  timestamp queries and produced no resolved samples; `neon-dusk` engaged adaptive resolution
+  mid-window. §8 listed what Stage 0 must settle without anticipating that the measurement itself
+  would come back with a 3-cell hole — one of them in the fleet's worst theme.
+- **Nine themes are outside the instrument entirely.** The `own`-renderer rows have no three.js
+  renderer, so `firstFrameGpuDoneMethod` is `"no-gpu-context"` and there is no CPU/GPU split, no draw
+  count and no pipeline accounting. Stage 1 nonetheless gave four of them frame-cost verdicts
+  denominated in full-screen blits per frame (`aether-tides` 43, `voltage-storm` 42, `nebula-flow`
+  29) — all **unmeasured**, then and now. Stage 1's §5 `kind` column also lists `aether-tides`,
+  `chromatic-impasto`, `nebula-flow` and `voltage-storm` as `GL`, where the lane records
+  `renderer.kind: null` for all four. That is a taxonomy difference, not a contradiction — but it
+  means §5's `kind` column cannot be used to decide which themes the WebGPU levers apply to.

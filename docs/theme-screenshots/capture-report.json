@@ -1,13 +1,13 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-24T16:36:37.612Z",
-  "startedAt": "2026-08-24T16:23:12.724Z",
-  "runId": "2026-08-24T16-23-12-723Z",
+  "generatedAt": "2026-08-24T17:43:58.895Z",
+  "startedAt": "2026-08-24T17:00:53.493Z",
+  "runId": "2026-08-24T17-00-53-492Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
-  "selectedThemeCount": 20,
-  "completedThemeCount": 20,
-  "passed": 20,
+  "selectedThemeCount": 61,
+  "completedThemeCount": 61,
+  "passed": 61,
   "failed": 0,
   "interrupted": false,
   "execution": {
@@ -23,28 +23,209 @@
     "perfTargetFps": 60
   },
   "selectedThemes": [
+    "forest",
+    "halcyon-apex",
+    "himalayan-peak",
+    "ice-temple",
+    "moonlit-forest",
+    "wolfhour",
+    "ocean",
     "sunset",
+    "mountain",
+    "winter",
     "fall",
+    "summer",
+    "tornado",
     "sakura-twilight",
     "aurora",
     "galaxy",
+    "aether-tides",
     "rainy-window",
+    "koi-pond",
+    "verdant-hills",
+    "cosmic-chimes",
+    "serenity-warp",
     "singing-bowl",
+    "starlight",
+    "golden-forest",
     "geode",
     "bioluminescence",
+    "bioluminescence-2",
+    "shifting-sands",
     "misty-lake",
     "waves",
     "luminous-tides",
+    "fluid-dreams",
     "crystal-cave",
+    "moonlit-greenhouse",
+    "electric-dreams-v3",
+    "nebula-flow",
+    "chromatic-impasto",
+    "voltage-storm",
+    "lunara",
     "solar-eclipse",
     "moonrise-summit",
+    "black-hole",
     "supernova",
+    "void-ember",
+    "cosmic-noir",
+    "chiral-gold",
     "nimbus-veil",
+    "sky-children",
     "cinder-drift",
     "pyrestorm",
-    "blood-moon"
+    "neon-dusk",
+    "neon-district",
+    "synthwave-sunset",
+    "chromadelic-highway",
+    "stillwater",
+    "blood-moon",
+    "astral-weave",
+    "stellar-velocity",
+    "stellar-drift",
+    "vesper-chrysalis"
   ],
   "results": [
+    {
+      "theme": "forest",
+      "displayName": "Forest",
+      "performanceClass": "light",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\forest.png",
+      "report": "docs\\theme-screenshots\\results\\forest.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\forest.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "halcyon-apex",
+      "displayName": "Halcyon Apex",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\halcyon-apex.png",
+      "report": "docs\\theme-screenshots\\results\\halcyon-apex.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\halcyon-apex.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "himalayan-peak",
+      "displayName": "Himalayan Peak",
+      "performanceClass": "light",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\himalayan-peak.png",
+      "report": "docs\\theme-screenshots\\results\\himalayan-peak.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\himalayan-peak.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "ice-temple",
+      "displayName": "Ice Temple",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\ice-temple.png",
+      "report": "docs\\theme-screenshots\\results\\ice-temple.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\ice-temple.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "moonlit-forest",
+      "displayName": "Moonlit Forest",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\moonlit-forest.png",
+      "report": "docs\\theme-screenshots\\results\\moonlit-forest.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\moonlit-forest.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "wolfhour",
+      "displayName": "Wolfhour",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\wolfhour.png",
+      "report": "docs\\theme-screenshots\\results\\wolfhour.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\wolfhour.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "ocean",
+      "displayName": "Ocean",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\ocean.png",
+      "report": "docs\\theme-screenshots\\results\\ocean.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\ocean.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
     {
       "theme": "sunset",
       "displayName": "Sunset",
@@ -66,6 +247,46 @@
       }
     },
     {
+      "theme": "mountain",
+      "displayName": "Mountain",
+      "performanceClass": "light",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\mountain.png",
+      "report": "docs\\theme-screenshots\\results\\mountain.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\mountain.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "winter",
+      "displayName": "Winter",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\winter.png",
+      "report": "docs\\theme-screenshots\\results\\winter.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\winter.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
       "theme": "fall",
       "displayName": "Fall",
       "performanceClass": "heavy",
@@ -75,6 +296,46 @@
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": "reports\\theme-perf\\fall.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "summer",
+      "displayName": "Midsommar",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\summer.png",
+      "report": "docs\\theme-screenshots\\results\\summer.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\summer.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "tornado",
+      "displayName": "Tornado",
+      "performanceClass": "light",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\tornado.png",
+      "report": "docs\\theme-screenshots\\results\\tornado.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\tornado.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
@@ -146,6 +407,26 @@
       }
     },
     {
+      "theme": "aether-tides",
+      "displayName": "Aether Tides",
+      "performanceClass": "light",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\aether-tides.png",
+      "report": "docs\\theme-screenshots\\results\\aether-tides.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\aether-tides.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
       "theme": "rainy-window",
       "displayName": "Rainy Window",
       "performanceClass": "heavy",
@@ -166,6 +447,86 @@
       }
     },
     {
+      "theme": "koi-pond",
+      "displayName": "Koi Pond",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\koi-pond.png",
+      "report": "docs\\theme-screenshots\\results\\koi-pond.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\koi-pond.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "verdant-hills",
+      "displayName": "Verdant Hills",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\verdant-hills.png",
+      "report": "docs\\theme-screenshots\\results\\verdant-hills.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\verdant-hills.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "cosmic-chimes",
+      "displayName": "Cosmic Chimes",
+      "performanceClass": "light",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\cosmic-chimes.png",
+      "report": "docs\\theme-screenshots\\results\\cosmic-chimes.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\cosmic-chimes.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "serenity-warp",
+      "displayName": "Serenity Warp",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\serenity-warp.png",
+      "report": "docs\\theme-screenshots\\results\\serenity-warp.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\serenity-warp.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
       "theme": "singing-bowl",
       "displayName": "Singing Bowl",
       "performanceClass": "heavy",
@@ -175,6 +536,46 @@
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": "reports\\theme-perf\\singing-bowl.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "starlight",
+      "displayName": "Starlight",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\starlight.png",
+      "report": "docs\\theme-screenshots\\results\\starlight.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\starlight.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "golden-forest",
+      "displayName": "Golden Forest",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\golden-forest.png",
+      "report": "docs\\theme-screenshots\\results\\golden-forest.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\golden-forest.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
@@ -215,6 +616,46 @@
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": "reports\\theme-perf\\bioluminescence.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "bioluminescence-2",
+      "displayName": "Bioluminescence II",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\bioluminescence-2.png",
+      "report": "docs\\theme-screenshots\\results\\bioluminescence-2.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\bioluminescence-2.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "shifting-sands",
+      "displayName": "Shifting Sands",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\shifting-sands.png",
+      "report": "docs\\theme-screenshots\\results\\shifting-sands.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\shifting-sands.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
@@ -286,6 +727,26 @@
       }
     },
     {
+      "theme": "fluid-dreams",
+      "displayName": "Fluid Dreams",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\fluid-dreams.png",
+      "report": "docs\\theme-screenshots\\results\\fluid-dreams.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\fluid-dreams.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
       "theme": "crystal-cave",
       "displayName": "Crystal Cave",
       "performanceClass": "heavy",
@@ -295,6 +756,126 @@
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": "reports\\theme-perf\\crystal-cave.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "moonlit-greenhouse",
+      "displayName": "Moonlit Greenhouse",
+      "performanceClass": "light",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\moonlit-greenhouse.png",
+      "report": "docs\\theme-screenshots\\results\\moonlit-greenhouse.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\moonlit-greenhouse.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "electric-dreams-v3",
+      "displayName": "Electric Dreams V3",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\electric-dreams-v3.png",
+      "report": "docs\\theme-screenshots\\results\\electric-dreams-v3.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\electric-dreams-v3.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "nebula-flow",
+      "displayName": "Nebula Flow",
+      "performanceClass": "light",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\nebula-flow.png",
+      "report": "docs\\theme-screenshots\\results\\nebula-flow.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\nebula-flow.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "chromatic-impasto",
+      "displayName": "Chromatic Impasto",
+      "performanceClass": "light",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\chromatic-impasto.png",
+      "report": "docs\\theme-screenshots\\results\\chromatic-impasto.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\chromatic-impasto.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "voltage-storm",
+      "displayName": "Voltage Storm",
+      "performanceClass": "light",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\voltage-storm.png",
+      "report": "docs\\theme-screenshots\\results\\voltage-storm.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\voltage-storm.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "lunara",
+      "displayName": "Lunara",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\lunara.png",
+      "report": "docs\\theme-screenshots\\results\\lunara.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\lunara.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
@@ -346,6 +927,26 @@
       }
     },
     {
+      "theme": "black-hole",
+      "displayName": "Black Hole",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\black-hole.png",
+      "report": "docs\\theme-screenshots\\results\\black-hole.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\black-hole.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
       "theme": "supernova",
       "displayName": "Supernova",
       "performanceClass": "heavy",
@@ -366,6 +967,66 @@
       }
     },
     {
+      "theme": "void-ember",
+      "displayName": "Void Ember",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\void-ember.png",
+      "report": "docs\\theme-screenshots\\results\\void-ember.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\void-ember.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "cosmic-noir",
+      "displayName": "Cosmic Noir",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\cosmic-noir.png",
+      "report": "docs\\theme-screenshots\\results\\cosmic-noir.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\cosmic-noir.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "chiral-gold",
+      "displayName": "Chiral Gold",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\chiral-gold.png",
+      "report": "docs\\theme-screenshots\\results\\chiral-gold.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\chiral-gold.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
       "theme": "nimbus-veil",
       "displayName": "Nimbus Veil",
       "performanceClass": "heavy",
@@ -375,6 +1036,26 @@
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": "reports\\theme-perf\\nimbus-veil.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "sky-children",
+      "displayName": "Sky Children",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\sky-children.png",
+      "report": "docs\\theme-screenshots\\results\\sky-children.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\sky-children.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
@@ -426,6 +1107,110 @@
       }
     },
     {
+      "theme": "neon-dusk",
+      "displayName": "Neon Dusk",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\neon-dusk.png",
+      "report": "docs\\theme-screenshots\\results\\neon-dusk.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\neon-dusk.json",
+      "perfAdmissible": false,
+      "perfInadmissibleReasons": [
+        "pins: rendererPixelRatio moved 0.85 -> 0.7999999999999999 during the window"
+      ],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "neon-district",
+      "displayName": "Neon District",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\neon-district.png",
+      "report": "docs\\theme-screenshots\\results\\neon-district.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\neon-district.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "synthwave-sunset",
+      "displayName": "Synthwave Sunset",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\synthwave-sunset.png",
+      "report": "docs\\theme-screenshots\\results\\synthwave-sunset.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\synthwave-sunset.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "chromadelic-highway",
+      "displayName": "Chromadelic Highway",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\chromadelic-highway.png",
+      "report": "docs\\theme-screenshots\\results\\chromadelic-highway.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\chromadelic-highway.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "stillwater",
+      "displayName": "Stillwater",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\stillwater.png",
+      "report": "docs\\theme-screenshots\\results\\stillwater.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\stillwater.json",
+      "perfAdmissible": false,
+      "perfInadmissibleReasons": [
+        "no GPU timestamp samples (no-resolved-timestamp-in-window)"
+      ],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
       "theme": "blood-moon",
       "displayName": "Blood Moon",
       "performanceClass": "heavy",
@@ -435,6 +1220,88 @@
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": "reports\\theme-perf\\blood-moon.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "astral-weave",
+      "displayName": "Astral Weave",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\astral-weave.png",
+      "report": "docs\\theme-screenshots\\results\\astral-weave.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\astral-weave.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "stellar-velocity",
+      "displayName": "Stellar Velocity",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\stellar-velocity.png",
+      "report": "docs\\theme-screenshots\\results\\stellar-velocity.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\stellar-velocity.json",
+      "perfAdmissible": false,
+      "perfInadmissibleReasons": [
+        "no GPU timestamp samples (no-resolved-timestamp-in-window)"
+      ],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "stellar-drift",
+      "displayName": "Stellar Drift",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\stellar-drift.png",
+      "report": "docs\\theme-screenshots\\results\\stellar-drift.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\stellar-drift.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    },
+    {
+      "theme": "vesper-chrysalis",
+      "displayName": "Vesper Chrysalis",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\vesper-chrysalis.png",
+      "report": "docs\\theme-screenshots\\results\\vesper-chrysalis.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf\\vesper-chrysalis.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
