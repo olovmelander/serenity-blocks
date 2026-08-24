@@ -36,6 +36,22 @@
       "kind": "WebGPURenderer"
     },
     {
+      "theme": "vesper-chrysalis",
+      "admissible": true,
+      "worstPipelineMs": 1262.3,
+      "syncPipelines": 62,
+      "switchWallMs": 2253.1,
+      "firstFrameGpuDoneMs": 3025.1,
+      "allQuiescedGpuDoneMs": 5105.1,
+      "idleWallP95": 15.9,
+      "idleCpuP95": 5.9,
+      "idleGpuP95": 1.114,
+      "allocBytesPerFrame": null,
+      "gcPerSecond": 0.6,
+      "drawCalls": 257,
+      "kind": "WebGPURenderer"
+    },
+    {
       "theme": "golden-forest",
       "admissible": true,
       "worstPipelineMs": 958.6,
@@ -337,22 +353,6 @@
       "allocBytesPerFrame": null,
       "gcPerSecond": 0.3,
       "drawCalls": 461,
-      "kind": "WebGPURenderer"
-    },
-    {
-      "theme": "vesper-chrysalis",
-      "admissible": true,
-      "worstPipelineMs": 0,
-      "syncPipelines": 103,
-      "switchWallMs": 712.6,
-      "firstFrameGpuDoneMs": 6350.1,
-      "allQuiescedGpuDoneMs": 8421.9,
-      "idleWallP95": 8.7,
-      "idleCpuP95": 5.5,
-      "idleGpuP95": 1.114,
-      "allocBytesPerFrame": null,
-      "gcPerSecond": 0.5,
-      "drawCalls": 257,
       "kind": "WebGPURenderer"
     },
     {
