@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T15:42:04.734Z",
-  "runId": "2026-08-24T15-02-46-550Z",
+  "generatedAt": "2026-08-24T17:40:19.299Z",
+  "runId": "2026-08-24T17-00-53-492Z",
   "theme": "stillwater",
   "anchorTheme": "forest",
   "themeMeta": {
@@ -151,107 +151,107 @@
     "canvasContexts": [
       {
         "kind": "webgl",
-        "atMs": 704.1
+        "atMs": 708.5
       },
       {
         "kind": "webgl",
-        "atMs": 1056.2
+        "atMs": 1071.5
       },
       {
         "kind": "2d",
-        "atMs": 1056.4
+        "atMs": 1071.7
       },
       {
         "kind": "2d",
-        "atMs": 1057.2
+        "atMs": 1073
       },
       {
         "kind": "2d",
-        "atMs": 1095.2
+        "atMs": 1119.9
       },
       {
         "kind": "webgl",
-        "atMs": 1102.8
+        "atMs": 1127.3
       },
       {
         "kind": "2d",
-        "atMs": 1156.2
+        "atMs": 1198.5
       },
       {
         "kind": "2d",
-        "atMs": 1156.3
+        "atMs": 1198.6
       },
       {
         "kind": "2d",
-        "atMs": 1157.1
+        "atMs": 1199.7
       },
       {
         "kind": "2d",
-        "atMs": 1157.2
+        "atMs": 1199.7
       },
       {
         "kind": "2d",
-        "atMs": 1169.9
+        "atMs": 1209.5
       },
       {
         "kind": "2d",
-        "atMs": 1755.3
+        "atMs": 1910.7
       },
       {
         "kind": "2d",
-        "atMs": 1763.7
+        "atMs": 1918.9
       },
       {
         "kind": "2d",
-        "atMs": 1768.9
+        "atMs": 1924.1
       },
       {
         "kind": "2d",
-        "atMs": 1774.7
+        "atMs": 1930
       },
       {
         "kind": "2d",
-        "atMs": 1779.6
+        "atMs": 1935
       },
       {
         "kind": "2d",
-        "atMs": 1784.5
+        "atMs": 1939.7
       },
       {
         "kind": "2d",
-        "atMs": 1877.5
+        "atMs": 2036
       },
       {
         "kind": "2d",
-        "atMs": 1884.8
+        "atMs": 2041.8
       },
       {
         "kind": "2d",
-        "atMs": 1891
+        "atMs": 2047.1
       },
       {
         "kind": "2d",
-        "atMs": 4064.1
+        "atMs": 4108.1
       },
       {
         "kind": "2d",
-        "atMs": 4064.2
+        "atMs": 4108.1
       },
       {
         "kind": "webgpu",
-        "atMs": 4707.6
+        "atMs": 4833.8
       },
       {
         "kind": "2d",
-        "atMs": 5069.1
+        "atMs": 5205.4
       },
       {
         "kind": "2d",
-        "atMs": 5073
+        "atMs": 5209.9
       },
       {
         "kind": "2d",
-        "atMs": 5076.5
+        "atMs": 5213.8
       }
     ],
     "wrapped": [
@@ -299,7 +299,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4741.2,
+        "atMs": 4876.6,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -313,7 +313,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4764.2,
+        "atMs": 4897.6,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -327,7 +327,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4776.8,
+        "atMs": 4910.4,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -341,7 +341,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4787.8,
+        "atMs": 4923.7,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -355,7 +355,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4796.6,
+        "atMs": 4932.8,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -369,7 +369,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4800.8,
+        "atMs": 4937.1,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -383,7 +383,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4809.7,
+        "atMs": 4946,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -397,7 +397,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4820.1,
+        "atMs": 4956.4,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -411,7 +411,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4825.4,
+        "atMs": 4960.3,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -425,7 +425,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4839.5,
+        "atMs": 4969.2,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -439,7 +439,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4847.2,
+        "atMs": 4977.4,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -453,7 +453,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4855.1,
+        "atMs": 4987.1,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -467,7 +467,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4862.2,
+        "atMs": 4994.1,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -481,7 +481,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4873.6,
+        "atMs": 5004.4,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -495,7 +495,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4881.5,
+        "atMs": 5014.2,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -509,7 +509,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4889.9,
+        "atMs": 5022.1,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -523,7 +523,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4893.5,
+        "atMs": 5025.4,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -537,7 +537,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4900.1,
+        "atMs": 5032.1,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -551,7 +551,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4905.7,
+        "atMs": 5035.5,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -565,7 +565,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4908.3,
+        "atMs": 5041.8,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -579,7 +579,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4911.5,
+        "atMs": 5048.7,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -593,7 +593,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4914.6,
+        "atMs": 5051.8,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -607,7 +607,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4922.5,
+        "atMs": 5059.8,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -621,7 +621,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4930,
+        "atMs": 5066.7,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -635,7 +635,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4933.1,
+        "atMs": 5069.9,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -646,38 +646,41 @@
     "visit2SyncCount": 57
   },
   "switchTimings": {
-    "switchWallMs": 715.3,
+    "switchWallMs": 716.4,
     "managerReportedMs": null,
     "queueDrainMs": null,
-    "createSceneEnterMs": 81.2,
-    "rendererCreatedMs": 235.1,
-    "criticalReadyMs": 715.4,
-    "firstRenderCallMs": 339.8,
-    "firstFrameGpuCompleteMs": 10492.1,
-    "firstFrameGpuCompleteMethod": "queue.onSubmittedWorkDone",
-    "firstFrameRafMs": 10500.2,
-    "visit2SwitchWallMs": 373.5
+    "createSceneEnterMs": 78.3,
+    "rendererCreatedMs": 225.2,
+    "criticalReadyMs": 716.4,
+    "firstRenderCallMs": 329.4,
+    "firstFrameGpuDoneMs": 10421,
+    "firstFrameGpuDoneMethod": "queue.onSubmittedWorkDone",
+    "allQuiescedGpuDoneMs": 12514.9,
+    "allQuiescedGpuDoneMethod": "queue.onSubmittedWorkDone",
+    "quietWaitFloorMs": 2000,
+    "firstFrameRafMs": 12519.5,
+    "visit2SwitchWallMs": 365.1
   },
   "idle": {
-    "windowMs": 10001.7,
-    "framesObserved": 1308,
+    "windowMs": 10001,
+    "framesObserved": 1310,
     "wall": {
-      "samples": 1307,
+      "samples": 1309,
       "p50": 7.6,
       "p95": 8.3,
       "p99": 8.6,
       "min": 7,
-      "max": 8.8,
+      "max": 8.9,
       "budgetMs": 16.667,
       "overBudget": 0
     },
     "cpuSubmitMs": {
       "samples": 656,
       "p50": 3.2,
-      "p95": 3.6,
+      "p95": 3.7,
       "p99": 4.2,
-      "min": 2.6,
-      "max": 6.1
+      "min": 2.7,
+      "max": 5.6
     },
     "gpuMs": {
       "samples": 0,
@@ -721,34 +724,37 @@
     "contentGuardAdmissible": true
   },
   "memory": {
-    "peakHeapMB": 43.51,
-    "p50HeapMB": 36.36,
+    "peakHeapMB": 42.89,
+    "p50HeapMB": 35.84,
     "heapSamples": 40,
-    "heapDrops": 7,
+    "heapDrops": 8,
     "allocBytesPerFrame": null,
-    "allocVoidReason": "7 GC(s) inside the window",
-    "gcPerSecond": 0.7,
-    "gcCount": 7,
-    "cdpHeapDeltaBytes": 12200828,
+    "allocVoidReason": "8 GC(s) inside the window",
+    "gcPerSecond": 0.8,
+    "gcCount": 8,
+    "cdpHeapDeltaBytes": 10419476,
     "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
   },
   "drift": {
     "visitGpuP50DeltaMs": null,
-    "visitWallP95DeltaMs": 0,
+    "visitWallP95DeltaMs": 0.1,
     "voidReason": null,
     "admissible": true,
     "inadmissibleReasons": []
   },
   "console": {
     "errorCount": 0,
-    "warningCount": 3
+    "warningCount": 3,
+    "instrumentInducedErrorCount": 0,
+    "genuineErrorCount": 0
   },
   "admissible": false,
   "inadmissibleReasons": [
     "no GPU timestamp samples (no-resolved-timestamp-in-window)"
   ],
   "notes": [
-    "firstFrameGpuCompleteMs is GPU-work completion, not scanout. A page cannot observe presentation.",
+    "firstFrameGpuDoneMs is GPU-work completion for the first frame, not scanout. A page cannot observe presentation.",
+    "allQuiescedGpuDoneMs INCLUDES a 2000-2100 ms compile-quiet wait by construction. It is not a latency; use firstFrameGpuDoneMs for that.",
     "pipelines.asyncSumMs is the sum of per-object awaited compiles (r185 Renderer awaits per object), not a wall-clock.",
     "pipelines.syncRows always carry ms=null: createRenderPipeline returns at once and the GPU process blocks at first draw.",
     "gpuMs is null for a classic THREE.WebGLRenderer: that renderer kind has no timestamp API in 0.185.1 (ADR-0019, ADR-0008).",

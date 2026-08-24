@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T15:29:20.354Z",
-  "runId": "2026-08-24T15-02-46-550Z",
+  "generatedAt": "2026-08-24T17:27:22.949Z",
+  "runId": "2026-08-24T17-00-53-492Z",
   "theme": "chromatic-impasto",
   "anchorTheme": "forest",
   "themeMeta": {
@@ -151,107 +151,107 @@
     "canvasContexts": [
       {
         "kind": "webgl",
-        "atMs": 692.8
+        "atMs": 705.4
       },
       {
         "kind": "webgl",
-        "atMs": 1108.1
+        "atMs": 792
       },
       {
         "kind": "2d",
-        "atMs": 1108.2
+        "atMs": 792.2
       },
       {
         "kind": "2d",
-        "atMs": 1109.2
+        "atMs": 793.4
       },
       {
         "kind": "2d",
-        "atMs": 1144.9
+        "atMs": 829.7
       },
       {
         "kind": "webgl",
-        "atMs": 1152.8
+        "atMs": 836.7
       },
       {
         "kind": "2d",
-        "atMs": 1214.4
+        "atMs": 888.8
       },
       {
         "kind": "2d",
-        "atMs": 1214.6
+        "atMs": 888.8
       },
       {
         "kind": "2d",
-        "atMs": 1215.5
+        "atMs": 889.7
       },
       {
         "kind": "2d",
-        "atMs": 1215.5
+        "atMs": 889.7
       },
       {
         "kind": "2d",
-        "atMs": 1226.8
+        "atMs": 898.2
       },
       {
         "kind": "2d",
-        "atMs": 1817.8
+        "atMs": 1715.3
       },
       {
         "kind": "2d",
-        "atMs": 1826.2
+        "atMs": 1723.6
       },
       {
         "kind": "2d",
-        "atMs": 1831.3
+        "atMs": 1729.8
       },
       {
         "kind": "2d",
-        "atMs": 1837.2
+        "atMs": 1737.9
       },
       {
         "kind": "2d",
-        "atMs": 1842.5
+        "atMs": 1743.7
       },
       {
         "kind": "2d",
-        "atMs": 1847.6
+        "atMs": 1749.1
       },
       {
         "kind": "2d",
-        "atMs": 1938.6
+        "atMs": 1841.3
       },
       {
         "kind": "2d",
-        "atMs": 1944.4
+        "atMs": 1847.2
       },
       {
         "kind": "2d",
-        "atMs": 1949.4
+        "atMs": 1852.3
       },
       {
         "kind": "2d",
-        "atMs": 4122.7
+        "atMs": 3796
       },
       {
         "kind": "2d",
-        "atMs": 4122.8
+        "atMs": 3796.1
       },
       {
         "kind": "webgl2",
-        "atMs": 4493.3
+        "atMs": 4337.9
       },
       {
         "kind": "2d",
-        "atMs": 4642
+        "atMs": 4487
       },
       {
         "kind": "2d",
-        "atMs": 4646.4
+        "atMs": 4491.2
       },
       {
         "kind": "2d",
-        "atMs": 4650.3
+        "atMs": 4494.7
       }
     ],
     "wrapped": [],
@@ -288,28 +288,31 @@
     "visit2SyncCount": 0
   },
   "switchTimings": {
-    "switchWallMs": 220.5,
+    "switchWallMs": 219.4,
     "managerReportedMs": null,
     "queueDrainMs": null,
-    "createSceneEnterMs": 49.2,
+    "createSceneEnterMs": 46.4,
     "rendererCreatedMs": null,
-    "criticalReadyMs": 220.6,
+    "criticalReadyMs": 219.5,
     "firstRenderCallMs": null,
-    "firstFrameGpuCompleteMs": 2299.1,
-    "firstFrameGpuCompleteMethod": "no-gpu-context",
-    "firstFrameRafMs": 2304.3,
-    "visit2SwitchWallMs": 99.1
+    "firstFrameGpuDoneMs": 219.5,
+    "firstFrameGpuDoneMethod": "no-gpu-context",
+    "allQuiescedGpuDoneMs": 2295.3,
+    "allQuiescedGpuDoneMethod": "no-gpu-context",
+    "quietWaitFloorMs": 2000,
+    "firstFrameRafMs": 2300.5,
+    "visit2SwitchWallMs": 98.9
   },
   "idle": {
-    "windowMs": 10007.1,
-    "framesObserved": 1317,
+    "windowMs": 10004.1,
+    "framesObserved": 1310,
     "wall": {
-      "samples": 1316,
+      "samples": 1309,
       "p50": 7.6,
       "p95": 8.2,
       "p99": 8.6,
       "min": 7,
-      "max": 8.9,
+      "max": 8.8,
       "budgetMs": 16.667,
       "overBudget": 0
     },
@@ -363,15 +366,15 @@
     "contentGuardAdmissible": false
   },
   "memory": {
-    "peakHeapMB": 24.88,
-    "p50HeapMB": 23,
+    "peakHeapMB": 26.26,
+    "p50HeapMB": 23.77,
     "heapSamples": 40,
     "heapDrops": 11,
     "allocBytesPerFrame": null,
     "allocVoidReason": "11 GC(s) inside the window",
-    "gcPerSecond": 1.099,
+    "gcPerSecond": 1.1,
     "gcCount": 11,
-    "cdpHeapDeltaBytes": 115172,
+    "cdpHeapDeltaBytes": 2676780,
     "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
   },
   "drift": {
@@ -383,12 +386,15 @@
   },
   "console": {
     "errorCount": 0,
-    "warningCount": 1
+    "warningCount": 1,
+    "instrumentInducedErrorCount": 0,
+    "genuineErrorCount": 0
   },
   "admissible": true,
   "inadmissibleReasons": [],
   "notes": [
-    "firstFrameGpuCompleteMs is GPU-work completion, not scanout. A page cannot observe presentation.",
+    "firstFrameGpuDoneMs is GPU-work completion for the first frame, not scanout. A page cannot observe presentation.",
+    "allQuiescedGpuDoneMs INCLUDES a 2000-2100 ms compile-quiet wait by construction. It is not a latency; use firstFrameGpuDoneMs for that.",
     "pipelines.asyncSumMs is the sum of per-object awaited compiles (r185 Renderer awaits per object), not a wall-clock.",
     "pipelines.syncRows always carry ms=null: createRenderPipeline returns at once and the GPU process blocks at first draw.",
     "gpuMs is null for a classic THREE.WebGLRenderer: that renderer kind has no timestamp API in 0.185.1 (ADR-0019, ADR-0008).",
