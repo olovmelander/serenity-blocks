@@ -69,6 +69,19 @@ describe('theme perf bootstrap source', () => {
         );
     });
 
+    it('reads the draw counter according to whether Info was reset during the call', () => {
+        // Classic WebGLRenderer resets at the top of every render(), so the post value IS that
+        // call's count; a delta reads ~0 whenever consecutive frames draw the same amount — which
+        // is exactly how all 20 classic themes came back with 0 draws against ~1300 CPU samples.
+        // WebGPURenderer only resets from three's own loop, so there the delta is the right read.
+        expect(THEME_PERF_BOOTSTRAP).toContain('S.resetDuringCall');
+        expect(THEME_PERF_BOOTSTRAP).toContain('reset ? rr.drawCalls : Math.max(0, rr.drawCalls - preD)');
+    });
+
+    it('re-wraps render entries each lane frame, since post graphs are built after the renderer', () => {
+        expect(THEME_PERF_BOOTSTRAP).toContain('if (S.renderer) S.wrapRenderEntries(S.renderer);');
+    });
+
     it('counts draws by DELTA across each render call, so a theme owning Info does not break it', () => {
         // Reading-then-resetting fought cosmic-noir/ocean/stillwater, which own Info themselves;
         // the first measured cell came back 0 draws. The lane must not reset Info at all.

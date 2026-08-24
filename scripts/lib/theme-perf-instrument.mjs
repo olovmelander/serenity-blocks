@@ -198,7 +198,11 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     // a theme that owns it is recorded, not disqualified.
     try {
       const origReset = renderer.info.reset.bind(renderer.info);
-      renderer.info.reset = function () { S.infoResetsByTheme += 1; return origReset(); };
+      renderer.info.reset = function () {
+        S.infoResetsByTheme += 1;
+        S.resetDuringCall = true;
+        return origReset();
+      };
       S.infoResetsByTheme = 0;
     } catch (_) { /* classic info shape */ }
   };
@@ -235,15 +239,27 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
   // post value IS this call's count, so fall back to it rather than to a negative.
   S.frameDraws = 0;
   S.frameTris = 0;
+  // Whether Info was reset DURING the call decides how to read the counters, and the two renderer
+  // kinds differ:
+  //   classic WebGLRenderer — resets at the top of every render() (WebGLRenderer.js:1702), so the
+  //     post value IS this call's count and a delta would read ~0 whenever consecutive frames draw
+  //     the same amount. That is exactly what happened: all 20 classic themes reported 0 draws
+  //     against ~1300 CPU samples.
+  //   WebGPURenderer — only three's own animation loop resets (common/Animation.js:75), and most
+  //     themes run their own rAF, so the counters accumulate and the delta is the per-call figure.
+  // Rather than branch on kind, observe it: the wrapped info.reset sets a flag.
+  S.resetDuringCall = false;
   S.countAround = (fn) => {
     const rr = S.renderer && S.renderer.info && S.renderer.info.render;
     if (!rr) return fn();
     const preD = rr.drawCalls; const preT = rr.triangles;
+    S.resetDuringCall = false;
     try {
       return fn();
     } finally {
-      S.frameDraws += rr.drawCalls >= preD ? rr.drawCalls - preD : rr.drawCalls;
-      S.frameTris += rr.triangles >= preT ? rr.triangles - preT : rr.triangles;
+      const reset = S.resetDuringCall;
+      S.frameDraws += reset ? rr.drawCalls : Math.max(0, rr.drawCalls - preD);
+      S.frameTris += reset ? rr.triangles : Math.max(0, rr.triangles - preT);
     }
   };
 
@@ -270,6 +286,7 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
   S.laneTick = (t) => {
     if (!S.laneRunning) return;
     S.laneFrameId += 1;
+    if (S.renderer) S.wrapRenderEntries(S.renderer);
     if (S.lastFrameAt) S.rings.wall.push(t - S.lastFrameAt);
     S.lastFrameAt = t;
     if (S.cpuAccumMs > 0) { S.rings.cpu.push(S.cpuAccumMs); S.cpuAccumMs = 0; }
