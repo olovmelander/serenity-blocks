@@ -75,7 +75,15 @@ describe('theme perf bootstrap source', () => {
         // is exactly how all 20 classic themes came back with 0 draws against ~1300 CPU samples.
         // WebGPURenderer only resets from three's own loop, so there the delta is the right read.
         expect(THEME_PERF_BOOTSTRAP).toContain('S.resetDuringCall');
-        expect(THEME_PERF_BOOTSTRAP).toContain('reset ? rr.drawCalls : Math.max(0, rr.drawCalls - preD)');
+        expect(THEME_PERF_BOOTSTRAP).toContain('const d = reset ? postD : Math.max(0, postD - preD);');
+    });
+
+    it('reads the counter field each renderer kind actually exposes', () => {
+        // Classic WebGLInfo has calls and NO drawCalls; r185 common/Info has both. Reading
+        // drawCalls alone gave undefined -> NaN on all 20 classic themes, and NaN > 0 is false,
+        // so nothing was recorded and every one of those cells published a null draw count.
+        expect(THEME_PERF_BOOTSTRAP).toContain('Number.isFinite(rr.drawCalls) ? rr.drawCalls : rr.calls');
+        expect(THEME_PERF_BOOTSTRAP).toContain('if (Number.isFinite(d)) S.frameDraws += d;');
     });
 
     it('owns Info before the backend guard, so a classic renderer is not skipped', () => {
