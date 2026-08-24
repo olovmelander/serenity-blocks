@@ -2500,3 +2500,62 @@ Seven themes attempted, five kept:
 | fluid-dreams | 3,807 | 3,015 | −20.8 % |
 
 **Aggregate: 30,379 ms → 17,157 ms across five themes (−43.5 %).**
+
+## 17. koi-pond — 7,169 ms → 2,932 ms (−59.1 %), and the switch itself got faster
+
+**Landed 2026-08-24.** Commit `c59e4918` (change) + this section (evidence).
+Cells: [`reports/theme-perf-koipond-ab/`](../reports/theme-perf-koipond-ab/), n = 3.
+
+The largest percentage win of the campaign, and the only one where `switchWallMs` **fell**.
+
+| field | before | after ×3 | median |
+|---|---:|---|---:|
+| **`firstFrameGpuDoneMs`** | **7,169** | 2,950 / 2,912 / 2,932 | **2,932** |
+| **`switchWallMs`** | **6,142** | 1,883 / 1,833 / 1,874 | **1,874** |
+| post-switch (`after`) | 1,027 | 1,068 / 1,079 / 1,058 | 1,068 |
+| `pipelines.asyncCount` | 35 | 31 / 31 / 31 | 31 |
+| `pipelines.syncCount` | 41 | 41 / 41 / 41 | **41 (unchanged)** |
+| `pipelines.asyncSumMs` | 5,284 | 6,992 / 6,797 / 6,887 | **6,887 (higher)** |
+
+Guards: draws 128 → 128, triangles 366,287 → 366,287, `pipelinesAfterFirstFrame` 0,
+`idle.gpuMs.p95` 0.720 → 0.720, `idle.wall.p95` 8.2 → 8.2, `peakHeapMB` 56.4 → 56.3.
+**ADR-0007:** PASS, 0 console errors, 0 pattern failures.
+
+### The mechanism is serialisation, and the commit message got it wrong
+
+`c59e4918`'s message claims koi-pond "warmed into the wrong context and paid twice". The
+measurement does not support that, and the cell says so in three places: **`syncCount` did not move
+at all** (41 → 41), **post-switch cost did not move** (1,027 → 1,068 ms), and **`asyncSumMs` went
+UP** (5,284 → 6,887 ms). If duplicate work had been eliminated, all three would have fallen.
+
+What actually happened is the whole win, and it is arithmetic:
+
+- **before** — 35 pipelines, 5,284 ms of summed per-object compile, completed in **6,142 ms** of
+  wall time. Parallelism ≈ **1.0×**. That is r185's `compileAsync` drain doing exactly what
+  `post-target-compile.js:411-417` documents: it awaits `Promise.all(pipelinePromises)` *per
+  object*, so one `createRenderPipelineAsync` is in flight at a time and the theme pays the SUM.
+- **after** — 31 pipelines, **6,887 ms** of summed compile, completed in **1,874 ms** of wall time.
+  Parallelism ≈ **3.7×**. `compileObjectsFannedOut` issues a pool of `DEFAULT_COMPILE_CONCURRENCY`
+  = 6 targeted calls (`post-target-compile.js:420`, `:462`).
+
+So the fix did *more* compile work in *less than a third* of the time. The bare call may well also
+have been binding the wrong context — that was the plan's diagnosis and it is plausible — but it is
+**not what this measurement demonstrates**, and the 41 unchanged sync creations are the evidence
+against it. The Stage-3 plan called this correctly: *"there is no lava lake here, only
+serialisation."*
+
+### Why this one is different from the other six
+
+Every previous fix moved cost from after the switch into the switch, trading a longer masked wait
+for a shorter blank canvas. koi-pond had already paid its compile inside the switch — badly,
+serially — so binding it through the fan-out made the switch itself **4,268 ms shorter** with no
+trade at all. It is the only unambiguous win in the campaign: nothing got worse to make it happen.
+
+### Still open on this theme
+
+41 pipelines remain synchronous and post-switch cost is untouched at ~1,068 ms — the same
+reflector/bloom residue seen on stillwater and vesper-chrysalis. And the 11.79 MB hero GLB is still
+fetched: `KOI_POND_HERO_LIMITS` is 0 in all six presets (`koi-pond-forest.js:78-85`, comment
+"ships off") and it shares a `Promise.all` with the two real 75 KB tree GLBs. Gating it is worth
+doing for heap and tree-arrival latency — **but not for switch time**, which it cannot affect
+because `createScene` never awaits that promise.

@@ -14,7 +14,7 @@ Adapter(s) observed: `ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x00002
 | 4 | fluid-dreams | WebGPURenderer | 1630 | 10 | 2178 | 3015 | 8.20 | 3.10 | 1.442 | 61 | 0.60 | ✓ |
 | 5 | vesper-chrysalis | WebGPURenderer | 1262 | 62 | 2253 | 3025 | 15.90 | 5.90 | 1.114 | 257 | 0.60 | ✓ |
 | 6 | golden-forest | WebGPURenderer | 959 | 106 | 4018 | 4553 | 8.20 | 14.30 | 1.507 | 1101 | 0.60 | ✓ |
-| 7 | koi-pond | WebGPURenderer | 600 | 41 | 6142 | 7169 | 8.20 | 4.10 | 0.721 | 128 | 0.40 | ✓ |
+| 7 | koi-pond | WebGPURenderer | 704 | 41 | 1874 | 2932 | 8.30 | 4.30 | 0.721 | 128 | 0.30 | ✓ |
 | 8 | ice-temple | WebGPURenderer | 583 | 28 | 2093 | 3220 | 8.10 | 6.60 | 0.393 | 341 | 0.50 | ✓ |
 | 9 | wolfhour | WebGPURenderer | 537 | 18 | 549 | 1079 | 8.20 | 3.80 | 0.786 | 95 | 0.40 | ✓ |
 | 10 | ocean | WebGPURenderer | 408 | 76 | 2102 | 4500 | 8.30 | 4.80 | 1.245 | 393 | 0.60 | ✓ |
@@ -91,19 +91,19 @@ Adapter(s) observed: `ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x00002
 | golden-forest | 959 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_45` |
 | lunara | 958 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_27` |
 | neon-district | 753 | MeshPhysicalNodeMaterial | `renderPipeline_MeshPhysicalNodeMaterial_300` |
+| koi-pond | 704 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_27` |
 | stillwater | 665 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_20` |
 | lunara | 664 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_27` |
 | stillwater | 647 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_21` |
 | stillwater | 647 | MeshStandardNodeMaterial | `renderPipeline_MeshStandardNodeMaterial_22` |
 | vesper-chrysalis | 634 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_16` |
-| koi-pond | 600 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_27` |
+| koi-pond | 593 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_28` |
 | ice-temple | 583 | MeshPhysicalMaterial | `renderPipeline_MeshPhysicalMaterial_28` |
 | vesper-chrysalis | 569 | MeshPhysicalNodeMaterial | `renderPipeline_MeshPhysicalNodeMaterial_49` |
 | vesper-chrysalis | 544 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_51` |
 | vesper-chrysalis | 541 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_45` |
 | wolfhour | 537 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_20` |
 | stillwater | 495 | MeshStandardNodeMaterial | `renderPipeline_MeshStandardNodeMaterial_25` |
-| stillwater | 495 | MeshStandardNodeMaterial | `renderPipeline_MeshStandardNodeMaterial_26` |
 
 ## Sync pipeline creations (post-reveal stall candidates)
 
@@ -120,7 +120,7 @@ These carry `ms: null` by construction — the call returns before the GPU compi
 | bioluminescence-2 | 52 | 5449 | `mipmap-rgba8unorm-srgb-2d-array` `renderPipeline_MeshBasicNodeMaterial_199` `renderPipeline_MeshBasicNodeMaterial_177` `renderPipeline_MeshBasicNodeMaterial_178` `renderPipeline_MeshBasicNodeMaterial_195` |
 | serenity-warp | 46 | 4917 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_17` `mipmap-rgba8unorm-2d-array` `renderPipeline_PMREM_cubemap_48` `renderPipeline_PMREM_ggx_47` |
 | stillwater | 43 | 5445 | `renderPipeline_MeshStandardNodeMaterial_58` `renderPipeline_MeshStandardNodeMaterial_25` `renderPipeline_MeshStandardNodeMaterial_25` `renderPipeline_MeshStandardNodeMaterial_26` `renderPipeline_MeshBasicNodeMaterial_16` |
-| koi-pond | 41 | 10347 | `renderPipeline_MeshBasicNodeMaterial_28` `renderPipeline_MeshBasicNodeMaterial_24` `renderPipeline_MeshBasicNodeMaterial_30` `renderPipeline_MeshStandardNodeMaterial_31` `renderPipeline_MeshStandardNodeMaterial_35` |
+| koi-pond | 41 | 5898 | `renderPipeline_MeshBasicNodeMaterial_28` `renderPipeline_MeshBasicNodeMaterial_24` `renderPipeline_MeshBasicNodeMaterial_30` `renderPipeline_MeshStandardNodeMaterial_31` `renderPipeline_MeshStandardNodeMaterial_35` |
 | sky-children | 34 | 4664 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_outputColorTransform_17` `renderPipeline_MeshBasicMaterial_19` `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshBasicNodeMaterial_20` |
 | ice-temple | 28 | 4795 | `mipmap-rgba8unorm-srgb-2d-array` `renderPipeline_PMREM_equirect_48` `renderPipeline_PMREM_ggx_47` `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshPhysicalMaterial_28` |
 | neon-dusk | 28 | 4937 | `renderPipeline_MeshBasicMaterial_16` `renderPipeline_MeshBasicNodeMaterial_27` `renderPipeline_PointsNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_25` `renderPipeline_MeshBasicNodeMaterial_25` |

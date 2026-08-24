@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-24T19:32:22.902Z",
-  "startedAt": "2026-08-24T19:31:55.864Z",
-  "runId": "2026-08-24T19-31-55-863Z",
+  "generatedAt": "2026-08-24T19:39:48.588Z",
+  "startedAt": "2026-08-24T19:39:21.505Z",
+  "runId": "2026-08-24T19-39-21-504Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,16 +23,16 @@
     "perfTargetFps": null
   },
   "selectedThemes": [
-    "bioluminescence-2"
+    "koi-pond"
   ],
   "results": [
     {
-      "theme": "bioluminescence-2",
-      "displayName": "Bioluminescence II",
+      "theme": "koi-pond",
+      "displayName": "Koi Pond",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\bioluminescence-2.png",
-      "report": "docs\\theme-screenshots\\results\\bioluminescence-2.json",
+      "screenshot": "docs\\theme-screenshots\\koi-pond.png",
+      "report": "docs\\theme-screenshots\\results\\koi-pond.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": null,
