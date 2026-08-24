@@ -15,6 +15,7 @@ import * as WEBGPU from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
 import { LUNARA_TETROMINOS } from './lunara-tetrominos.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import {
@@ -533,6 +534,8 @@ export default class LunaraTheme extends BaseTheme {
         this.setupPost();
         this.setupEvents();
         this.attachResizeListener();
+        await this.warmPipelines();
+        if (ownerGeneration !== this.lifecycleGeneration) return;
         this.startAnimationLoop();
     }
 
@@ -2262,6 +2265,50 @@ export default class LunaraTheme extends BaseTheme {
     // -----------------------------------------------------------------------
     // Frame loop
     // -----------------------------------------------------------------------
+
+    /**
+     * Warm the pipelines before the loop starts.
+     *
+     * MEASURED 2026-08-24 (docs/THEME_FLEET_SWEEP_2026-08.md Part B): lunara created 73 pipelines
+     * and warmed none of them — 0 async, 73 sync — so 5,194 ms of GPU compile landed after the
+     * switch had already resolved, third-worst in the 61-theme fleet. `createScene` went straight
+     * from building materials to `startAnimationLoop`, and there is no `compileAsync` anywhere in
+     * this theme.
+     *
+     * Bound through `compileGroupThroughPost` rather than a bare `renderer.compileAsync`: an
+     * unbound call builds states keyed to a render context the post pass never looks up, because
+     * r185's deferred build loop reads the live `renderer.getMRT()` per object. The recipe holds
+     * the scene-pass target and MRT bound across the whole await. Zero imports, duck-typed.
+     */
+    async warmPipelines() {
+        if (!this.renderer?.compileAsync || !this.scene || !this.camera) return;
+        const scenePass = this.post?.scenePass ?? null;
+        try {
+            if (scenePass?.renderTarget) {
+                // `PassNode.setup()` runs on the first `postProcessing.render()`, which has not
+                // happened yet, so the target still carries RenderTarget defaults while the live
+                // pass will take `renderer.samples`. The WebGPU pipeline cache key hashes sample
+                // count, so warming against the wrong one produces pipelines that all miss on the
+                // first live frame. Mirrors PassNode.js:765-767.
+                scenePass.renderTarget.samples = this.renderer.samples;
+                scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                await compileGroupThroughPost(
+                    this.renderer,
+                    this.post,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                );
+            } else {
+                // No post stack means the theme renders straight to the canvas, so an unbound
+                // compile is the correct binding rather than a missing one.
+                await this.renderer.compileAsync(this.scene, this.camera);
+            }
+        } catch (error) {
+            console.warn('[Lunara] Pipeline precompile was incomplete:', error);
+        }
+    }
 
     startAnimationLoop() {
         const animate = this.safeAnimate(() => {
