@@ -263,12 +263,28 @@ describe('cell builder', () => {
         expect(cell.inadmissibleReasons).toEqual([]);
     });
 
-    it('voids the drift figure with a reason when the content did not match', () => {
+    it('voids the DIFFERENTIAL on a content mismatch but keeps the single-visit timings', () => {
+        // ADR-0016 requires content matching for a differential. The switch wall clock and the
+        // pipeline compiles are single-visit measurements and never depended on visit 2 — ocean's
+        // draws differing between visits is the lazily-streamed fauna the census predicted, and
+        // suppressing its switch number over that would throw the finding away.
         const v2 = visit({ content: { drawCalls: { p50: 39 }, triangles: { p50: 1000 }, infoOwnership: 'lane' } });
         const cell = buildThemePerfCell({ ...base, visit1: visit(), visit2: v2 });
         expect(cell.drift.visitGpuP50DeltaMs).toBeNull();
         expect(cell.drift.voidReason).toMatch(/draw calls differ/);
-        expect(cell.admissible).toBe(false);
+        expect(cell.drift.admissible).toBe(false);
+        expect(cell.admissible).toBe(true);
+    });
+
+    it('treats a theme with no three renderer as measurable, not failed', () => {
+        const v = visit({
+            renderer: { kind: null },
+            content: { drawCalls: { p50: 0 }, triangles: { p50: 0 } },
+            idle: { wall: { samples: 100 }, gpuMs: { samples: 0 }, cpuSubmitMs: {} },
+        });
+        const cell = buildThemePerfCell({ ...base, visit1: v, visit2: v });
+        expect(cell.admissible).toBe(true);
+        expect(cell.content.contentMismatchReason).toMatch(/owns no three renderer/);
     });
 
     it('does not demand a GPU series from a classic WebGLRenderer', () => {
