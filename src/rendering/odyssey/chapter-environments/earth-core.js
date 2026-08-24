@@ -312,6 +312,14 @@ function createVolcanicSmoke(uniforms, count, staging = null) {
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
     material.side = THREE.DoubleSide;
+    // FLAT SURFACE, ONE PASS (plan item: forceSinglePass audit, 2026-08-22). `transparent +
+    // DoubleSide` makes three draw the object TWICE — BackSide then FrontSide (Renderer.js
+    // renderObject / _renderTransparents) — which exists so a CLOSED transparent shell sorts
+    // against itself. Every surface here is a single facet (a billboard quad, a plane, an open
+    // cone) with depthWrite off, so the second pass re-shades the same fragments: it doubles the
+    // fill and, because the passes differ only in `material.side`, it compiles a SECOND pipeline
+    // per material (33 of them across the startup groups). Precedent: odyssey-planet-aurora.js.
+    material.forceSinglePass = true;
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const smoke = new THREE.Mesh(geometry, material);
@@ -390,6 +398,7 @@ function createEmberStars(uniforms, count) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
@@ -566,6 +575,7 @@ function createRisingEmbers(uniforms, count, staging = null) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
@@ -653,6 +663,7 @@ function createNearCameraEmbers(uniforms, count, yLow, yHigh) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true; // brightest near sparks bloom (capped by glow)
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
@@ -789,6 +800,7 @@ function createMagmaCloudDeck(uniforms, count, corridorHigh) {
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const deck = new THREE.Mesh(geometry, material);
@@ -921,6 +933,12 @@ export function createEarthCoreEnvironment(options = {}) {
     };
     const noBackdrop = readBisect('earthCoreNoBackdrop');
     const noLake = readBisect('earthCoreNoLake');
+    // SPLIT LEVER. ?earthCoreNoLake bundles SIX draws — the 360x360 lake plane AND five large
+    // additive glow sprites (ambient 120u, inner 70u, three basin coronas 66-84u, all
+    // frustumCulled=false). So the measured "lake cost" is plane PLUS sprites, and the split
+    // between them was unknown, which matters because the two have opposite fixes: cheaper
+    // shader on the plane, versus simply cutting sprites. This lever withholds ONLY the sprites.
+    const noLakeGlows = readBisect('earthCoreNoLakeGlows');
     const noHaze = readBisect('earthCoreNoHaze');
 
     // 1. Create background sphere (enhanced with lava glow)
@@ -955,7 +973,7 @@ export function createEarthCoreEnvironment(options = {}) {
     if (lakeFlowDir.lengthSq() < 1e-6) lakeFlowDir.set(1, 0, 0.5);
     lakeFlowDir.normalize();
     uniforms.uLakeFlowDir.value.copy(lakeFlowDir);
-    const lavaFloor = createLavaFloor(uniforms, basins);
+    const lavaFloor = createLavaFloor(uniforms, basins, { addGlows: !noLakeGlows });
     if (!noLake) group.add(lavaFloor);
     group.userData.lavaFloor = lavaFloor;
 
@@ -1033,7 +1051,22 @@ export function createEarthCoreEnvironment(options = {}) {
 
     // 10. Molten "pockets" — a small obsidian shelf at each level node within this
     //     chapter so nodes frame mid-frame on a platform instead of floating in void.
-    const moltenPockets = createMoltenPockets(group, uniforms, groupCenter);
+    // ONE isColumn=false molten material for every user in the chapter — the six node
+    // pockets AND the selenite chapel's backlight, which used to build a seventh,
+    // byte-identical copy of its own (903 TSL nodes, one mesh). Hoisted here rather than
+    // inside createMoltenPockets because the chapel is built later and needs the same object;
+    // this mirrors sharedColumnMaterial below. A material is ~76 ms of the pre-reveal compile
+    // barrier — measured 2026-08-22: chapter 1 is ~1,990 ms over 26 materials, of which only
+    // ~4-6 ms each is node building, the rest being per-material fixed cost (bind groups,
+    // pipeline descriptor, WGSL assembly, DXC scheduling). Fewer MATERIALS is the lever;
+    // smaller graphs are not (~125 nodes/ms).
+    const sharedPocketMaterial = createMoltenPocketMaterialTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        uniforms.uBakedBounce,
+        { isColumn: false, uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam },
+    ).material;
+    const moltenPockets = createMoltenPockets(group, uniforms, groupCenter, sharedPocketMaterial);
     elements.moltenPockets.push(...moltenPockets);
     elements.seamBoulders.push(...moltenPockets);
 
@@ -1172,7 +1205,7 @@ export function createEarthCoreEnvironment(options = {}) {
     // 12d. Selenite geode CHAPEL (plan asset 4) — the mid-chapter beat filling the
     // 08–11 dead zone: translucent crystal beams off the right of the rail, backlit by
     // a molten pocket beneath, framed by a dark basalt shell.
-    createSeleniteChamber(group, uniforms, staging, sharedColumnMaterial);
+    createSeleniteChamber(group, uniforms, staging, sharedColumnMaterial, sharedPocketMaterial);
 
     // 13. Silhouetted obsidian COLUMNS — §3.2/§3.3 staged repoussoir framing. The
     //     columns are now placed to BRACKET each frame edge ACROSS the descent: the
@@ -1399,7 +1432,7 @@ function _readLakeNoiseOptions() {
     return out;
 }
 
-function createLavaFloor(uniforms, basins = []) {
+function createLavaFloor(uniforms, basins = [], { addGlows = true } = {}) {
     const group = new THREE.Group();
     group.name = 'lava-floor';
     const lakeNoise = _readLakeNoiseOptions();
@@ -1432,27 +1465,30 @@ function createLavaFloor(uniforms, basins = []) {
     );
     ambientGlow.userData.baseScale = 120;
     ambientGlow.position.y = LAVA_LAKE_Y - 2;
-    group.add(ambientGlow);
 
     const innerGlow = new THREE.Sprite(
         makeGlowSpriteMaterial(glowTexture, 0xffaa00, 0.28, uniforms.uOpacity),
     );
     innerGlow.userData.baseScale = 70;
     innerGlow.position.y = LAVA_LAKE_Y - 1;
-    group.add(innerGlow);
 
     const glows = [ambientGlow, innerGlow];
 
     // Basin corona glows — the legacy radiance over each molten pool: a warm heat-haze
     // halo hovering just ABOVE the surface line (camera-facing, so it reads over the
     // opaque lake instead of being depth-culled beneath it).
+    // ONE material for all three coronas — the arguments were byte-identical on every iteration
+    // (same texture, tint, opacity and uOpacity), so the forEach was building three copies of the
+    // same 15-node graph. Only scale and position differ per basin, and nothing mutates the
+    // material. Same trick as sharedClusterGlowMaterial above; a material is ~76-90 ms of the
+    // pre-reveal compile barrier REGARDLESS of graph size, because the cost is per-material fixed
+    // work (bind groups, pipeline descriptor, WGSL assembly, DXC scheduling) rather than node
+    // building (~125 nodes/ms — a 15-node graph is ~0.1 ms of it).
+    const sharedBasinGlowMaterial = makeGlowSpriteMaterial(glowTexture, 0xffb347, 0.34, uniforms.uOpacity);
     basins.forEach((basin) => {
-        const basinGlow = new THREE.Sprite(
-            makeGlowSpriteMaterial(glowTexture, 0xffb347, 0.34, uniforms.uOpacity),
-        );
+        const basinGlow = new THREE.Sprite(sharedBasinGlowMaterial);
         basinGlow.userData.baseScale = basin.r * 2.2;
         basinGlow.position.set(basin.x, LAVA_LAKE_Y + 1.6, basin.z);
-        group.add(basinGlow);
         glows.push(basinGlow);
     });
 
@@ -1465,6 +1501,16 @@ function createLavaFloor(uniforms, basins = []) {
         // content-matched pairs (with orbs shown it read as 92<->93; same single source).
         // The cavern surrounds the camera, so culling these bought nothing.
         sprite.frustumCulled = false;
+        // The ONE place the glow sprites are parented (they used to be added at their three
+        // construction sites). Keeping it here means the ?earthCoreNoLakeGlows lever is a single
+        // gate, and the sprites still land in the same order relative to each other and after
+        // the opaque lake surface, so the transparent draw order is unchanged.
+        //
+        // Withheld, not skipped: the sprites and their materials are still BUILT, exactly as
+        // ?earthCoreNoLake withholds the whole group. A material that never renders never gets a
+        // pipeline, so both levers price draws + fill + that pipeline — and neither disturbs the
+        // worker noise bake, which runs unconditionally.
+        if (addGlows) group.add(sprite);
     });
 
     group.userData.glows = glows;
@@ -1491,6 +1537,7 @@ function createLavaSplashDecal(width = 80, depth = 36, opacity = 0.36) {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         side: THREE.DoubleSide,
+        forceSinglePass: true,
     });
     material.userData.emitsBloom = true;
 
@@ -1580,6 +1627,7 @@ function createParticleCraterRim(uniforms) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
@@ -1781,7 +1829,7 @@ function createColonnadeWalls(uniforms, staging, sharedMaterial) {
  * the rail at the mid-chapter dead zone, backlit by a molten pocket beneath, framed by
  * a dark basalt shell, with one warm corona so it reads from across the cavern.
  */
-function createSeleniteChamber(group, uniforms, staging, sharedColumnMaterial) {
+function createSeleniteChamber(group, uniforms, staging, sharedColumnMaterial, sharedPocketMaterial) {
     const station = 0.45;
     const frame = staging.frame(station);
     const chapelPosition = staging.at(station, { lateral: 16, forward: -2, up: 32 });
@@ -1796,12 +1844,17 @@ function createSeleniteChamber(group, uniforms, staging, sharedColumnMaterial) {
 
     // Molten pocket beneath — the warm backlight that used to make the selenite glow; kept as the
     // chamber's warm heart.
+    // Reuse the hoisted shared isColumn=false material — this pocket used to build its own,
+    // byte-identical copy for a single mesh. `size` and `flatten` are GEOMETRY-level
+    // (IcosahedronGeometry + the vertex loop in createMoltenPocketTSL), so the chapel keeps its
+    // own 4.4-radius, 0.2-flattened shelf while sharing the graph — same trick as the shell
+    // above with sharedColumnMaterial.
     const pocket = createMoltenPocketTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,
         4.4,
         uniforms.uBakedBounce,
-        { uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam },
+        { uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam, material: sharedPocketMaterial },
     );
     pocket.mesh.position.y = -3.2;
     chamber.add(pocket.mesh);
@@ -1985,24 +2038,20 @@ function createLavaGlowTexture() {
  * @param {object} uniforms shared uniforms
  * @param {THREE.Vector3} groupCenter world-space anchor the group is positioned at
  * @param {THREE.Material} [sharedDecalMaterial] the ONE shared contact-shadow material
+ * @param {THREE.Material} sharedPocketMaterial the ONE isColumn=false molten material,
+ *   built by the caller so the selenite chapel shares it too
  */
-function createMoltenPockets(group, uniforms, groupCenter) {
+function createMoltenPockets(group, uniforms, groupCenter, sharedPocketMaterial) {
     // Level nodes for chapter 1 fall roughly within t ∈ [0, 0.10] along the spline
     // (see odyssey-layout DEFAULT_LEVEL_POSITIONS_BY_ID). Sample those and keep the
     // ones whose local Y sits inside the chapter's framed corridor.
     const nodeTs = [0.0, 0.019, 0.037, 0.056, 0.074, 0.093];
     const pockets = [];
-    // ONE shared isColumn=false molten material across all 6 pockets (remake plan boot-reveal
-    // saver): the heaviest graph (moltenRockField) now compiles ONCE instead of 6× on the first
-    // reveal render. Pockets keep individual geometry + meshes (seam-sink test reads per-object
-    // position.y); only the material object is shared. uOpacity is threaded so the ecotone
-    // opacity bridge still reaches it (earth-core-environment.test.js).
-    const sharedPocketMaterial = createMoltenPocketMaterialTSL(
-        uniforms.uTime,
-        uniforms.uPulseIntensity,
-        uniforms.uBakedBounce,
-        { isColumn: false, uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam },
-    ).material;
+    // The shared isColumn=false molten material (built by the caller, see there): the heaviest
+    // graph (moltenRockField) compiles ONCE for all 6 pockets and the chapel instead of 7×.
+    // Pockets keep individual geometry + meshes (seam-sink test reads per-object position.y);
+    // only the material object is shared. uOpacity is threaded so the ecotone opacity bridge
+    // still reaches it (earth-core-environment.test.js).
     nodeTs.forEach((t, i) => {
         const pt = getOdysseyPathPointAt(t);
         const local = new THREE.Vector3(

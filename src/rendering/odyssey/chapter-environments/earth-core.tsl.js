@@ -579,6 +579,14 @@ export function createLavaFallTSL(uTime, uPulseIntensity = uniform(0), uDescent 
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    // FLAT SURFACE, ONE PASS (plan item: forceSinglePass audit, 2026-08-22). `transparent +
+    // DoubleSide` makes three draw the object TWICE — BackSide then FrontSide (Renderer.js
+    // renderObject / _renderTransparents) — which exists so a CLOSED transparent shell sorts
+    // against itself. Every surface here is a single facet (a billboard quad, a plane, an open
+    // cone) with depthWrite off, so the second pass re-shades the same fragments: it doubles the
+    // fill and, because the passes differ only in `material.side`, it compiles a SECOND pipeline
+    // per material (33 of them across the startup groups). Precedent: odyssey-planet-aurora.js.
+    material.forceSinglePass = true;
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge (ChapterEnvironmentManager)
@@ -633,6 +641,7 @@ export function createGodRayConeTSL(uTime, uPulseIntensity = uniform(0), options
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
@@ -1020,6 +1029,7 @@ export function createMagmaHorizonTSL(uTime, uPulseIntensity = uniform(0), optio
     material.depthWrite = false;
     material.depthTest = false;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
@@ -1085,6 +1095,7 @@ export function createMoltenHazeMaterialTSL(uTime, uPulseIntensity = uniform(0),
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
 
@@ -1112,6 +1123,7 @@ export function createContactShadowDecalTSL(size = 12, uOpacity = uniform(1)) {
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.userData.uniforms = { uShadow };
 
@@ -1658,6 +1670,7 @@ export function createSeleniteCrystalsTSL(uTime, uPulseIntensity = uniform(0), o
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.blending = THREE.NormalBlending;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge

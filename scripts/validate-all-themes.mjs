@@ -23,11 +23,11 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { THEME_REGISTRY } from '../src/themes/theme-registry.js';
 // Lazy electron import: the npm shim throws when the binary is absent
 // (npm ci --ignore-scripts), and the unit tests import this module only for
 // its pure argument/matrix helpers. Spawning workers still requires the binary.
 const electronPath = await import('electron').then((m) => m.default ?? m).catch(() => null);
-import { THEME_REGISTRY } from '../src/themes/theme-registry.js';
 
 export const THEME_VALIDATION_CONCURRENCY = 1;
 export const DEFAULT_THEME_VALIDATION_PORT = 4174;
@@ -41,6 +41,7 @@ const BOOLEAN_OPTIONS = new Set([
     'headed',
     'help',
     'list',
+    'perf',
     'skip-build',
 ]);
 const VALUE_OPTIONS = new Set([
@@ -49,12 +50,28 @@ const VALUE_OPTIONS = new Set([
     'cooldown-ms',
     'failure-cooldown-ms',
     'out',
+    'perf-idle-ms',
+    'perf-out',
+    'perf-profile-dir',
+    'perf-quality',
+    'perf-settle-ms',
+    'perf-target-fps',
     'port',
     'server-timeout-ms',
     'settle-ms',
     'theme',
     'worker-timeout-ms',
 ]);
+// The perf lane's own defaults. Kept beside the option names so a reader sees both at once.
+export const PERF_LANE_DEFAULTS = Object.freeze({
+    idleMs: 20_000,
+    settleMs: 4_000,
+    quality: 'High',
+    targetFps: 60,
+    cooldownFloorMs: 8_000,
+    outputDir: 'reports/theme-perf',
+    profileDir: 'artifacts/theme-perf-profile',
+});
 let activeWorkerProcess = null;
 
 function parsePositiveInt(value, fallback, label) {
@@ -184,6 +201,35 @@ export function parseThemeValidationArgs(argv) {
             : parseBoolean(raw['skip-build'], false),
         headed: parseBoolean(raw.headed, false),
         settleMs: parseNonNegativeInt(raw['settle-ms'], 2_000, '--settle-ms'),
+        perf: parseBoolean(raw.perf, false),
+        perfIdleMs: parseNonNegativeInt(
+            raw['perf-idle-ms'],
+            PERF_LANE_DEFAULTS.idleMs,
+            '--perf-idle-ms',
+        ),
+        perfSettleMs: parseNonNegativeInt(
+            raw['perf-settle-ms'],
+            PERF_LANE_DEFAULTS.settleMs,
+            '--perf-settle-ms',
+        ),
+        perfQuality: typeof raw['perf-quality'] === 'string'
+            ? raw['perf-quality']
+            : PERF_LANE_DEFAULTS.quality,
+        perfTargetFps: parsePositiveInt(
+            raw['perf-target-fps'],
+            PERF_LANE_DEFAULTS.targetFps,
+            '--perf-target-fps',
+        ),
+        perfOutputDir: path.resolve(
+            ROOT,
+            typeof raw['perf-out'] === 'string' ? raw['perf-out'] : PERF_LANE_DEFAULTS.outputDir,
+        ),
+        perfProfileDir: path.resolve(
+            ROOT,
+            typeof raw['perf-profile-dir'] === 'string'
+                ? raw['perf-profile-dir']
+                : PERF_LANE_DEFAULTS.profileDir,
+        ),
         cooldownMs: parseNonNegativeInt(
             raw['cooldown-ms'],
             2_000,
@@ -238,6 +284,13 @@ export function buildThemeWorkerArgs({
     runId,
     settleMs,
     headed,
+    perf = false,
+    perfIdleMs,
+    perfSettleMs,
+    perfQuality,
+    perfTargetFps,
+    perfOutputDir,
+    perfProfileDir,
 }) {
     return [
         WORKER_SCRIPT,
@@ -253,6 +306,19 @@ export function buildThemeWorkerArgs({
         '--settle-ms',
         String(settleMs),
         ...(headed ? ['--headed', 'true'] : []),
+        ...(perf
+            ? [
+                '--perf', 'true',
+                '--perf-idle-ms', String(perfIdleMs),
+                '--perf-settle-ms', String(perfSettleMs),
+                '--perf-quality', String(perfQuality),
+                '--perf-target-fps', String(perfTargetFps),
+                '--perf-out', perfOutputDir,
+                // Per-theme userData so every worker gets its OWN Dawn shader cache: a shared
+                // profile would make theme N+1's compile numbers warm-cache and incomparable.
+                '--perf-profile-dir', path.join(perfProfileDir, entry.id),
+            ]
+            : []),
     ];
 }
 
@@ -459,6 +525,13 @@ async function runThemeWorker(config, entry, baseUrl, runId) {
         runId,
         settleMs: config.settleMs,
         headed: config.headed,
+        perf: config.perf,
+        perfIdleMs: config.perfIdleMs,
+        perfSettleMs: config.perfSettleMs,
+        perfQuality: config.perfQuality,
+        perfTargetFps: config.perfTargetFps,
+        perfOutputDir: config.perfOutputDir,
+        perfProfileDir: config.perfProfileDir,
     });
     const env = {
         ...process.env,
@@ -543,6 +616,11 @@ async function readWorkerReport(config, entry, runId, outcome) {
         lifecycleFailureCount: report?.lifecycle?.checks
             ?.filter((check) => !check.passed).length ?? null,
         consoleErrorCount: report?.console?.errorCount ?? null,
+        perfCell: report?.perf
+            ? path.relative(ROOT, path.join(config.perfOutputDir, `${entry.id}.json`))
+            : null,
+        perfAdmissible: report?.perf?.admissible ?? null,
+        perfInadmissibleReasons: report?.perf?.inadmissibleReasons ?? null,
         processFailureCount: report?.console?.processFailureCount
             ?? report?.console?.processFailures?.length
             ?? null,
@@ -564,7 +642,7 @@ async function writeAggregateReport(config, {
     interrupted = false,
 }) {
     const report = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         generatedAt: new Date().toISOString(),
         startedAt,
         runId,
@@ -582,6 +660,10 @@ async function writeAggregateReport(config, {
             externalServer: Boolean(config.externalBaseUrl),
             cooldownMs: config.cooldownMs,
             failureCooldownMs: config.failureCooldownMs,
+            perfLane: Boolean(config.perf),
+            perfIdleMs: config.perf ? config.perfIdleMs : null,
+            perfQuality: config.perf ? config.perfQuality : null,
+            perfTargetFps: config.perf ? config.perfTargetFps : null,
         },
         selectedThemes: selectedEntries.map(({ id }) => id),
         results,
@@ -716,9 +798,12 @@ export async function runThemeValidation(argv = process.argv.slice(2)) {
             });
 
             if (index < selectedEntries.length - 1 && !interrupted) {
-                const cooldown = result.passed
-                    ? config.cooldownMs
-                    : config.failureCooldownMs;
+                // The perf lane needs a longer floor than the lifecycle lane: the GPU has to be
+                // idle and cool before the next theme's compile numbers mean anything.
+                const cooldown = Math.max(
+                    result.passed ? config.cooldownMs : config.failureCooldownMs,
+                    config.perf ? PERF_LANE_DEFAULTS.cooldownFloorMs : 0,
+                );
                 if (cooldown > 0) {
                     console.log(
                         `[ThemeValidation] Cooling down for ${cooldown}ms `

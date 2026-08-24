@@ -306,8 +306,18 @@ export class OdysseyTslPipeline {
             // BloomNode.updateBefore() re-derives its own size from the FULL drawing buffer each
             // frame (`this.setSize(fullW, fullH)`), which would override any external resize and
             // pin bloom at half-res. Wrap the instance setSize so every call — internal or ours —
-            // is pre-scaled by bloomScale. Bloom is a low-frequency effect, so quarter-res is
-            // visually indistinguishable from half-res while ~quartering its blur bandwidth/fill.
+            // is pre-scaled by bloomScale. Bloom is a low-frequency effect, so this is visually
+            // indistinguishable from half-res while cutting its blur bandwidth/fill.
+            //
+            // ARITHMETIC (this comment used to get it wrong by 2x per axis, and that error is
+            // what let a stale 0.5 baseline in OdysseyAdaptiveQuality look plausible): the
+            // pre-scale COMPOUNDS with BloomNode's own `_resolutionScale` 0.5, which is applied
+            // inside the wrapped call (BloomNode.js:116, :315-316). So the working target is
+            // bloomScale x 0.5 = 0.125/axis at the default — 1/64 of full-screen pixels, a 16x
+            // fill reduction from the node's default half-res, NOT quarter-res / 4x.
+            // Consequence to remember: the blur kernel is a fixed TEXEL count per mip
+            // (BloomNode.js:413), so changing this scale changes the glow's screen-space RADIUS,
+            // not just its cost. It is a look knob as much as a perf knob.
             // (Internally BloomNode still halves again per mip, as before.)
             const baseBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
             this.bloomNode.setSize = (width, height) => {

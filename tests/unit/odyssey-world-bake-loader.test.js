@@ -8,7 +8,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import {
+    afterEach, beforeEach, describe, expect, it,
+} from 'vitest';
 import {
     awaitWorldBake, bakeWorldSync, startWorldBake,
 } from '../../src/rendering/odyssey/world/odyssey-world-bake-loader.js';
@@ -17,6 +19,7 @@ import {
 } from '../../src/rendering/odyssey/world/odyssey-world-bake-data.js';
 import { ODYSSEY_CLOUD_FIELD_SPECS } from '../../src/rendering/odyssey/world/odyssey-cloud-field-specs.js';
 import { buildCloudFieldGeometryData } from '../../src/rendering/odyssey/world/odyssey-cloud-field.js';
+import { scatterZonedForest } from '../../src/rendering/odyssey/world/odyssey-forest-scatter.js';
 import { ODYSSEY_WORLD_QUALITY, createOdysseyWorld } from '../../src/rendering/odyssey/world/odyssey-world-renderer.js';
 
 const sha = (typed) => createHash('sha256')
@@ -35,7 +38,7 @@ describe('world bake loader — synchronous twin', () => {
         expect(sha(out.textures.macro.data)).toBe(sha(bakeMacroData().data));
         expect(out.cloudField.masses).toBe(2);
         expect(sha(out.cloudField.position)).toBe(sha(buildCloudFieldGeometryData(ODYSSEY_CLOUD_FIELD_SPECS.slice(0, 2), RAIL).position));
-        expect(Object.keys(out.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'cloudField', 'total']);
+        expect(Object.keys(out.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'cloudField', 'scatter', 'total']);
     });
 
     it('startWorldBake without a Worker resolves its stages lazily, on the first await', async () => {
@@ -52,6 +55,27 @@ describe('world bake loader — synchronous twin', () => {
         expect(all.textures.sunFields.res).toBe(24);
         expect(sha(all.relief.data)).toBe(sha(relief.data)); // one bake, shared by every stage
         expect(makeReliefSampler(all.relief)(0, 0)).toBeTypeOf('number');
+    });
+});
+
+describe('forest scatter lane', () => {
+    it('runs the same scatter the world would have run itself (options passed through verbatim)', () => {
+        const scatterOptions = {
+            spacing: 24, seaLevel: 0, rail: RAIL, visibilityCull: true, forceLod: null, lodDistance: { hero: 200, mid: 520 },
+        };
+        const out = bakeWorldSync({
+            reliefRes: 96, shadowRes: 32, cloudField: false, scatter: scatterOptions,
+        });
+        const direct = scatterZonedForest(makeReliefSampler(out.relief), scatterOptions);
+        expect(out.scatter.stats).toEqual(direct.stats);
+        expect(out.scatter.placements.length).toBe(direct.placements.length);
+        expect([...out.scatter.buckets.keys()].sort()).toEqual([...direct.buckets.keys()].sort());
+        expect(out.ms.scatter).toBeGreaterThanOrEqual(0);
+    });
+
+    it('is skipped (null) when the world does not build a forest', () => {
+        const out = bakeWorldSync({ reliefRes: 64, shadowRes: 24, cloudField: false });
+        expect(out.scatter).toBeNull();
     });
 });
 
@@ -74,7 +98,7 @@ describe('createOdysseyWorld({ prebaked })', () => {
             },
         });
         expect(fromBake.stats.prebaked).toEqual({
-            relief: true, textures: true, cloudField: true, viaWorker: true, workerMs: baked.ms,
+            relief: true, textures: true, cloudField: true, scatter: false, viaWorker: true, workerMs: baked.ms,
         });
         expect(direct.stats.prebaked).toBeNull();
         // The wrap is a few ms; a re-bake would be hundreds (the 'relief' span covers all five).
@@ -107,5 +131,118 @@ describe('createOdysseyWorld({ prebaked })', () => {
         expect(world.stats.prebaked.textures).toBe(true); // atlas/detail/macro are resolution-free; sunFields checked by res
         expect(world.stats.cloudFieldMasses).toBe(3); // the 1-mass bake was not trusted for a 3-mass slice
         world.dispose();
+    });
+});
+
+/**
+ * Item 2.4's parallel band lanes, driven by a Worker stub that ANSWERS (the tests above run with no
+ * Worker at all). One job at a time, in arrival order, each job's stage messages then its `done` —
+ * that serialisation is the point: at ?odysseyBakeBands=1 there is no band 1 to take the scatter,
+ * so the scatter and the sun march queue on the SAME host worker, and a terminate() landing between
+ * them is a world that never assembles. Payloads are the right shapes, not real bakes; the bytes
+ * are pinned by the synchronous twin above.
+ */
+const spawnedWorkers = [];
+
+function bakeWorkerReplies(job) {
+    const out = [];
+    if (job.lane === 'reliefBand') {
+        const rows = job.jEnd - job.jStart;
+        out.push({
+            stage: 'reliefBand',
+            band: {
+                jStart: job.jStart,
+                jEnd: job.jEnd,
+                data: new Uint16Array(rows * job.reliefRes * 4),
+                total: new Float32Array(rows * job.reliefRes),
+            },
+            ms: 1,
+        });
+    }
+    if (job.lane === 'scatter') {
+        out.push({ stage: 'scatter', zoned: { placements: [], stats: {} }, ms: 1 });
+    }
+    if (job.lane === 'sunFields') {
+        out.push({ stage: 'sunFields', sunFields: { data: new Uint8Array(4), res: job.shadowRes }, ms: 1 });
+    }
+    if (job.lane === 'plates') {
+        out.push({ stage: 'atlas', atlas: { data: new Uint8Array(4) }, ms: 1 });
+        out.push({ stage: 'detail', detail: { data: new Uint8Array(4) }, ms: 1 });
+        out.push({ stage: 'macro', macro: { data: new Uint8Array(4) }, ms: 1 });
+    }
+    out.push({ stage: 'done', lane: job.lane, ms: 1 });
+    return out;
+}
+
+class ReplyingBakeWorker {
+    constructor() {
+        this.onmessage = null;
+        this.onerror = null;
+        this.jobs = [];
+        this.lanesRun = [];
+        this.terminated = false;
+        spawnedWorkers.push(this);
+    }
+
+    postMessage(message) {
+        this.jobs.push(message);
+        queueMicrotask(() => this.runNextJob());
+    }
+
+    /** A terminated worker answers nothing — including a job already queued behind the last one. */
+    runNextJob() {
+        if (this.terminated) return;
+        const job = this.jobs.shift();
+        if (!job) return;
+        this.lanesRun.push(job.lane);
+        for (const message of bakeWorkerReplies(job)) {
+            if (this.terminated) return;
+            this.onmessage?.({ data: message });
+        }
+    }
+
+    terminate() { this.terminated = true; }
+}
+
+/**
+ * The finished bake, or 'stalled' if any stage is still pending. Every stub reply lands in a
+ * microtask, so a bake that is going to finish HAS finished before any timer fires: the race is
+ * deterministic, not a wall-clock guess.
+ */
+function bakeOrStall(handle) {
+    return Promise.race([
+        awaitWorldBake(handle),
+        new Promise((resolve) => { setTimeout(() => resolve('stalled'), 0); }),
+    ]);
+}
+
+describe('parallel band lanes', () => {
+    beforeEach(() => { spawnedWorkers.length = 0; globalThis.Worker = ReplyingBakeWorker; });
+    afterEach(() => { delete globalThis.Worker; });
+
+    it('?odysseyBakeBands=1 finishes: the host survives the scatter it also ran', async () => {
+        const out = await bakeOrStall(startWorldBake({
+            reliefRes: 32, shadowRes: 16, cloudField: false, bandCount: 1, scatter: { spacing: 24, seaLevel: 0 },
+        }));
+        expect(out).not.toBe('stalled'); // retiring the host on 'scatter' terminated it mid sun march
+        expect(out.viaWorker).toBe(true); // and it was the worker path, not abort()'s synchronous twin
+        expect(out.textures.sunFields.res).toBe(16);
+        expect(out.scatter).not.toBeNull();
+        // Both follow-up jobs ran on the one band worker, in order — and it is still retired at the end.
+        expect(spawnedWorkers.map((w) => w.lanesRun)).toEqual([
+            ['reliefBand', 'scatter', 'sunFields'], ['plates'],
+        ]);
+        expect(spawnedWorkers.every((w) => w.terminated)).toBe(true);
+    });
+
+    it('two bands still hand the scatter to band 1 and the sun march to the host', async () => {
+        const out = await bakeOrStall(startWorldBake({
+            reliefRes: 32, shadowRes: 16, cloudField: false, bandCount: 2, scatter: { spacing: 24, seaLevel: 0 },
+        }));
+        expect(out).not.toBe('stalled');
+        expect(spawnedWorkers.map((w) => w.lanesRun)).toEqual([
+            ['reliefBand', 'sunFields'], ['reliefBand', 'scatter'], ['plates'],
+        ]);
+        expect(spawnedWorkers.every((w) => w.terminated)).toBe(true);
     });
 });
