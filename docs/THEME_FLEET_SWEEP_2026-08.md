@@ -2379,3 +2379,62 @@ the reflector's own target, the same structural residue stillwater has.
 WGSL function*, not ten inlined bodies — structurally the opposite of the layout-less helpers Part A
 correctly flagged elsewhere. On the compile axis it is one program of 103; on the frame axis the
 theme measures 1.114 ms GPU p95 against a 9 ms budget.
+
+## 15. lunara — 6,173 ms → 3,307 ms (−46.4 %)
+
+**Landed 2026-08-24.** Commit `5125937f` (change) + this section (evidence).
+Cells: [`reports/theme-perf-lunara-ab/`](../reports/theme-perf-lunara-ab/).
+
+Third instance of the same root cause and the most clear-cut: `createScene` went straight from
+building materials to `startAnimationLoop`, and `compileAsync` appears nowhere in
+`src/themes/lunara/` — zero grep hits. lunara already exposed `this.post.scenePass`, so unlike
+vesper-chrysalis no plumbing was needed; just the bound compile and the `renderTarget.samples` pin.
+
+| field | before (n=1) | after ×3 | median |
+|---|---:|---|---:|
+| **`firstFrameGpuDoneMs`** | **6,173** | 3,309 / 3,307 / 3,050 | **3,307** |
+| `switchWallMs` | 979 | 3,064 / 3,062 / 2,804 | 3,062 |
+| `pipelines.asyncCount` | 0 | 32 / 32 / 32 | 32 |
+| `pipelines.syncCount` | 73 | 22 / 22 / 22 | 22 |
+| `pipelines.asyncMaxMs` | 0 | — | **2,434** |
+
+Guards: `drawCalls.p50` 224 → 224, `triangles.p50` 189,806 → 189,806, `pipelinesAfterFirstFrame`
+0 → 0, `console.errorCount` 0 → 0, `idle.wall.p95` 8.3 → 8.3.
+**ADR-0007:** PASS, 0 pattern failures; luminance mean 31.274 → 31.867, range 241.7 → 241.6.
+
+**73 → 22 sync is the best ratio of the three fixes** (stillwater 58 → 44, vesper 103 → 62), because
+lunara's unwarmed set was almost entirely scene-pass geometry rather than reflector residue.
+
+### Two honest caveats
+
+**The run-to-run spread here is 259 ms**, against 7 ms for stillwater and 43 ms for vesper. Run 3
+came in at 3,050 while runs 1 and 2 agreed at ~3,308. The median is the reported figure; a reader
+wanting a tighter bound on this theme needs n > 3.
+
+**`idle.gpuMs.p95` rose 1.769 → 1.901** (after-runs 1.966 / 1.901 / 1.901 — consistent, not noise).
+The before cell is **n = 1**, so this is not a demonstrated regression, and 1.9 ms against a 9 ms
+`gpuMaxMs` is not actionable either way. It is recorded rather than dismissed because §14 established
+that idle-frame fields on this fleet vary run to run and a single-run baseline cannot settle a
+small delta in either direction.
+
+### What this exposed
+
+**lunara now owns the fleet's worst single pipeline at 2,434 ms**, taking the title from stillwater's
+2,230 (itself taken from neon-district's 1,688). The pattern is consistent: each theme's heaviest
+shader was invisible while it compiled synchronously, because a sync pipeline carries `ms: null` by
+construction. Warming is what prices them. None of the three is near the Odyssey lake's 7,235 ms, so
+"no lava lakes" still stands — but §11.6's worst-pipeline figure should be read as *"worst among
+pipelines that were warmed"*, and it moves every time a theme is fixed.
+
+**Material counts in Part A under-count pipelines.** The static census predicted 61 materials for
+lunara; the measurement found 73 pipelines. `MeshBasicNodeMaterial` `_25`, `_27`, `_32` and `_35`
+each appear **twice** at identical `rgba16float|4|depth24plus` — r185's transparent + `DoubleSide`
+two-pass signature (`post-target-compile.js:428-448`). Any Part A material count for a theme with
+double-sided transparency is a lower bound.
+
+### What is not done
+
+Plan row 3.3 names lunara specifically for its empty `init()`: the HDR fetch is
+`new HDRLoader().loadAsync()`, device-free and therefore legal in a prebuild stage where adjacent
+preload could hide it. Also untouched: declaring warmup roots for the hidden reaction particles so
+their pipelines warm too. Both separately measurable.

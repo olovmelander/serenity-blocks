@@ -4,6 +4,22 @@
   "admissible": 59,
   "ranked": [
     {
+      "theme": "lunara",
+      "admissible": true,
+      "worstPipelineMs": 2434.5,
+      "syncPipelines": 22,
+      "switchWallMs": 3061.6,
+      "firstFrameGpuDoneMs": 3306.6,
+      "allQuiescedGpuDoneMs": 5396.9,
+      "idleWallP95": 8.3,
+      "idleCpuP95": 5.3,
+      "idleGpuP95": 1.901,
+      "allocBytesPerFrame": null,
+      "gcPerSecond": 0.4,
+      "drawCalls": 224,
+      "kind": "WebGPURenderer"
+    },
+    {
       "theme": "stillwater",
       "admissible": true,
       "worstPipelineMs": 2230.3,
@@ -290,22 +306,6 @@
       "gcPerSecond": 1.899,
       "drawCalls": 533,
       "kind": "WebGLRenderer"
-    },
-    {
-      "theme": "lunara",
-      "admissible": true,
-      "worstPipelineMs": 0,
-      "syncPipelines": 73,
-      "switchWallMs": 979.3,
-      "firstFrameGpuDoneMs": 6173.3,
-      "allQuiescedGpuDoneMs": 8239.5,
-      "idleWallP95": 8.3,
-      "idleCpuP95": 4.7,
-      "idleGpuP95": 1.769,
-      "allocBytesPerFrame": null,
-      "gcPerSecond": 0.5,
-      "drawCalls": 224,
-      "kind": "WebGPURenderer"
     },
     {
       "theme": "sakura-twilight",

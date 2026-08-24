@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-24T18:41:32.427Z",
-  "startedAt": "2026-08-24T18:41:03.398Z",
-  "runId": "2026-08-24T18-41-03-398Z",
+  "generatedAt": "2026-08-24T18:49:18.725Z",
+  "startedAt": "2026-08-24T18:48:49.700Z",
+  "runId": "2026-08-24T18-48-49-700Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,16 +23,16 @@
     "perfTargetFps": null
   },
   "selectedThemes": [
-    "vesper-chrysalis"
+    "lunara"
   ],
   "results": [
     {
-      "theme": "vesper-chrysalis",
-      "displayName": "Vesper Chrysalis",
+      "theme": "lunara",
+      "displayName": "Lunara",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\vesper-chrysalis.png",
-      "report": "docs\\theme-screenshots\\results\\vesper-chrysalis.json",
+      "screenshot": "docs\\theme-screenshots\\lunara.png",
+      "report": "docs\\theme-screenshots\\results\\lunara.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": null,
