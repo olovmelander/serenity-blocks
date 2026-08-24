@@ -19,6 +19,7 @@ import {
     getKoiPondPixelRatioCap,
     normalizeKoiPondQuality,
 } from './rendering/koi-pond-layout.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { createKoiPondRuntime } from './rendering/koi-pond-runtime.js';
 import { KoiPondPost, getKoiPondPostProfile } from './rendering/koi-pond-post.js';
 
@@ -458,7 +459,22 @@ export default class KoiPondTheme extends BaseTheme {
         const restoreCompileState = this.runtime.prepareForCompile?.() || (() => {});
         try {
             try {
-                await this.renderer.compileAsync?.(this.scene, this.camera);
+                // MEASURED 2026-08-24 (docs/THEME_FLEET_SWEEP_2026-08.md Part B): this bare
+                // whole-scene call binds no render target, but koi-pond does not draw to the
+                // canvas — renderFrame() goes through this.post.render(), so the scene is drawn
+                // inside a RenderPipeline pass. r185 keys builder state on the render context
+                // (RenderObject.getMaterialCacheKey), so everything warmed here was warmed under a
+                // context the live frame never looks up, and then compiled AGAIN on the first post
+                // frame. The cell showed both halves: 35 async pipelines summing 5,182 ms, then
+                // 41 more created synchronously.
+                await compileGroupThroughPost(
+                    this.renderer,
+                    this.post,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                );
             } catch (error) {
                 console.warn('[KoiPond] Pipeline precompile was incomplete:', error);
             }
