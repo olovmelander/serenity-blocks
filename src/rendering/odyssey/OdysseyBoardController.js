@@ -9,19 +9,22 @@ import * as THREE from 'three/webgpu';
 import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { LevelNodeManager } from './LevelNodeManager.js';
 import { PerfRing } from '../../utils/perf-ring.js';
+import { createPassLabelInspector, passLabelFor } from './composition/odyssey-pass-label-inspector.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { ODYSSEY_WORLD_QUALITY, createOdysseyWorld } from './world/odyssey-world-renderer.js';
 import { awaitWorldBake, startWorldBake } from './world/odyssey-world-bake-loader.js';
 import { makeReliefSampler } from './world/odyssey-world-bake-data.js';
 import { ODYSSEY_CLOUD_FIELD_SPECS } from './world/odyssey-cloud-field-specs.js';
+import { forestLodDistanceForTier } from './world/odyssey-forest-species.js';
 import {
     ONE_WORLD_APPLY_EXPOSURE,
     ONE_WORLD_OUTPUT_SCALE,
     ONE_WORLD_OUTPUT_SATURATION,
     ONE_WORLD_SKY_RADIUS,
 } from './world/odyssey-world-grade.js';
-import { ODYSSEY_BREACH_P } from './world/odyssey-world-height.js';
+import { ODYSSEY_BREACH_P, ODYSSEY_SEA_LEVEL } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
+import { warmWebGpuDevice } from '../webgpu-device-warm.js';
 import { isWorldVisibleAtProgress, worldAtmosphericThin, worldDepartureFade } from './world/odyssey-world-act-gate.js';
 import {
     STEAM_QUENCH_EXIT_HALF_WIDTH,
@@ -96,6 +99,13 @@ const ONE_WORLD_DEPARTURE_TARGET = new THREE.Color(0x05060f);
 // governs, and the adaptive controller rides renderScale beneath it (user low-res report
 // 2026-07-05). A DPR>1.5 panel is still clamped so 4K/retina can't runaway the fill cost.
 const ODYSSEY_MAX_PIXEL_RATIO = 1.5;
+// The board's own render-scale floor. BELOW this the browser upscale turns the Ch3 meadow to
+// mush, so _applyRenderScale clamps here regardless of what the policy proposes. It is exported
+// because the adaptive controller must be TOLD this floor: a controller that thinks it can reach
+// 0.5 spends three 12 s recovery cooldowns proposing 0.55/0.60/0.65 — all clamped to the same
+// 0.65 — before a single pixel comes back. SHARPEN_SCALE_FLOOR in odyssey-tsl-pipeline.js is the
+// same number for the same reason; keep them in step.
+export const ODYSSEY_RENDER_SCALE_FLOOR = 0.65;
 const DRS_FRAME_WINDOW = 60; // rolling frames used for the p95/p99 estimate.
 const DRS_EVAL_INTERVAL_MS = 1000; // evaluate at ~1Hz (policy cooldowns gate actual changes).
 const DRS_TARGET_FRAME_RATE = 60;
@@ -308,6 +318,40 @@ export function shouldRouteOdysseyWheel({
 }
 
 /**
+ * Frame number encoded in a three timestamp uid, or NaN when the shape is not recognised.
+ *
+ * CORRECTION (this comment previously claimed the opposite, and that error is why the first
+ * capture's keys were trusted as pass identities). three builds the uid as
+ * `r:<frameCalls>:<RenderContext.id>:f<frame>` — renderers/common/Backend.js composes
+ * `prefix + ':' + abstractRenderContext.id + ':f' + frame` where `prefix` is itself
+ * `'r:' + this.renderer.info.render.frameCalls`. NEITHER half before `:f` is a pass identity:
+ *
+ *   - `frameCalls` is the render call's ORDINAL within the frame, so it renumbers the moment
+ *     the number of calls AHEAD of a pass changes — which this pipeline does routinely, when
+ *     the bloom node detaches or the RCAS wrapper attaches under DRS.
+ *   - `RenderContext.id` is a CACHE BUCKET keyed by `<attachmentState>-<mrt>-<callDepth>`
+ *     (renderers/common/RenderContexts.js), so all eight bloom targets share ONE id, and the
+ *     RCAS RTT shares the SCENE pass's id whenever sceneSamples is 0.
+ *
+ * So use this only for the FRAME. Names come from _installPassLabelInspector.
+ * @param {string} uid
+ * @returns {number}
+ */
+function frameOfTimestampUID(uid) {
+    const at = typeof uid === 'string' ? uid.lastIndexOf(':f') : -1;
+    if (at < 0) return NaN;
+    const frame = Number(uid.slice(at + 2));
+    return Number.isFinite(frame) ? frame : NaN;
+}
+
+// How many frames of `uid -> pass name` to retain. The timestamp resolve that consumes a label
+// lands several frames after the render that produced it (the readback is a GPUBuffer.mapAsync),
+// so a single frame is not enough; 12 is generous against that latency and still bounded at
+// ~10 passes/frame. A resolve later than this falls back to the raw ordinal key for that sample,
+// which shows up as a stray `r:N:M` row rather than a WRONG attribution.
+const PASS_LABEL_FRAMES = 12;
+
+/**
  * OdysseyBoardController - Main Three.js scene for level selection
  */
 export class OdysseyBoardController {
@@ -364,6 +408,11 @@ export class OdysseyBoardController {
         // Suppressed during capture-restricted runs. When ON it OWNS residency, so the
         // background chapter loader + full background render-warm are disabled (below) to avoid
         // fighting the evictor. NOT auto-enabled on the RTX/keep-alive path — flag-only.
+        // Item 2.15 (default ON; ?odysseyDeferSeamCompiles=0 restores the pre-reveal barrier):
+        // the corridor field, the seam breach and One World compile AFTER the reveal through the
+        // live-loop path, so chapter 1 and the board do not share the driver with them.
+        this.deferSeamCompiles = !readBooleanUrlFlag('odysseyDeferSeamCompilesOff')
+            && readUrlValue('odysseyDeferSeamCompiles') !== '0';
         // Item 2.11 (default ON; ?odysseyLiveCompile=0 falls back to the synchronous render-warm
         // alone): background chapters compile through the live-loop-safe compileAsync path
         // BEFORE their render-warm, so the warm creates no pipelines.
@@ -397,6 +446,29 @@ export class OdysseyBoardController {
         // enable the debug overlay — and then measured a frame with the overlay in it.
         this.gpuProfileEnabled = readBooleanUrlFlag('odysseyGpuProfile');
         this.gpuProfileRing = this.gpuProfileEnabled ? new PerfRing(600) : null;
+        // WAVE -1b — one ring PER RENDER PASS, from the same resolves that feed the aggregate
+        // ring above. three 0.185.1 retains a resolved duration per pass uid
+        // (WebGPUTimestampQueryPool `this.timestamps.set(uid, duration)`); only the per-frame
+        // SUM is published as info.render.timestamp, which is why the split used to be taken as
+        // an A/B matrix across runs. It no longer has to be: the scene pass, each bloom mip and
+        // the composite each carry their own GPU ms, so a SINGLE run splits the frame — with no
+        // differential to subtract and no baseline drift to bound. That matters here because a
+        // Lane A frame is ~22 timestamp ticks total (65.536 us quantum), far too coarse for the
+        // 0.0-0.3 ms per-object deltas an A/B is asked to resolve.
+        this._gpuPassRings = this.gpuProfileEnabled ? new Map() : null;
+        // WAVE -1c — `uid -> human pass name`, written on the render path by the inspector hook
+        // (_installPassLabelInspector) and consumed by _recordPassTimestamps. Keyed by the FULL
+        // uid, frame included, because that is what the query pool keys its durations by.
+        this._passLabels = this.gpuProfileEnabled ? new Map() : null;
+        // The frame currently being labelled, plus per-frame occurrence counts so a target
+        // written twice in one frame (bloom composites back into _renderTargetsHorizontal[0])
+        // gets a distinct name instead of silently overwriting the first pass's label.
+        this._passLabelFrame = NaN;
+        this._passLabelSeen = new Map();
+        // Audit trail: the raw `r:<call>:<ctxId>` keys that fed each named ring. A name that
+        // collects more than one is PROOF the ordinal drifted — the bug this wave fixes.
+        this._passUidKeys = this.gpuProfileEnabled ? new Map() : null;
+        this._passLabelInspector = null;
         if (this.gpuProfileRing && typeof window !== 'undefined') {
             // The harness discards everything sampled during startup: a cold pipeline compile
             // is a real cost but a STARTUP cost, and averaging it into steady state hides both.
@@ -411,6 +483,13 @@ export class OdysseyBoardController {
                 // NOTE: keep this AFTER the epoch bump — odyssey-gpu-profile-sampling.test.js
                 // reads the first 700 chars of this function to prove the bump is here.
                 this._drawCallsRange = null;
+                // Per-pass rings share the aggregate ring's measurement window, or a startup
+                // compile would sit in the pass split after being discarded from the total.
+                this._gpuPassRings?.clear();
+                this._passUidKeys?.clear();
+                this._passLabels?.clear();
+                this._passLabelSeen.clear();
+                this._passLabelFrame = NaN;
             };
         }
         this._gpuProfileLastSummary = 0;
@@ -534,6 +613,9 @@ export class OdysseyBoardController {
             evalIntervalMs: DRS_EVAL_INTERVAL_MS,
             baselineRenderScale: this._drs.baselineRenderScale,
             renderScale: this._drs.renderScale,
+            // Tell the controller the floor THIS board clamps to, or it burns whole cooldowns
+            // proposing steps _applyRenderScale silently discards (36 s of dead recovery).
+            resolutionFloor: ODYSSEY_RENDER_SCALE_FLOOR,
             evaluateResolution: evaluateDynamicResolutionAdjustment,
         });
         // Reused ctx for the per-frame adaptive update (NO per-frame allocation). applyRenderScale
@@ -673,6 +755,8 @@ export class OdysseyBoardController {
                 cloudSpecs: this._worldBakeOptions.cloudSpecs,
                 railSamples: this._worldBakeOptions.railSamples,
                 cloudField: this._worldBakeOptions.cloudField,
+                bandCount: Number.parseInt(readUrlValue('odysseyBakeBands'), 10) || undefined,
+                scatter: this._worldBakeOptions.scatter,
                 forceSync: readBooleanUrlFlag('odysseyWorldBakeSync'),
             })
             : null;
@@ -1155,6 +1239,7 @@ export class OdysseyBoardController {
         // compileAsync, which does not pay the real first-render compile + GPU upload). Fixes
         // the hitch for chapters 4-8 in every mode, and for the deferred chapters in fast-start.
         this._startBackgroundRenderWarm();
+        this._drainDeferredCompiles();
 
         trace.summary();
         console.log('[OdysseyBoard] Initialized successfully');
@@ -1980,6 +2065,17 @@ export class OdysseyBoardController {
     }
 
     /** @private */
+    /**
+     * Fan-out width for the startup compiles (item 2.16). `?odysseyCompileWidth=N` overrides the
+     * module default, which was picked when four groups shared the driver; chapter 1 now has it
+     * nearly to itself (item 2.15), so the right width is worth re-measuring per machine.
+     * @private
+     */
+    _compileWidth() {
+        const raw = Number.parseInt(readUrlValue('odysseyCompileWidth'), 10);
+        return Number.isFinite(raw) && raw > 0 ? Math.min(raw, 32) : undefined;
+    }
+
     _compileGroupThroughPost(group, options = {}) {
         // r185: resolves false (compile skipped) when the loop is live and post is active,
         // UNLESS `options.live` — item 2.11's live-loop path, which answers the deferred
@@ -1993,7 +2089,7 @@ export class OdysseyBoardController {
             this.camera,
             group,
             this._renderLoopActive(),
-            options,
+            { concurrency: this._compileWidth(), ...options },
         );
     }
 
@@ -2120,8 +2216,21 @@ export class OdysseyBoardController {
             const pt = getOdysseyPathPointAt(i / 47);
             return { x: pt.x, y: pt.y, z: pt.z }; // plain points: structured-clone friendly
         });
+        // The forest scatter runs in the bake worker (it needs only the height mirror and the
+        // rail); createOdysseyWorld builds the same options object and uses the landed result.
+        const forestLodValue = readUrlValue('odysseyForestLod');
+        const scatter = readBooleanUrlFlag('odysseyWorldNoForest') || readBooleanUrlFlag('odysseyWorldForestV1')
+            ? null
+            : {
+                spacing: q.treeSpacing,
+                seaLevel: ODYSSEY_SEA_LEVEL,
+                rail: railSamples,
+                visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
+                forceLod: ['hero', 'mid', 'far'].includes(forestLodValue) ? forestLodValue : null,
+                lodDistance: forestLodDistanceForTier(this.qualityName),
+            };
         return {
-            weakLane, q, cloudField, cloudFieldCount, cloudSpecs, railSamples,
+            weakLane, q, cloudField, cloudFieldCount, cloudSpecs, railSamples, scatter,
         };
     }
 
@@ -2145,8 +2254,55 @@ export class OdysseyBoardController {
         };
     }
 
+    /**
+     * ITEM 2.15: compile the groups the REVEAL frame does not draw — the corridor field, the
+     * seam breach, One World — after the board is up, through item 2.11's live-loop path
+     * (`compileGroupThroughPost(..., { live: true })`: the scene-pass binding is applied only
+     * for compileAsync's synchronous prologue and the drained builds' reads are answered from
+     * it, so nothing is bound across a yield and every pipeline is created asynchronously).
+     *
+     * NOT idle-gated, and in first-needed order: the corridor and the breach draw at the first
+     * chapter transition, which a player can reach a second or two after the reveal, so they
+     * start immediately and One World (act-gated, a whole act away) follows.
+     * @private
+     */
+    async _drainDeferredCompiles() {
+        const queue = this._deferredCompileGroups;
+        this._deferredCompileGroups = null;
+        if (!queue?.length) return;
+        for (const { label, group } of queue) {
+            const target = group();
+            if (!target) continue;
+            const startedAt = performance.now();
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                await this._prewarmGroup(target, `${label} (post-reveal)`);
+            } catch (error) {
+                console.warn(`[OdysseyBoard] deferred compile failed for ${label}:`, error?.message || error);
+            }
+            this._compileTimings[`${label}-post`] = Math.round(performance.now() - startedAt);
+            if (!this.isActive) return; // torn down mid-queue
+        }
+        console.log('[OdysseyBoard] post-reveal compiles done', JSON.stringify(this._compileTimings));
+    }
+
     async _prewarmGroup(group, label = 'group') {
         if (!group || !this.renderer || !this.scene || !this.camera) return;
+        // UNDER THE LIVE LOOP (item 2.15) the deep-reveal below must NOT run: it would make the
+        // group visible for the whole compile, so live frames would DRAW it — a corridor and a
+        // whole world popping in at p=0, and every not-yet-compiled pipeline created synchronously
+        // on a visible frame (13 of them, measured). The live path reveals each object only for
+        // compileAsync's synchronous prologue instead (compileObjectsFannedOut's includeHidden +
+        // launchCompileInScenePassPrologue), which is exactly what this reveal was for.
+        if (this._renderLoopActive()) {
+            try {
+                await this._compileGroupThroughPost(group, { live: true });
+                console.log(`[OdysseyBoard] Prewarmed ${label} shaders (live loop)`);
+            } catch (error) {
+                console.warn(`[OdysseyBoard] Shader prewarm failed for ${label}:`, error);
+            }
+            return;
+        }
         const previousVisibility = group.visible;
         // Force EVERY descendant visible + frustum-uncullable during compile: groups like
         // the corridor field toggle per-chapter sub-groups by .visible, and compileAsync
@@ -2197,7 +2353,15 @@ export class OdysseyBoardController {
         // WebGPU with automatic WebGL2 fallback (one TSL codebase runs on both backends).
         // ?forceWebGL=1 forces the WebGL2 backend for QA/parity testing.
         const forceWebGL = new URLSearchParams(window.location.search).get('forceWebGL') === '1';
+        const powerPreference = readBooleanUrlFlag('odysseyLowPowerGpu') ? 'low-power' : 'high-performance';
+        // ITEM 2.5: requestAdapter + requestDevice is ~97 % of this bucket and depends on nothing
+        // the board knows, so it was started while the menu was up (rendering/webgpu-device-warm.js).
+        // Await it here — it is normally long resolved — and hand the device to three, which then
+        // skips its own request. three does NOT destroy an injected device (dispose() guards on
+        // parameters.device), so it survives a board teardown and the next entry reuses it.
+        const warmDevice = forceWebGL ? null : await warmWebGpuDevice({ powerPreference });
         this.renderer = new THREE.WebGPURenderer({
+            ...(warmDevice ? { device: warmDevice } : {}),
             // QW1: scene-pass MSAA dropped (antialias:false). Edges are softened by the post
             // graph (ACES + grade + grain); MSAA on a full-res HalfFloat scene RT was a ~4×
             // sample multiplier on the heaviest pass. Biggest steady-state GPU win.
@@ -2208,7 +2372,7 @@ export class OdysseyBoardController {
             // 'high-performance' gets handed the discrete part no matter what Chromium's
             // force_low_power_gpu switch says — the measurement would silently be Lane A
             // again, at Lane B's resolution, and nobody would be able to tell from the file.
-            powerPreference: readBooleanUrlFlag('odysseyLowPowerGpu') ? 'low-power' : 'high-performance',
+            powerPreference,
             // Batch0: enable GPU timestamp tracking so renderer.info.render.timestamp is
             // populated (resolved after each render). ONLY when the ?odysseyAAA debug overlay is
             // active — otherwise the query pool fills and overflows (the renderer tracks queries
@@ -2216,6 +2380,12 @@ export class OdysseyBoardController {
             trackTimestamp: isOdysseyAAADebugEnabled() || readBooleanUrlFlag('odysseyGpuProfile'),
         });
         await this.renderer.init();
+        // WAVE -1c — name the passes the timestamp pool measures. AFTER init(): the renderer
+        // constructs its own default InspectorBase and calls its init() from inside the init
+        // promise, so replacing the slot afterwards is the clean seam. Gated on the profile flag
+        // (not on trackTimestamp, which the ?odysseyAAA overlay also turns on) so the render-path
+        // callback exists only in runs that actually read passes[].
+        if (this.gpuProfileEnabled) this._installPassLabelInspector();
         this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = this.renderer.backend?.isWebGLBackend === true;
         // Tonemapping happens in the TSL post graph (manual ACES) → renderer stays linear.
@@ -2306,6 +2476,11 @@ export class OdysseyBoardController {
                 this.postProcessingStack.setPostQuality(postQualityOverride);
             }
             this.postProcessingStack.setSize(this.container.clientWidth, this.container.clientHeight);
+            // Seat the ladder's tier-0 bloom target to what the pipeline was ACTUALLY authored
+            // with. Read it back off the pipeline rather than re-deriving it, so a
+            // ?odysseyPerfBloomScale override is honoured instead of being stomped to the
+            // controller's hardcoded 0.5 the first time a pressure episode recovers.
+            this.adaptiveQuality?.setBaselineBloomScale(this.postProcessingStack.bloomScale);
             this._syncOutputSharpen(); // the policy / ?odysseyPixelRatio may already start below 1
             this.composer = null;
             this.bloomPass = null;
@@ -2452,10 +2627,13 @@ export class OdysseyBoardController {
                 // pool barrier in initialize() awaits them before the warm-up replay).
                 const corridorWarm = this._prewarmGroup(this.corridorField?.group, 'corridor field');
                 const breachWarm = this._prewarmGroup(this.thresholdDirector?.group, 'threshold breach');
+                // Deferred (item 2.15): the post-reveal queue compiles One World through the
+                // live-loop path, so it is not started here at all.
+                const deferred = this.deferSeamCompiles && !!this._compilePool;
                 // The world is not a chapter env group either, so it misses the same prewarm
                 // and would compile four materials on the first Act II frame — the whole point
                 // of collapsing 66 materials into 4 is lost if they land as a cold stall.
-                const worldWarm = this._prewarmGroup(this.oneWorld?.group, 'one world');
+                const worldWarm = deferred ? null : this._prewarmGroup(this.oneWorld?.group, 'one world');
                 // The board's OWN presentation — path tube/core/glow + chapter rings, the 55
                 // level nodes and their instanced glass/glow/lock/star meshes, the starfield —
                 // is added straight to the scene, outside every group above, so nothing
@@ -2466,12 +2644,31 @@ export class OdysseyBoardController {
                 // compileAsync costs ~22 ms, so the covered groups are excluded, not re-walked).
                 const boardWarm = this._prewarmGroup(this._boardPresentationGroup(), 'board presentation');
                 if (this._compilePool) {
+                    // ITEM 2.15: ONE WORLD leaves the pre-reveal barrier. It was 1,944 ms of
+                    // driver time competing with chapter 1's 2,543 before the board could appear,
+                    // and it is the one group the reveal provably never draws — the act gate keeps
+                    // it invisible until Act II, a whole chapter of scrolling away. Item 2.11 made
+                    // compiling under the live loop safe, so it compiles right after the reveal.
+                    //
+                    // The corridor field and the seam breach STAY in the barrier even though they
+                    // only draw at a transition: the pre-reveal warm-up replay renders the whole
+                    // scene, so deferring them just moved their compile into that SYNCHRONOUS
+                    // render (measured: warmup 62 -> 203 ms, board visible +348, frame max
+                    // 467 -> 707 — worse than the barrier time they saved). Their combined
+                    // compile is ~0.7 s against One World's ~1.9 s, so this split takes the win
+                    // and leaves the trap.
                     this._compilePool.push(
+                        this._timedCompile('board', boardWarm),
                         this._timedCompile('corridor', corridorWarm),
                         this._timedCompile('breach', breachWarm),
-                        this._timedCompile('one-world', worldWarm),
-                        this._timedCompile('board', boardWarm),
                     );
+                    if (this.deferSeamCompiles) {
+                        this._deferredCompileGroups = [
+                            { label: 'one-world', group: () => this.oneWorld?.group },
+                        ];
+                    } else {
+                        this._compilePool.push(this._timedCompile('one-world', worldWarm));
+                    }
                 } else {
                     await corridorWarm;
                     await breachWarm;
@@ -2747,7 +2944,7 @@ export class OdysseyBoardController {
         // policy floor (0.5), but below ~0.65 the browser upscale turns the Ch3 meadow's
         // fine detail into visible pixel blocks. Clamp Odyssey only; when pinned here the
         // adaptive tier ladder escalates to its bloom-shed / post-soften rungs instead.
-        const clampedRenderScale = Math.max(renderScale, 0.65);
+        const clampedRenderScale = Math.max(renderScale, ODYSSEY_RENDER_SCALE_FLOOR);
         this._drs.renderScale = clampedRenderScale;
         const width = this.container?.clientWidth || 1;
         const height = this.container?.clientHeight || 1;
@@ -2859,6 +3056,8 @@ export class OdysseyBoardController {
                 if (this.gpuProfileRing && epoch === this._gpuTimestampEpoch
                     && Number.isFinite(ts) && ts > 0) {
                     this.gpuProfileRing.push(ts);
+                    // Same resolve, same guards — the per-pass durations this resolve produced.
+                    this._recordPassTimestamps(renderType);
                 }
             })
             .catch(() => {})
@@ -2866,12 +3065,173 @@ export class OdysseyBoardController {
     }
 
     /**
+     * WAVE -1c — name the render passes the timestamp pool measures.
+     *
+     * The uid three keys durations by encodes an ORDINAL and a format CACHE BUCKET, not a pass
+     * (see frameOfTimestampUID). The renderer hands out the missing identity on a public hook:
+     * it calls `this.inspector.beginRender(uid, scene, camera, renderTarget)` two lines after it
+     * builds the uid. The render target IS the pass. So: install an inspector, resolve a stable
+     * name from the target, and key the rings by that name instead.
+     * @private
+     */
+    _installPassLabelInspector() {
+        const { renderer } = this;
+        if (!renderer || this._passLabelInspector) return;
+        // Returns null when the installed three does not export InspectorBase — the instrument
+        // then degrades to the raw ordinal keys rather than throwing.
+        const inspector = createPassLabelInspector(
+            (uid, scene, renderTarget) => this._notePassLabel(uid, scene, renderTarget),
+        );
+        if (!inspector) return;
+        this._passLabelInspector = inspector;
+        renderer.inspector = inspector;
+    }
+
+    /**
+     * Record `uid -> pass name` for one render call. This runs on the RENDER path, ~10x a frame,
+     * so it stays O(1) and free of steady-state allocation.
+     *
+     * Frame boundaries come from the uid's own `:f<frame>` suffix, NOT from inspector
+     * begin()/finish(): three fires those around its animation loop callback, which is null here
+     * because the board drives its own requestAnimationFrame.
+     * @private
+     */
+    _notePassLabel(uid, scene, renderTarget) {
+        const labels = this._passLabels;
+        if (!labels || typeof uid !== 'string') return;
+        const frame = frameOfTimestampUID(uid);
+        if (frame !== this._passLabelFrame) {
+            this._passLabelFrame = frame;
+            this._passLabelSeen.clear();
+            // Bounded: labels for frames no resolve ever folded would otherwise accumulate.
+            if (labels.size > 16 * PASS_LABEL_FRAMES) {
+                labels.forEach((_label, key) => {
+                    if (!(frameOfTimestampUID(key) > frame - PASS_LABEL_FRAMES)) labels.delete(key);
+                });
+            }
+        }
+        const base = this._passLabelFor(renderTarget, scene);
+        const seen = (this._passLabelSeen.get(base) ?? 0) + 1;
+        this._passLabelSeen.set(base, seen);
+        labels.set(uid, seen === 1 ? base : `${base}#${seen}`);
+    }
+
+    /**
+     * A stable name for the render target a pass writes to. Rules and rationale live with the
+     * implementation in composition/odyssey-pass-label-inspector.js.
+     * @private
+     */
+    _passLabelFor(renderTarget, scene) {
+        return passLabelFor(renderTarget, scene, this.postProcessingStack?.scenePass?.renderTarget);
+    }
+
+    /**
+     * WAVE -1b — fold one resolve's PER-PASS durations into their rings.
+     *
+     * three 0.185.1 keeps a resolved duration per render-pass uid — `timestamps.set(uid,
+     * duration)` in renderers/webgpu/utils/WebGPUTimestampQueryPool.js — with the uid built as
+     * `<prefix>:<contextId>:f<frame>` by renderers/common/Backend.js and one query pair
+     * allocated per pass by WebGPUBackend's `initTimestampQuery`. Only the per-frame SUM is
+     * published as `info.render.timestamp`; the split is already measured and thrown away.
+     *
+     * `<prefix>:<contextId>` is the pass key. Earlier frames' entries stay in the Map, so only
+     * the newest frame is folded in — otherwise a pass that stopped rendering would keep
+     * contributing its final value forever and read as a live cost.
+     *
+     * Read through the public field rather than `backend.getTimestamp(uid)` because the uids
+     * are not enumerable from outside, and `getTimestamp` warns on a miss.
+     * @param {string} renderType
+     * @private
+     */
+    _recordPassTimestamps(renderType) {
+        const rings = this._gpuPassRings;
+        const map = this.renderer?.backend?.timestampQueryPool?.[renderType]?.timestamps;
+        if (!rings || !map || typeof map.forEach !== 'function' || map.size === 0) return;
+        let newest = -Infinity;
+        map.forEach((_ms, uid) => {
+            const frame = frameOfTimestampUID(uid);
+            if (frame > newest) newest = frame;
+        });
+        if (!Number.isFinite(newest)) return;
+        map.forEach((ms, uid) => {
+            const frame = frameOfTimestampUID(uid);
+            // PRUNE, and work around an upstream leak while we are here. three's pool does
+            // `timestamps.set(uid, duration)` and NEVER clears the Map — TimestampQueryPool
+            // creates it once and _resolveQueries resets only the query index and offsets. Since
+            // the uid carries `:f<frame>`, every pass of every frame adds a permanent entry:
+            // ~10 a frame at 60 Hz is ~36k a minute for the life of the page, and this method
+            // scans the whole thing per resolve. That makes the profiler a growing CPU cost
+            // inside the very runs whose open question is unexplained CPU — and it means a long
+            // run's later samples are not comparable to its earlier ones.
+            //
+            // Safe to delete: nothing inside three reads this Map. It exists for external
+            // `getTimestamp(uid)` / `hasTimestampQuery(uid)` lookups and we are the only
+            // consumer. Anything at or BELOW the frame being folded is finished with, because
+            // this method always folds the newest frame and never revisits an older one.
+            // Deleting the current key during Map.forEach is well-defined.
+            if (frame <= newest) map.delete(uid);
+            if (frame !== newest) return;
+            if (!Number.isFinite(ms) || ms <= 0) return;
+            const rawKey = uid.slice(0, uid.lastIndexOf(':f'));
+            // The raw `r:<frameCalls>:<contextId>` key is an ORDINAL plus a format bucket, not
+            // an identity — it renumbers whenever the count of render calls ahead of a pass
+            // changes. Prefer the name the inspector recorded for this exact uid; fall back to
+            // the raw key so a late resolve degrades to the old behaviour instead of being lost.
+            const key = this._passLabels?.get(uid) ?? rawKey;
+            let ring = rings.get(key);
+            if (!ring) {
+                ring = new PerfRing(600);
+                rings.set(key, ring);
+            }
+            ring.push(ms);
+            this._passLabels?.delete(uid);
+            if (this._passUidKeys) {
+                let seen = this._passUidKeys.get(key);
+                if (!seen) {
+                    seen = new Set();
+                    this._passUidKeys.set(key, seen);
+                }
+                seen.add(rawKey);
+            }
+        });
+    }
+
+    /**
+     * Percentiles per render pass, largest p50 first; null before anything has resolved.
+     *
+     * This is the answer to "which pass owns the frame" WITHOUT an A/B: the passes sum to the
+     * frame, so a share is read directly rather than inferred from a difference of two runs.
+     * @returns {Array<object>|null}
+     * @private
+     */
+    _summarizePassTimestamps() {
+        const rings = this._gpuPassRings;
+        if (!rings || rings.size === 0) return null;
+        const out = [];
+        rings.forEach((ring, pass) => {
+            const summary = ring.summarize();
+            if (summary.samples > 0) {
+                // uidKeys is the audit trail: more than one entry means three renumbered this
+                // pass's ordinal mid-run, which is exactly why the key is a name and not that
+                // ordinal. Keeping it visible makes the drift checkable, not inferred.
+                const uidKeys = this._passUidKeys?.get(pass);
+                out.push({ pass, uidKeys: uidKeys ? [...uidKeys] : null, ...summary });
+            }
+        });
+        if (out.length === 0) return null;
+        out.sort((a, b) => (b.p50 ?? 0) - (a.p50 ?? 0));
+        return out;
+    }
+
+    /**
      * WAVE -1 — record this frame's GPU time and publish a throttled percentile summary.
      *
-     * `renderer.info.render.timestamp` is one aggregate number per frame, and WebGPU exposes
-     * no per-pass scope through three's API, so the "split" the wave asks for is obtained as
-     * an A/B MATRIX across runs (bloom off, post off, level nodes hidden, ...) rather than as
-     * nested timestamp scopes. Each configuration is one run; the differences are the split.
+     * `renderer.info.render.timestamp` is one aggregate number per frame. The per-PASS split
+     * is published alongside it as `summary.passes` (see _recordPassTimestamps) — three
+     * 0.185.1 retains a duration per pass uid, so the split no longer needs the A/B MATRIX
+     * across runs (bloom off, post off, level nodes hidden, ...) that this comment used to
+     * mandate. Keep the matrix for what it is still the only instrument for: pricing an
+     * OBJECT, which no pass boundary isolates.
      *
      * Sampling is per-frame and allocation-free; the O(n log n) summary is throttled to ~4 Hz
      * and parked on window for the harness to read.
@@ -2896,6 +3256,16 @@ export class OdysseyBoardController {
         summary.oneWorld = !!this.oneWorld;
         summary.levelNodesHidden = !!this.hideLevelNodes;
         summary.quality = this.qualityName ?? null;
+        // The per-pass split of the same window the percentiles above summarise.
+        summary.passes = this._summarizePassTimestamps();
+        // Texture/render-target counts and r185's byte accounting (Info.js `memory`). A
+        // configuration that silently destroys and recreates a render target per frame shows
+        // up as a churning renderTargets count, which no timing differential would name.
+        summary.textures = this._perfCounters?.textures ?? null;
+        const gpuMemory = this.renderer?.info?.memory;
+        summary.renderTargets = gpuMemory?.renderTargets ?? null;
+        summary.vramBytes = gpuMemory?.total ?? null;
+        summary.texturesBytes = gpuMemory?.texturesSize ?? null;
         if (typeof window !== 'undefined') window.__ODYSSEY_GPU_PROFILE__ = summary;
     }
 

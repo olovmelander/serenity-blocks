@@ -56,6 +56,19 @@ describe('GPU profile sampling records once per RESOLVED query', () => {
         const reset = BOARD.slice(BOARD.indexOf('window.__ODYSSEY_GPU_RESET__'));
         expect(reset.slice(0, 700)).toMatch(/_gpuTimestampEpoch \+= 1/);
     });
+
+    it('prunes three\'s timestamp Map, which three itself never clears', () => {
+        // WebGPUTimestampQueryPool does `timestamps.set(uid, duration)` and nothing ever empties
+        // the Map — ~10 entries per frame, permanently, for the life of the page. The fold scans
+        // it every resolve, so without a prune the profiler becomes a CPU cost that GROWS with
+        // run length, inside runs whose whole purpose is attributing CPU. Asserted against
+        // source because exercising it needs a WebGPU device and a resolved query.
+        const fn = BOARD.slice(BOARD.indexOf('_recordPassTimestamps(renderType) {'));
+        const body = fn.slice(0, fn.indexOf('\n    }'));
+        expect(body).toMatch(/map\.delete\(uid\)/);
+        // Only entries at or below the frame being folded — never a newer, still-in-flight one.
+        expect(body).toMatch(/if \(frame <= newest\) map\.delete\(uid\);/);
+    });
 });
 
 describe('the level-node A/B actually hides the level nodes', () => {
@@ -137,9 +150,9 @@ describe('the quality-preset table declares only levers it actually reads', () =
             BOARD.indexOf('const ODYSSEY_BLOOM_SCALE'),
         );
         ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'].forEach((tier) => {
-            expect(table).toMatch(new RegExp(`${tier}: \{[^}]*enableBloom`));
-            expect(table).toMatch(new RegExp(`${tier}: \{[^}]*particleCount`));
-            expect(table).toMatch(new RegExp(`${tier}: \{[^}]*starCount`));
+            expect(table).toMatch(new RegExp(`${tier}: \\{[^}]*enableBloom`));
+            expect(table).toMatch(new RegExp(`${tier}: \\{[^}]*particleCount`));
+            expect(table).toMatch(new RegExp(`${tier}: \\{[^}]*starCount`));
         });
     });
 });

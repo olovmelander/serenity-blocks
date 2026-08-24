@@ -5,14 +5,21 @@
  *   node scripts/run-electron.mjs scripts/odyssey-gpu-split.mjs --lane A
  *   node scripts/run-electron.mjs scripts/odyssey-gpu-split.mjs --lane B --low-power
  *
- * WHY A MATRIX AND NOT NESTED SCOPES. The plan asks for a split across scene / shadow / post /
- * bloom. three r181's WebGPU backend exposes exactly one timestamp scope per render type —
- * `renderer.info.render.timestamp` is a single aggregate — and `PostProcessing` renders its
- * whole graph inside one call, so there is nowhere to hang a per-pass query without forking
- * the renderer. The split is therefore obtained DIFFERENTIALLY: each configuration removes one
- * system, and the delta against the baseline is that system's cost. That is a weaker
- * instrument than per-pass scopes (it cannot see overlap between systems) and the report says
- * so, but it is a real measurement rather than an assumed one.
+ * WHY A MATRIX. This script prices OBJECTS, and no pass boundary isolates an object: removing
+ * one system and diffing against baseline is the only way to attribute its cost. That is a
+ * weak instrument — it cannot see overlap between systems (overlapping cost lands on whichever
+ * is removed first), and on Lane A the whole frame is only ~22 timestamp ticks (65.536 us
+ * quantum), so a 0.0-0.3 ms per-object delta sits below the noise. Always read
+ * `baselineDriftMs` and `contentMismatch` before believing a delta.
+ *
+ * WHAT CHANGED ON 0.185.1. The original rationale here also claimed there was nowhere to hang
+ * a per-pass query without forking the renderer. That was true of r181; it is NOT true now.
+ * The WebGPU pool retains a duration per render-pass uid (`WebGPUTimestampQueryPool.js`
+ * `timestamps.set(uid, duration)`, uid from `Backend.js` `getTimestampUID`, one query pair per
+ * pass in `WebGPUBackend.js`), and the board publishes it as `passes[]` on
+ * `window.__ODYSSEY_GPU_PROFILE__` (OdysseyBoardController `_recordPassTimestamps`). So:
+ * pass-level questions (scene vs bloom mip vs composite) are answered by ONE run with no
+ * differential and no drift subtraction — do not reach for this matrix to answer them.
  *
  * Discipline (the wave's exit criterion): p50/p99 only, never a mean; fixed-size ring; draw
  * calls latched once per frame. All of that lives in src/utils/perf-ring.js and the board's
@@ -280,6 +287,19 @@ const CONFIGURATIONS = [
     // Accept (design §4): lakeBakedMs ≤ 0.5 × lakeMs with the differential ≥ 4 timer ticks and
     // baseline drift ≤ 25 % of the saving.
     { id: 'no-lake', flags: { earthCoreNoLake: '1' }, note: 'the Earth Core lava lake is not built' },
+    // SPLIT LEVER. `no-lake` withholds SIX draws: the 360x360 lake plane AND five large additive
+    // glow sprites (ambient 120u, inner 70u, three basin coronas 66-84u, all frustumCulled=false
+    // and depthWrite=false). So `lakeMs` is plane PLUS sprite fill, and the split between them
+    // was unknown. It matters because the fixes are opposite: a cheaper lake shader, versus
+    // simply cutting sprites. Run the trio in ONE cooled session so all three share a baseline:
+    //   --lane B --low-power --seek 0 --chapters 1 --flags odysseyHideLevelNodes=1     //     --only baseline,no-lake,no-lake-glows,baseline-repeat
+    // Liveness gate: no-lake drops SIX draws, no-lake-glows drops exactly FIVE. A five-draw drop
+    // is the proof the lever hit the sprites and only the sprites.
+    {
+        id: 'no-lake-glows',
+        flags: { earthCoreNoLakeGlows: '1' },
+        note: 'the lake plane still draws; its five additive glow sprites are withheld',
+    },
     { id: 'lake-baked', flags: { earthCoreLakeBake: '1' }, note: 'lake noise from the baked 3D texture' },
     { id: 'baseline-repeat', flags: {}, note: 'drift check against the first baseline' },
 ];
@@ -559,6 +579,16 @@ function buildSplit(results) {
         // Lane B (Vega 8) 4.45 → 1.96 ms of a 7.6 ms frame; Lane A (RTX 3070) 0.79 → 0.20 ms.
         lakeMs: delta('baseline', 'no-lake'),
         lakeBakedMs: delta('lake-baked', 'no-lake'),
+        // The five additive glow sprites alone (baseline minus the same frame without them).
+        lakeGlowsMs: delta('baseline', 'no-lake-glows'),
+        // The lake PLANE alone, by subtraction: the whole group minus the sprite share. Report
+        // it only when both levers ran in the same session — across sessions the two baselines
+        // are different frames and the subtraction is meaningless.
+        lakePlaneMs: (Number.isFinite(byId.baseline)
+            && Number.isFinite(byId['no-lake'])
+            && Number.isFinite(byId['no-lake-glows']))
+            ? +(byId['no-lake-glows'] - byId['no-lake']).toFixed(3)
+            : null,
         // NOT `baseline - cloud-field-half`. `cloud-field-half` truncates the spec table to
         // its first 26 masses, so that subtraction would price the UPPER 26 (the satellites,
         // which are far-LOD and tiny) and read as 'half the field is nearly free'. The cost

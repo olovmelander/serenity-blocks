@@ -26,11 +26,16 @@ node scripts/run-electron.mjs scripts/odyssey-gpu-split.mjs --lane B --low-power
 > 1. **Do not diff a fresh capture against these numbers** — different silicon, different
 >    VRAM budget. It manufactures phantom regressions. Re-baseline first, and name the new
 >    files for the new GPU.
-> 2. **Lane B is not reproducible on the 82JU.** Chrome there returns the RTX 3070 for
->    *every* `powerPreference` — `default`, `low-power`, and `high-performance` all report
->    `nvidia / ampere`. There is no selectable low-power adapter, so `--lane B --low-power`
->    does not fail; it quietly re-runs lane A and writes a discrete-GPU result under an
->    iGPU label. Verified 2026-08-19 via `navigator.gpu.requestAdapter()`.
+> 2. **Lane B IS reproducible on the 82JU — assert the adapter, do not assume it.** The
+>    2026-08-19 "unreproducible" verdict was measured in *Chrome*, which Windows pins to the
+>    RTX (`HKCU UserGpuPreferences chrome.exe → 2`) and whose page-level `powerPreference`
+>    Chromium ignores; every `requestAdapter()` there reports `nvidia / ampere`. The harness's
+>    **process-level** switch was never tried. Confirmed 2026-08-21 (plan item 4.0): without
+>    `force_high_performance_gpu`, Electron's default adapter here is the Vega 8
+>    (`amd / gcn-5`), and `--lane B --low-power` selects it explicitly. Always assert
+>    `report.adapter.vendor === 'amd'` / architecture `gcn-5` — the run is INADMISSIBLE
+>    otherwise, and a silent lane-A result under an iGPU label is the failure this note
+>    originally warned about.
 
 ## 2026-08-21 — first 82JU (RTX 3070) baseline: three r181 → r185 A/B
 
@@ -50,11 +55,25 @@ r185). Use the process-per-run driver in that folder (fresh Electron per run, th
 
 Two things to know before reading one of these files:
 
-**It is differential, not per-pass.** three's WebGPU backend (r181 and r185 alike) exposes one timestamp scope
-per render type, and `PostProcessing` renders its whole graph inside a single call, so there is
-nowhere to hang a per-pass query without forking the renderer. Each configuration instead
-removes one system and the delta against baseline is attributed to it. Overlapping cost lands
-on whichever system is removed first, so the figures do not have to sum to the baseline.
+**It is differential, not per-pass — and on 0.185.1 that is now a choice, not a limit.** Each
+configuration removes one system and the delta against baseline is attributed to it. Overlapping
+cost lands on whichever system is removed first, so the figures do not have to sum to the
+baseline. That was the only option on r181, which exposed a single aggregate timestamp scope per
+render type. **It is no longer true on r185**: the WebGPU pool retains a duration per render-pass
+uid (`WebGPUTimestampQueryPool.js` `timestamps.set(uid, duration)`; uid from `Backend.js`
+`getTimestampUID`, one query pair per pass in `WebGPUBackend.js`), and the board now publishes
+that split as `passes[]` on `window.__ODYSSEY_GPU_PROFILE__`.
+
+Use the right one for the question:
+
+| Question | Instrument |
+|---|---|
+| Which **pass** owns the frame (scene vs bloom mip vs composite)? | `passes[]` — one run, no differential, no drift to bound. The passes sum to the frame, so a share is read directly. |
+| What does one **object** cost? | Still the differential matrix — no pass boundary isolates an object. |
+
+Prefer `passes[]` wherever it answers the question. A Lane A frame is only ~22 timestamp ticks
+(65.536 µs quantum), so a differential asked to resolve a 0.0–0.3 ms per-object delta is working
+below its own noise floor; splitting that same frame twelve ways is not.
 
 **Read `baselineDriftMs` first.** Baseline runs first and last. Any delta smaller than the
 drift between them is noise, not a measurement — thermal throttling on a laptop is easily

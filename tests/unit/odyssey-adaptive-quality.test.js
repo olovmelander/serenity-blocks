@@ -9,7 +9,13 @@
  *
  * Constants mirrored from the source: window 60, MIN_SAMPLES 30, target 60fps → budget 16.67ms,
  * downThreshold ≈19ms, upThreshold ≈15ms; escalate cooldown 6s, recover cooldown 12s;
- * bloom 0.5→0.25, resolution floor 0.5.
+ * bloom 0.5→0.25, resolution floor 0.5 BY DEFAULT.
+ *
+ * Both of those defaults are now injectable, because both were wrong for the one consumer that
+ * exists. The controller hardcoded a 0.5 bloom baseline against a pipeline authored at 0.25, so
+ * recovering to tier 0 RAISED bloom above authored and latched there for the session; and it
+ * hardcoded a 0.5 resolution floor against a board that clamps at 0.65, so it spent three 12s
+ * recovery cooldowns proposing scales the board discarded. The final two blocks pin both.
  */
 
 import {
@@ -173,5 +179,167 @@ describe('OdysseyAdaptiveQuality', () => {
         ctrl.setBaselineRenderScale(0.9);
         expect(ctrl.baselineRenderScale).toBe(0.9);
         expect(ctrl.getRenderScale()).toBe(0.9); // was 1.2 > new ceiling → clamped down
+    });
+});
+
+/**
+ * The bloom ladder must be one-way DOWN. It was not: the controller latched a hardcoded 0.5 as
+ * "full" while the Odyssey pipeline is authored at 0.25 (ODYSSEY_BLOOM_SCALE), so the tier-1→0
+ * recovery wrote 0.5 — above authored — and nothing ever wrote it back for the rest of the
+ * session. The visual consequence is the load-bearing one: BloomNode's blur kernel is a fixed
+ * TEXEL count per mip, so doubling the working resolution HALVES the glow's screen-space radius.
+ * The look changed permanently, and only on the machines that had stuttered.
+ */
+describe('OdysseyAdaptiveQuality — the bloom ladder never ratchets upward', () => {
+    it('never raises bloom above the seated baseline across a full shed→recover cycle', () => {
+        const ctrl = new OdysseyAdaptiveQuality({
+            renderScale: 0.5,
+            baselineBloomScale: 0.25, // what OdysseyBoardController actually ships
+            evaluateResolution: pinnedPolicy(0.5),
+        });
+        const ctx = makeCtx();
+
+        fill(ctrl, SLOW, 30);
+        ctrl.update(1000, ctx);
+        ctrl.update(7001, ctx); // ≥6s of floor pressure → Tier 1
+        expect(ctrl._pressureTier).toBe(1);
+
+        // 60, not 30: the ring holds 60 samples, so a 30-frame refill leaves it half-SLOW
+        // and p95 never drops below the up threshold — the ladder would escalate, not recover.
+        fill(ctrl, FAST, 60); // headroom returns
+        ctrl.update(19002, ctx); // ≥12s later → Tier 1 → 0
+        expect(ctrl._pressureTier).toBe(0);
+
+        // BEFORE the fix this is [[0.5]] — the ratchet, caught with no GPU involved.
+        const raised = ctx.pipeline.setBloomScale.mock.calls.filter(([scale]) => scale > 0.25);
+        expect(raised).toEqual([]);
+        expect(ctrl.getState().bloomScale).toBe(0.25);
+    });
+
+    it('keeps the historical 0.5→0.25→0.5 behaviour when no baseline is seated', () => {
+        // Back-compat guard: the default must not silently change for any other caller.
+        const ctrl = new OdysseyAdaptiveQuality({
+            renderScale: 0.5,
+            evaluateResolution: pinnedPolicy(0.5),
+        });
+        const ctx = makeCtx();
+        fill(ctrl, SLOW, 30);
+        ctrl.update(1000, ctx);
+        ctrl.update(7001, ctx);
+        expect(ctx.pipeline.setBloomScale).toHaveBeenLastCalledWith(0.25);
+        fill(ctrl, FAST, 60); // full ring replace — see the note above
+        ctrl.update(19002, ctx);
+        expect(ctrl._pressureTier).toBe(0);
+        expect(ctx.pipeline.setBloomScale).toHaveBeenLastCalledWith(0.5);
+    });
+
+    it('setBaselineBloomScale keeps a ?odysseyPerfBloomScale override from being stomped', () => {
+        const ctrl = new OdysseyAdaptiveQuality({
+            renderScale: 0.5,
+            evaluateResolution: pinnedPolicy(0.5),
+        });
+        ctrl.setBaselineBloomScale(0.15); // as if the perf flag asked for 0.15
+        const ctx = makeCtx();
+        fill(ctrl, SLOW, 30);
+        ctrl.update(1000, ctx);
+        ctrl.update(7001, ctx);
+        fill(ctrl, FAST, 60); // full ring replace — see the note above
+        ctrl.update(19002, ctx);
+        // Assert the cycle actually completed, so the claim below cannot pass vacuously.
+        expect(ctrl._pressureTier).toBe(0);
+        const calls = ctx.pipeline.setBloomScale.mock.calls.map(([scale]) => scale);
+        expect(calls.every((scale) => scale <= 0.15)).toBe(true);
+        // The state is the real assertion: before the fix this ended the cycle at 0.5, i.e. the
+        // perf flag's 0.15 was silently replaced by more than 3x the bloom it asked for.
+        expect(ctrl.getState().bloomScale).toBeLessThanOrEqual(0.15);
+    });
+
+    it('leaves Tier 1 an inert rung when the baseline is already at or below the floor', () => {
+        // KNOWN LIMITATION, pinned deliberately rather than left to be rediscovered. The ladder's
+        // bloom rung is BLOOM_SCALE_FLOOR (0.25) and the board ships ODYSSEY_BLOOM_SCALE = 0.25,
+        // so Math.min(floor, baseline) === baseline and the Tier-1 escalation changes nothing.
+        // Stopping the ratchet does NOT make Tier 1 useful — that needs a floor below 0.25, which
+        // is a visual change (bloom scale sets the glow's screen-space radius, not just its cost)
+        // and owes a playground capture under ADR-0007. Follow-up, not part of this fix.
+        const ctrl = new OdysseyAdaptiveQuality({
+            renderScale: 0.5,
+            baselineBloomScale: 0.25, // the shipped value
+            evaluateResolution: pinnedPolicy(0.5),
+        });
+        const ctx = makeCtx();
+        fill(ctrl, SLOW, 30);
+        ctrl.update(1000, ctx);
+        ctrl.update(7001, ctx); // → Tier 1
+        expect(ctrl._pressureTier).toBe(1);
+        expect(ctx.pipeline.setBloomScale).not.toHaveBeenCalled();
+        // Tier 2 is where relief actually arrives today.
+        ctrl.update(13002, ctx);
+        expect(ctx.pipeline.setBloomEnabled).toHaveBeenLastCalledWith(false);
+    });
+});
+
+/**
+ * The controller must know the floor its CONSUMER clamps to. The Odyssey board clamps render
+ * scale at 0.65 for legibility while the controller assumed the policy's 0.5, so it proposed
+ * 0.55/0.60/0.65 — three steps the board collapsed onto the same 0.65 — while charging a 12s
+ * recovery cooldown for each. That is ~36s after frames go fast before one pixel comes back.
+ */
+describe('OdysseyAdaptiveQuality — resolution floor matches the consumer', () => {
+    it('spends no cooldown on a step the consumer would clamp away', () => {
+        const ctrl = new OdysseyAdaptiveQuality({
+            baselineRenderScale: 1,
+            renderScale: 0.65,
+            resolutionFloor: 0.65, // what the board really clamps to
+            evaluateResolution: () => ({ changed: true, nextRenderScale: 0.55 }),
+        });
+        const ctx = makeCtx();
+        fill(ctrl, SLOW, 30);
+        ctrl.update(1000, ctx);
+        // Proposal is below the floor → clamped back to where we already are → NOT a change.
+        expect(ctx.applyRenderScale).not.toHaveBeenCalled();
+        expect(ctrl.getRenderScale()).toBe(0.65);
+    });
+
+    it('collapses the dead sub-floor range instead of walking it one cooldown at a time', () => {
+        const ctrl = new OdysseyAdaptiveQuality({
+            baselineRenderScale: 1,
+            renderScale: 0.5, // controller believes it is below the board's floor
+            resolutionFloor: 0.65,
+            evaluateResolution: () => ({ changed: true, nextRenderScale: 0.55 }),
+        });
+        const ctx = makeCtx();
+        fill(ctrl, FAST, 30);
+        ctrl.update(1000, ctx);
+        // Straight to the real floor, rather than "recovering" through 0.55 and 0.60 first.
+        expect(ctx.applyRenderScale).toHaveBeenCalledWith(0.65);
+        expect(ctrl.getRenderScale()).toBe(0.65);
+    });
+
+    it('the ceiling still wins when a preset seats a baseline below the floor', () => {
+        // Ordering guard: clamping UP to the floor must not re-raise above the preset ceiling.
+        // getPackagedWindowsRecommendedSettings already returns 0.65 for a 9MP display, so a
+        // baseline under the floor is reachable, not hypothetical.
+        const ctrl = new OdysseyAdaptiveQuality({
+            baselineRenderScale: 0.6,
+            renderScale: 0.6,
+            resolutionFloor: 0.65,
+            evaluateResolution: () => ({ changed: true, nextRenderScale: 0.5 }),
+        });
+        const ctx = makeCtx();
+        fill(ctrl, SLOW, 30);
+        ctrl.update(1000, ctx);
+        expect(ctrl.getRenderScale()).toBeLessThanOrEqual(0.6);
+    });
+
+    it('still defaults to the policy floor of 0.5 for callers that do not pass one', () => {
+        const ctrl = new OdysseyAdaptiveQuality({
+            baselineRenderScale: 1,
+            renderScale: 0.6,
+            evaluateResolution: () => ({ changed: true, nextRenderScale: 0.5 }),
+        });
+        const ctx = makeCtx();
+        fill(ctrl, SLOW, 30);
+        ctrl.update(1000, ctx);
+        expect(ctx.applyRenderScale).toHaveBeenCalledWith(0.5);
     });
 });

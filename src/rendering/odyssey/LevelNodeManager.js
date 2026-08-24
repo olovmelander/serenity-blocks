@@ -548,6 +548,14 @@ export class LevelNodeManager {
             alphaTest: 0.1,
             depthWrite: false,
             side: THREE.DoubleSide,
+            // FLAT SURFACE, ONE PASS (plan item: forceSinglePass audit, 2026-08-22). `transparent +
+            // DoubleSide` makes three draw the object TWICE — BackSide then FrontSide (Renderer.js
+            // renderObject / _renderTransparents) — which exists so a CLOSED transparent shell sorts
+            // against itself. Every surface here is a single facet (a billboard quad, a plane, an open
+            // cone) with depthWrite off, so the second pass re-shades the same fragments: it doubles the
+            // fill and, because the passes differ only in `material.side`, it compiles a SECOND pipeline
+            // per material (33 of them across the startup groups). Precedent: odyssey-planet-aurora.js.
+            forceSinglePass: true,
         });
         this.lockInstancedMesh = new THREE.InstancedMesh(lockGeo, lockMat, count);
         this.lockInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -575,6 +583,7 @@ export class LevelNodeManager {
             alphaTest: 0.1,
             depthWrite: false,
             side: THREE.DoubleSide,
+            forceSinglePass: true,
         });
         this.starInstancedMesh = new THREE.InstancedMesh(starGeo, starMat, count * 3);
         this.starInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
