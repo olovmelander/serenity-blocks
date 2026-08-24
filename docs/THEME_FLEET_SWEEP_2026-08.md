@@ -2225,3 +2225,89 @@ judged as such below, fleet-scoped claims are judged hard.
   `chromatic-impasto`, `nebula-flow` and `voltage-storm` as `GL`, where the lane records
   `renderer.kind: null` for all four. That is a taxonomy difference, not a contradiction — but it
   means §5's `kind` column cannot be used to decide which themes the WebGPU levers apply to.
+
+---
+
+# PART C — Stage 4: fixes, one theme per session
+
+## 13. stillwater — 10,421 ms → 5,498 ms (−47.2 %)
+
+**Landed 2026-08-24.** Commit `0b15db5d` (change) + this section (evidence).
+Cells: [`reports/theme-perf-stillwater-ab/`](../reports/theme-perf-stillwater-ab/) —
+`before.json` and `after-1..3.json`, each a fresh Electron with its own cold Dawn cache.
+
+### What was wrong
+
+`warmRuntime` called `compileAsync` only when `usesMrtScenePass()` was **false**
+([stillwater-theme.js](../src/themes/stillwater/stillwater-theme.js)). High enables bloom, bloom
+sets `useMRT`, so it was always true and **the branch never executed**. `Renderer.compileAsync` is
+the only path in 0.185.1 that reaches `device.createRenderPipelineAsync` (`Renderer.js:914`
+allocates the promise array; `WebGPUPipelineUtils.js:261/292` chooses sync vs async on whether it is
+null), so the theme warmed nothing at all.
+
+The skip was **right about the hazard and wrong about the remedy**. A bare
+`compileAsync(scene, camera)` binds no render target, and r185's deferred build loop reads the live
+`renderer.getMRT()` per object — so it bakes one-output shaders under an MRT-agnostic key, the
+poisoned-cache black screen that `post-target-compile.js:15-27` documents. Refusing it was correct.
+`compileGroupThroughPost` is the remedy the theme never reached for: it holds the scene-pass target
+and MRT bound across the *whole* await through a refcounted session, and compiles at the scene
+pass's own call depth.
+
+### The measurement (n = 3, medians, RTX 3070, cold cache per run)
+
+| field | before | after (×3) | median |
+|---|---:|---|---:|
+| **`firstFrameGpuDoneMs`** | **10,421** | 5,497 / 5,498 / 5,504 | **5,498** |
+| `switchWallMs` | 716 | 3,659 / 3,585 / 3,658 | 3,658 |
+| `pipelines.asyncCount` | 0 | 33 / 33 / 33 | 33 |
+| `pipelines.syncCount` | 58 | 44 / 43 / 44 | 44 |
+| `pipelines.asyncSumMs` | 0 | — | 14,507 |
+| `pipelines.asyncMaxMs` | 0 | — | **2,230** |
+| `idle.gpuMs.samples` | 0 | 666 / 668 / 668 | 668 |
+| `admissible` | **false** | true / true / true | true |
+
+Spread across three runs is **7 ms** on the headline field.
+
+**Read `switchWallMs` rising as the fix working, not regressing.** The compile is now *awaited*
+inside the switch, so the promise resolves later — 716 → 3,658 ms — while the first frame arrives
+4,923 ms sooner. Before, the canvas was revealed at ~716 ms and then showed its clear colour for
+9.7 s. After, it is revealed at ~3.7 s and paints at 5.5 s. Ranking this change on switch wall clock
+would call a 47 % win a 5× regression — which is exactly the error that filed the fleet's worst
+theme at #13 in Part A.
+
+### Regression guards — all held
+
+`content.drawCalls.p50` 131 → 131. `content.triangles.p50` 328,103 → 328,103.
+`content.contentMatch` true. `pipelines.pipelinesAfterFirstFrame` 0 → 0 (nothing compiles
+mid-game). `console.errorCount` 0 → 0. `idle.wall.p95` 8.3 → 8.2 ms. `idle.cpuSubmitMs.p95`
+3.7 → 4.0 ms.
+
+**ADR-0007:** `node scripts/validate-all-themes.mjs --theme stillwater` → PASS, 0 console errors,
+0 pattern failures. Screenshot luminance mean 43.590 vs baseline 43.938 (−0.8 %), range 241.7
+identical, variance 700.7 vs 721.6 (−2.9 %) — within frame-to-frame variation for an animated water
+surface under an unfrozen clock. No structural change.
+
+### Two things this exposed
+
+**1. stillwater now owns the fleet's worst single pipeline: 2,230 ms.** It was always there; it
+compiled synchronously, and a sync pipeline carries `ms: null` by construction, so no instrument
+could price it. Making the compile async is what made it *visible*. The fleet's previous worst was
+neon-district at 1,688 ms. This does not change the "no lava lakes" conclusion — it is still well
+under the Odyssey lake's 7,235 ms — but §11.6 should be read with it.
+
+**2. 44 pipelines still compile synchronously.** Residual `syncRows` shapes are
+`rgba16float|1|depth24plus`, `rgba16float|1|null` and `rgba16float,rgba16float|4|depth24plus`.
+The first two are the reflector's own target (`ReflectorNode.js:406-431`, built because High sets
+`reflectionScale: 0.30`) — a different target *and* a different call depth from the scene pass, so
+this fix could not reach them. The third means some MRT-shape objects were not in the compiled
+group. Sizing a second pass is the next measured step; do **not** bolt on a second
+`compileGroupThroughPost` speculatively, because `beginNestedContextDepth` hard-maps depth 0 → 1
+and the reflector renders nested inside the scene pass, so a naive second call would warm the wrong
+context id.
+
+### What is not done
+
+Rows 3 (hold the mask across a rendered frame), 4 (reflector compile), 5 (drop 4× MSAA on the
+composite quad) and 7 (rewrite the pinned test's rationale) from the Stage-3 plan are untouched.
+Row 5 is now *measurable* for the first time, because row 6 unlocked the GPU axis
+(`idle.gpuMs.p95` 0.786 ms).
