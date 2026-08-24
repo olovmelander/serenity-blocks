@@ -16,6 +16,7 @@
  */
 /* eslint-disable import/no-extraneous-dependencies, no-await-in-loop */
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import {
     mkdir,
     readFile,
@@ -42,6 +43,7 @@ const BOOLEAN_OPTIONS = new Set([
     'help',
     'list',
     'perf',
+    'perf-resume',
     'skip-build',
 ]);
 const VALUE_OPTIONS = new Set([
@@ -202,6 +204,7 @@ export function parseThemeValidationArgs(argv) {
         headed: parseBoolean(raw.headed, false),
         settleMs: parseNonNegativeInt(raw['settle-ms'], 2_000, '--settle-ms'),
         perf: parseBoolean(raw.perf, false),
+        perfResume: parseBoolean(raw['perf-resume'], false),
         perfIdleMs: parseNonNegativeInt(
             raw['perf-idle-ms'],
             PERF_LANE_DEFAULTS.idleMs,
@@ -716,9 +719,38 @@ General:
   --help                        Print this help and exit`);
 }
 
+/**
+ * Drop themes that already have a committed perf cell.
+ *
+ * A 61-theme serial GPU sweep is over an hour long, and this machine restarts under it (Windows
+ * Update took one down at theme 8). Re-measuring what already succeeded wastes GPU time and, worse,
+ * would re-roll cells that are already good. Selection only — it changes nothing about how a theme
+ * is measured, so a resumed cell stays comparable with the ones before it.
+ */
+export function filterAlreadyMeasured(entries, perfOutputDir, log = () => {}) {
+    const remaining = [];
+    const done = [];
+    for (const entry of entries) {
+        if (existsSync(path.join(perfOutputDir, `${entry.id}.json`))) done.push(entry.id);
+        else remaining.push(entry);
+    }
+    if (done.length) {
+        log(`[ThemeValidation] --perf-resume: skipping ${done.length} theme(s) that already have a `
+            + `cell: ${done.join(', ')}`);
+    }
+    return remaining;
+}
+
 export async function runThemeValidation(argv = process.argv.slice(2)) {
     const config = parseThemeValidationArgs(argv);
-    const selectedEntries = resolveThemeValidationEntries(config);
+    let selectedEntries = resolveThemeValidationEntries(config);
+    if (config.perf && config.perfResume) {
+        selectedEntries = filterAlreadyMeasured(
+            selectedEntries,
+            config.perfOutputDir,
+            (m) => console.log(m),
+        );
+    }
     if (config.help) {
         printUsage();
         return 0;

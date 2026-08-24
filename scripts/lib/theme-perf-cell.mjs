@@ -40,6 +40,9 @@ export function buildThemePerfCell({
     adapter = null, consoleSummary = null, runId, generatedAt,
 }) {
     const inadmissible = [];
+    // Kept apart on purpose: a cell can carry sound single-visit timings while its visit-to-visit
+    // differential is void.
+    const driftInadmissible = [];
 
     if (!visit1 || visit1.error) {
         return {
@@ -63,7 +66,8 @@ export function buildThemePerfCell({
         inadmissible.push('no wall-frame samples in the idle window');
     }
 
-    // A classic WebGLRenderer legitimately has no GPU series. That is renderer kind, not a defect.
+    // A classic WebGLRenderer legitimately has no GPU series; a theme with no three renderer at all
+    // has neither. Both are renderer kind, not defects (ADR-0019, ADR-0008).
     const kind = visit1.renderer?.kind ?? null;
     const gpuExpected = kind === 'WebGPURenderer';
     if (gpuExpected && (visit1.idle?.gpuMs?.samples ?? 0) === 0) {
@@ -81,12 +85,13 @@ export function buildThemePerfCell({
     let content = {
         ...visit1.content, visit2: null, contentMatch: null, contentMismatchReason: null, contentGuardAdmissible: false,
     };
+    const hasRenderer = kind === 'WebGPURenderer' || kind === 'WebGLRenderer';
     if (visit2 && !visit2.error) {
-        // 0 draws is "nothing observed", not "content matched" — the first measured cell passed the
-        // guard on 0 vs 0 while telling us nothing.
+        // 0 draws is "nothing observed", not "content matched". For a theme that owns no three
+        // renderer that is the expected state, not a fault.
         const noContent = !(visit1.content?.drawCalls?.p50 > 0);
         const mismatch = noContent
-            ? 'no draw calls observed — content guard cannot run'
+            ? noContentReason(hasRenderer)
             : contentMismatch(visit1, visit2);
         content = {
             ...visit1.content,
@@ -105,7 +110,8 @@ export function buildThemePerfCell({
                 visitWallP95DeltaMs: diff(visit1.idle?.wall?.p95, visit2.idle?.wall?.p95),
                 voidReason: null,
             };
-        if (mismatch) inadmissible.push(`content guard: ${mismatch}`);
+        // Only the DIFFERENTIAL is disqualified by a mismatch; see the note above.
+        if (mismatch && hasRenderer) driftInadmissible.push(`content guard: ${mismatch}`);
     } else {
         inadmissible.push('no second visit — content guard could not run');
     }
@@ -138,7 +144,7 @@ export function buildThemePerfCell({
         idle: visit1.idle,
         content,
         memory: visit1.memory,
-        drift,
+        drift: { ...drift, admissible: driftInadmissible.length === 0, inadmissibleReasons: driftInadmissible },
         console: consoleSummary
             ? { errorCount: consoleSummary.errorCount, warningCount: consoleSummary.warningCount }
             : null,
@@ -146,6 +152,13 @@ export function buildThemePerfCell({
         inadmissibleReasons: inadmissible,
         notes: NOTES,
     };
+}
+
+/** Why a content comparison could not run. A theme with no three renderer draws nothing BY DESIGN. */
+function noContentReason(hasRenderer) {
+    return hasRenderer
+        ? 'no draw calls observed — content guard cannot run'
+        : 'theme owns no three renderer — nothing to content-match';
 }
 
 function diff(a, b) {
