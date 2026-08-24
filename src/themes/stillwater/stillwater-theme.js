@@ -21,6 +21,7 @@ import {
     normalizeStillwaterQuality,
 } from './stillwater-quality.js';
 import { createStillwaterRuntime } from './rendering/stillwater-runtime.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { revealHiddenDrawables } from '../shared/warm-hidden-drawables.js';
 import { readFlag } from '../../core/flags.js';
 import { STILLWATER_TETROMINOS } from './stillwater-tetrominos.js';
@@ -1061,7 +1062,16 @@ export default class StillwaterTheme extends BaseTheme {
         // r181 consumes a pair of timestamp queries for every render pass.
         // Keep tracking dormant during ordinary animation and enable it only
         // around the isolated manual driver, which resolves every frame.
-        if (renderer.backend) renderer.backend.trackTimestamp = false;
+        //
+        // Gated on validationEnabled (2026-08-24). When validation is off the renderer was already
+        // constructed with `trackTimestamp: this.validationEnabled` below, so this line only ever
+        // mattered for a backend armed from OUTSIDE the theme — and it was silently disarming the
+        // theme perf lane, which arms on the `this.renderer = renderer` assignment eleven lines up.
+        // stillwater was consequently the only WebGPU theme in the fleet sweep with zero GPU
+        // timestamp samples, so nothing about its GPU frame cost could be measured at all.
+        if (renderer.backend && this.validationEnabled) {
+            renderer.backend.trackTimestamp = this.validationTimestampSupported;
+        }
         this.appliedAntialiasing = antialiasEnabled;
         this.rendererIdentity += 1;
 
@@ -1168,13 +1178,54 @@ export default class StillwaterTheme extends BaseTheme {
         // DORMANT_BIRTH, so a reveal placed before this call un-reveals itself.
         this.runtime.update?.(0, 0);
 
+        // MEASURED 2026-08-24 (docs/THEME_FLEET_SWEEP_2026-08.md Part B): this branch never ran.
+        // High enables bloom, bloom sets `useMRT`, so `usesMrt` is always true here — and
+        // `Renderer.compileAsync` is the ONLY path in 0.185.1 that reaches
+        // `device.createRenderPipelineAsync` (Renderer.js:914 allocates the promise array,
+        // WebGPUPipelineUtils.js:261/292 picks sync vs async on whether it is null). Skipping it
+        // meant the theme warmed NOTHING: 0 async / 58 sync pipelines, and 9,705 ms of GPU compile
+        // landing after the switch promise had already resolved — the worst in the 61-theme fleet.
+        //
+        // The old skip was not wrong about its hazard, only about the remedy. A bare
+        // `compileAsync(scene, camera)` binds no render target, and r185's deferred build loop reads
+        // the LIVE `renderer.getMRT()` per object, so it bakes one-output shaders under an
+        // MRT-agnostic key — the poisoned-cache black screen. `compileGroupThroughPost` exists for
+        // exactly this: it holds the scene-pass target and MRT bound across the WHOLE await through
+        // a refcounted session, and compiles at the scene pass's own call depth.
+        const postStack = this.runtime?.getResourceState?.()?.post ?? null;
         const usesMrt = this.usesMrtScenePass();
-        if (!usesMrt) {
-            try {
+        try {
+            if (usesMrt && postStack?.scenePass?.renderTarget) {
+                // `PassNode.setup()` has not run yet — it runs on the first `postProcessing.render()`,
+                // and this is before that — so the target still carries RenderTarget defaults while
+                // the live pass will be `renderer.samples`. The WebGPU pipeline cache key hashes
+                // sample count, so compiling against the wrong one warms pipelines that all miss and
+                // recompile synchronously on the first live frame. This duplicates what r185 itself
+                // does at PassNode.js:765-767.
+                postStack.scenePass.renderTarget.samples = this.renderer.samples;
+                postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                await compileGroupThroughPost(
+                    this.renderer,
+                    postStack,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                );
+            } else if (!usesMrt) {
                 await this.renderer.compileAsync?.(this.scene, this.camera);
-            } catch (error) {
-                console.warn('[Stillwater] Pipeline precompile was incomplete:', error);
+            } else {
+                // MRT tier with no scene-pass target to bind to. A bare compileAsync here is the
+                // poisoned-cache black screen, so skipping is still correct — this is the branch the
+                // old code took unconditionally. Warn, because reaching it means the post stack was
+                // not built and the theme is about to pay the whole compile at first draw.
+                console.warn(
+                    '[Stillwater] MRT scene pass has no render target at warm time; '
+                    + 'skipping precompile rather than binding none.',
+                );
             }
+        } catch (error) {
+            console.warn('[Stillwater] Pipeline precompile was incomplete:', error);
         }
         if (generation !== this.runtimeGeneration || !this.renderer) return;
 
