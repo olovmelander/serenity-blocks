@@ -68,6 +68,10 @@ const WORKER_VALUE_OPTIONS = new Set([
 // app.whenReady(), and the worker's ready handler is already past that point.
 const PERF_LANE_ENABLED = process.argv.includes('--perf')
     || process.argv.some((a) => a === '--perf=true' || a === '--perf=1');
+// three logs this itself when a timestamp resolve loses its buffer to a teardown. It only ever
+// appears because the perf lane armed trackTimestamp, so it is an artefact of measuring, not a
+// property of the theme being measured.
+const INSTRUMENT_INDUCED_ERROR = /Error resolving queries/i;
 const FAILURE_PATTERNS = Object.freeze([
     { id: 'wgsl', regex: /\bWGSL\b.*(?:error|invalid)|error.*\bWGSL\b/i },
     { id: 'shader_module', regex: /invalid\s+ShaderModule|shader module.*invalid/i },
@@ -2032,15 +2036,26 @@ async function runWorker() {
         && !fatalError
     );
     if (perf) {
+        // Errors THIS LANE CAUSES must not be charged to the theme. Arming trackTimestamp makes
+        // three resolve timestamp queries; when a theme tears down with a resolve still in flight,
+        // the query buffer is gone and three logs the rejection itself
+        // (WebGPUTimestampQueryPool.js:237 / WebGLTimestampQueryPool.js:263). Without the lane that
+        // code path never runs. Counted and reported separately — never silently dropped.
+        const induced = gatedConsoleEntries.filter(
+            (e) => INSTRUMENT_INDUCED_ERROR.test(String(e?.message ?? '')),
+        ).length;
+        const genuine = Math.max(0, consoleSummary.errorCount - induced);
         perf.console = {
             errorCount: consoleSummary.errorCount,
             warningCount: consoleSummary.warningCount,
+            instrumentInducedErrorCount: induced,
+            genuineErrorCount: genuine,
         };
-        if (consoleSummary.errorCount > 0) {
+        if (genuine > 0) {
             perf.admissible = false;
             perf.inadmissibleReasons = [
                 ...(perf.inadmissibleReasons || []),
-                `${consoleSummary.errorCount} console error(s) during the run`,
+                `${genuine} console error(s) during the run`,
             ];
         }
     }

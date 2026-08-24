@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T06:56:33.673Z",
-  "runId": "2026-08-24T06-56-02-330Z",
+  "generatedAt": "2026-08-24T15:03:33.345Z",
+  "runId": "2026-08-24T15-02-46-550Z",
   "theme": "forest",
   "anchorTheme": "mountain",
   "themeMeta": {
@@ -151,131 +151,131 @@
     "canvasContexts": [
       {
         "kind": "webgl",
-        "atMs": 662
+        "atMs": 693.5
       },
       {
         "kind": "webgl",
-        "atMs": 1049.4
+        "atMs": 1073.4
       },
       {
         "kind": "2d",
-        "atMs": 1049.6
+        "atMs": 1073.4
       },
       {
         "kind": "2d",
-        "atMs": 1050.5
+        "atMs": 1074.3
       },
       {
         "kind": "2d",
-        "atMs": 1085.7
+        "atMs": 1112.4
       },
       {
         "kind": "webgl",
-        "atMs": 1093.8
+        "atMs": 1120.9
       },
       {
         "kind": "2d",
-        "atMs": 1150.8
+        "atMs": 1180
       },
       {
         "kind": "2d",
-        "atMs": 1150.9
+        "atMs": 1180.1
       },
       {
         "kind": "2d",
-        "atMs": 1152
+        "atMs": 1180.9
       },
       {
         "kind": "2d",
-        "atMs": 1152.1
+        "atMs": 1180.9
       },
       {
         "kind": "2d",
-        "atMs": 1156.9
+        "atMs": 1196.8
       },
       {
         "kind": "2d",
-        "atMs": 1852.9
+        "atMs": 1781.2
       },
       {
         "kind": "2d",
-        "atMs": 1860.7
+        "atMs": 1791.7
       },
       {
         "kind": "2d",
-        "atMs": 1865.8
+        "atMs": 1797.3
       },
       {
         "kind": "2d",
-        "atMs": 1871.4
+        "atMs": 1804.9
       },
       {
         "kind": "2d",
-        "atMs": 1876.3
+        "atMs": 1810.4
       },
       {
         "kind": "2d",
-        "atMs": 1880.9
+        "atMs": 1815.9
       },
       {
         "kind": "2d",
-        "atMs": 1973
+        "atMs": 1947.3
       },
       {
         "kind": "2d",
-        "atMs": 1979.7
+        "atMs": 1953.5
       },
       {
         "kind": "2d",
-        "atMs": 1985.2
+        "atMs": 1959.5
       },
       {
         "kind": "2d",
-        "atMs": 2259.5
+        "atMs": 2231.9
       },
       {
         "kind": "2d",
-        "atMs": 2260.6
+        "atMs": 2237.3
       },
       {
         "kind": "2d",
-        "atMs": 2261.7
+        "atMs": 2238.1
       },
       {
         "kind": "2d",
-        "atMs": 2262.7
+        "atMs": 2239.5
       },
       {
         "kind": "2d",
-        "atMs": 2271.7
+        "atMs": 2248.7
       },
       {
         "kind": "2d",
-        "atMs": 2281.1
+        "atMs": 2258.5
       },
       {
         "kind": "2d",
-        "atMs": 2287
+        "atMs": 2264.6
       },
       {
         "kind": "2d",
-        "atMs": 4064.9
+        "atMs": 4089.1
       },
       {
         "kind": "2d",
-        "atMs": 4065
+        "atMs": 4089.2
       },
       {
         "kind": "2d",
-        "atMs": 4492.2
+        "atMs": 4474.6
       },
       {
         "kind": "2d",
-        "atMs": 4496.3
+        "atMs": 4478.8
       },
       {
         "kind": "2d",
-        "atMs": 4499.5
+        "atMs": 4482.3
       }
     ],
     "wrapped": [],
@@ -312,28 +312,28 @@
     "visit2SyncCount": 0
   },
   "switchTimings": {
-    "switchWallMs": 13.6,
+    "switchWallMs": 14.8,
     "managerReportedMs": null,
     "queueDrainMs": null,
-    "createSceneEnterMs": 2.4,
+    "createSceneEnterMs": 2.5,
     "rendererCreatedMs": null,
-    "criticalReadyMs": 13.7,
+    "criticalReadyMs": 14.9,
     "firstRenderCallMs": null,
-    "firstFrameGpuCompleteMs": 2109.7,
+    "firstFrameGpuCompleteMs": 2081.8,
     "firstFrameGpuCompleteMethod": "no-gpu-context",
-    "firstFrameRafMs": 2112.3,
-    "visit2SwitchWallMs": 13.9
+    "firstFrameRafMs": 2086.4,
+    "visit2SwitchWallMs": 13.6
   },
   "idle": {
-    "windowMs": 10007.2,
-    "framesObserved": 1317,
+    "windowMs": 10004.5,
+    "framesObserved": 1315,
     "wall": {
-      "samples": 1316,
+      "samples": 1314,
       "p50": 7.6,
       "p95": 8.2,
-      "p99": 8.6,
+      "p99": 8.5,
       "min": 7,
-      "max": 9,
+      "max": 8.8,
       "budgetMs": 16.667,
       "overBudget": 0
     },
@@ -383,34 +383,34 @@
       "triangles": null
     },
     "contentMatch": false,
-    "contentMismatchReason": "no draw calls observed — content guard cannot run",
+    "contentMismatchReason": "theme owns no three renderer — nothing to content-match",
     "contentGuardAdmissible": false
   },
   "memory": {
-    "peakHeapMB": 26.15,
-    "p50HeapMB": 23.6,
+    "peakHeapMB": 26.14,
+    "p50HeapMB": 24.03,
     "heapSamples": 40,
     "heapDrops": 13,
     "allocBytesPerFrame": null,
     "allocVoidReason": "13 GC(s) inside the window",
     "gcPerSecond": 1.299,
     "gcCount": 13,
-    "cdpHeapDeltaBytes": 990948,
+    "cdpHeapDeltaBytes": 1086236,
     "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
   },
   "drift": {
     "visitGpuP50DeltaMs": null,
     "visitWallP95DeltaMs": null,
-    "voidReason": "no draw calls observed — content guard cannot run"
+    "voidReason": "theme owns no three renderer — nothing to content-match",
+    "admissible": true,
+    "inadmissibleReasons": []
   },
   "console": {
     "errorCount": 0,
     "warningCount": 1
   },
-  "admissible": false,
-  "inadmissibleReasons": [
-    "content guard: no draw calls observed — content guard cannot run"
-  ],
+  "admissible": true,
+  "inadmissibleReasons": [],
   "notes": [
     "firstFrameGpuCompleteMs is GPU-work completion, not scanout. A page cannot observe presentation.",
     "pipelines.asyncSumMs is the sum of per-object awaited compiles (r185 Renderer awaits per object), not a wall-clock.",
