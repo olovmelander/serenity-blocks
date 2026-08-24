@@ -1,8 +1,24 @@
 {
   "schemaVersion": 1,
   "cells": 61,
-  "admissible": 58,
+  "admissible": 59,
   "ranked": [
+    {
+      "theme": "stillwater",
+      "admissible": true,
+      "worstPipelineMs": 2230.3,
+      "syncPipelines": 43,
+      "switchWallMs": 3585.1,
+      "firstFrameGpuDoneMs": 5503.9,
+      "allQuiescedGpuDoneMs": 7584.2,
+      "idleWallP95": 8.2,
+      "idleCpuP95": 3.9,
+      "idleGpuP95": 0.786,
+      "allocBytesPerFrame": null,
+      "gcPerSecond": 0.6,
+      "drawCalls": 131,
+      "kind": "WebGPURenderer"
+    },
     {
       "theme": "neon-district",
       "admissible": true,
@@ -321,22 +337,6 @@
       "allocBytesPerFrame": null,
       "gcPerSecond": 0.3,
       "drawCalls": 461,
-      "kind": "WebGPURenderer"
-    },
-    {
-      "theme": "stillwater",
-      "admissible": false,
-      "worstPipelineMs": 0,
-      "syncPipelines": 58,
-      "switchWallMs": 716.4,
-      "firstFrameGpuDoneMs": 10421,
-      "allQuiescedGpuDoneMs": 12514.9,
-      "idleWallP95": 8.3,
-      "idleCpuP95": 3.7,
-      "idleGpuP95": null,
-      "allocBytesPerFrame": null,
-      "gcPerSecond": 0.8,
-      "drawCalls": 131,
       "kind": "WebGPURenderer"
     },
     {
