@@ -14,7 +14,8 @@ import { contentMismatch, pinsBrokenReason } from './theme-perf-instrument.mjs';
 export const THEME_PERF_CELL_SCHEMA_VERSION = 1;
 
 const NOTES = [
-    'firstFrameGpuCompleteMs is GPU-work completion, not scanout. A page cannot observe presentation.',
+    'firstFrameGpuDoneMs is GPU-work completion for the first frame, not scanout. A page cannot observe presentation.',
+    'allQuiescedGpuDoneMs INCLUDES a 2000-2100 ms compile-quiet wait by construction. It is not a latency; use firstFrameGpuDoneMs for that.',
     'pipelines.asyncSumMs is the sum of per-object awaited compiles (r185 Renderer awaits per object), not a wall-clock.',
     'pipelines.syncRows always carry ms=null: createRenderPipeline returns at once and the GPU process blocks at first draw.',
     'gpuMs is null for a classic THREE.WebGLRenderer: that renderer kind has no timestamp API in 0.185.1 (ADR-0019, ADR-0008).',
@@ -178,7 +179,8 @@ export function rankThemePerfCells(cells) {
             worstPipelineMs: c.pipelines?.asyncMaxMs ?? null,
             syncPipelines: c.pipelines?.syncCount ?? null,
             switchWallMs: c.switchTimings?.switchWallMs ?? null,
-            firstFrameGpuCompleteMs: c.switchTimings?.firstFrameGpuCompleteMs ?? null,
+            firstFrameGpuDoneMs: c.switchTimings?.firstFrameGpuDoneMs ?? null,
+            allQuiescedGpuDoneMs: c.switchTimings?.allQuiescedGpuDoneMs ?? null,
             idleWallP95: c.idle?.wall?.p95 ?? null,
             idleCpuP95: c.idle?.cpuSubmitMs?.p95 ?? null,
             idleGpuP95: c.idle?.gpuMs?.p95 ?? null,

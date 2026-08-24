@@ -148,6 +148,17 @@ describe('visit driver source', () => {
     });
 });
 
+describe('the first-frame fence', () => {
+    const src = buildPerfVisitSource({ themeId: 't', anchorTheme: 'forest', idleMs: 1000, settleMs: 100 });
+
+    it('fences for the first frame BEFORE the compile-quiet wait', () => {
+        // The quiesce loop sleeps 2000-2100 ms with no new pipeline before it breaks, so a fence
+        // taken after it cannot be called a first-frame latency. Both marks are kept, separately.
+        expect(src.indexOf("S.mark('t6b_firstFrameGpuDone')")).toBeLessThan(src.indexOf("stage('compileQuiet')"));
+        expect(src.indexOf("stage('compileQuiet')")).toBeLessThan(src.indexOf("S.mark('t7_firstGpuWorkDone')"));
+    });
+});
+
 describe('reduceVisit', () => {
     const raw = {
         themeId: 't',

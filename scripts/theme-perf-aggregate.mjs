@@ -68,13 +68,13 @@ function markdown(cells) {
     }
 
     md += '## Ranked — worst single pipeline compile first (the lava-lake signature)\n\n';
-    md += '| # | theme | kind | worst pipeline ms | sync pipes | switch ms | first GPU frame ms '
+    md += '| # | theme | kind | worst pipeline ms | sync pipes | switch ms | first frame GPU ms '
         + '| idle wall p95 | cpu p95 | gpu p95 | draws | GC/s | adm |\n';
     md += '|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|:--:|\n';
     ranked.forEach((r, i) => {
         md += `| ${i + 1} | ${r.theme} | ${r.kind ?? '—'} | ${n(r.worstPipelineMs, 0)} `
             + `| ${r.syncPipelines ?? '—'} | ${n(r.switchWallMs, 0)} `
-            + `| ${n(r.firstFrameGpuCompleteMs, 0)} | ${n(r.idleWallP95, 2)} `
+            + `| ${n(r.firstFrameGpuDoneMs, 0)} | ${n(r.idleWallP95, 2)} `
             + `| ${n(r.idleCpuP95, 2)} | ${gpu(r.idleGpuP95)} | ${r.drawCalls ?? '—'} `
             + `| ${n(r.gcPerSecond, 2)} | ${r.admissible ? '✓' : '✗'} |\n`;
     });
