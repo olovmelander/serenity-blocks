@@ -261,17 +261,26 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
   //     themes run their own rAF, so the counters accumulate and the delta is the per-call figure.
   // Rather than branch on kind, observe it: the wrapped info.reset sets a flag.
   S.resetDuringCall = false;
+  // The two renderer kinds do not even name the counter the same thing: classic WebGLInfo exposes
+  // calls and has NO drawCalls (webgl/WebGLInfo.js:10-16), while r185 common/Info has both
+  // (common/Info.js:67-75). Reading drawCalls alone yielded undefined -> NaN on every classic
+  // theme, and NaN > 0 is false, so nothing was ever recorded and the cell published null.
+  S.drawsOf = (rr) => (Number.isFinite(rr.drawCalls) ? rr.drawCalls : rr.calls);
   S.countAround = (fn) => {
     const rr = S.renderer && S.renderer.info && S.renderer.info.render;
     if (!rr) return fn();
-    const preD = rr.drawCalls; const preT = rr.triangles;
+    const preD = S.drawsOf(rr); const preT = rr.triangles;
     S.resetDuringCall = false;
     try {
       return fn();
     } finally {
       const reset = S.resetDuringCall;
-      S.frameDraws += reset ? rr.drawCalls : Math.max(0, rr.drawCalls - preD);
-      S.frameTris += reset ? rr.triangles : Math.max(0, rr.triangles - preT);
+      const postD = S.drawsOf(rr); const postT = rr.triangles;
+      const d = reset ? postD : Math.max(0, postD - preD);
+      const tri = reset ? postT : Math.max(0, postT - preT);
+      // Never let a non-finite read poison the accumulator into silence.
+      if (Number.isFinite(d)) S.frameDraws += d;
+      if (Number.isFinite(tri)) S.frameTris += tri;
     }
   };
 
