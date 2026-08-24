@@ -34,6 +34,7 @@ import { createShockwaveRenderer } from './rendering/shockwave-renderer.js';
 import { StarlightReactionDirector } from './sim/starlight-reaction-director.js';
 import { createReactionAdapters } from './sim/starlight-reaction-adapters.js';
 import { StarlightPostPipeline, getStarlightPostProfile } from './post/render-pipeline.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 // Deep-starfield star counts per quality tier (validated in playground on target iGPU).
@@ -216,6 +217,11 @@ export default class StarlightTheme extends BaseTheme {
 
         this._setupPointer();
         this._setupResize();
+
+        // Compile the pipelines here, not on the first visible frame — see warmPipelines().
+        await this.warmPipelines();
+        if (ownerGeneration !== this.lifecycleGeneration) return;
+
         this._startAnimation();
 
         console.log(
@@ -333,6 +339,60 @@ export default class StarlightTheme extends BaseTheme {
         this.camera.updateProjectionMatrix();
         this.renderer.setPixelRatio(this.getEffectivePixelRatio(2, 'theme'));
         this.renderer.setSize(w, h);
+    }
+
+    /**
+     * Warm the render pipelines before the frame loop starts.
+     *
+     * MEASURED 2026-08-24 (docs/THEME_FLEET_SWEEP_2026-08.md Part B/C): starlight created 14
+     * pipelines and warmed none of them — 0 async, 14 sync — so 2,801 ms of GPU compile landed
+     * AFTER the 379 ms switch promise had already told the app the theme was ready. Only 37 draw
+     * calls, so this is depth per shader, not count: ~200 ms per pipeline, second-steepest in the
+     * fleet. There is no `compileAsync` anywhere in this theme; `createScene` went straight from
+     * `_setupPost()` to `_startAnimation()`.
+     *
+     * Bound through `compileGroupThroughPost` rather than a bare `renderer.compileAsync`: r185's
+     * deferred build loop reads the LIVE `renderer.getMRT()` once per object, so an unbound call
+     * bakes one-output shaders under an MRT-agnostic key — the poisoned-cache black screen. The
+     * recipe holds the scene-pass target and MRT bound across the WHOLE await through a refcounted
+     * session, and compiles at the scene pass's own call depth. Zero imports, fully duck-typed: it
+     * reads `scenePass.renderTarget` and `scenePass.getMRT()` and nothing else.
+     *
+     * The disabled-post paths (WebGL2 backend, Minimal tier, failed setup) render through
+     * `renderer.render(scene, camera)` and own no MRT, so there the unbound compile is the CORRECT
+     * binding rather than a missing one.
+     */
+    async warmPipelines() {
+        if (!this.renderer?.compileAsync || !this.scene || !this.camera) return;
+        // The scene-pass binding is only right when the theme actually renders THROUGH post.
+        // `_setupPost()` nulls the pipeline whenever it is not, and the frame loop makes the same
+        // `isEnabled()` check before choosing `postPipeline.render()` over `renderer.render()`.
+        const post = this.postPipeline?.isEnabled() ? this.postPipeline : null;
+        const scenePass = post?.scenePass ?? null;
+        try {
+            if (scenePass?.renderTarget) {
+                // `PassNode.setup()` runs on the first `postProcessing.render()`, which has not
+                // happened yet, so the target still carries RenderTarget defaults while the live
+                // pass will take `renderer.samples` (4 here — antialias is on). The WebGPU pipeline
+                // cache key hashes sample count, so warming against the default warms pipelines
+                // that ALL miss on the first live frame — a failure that looks like success.
+                // Duplicates what r185 itself does at PassNode.js:766-768.
+                scenePass.renderTarget.samples = this.renderer.samples;
+                scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                await compileGroupThroughPost(
+                    this.renderer,
+                    post,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                );
+            } else {
+                await this.renderer.compileAsync(this.scene, this.camera);
+            }
+        } catch (error) {
+            console.warn('[Starlight] Pipeline precompile was incomplete:', error);
+        }
     }
 
     _startAnimation() {

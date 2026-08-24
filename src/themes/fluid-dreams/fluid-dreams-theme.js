@@ -38,6 +38,7 @@ import {
 } from './fluid-dreams-materials.js';
 import { FluidDreamsParticleCompute } from './fluid-dreams-compute.js';
 import { FluidDreamsPost } from './fluid-dreams-post.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality presets — vibrant-hero budget
@@ -369,6 +370,12 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.setupEventListeners();
         this.cameraParallax.attach();
         window.addEventListener('resize', this.onWindowResize);
+
+        // Warm the render pipelines before the loop starts. Without this every pipeline is
+        // created synchronously at first draw, after this promise has already told the app the
+        // switch is done: 3,398 ms of the measured 3,807 ms first frame, 0 async / 14 sync.
+        await this.warmPipelines();
+        if (ownerGeneration !== this.lifecycleGeneration) return;
 
         this.clock.start();
         this.animate();
@@ -766,6 +773,45 @@ export default class FluidDreamsTheme extends BaseTheme {
         }
     }
 
+    /**
+     * Compile every render pipeline the scene needs BEFORE the first visible frame.
+     *
+     * In three 0.185.1 `Renderer.compileAsync` is the only path that reaches
+     * `device.createRenderPipelineAsync`. Every other path creates pipelines synchronously, on
+     * the GPU, at first draw — which for this theme is the 52-step raymarched hero. The compile is
+     * bound to the post scene-pass target so the pipelines warmed here carry the MRT/HalfFloat
+     * attachment formats the live frame actually renders into.
+     */
+    async warmPipelines() {
+        if (!this.renderer?.compileAsync || !this.scene || !this.camera) return;
+        const scenePass = this.post?.scenePass ?? null;
+        try {
+            if (scenePass?.renderTarget) {
+                // `PassNode.setup()` runs on the first `postProcessing.render()`, which has not
+                // happened yet, so the target still carries RenderTarget defaults while the live
+                // pass will take `renderer.samples`. The WebGPU pipeline cache key hashes sample
+                // count, so warming against the wrong one produces pipelines that all miss on the
+                // first live frame. Mirrors PassNode.js:766-768.
+                scenePass.renderTarget.samples = this.renderer.samples;
+                scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                await compileGroupThroughPost(
+                    this.renderer,
+                    this.post,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                );
+            } else {
+                // The WebGL fallback renders through EffectComposer, not a PassNode, so an
+                // unbound compile is the correct binding rather than a missing one.
+                await this.renderer.compileAsync(this.scene, this.camera);
+            }
+        } catch (error) {
+            console.warn('[FluidDreams] Pipeline precompile was incomplete:', error);
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Event listeners — combo / line clear
     // ─────────────────────────────────────────────────────────────────────────
@@ -874,7 +920,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         }
         this.shockwaveProgress += delta;
         const t = Math.min(1, this.shockwaveProgress / this.shockwaveDuration);
-        const eased = 1 - Math.pow(1 - t, 2.5);
+        const eased = 1 - (1 - t) ** 2.5;
         const radius = eased * SHOCKWAVE_MAX_RADIUS;
         const strength = (1 - t) * 1.2;
         if (this.heroMaterial?.userData?.uShockwaveStrength) {
@@ -908,7 +954,7 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     updateDRS(delta) {
-        const drs = this.drs;
+        const { drs } = this;
         if (!drs.enabled) return;
 
         const frameMs = delta * 1000;

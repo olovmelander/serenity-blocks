@@ -80,6 +80,8 @@ export default class SummerTheme extends BaseTheme {
         this.director.reset();
         this.setupResize();
         this.setupEventListeners();
+        await this.warmPipelines();
+        if (ownerGeneration !== this.lifecycleGeneration) return;
         this.startAnimationLoop();
 
         console.log(`[Summer] Scene created (webgpu=${this.isWebGPU})`);
@@ -264,6 +266,36 @@ export default class SummerTheme extends BaseTheme {
         this.renderer.setPixelRatio(this.getEffectivePixelRatio(1.5, 'theme'));
         this.renderer.setSize(width, height);
         this.runtime?.resize?.(width, height);
+    }
+
+    /**
+     * Warm the render pipelines before the first live frame.
+     *
+     * In three 0.185.1 the only path that reaches `device.createRenderPipelineAsync` is
+     * `Renderer.compileAsync`. Everything else lands on the synchronous
+     * `device.createRenderPipeline`, whose cost the GPU process pays at first draw, after
+     * `createScene()` has already resolved and told the app the switch is done. Summer
+     * measured 0 async / 121 sync pipelines and 3,122 ms of post-switch cost for exactly
+     * that reason.
+     *
+     * The bind is deliberately UNBOUND (a plain `compileAsync`, not a post-target compile).
+     * The meadow effect's TSL post stack is opt-in behind `?bloom` and is `null` in the
+     * shipped configuration (summer-meadow.effect.js:981-983), and the controller never
+     * publishes a scene pass, so the scene really does render straight through the
+     * renderer's own frame-buffer target. r185's `compileAsync` selects that same target
+     * with `render()`'s own logic (`needsFrameBufferTarget && _renderTarget === null`,
+     * Renderer.js:908-910), and `_getFrameBufferTarget()` builds it with
+     * `samples: this.samples` and `type: this._outputBufferType` (Renderer.js:1444-1453),
+     * so the warmed keys already match the live ones and there is no scene-pass target to
+     * pin.
+     */
+    async warmPipelines() {
+        if (!this.renderer?.compileAsync || !this.scene || !this.camera) return;
+        try {
+            await this.renderer.compileAsync(this.scene, this.camera);
+        } catch (error) {
+            console.warn('[Summer] Pipeline precompile was incomplete:', error);
+        }
     }
 
     startAnimationLoop() {
