@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-24T18:49:18.725Z",
-  "startedAt": "2026-08-24T18:48:49.700Z",
-  "runId": "2026-08-24T18-48-49-700Z",
+  "generatedAt": "2026-08-24T19:32:22.902Z",
+  "startedAt": "2026-08-24T19:31:55.864Z",
+  "runId": "2026-08-24T19-31-55-863Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,16 +23,16 @@
     "perfTargetFps": null
   },
   "selectedThemes": [
-    "lunara"
+    "bioluminescence-2"
   ],
   "results": [
     {
-      "theme": "lunara",
-      "displayName": "Lunara",
+      "theme": "bioluminescence-2",
+      "displayName": "Bioluminescence II",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\lunara.png",
-      "report": "docs\\theme-screenshots\\results\\lunara.json",
+      "screenshot": "docs\\theme-screenshots\\bioluminescence-2.png",
+      "report": "docs\\theme-screenshots\\results\\bioluminescence-2.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": null,
