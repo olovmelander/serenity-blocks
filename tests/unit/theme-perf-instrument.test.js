@@ -75,7 +75,7 @@ describe('theme perf bootstrap source', () => {
         // is exactly how all 20 classic themes came back with 0 draws against ~1300 CPU samples.
         // WebGPURenderer only resets from three's own loop, so there the delta is the right read.
         expect(THEME_PERF_BOOTSTRAP).toContain('S.resetDuringCall');
-        expect(THEME_PERF_BOOTSTRAP).toContain('const d = reset ? postD : Math.max(0, postD - preD);');
+        expect(THEME_PERF_BOOTSTRAP).toContain('const d = reset ? S.drawsOf(rr) : Math.max(0, S.drawsOf(rr) - preD);');
     });
 
     it('reads the counter field each renderer kind actually exposes', () => {
@@ -111,7 +111,7 @@ describe('theme perf bootstrap source', () => {
     it('counts draws by DELTA across each render call, so a theme owning Info does not break it', () => {
         // Reading-then-resetting fought cosmic-noir/ocean/stillwater, which own Info themselves;
         // the first measured cell came back 0 draws. The lane must not reset Info at all.
-        expect(THEME_PERF_BOOTSTRAP).toContain('S.countAround');
+        expect(THEME_PERF_BOOTSTRAP).toContain('S.countLeaf');
         expect(THEME_PERF_BOOTSTRAP).not.toContain('S.renderer.info.reset()');
         expect(THEME_PERF_BOOTSTRAP).toContain('S.infoResetsByTheme += 1');
     });
