@@ -2660,3 +2660,137 @@ cells are being re-measured on one instrument build. The previous cells are arch
 **What does not need re-measuring:** every Stage 4 A/B. Those used draws as an *invariance* guard
 (`131 -> 131`), and a constant per-theme inflation factor cancels exactly in that comparison; none
 of them read `cpuSubmitMs` or wall p95. The six fixed themes and the −46.5 % aggregate stand.
+## 20. The 61-row table — re-measured on the validated instrument
+
+**2026-08-25.** 61 cells, **59 admissible**, one adapter for the whole run
+(`ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU, D3D11)`). This supersedes §12, whose draw and
+triangle columns were inflated (see §21 for what changed and why). Six themes here carry their
+Stage-4 fixes, so their `first frame` values are the improved ones.
+
+`first frame` = `firstFrameGpuDoneMs`, GPU work for the first frame complete — not scanout.
+`after` = that minus `switchWallMs`. `a/s` = async/sync pipelines; sync ones carry `ms: null` by
+construction. `draws`/`tris` are per-frame medians counted by banking Info at each reset.
+`—` means legitimately null, never zero. † marks an inadmissible cell.
+
+| theme | kind | first frame | switch | after | a/s | worst pipe | wall p95 | cpu p95 | gpu p95 | draws | tris | GC/s |
+|---|---|---:|---:|---:|:---:|---:|---:|---:|---:|---:|---:|---:|
+| `stillwater` | WGPU | 6505 | 4561 | 1944 | 33/44 | 2873 | 8.3 | 3.0 | 0.721 | 60 | 138099 | 0.4 |
+| `golden-forest` | WGPU | 5673 | 5123 | 549 | 30/106 | 1054 | 16.1 | 7.0 | 1.507 | 324 | 337897 | 0.8 |
+| `ocean` | WGPU | 5447 | 2862 | 2585 | 51/76 | 2640 | 8.3 | 4.0 | 1.114 | 197 | 538752 | 0.5 |
+| `lunara` | WGPU | 4118 | 3862 | 256 | 32/22 | 3027 | 8.2 | 2.8 | 1.245 | 75 | 63269 | 0.4 |
+| `ice-temple` | WGPU | 3944 | 2634 | 1310 | 11/28 | 670 | 8.4 | 3.8 | 0.328 | 114 | 43271 | 0.4 |
+| `summer` | WGPU | 3812 | 453 | 3359 | 0/121 | 0 | 8.2 | 3.2 | 2.294 | 186 | 1705595 | 0.3 |
+| `fluid-dreams` | WGPU | 3781 | 2918 | 863 | 5/10 | 2255 | 15.2 | 1.6 | 1.442 | 19 | 20538 | 0.6 |
+| `vesper-chrysalis` | WGPU | 3737 | 2840 | 897 | 44/62 | 1580 | 22.3 | 3.9 | 1.245 | 106 | 46447 | 0.4 |
+| `koi-pond` | WGPU | 3495 | 2383 | 1112 | 31/41 | 920 | 8.3 | 2.3 | 0.721 | 43 | 122096 | 0.4 |
+| `starlight` | WGPU | 3439 | 453 | 2987 | 0/14 | 0 | 8.2 | 1.6 | 2.425 | 19 | 145453 | 0.8 |
+| `moonlit-forest` | WGPU | 3064 | 3011 | 53 | 29/9 | 292 | 8.2 | 0.9 | 1.442 | 32 | 23141 | 0.9 |
+| `sky-children` | WGPU | 2850 | 771 | 2079 | 0/34 | 0 | 15.2 | 2.2 | 1.049 | 63 | 267087 | 0.5 |
+| `bioluminescence-2` | WGPU | 2768 | 1786 | 982 | 122/52 | 379 | 15.6 | 4.3 | 1.180 | 251 | 822333 | 0.4 |
+| `halcyon-apex` | WGPU | 2634 | 906 | 1728 | 0/62 | 0 | 8.2 | 4.6 | 0.721 | 308 | 21389 | 0.4 |
+| `stellar-drift` | WGPU | 2560 | 2176 | 384 | 12/23 | 322 | 8.3 | 2.2 | 1.835 | 55 | 12175 | 0.4 |
+| `pyrestorm` | GL | 2289 | 2270 | 19 | 0/0 | 0 | 8.2 | 0.8 | — | 54 | 44127 | 1.2 |
+| `moonrise-summit` | GL | 1732 | 1719 | 13 | 0/0 | 0 | 8.2 | 0.7 | — | 33 | 36912 | 1.2 |
+| `chromadelic-highway` | WGPU | 1651 | 1480 | 171 | 14/27 | 153 | 16.3 | 2.3 | 0.459 | 68 | 55750 | 0.9 |
+| `blood-moon` | GL | 1649 | 1596 | 54 | 0/0 | 0 | 8.2 | 0.7 | — | 43 | 4546 | 1.2 |
+| `misty-lake` | GL | 1612 | 97 | 1515 | 0/0 | 0 | 8.3 | 1.0 | — | 67 | 46502 | 1.2 |
+| `bioluminescence` | GL | 1593 | 323 | 1270 | 0/0 | 0 | 8.2 | 4.0 | — | 152 | 111338 | 0.9 |
+| `black-hole` | WGPU | 1529 | 379 | 1150 | 0/21 | 0 | 16.4 | 1.5 | 0.393 | 24 | 9457 | 1.4 |
+| `neon-dusk` † | WGPU | 1520 | 674 | 846 | 0/28 | 0 | 15.6 | 1.9 | 0.918 | 56 | 562755 | 0.8 |
+| `cosmic-noir` | WGPU | 1447 | 1164 | 282 | 7/18 | 169 | 8.3 | 1.9 | 0.590 | 30 | 12271 | 1.1 |
+| `astral-weave` | WGPU | 1279 | 285 | 995 | 0/27 | 0 | 8.5 | 3.2 | 1.114 | 121 | 152735 | 0.4 |
+| `wolfhour` | WGPU | 1210 | 656 | 554 | 7/18 | 553 | 8.2 | 1.9 | 1.049 | 32 | 386301 | 0.3 |
+| `neon-district` | WGPU | 1203 | 644 | 559 | 25/156 | 1738 | 22.9 | 9.1 | 1.376 | 471 | 70295 | 0.6 |
+| `electric-dreams-v3` | WGPU | 1174 | 357 | 817 | 0/11 | 0 | 8.3 | 1.5 | 1.901 | 16 | 180181 | 1.3 |
+| `synthwave-sunset` | WGPU | 1169 | 424 | 745 | 0/23 | 0 | 15.6 | 2.5 | 0.721 | 111 | 16209 | 2.0 |
+| `stellar-velocity` † | WGPU | 1139 | 955 | 184 | 10/23 | 129 | 15.6 | 2.5 | — | 54 | 32626 | 1.6 |
+| `chiral-gold` | WGPU | 1138 | 757 | 381 | 6/17 | 70 | 22.5 | 1.5 | 0.524 | 25 | 22 | 1.2 |
+| `crystal-cave` | GL | 1104 | 1075 | 29 | 0/0 | 0 | 8.3 | 3.1 | — | 268 | 37464 | 0.8 |
+| `sakura-twilight` | GL | 1074 | 1065 | 9 | 0/0 | 0 | 8.2 | 0.7 | — | 22 | 1203834 | 1.0 |
+| `himalayan-peak` | WGPU | 1031 | 385 | 646 | 0/14 | 0 | 8.2 | 1.7 | 1.507 | 20 | 115449 | 0.8 |
+| `serenity-warp` | WGPU | 896 | 253 | 643 | 0/46 | 0 | 8.3 | 1.9 | 1.573 | 36 | 209801 | 0.3 |
+| `rainy-window` | GL | 846 | 816 | 30 | 0/0 | 0 | 8.2 | 0.7 | — | 11 | 2054 | 2.5 |
+| `solar-eclipse` | GL | 819 | 83 | 736 | 0/0 | 0 | 8.2 | 1.5 | — | 67 | 6325 | 2.6 |
+| `fall` | GL | 793 | 360 | 433 | 0/0 | 0 | 8.2 | 0.6 | — | 22 | 100974 | 1.1 |
+| `winter` | WGPU | 655 | 366 | 289 | 0/26 | 0 | 8.2 | 1.8 | 1.901 | 32 | 230151 | 0.8 |
+| `geode` | GL | 644 | 624 | 20 | 0/0 | 0 | 8.2 | 2.3 | — | 201 | 10446 | 2.3 |
+| `sunset` | GL | 616 | 587 | 29 | 0/0 | 0 | 8.2 | 0.7 | — | 32 | 24356 | 1.2 |
+| `cinder-drift` | GL | 583 | 574 | 9 | 0/0 | 0 | 8.2 | 0.2 | — | 11 | 2 | 1.2 |
+| `luminous-tides` | GL | 565 | 84 | 481 | 0/0 | 0 | 8.2 | 0.9 | — | 28 | 32804 | 2.0 |
+| `singing-bowl` | GL | 492 | 477 | 15 | 0/0 | 0 | 8.2 | 0.7 | — | 35 | 49284 | 1.1 |
+| `waves` | GL | 480 | 86 | 394 | 0/0 | 0 | 8.2 | 0.5 | — | 17 | 16400 | 1.0 |
+| `shifting-sands` | WGPU | 462 | 258 | 204 | 0/18 | 0 | 15.3 | 1.7 | 1.442 | 28 | 79805 | 1.0 |
+| `nimbus-veil` | GL | 428 | 416 | 13 | 0/0 | 0 | 8.2 | 0.6 | — | 31 | 44 | 1.4 |
+| `verdant-hills` | WGPU | 379 | 269 | 110 | 0/6 | 0 | 8.2 | 1.5 | 1.311 | 110 | 176729 | 1.1 |
+| `aurora` | GL | 351 | 345 | 6 | 0/0 | 0 | 8.2 | 0.3 | — | 13 | 32000 | 1.1 |
+| `galaxy` | GL | 346 | 337 | 9 | 0/0 | 0 | 8.2 | 0.3 | — | 12 | 16 | 1.1 |
+| `tornado` | WGPU | 280 | 184 | 97 | 0/11 | 0 | 8.2 | 1.6 | 1.966 | 16 | 21773 | 1.9 |
+| `supernova` | GL | 269 | 237 | 32 | 0/0 | 0 | 8.2 | 0.2 | — | 4 | 8066 | 1.1 |
+| `aether-tides` | none | 247 | 247 | 0 | 0/0 | 0 | 8.2 | — | — | — | — | 1.3 |
+| `voltage-storm` | none | 241 | 241 | 0 | 0/0 | 0 | 8.2 | — | — | — | — | 1.4 |
+| `nebula-flow` | none | 237 | 237 | 0 | 0/0 | 0 | 8.2 | — | — | — | — | 1.3 |
+| `chromatic-impasto` | none | 224 | 224 | 0 | 0/0 | 0 | 8.2 | — | — | — | — | 1.1 |
+| `void-ember` | none | 195 | 195 | 0 | 0/7 | 0 | 8.2 | — | — | — | — | 1.5 |
+| `moonlit-greenhouse` | none | 99 | 99 | 0 | 0/0 | 0 | 15.3 | — | — | — | — | 1.6 |
+| `mountain` | none | 50 | 50 | 0 | 0/0 | 0 | 8.2 | — | — | — | — | 1.2 |
+| `cosmic-chimes` | none | 43 | 43 | 0 | 0/0 | 0 | 8.3 | — | — | — | — | 1.2 |
+| `forest` | none | 30 | 30 | 0 | 0/0 | 0 | 8.2 | — | — | — | — | 1.0 |
+
+**Inadmissible:**
+- `neon-dusk` — pins: rendererPixelRatio moved 0.85 -> 0.7999999999999999 during the window
+- `stellar-velocity` — no GPU timestamp samples (no-resolved-timestamp-in-window)
+
+**Budget breaches** (`perf-budgets.json`: wall 16.67 ms at 60 Hz, `split.cpuMaxMs` 6, `gpuMaxMs` 9):
+
+| theme | wall p95 | frames over | cpu p95 | gpu p95 | draws | reading |
+|---|---:|---:|---:|---:|---:|---|
+| `neon-district` | 22.9 | 80/758 | 9.1 | 1.376 | 471 | **real cost** — measured work fills much of the frame |
+| `chiral-gold` | 22.5 | 53/750 | 1.5 | 0.524 | 25 | pacing, not cost — measured work is a small fraction of the frame |
+| `vesper-chrysalis` | 22.3 | 50/763 | 3.9 | 1.245 | 106 | pacing, not cost — measured work is a small fraction of the frame |
+| `golden-forest` | 16.1 | 16/866 | 7.0 | 1.507 | 324 | **real cost** — measured work fills much of the frame |
+
+Only **neon-district** breaches on both axes with work to match: 9.1 ms of CPU submission and
+1.4 ms of GPU inside a 22.9 ms frame, at 471 draws averaging 149 triangles. chiral-gold and
+vesper-chrysalis exceed the wall budget while measuring ~2 ms and ~5 ms of work respectively — their
+frame time is the 60 Hz target being honoured against a 120 Hz panel (§14), not cost.
+
+## 21. What changed between §12 and §20, and why it took four attempts
+
+§12's draw and triangle columns were wrong. The lane wraps `render`/`renderAsync` on both the
+renderer and the theme's post object, and the counting rule was rewritten three times before it was
+right for both renderer kinds. The history, on one theme of each kind:
+
+| rule | crystal-cave (classic) | neon-district (WebGPU) | what it got wrong |
+|---|---:|---:|---|
+| count at every depth (§12) | 533 | 1,856 | every draw counted once per wrapped ancestor |
+| outermost only (`93266a30`) | **1** | ~490 ✓ | classic resets Info per `render()`, so the outer value is only the last pass |
+| leaf-sum (`f2ce264b`) | 185 | **260** | a call that draws *and* has a child is not a leaf, so its own draws are dropped |
+| **bank at reset** (`9ff8da2c`) | **333** ✓ | **471** ✓ | — |
+
+The two middle rules each worked for exactly one renderer kind, which is why both looked right when
+checked against a single theme.
+
+**Why banking is the only correct rule.** On a classic renderer a nested `render()` resets Info and
+**destroys** whatever the enclosing pass had already drawn. crystal-cave hits this through
+`Water.js:330`, which calls `renderer.render(scene, mirrorCamera)` from inside `onBeforeRender` —
+mid-pass, after the cave has been drawn. No after-the-fact read can recover those counts. So the
+wrapped `info.reset` banks the live counters *before* clearing, and the frame total is
+`banked + final − initial`. A WebGPURenderer never banks, so the expression reduces to the outer
+delta and the same code is correct for both.
+
+**What let three wrong rules ship.** The unit tests asserted the literal *text* of the
+implementation. They failed on every rewrite without catching a defect, and they **passed against
+both wrong rules** — confirmation, not verification. They have been replaced by
+`tests/unit/theme-perf-nesting.test.js`, which executes the bootstrap against stubs for both
+renderer kinds and both nesting shapes, and which fails 3× against the outermost rule and 2× against
+leaf-sum. The stub itself had a bug of the same family: it zeroed the counters and *then* called
+`info.reset()`, so banking observed zeros — a stub that does not match the API it stands in for will
+certify the wrong answer.
+
+**The check that finally worked** was measuring two real themes, one of each kind, with the expected
+values written down first. It cost six minutes; each earlier rule went straight to a 75-minute fleet
+run, which is where the error was found instead.
+
+**What was never affected:** pipeline counts, switch marks, GPU timestamps, heap, and every Stage-4
+A/B. Those used draws as an *invariance* guard (`131 → 131`), where a constant per-theme factor
+cancels exactly. The six fixed themes and the −46.5 % aggregate stand unchanged.

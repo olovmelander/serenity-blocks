@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-25T09:55:17.896Z",
-  "startedAt": "2026-08-25T09:12:06.989Z",
-  "runId": "2026-08-25T09-12-06-989Z",
+  "generatedAt": "2026-08-25T10:57:57.736Z",
+  "startedAt": "2026-08-25T10:14:42.799Z",
+  "runId": "2026-08-25T10-14-42-798Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 61,
@@ -510,18 +510,18 @@
       "theme": "serenity-warp",
       "displayName": "Serenity Warp",
       "performanceClass": "heavy",
-      "passed": true,
+      "passed": false,
       "screenshot": "docs\\theme-screenshots\\serenity-warp.png",
       "report": "docs\\theme-screenshots\\results\\serenity-warp.json",
       "lifecycleFailureCount": 0,
-      "consoleErrorCount": 0,
+      "consoleErrorCount": 1,
       "perfCell": "reports\\theme-perf\\serenity-warp.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
-      "orchestrationError": null,
+      "orchestrationError": "Worker exited with 2.",
       "workerExit": {
-        "code": 0,
+        "code": 2,
         "signal": null,
         "timedOut": false
       }
@@ -1118,7 +1118,7 @@
       "perfCell": "reports\\theme-perf\\neon-dusk.json",
       "perfAdmissible": false,
       "perfInadmissibleReasons": [
-        "pins: rendererPixelRatio moved 0.95 -> 0.8999999999999999 during the window"
+        "pins: rendererPixelRatio moved 0.85 -> 0.7999999999999999 during the window"
       ],
       "processFailureCount": 0,
       "orchestrationError": null,
@@ -1232,18 +1232,18 @@
       "theme": "astral-weave",
       "displayName": "Astral Weave",
       "performanceClass": "heavy",
-      "passed": false,
+      "passed": true,
       "screenshot": "docs\\theme-screenshots\\astral-weave.png",
       "report": "docs\\theme-screenshots\\results\\astral-weave.json",
       "lifecycleFailureCount": 0,
-      "consoleErrorCount": 1,
+      "consoleErrorCount": 0,
       "perfCell": "reports\\theme-perf\\astral-weave.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
-      "orchestrationError": "Worker exited with 2.",
+      "orchestrationError": null,
       "workerExit": {
-        "code": 2,
+        "code": 0,
         "signal": null,
         "timedOut": false
       }

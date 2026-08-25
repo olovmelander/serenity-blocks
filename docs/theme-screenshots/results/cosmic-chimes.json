@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-25T09:26:51.013Z",
-  "runId": "2026-08-25T09-12-06-989Z",
+  "generatedAt": "2026-08-25T10:29:26.893Z",
+  "runId": "2026-08-25T10-14-42-798Z",
   "theme": "cosmic-chimes",
   "themeMeta": {
     "displayName": "Cosmic Chimes",
@@ -10,7 +10,7 @@
     "performanceClass": "light"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T09-12-06-989Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T10-14-42-798Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -152,7 +152,7 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-25T09:26:48.690Z",
+        "timestamp": "2026-08-25T10:29:24.564Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -163,8 +163,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-25T09:26:48.718Z",
-    "runId": "2026-08-25T09-12-06-989Z",
+    "generatedAt": "2026-08-25T10:29:24.587Z",
+    "runId": "2026-08-25T10-14-42-798Z",
     "theme": "cosmic-chimes",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -314,103 +314,103 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 696.2
+          "atMs": 697
         },
         {
           "kind": "webgl",
-          "atMs": 1101
+          "atMs": 1057.3
         },
         {
           "kind": "2d",
-          "atMs": 1101.1
+          "atMs": 1057.6
         },
         {
           "kind": "2d",
-          "atMs": 1102
+          "atMs": 1058.6
         },
         {
           "kind": "2d",
-          "atMs": 1139.6
+          "atMs": 1093.3
         },
         {
           "kind": "webgl",
-          "atMs": 1147.7
+          "atMs": 1100.8
         },
         {
           "kind": "2d",
-          "atMs": 1203.6
+          "atMs": 1157.1
         },
         {
           "kind": "2d",
-          "atMs": 1203.7
+          "atMs": 1157.2
         },
         {
           "kind": "2d",
-          "atMs": 1204.4
+          "atMs": 1158
         },
         {
           "kind": "2d",
-          "atMs": 1204.4
+          "atMs": 1158
         },
         {
           "kind": "2d",
-          "atMs": 1207.7
+          "atMs": 1160.9
         },
         {
           "kind": "2d",
-          "atMs": 1911.7
+          "atMs": 1885.3
         },
         {
           "kind": "2d",
-          "atMs": 1920
+          "atMs": 1893.4
         },
         {
           "kind": "2d",
-          "atMs": 1925.6
+          "atMs": 1898.9
         },
         {
           "kind": "2d",
-          "atMs": 1931.6
+          "atMs": 1905
         },
         {
           "kind": "2d",
-          "atMs": 1936.4
+          "atMs": 1909.9
         },
         {
           "kind": "2d",
-          "atMs": 1941.1
+          "atMs": 1914.7
         },
         {
           "kind": "2d",
-          "atMs": 2038.7
+          "atMs": 2029.1
         },
         {
           "kind": "2d",
-          "atMs": 2047.4
+          "atMs": 2034.9
         },
         {
           "kind": "2d",
-          "atMs": 2054.2
+          "atMs": 2040.6
         },
         {
           "kind": "2d",
-          "atMs": 4116.6
+          "atMs": 4063.4
         },
         {
           "kind": "2d",
-          "atMs": 4116.7
+          "atMs": 4063.4
         },
         {
           "kind": "2d",
-          "atMs": 4532.9
+          "atMs": 4513.4
         },
         {
           "kind": "2d",
-          "atMs": 4543.6
+          "atMs": 4525.7
         },
         {
           "kind": "2d",
-          "atMs": 4551.9
+          "atMs": 4532.8
         }
       ],
       "wrapped": [],
@@ -447,33 +447,33 @@
       "visit2SyncCount": 0
     },
     "switchTimings": {
-      "switchWallMs": 43.4,
+      "switchWallMs": 42.7,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 15.4,
+      "createSceneEnterMs": 14.5,
       "rendererCreatedMs": null,
-      "criticalReadyMs": 43.5,
+      "criticalReadyMs": 42.7,
       "firstRenderCallMs": null,
-      "firstFrameGpuDoneMs": 43.5,
+      "firstFrameGpuDoneMs": 42.7,
       "firstFrameGpuDoneMethod": "no-gpu-context",
-      "allQuiescedGpuDoneMs": 2064.9,
+      "allQuiescedGpuDoneMs": 2061.8,
       "allQuiescedGpuDoneMethod": "no-gpu-context",
       "quietWaitFloorMs": 2000,
-      "firstFrameRafMs": 2071,
-      "visit2SwitchWallMs": 30.6
+      "firstFrameRafMs": 2063,
+      "visit2SwitchWallMs": 17.9
     },
     "idle": {
-      "windowMs": 10006.2,
-      "framesObserved": 1305,
+      "windowMs": 10005.6,
+      "framesObserved": 1300,
       "wall": {
-        "samples": 1304,
-        "p50": 7.6,
-        "p95": 8.2,
+        "samples": 1299,
+        "p50": 7.7,
+        "p95": 8.3,
         "p99": 8.6,
         "min": 7,
-        "max": 16,
+        "max": 16.7,
         "budgetMs": 16.667,
-        "overBudget": 0
+        "overBudget": 1
       },
       "cpuSubmitMs": {
         "samples": 0,
@@ -529,15 +529,15 @@
       "contentGuardAdmissible": false
     },
     "memory": {
-      "peakHeapMB": 24.74,
-      "p50HeapMB": 22.89,
+      "peakHeapMB": 25.34,
+      "p50HeapMB": 23.33,
       "heapSamples": 40,
-      "heapDrops": 13,
+      "heapDrops": 12,
       "allocBytesPerFrame": null,
-      "allocVoidReason": "13 GC(s) inside the window",
-      "gcPerSecond": 1.299,
-      "gcCount": 13,
-      "cdpHeapDeltaBytes": 690792,
+      "allocVoidReason": "12 GC(s) inside the window",
+      "gcPerSecond": 1.199,
+      "gcCount": 12,
+      "cdpHeapDeltaBytes": 2058252,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {

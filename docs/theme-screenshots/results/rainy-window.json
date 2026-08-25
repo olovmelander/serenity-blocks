@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-25T09:24:45.570Z",
-  "runId": "2026-08-25T09-12-06-989Z",
+  "generatedAt": "2026-08-25T10:27:21.474Z",
+  "runId": "2026-08-25T10-14-42-798Z",
   "theme": "rainy-window",
   "themeMeta": {
     "displayName": "Rainy Window",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T09-12-06-989Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T10-14-42-798Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -134,11 +134,11 @@
     "byteLength": 4986432,
     "samples": 20107,
     "luminance": {
-      "min": 5.076199999999999,
+      "min": 0.0722,
       "max": 241.7208,
-      "mean": 21.412947142786038,
-      "range": 236.6446,
-      "variance": 198.01926544007011
+      "mean": 23.67533228229032,
+      "range": 241.6486,
+      "variance": 954.3334988933022
     }
   },
   "console": {
@@ -152,14 +152,14 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-25T09:24:32.701Z",
+        "timestamp": "2026-08-25T10:27:08.595Z",
         "level": 2,
         "message": "WebGL: INVALID_OPERATION: loseContext: context already lost",
         "line": 4116,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T09:24:43.246Z",
+        "timestamp": "2026-08-25T10:27:19.130Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -170,8 +170,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-25T09:24:43.274Z",
-    "runId": "2026-08-25T09-12-06-989Z",
+    "generatedAt": "2026-08-25T10:27:19.165Z",
+    "runId": "2026-08-25T10-14-42-798Z",
     "theme": "rainy-window",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -321,107 +321,107 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 671.4
+          "atMs": 695.1
         },
         {
           "kind": "webgl",
-          "atMs": 1014.3
+          "atMs": 1029.8
         },
         {
           "kind": "2d",
-          "atMs": 1014.5
+          "atMs": 1030.1
         },
         {
           "kind": "2d",
-          "atMs": 1015.3
+          "atMs": 1031
         },
         {
           "kind": "2d",
-          "atMs": 1051.3
+          "atMs": 1066.8
         },
         {
           "kind": "webgl",
-          "atMs": 1058.5
+          "atMs": 1074.4
         },
         {
           "kind": "2d",
-          "atMs": 1113.6
+          "atMs": 1130.3
         },
         {
           "kind": "2d",
-          "atMs": 1113.7
+          "atMs": 1130.3
         },
         {
           "kind": "2d",
-          "atMs": 1114.8
+          "atMs": 1131.4
         },
         {
           "kind": "2d",
-          "atMs": 1114.8
+          "atMs": 1131.4
         },
         {
           "kind": "2d",
-          "atMs": 1124.1
+          "atMs": 1143.4
         },
         {
           "kind": "2d",
-          "atMs": 1741.7
+          "atMs": 1734.8
         },
         {
           "kind": "2d",
-          "atMs": 1749.9
+          "atMs": 1743.4
         },
         {
           "kind": "2d",
-          "atMs": 1755.6
+          "atMs": 1748.9
         },
         {
           "kind": "2d",
-          "atMs": 1761.9
+          "atMs": 1755.1
         },
         {
           "kind": "2d",
-          "atMs": 1767
+          "atMs": 1760.4
         },
         {
           "kind": "2d",
-          "atMs": 1771.9
+          "atMs": 1765.6
         },
         {
           "kind": "2d",
-          "atMs": 1872.9
+          "atMs": 1853
         },
         {
           "kind": "2d",
-          "atMs": 1878.9
+          "atMs": 1859.2
         },
         {
           "kind": "2d",
-          "atMs": 1884.9
+          "atMs": 1865.9
         },
         {
           "kind": "2d",
-          "atMs": 4024.2
+          "atMs": 4040.4
         },
         {
           "kind": "2d",
-          "atMs": 4024.3
+          "atMs": 4040.4
         },
         {
           "kind": "webgl2",
-          "atMs": 4423.1
+          "atMs": 4374.5
         },
         {
           "kind": "2d",
-          "atMs": 5211.1
+          "atMs": 5144
         },
         {
           "kind": "2d",
-          "atMs": 5216.6
+          "atMs": 5149.6
         },
         {
           "kind": "2d",
-          "atMs": 5221.6
+          "atMs": 5155.1
         }
       ],
       "wrapped": [
@@ -460,41 +460,41 @@
       "visit2SyncCount": 0
     },
     "switchTimings": {
-      "switchWallMs": 834.1,
+      "switchWallMs": 815.8,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 15.3,
-      "rendererCreatedMs": 47.5,
-      "criticalReadyMs": 834.2,
-      "firstRenderCallMs": 67.7,
-      "firstFrameGpuDoneMs": 863.3,
+      "createSceneEnterMs": 15,
+      "rendererCreatedMs": 43.8,
+      "criticalReadyMs": 815.8,
+      "firstRenderCallMs": 65.3,
+      "firstFrameGpuDoneMs": 846.1,
       "firstFrameGpuDoneMethod": "fenceSync",
-      "allQuiescedGpuDoneMs": 2969.8,
+      "allQuiescedGpuDoneMs": 2925.2,
       "allQuiescedGpuDoneMethod": "fenceSync",
       "quietWaitFloorMs": 2000,
-      "firstFrameRafMs": 2977.6,
-      "visit2SwitchWallMs": 257.7
+      "firstFrameRafMs": 2932.3,
+      "visit2SwitchWallMs": 252.5
     },
     "idle": {
-      "windowMs": 10004.5,
-      "framesObserved": 1318,
+      "windowMs": 10007,
+      "framesObserved": 1314,
       "wall": {
-        "samples": 1317,
+        "samples": 1313,
         "p50": 7.6,
         "p95": 8.2,
-        "p99": 8.5,
+        "p99": 8.6,
         "min": 7,
-        "max": 8.8,
+        "max": 8.9,
         "budgetMs": 16.667,
         "overBudget": 0
       },
       "cpuSubmitMs": {
-        "samples": 1318,
+        "samples": 1314,
         "p50": 0.5,
         "p95": 0.7,
-        "p99": 0.8,
-        "min": 0.3,
-        "max": 1.1
+        "p99": 0.9,
+        "min": 0.2,
+        "max": 1.2
       },
       "gpuMs": {
         "samples": 0,
@@ -516,49 +516,51 @@
     },
     "content": {
       "drawCalls": {
-        "p05": 5,
-        "p50": 5,
-        "p95": 5,
-        "min": 5,
-        "max": 7
+        "p05": 11,
+        "p50": 11,
+        "p95": 11,
+        "min": 11,
+        "max": 15
       },
       "triangles": {
-        "p05": 1026,
-        "p50": 1026,
-        "p95": 1026,
-        "min": 1026,
-        "max": 1026
+        "p05": 2054,
+        "p50": 2054,
+        "p95": 2054,
+        "min": 2054,
+        "max": 2054
       },
       "steadyState": false,
       "infoOwnership": "contested",
-      "geometries": 14,
+      "geometries": 10,
       "textures": 2,
       "visit2": {
-        "drawCalls": 5,
-        "triangles": 1026
+        "drawCalls": 4,
+        "triangles": 0
       },
-      "contentMatch": true,
-      "contentMismatchReason": null,
-      "contentGuardAdmissible": true
+      "contentMatch": false,
+      "contentMismatchReason": "draw calls differ (v1=11, v2=4)",
+      "contentGuardAdmissible": false
     },
     "memory": {
-      "peakHeapMB": 30.58,
-      "p50HeapMB": 27.65,
+      "peakHeapMB": 31.59,
+      "p50HeapMB": 27.73,
       "heapSamples": 40,
-      "heapDrops": 23,
+      "heapDrops": 25,
       "allocBytesPerFrame": null,
-      "allocVoidReason": "23 GC(s) inside the window",
-      "gcPerSecond": 2.299,
-      "gcCount": 23,
-      "cdpHeapDeltaBytes": 6081056,
+      "allocVoidReason": "25 GC(s) inside the window",
+      "gcPerSecond": 2.498,
+      "gcCount": 25,
+      "cdpHeapDeltaBytes": 2975536,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {
       "visitGpuP50DeltaMs": null,
-      "visitWallP95DeltaMs": 0.1,
-      "voidReason": null,
-      "admissible": true,
-      "inadmissibleReasons": []
+      "visitWallP95DeltaMs": null,
+      "voidReason": "draw calls differ (v1=11, v2=4)",
+      "admissible": false,
+      "inadmissibleReasons": [
+        "content guard: draw calls differ (v1=11, v2=4)"
+      ]
     },
     "console": {
       "errorCount": 0,

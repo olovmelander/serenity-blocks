@@ -2028,23 +2028,38 @@ async function runWorker() {
         gatedConsoleEntries,
         processFailures,
     );
+    // Errors THIS LANE CAUSES must not be charged to the theme. Arming trackTimestamp makes three
+    // resolve timestamp queries; when a theme tears down with a resolve still in flight, the query
+    // buffer is gone and three logs the rejection itself (WebGPUTimestampQueryPool.js:237 /
+    // WebGLTimestampQueryPool.js:263). Without the lane that code path never runs. Counted and
+    // reported separately — never silently dropped.
+    //
+    // Computed BEFORE `passed` (2026-08-25): the cell builder already made this distinction, but
+    // the theme-level verdict did not, so fluid-dreams and astral-weave were reported FAIL on runs
+    // whose cells were admissible with genuineErrorCount 0. One judgement, encoded twice, and only
+    // one copy had learned it.
+    const inducedErrors = !perf ? 0 : gatedConsoleEntries.filter(
+        (e) => INSTRUMENT_INDUCED_ERROR.test(String(e?.message ?? '')),
+    ).length;
+    const genuineErrors = Math.max(0, consoleSummary.errorCount - inducedErrors);
+    // Same gate as consoleSummary.ok, with ONLY the instrument-induced errors discounted.
+    // patternFailures stays in: it is what catches WGSL / shader-module / pipeline-validation
+    // messages, which is precisely what ADR-0007 gates a visual change on.
+    const consoleOk = perf
+        ? (genuineErrors === 0
+            && (consoleSummary.patternFailures?.length ?? 0) === 0
+            && (consoleSummary.processFailureCount ?? 0) === 0)
+        : consoleSummary.ok;
     const passed = (
         boot?.ok === true
         && lifecycle?.ok === true
         && screenshot?.passed === true
-        && consoleSummary.ok
+        && consoleOk
         && !fatalError
     );
     if (perf) {
-        // Errors THIS LANE CAUSES must not be charged to the theme. Arming trackTimestamp makes
-        // three resolve timestamp queries; when a theme tears down with a resolve still in flight,
-        // the query buffer is gone and three logs the rejection itself
-        // (WebGPUTimestampQueryPool.js:237 / WebGLTimestampQueryPool.js:263). Without the lane that
-        // code path never runs. Counted and reported separately — never silently dropped.
-        const induced = gatedConsoleEntries.filter(
-            (e) => INSTRUMENT_INDUCED_ERROR.test(String(e?.message ?? '')),
-        ).length;
-        const genuine = Math.max(0, consoleSummary.errorCount - induced);
+        const induced = inducedErrors;
+        const genuine = genuineErrors;
         perf.console = {
             errorCount: consoleSummary.errorCount,
             warningCount: consoleSummary.warningCount,

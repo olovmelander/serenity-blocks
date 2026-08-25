@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-25T09:36:03.163Z",
-  "runId": "2026-08-25T09-12-06-989Z",
+  "generatedAt": "2026-08-25T10:38:45.466Z",
+  "runId": "2026-08-25T10-14-42-798Z",
   "theme": "crystal-cave",
   "themeMeta": {
     "displayName": "Crystal Cave",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T09-12-06-989Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T10-14-42-798Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -134,11 +134,11 @@
     "byteLength": 4986432,
     "samples": 20107,
     "luminance": {
-      "min": 2.88,
+      "min": 3.7396000000000003,
       "max": 241.7208,
-      "mean": 41.25817009996528,
-      "range": 238.8408,
-      "variance": 790.628342153017
+      "mean": 36.15033427164688,
+      "range": 237.9812,
+      "variance": 514.2914969574001
     }
   },
   "console": {
@@ -152,35 +152,35 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-25T09:35:34.911Z",
+        "timestamp": "2026-08-25T10:38:17.277Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T09:35:34.987Z",
+        "timestamp": "2026-08-25T10:38:17.350Z",
         "level": 2,
         "message": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently",
         "line": 173,
         "sourceId": "http://127.0.0.1:4174/assets/theme-crystal-cave-BsPYpCeU.js"
       },
       {
-        "timestamp": "2026-08-25T09:35:52.191Z",
+        "timestamp": "2026-08-25T10:38:34.532Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T09:35:52.238Z",
+        "timestamp": "2026-08-25T10:38:34.577Z",
         "level": 2,
         "message": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently",
         "line": 173,
         "sourceId": "http://127.0.0.1:4174/assets/theme-crystal-cave-BsPYpCeU.js"
       },
       {
-        "timestamp": "2026-08-25T09:36:00.799Z",
+        "timestamp": "2026-08-25T10:38:43.121Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -191,8 +191,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-25T09:36:00.849Z",
-    "runId": "2026-08-25T09-12-06-989Z",
+    "generatedAt": "2026-08-25T10:38:43.159Z",
+    "runId": "2026-08-25T10-14-42-798Z",
     "theme": "crystal-cave",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -342,135 +342,135 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 707.6
+          "atMs": 659.7
         },
         {
           "kind": "webgl",
-          "atMs": 1059.9
+          "atMs": 767.8
         },
         {
           "kind": "2d",
-          "atMs": 1060.1
+          "atMs": 768
         },
         {
           "kind": "2d",
-          "atMs": 1060.9
+          "atMs": 769.2
         },
         {
           "kind": "2d",
-          "atMs": 1096.7
+          "atMs": 803.8
         },
         {
           "kind": "webgl",
-          "atMs": 1103.7
+          "atMs": 811.5
         },
         {
           "kind": "2d",
-          "atMs": 1157.3
+          "atMs": 864.8
         },
         {
           "kind": "2d",
-          "atMs": 1157.5
+          "atMs": 864.9
         },
         {
           "kind": "2d",
-          "atMs": 1158.3
+          "atMs": 865.7
         },
         {
           "kind": "2d",
-          "atMs": 1158.3
+          "atMs": 865.7
         },
         {
           "kind": "2d",
-          "atMs": 1162
+          "atMs": 876.2
         },
         {
           "kind": "2d",
-          "atMs": 1880.1
+          "atMs": 1629.8
         },
         {
           "kind": "2d",
-          "atMs": 1888.4
+          "atMs": 1637.8
         },
         {
           "kind": "2d",
-          "atMs": 1893.6
+          "atMs": 1643.2
         },
         {
           "kind": "2d",
-          "atMs": 1899.1
+          "atMs": 1648.8
         },
         {
           "kind": "2d",
-          "atMs": 1904.1
+          "atMs": 1653.7
         },
         {
           "kind": "2d",
-          "atMs": 1908.7
+          "atMs": 1658.4
         },
         {
           "kind": "2d",
-          "atMs": 2009.9
+          "atMs": 1768.4
         },
         {
           "kind": "2d",
-          "atMs": 2016.2
+          "atMs": 1774.3
         },
         {
           "kind": "2d",
-          "atMs": 2021.9
+          "atMs": 1779.8
         },
         {
           "kind": "2d",
-          "atMs": 4071.1
+          "atMs": 3777.9
         },
         {
           "kind": "2d",
-          "atMs": 4071.3
+          "atMs": 3777.9
         },
         {
           "kind": "webgl2",
-          "atMs": 4504.5
+          "atMs": 4237.4
         },
         {
           "kind": "2d",
-          "atMs": 4527.3
+          "atMs": 4257.5
         },
         {
           "kind": "2d",
-          "atMs": 4527.3
+          "atMs": 4257.5
         },
         {
           "kind": "2d",
-          "atMs": 4527.3
+          "atMs": 4257.6
         },
         {
           "kind": "2d",
-          "atMs": 4527.3
+          "atMs": 4257.6
         },
         {
           "kind": "2d",
-          "atMs": 4527.3
+          "atMs": 4257.7
         },
         {
           "kind": "2d",
-          "atMs": 4527.4
+          "atMs": 4257.7
         },
         {
           "kind": "2d",
-          "atMs": 4527.4
+          "atMs": 4257.7
         },
         {
           "kind": "2d",
-          "atMs": 5527.2
+          "atMs": 5266.4
         },
         {
           "kind": "2d",
-          "atMs": 5533.3
+          "atMs": 5271.3
         },
         {
           "kind": "2d",
-          "atMs": 5537.6
+          "atMs": 5275.4
         }
       ],
       "wrapped": [
@@ -510,41 +510,41 @@
       "visit2SyncCount": 0
     },
     "switchTimings": {
-      "switchWallMs": 1071.7,
+      "switchWallMs": 1075.2,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 14.1,
-      "rendererCreatedMs": 47.9,
-      "criticalReadyMs": 1071.8,
-      "firstRenderCallMs": 146.2,
-      "firstFrameGpuDoneMs": 1102.6,
+      "createSceneEnterMs": 14.2,
+      "rendererCreatedMs": 45.2,
+      "criticalReadyMs": 1075.2,
+      "firstRenderCallMs": 140.3,
+      "firstFrameGpuDoneMs": 1103.8,
       "firstFrameGpuDoneMethod": "fenceSync",
-      "allQuiescedGpuDoneMs": 3202.6,
+      "allQuiescedGpuDoneMs": 3190.1,
       "allQuiescedGpuDoneMethod": "fenceSync",
       "quietWaitFloorMs": 2000,
-      "firstFrameRafMs": 3210.1,
-      "visit2SwitchWallMs": 389.3
+      "firstFrameRafMs": 3198.5,
+      "visit2SwitchWallMs": 400.4
     },
     "idle": {
-      "windowMs": 10002.5,
+      "windowMs": 10002.4,
       "framesObserved": 1307,
       "wall": {
         "samples": 1306,
         "p50": 7.6,
-        "p95": 8.2,
-        "p99": 8.5,
+        "p95": 8.3,
+        "p99": 8.7,
         "min": 7,
-        "max": 15.8,
+        "max": 8.9,
         "budgetMs": 16.667,
         "overBudget": 0
       },
       "cpuSubmitMs": {
         "samples": 1307,
-        "p50": 2.9,
-        "p95": 3.7,
-        "p99": 4,
-        "min": 1.7,
-        "max": 4.7
+        "p50": 2.1,
+        "p95": 3.1,
+        "p99": 3.3,
+        "min": 1.4,
+        "max": 3.7
       },
       "gpuMs": {
         "samples": 0,
@@ -566,50 +566,50 @@
     },
     "content": {
       "drawCalls": {
-        "p05": 185,
-        "p50": 185,
-        "p95": 185,
-        "min": 185,
-        "max": 185
+        "p05": 268,
+        "p50": 268,
+        "p95": 268,
+        "min": 267,
+        "max": 268
       },
       "triangles": {
-        "p05": 19842,
-        "p50": 19842,
-        "p95": 19842,
-        "min": 19842,
-        "max": 19842
+        "p05": 37464,
+        "p50": 37464,
+        "p95": 37464,
+        "min": 37452,
+        "max": 37464
       },
-      "steadyState": true,
+      "steadyState": false,
       "infoOwnership": "contested",
-      "geometries": 182,
+      "geometries": 133,
       "textures": 21,
       "visit2": {
-        "drawCalls": 136,
-        "triangles": 3288
+        "drawCalls": 227,
+        "triangles": 21173
       },
       "contentMatch": false,
-      "contentMismatchReason": "draw calls differ (v1=185, v2=136)",
+      "contentMismatchReason": "draw calls differ (v1=268, v2=227)",
       "contentGuardAdmissible": false
     },
     "memory": {
-      "peakHeapMB": 38.66,
-      "p50HeapMB": 33.73,
+      "peakHeapMB": 37.19,
+      "p50HeapMB": 32.23,
       "heapSamples": 40,
-      "heapDrops": 18,
+      "heapDrops": 8,
       "allocBytesPerFrame": null,
-      "allocVoidReason": "18 GC(s) inside the window",
-      "gcPerSecond": 1.8,
-      "gcCount": 18,
-      "cdpHeapDeltaBytes": 6646616,
+      "allocVoidReason": "8 GC(s) inside the window",
+      "gcPerSecond": 0.8,
+      "gcCount": 8,
+      "cdpHeapDeltaBytes": 10085728,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {
       "visitGpuP50DeltaMs": null,
       "visitWallP95DeltaMs": null,
-      "voidReason": "draw calls differ (v1=185, v2=136)",
+      "voidReason": "draw calls differ (v1=268, v2=227)",
       "admissible": false,
       "inadmissibleReasons": [
-        "content guard: draw calls differ (v1=185, v2=136)"
+        "content guard: draw calls differ (v1=268, v2=227)"
       ]
     },
     "console": {

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-25T09:52:58.838Z",
-  "runId": "2026-08-25T09-12-06-989Z",
+  "generatedAt": "2026-08-25T10:55:45.945Z",
+  "runId": "2026-08-25T10-14-42-798Z",
   "theme": "astral-weave",
   "themeMeta": {
     "displayName": "Astral Weave",
@@ -10,8 +10,8 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T09-12-06-989Z",
-  "passed": false,
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T10-14-42-798Z",
+  "passed": true,
   "config": {
     "width": 1920,
     "height": 1080,
@@ -136,73 +136,65 @@
     "luminance": {
       "min": 0,
       "max": 241.7208,
-      "mean": 29.934359118714926,
+      "mean": 20.40035021634259,
       "range": 241.7208,
-      "variance": 1833.9627461322657
+      "variance": 1604.9055644300406
     }
   },
   "console": {
-    "ok": false,
-    "entryCount": 126,
+    "ok": true,
+    "entryCount": 125,
     "warningCount": 7,
-    "errorCount": 1,
+    "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
     "patternFailures": [],
-    "errorSamples": [
-      {
-        "timestamp": "2026-08-25T09:52:45.311Z",
-        "level": 3,
-        "message": "THREE.Error resolving queries: [object DOMException]",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
-      }
-    ],
+    "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-25T09:52:30.021Z",
+        "timestamp": "2026-08-25T10:55:17.155Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T09:52:30.026Z",
+        "timestamp": "2026-08-25T10:55:17.160Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 4694,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T09:52:32.756Z",
+        "timestamp": "2026-08-25T10:55:19.884Z",
         "level": 2,
         "message": "THREE.WebGPUTimestampQueryPool [render]: Maximum number of queries exceeded, when using trackTimestamp it is necessary to resolves the queries via renderer.resolveTimestampsAsync( THREE.TimestampQuery.RENDER ).",
         "line": 473,
         "sourceId": "http://127.0.0.1:4174/assets/theme-astral-weave-CwHQFdLz.js"
       },
       {
-        "timestamp": "2026-08-25T09:52:36.493Z",
+        "timestamp": "2026-08-25T10:55:23.945Z",
         "level": 2,
         "message": "THREE.WebGPUTimestampQueryPool [compute]: Maximum number of queries exceeded, when using trackTimestamp it is necessary to resolves the queries via renderer.resolveTimestampsAsync( THREE.TimestampQuery.COMPUTE ).",
         "line": 473,
         "sourceId": "http://127.0.0.1:4174/assets/theme-astral-weave-CwHQFdLz.js"
       },
       {
-        "timestamp": "2026-08-25T09:52:47.362Z",
+        "timestamp": "2026-08-25T10:55:34.524Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T09:52:47.363Z",
+        "timestamp": "2026-08-25T10:55:34.526Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 4694,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T09:52:56.502Z",
+        "timestamp": "2026-08-25T10:55:43.600Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -213,8 +205,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-25T09:52:56.530Z",
-    "runId": "2026-08-25T09-12-06-989Z",
+    "generatedAt": "2026-08-25T10:55:43.629Z",
+    "runId": "2026-08-25T10-14-42-798Z",
     "theme": "astral-weave",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -364,123 +356,123 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 702.8
+          "atMs": 672.6
         },
         {
           "kind": "webgl",
-          "atMs": 1066.5
+          "atMs": 1025
         },
         {
           "kind": "2d",
-          "atMs": 1066.6
+          "atMs": 1025.1
         },
         {
           "kind": "2d",
-          "atMs": 1067.6
+          "atMs": 1025.9
         },
         {
           "kind": "2d",
-          "atMs": 1102.9
+          "atMs": 1060.5
         },
         {
           "kind": "webgl",
-          "atMs": 1109.8
+          "atMs": 1068.1
         },
         {
           "kind": "2d",
-          "atMs": 1165.5
+          "atMs": 1122
         },
         {
           "kind": "2d",
-          "atMs": 1165.7
+          "atMs": 1122.2
         },
         {
           "kind": "2d",
-          "atMs": 1166.4
+          "atMs": 1123.1
         },
         {
           "kind": "2d",
-          "atMs": 1166.4
+          "atMs": 1123.2
         },
         {
           "kind": "2d",
-          "atMs": 1176.3
+          "atMs": 1132.1
         },
         {
           "kind": "2d",
-          "atMs": 1894.7
+          "atMs": 1736.8
         },
         {
           "kind": "2d",
-          "atMs": 1903.1
+          "atMs": 1745
         },
         {
           "kind": "2d",
-          "atMs": 1908.3
+          "atMs": 1750.6
         },
         {
           "kind": "2d",
-          "atMs": 1914.6
+          "atMs": 1756.8
         },
         {
           "kind": "2d",
-          "atMs": 1921.8
+          "atMs": 1762.2
         },
         {
           "kind": "2d",
-          "atMs": 1926.3
+          "atMs": 1767.4
         },
         {
           "kind": "2d",
-          "atMs": 2032.3
+          "atMs": 1881.4
         },
         {
           "kind": "2d",
-          "atMs": 2038.9
+          "atMs": 1887.3
         },
         {
           "kind": "2d",
-          "atMs": 2045.2
+          "atMs": 1892.7
         },
         {
           "kind": "2d",
-          "atMs": 4073.7
+          "atMs": 4028.6
         },
         {
           "kind": "2d",
-          "atMs": 4073.8
+          "atMs": 4028.6
         },
         {
           "kind": "2d",
-          "atMs": 4684.9
+          "atMs": 4549.6
         },
         {
           "kind": "2d",
-          "atMs": 4685.1
+          "atMs": 4549.9
         },
         {
           "kind": "2d",
-          "atMs": 4685.4
+          "atMs": 4550.4
         },
         {
           "kind": "2d",
-          "atMs": 4686.1
+          "atMs": 4551.2
         },
         {
           "kind": "2d",
-          "atMs": 4784
+          "atMs": 4646
         },
         {
           "kind": "2d",
-          "atMs": 4789.6
+          "atMs": 4651.8
         },
         {
           "kind": "2d",
-          "atMs": 4795.1
+          "atMs": 4656.1
         },
         {
           "kind": "webgpu",
-          "atMs": 4826.1
+          "atMs": 4694.2
         }
       ],
       "wrapped": [
@@ -513,55 +505,13 @@
       "asyncSumMs": 0,
       "asyncMaxMs": 0,
       "shapes": [
-        "rgba8unorm|1|",
         "rgba16float,rgba16float|4|depth24plus",
+        "rgba8unorm|1|",
         "rgba16float|1|",
         "bgra8unorm|4|depth24plus"
       ],
       "rows": [],
       "syncRows": [
-        {
-          "label": "mipmap-rgba8unorm-2d-array",
-          "materialId": null,
-          "materialClass": null,
-          "materialClassReason": "not-in-scene-at-collection",
-          "materialName": null,
-          "async": false,
-          "failed": false,
-          "ms": null,
-          "atMs": 4869.7,
-          "targets": "rgba8unorm",
-          "samples": 1,
-          "depth": null
-        },
-        {
-          "label": "renderPipeline_MeshBasicNodeMaterial_68",
-          "materialId": 68,
-          "materialClass": "MeshBasicNodeMaterial",
-          "materialClassReason": null,
-          "materialName": null,
-          "async": false,
-          "failed": false,
-          "ms": null,
-          "atMs": 4871.3,
-          "targets": "rgba16float,rgba16float",
-          "samples": 4,
-          "depth": "depth24plus"
-        },
-        {
-          "label": "renderPipeline_MeshBasicNodeMaterial_68",
-          "materialId": 68,
-          "materialClass": "MeshBasicNodeMaterial",
-          "materialClassReason": null,
-          "materialName": null,
-          "async": false,
-          "failed": false,
-          "ms": null,
-          "atMs": 4881,
-          "targets": "rgba16float,rgba16float",
-          "samples": 4,
-          "depth": "depth24plus"
-        },
         {
           "label": "renderPipeline_PointsNodeMaterial_54",
           "materialId": 54,
@@ -571,35 +521,77 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4884.9,
+          "atMs": 4736.9,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
         },
         {
-          "label": "renderPipeline_MeshBasicNodeMaterial_60",
-          "materialId": 60,
+          "label": "mipmap-rgba8unorm-2d-array",
+          "materialId": null,
+          "materialClass": null,
+          "materialClassReason": "not-in-scene-at-collection",
+          "materialName": null,
+          "async": false,
+          "failed": false,
+          "ms": null,
+          "atMs": 4748.3,
+          "targets": "rgba8unorm",
+          "samples": 1,
+          "depth": null
+        },
+        {
+          "label": "renderPipeline_MeshBasicNodeMaterial_69",
+          "materialId": 69,
           "materialClass": "MeshBasicNodeMaterial",
           "materialClassReason": null,
           "materialName": null,
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4973.1,
+          "atMs": 4749.1,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
         },
         {
-          "label": "renderPipeline_MeshBasicNodeMaterial_60",
-          "materialId": 60,
+          "label": "renderPipeline_MeshBasicNodeMaterial_69",
+          "materialId": 69,
           "materialClass": "MeshBasicNodeMaterial",
           "materialClassReason": null,
           "materialName": null,
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4984.1,
+          "atMs": 4757.5,
+          "targets": "rgba16float,rgba16float",
+          "samples": 4,
+          "depth": "depth24plus"
+        },
+        {
+          "label": "renderPipeline_MeshBasicNodeMaterial_62",
+          "materialId": 62,
+          "materialClass": "MeshBasicNodeMaterial",
+          "materialClassReason": null,
+          "materialName": null,
+          "async": false,
+          "failed": false,
+          "ms": null,
+          "atMs": 4845.1,
+          "targets": "rgba16float,rgba16float",
+          "samples": 4,
+          "depth": "depth24plus"
+        },
+        {
+          "label": "renderPipeline_MeshBasicNodeMaterial_62",
+          "materialId": 62,
+          "materialClass": "MeshBasicNodeMaterial",
+          "materialClassReason": null,
+          "materialName": null,
+          "async": false,
+          "failed": false,
+          "ms": null,
+          "atMs": 4850.4,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -613,7 +605,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5018.4,
+          "atMs": 4888.6,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -627,7 +619,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5029.1,
+          "atMs": 4899.7,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -641,7 +633,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5492.1,
+          "atMs": 5376.3,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -655,7 +647,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5501.1,
+          "atMs": 5384.1,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -669,7 +661,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5509.6,
+          "atMs": 5394.1,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -683,7 +675,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5518.6,
+          "atMs": 5402.6,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -697,7 +689,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5561.4,
+          "atMs": 5447.3,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -711,7 +703,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5570.2,
+          "atMs": 5457.3,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -725,7 +717,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5704.4,
+          "atMs": 5606.1,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -739,7 +731,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5714.7,
+          "atMs": 5615,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -753,7 +745,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5717.4,
+          "atMs": 5617.7,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -767,7 +759,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5719.2,
+          "atMs": 5619.6,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -781,7 +773,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5722.8,
+          "atMs": 5623,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -795,7 +787,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5726,
+          "atMs": 5625.5,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -809,7 +801,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5729.7,
+          "atMs": 5628.3,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -823,7 +815,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5732.9,
+          "atMs": 5631.5,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -837,7 +829,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5735.6,
+          "atMs": 5634.1,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -851,7 +843,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5738,
+          "atMs": 5636.4,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -865,7 +857,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 5740.4,
+          "atMs": 5639,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -876,49 +868,49 @@
       "visit2SyncCount": 27
     },
     "switchTimings": {
-      "switchWallMs": 287.3,
+      "switchWallMs": 284.7,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 18.2,
-      "rendererCreatedMs": 169.8,
-      "criticalReadyMs": 287.3,
-      "firstRenderCallMs": 309.8,
-      "firstFrameGpuDoneMs": 1238.4,
+      "createSceneEnterMs": 14.6,
+      "rendererCreatedMs": 169.2,
+      "criticalReadyMs": 284.7,
+      "firstRenderCallMs": 312.2,
+      "firstFrameGpuDoneMs": 1279.2,
       "firstFrameGpuDoneMethod": "queue.onSubmittedWorkDone",
-      "allQuiescedGpuDoneMs": 3264.6,
+      "allQuiescedGpuDoneMs": 3300.3,
       "allQuiescedGpuDoneMethod": "queue.onSubmittedWorkDone",
       "quietWaitFloorMs": 2000,
-      "firstFrameRafMs": 3271.1,
-      "visit2SwitchWallMs": 129.7
+      "firstFrameRafMs": 3306.8,
+      "visit2SwitchWallMs": 123.3
     },
     "idle": {
-      "windowMs": 10010.2,
-      "framesObserved": 1279,
+      "windowMs": 10006.5,
+      "framesObserved": 1274,
       "wall": {
-        "samples": 1278,
+        "samples": 1273,
         "p50": 7.7,
-        "p95": 8.3,
-        "p99": 15.3,
+        "p95": 8.5,
+        "p99": 15.4,
         "min": 7,
-        "max": 30,
+        "max": 30.4,
         "budgetMs": 16.667,
         "overBudget": 1
       },
       "cpuSubmitMs": {
-        "samples": 688,
-        "p50": 2.4,
-        "p95": 3.1,
-        "p99": 3.3,
-        "min": 1.7,
-        "max": 3.8
+        "samples": 691,
+        "p50": 2.6,
+        "p95": 3.2,
+        "p99": 3.4,
+        "min": 1.8,
+        "max": 4.2
       },
       "gpuMs": {
-        "samples": 571,
+        "samples": 573,
         "p50": 0.918,
         "p95": 1.114,
-        "p99": 1.376,
+        "p99": 1.442,
         "min": 0.59,
-        "max": 1.507,
+        "max": 1.835,
         "quantumMs": 0.065536,
         "sampleDiscipline": "one-push-per-resolved-query",
         "stickySamplerSuspected": false
@@ -932,54 +924,54 @@
     },
     "content": {
       "drawCalls": {
-        "p05": 120,
-        "p50": 120,
-        "p95": 120,
-        "min": 120,
-        "max": 120
+        "p05": 121,
+        "p50": 121,
+        "p95": 121,
+        "min": 121,
+        "max": 121
       },
       "triangles": {
-        "p05": 152734,
-        "p50": 152734,
-        "p95": 152734,
-        "min": 152734,
-        "max": 152734
+        "p05": 152735,
+        "p50": 152735,
+        "p95": 152735,
+        "min": 152735,
+        "max": 152735
       },
       "steadyState": true,
       "infoOwnership": "contested",
       "geometries": 51,
       "textures": 17,
       "visit2": {
-        "drawCalls": 120,
-        "triangles": 152734
+        "drawCalls": 121,
+        "triangles": 152735
       },
       "contentMatch": true,
       "contentMismatchReason": null,
       "contentGuardAdmissible": true
     },
     "memory": {
-      "peakHeapMB": 63.19,
-      "p50HeapMB": 47.95,
+      "peakHeapMB": 61.1,
+      "p50HeapMB": 48.77,
       "heapSamples": 40,
       "heapDrops": 4,
       "allocBytesPerFrame": null,
       "allocVoidReason": "4 GC(s) inside the window",
       "gcPerSecond": 0.4,
       "gcCount": 4,
-      "cdpHeapDeltaBytes": 23406624,
+      "cdpHeapDeltaBytes": 34708160,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {
-      "visitGpuP50DeltaMs": 0.131,
-      "visitWallP95DeltaMs": 0.1,
+      "visitGpuP50DeltaMs": 0,
+      "visitWallP95DeltaMs": 0.2,
       "voidReason": null,
       "admissible": true,
       "inadmissibleReasons": []
     },
     "console": {
-      "errorCount": 1,
+      "errorCount": 0,
       "warningCount": 7,
-      "instrumentInducedErrorCount": 1,
+      "instrumentInducedErrorCount": 0,
       "genuineErrorCount": 0
     },
     "admissible": true,
