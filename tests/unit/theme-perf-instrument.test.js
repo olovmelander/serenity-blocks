@@ -95,6 +95,15 @@ describe('theme perf bootstrap source', () => {
             .toBeLessThan(arm.indexOf('const backend = renderer.backend'));
     });
 
+    it('times only the OUTERMOST wrapped render call', () => {
+        // A post object whose render() re-enters a wrapped renderer.render() would otherwise have
+        // the inner span counted twice. That produced cpuSubmitMs p50 20.4 ms inside a 7.8 ms
+        // frame on neon-district — physically impossible, and briefly published as a CPU breach.
+        expect(THEME_PERF_BOOTSTRAP).toContain('S.renderDepth += 1;');
+        expect(THEME_PERF_BOOTSTRAP).toContain('const outermost = S.renderDepth === 1;');
+        expect(THEME_PERF_BOOTSTRAP).toContain('if (outermost) S.cpuAccumMs += now() - t;');
+    });
+
     it('re-wraps render entries each lane frame, since post graphs are built after the renderer', () => {
         expect(THEME_PERF_BOOTSTRAP).toContain('if (S.renderer) S.wrapRenderEntries(S.renderer);');
     });
@@ -149,7 +158,9 @@ describe('visit driver source', () => {
 });
 
 describe('the first-frame fence', () => {
-    const src = buildPerfVisitSource({ themeId: 't', anchorTheme: 'forest', idleMs: 1000, settleMs: 100 });
+    const src = buildPerfVisitSource({
+        themeId: 't', anchorTheme: 'forest', idleMs: 1000, settleMs: 100,
+    });
 
     it('fences for the first frame BEFORE the compile-quiet wait', () => {
         // The quiesce loop sleeps 2000-2100 ms with no new pipeline before it breaks, so a fence

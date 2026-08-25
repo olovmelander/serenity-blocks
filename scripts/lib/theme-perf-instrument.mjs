@@ -59,6 +59,7 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     timestampUnavailableReason: null,
     infoResetsByTheme: 0,
     infoOwned: false,
+    renderDepth: 0,
     cpuAccumMs: 0,
     wrapped: [],
     rings: { wall: [], cpu: [], gpu: [], calls: [], tris: [] },
@@ -231,10 +232,21 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
         const orig = owner[m].bind(owner);
         owner[m] = function (...args) {
           S.mark('t6_firstRenderCall');
-          const t = now();
-          const out = S.countAround(() => orig(...args));
-          S.cpuAccumMs += now() - t;
-          return out;
+          // ONLY THE OUTERMOST wrapped call is timed. A theme whose post object's render() re-enters
+          // a wrapped renderer.render() (or whose renderAsync delegates to its own render) would
+          // otherwise have the inner span counted twice — once by the inner wrapper and again inside
+          // the outer one. That produced cpuSubmitMs p50 20.4 ms inside a 7.8 ms frame on
+          // neon-district, which is physically impossible and was briefly published as a CPU budget
+          // breach. Draw counting is unaffected: countAround already sums deltas, which nest safely.
+          S.renderDepth += 1;
+          const outermost = S.renderDepth === 1;
+          const t = outermost ? now() : 0;
+          try {
+            return S.countAround(() => orig(...args));
+          } finally {
+            if (outermost) S.cpuAccumMs += now() - t;
+            S.renderDepth -= 1;
+          }
         };
       }
       try { owner.__themePerfWrapped = true; } catch (_) { /* frozen */ }
