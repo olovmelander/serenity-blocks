@@ -2597,8 +2597,29 @@ export default class NeonDistrictTheme extends BaseTheme {
 
     finalizeStaticShadows() {
         if (!this.renderer?.shadowMap?.enabled) return;
+        // MEASURED 2026-08-25: this method's intent was inert on the WebGPU path, and the
+        // 4096x4096 shadow map was re-rendered every frame producing a byte-identical texture —
+        // 53 of ~460 draws per frame, every frame.
+        //
+        // The WebGPU renderer's shadowMap config is only { enabled, transmitted, type }
+        // (three/src/renderers/common/Renderer.js:703-707): it has no autoUpdate and no
+        // needsUpdate, so both writes below land on a plain object. They are kept because the
+        // classic WebGL path does read them. The gate the TSL shadow path actually consults is
+        // LightShadow.autoUpdate (three/src/nodes/lighting/ShadowNode.js:855), which defaults to
+        // true (three/src/lights/LightShadow.js:148).
+        //
+        // One render is enough because nothing moves: the shadow-casting light is positioned once
+        // in setupSceneLighting and never touched again, and every caster is created and frozen
+        // before this runs. IF ANYTHING ADDED LATER by loadRemainingContentInBackground ever sets
+        // castShadow, it must also set light.shadow.needsUpdate = true, or its shadow will simply
+        // be absent — ShadowNode clears that flag itself once the map is drawn (ShadowNode.js:869-877).
         this.renderer.shadowMap.needsUpdate = true;
         this.renderer.shadowMap.autoUpdate = false;
+        this.scene?.traverse((object) => {
+            if (!object.isLight || !object.castShadow || !object.shadow) return;
+            object.shadow.autoUpdate = false;
+            object.shadow.needsUpdate = true;
+        });
     }
 
     createMegaTowerWindowOverlayMaterial() {
