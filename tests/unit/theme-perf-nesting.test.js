@@ -15,7 +15,7 @@ import { THEME_PERF_BOOTSTRAP } from '../../scripts/lib/theme-perf-instrument.mj
  * @param {number} drawsPerPass how many draws each leaf render adds
  * @param {number} leafPasses how many leaf renders one outer frame performs
  */
-function runFrame(drawsPerPass, leafPasses) {
+function runFrame(drawsPerPass, leafPasses, resetsPerCall = false) {
     const info = {
         render: {
             drawCalls: 0, triangles: 0, calls: 0, frame: 0,
@@ -27,6 +27,9 @@ function runFrame(drawsPerPass, leafPasses) {
         info,
         // A leaf render: the only thing that actually increments Info.
         render() {
+            // A classic WebGLRenderer clears Info at the top of every render()
+            // (WebGLRenderer.js:1702); a WebGPURenderer does not.
+            if (resetsPerCall) { info.render.drawCalls = 0; info.render.triangles = 0; info.reset(); }
             info.render.drawCalls += drawsPerPass;
             info.render.triangles += drawsPerPass * 100;
         },
@@ -87,6 +90,19 @@ describe('nested render entries are measured once, not once per ancestor', () =>
         expect(tris).toBe(60000);
     });
 
+    it('counts a CLASSIC composer frame, where Info resets on every inner render', () => {
+        // This is the case the first version of the fix got wrong. EffectComposer.render() is the
+        // outermost call, but each inner renderer.render() clears Info first, so reading at the
+        // outermost yields only the LAST pass — it reported 1 draw for crystal-cave (really 533),
+        // bioluminescence (227) and geode (201). Summing leaves is correct for both kinds.
+        const { draws, tris } = runFrame(200, 3, true);
+        expect(draws).toBe(600);
+        expect(tris).toBe(60000);
+    });
+
+    it('agrees between the two renderer kinds for identical work', () => {
+        expect(runFrame(150, 4, true).draws).toBe(runFrame(150, 4, false).draws);
+    });
     it('is unaffected by how many wrapped ancestors sit above the leaf', () => {
         // Same true work, more nesting: the answer must not move.
         expect(runFrame(100, 1).draws).toBe(100);

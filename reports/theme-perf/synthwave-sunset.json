@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T17:38:38.975Z",
-  "runId": "2026-08-24T17-00-53-492Z",
+  "generatedAt": "2026-08-25T08:47:45.622Z",
+  "runId": "2026-08-25T08-09-36-165Z",
   "theme": "synthwave-sunset",
   "anchorTheme": "forest",
   "themeMeta": {
@@ -151,123 +151,123 @@
     "canvasContexts": [
       {
         "kind": "webgl",
-        "atMs": 710.5
+        "atMs": 693.3
       },
       {
         "kind": "webgl",
-        "atMs": 1103.6
+        "atMs": 798.1
       },
       {
         "kind": "2d",
-        "atMs": 1103.8
+        "atMs": 798.2
       },
       {
         "kind": "2d",
-        "atMs": 1104.9
+        "atMs": 799.2
       },
       {
         "kind": "2d",
-        "atMs": 1142.8
+        "atMs": 833.8
       },
       {
         "kind": "webgl",
-        "atMs": 1149.8
+        "atMs": 840.7
       },
       {
         "kind": "2d",
-        "atMs": 1204.3
+        "atMs": 892.6
       },
       {
         "kind": "2d",
-        "atMs": 1204.4
+        "atMs": 892.6
       },
       {
         "kind": "2d",
-        "atMs": 1205.3
+        "atMs": 893.6
       },
       {
         "kind": "2d",
-        "atMs": 1205.3
+        "atMs": 893.6
       },
       {
         "kind": "2d",
-        "atMs": 1215.9
+        "atMs": 905.1
       },
       {
         "kind": "2d",
-        "atMs": 1910.2
+        "atMs": 1710.1
       },
       {
         "kind": "2d",
-        "atMs": 1918.4
+        "atMs": 1719
       },
       {
         "kind": "2d",
-        "atMs": 1923.8
+        "atMs": 1725.2
       },
       {
         "kind": "2d",
-        "atMs": 1929.3
+        "atMs": 1731.7
       },
       {
         "kind": "2d",
-        "atMs": 1934.1
+        "atMs": 1737.2
       },
       {
         "kind": "2d",
-        "atMs": 1939.1
+        "atMs": 1742.3
       },
       {
         "kind": "2d",
-        "atMs": 2038.3
+        "atMs": 1837.2
       },
       {
         "kind": "2d",
-        "atMs": 2044.3
+        "atMs": 1842.7
       },
       {
         "kind": "2d",
-        "atMs": 2049.5
+        "atMs": 1847.5
       },
       {
         "kind": "2d",
-        "atMs": 4113
+        "atMs": 3804.7
       },
       {
         "kind": "2d",
-        "atMs": 4113
+        "atMs": 3804.8
       },
       {
         "kind": "webgpu",
-        "atMs": 4750.8
+        "atMs": 4485.9
       },
       {
         "kind": "2d",
-        "atMs": 4866.2
+        "atMs": 4646
       },
       {
         "kind": "2d",
-        "atMs": 4870.2
+        "atMs": 4650.2
       },
       {
         "kind": "2d",
-        "atMs": 4873.8
+        "atMs": 4654
       },
       {
         "kind": "webgpu",
-        "atMs": 5252.7
+        "atMs": 5067.6
       },
       {
         "kind": "webgpu",
-        "atMs": 5757.5
+        "atMs": 5573.8
       },
       {
         "kind": "webgpu",
-        "atMs": 6260.3
+        "atMs": 6078.8
       },
       {
         "kind": "webgpu",
-        "atMs": 6765.2
+        "atMs": 6579.1
       }
     ],
     "wrapped": [
@@ -315,7 +315,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4781.7,
+        "atMs": 4527.4,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -329,7 +329,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4787.9,
+        "atMs": 4538,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -343,7 +343,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4794.1,
+        "atMs": 4546.5,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -357,7 +357,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4796.1,
+        "atMs": 4548.8,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -371,7 +371,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4805,
+        "atMs": 4561.3,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -385,7 +385,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4806.2,
+        "atMs": 4563.4,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -399,7 +399,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4814.4,
+        "atMs": 4574.9,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -413,7 +413,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4816.3,
+        "atMs": 4577.9,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -427,7 +427,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4821.2,
+        "atMs": 4585.4,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -441,7 +441,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4825.3,
+        "atMs": 4590.2,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -455,7 +455,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4830.6,
+        "atMs": 4597.3,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -469,7 +469,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4838.2,
+        "atMs": 4606.7,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -483,7 +483,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4840.4,
+        "atMs": 4610.4,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -497,7 +497,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4842.1,
+        "atMs": 4613,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -511,7 +511,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4848.3,
+        "atMs": 4622.9,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -525,7 +525,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4851.1,
+        "atMs": 4627,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -539,7 +539,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4854.2,
+        "atMs": 4631,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -553,7 +553,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4856.9,
+        "atMs": 4634.5,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -567,7 +567,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4859,
+        "atMs": 4637.5,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -581,7 +581,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4860.8,
+        "atMs": 4639.9,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -595,7 +595,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4862.6,
+        "atMs": 4641.9,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -609,7 +609,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4865,
+        "atMs": 4644.6,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -623,7 +623,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4865.5,
+        "atMs": 4645.1,
         "targets": "bgra8unorm",
         "samples": 4,
         "depth": "depth24plus"
@@ -634,49 +634,49 @@
     "visit2SyncCount": 23
   },
   "switchTimings": {
-    "switchWallMs": 377.6,
+    "switchWallMs": 415.8,
     "managerReportedMs": null,
     "queueDrainMs": null,
-    "createSceneEnterMs": 41.1,
-    "rendererCreatedMs": 205.9,
-    "criticalReadyMs": 377.7,
-    "firstRenderCallMs": 248.1,
-    "firstFrameGpuDoneMs": 1095.1,
+    "createSceneEnterMs": 18.1,
+    "rendererCreatedMs": 185.6,
+    "criticalReadyMs": 415.8,
+    "firstRenderCallMs": 239.3,
+    "firstFrameGpuDoneMs": 1174.3,
     "firstFrameGpuDoneMethod": "queue.onSubmittedWorkDone",
-    "allQuiescedGpuDoneMs": 3138.9,
+    "allQuiescedGpuDoneMs": 3300.8,
     "allQuiescedGpuDoneMethod": "queue.onSubmittedWorkDone",
     "quietWaitFloorMs": 2000,
-    "firstFrameRafMs": 3145.1,
-    "visit2SwitchWallMs": 146.2
+    "firstFrameRafMs": 3307,
+    "visit2SwitchWallMs": 177.5
   },
   "idle": {
-    "windowMs": 10001.5,
-    "framesObserved": 1294,
+    "windowMs": 10005.7,
+    "framesObserved": 1092,
     "wall": {
-      "samples": 1293,
-      "p50": 7.7,
-      "p95": 8.3,
-      "p99": 8.6,
+      "samples": 1091,
+      "p50": 7.8,
+      "p95": 15.6,
+      "p99": 16.2,
       "min": 7,
-      "max": 45.2,
+      "max": 46,
       "budgetMs": 16.667,
-      "overBudget": 2
+      "overBudget": 3
     },
     "cpuSubmitMs": {
-      "samples": 1294,
-      "p50": 4,
-      "p95": 4.5,
-      "p99": 5.2,
-      "min": 2.9,
-      "max": 17.2
+      "samples": 1092,
+      "p50": 1.9,
+      "p95": 2.6,
+      "p99": 2.7,
+      "min": 1.3,
+      "max": 6.7
     },
     "gpuMs": {
-      "samples": 1085,
-      "p50": 0.524,
-      "p95": 0.655,
-      "p99": 0.721,
+      "samples": 352,
+      "p50": 0.59,
+      "p95": 0.721,
+      "p99": 0.852,
       "min": 0.328,
-      "max": 0.852,
+      "max": 0.918,
       "quantumMs": 0.065536,
       "sampleDiscipline": "one-push-per-resolved-query",
       "stickySamplerSuspected": false
@@ -690,37 +690,41 @@
   },
   "content": {
     "drawCalls": {
-      "p50": 332,
-      "min": 219,
-      "max": 332
+      "p05": 110,
+      "p50": 111,
+      "p95": 111,
+      "min": 110,
+      "max": 111
     },
     "triangles": {
-      "p50": 48626,
-      "min": 24481,
-      "max": 48626
+      "p05": 12241,
+      "p50": 16209,
+      "p95": 16209,
+      "min": 12241,
+      "max": 16209
     },
     "steadyState": false,
     "infoOwnership": "contested",
     "geometries": 55,
     "textures": 14,
     "visit2": {
-      "drawCalls": 332,
-      "triangles": 48626
+      "drawCalls": 111,
+      "triangles": 16209
     },
     "contentMatch": true,
     "contentMismatchReason": null,
     "contentGuardAdmissible": true
   },
   "memory": {
-    "peakHeapMB": 40.1,
-    "p50HeapMB": 34.99,
+    "peakHeapMB": 39.28,
+    "p50HeapMB": 35.08,
     "heapSamples": 40,
-    "heapDrops": 21,
+    "heapDrops": 18,
     "allocBytesPerFrame": null,
-    "allocVoidReason": "21 GC(s) inside the window",
-    "gcPerSecond": 2.1,
-    "gcCount": 21,
-    "cdpHeapDeltaBytes": 13987940,
+    "allocVoidReason": "18 GC(s) inside the window",
+    "gcPerSecond": 1.799,
+    "gcCount": 18,
+    "cdpHeapDeltaBytes": 15148748,
     "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
   },
   "drift": {

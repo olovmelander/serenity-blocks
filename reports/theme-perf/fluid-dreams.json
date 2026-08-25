@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T19:24:38.038Z",
-  "runId": "2026-08-24T19-24-04-895Z",
+  "generatedAt": "2026-08-25T08:32:51.514Z",
+  "runId": "2026-08-25T08-09-36-165Z",
   "theme": "fluid-dreams",
   "anchorTheme": "forest",
   "themeMeta": {
@@ -151,107 +151,107 @@
     "canvasContexts": [
       {
         "kind": "webgl",
-        "atMs": 697.8
+        "atMs": 710
       },
       {
         "kind": "webgl",
-        "atMs": 806.6
+        "atMs": 1067.2
       },
       {
         "kind": "2d",
-        "atMs": 806.8
+        "atMs": 1067.3
       },
       {
         "kind": "2d",
-        "atMs": 807.6
+        "atMs": 1068.1
       },
       {
         "kind": "2d",
-        "atMs": 843.8
+        "atMs": 1102.2
       },
       {
         "kind": "webgl",
-        "atMs": 851.6
+        "atMs": 1108.9
       },
       {
         "kind": "2d",
-        "atMs": 911.5
+        "atMs": 1163.5
       },
       {
         "kind": "2d",
-        "atMs": 911.6
+        "atMs": 1163.5
       },
       {
         "kind": "2d",
-        "atMs": 912.7
+        "atMs": 1164.6
       },
       {
         "kind": "2d",
-        "atMs": 912.7
+        "atMs": 1164.6
       },
       {
         "kind": "2d",
-        "atMs": 923.4
+        "atMs": 1175.7
       },
       {
         "kind": "2d",
-        "atMs": 1586.3
+        "atMs": 1746.8
       },
       {
         "kind": "2d",
-        "atMs": 1594.6
+        "atMs": 1755.2
       },
       {
         "kind": "2d",
-        "atMs": 1599.8
+        "atMs": 1760.9
       },
       {
         "kind": "2d",
-        "atMs": 1605.5
+        "atMs": 1767.3
       },
       {
         "kind": "2d",
-        "atMs": 1610.6
+        "atMs": 1772.5
       },
       {
         "kind": "2d",
-        "atMs": 1615.7
+        "atMs": 1777.7
       },
       {
         "kind": "2d",
-        "atMs": 1706.3
+        "atMs": 1885.9
       },
       {
         "kind": "2d",
-        "atMs": 1714.1
+        "atMs": 1891.5
       },
       {
         "kind": "2d",
-        "atMs": 1720
+        "atMs": 1896.8
       },
       {
         "kind": "2d",
-        "atMs": 3817.6
+        "atMs": 4073.2
       },
       {
         "kind": "2d",
-        "atMs": 3817.8
+        "atMs": 4073.3
       },
       {
         "kind": "webgpu",
-        "atMs": 6202.8
+        "atMs": 7169.2
       },
       {
         "kind": "2d",
-        "atMs": 6352.4
+        "atMs": 7335.9
       },
       {
         "kind": "2d",
-        "atMs": 6356.3
+        "atMs": 7341.4
       },
       {
         "kind": "2d",
-        "atMs": 6359.7
+        "atMs": 7346.9
       }
     ],
     "wrapped": [
@@ -281,8 +281,8 @@
     "asyncCount": 5,
     "syncCount": 10,
     "failedCount": 0,
-    "asyncSumMs": 3398.3,
-    "asyncMaxMs": 1629.7,
+    "asyncSumMs": 4822.7,
+    "asyncMaxMs": 2340.5,
     "shapes": [
       "rgba16float,rgba16float|4|depth24plus",
       "rgba16float|1|depth24plus",
@@ -298,8 +298,8 @@
         "materialName": null,
         "async": true,
         "failed": false,
-        "ms": 1629.7,
-        "atMs": 4561.5,
+        "ms": 2340.5,
+        "atMs": 4811.3,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -312,8 +312,8 @@
         "materialName": null,
         "async": true,
         "failed": false,
-        "ms": 1518.2,
-        "atMs": 4558.9,
+        "ms": 2119.9,
+        "atMs": 4807.9,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -326,8 +326,8 @@
         "materialName": null,
         "async": true,
         "failed": false,
-        "ms": 136.9,
-        "atMs": 4558,
+        "ms": 226.2,
+        "atMs": 4806.6,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -340,8 +340,8 @@
         "materialName": null,
         "async": true,
         "failed": false,
-        "ms": 107.5,
-        "atMs": 4562.7,
+        "ms": 129.9,
+        "atMs": 4813,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -354,8 +354,8 @@
         "materialName": null,
         "async": true,
         "failed": false,
-        "ms": 6,
-        "atMs": 6089,
+        "ms": 6.2,
+        "atMs": 6940.5,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -371,7 +371,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 6214.2,
+        "atMs": 7183.8,
         "targets": "rgba16float,rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -385,7 +385,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 6336.6,
+        "atMs": 7310.9,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -399,7 +399,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 6338.6,
+        "atMs": 7313.2,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -413,7 +413,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 6341.7,
+        "atMs": 7316.7,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -427,7 +427,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 6344,
+        "atMs": 7319.6,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -441,7 +441,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 6345.9,
+        "atMs": 7321.5,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -455,7 +455,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 6347.5,
+        "atMs": 7323.3,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -469,7 +469,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 6349.2,
+        "atMs": 7325.2,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -483,7 +483,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 6351.4,
+        "atMs": 7334.1,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -497,7 +497,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 6351.9,
+        "atMs": 7334.9,
         "targets": "bgra8unorm",
         "samples": 4,
         "depth": "depth24plus"
@@ -508,49 +508,49 @@
     "visit2SyncCount": 10
   },
   "switchTimings": {
-    "switchWallMs": 2178.1,
+    "switchWallMs": 2994.2,
     "managerReportedMs": null,
     "queueDrainMs": null,
-    "createSceneEnterMs": 17,
-    "rendererCreatedMs": 192.9,
-    "criticalReadyMs": 2178.1,
-    "firstRenderCallMs": 2016.3,
-    "firstFrameGpuDoneMs": 3014.7,
+    "createSceneEnterMs": 23.5,
+    "rendererCreatedMs": 180.3,
+    "criticalReadyMs": 2994.3,
+    "firstRenderCallMs": 2808.7,
+    "firstFrameGpuDoneMs": 3897.4,
     "firstFrameGpuDoneMethod": "queue.onSubmittedWorkDone",
-    "allQuiescedGpuDoneMs": 5069.1,
+    "allQuiescedGpuDoneMs": 5981.7,
     "allQuiescedGpuDoneMethod": "queue.onSubmittedWorkDone",
     "quietWaitFloorMs": 2000,
-    "firstFrameRafMs": 5071.3,
-    "visit2SwitchWallMs": 362.7
+    "firstFrameRafMs": 5987.4,
+    "visit2SwitchWallMs": 462.6
   },
   "idle": {
-    "windowMs": 10001.3,
-    "framesObserved": 1314,
+    "windowMs": 10002.2,
+    "framesObserved": 1177,
     "wall": {
-      "samples": 1313,
-      "p50": 7.6,
-      "p95": 8.2,
-      "p99": 8.4,
+      "samples": 1176,
+      "p50": 7.7,
+      "p95": 15.2,
+      "p99": 15.8,
       "min": 7,
-      "max": 22.6,
+      "max": 29.9,
       "budgetMs": 16.667,
       "overBudget": 1
     },
     "cpuSubmitMs": {
-      "samples": 1314,
-      "p50": 2.6,
-      "p95": 3.1,
-      "p99": 3.4,
-      "min": 1.8,
-      "max": 3.9
+      "samples": 1177,
+      "p50": 1.3,
+      "p95": 1.6,
+      "p99": 1.8,
+      "min": 0.7,
+      "max": 2.5
     },
     "gpuMs": {
-      "samples": 1192,
-      "p50": 1.311,
+      "samples": 390,
+      "p50": 1.245,
       "p95": 1.442,
-      "p99": 1.638,
+      "p99": 1.573,
       "min": 1.114,
-      "max": 1.966,
+      "max": 1.835,
       "quantumMs": 0.065536,
       "sampleDiscipline": "one-push-per-resolved-query",
       "stickySamplerSuspected": false
@@ -564,50 +564,54 @@
   },
   "content": {
     "drawCalls": {
-      "p50": 61,
-      "min": 42,
-      "max": 61
+      "p05": 19,
+      "p50": 19,
+      "p95": 19,
+      "min": 19,
+      "max": 19
     },
     "triangles": {
-      "p50": 82137,
-      "min": 61599,
-      "max": 82137
+      "p05": 20538,
+      "p50": 20538,
+      "p95": 20538,
+      "min": 20538,
+      "max": 20538
     },
-    "steadyState": false,
+    "steadyState": true,
     "infoOwnership": "contested",
     "geometries": 5,
     "textures": 16,
     "visit2": {
-      "drawCalls": 61,
-      "triangles": 82137
+      "drawCalls": 19,
+      "triangles": 20538
     },
     "contentMatch": true,
     "contentMismatchReason": null,
     "contentGuardAdmissible": true
   },
   "memory": {
-    "peakHeapMB": 53.42,
-    "p50HeapMB": 37.78,
+    "peakHeapMB": 52.63,
+    "p50HeapMB": 39.61,
     "heapSamples": 40,
-    "heapDrops": 6,
+    "heapDrops": 5,
     "allocBytesPerFrame": null,
-    "allocVoidReason": "6 GC(s) inside the window",
-    "gcPerSecond": 0.6,
-    "gcCount": 6,
-    "cdpHeapDeltaBytes": 22043900,
+    "allocVoidReason": "5 GC(s) inside the window",
+    "gcPerSecond": 0.5,
+    "gcCount": 5,
+    "cdpHeapDeltaBytes": 27134212,
     "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
   },
   "drift": {
-    "visitGpuP50DeltaMs": 0,
+    "visitGpuP50DeltaMs": 0.066,
     "visitWallP95DeltaMs": 0.1,
     "voidReason": null,
     "admissible": true,
     "inadmissibleReasons": []
   },
   "console": {
-    "errorCount": 0,
+    "errorCount": 1,
     "warningCount": 8,
-    "instrumentInducedErrorCount": 0,
+    "instrumentInducedErrorCount": 1,
     "genuineErrorCount": 0
   },
   "admissible": true,

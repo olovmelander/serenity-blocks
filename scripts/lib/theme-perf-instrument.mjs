@@ -60,6 +60,7 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     infoResetsByTheme: 0,
     infoOwned: false,
     renderDepth: 0,
+    childRan: false,
     cpuAccumMs: 0,
     wrapped: [],
     rings: { wall: [], cpu: [], gpu: [], calls: [], tris: [] },
@@ -244,14 +245,35 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
           // unaffected... deltas nest safely", which was wrong and is corrected here. Verified by
           // executing this bootstrap against a stub with the real call shape: a 601-draw frame
           // reported 2,102 draws (3.498x) before this guard and 601 after.
+          // THE TWO METRICS NEED OPPOSITE RULES, which is the whole subtlety here.
+          //
+          // CPU time: measure the OUTERMOST call. A nested span sits inside its parent's, so timing
+          // every depth counts the same work once per ancestor.
+          //
+          // Draw counts: measure the INNERMOST (leaf) calls and sum them — because the two renderer
+          // kinds disagree about when Info resets. A classic WebGLRenderer resets at the top of
+          // every render() (WebGLRenderer.js:1702), so an EffectComposer's outermost call ends
+          // holding only its LAST pass's count — reading there reported 1 draw for crystal-cave
+          // (really 533), bioluminescence and geode. A WebGPURenderer does not reset per call, so
+          // its leaves' deltas sum to the frame total with no double count. Summing leaves is
+          // correct for both; reading the outermost is correct for neither.
+          S.childRan = false;
+          S.resetDuringCall = false;
           S.renderDepth += 1;
           const outermost = S.renderDepth === 1;
           const t = outermost ? now() : 0;
+          const rr0 = S.renderer && S.renderer.info && S.renderer.info.render;
+          const preD = rr0 ? S.drawsOf(rr0) : 0;
+          const preT = rr0 ? rr0.triangles : 0;
           try {
-            return outermost ? S.countAround(() => orig(...args)) : orig(...args);
+            return orig(...args);
           } finally {
-            if (outermost) S.cpuAccumMs += now() - t;
             S.renderDepth -= 1;
+            if (outermost) S.cpuAccumMs += now() - t;
+            // A leaf is a wrapped call during which no nested wrapped call ran.
+            if (!S.childRan) S.countLeaf(preD, preT, S.resetDuringCall);
+            // Tell whichever wrapped call encloses this one that it is not a leaf.
+            S.childRan = true;
           }
         };
       }
@@ -284,6 +306,18 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
   // (common/Info.js:67-75). Reading drawCalls alone yielded undefined -> NaN on every classic
   // theme, and NaN > 0 is false, so nothing was ever recorded and the cell published null.
   S.drawsOf = (rr) => (Number.isFinite(rr.drawCalls) ? rr.drawCalls : rr.calls);
+  // Called on the way out of a LEAF render (one that contained no nested wrapped call).
+  // The reset flag distinguishes the two kinds: a classic renderer cleared the counters on entry, so the
+  // post value IS this call's contribution; a WebGPU renderer accumulated, so the delta is.
+  S.countLeaf = (preD, preT, reset) => {
+    const rr = S.renderer && S.renderer.info && S.renderer.info.render;
+    if (!rr) return;
+    const d = reset ? S.drawsOf(rr) : Math.max(0, S.drawsOf(rr) - preD);
+    const tri = reset ? rr.triangles : Math.max(0, rr.triangles - preT);
+    if (Number.isFinite(d)) S.frameDraws += d;
+    if (Number.isFinite(tri)) S.frameTris += tri;
+  };
+
   S.countAround = (fn) => {
     const rr = S.renderer && S.renderer.info && S.renderer.info.render;
     if (!rr) return fn();
