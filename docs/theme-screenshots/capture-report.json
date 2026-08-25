@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-24T19:39:48.588Z",
-  "startedAt": "2026-08-24T19:39:21.505Z",
-  "runId": "2026-08-24T19-39-21-504Z",
+  "generatedAt": "2026-08-25T05:49:28.828Z",
+  "startedAt": "2026-08-25T05:48:41.082Z",
+  "runId": "2026-08-25T05-48-41-081Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -17,27 +17,27 @@
     "externalServer": false,
     "cooldownMs": 2000,
     "failureCooldownMs": 15000,
-    "perfLane": false,
-    "perfIdleMs": null,
-    "perfQuality": null,
-    "perfTargetFps": null
+    "perfLane": true,
+    "perfIdleMs": 10000,
+    "perfQuality": "High",
+    "perfTargetFps": 60
   },
   "selectedThemes": [
-    "koi-pond"
+    "neon-district"
   ],
   "results": [
     {
-      "theme": "koi-pond",
-      "displayName": "Koi Pond",
+      "theme": "neon-district",
+      "displayName": "Neon District",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\koi-pond.png",
-      "report": "docs\\theme-screenshots\\results\\koi-pond.json",
+      "screenshot": "docs\\theme-screenshots\\neon-district.png",
+      "report": "docs\\theme-screenshots\\results\\neon-district.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
-      "perfCell": null,
-      "perfAdmissible": null,
-      "perfInadmissibleReasons": null,
+      "perfCell": "reports\\theme-perf\\neon-district.json",
+      "perfAdmissible": true,
+      "perfInadmissibleReasons": [],
       "processFailureCount": 0,
       "orchestrationError": null,
       "workerExit": {

@@ -624,9 +624,17 @@ actually needs block it; the rest compile later. The themes that block are the o
 and deep first-frame dependencies**, not the ones with the biggest unwarmed set.
 
 **4. The frame-time story is CPU submission, not fill.** Worst idle GPU p95 fleet-wide is 2.42 ms
-against a 9 ms budget, and no theme exceeds 16.67 ms wall. But `perf-budgets.json`
-`split.cpuMaxMs` is 6 and neon-district measures **23.3 ms** idle CPU-submit p95 at 1,856 draws,
-golden-forest 14.3 ms at 1,101 draws.
+against a 9 ms budget, and no theme exceeds 16.67 ms wall. `perf-budgets.json` `split.cpuMaxMs` is
+6, and one theme exceeds it: **neon-district at ~10.4 ms** idle CPU-submit p95 (n = 4: 10.5 / 10.7 /
+9.9 / 10.5) at 1,856 draws — about 1.7x over. golden-forest straddles it (4.7–7.9 ms, n = 4).
+
+> **CORRECTED 2026-08-25.** This section first reported 23.3 ms and 14.3 ms and called them a
+> 3.9x breach. Those figures were an instrument defect: the lane wrapped render entries on both the
+> renderer and the post object and double-counted the inner span where one re-entered the other.
+> The tell was on the face of it — 20.4 ms of CPU inside a 7.8 ms frame is impossible — and it was
+> published before anyone applied that check. Fixed in `71fcf9a9` by timing only the outermost
+> wrapped call. Exactly two of 61 themes were affected, and they were the two quoted here. Nothing
+> else in this document reads `cpuSubmitMs`.
 
 **5. No lava lakes, confirmed by measurement.** Worst single async pipeline across all 61 themes is
 neon-district at 1,688 ms, then golden-forest 959, koi-pond 600. The Odyssey lake was 7,235 ms.
@@ -1197,6 +1205,16 @@ in the after-gap). ocean needs 3.1 **and** 3.3; koi-pond needs 3.3 first.
 ---
 
 ### 11.4 (plan 4.x) — the CPU is the pole, and it is submission, not fill
+
+> **CORRECTED 2026-08-25.** The table below predates the double-counting fix (`71fcf9a9`).
+> Read neon-district as **~10.4 ms** (n = 4: 10.5 / 10.7 / 9.9 / 10.5) and golden-forest as
+> **4.7–7.9 ms** (n = 4), not 23.3 and 14.3. Point 1 below called this correctly at the time — it
+> spotted that `cpuSubmitMs.p95 23.3` beside `wall.p50 7.8` cannot both be one frame, and said to
+> treat the figure as a rank rather than a budget comparison. That warning was written into this
+> document and then ignored when the number was quoted as a 3.9x breach in the summary and in the
+> plan. The conclusion survives — CPU submission is the only budget any theme exceeds, and only
+> neon-district exceeds it, by ~1.7x — but the magnitude and the certainty did not.
+
 
 `perf-budgets.json:32-36` sets `frameP95Ms.split` = `cpuMaxMs: 6`, `gpuMaxMs: 9` ("60hz split; scale
 proportionally"). Against that:
@@ -1842,6 +1860,16 @@ in the after-gap). ocean needs 3.1 **and** 3.3; koi-pond needs 3.3 first.
 ---
 
 ### 11.4 (plan 4.x) — the CPU is the pole, and it is submission, not fill
+
+> **CORRECTED 2026-08-25.** The table below predates the double-counting fix (`71fcf9a9`).
+> Read neon-district as **~10.4 ms** (n = 4: 10.5 / 10.7 / 9.9 / 10.5) and golden-forest as
+> **4.7–7.9 ms** (n = 4), not 23.3 and 14.3. Point 1 below called this correctly at the time — it
+> spotted that `cpuSubmitMs.p95 23.3` beside `wall.p50 7.8` cannot both be one frame, and said to
+> treat the figure as a rank rather than a budget comparison. That warning was written into this
+> document and then ignored when the number was quoted as a 3.9x breach in the summary and in the
+> plan. The conclusion survives — CPU submission is the only budget any theme exceeds, and only
+> neon-district exceeds it, by ~1.7x — but the magnitude and the certainty did not.
+
 
 `perf-budgets.json:32-36` sets `frameP95Ms.split` = `cpuMaxMs: 6`, `gpuMaxMs: 9` ("60hz split; scale
 proportionally"). Against that:
@@ -2559,3 +2587,34 @@ fetched: `KOI_POND_HERO_LIMITS` is 0 in all six presets (`koi-pond-forest.js:78-
 "ships off") and it shares a `Promise.all` with the two real 75 KB tree GLBs. Gating it is worth
 doing for heap and tree-arrival latency — **but not for switch time**, which it cannot affect
 because `createScene` never awaits that promise.
+
+## 18. Variance: which fields can carry a single-run baseline, and which cannot
+
+**2026-08-25.** Cells: [`reports/theme-perf-cpufix/`](../reports/theme-perf-cpufix/), n = 4 each.
+
+Three separate times a delta was nearly published as a change when it was run-to-run spread
+(vesper-chrysalis §14, lunara §15, and golden-forest below). The fleet sweep is **n = 1 by design** —
+correct for ranking 61 themes, wrong as a baseline for judging a change. This section records which
+fields tolerate that and which do not.
+
+**golden-forest is the fleet's most variable theme.** `firstFrameGpuDoneMs` over four runs of
+identical code: **6,155 / 6,882 / 6,316 / 4,548** — a spread of **2,334 ms**, 37 % of the median.
+The fleet table's 4,553 sits almost exactly on the lowest of the four. It was never patched, so
+nothing is regressed; but any single-run figure for this theme is close to meaningless, and §12's
+row for it should be read as "somewhere in 4.5–6.9 s".
+
+By contrast neon-district's `cpuSubmitMs.p95` over four runs is **10.5 / 10.7 / 9.9 / 10.5** — a
+spread of 0.8 ms. Same instrument, same protocol, wildly different stability.
+
+| field | stability | safe with n = 1? |
+|---|---|:--:|
+| `pipelines.asyncCount` / `syncCount` | exact integers, identical across runs | ✅ |
+| `content.drawCalls` / `triangles` | identical across runs (the content guard relies on it) | ✅ |
+| `idle.gpuMs.p95` | tight; moved 0.13 ms on lunara across a real change | ✅ |
+| `idle.cpuSubmitMs.p95` | tight per theme (±0.8 ms on neon-district) | ✅ |
+| `switchWallMs` | tight on most, ±260 ms on lunara | ⚠️ n ≥ 3 |
+| `firstFrameGpuDoneMs` | 7 ms on stillwater, **2,334 ms on golden-forest** | ❌ n ≥ 3, per theme |
+| `idle.wall.p95` | bimodal (§14) — 8.7 vs 15.9 on identical code | ❌ not an A/B axis |
+
+**Rule going forward:** a theme's before-state must be measured n ≥ 3 with the same instrument build
+as its after-state. Reusing a fleet-sweep cell as an A/B baseline is only valid for the ✅ rows.
