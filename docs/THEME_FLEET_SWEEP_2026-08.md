@@ -624,7 +624,7 @@ actually needs block it; the rest compile later. The themes that block are the o
 and deep first-frame dependencies**, not the ones with the biggest unwarmed set.
 
 **4. The frame-time story is CPU submission, not fill.** Worst idle GPU p95 fleet-wide is 2.42 ms
-against a 9 ms budget, and no theme exceeds 16.67 ms wall. `perf-budgets.json` `split.cpuMaxMs` is
+against a 9 ms budget. (**CORRECTED 2026-08-25 — see section 19:** the claim that no theme exceeds 16.67 ms wall was false. neon-district measures wall p95 22.9-23.1 ms with 12-14 % of frames over budget, n = 3. The original figure came from a cell that landed in that theme's fast pacing bucket.) `perf-budgets.json` `split.cpuMaxMs` is
 6, and one theme exceeds it: **neon-district at ~10.4 ms** idle CPU-submit p95 (n = 4: 10.5 / 10.7 /
 9.9 / 10.5) at 1,856 draws — about 1.7x over. golden-forest straddles it (4.7–7.9 ms, n = 4).
 
@@ -2618,3 +2618,45 @@ spread of 0.8 ms. Same instrument, same protocol, wildly different stability.
 
 **Rule going forward:** a theme's before-state must be measured n ≥ 3 with the same instrument build
 as its after-state. Reusing a fleet-sweep cell as an A/B baseline is only valid for the ✅ rows.
+
+## 19. neon-district, corrected — and a third published claim that was false
+
+**2026-08-25.** Cells: [`reports/theme-perf-nd-baseline/`](../reports/theme-perf-nd-baseline/), n = 3
+on the instrument after both nesting fixes (`71fcf9a9` CPU, `93266a30` draws).
+
+| field | published | corrected (n = 3) | |
+|---|---:|---|---|
+| `content.drawCalls.p50` | 1,856 | **476 / 505 / 503** | 3.7x inflated |
+| `content.triangles.p50` | 253,680 | **71.5k / 72.5k / 71.8k** | 3.5x inflated |
+| `idle.cpuSubmitMs.p95` | 23.3 | **9.3 / 9.1 / 9.8** | ~1.55x the 6 ms budget |
+| `idle.gpuMs.p95` | 1.245 | 1.507 / 1.376 / 1.376 | vs 9 ms — not GPU bound |
+| triangles per draw | 137 | **~145** | submission-bound reading intact |
+
+### The false claim
+
+Part B says *"nothing exceeds 16.67 ms wall"*. **neon-district does.** Wall p95 across the three
+runs is **22.9 / 23.1 / 23.0 ms**, with **86/740, 97/763 and 98/717 frames over the 60 Hz budget** —
+12–14 % of frames missed, p99 ~24 ms, max 38.4 ms, and `longTasks.count` 0 in every run, so this is
+steady per-frame cost rather than hitching.
+
+The original claim came from a fleet cell that landed in this theme's *fast* pacing bucket
+(wall p50 7.8 ms). All three runs here sit in the slow bucket at p50 ~15 ms. That is §14's
+bimodality again — but where §14 concluded "wall p95 is not an A/B axis", this adds a sharper
+point: **a single-run wall figure cannot support a fleet-wide negative claim either.** "No theme
+exceeds the budget" was true of the sample and false of the theme.
+
+### So neon-district is the fleet's only budget breach, on two axes
+
+CPU submission ~1.55x over, and wall frame time ~1.4x over, at ~500 draws averaging ~145 triangles
+each. Both point the same way: submission cost, not fill. GPU p95 never approaches its budget.
+
+### Why the whole fleet is being re-measured
+
+The draw and triangle columns in §12 are inflated for every theme whose post stack re-enters the
+renderer — most of the 35 two-owner themes — and the wall-budget claim is now known to be
+sample-dependent. Rather than annotate a table people will quote without reading the caveat, all 61
+cells are being re-measured on one instrument build. The previous cells are archived, not deleted.
+
+**What does not need re-measuring:** every Stage 4 A/B. Those used draws as an *invariance* guard
+(`131 -> 131`), and a constant per-theme inflation factor cancels exactly in that comparison; none
+of them read `cpuSubmitMs` or wall p95. The six fixed themes and the −46.5 % aggregate stand.
