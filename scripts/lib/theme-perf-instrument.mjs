@@ -166,7 +166,7 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     S.armWhenReady(renderer, 0);
   };
 
-  // Wrapping info.reset is what tells countAround which read is correct, so it must happen for
+  // Wrapping info.reset is what tells countLeaf which read is correct, so it must happen for
   // EVERY renderer kind. It used to sit below the backend guard — and a classic
   // THREE.WebGLRenderer has no .backend at all, so that guard bailed forever and all 20 classic
   // themes reported 0 draws. Ownership first, backend-specific arming second.
@@ -318,23 +318,6 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     if (Number.isFinite(tri)) S.frameTris += tri;
   };
 
-  S.countAround = (fn) => {
-    const rr = S.renderer && S.renderer.info && S.renderer.info.render;
-    if (!rr) return fn();
-    const preD = S.drawsOf(rr); const preT = rr.triangles;
-    S.resetDuringCall = false;
-    try {
-      return fn();
-    } finally {
-      const reset = S.resetDuringCall;
-      const postD = S.drawsOf(rr); const postT = rr.triangles;
-      const d = reset ? postD : Math.max(0, postD - preD);
-      const tri = reset ? postT : Math.max(0, postT - preT);
-      // Never let a non-finite read poison the accumulator into silence.
-      if (Number.isFinite(d)) S.frameDraws += d;
-      if (Number.isFinite(tri)) S.frameTris += tri;
-    }
-  };
 
   // ---- 5) GPU RESOLVE — ONE PUSH PER RESOLVED QUERY ----------------------------------------
   S.resolveRender = () => {
