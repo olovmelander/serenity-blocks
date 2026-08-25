@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-24T17:09:20.966Z",
-  "runId": "2026-08-24T17-00-53-492Z",
+  "generatedAt": "2026-08-25T08:18:11.229Z",
+  "runId": "2026-08-25T08-09-36-165Z",
   "theme": "summer",
   "anchorTheme": "forest",
   "themeMeta": {
@@ -151,111 +151,111 @@
     "canvasContexts": [
       {
         "kind": "webgl",
-        "atMs": 701.6
+        "atMs": 675.5
       },
       {
         "kind": "webgl",
+        "atMs": 1065.8
+      },
+      {
+        "kind": "2d",
+        "atMs": 1066
+      },
+      {
+        "kind": "2d",
         "atMs": 1066.9
       },
       {
         "kind": "2d",
-        "atMs": 1067.1
-      },
-      {
-        "kind": "2d",
-        "atMs": 1068.4
-      },
-      {
-        "kind": "2d",
-        "atMs": 1114.2
+        "atMs": 1101.8
       },
       {
         "kind": "webgl",
-        "atMs": 1123.6
+        "atMs": 1109.8
       },
       {
         "kind": "2d",
-        "atMs": 1181.9
+        "atMs": 1171
       },
       {
         "kind": "2d",
-        "atMs": 1182.1
+        "atMs": 1171.1
       },
       {
         "kind": "2d",
-        "atMs": 1182.8
+        "atMs": 1171.9
       },
       {
         "kind": "2d",
-        "atMs": 1182.8
+        "atMs": 1171.9
       },
       {
         "kind": "2d",
-        "atMs": 1192.2
+        "atMs": 1182.3
       },
       {
         "kind": "2d",
-        "atMs": 1920.2
+        "atMs": 1880.1
       },
       {
         "kind": "2d",
-        "atMs": 1928.9
+        "atMs": 1888.1
       },
       {
         "kind": "2d",
-        "atMs": 1933.9
+        "atMs": 1893.3
       },
       {
         "kind": "2d",
-        "atMs": 1939.7
+        "atMs": 1898.9
       },
       {
         "kind": "2d",
-        "atMs": 1944.5
+        "atMs": 1903.9
       },
       {
         "kind": "2d",
-        "atMs": 1949.1
+        "atMs": 1908.4
       },
       {
         "kind": "2d",
-        "atMs": 2041.4
+        "atMs": 2007.8
       },
       {
         "kind": "2d",
-        "atMs": 2049.1
+        "atMs": 2013.7
       },
       {
         "kind": "2d",
-        "atMs": 2055.3
+        "atMs": 2019.2
       },
       {
         "kind": "2d",
-        "atMs": 4086.8
+        "atMs": 4083.7
       },
       {
         "kind": "2d",
-        "atMs": 4086.9
+        "atMs": 4083.8
       },
       {
         "kind": "2d",
-        "atMs": 4784.5
+        "atMs": 4682
       },
       {
         "kind": "webgpu",
-        "atMs": 4959.9
+        "atMs": 4903
       },
       {
         "kind": "2d",
-        "atMs": 4962.8
+        "atMs": 4906.5
       },
       {
         "kind": "2d",
-        "atMs": 4967.1
+        "atMs": 4910.9
       },
       {
         "kind": "2d",
-        "atMs": 4970.7
+        "atMs": 4914.4
       }
     ],
     "wrapped": [
@@ -304,7 +304,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4833.2,
+        "atMs": 4744.1,
         "targets": "rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -318,7 +318,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4838.1,
+        "atMs": 4752.1,
         "targets": "rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -332,7 +332,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4854.8,
+        "atMs": 4773.6,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -346,7 +346,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4858.9,
+        "atMs": 4778.8,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -360,7 +360,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4863.1,
+        "atMs": 4783.9,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -374,7 +374,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4867.8,
+        "atMs": 4788.6,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -388,7 +388,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4875.5,
+        "atMs": 4803.1,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -402,7 +402,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4888.8,
+        "atMs": 4815.1,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -416,7 +416,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4892,
+        "atMs": 4819.6,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -430,7 +430,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4897,
+        "atMs": 4825.9,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -444,7 +444,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4899.5,
+        "atMs": 4829.5,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -458,7 +458,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4901.5,
+        "atMs": 4831.9,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -472,7 +472,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4907.9,
+        "atMs": 4838.1,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -486,7 +486,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4910.4,
+        "atMs": 4841.1,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -500,7 +500,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4912.9,
+        "atMs": 4844.4,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -514,7 +514,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4915.1,
+        "atMs": 4849.4,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -528,7 +528,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4917.8,
+        "atMs": 4855.3,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -542,7 +542,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4920.4,
+        "atMs": 4858.6,
         "targets": "rgba16float",
         "samples": 1,
         "depth": "depth24plus"
@@ -556,7 +556,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4922.1,
+        "atMs": 4860.2,
         "targets": "rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -570,7 +570,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4925.4,
+        "atMs": 4862.4,
         "targets": "rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -584,7 +584,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4927.2,
+        "atMs": 4864.2,
         "targets": "rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -598,7 +598,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4930.7,
+        "atMs": 4868,
         "targets": "rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -612,7 +612,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4932.4,
+        "atMs": 4869.9,
         "targets": "rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -626,7 +626,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4934.2,
+        "atMs": 4872.1,
         "targets": "rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -640,7 +640,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4937,
+        "atMs": 4875.5,
         "targets": "rgba16float",
         "samples": 4,
         "depth": "depth24plus"
@@ -651,49 +651,49 @@
     "visit2SyncCount": 123
   },
   "switchTimings": {
-    "switchWallMs": 421.4,
+    "switchWallMs": 438.5,
     "managerReportedMs": null,
     "queueDrainMs": null,
-    "createSceneEnterMs": 64.3,
-    "rendererCreatedMs": 215.5,
-    "criticalReadyMs": 421.4,
-    "firstRenderCallMs": 239.1,
-    "firstFrameGpuDoneMs": 3543.3,
+    "createSceneEnterMs": 24.4,
+    "rendererCreatedMs": 184.2,
+    "criticalReadyMs": 438.5,
+    "firstRenderCallMs": 209.3,
+    "firstFrameGpuDoneMs": 3797.5,
     "firstFrameGpuDoneMethod": "queue.onSubmittedWorkDone",
-    "allQuiescedGpuDoneMs": 5797.4,
+    "allQuiescedGpuDoneMs": 6139.2,
     "allQuiescedGpuDoneMethod": "queue.onSubmittedWorkDone",
     "quietWaitFloorMs": 2000,
-    "firstFrameRafMs": 5808.6,
-    "visit2SwitchWallMs": 178.3
+    "firstFrameRafMs": 6151.6,
+    "visit2SwitchWallMs": 223.2
   },
   "idle": {
-    "windowMs": 10000.5,
-    "framesObserved": 1310,
+    "windowMs": 10006.5,
+    "framesObserved": 1311,
     "wall": {
-      "samples": 1309,
+      "samples": 1310,
       "p50": 7.6,
-      "p95": 8.3,
-      "p99": 8.6,
+      "p95": 8.2,
+      "p99": 8.5,
       "min": 7,
-      "max": 23.5,
+      "max": 16.4,
       "budgetMs": 16.667,
-      "overBudget": 1
+      "overBudget": 0
     },
     "cpuSubmitMs": {
-      "samples": 658,
+      "samples": 661,
       "p50": 2.6,
-      "p95": 3,
-      "p99": 3.3,
-      "min": 2.3,
-      "max": 3.8
+      "p95": 3.2,
+      "p99": 3.4,
+      "min": 1.7,
+      "max": 3.6
     },
     "gpuMs": {
-      "samples": 689,
-      "p50": 1.966,
-      "p95": 2.425,
-      "p99": 2.818,
+      "samples": 656,
+      "p50": 1.901,
+      "p95": 2.294,
+      "p99": 2.687,
       "min": 1.376,
-      "max": 3.015,
+      "max": 3.08,
       "quantumMs": 0.065536,
       "sampleDiscipline": "one-push-per-resolved-query",
       "stickySamplerSuspected": false
@@ -707,42 +707,46 @@
   },
   "content": {
     "drawCalls": {
-      "p50": 278,
-      "min": 278,
-      "max": 278
+      "p05": 186,
+      "p50": 186,
+      "p95": 186,
+      "min": 186,
+      "max": 186
     },
     "triangles": {
-      "p50": 2557997,
-      "min": 2557997,
-      "max": 2557997
+      "p05": 1708251,
+      "p50": 1708251,
+      "p95": 1708251,
+      "min": 1708251,
+      "max": 1708251
     },
     "steadyState": true,
     "infoOwnership": "contested",
     "geometries": 84,
     "textures": 9,
     "visit2": {
-      "drawCalls": 278,
-      "triangles": 2559641
+      "drawCalls": 186,
+      "triangles": 1707619
     },
     "contentMatch": true,
     "contentMismatchReason": null,
     "contentGuardAdmissible": true
   },
   "memory": {
-    "peakHeapMB": 84.57,
-    "p50HeapMB": 69.51,
+    "peakHeapMB": 84.24,
+    "p50HeapMB": 70.69,
     "heapSamples": 40,
-    "heapDrops": 4,
+    "heapDrops": 3,
     "allocBytesPerFrame": null,
-    "allocVoidReason": "4 GC(s) inside the window",
-    "gcPerSecond": 0.4,
-    "gcCount": 4,
-    "cdpHeapDeltaBytes": 16778028,
+    "allocVoidReason": "3 GC(s) inside the window",
+    "gcPerSecond": 0.3,
+    "gcCount": 3,
+    "cdpHeapDeltaBytes": 15635260,
     "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
   },
   "drift": {
-    "visitGpuP50DeltaMs": 0.131,
-    "visitWallP95DeltaMs": 0.1,
+    "visitGpuP50DeltaMs": 0.132,
+    "visitWallP95DeltaMs": 0,
     "voidReason": null,
     "admissible": true,
     "inadmissibleReasons": []
