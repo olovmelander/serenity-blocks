@@ -2905,3 +2905,31 @@ wet-road reflections, signage and HUD all render correctly. **A before/after pix
 available and was not claimed** — the city layout is generated with `Math.random()`
 (`generateBuildingPool:2265-2267`), so two runs differ in building placement and signage regardless
 of this change. The visual argument rests on the call-graph table above, not on the image.
+
+### Correction: the fleet cell was overwritten with an outlier, and why it stays pre-fix
+
+**Retracted same day.** Commit `64d3cbac` replaced `reports/theme-perf/neon-district.json` with the
+after-arm's median cell. That was wrong twice over.
+
+**First, the cell was picked on the wrong axis.** It was selected as the median of the three
+admissible after-runs *by `drawCalls.p50`* — the axis the fix targets. On the axes nobody was
+looking at, that same cell is the arm's outlier: `switchWallMs` 1562.5 against an arm median of
+674.5, and `firstFrameGpuDoneMs` 2294 against the arm's own 1368.8 low. Published against §20's
+1202.7, it reads as a **1.9× regression produced by a change that made the theme faster**. Choosing
+a representative run requires checking the fields the change was *not* about; a median on one axis
+is not a median.
+
+**Second, and more basic: §20 is a single-run snapshot and a later cell does not belong in it.**
+All 61 cells carried runId `2026-08-25T10-14-42-798Z`, one adapter, one session — that shared
+provenance is exactly what makes the table comparable across themes. The overwrite left 60 cells on
+that runId and one on `11-38-09-628Z`. Regenerating `AGGREGATE.{md,json}` would have republished
+four tables against a cell from a different run.
+
+The cell is restored to the sweep run (61 cells, one runId; `AGGREGATE.md` and `AGGREGATE.json`
+regenerate byte-identical). **The §20 row for neon-district is therefore pre-fix by design.** The
+after-fix numbers are the n=3 table above and are not retro-fitted into the fleet snapshot — when
+the fleet is next swept end-to-end, the row updates with all the others.
+
+This is the fourth published claim in this document retracted by its own author (§19 records the
+first three). The common shape is unchanged: a number was checked on the axis under investigation
+and published without checking the axes it was not about.
