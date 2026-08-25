@@ -69,23 +69,6 @@ describe('theme perf bootstrap source', () => {
         );
     });
 
-    it('reads the draw counter according to whether Info was reset during the call', () => {
-        // Classic WebGLRenderer resets at the top of every render(), so the post value IS that
-        // call's count; a delta reads ~0 whenever consecutive frames draw the same amount — which
-        // is exactly how all 20 classic themes came back with 0 draws against ~1300 CPU samples.
-        // WebGPURenderer only resets from three's own loop, so there the delta is the right read.
-        expect(THEME_PERF_BOOTSTRAP).toContain('S.resetDuringCall');
-        expect(THEME_PERF_BOOTSTRAP).toContain('const d = reset ? S.drawsOf(rr) : Math.max(0, S.drawsOf(rr) - preD);');
-    });
-
-    it('reads the counter field each renderer kind actually exposes', () => {
-        // Classic WebGLInfo has calls and NO drawCalls; r185 common/Info has both. Reading
-        // drawCalls alone gave undefined -> NaN on all 20 classic themes, and NaN > 0 is false,
-        // so nothing was recorded and every one of those cells published a null draw count.
-        expect(THEME_PERF_BOOTSTRAP).toContain('Number.isFinite(rr.drawCalls) ? rr.drawCalls : rr.calls');
-        expect(THEME_PERF_BOOTSTRAP).toContain('if (Number.isFinite(d)) S.frameDraws += d;');
-    });
-
     it('owns Info before the backend guard, so a classic renderer is not skipped', () => {
         // A classic THREE.WebGLRenderer has no .backend, so arming behind that guard bailed
         // forever and every classic theme reported 0 draws. Ownership must precede it.
@@ -95,25 +78,17 @@ describe('theme perf bootstrap source', () => {
             .toBeLessThan(arm.indexOf('const backend = renderer.backend'));
     });
 
-    it('times only the OUTERMOST wrapped render call', () => {
-        // A post object whose render() re-enters a wrapped renderer.render() would otherwise have
-        // the inner span counted twice. That produced cpuSubmitMs p50 20.4 ms inside a 7.8 ms
-        // frame on neon-district — physically impossible, and briefly published as a CPU breach.
-        expect(THEME_PERF_BOOTSTRAP).toContain('S.renderDepth += 1;');
-        expect(THEME_PERF_BOOTSTRAP).toContain('const outermost = S.renderDepth === 1;');
-        expect(THEME_PERF_BOOTSTRAP).toContain('if (outermost) S.cpuAccumMs += now() - t;');
+    it('times CPU only at the outermost wrapped call, and banks draws when Info resets', () => {
+        // Behaviour — not text — is covered by tests/unit/theme-perf-nesting.test.js, which runs
+        // this bootstrap against stubs for both renderer kinds. These two assertions only pin the
+        // structural decisions that file cannot see: that a depth counter exists at all, and that
+        // the reset hook banks before delegating.
+        expect(THEME_PERF_BOOTSTRAP).toContain('S.renderDepth');
+        expect(THEME_PERF_BOOTSTRAP).toContain('S.bankOnReset();');
     });
 
     it('re-wraps render entries each lane frame, since post graphs are built after the renderer', () => {
         expect(THEME_PERF_BOOTSTRAP).toContain('if (S.renderer) S.wrapRenderEntries(S.renderer);');
-    });
-
-    it('counts draws by DELTA across each render call, so a theme owning Info does not break it', () => {
-        // Reading-then-resetting fought cosmic-noir/ocean/stillwater, which own Info themselves;
-        // the first measured cell came back 0 draws. The lane must not reset Info at all.
-        expect(THEME_PERF_BOOTSTRAP).toContain('S.countLeaf');
-        expect(THEME_PERF_BOOTSTRAP).not.toContain('S.renderer.info.reset()');
-        expect(THEME_PERF_BOOTSTRAP).toContain('S.infoResetsByTheme += 1');
     });
 });
 
