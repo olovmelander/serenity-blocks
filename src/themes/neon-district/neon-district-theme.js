@@ -25,6 +25,26 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
+import {
+    attribute,
+    uniform,
+    uniformTexture,
+    vec2,
+    vec3,
+    float,
+    sin,
+    cos,
+    atan,
+    mod,
+    mix,
+    step,
+    normalLocal,
+    positionLocal,
+    positionWorld,
+    smoothstep,
+    uv,
+    reflector,
+} from 'three/tsl';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
@@ -57,26 +77,6 @@ import {
     createProceduralBuildingNodeMaterialLOD2,
 } from './neon-district-lod-materials.js';
 import { NeonDistrictPost } from './neon-district-post.js';
-import {
-    attribute,
-    uniform,
-    uniformTexture,
-    vec2,
-    vec3,
-    float,
-    sin,
-    cos,
-    atan,
-    mod,
-    mix,
-    step,
-    normalLocal,
-    positionLocal,
-    positionWorld,
-    smoothstep,
-    uv,
-    reflector,
-} from 'three/tsl';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
@@ -2301,7 +2301,8 @@ export default class NeonDistrictTheme extends BaseTheme {
                 const u = uvAttribute.getX(j);
                 const v = uvAttribute.getY(j);
 
-                let repeatX, repeatY;
+                let repeatX;
+                let repeatY;
                 // BoxGeometry UV mapping:
                 // 0-3: Right (+x), 4-7: Left (-x)
                 // 8-11: Top (+y), 12-15: Bottom (-y)
@@ -2506,8 +2507,8 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.tier2Bounds = [];
 
         instances.forEach((inst, i) => {
-            const width = inst.width;
-            const depth = inst.depth;
+            const { width } = inst;
+            const { depth } = inst;
             const heightCap = this.maxHighDetailHeight || inst.height;
             const height = Math.min(inst.height, heightCap);
 
@@ -2555,7 +2556,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
             building.traverse((child) => {
                 if (!child.isMesh || !child.geometry) return;
-                const material = child.material;
+                const { material } = child;
                 if (!material) return;
                 const key = `${cellX}:${cellZ}:${material.uuid}`;
                 if (!clusters.has(key)) {
@@ -3934,7 +3935,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     updateInstancedBillboardsTime() {
-        const time = this.time;
+        const { time } = this;
         if (!this.instancedBillboardUniforms?.length) return;
         this.instancedBillboardUniforms.forEach((uniforms) => {
             if (uniforms?.uTime) uniforms.uTime.value = time;
@@ -6171,8 +6172,8 @@ export default class NeonDistrictTheme extends BaseTheme {
     createSynthCityBillboardInstances(instances, atlasInfo, isLarge) {
         if (!atlasInfo?.texture || !instances.length) return;
         const geometry = new THREE.PlaneGeometry(1, 1);
-        const cols = atlasInfo.cols;
-        const rows = atlasInfo.rows;
+        const { cols } = atlasInfo;
+        const { rows } = atlasInfo;
         const scaleX = 1 / cols;
         const scaleY = 1 / rows;
         const atlasCount = isLarge ? 18 : 5;
@@ -6336,8 +6337,8 @@ export default class NeonDistrictTheme extends BaseTheme {
     createAdInstanceMesh(instances, atlasInfo, isLarge) {
         if (!atlasInfo?.texture || !instances.length) return null;
         const geometry = new THREE.PlaneGeometry(1, 1);
-        const cols = atlasInfo.cols;
-        const rows = atlasInfo.rows;
+        const { cols } = atlasInfo;
+        const { rows } = atlasInfo;
         const scaleX = 1 / cols;
         const scaleY = 1 / rows;
         const atlasCount = isLarge ? 18 : 5;
@@ -7051,7 +7052,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const velocities = new Float32Array(particleCount);
         const sizes = new Float32Array(particleCount);
 
-        const camera = this.camera;
+        const { camera } = this;
         const camX = camera?.position.x ?? 0;
         const camY = camera?.position.y ?? 4;
         const camZ = camera?.position.z ?? 40;
@@ -7225,7 +7226,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const { positions, velocities, sizes } = this.rainInstanceData;
         const mesh = this.rainParticles;
         const dummy = this.rainInstanceDummy || (this.rainInstanceDummy = new THREE.Object3D());
-        const camera = this.camera;
+        const { camera } = this;
         const cfg = this.rainConfig;
 
         const camX = camera.position.x;
@@ -7852,7 +7853,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         }
 
         const applyAttributes = (mesh, data, isDouble) => {
-            const geometry = mesh.geometry;
+            const { geometry } = mesh;
             geometry.setAttribute('aFlight0', new THREE.InstancedBufferAttribute(data.flight0, 4));
             geometry.setAttribute('aFlight1', new THREE.InstancedBufferAttribute(data.flight1, 4));
             geometry.setAttribute('aFlight2', new THREE.InstancedBufferAttribute(data.flight2, 4));
@@ -8477,7 +8478,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         // SCENE LIGHTING - Night with visible buildings
         // ═══════════════════════════════════════════════════════════════════════════
 
-        const isWebGPU = this.isWebGPU;
+        const { isWebGPU } = this;
         // Ambient light - balanced for dark but reflective scene
         const ambientLight = new THREE.AmbientLight(0x334466, isWebGPU ? 0.3 : 0.35);
         this.scene.add(ambientLight);
@@ -9214,7 +9215,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
             if (spark.userData.life <= 0) {
                 // Remove dead spark
-                const poolType = spark.userData.poolType;
+                const { poolType } = spark.userData;
                 this.scene.remove(spark);
                 if (poolType === 'spark') {
                     this.releaseSparkMesh(spark);
