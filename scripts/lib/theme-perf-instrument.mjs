@@ -232,17 +232,23 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
         const orig = owner[m].bind(owner);
         owner[m] = function (...args) {
           S.mark('t6_firstRenderCall');
-          // ONLY THE OUTERMOST wrapped call is timed. A theme whose post object's render() re-enters
-          // a wrapped renderer.render() (or whose renderAsync delegates to its own render) would
-          // otherwise have the inner span counted twice — once by the inner wrapper and again inside
-          // the outer one. That produced cpuSubmitMs p50 20.4 ms inside a 7.8 ms frame on
-          // neon-district, which is physically impossible and was briefly published as a CPU budget
-          // breach. Draw counting is unaffected: countAround already sums deltas, which nest safely.
+          // ONLY THE OUTERMOST wrapped call is measured — for BOTH the CPU timer and the draw
+          // counter. A nested wrapped call's span and its Info delta are each fully contained in
+          // its parent's, so measuring at every depth counts the same work once per wrapped
+          // ancestor. neon-district nests four deep
+          // (post.render -> RenderPipeline.render -> QuadMesh.render -> renderer.render, plus a
+          // ReflectorNode full-scene re-render and ~12 bloom quads), which inflated its draws by
+          // ~3.5x and put cpuSubmitMs p50 at 20.4 ms inside a 7.8 ms frame.
+          //
+          // The CPU half was fixed in 71fcf9a9; that commit ALSO claimed "draw counting is
+          // unaffected... deltas nest safely", which was wrong and is corrected here. Verified by
+          // executing this bootstrap against a stub with the real call shape: a 601-draw frame
+          // reported 2,102 draws (3.498x) before this guard and 601 after.
           S.renderDepth += 1;
           const outermost = S.renderDepth === 1;
           const t = outermost ? now() : 0;
           try {
-            return S.countAround(() => orig(...args));
+            return outermost ? S.countAround(() => orig(...args)) : orig(...args);
           } finally {
             if (outermost) S.cpuAccumMs += now() - t;
             S.renderDepth -= 1;
@@ -730,8 +736,20 @@ export function reduceVisit(raw, { targetFps = 60 } = {}) {
             longTasks: raw.longTasks || null,
         },
         content: {
-            drawCalls: { p50: quantile(calls, 0.5), min: calls.length ? Math.min(...calls) : null, max: calls.length ? Math.max(...calls) : null },
-            triangles: { p50: quantile(tris, 0.5), min: tris.length ? Math.min(...tris) : null, max: tris.length ? Math.max(...tris) : null },
+            drawCalls: {
+                p05: quantile(calls, 0.05),
+                p50: quantile(calls, 0.5),
+                p95: quantile(calls, 0.95),
+                min: calls.length ? Math.min(...calls) : null,
+                max: calls.length ? Math.max(...calls) : null,
+            },
+            triangles: {
+                p05: quantile(tris, 0.05),
+                p50: quantile(tris, 0.5),
+                p95: quantile(tris, 0.95),
+                min: tris.length ? Math.min(...tris) : null,
+                max: tris.length ? Math.max(...tris) : null,
+            },
             steadyState: calls.length > 0 && Math.min(...calls) === Math.max(...calls),
             infoOwnership: (raw.infoResetsByTheme || 0) > 0 ? 'contested' : 'lane',
             geometries: raw.info?.geometries ?? null,
