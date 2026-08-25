@@ -2794,3 +2794,114 @@ run, which is where the error was found instead.
 **What was never affected:** pipeline counts, switch marks, GPU timestamps, heap, and every Stage-4
 A/B. Those used draws as an *invariance* guard (`131 → 131`), where a constant per-theme factor
 cancels exactly. The six fixed themes and the −46.5 % aggregate stand unchanged.
+
+## 22. neon-district — the static shadow map was redrawn every frame (459 → 395 draws, −13.9 %)
+
+**Commit `86bcf7ef`.** The fleet's only genuine budget breach (§20) spends 9.1 ms of CPU submission
+on ~460 draws per frame. 53 of those draws were a 4096×4096 shadow map being re-rendered every
+frame to produce a byte-identical texture.
+
+### The bug
+
+`finalizeStaticShadows()` already existed and already intended exactly this optimisation:
+
+```js
+this.renderer.shadowMap.needsUpdate = true;
+this.renderer.shadowMap.autoUpdate = false;
+```
+
+On the WebGPU path both writes land on a plain object. `Renderer.shadowMap` is only
+`{ enabled, transmitted, type }` (`three/src/renderers/common/Renderer.js:703-707`) — it has no
+`autoUpdate` and no `needsUpdate`, so assigning them creates two properties nothing reads. The gate
+the TSL shadow path actually consults is **`LightShadow.autoUpdate`**
+(`three/src/nodes/lighting/ShadowNode.js:855`), which defaults to `true`
+(`three/src/lights/LightShadow.js:148`).
+
+This is the ADR-0019 failure mode in its purest form: code that gates on the *renderer object* rather
+than on what the renderer kind actually reads. The method was not dead — it ran on every theme load,
+returned cleanly, and did nothing.
+
+The fix sets the flag the shadow path reads, per shadow-casting light, and asks for exactly one draw:
+
+```js
+this.scene?.traverse((object) => {
+    if (!object.isLight || !object.castShadow || !object.shadow) return;
+    object.shadow.autoUpdate = false;
+    object.shadow.needsUpdate = true;
+});
+```
+
+The two `renderer.shadowMap` writes are **kept** — the classic WebGL path does read them, and this
+theme is reachable on both kinds.
+
+### Why freezing is safe here (checked, not assumed)
+
+A frozen shadow map is only correct if neither the light nor any caster ever moves. Verified by
+tracing the call graph rather than by inspection of the render loop:
+
+| requirement | evidence |
+|---|---|
+| one shadow-casting light | `dirLight`, `setupSceneLighting:8491` — the only `castShadow` light in the theme |
+| the light never moves | positioned once at `:8488`; stored as `this.mainShadowLight:8508`, **which is never read anywhere in `src/`** |
+| all casters exist before the freeze | the 6 `castShadow = true` sites live in `createSimplifiedTower`, `createComplexTower`, `createStorefront`, `addGroundLevelDetails`, `createHlodClusters`; every one is reached from `createBuildings()` before its last statement, `finalizeStaticShadows()` at `:2095` |
+| no caster is streamed in later | `createBuildingFromPool` has exactly **one** call site (`:2060`, inside `createBuildings`), there is no `recycleBuilding`, and `generateBuildingPool` self-guards on `buildingPool.length > 0` |
+| casters do not move | the merged meshes set `matrixAutoUpdate = false` + `updateMatrix()` at creation (`:2235-2236`, `:2588-2589`) |
+| background content adds no casters | `loadRemainingContentInBackground` creates rain, wires, flying vehicles and ground traffic — none of them sets `castShadow` |
+
+The hazard this leaves behind is recorded in the source: anything added later that sets `castShadow`
+must also set `light.shadow.needsUpdate = true`, or its shadow will simply be absent. `ShadowNode`
+clears that flag itself once the map is drawn (`ShadowNode.js:869-877`), so a one-shot request is
+the whole contract.
+
+### Measured, n=3 admissible per arm
+
+Both arms at `--perf-idle-ms 10000`, matching the protocol of all 61 fleet cells.
+
+| field | before (med, range) | after (med, range) | delta |
+|---|---:|---:|---:|
+| **draws p50** | **459** (416–476) | **395** (370–411) | **−13.9 %** |
+| **cpu submit p95 (ms)** | **9.1** (9.1–9.1) | **8.6** (8.5–8.6) | **−5.5 %** |
+| triangles p50 | 71,481 (71,389–71,905) | 70,585 (70,477–70,685) | −1.3 % |
+| gpu p95 (ms) | 1.442 (1.442–1.507) | 1.442 (1.245–1.442) | 0.0 % |
+| wall p50 (ms) | 15.0 (15.0–15.0) | 14.9 (14.9–15.0) | −0.7 % |
+| wall p95 (ms) | 22.9 (22.8–23.0) | 23.1 (22.8–23.2) | +0.9 % |
+| frames over 16.67 ms | 11.8 % (11.3–13.4) | 12.8 % (10.2–12.9) | within noise |
+| switch wall (ms) | 663.7 (652.5–1209.3) | 674.5 (666.2–1562.5) | within noise |
+
+`cpu submit p95` is the sharp axis: the before arm read **9.1 ms in all three runs** and the after arm
+**8.5–8.6**, non-overlapping. `draws p50` carries ±30 of per-run noise from procedural city layout,
+and the ranges still separate (min before 416 > max after 411). The −64 draw median is consistent
+with the 53-draw shadow pass plus that noise.
+
+**What this did not fix.** Wall p95 did not move. neon-district still misses ~12 % of 60 Hz frames
+and remains the fleet's only theme breaching both `frameP95Ms` and `split.cpuMaxMs` (§20). This
+removed a whole redundant render pass and bought 0.5 ms; the remaining 8.6 ms sits in the ~395 draws
+that are still there — reflector layer mask (~168 draws), grime/debris (~139), storefront signs (~74).
+A real win, and a partial one.
+
+### Two method notes, recorded because both cost runs
+
+**The arms were nearly mismatched.** `PERF_LANE_DEFAULTS.idleMs` is 20 000 ms, but every committed
+fleet cell was measured at 10 000 ms via an explicit flag. The first after-sweep omitted the flag and
+silently ran a 20 s window — same p50, double the samples, and outlier `max` values (828 ms, 852 ms)
+that a 10 s window never sees. Caught by reading `idle.windowMs` out of the cells rather than by
+trusting that two runs of "the same command" were the same measurement. Those three cells are kept
+under `reports/theme-perf-nd-shadow/w20-unmatched/` rather than deleted.
+
+**The after arm voids more often than the before arm, and it is the fix's own fault.** 4 of 7 after-runs
+were voided by the pin `rendererPixelRatio moved 1 -> 0.9`; 0 of 3 before-runs were. That 0.9 is the
+resolution-tier *startup recommendation* for a 3.6–5.5 MPx display
+(`desktop-performance-policy.js:129`), applied asynchronously on a wall-clock schedule from page
+load. A faster switch opens the idle window earlier, so the settings pass now lands *inside* the
+window instead of before it. Admissibility filtering is therefore not neutral here — but it biases
+**against** the fix: the surviving after-cells skew to higher draw counts (411, 395, 370) than the
+voided ones (342, 368, 351, 362). The reported −13.9 % is a floor. Raising `--perf-settle-ms` past
+the settings pass would remove the confound for future runs; it was not changed mid-measurement.
+
+### ADR-0007
+
+Screenshot captured on an admissible run, `passed=true`, zero genuine console errors: buildings,
+wet-road reflections, signage and HUD all render correctly. **A before/after pixel diff is not
+available and was not claimed** — the city layout is generated with `Math.random()`
+(`generateBuildingPool:2265-2267`), so two runs differ in building placement and signage regardless
+of this change. The visual argument rests on the call-graph table above, not on the image.
