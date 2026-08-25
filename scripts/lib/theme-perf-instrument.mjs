@@ -60,7 +60,8 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     infoResetsByTheme: 0,
     infoOwned: false,
     renderDepth: 0,
-    childRan: false,
+    bankedDraws: 0,
+    bankedTris: 0,
     cpuAccumMs: 0,
     wrapped: [],
     rings: { wall: [], cpu: [], gpu: [], calls: [], tris: [] },
@@ -177,6 +178,7 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
       renderer.info.reset = function () {
         S.infoResetsByTheme += 1;
         S.resetDuringCall = true;
+        S.bankOnReset();
         return origReset();
       };
       S.infoResetsByTheme = 0;
@@ -257,10 +259,24 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
           // (really 533), bioluminescence and geode. A WebGPURenderer does not reset per call, so
           // its leaves' deltas sum to the frame total with no double count. Summing leaves is
           // correct for both; reading the outermost is correct for neither.
-          S.childRan = false;
-          S.resetDuringCall = false;
+          // THREE metrics, THREE rules — and each was wrong once before it was right.
+          //
+          // CPU: the OUTERMOST call. A nested span sits inside its parent's.
+          //
+          // Draws: depends on whether Info was reset anywhere in the frame, which is a property of
+          // the renderer KIND and cannot be assumed:
+          //   * classic WebGLRenderer resets at the top of every render() (WebGLRenderer.js:1702),
+          //     so the outermost value is only the LAST pass — reading it gave crystal-cave 1 draw
+          //     instead of 185. Summing leaves is the only correct read there.
+          //   * WebGPURenderer never resets mid-frame, so the outermost DELTA is the whole frame,
+          //     including draws made by a call that also has children. Summing leaves misses those:
+          //     neon-district's scene pass draws the city AND re-enters renderer.render through
+          //     ReflectorNode, which made the scene pass a non-leaf and under-counted it by ~2x
+          //     (260 against a true ~490).
+          // So: sum leaves when a reset happened, otherwise take the outermost delta.
           S.renderDepth += 1;
           const outermost = S.renderDepth === 1;
+          if (outermost) { S.bankedDraws = 0; S.bankedTris = 0; }
           const t = outermost ? now() : 0;
           const rr0 = S.renderer && S.renderer.info && S.renderer.info.render;
           const preD = rr0 ? S.drawsOf(rr0) : 0;
@@ -269,11 +285,10 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
             return orig(...args);
           } finally {
             S.renderDepth -= 1;
-            if (outermost) S.cpuAccumMs += now() - t;
-            // A leaf is a wrapped call during which no nested wrapped call ran.
-            if (!S.childRan) S.countLeaf(preD, preT, S.resetDuringCall);
-            // Tell whichever wrapped call encloses this one that it is not a leaf.
-            S.childRan = true;
+            if (outermost) {
+              S.cpuAccumMs += now() - t;
+              S.closeFrame(preD, preT);
+            }
           }
         };
       }
@@ -309,15 +324,25 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
   // Called on the way out of a LEAF render (one that contained no nested wrapped call).
   // The reset flag distinguishes the two kinds: a classic renderer cleared the counters on entry, so the
   // post value IS this call's contribution; a WebGPU renderer accumulated, so the delta is.
-  S.countLeaf = (preD, preT, reset) => {
+  // Called from the wrapped info.reset, BEFORE the counters are cleared. This is the only moment
+  // the about-to-be-destroyed counts are observable.
+  S.bankOnReset = () => {
     const rr = S.renderer && S.renderer.info && S.renderer.info.render;
     if (!rr) return;
-    const d = reset ? S.drawsOf(rr) : Math.max(0, S.drawsOf(rr) - preD);
-    const tri = reset ? rr.triangles : Math.max(0, rr.triangles - preT);
-    if (Number.isFinite(d)) S.frameDraws += d;
-    if (Number.isFinite(tri)) S.frameTris += tri;
+    const d = S.drawsOf(rr);
+    if (Number.isFinite(d)) S.bankedDraws += d;
+    if (Number.isFinite(rr.triangles)) S.bankedTris += rr.triangles;
   };
 
+  // Frame total = everything banked at resets + what survived to the end - what was there at start.
+  S.closeFrame = (preD, preT) => {
+    const rr = S.renderer && S.renderer.info && S.renderer.info.render;
+    if (!rr) return;
+    const d = S.bankedDraws + S.drawsOf(rr) - preD;
+    const tri = S.bankedTris + rr.triangles - preT;
+    if (Number.isFinite(d) && d > 0) S.frameDraws += d;
+    if (Number.isFinite(tri) && tri > 0) S.frameTris += tri;
+  };
 
   // ---- 5) GPU RESOLVE — ONE PUSH PER RESOLVED QUERY ----------------------------------------
   S.resolveRender = () => {

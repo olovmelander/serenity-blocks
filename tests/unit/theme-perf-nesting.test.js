@@ -20,7 +20,7 @@ function runFrame(drawsPerPass, leafPasses, resetsPerCall = false) {
         render: {
             drawCalls: 0, triangles: 0, calls: 0, frame: 0,
         },
-        reset() {},
+        reset() { info.render.drawCalls = 0; info.render.triangles = 0; },
     };
     const renderer = {
         isWebGPURenderer: true,
@@ -29,7 +29,7 @@ function runFrame(drawsPerPass, leafPasses, resetsPerCall = false) {
         render() {
             // A classic WebGLRenderer clears Info at the top of every render()
             // (WebGLRenderer.js:1702); a WebGPURenderer does not.
-            if (resetsPerCall) { info.render.drawCalls = 0; info.render.triangles = 0; info.reset(); }
+            if (resetsPerCall) info.reset();
             info.render.drawCalls += drawsPerPass;
             info.render.triangles += drawsPerPass * 100;
         },
@@ -115,5 +115,62 @@ describe('nested render entries are measured once, not once per ancestor', () =>
         expect(draws).toBe(20);
         // A second frame must start from a clean depth, not an accumulated one.
         expect(runFrame(10, 2).draws).toBe(20);
+    });
+});
+
+describe('a call that draws AND has a child (the ReflectorNode shape)', () => {
+    // neon-district's scene pass draws the city and, partway through, ReflectorNode calls
+    // renderer.render again for the reflection. That makes the scene pass a NON-leaf, so
+    // leaf-only counting silently dropped its direct draws and under-counted by ~2x
+    // (260 measured against a true ~490). Both readings looked plausible; only this shape
+    // separates them.
+    function runReflectorFrame(resetsPerCall) {
+        const info = {
+            render: {
+                drawCalls: 0, triangles: 0, calls: 0, frame: 0,
+            },
+            reset() { info.render.drawCalls = 0; info.render.triangles = 0; },
+        };
+        let depth = 0;
+        const renderer = {
+            isWebGPURenderer: true,
+            info,
+            render() {
+                if (resetsPerCall) info.reset();
+                info.render.drawCalls += 100; // the scene's own draws
+                info.render.triangles += 10000;
+                if (depth === 0) { // mid-pass, the reflector re-enters
+                    depth += 1;
+                    renderer.render();
+                    depth -= 1;
+                }
+            },
+        };
+        const post = { render() { renderer.render(); } };
+        const theme = { renderer: null, post };
+        const win = {
+            performance: { now: () => Date.now() },
+            requestAnimationFrame: () => 0,
+            PerformanceObserver: function PO() { return { observe() {} }; },
+        };
+        const HC = function HC() {}; HC.prototype = { getContext() { return null; } };
+        // eslint-disable-next-line max-len
+        new Function('window', 'performance', 'requestAnimationFrame', 'PerformanceObserver', 'HTMLCanvasElement', 'GPUDevice', THEME_PERF_BOOTSTRAP)(win, win.performance, win.requestAnimationFrame, win.PerformanceObserver, HC, undefined);
+        const S = win.__THEME_PERF__;
+        S.noteThemeStart(theme);
+        theme.renderer = renderer;
+        S.theme = theme;
+        S.wrapRenderEntries(renderer);
+        S.frameDraws = 0; S.frameTris = 0;
+        post.render();
+        return S.frameDraws;
+    }
+
+    it('counts the parent pass AND the nested reflection on a WebGPU renderer', () => {
+        expect(runReflectorFrame(false)).toBe(200);
+    });
+
+    it('counts both on a classic renderer, where each render resets Info', () => {
+        expect(runReflectorFrame(true)).toBe(200);
     });
 });
