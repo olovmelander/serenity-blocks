@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-25T09:52:16.734Z",
-  "runId": "2026-08-25T09-12-06-989Z",
+  "generatedAt": "2026-08-25T10:55:04.016Z",
+  "runId": "2026-08-25T10-14-42-798Z",
   "theme": "blood-moon",
   "themeMeta": {
     "displayName": "Blood Moon",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T09-12-06-989Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T10-14-42-798Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -135,10 +135,10 @@
     "samples": 20107,
     "luminance": {
       "min": 0.5696,
-      "max": 254.99999999999997,
-      "mean": 12.673996419157252,
-      "range": 254.43039999999996,
-      "variance": 440.7440951826353
+      "max": 253,
+      "mean": 11.847970368527765,
+      "range": 252.4304,
+      "variance": 399.7312828605192
     }
   },
   "console": {
@@ -152,21 +152,21 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-25T09:51:47.936Z",
+        "timestamp": "2026-08-25T10:54:35.216Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T09:52:05.725Z",
+        "timestamp": "2026-08-25T10:54:53.016Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T09:52:14.394Z",
+        "timestamp": "2026-08-25T10:55:01.674Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -177,8 +177,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-25T09:52:14.431Z",
-    "runId": "2026-08-25T09-12-06-989Z",
+    "generatedAt": "2026-08-25T10:55:01.707Z",
+    "runId": "2026-08-25T10-14-42-798Z",
     "theme": "blood-moon",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -328,131 +328,131 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 677.9
+          "atMs": 699
         },
         {
           "kind": "webgl",
-          "atMs": 1045.2
+          "atMs": 1059.6
         },
         {
           "kind": "2d",
-          "atMs": 1045.2
+          "atMs": 1059.8
         },
         {
           "kind": "2d",
-          "atMs": 1046.1
+          "atMs": 1060.7
         },
         {
           "kind": "2d",
-          "atMs": 1080.3
+          "atMs": 1094.8
         },
         {
           "kind": "webgl",
-          "atMs": 1087.8
+          "atMs": 1102.3
         },
         {
           "kind": "2d",
-          "atMs": 1142.1
+          "atMs": 1156.5
         },
         {
           "kind": "2d",
-          "atMs": 1142.1
+          "atMs": 1156.6
         },
         {
           "kind": "2d",
-          "atMs": 1143.1
+          "atMs": 1157.4
         },
         {
           "kind": "2d",
-          "atMs": 1143.1
+          "atMs": 1157.5
         },
         {
           "kind": "2d",
-          "atMs": 1155.4
+          "atMs": 1160.3
         },
         {
           "kind": "2d",
-          "atMs": 1753.1
+          "atMs": 1874.8
         },
         {
           "kind": "2d",
-          "atMs": 1761.2
+          "atMs": 1883
         },
         {
           "kind": "2d",
-          "atMs": 1766.4
+          "atMs": 1888.2
         },
         {
           "kind": "2d",
-          "atMs": 1772.2
+          "atMs": 1893.6
         },
         {
           "kind": "2d",
-          "atMs": 1778.2
+          "atMs": 1898.3
         },
         {
           "kind": "2d",
-          "atMs": 1783.1
+          "atMs": 1903.5
         },
         {
           "kind": "2d",
-          "atMs": 1881.8
+          "atMs": 2015.7
         },
         {
           "kind": "2d",
-          "atMs": 1887.6
+          "atMs": 2021.9
         },
         {
           "kind": "2d",
-          "atMs": 1892.8
+          "atMs": 2027.8
         },
         {
           "kind": "2d",
-          "atMs": 4052.7
+          "atMs": 4068.8
         },
         {
           "kind": "2d",
-          "atMs": 4052.7
+          "atMs": 4068.8
         },
         {
           "kind": "webgl2",
-          "atMs": 4379.1
+          "atMs": 4504.4
         },
         {
           "kind": "2d",
-          "atMs": 4416.1
+          "atMs": 4540.1
         },
         {
           "kind": "2d",
-          "atMs": 4416.4
+          "atMs": 4540.5
         },
         {
           "kind": "2d",
-          "atMs": 4416.6
+          "atMs": 4540.7
         },
         {
           "kind": "2d",
-          "atMs": 4416.8
+          "atMs": 4540.9
         },
         {
           "kind": "2d",
-          "atMs": 4417
+          "atMs": 4541
         },
         {
           "kind": "2d",
-          "atMs": 4417.1
+          "atMs": 4541
         },
         {
           "kind": "2d",
-          "atMs": 5935
+          "atMs": 6051.6
         },
         {
           "kind": "2d",
-          "atMs": 5941.1
+          "atMs": 6057.4
         },
         {
           "kind": "2d",
-          "atMs": 5947.2
+          "atMs": 6062.6
         }
       ],
       "wrapped": [
@@ -492,41 +492,41 @@
       "visit2SyncCount": 0
     },
     "switchTimings": {
-      "switchWallMs": 1605.8,
+      "switchWallMs": 1595.7,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 18.5,
-      "rendererCreatedMs": 46.7,
-      "criticalReadyMs": 1605.8,
-      "firstRenderCallMs": 84.8,
-      "firstFrameGpuDoneMs": 1657.5,
+      "createSceneEnterMs": 16.9,
+      "rendererCreatedMs": 47.2,
+      "criticalReadyMs": 1595.8,
+      "firstRenderCallMs": 83.5,
+      "firstFrameGpuDoneMs": 1649.4,
       "firstFrameGpuDoneMethod": "fenceSync",
-      "allQuiescedGpuDoneMs": 3738.8,
+      "allQuiescedGpuDoneMs": 3736.2,
       "allQuiescedGpuDoneMethod": "fenceSync",
       "quietWaitFloorMs": 2000,
-      "firstFrameRafMs": 3745.6,
-      "visit2SwitchWallMs": 395.1
+      "firstFrameRafMs": 3743.7,
+      "visit2SwitchWallMs": 393.5
     },
     "idle": {
-      "windowMs": 10005.2,
-      "framesObserved": 1309,
+      "windowMs": 10001.3,
+      "framesObserved": 1308,
       "wall": {
-        "samples": 1308,
+        "samples": 1307,
         "p50": 7.6,
         "p95": 8.2,
-        "p99": 8.6,
+        "p99": 8.5,
         "min": 7,
-        "max": 9,
+        "max": 8.8,
         "budgetMs": 16.667,
         "overBudget": 0
       },
       "cpuSubmitMs": {
-        "samples": 1309,
+        "samples": 1308,
         "p50": 0.5,
         "p95": 0.7,
         "p99": 0.7,
         "min": 0.2,
-        "max": 1.1
+        "max": 0.9
       },
       "gpuMs": {
         "samples": 0,
@@ -574,15 +574,15 @@
       "contentGuardAdmissible": false
     },
     "memory": {
-      "peakHeapMB": 30.63,
-      "p50HeapMB": 28.57,
+      "peakHeapMB": 31.06,
+      "p50HeapMB": 28.52,
       "heapSamples": 40,
       "heapDrops": 12,
       "allocBytesPerFrame": null,
       "allocVoidReason": "12 GC(s) inside the window",
-      "gcPerSecond": 1.199,
+      "gcPerSecond": 1.2,
       "gcCount": 12,
-      "cdpHeapDeltaBytes": 2376336,
+      "cdpHeapDeltaBytes": 2662776,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {
