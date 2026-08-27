@@ -140,19 +140,19 @@
     "koffi": "2.15.1"
   },
   "devDependencies": {
-    "@rollup/plugin-replace": "^6.0.2",
-    "dependency-cruiser": "^18.0.0",
-    "electron": "^38.8.6",
+    "@rollup/plugin-replace": "^6.0.3",
+    "dependency-cruiser": "^18.2.0",
+    "electron": "^43.4.1",
     "electron-builder": "^26.4.0",
     "eslint": "8.57.1",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.29.1",
     "fast-check": "^4.9.0",
     "node-fetch": "^3.3.2",
-    "prettier": "^3.3.3",
-    "typescript": "^5.9.3",
-    "vite": "^5.4.11",
-    "vitest": "^3.2.6"
+    "prettier": "^3.9.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=20"
