@@ -66,7 +66,11 @@ const VALUE_OPTIONS = new Set([
 ]);
 // The perf lane's own defaults. Kept beside the option names so a reader sees both at once.
 export const PERF_LANE_DEFAULTS = Object.freeze({
-    idleMs: 20_000,
+    // 10_000 matches every committed cell under reports/theme-perf/. The old default (20_000)
+    // never matched any of them, so omitting --perf-idle-ms silently produced a different
+    // measurement — same p50, double the samples, max outliers a 10 s window never sees. It cost
+    // three runs on 2026-08-25 (sweep doc section 22) before anyone noticed.
+    idleMs: 10_000,
     settleMs: 4_000,
     quality: 'High',
     targetFps: 60,

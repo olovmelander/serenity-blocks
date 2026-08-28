@@ -1844,6 +1844,10 @@ async function runThemePerfLane(win, config, gpuDiagnostics) {
                 'enable-precise-memory-info',
             ],
             idleMs: config.perfIdleMs,
+            // Stamped 2026-08-25: settleMs shapes the cell (it decides where the idle window
+            // opens) but was only recoverable from the source, not the data — the one manifest
+            // gap section 10 flagged. Every cell before this carries the lane default (4000).
+            settleMs: config.perfSettleMs,
             quality: config.perfQuality,
             targetFps: config.perfTargetFps,
             electronGpuDiagnostics: gpuDiagnostics ?? null,
