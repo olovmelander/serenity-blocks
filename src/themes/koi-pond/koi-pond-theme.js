@@ -467,6 +467,17 @@ export default class KoiPondTheme extends BaseTheme {
                 // context the live frame never looks up, and then compiled AGAIN on the first post
                 // frame. The cell showed both halves: 35 async pipelines summing 5,182 ms, then
                 // 41 more created synchronously.
+                //
+                // ADDED 2026-08-25, the pin this fix originally missed (stillwater's 0b15db5d had
+                // it): PassNode.setup() has not run at warm time, so the scene-pass target still
+                // carries RenderTarget defaults (samples 1) while the live pass runs at
+                // renderer.samples (4), and the WebGPU pipeline cache key hashes sample count.
+                // The post-fix cell showed the residue exactly: 41 sync pipelines, 100% of them
+                // samples:4 — warmed once at the wrong sample count, compiled again live.
+                if (this.post?.scenePass?.renderTarget) {
+                    this.post.scenePass.renderTarget.samples = this.renderer.samples;
+                    this.post.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                }
                 await compileGroupThroughPost(
                     this.renderer,
                     this.post,
