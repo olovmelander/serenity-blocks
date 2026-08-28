@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-28T09:07:05.789Z",
-  "startedAt": "2026-08-28T09:06:17.964Z",
-  "runId": "2026-08-28T09-06-17-963Z",
+  "generatedAt": "2026-08-28T09:15:43.877Z",
+  "startedAt": "2026-08-28T09:14:58.685Z",
+  "runId": "2026-08-28T09-14-58-685Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,19 +23,19 @@
     "perfTargetFps": 60
   },
   "selectedThemes": [
-    "stillwater"
+    "ocean"
   ],
   "results": [
     {
-      "theme": "stillwater",
-      "displayName": "Stillwater",
+      "theme": "ocean",
+      "displayName": "Ocean",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\stillwater.png",
-      "report": "docs\\theme-screenshots\\results\\stillwater.json",
+      "screenshot": "docs\\theme-screenshots\\ocean.png",
+      "report": "docs\\theme-screenshots\\results\\ocean.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
-      "perfCell": "reports\\theme-perf-ab-batch4\\stillwater\\stillwater.json",
+      "perfCell": "reports\\theme-perf-ab-batch4\\ocean\\ocean.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
