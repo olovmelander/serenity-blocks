@@ -2334,3 +2334,45 @@ This is now the reference conversion for a no-post theme: **one import, six line
 the kill-check margin (delta 1,567 ms vs before-spread 715 ms) is the widest in the campaign.
 ADR-0007: the lane's own per-run screenshot + console gate passed on all six runs; the change
 touches compile scheduling only, so the rendered image is unchanged by construction.
+
+## 24. ice-temple — 3,414 ms → 1,614 ms (−52.7 %), koi-pond's bug in a second theme
+
+**Commit `35182401` (change), this section (evidence). 2026-08-26.** Both arms n=3 admissible, same
+instrument build, `--perf-idle-ms 10000`.
+
+ice-temple's `precompileSceneWithTimeout()` raced a **bare** `compileAsync` against a 3 s budget —
+with no target bound, while the live frame draws through `postProcessing.render()` into an
+`rgba16float|4|depth24plus` scene pass. That is koi-pond's §17 shape: the warm compiled 11 async
+pipelines under a context the live frame partly never looks up, and the first post frame created
+**28 more synchronously — 15 of them the scene-pass shape** — behind a ~1,326 ms after-gap. The fix
+binds the warm through the post stack (already awaited at the `createScene` call site), pins
+`renderTarget.samples`/`texture.type` first (stillwater's `0b15db5d` pin — `PassNode.setup()` has
+not run yet), and fans out at concurrency 6. The 3 s timeout race is kept.
+
+| field | before (med, range) | after (med, range) | delta |
+|---|---:|---:|---:|
+| **firstFrame (ms)** | **3,414.1** (3,387.0–3,511.8) | **1,613.7** (1,594.0–1,629.2) | **−52.7 %** |
+| switchWall (ms) | 2,113.1 (2,060.8–2,146.1) | 1,333.0 (1,313.1–1,347.4) | −36.9 % |
+| after-gap (ms) | 1,326.2 (1,301.0–1,365.7) | 280.9 (280.7–281.8) | −78.8 % |
+| async / sync | 11/28 (exact ×3) | 15/13 (exact ×3) | +4 / −15 |
+| asyncSum (ms) | 1,400.0 | 4,061.9 | +190 % |
+| parallelism | 0.66x (exact ×3) | 3.03x (2.94–3.06) | 4.6x |
+| draws p50 | 114 (112–115) | 110 (109–113) | ranges overlap |
+| tris p50 | 43,271 | 43,263 | −0.0 % |
+| cpu p95 / wall p95 (ms) | 2.5 / 8.2 | 2.3 / 8.2 | unchanged |
+
+The residue confirms the mechanism rather than merely the outcome: the before-arm's 28 sync rows
+included **15 × `rgba16float|4|depth24plus`** (scene pipelines recompiled at the live sample count);
+the after-arm has **zero** of that shape — its 13 sync rows are 10 × `rgba16float|1` (the post
+graph's own bloom-chain pipelines, which a scene warm cannot reach) plus three singletons.
+`asyncSum` nearly tripled because the bind converted work that used to happen twice — once
+invisibly async at the wrong key, once sync on the live frame — into once, measured. Both the
+switch and the gap got faster: unlike koi-pond (which traded nothing) and stillwater (which traded
+switch for gap), ice-temple's fan-out sped up the in-switch compile *and* the bind killed the
+post-switch storm.
+
+Unlike stillwater's MRT tier there is no skip branch: this site already ran bare unconditionally,
+so a null post stack falling through to an unbound fan-out is today's context, strictly faster.
+ADR-0007: lane screenshot + console gates passed on all six runs; compile scheduling and
+r185-equivalent target normalisation only (the pin duplicates `PassNode.js:765-767`), so the
+rendered image is unchanged by construction.
