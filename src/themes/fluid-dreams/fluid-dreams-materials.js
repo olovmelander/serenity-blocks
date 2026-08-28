@@ -28,6 +28,7 @@ import {
     fract,
     Fn,
     If,
+    Loop,
     instanceIndex,
     length,
     max,
@@ -308,7 +309,11 @@ export function createFluidHeroNodeMaterial(options = {}) {
         const realHit = float(0.0).toVar();
         const hitPos = vec3(0.0, 0.0, 0.0).toVar();
 
-        for (let i = 0; i < marchSteps; i += 1) {
+        // Loop() (2026-08-26, sweep §40 step 3): the JS for-loop UNROLLED 72 If-blocks into the
+        // fragment. Steps 1-2 proved the helper inlining was not the DXC pole -- the unrolled
+        // branch chain is. Loop() emits ONE real WGSL loop with the identical body; same
+        // semantics (the done flag short-circuits exactly as before), different code shape.
+        Loop(marchSteps, () => {
             If(done.equal(float(0.0)), () => {
                 const p = ro.add(rd.mul(t));
                 const d = callSDF(p);
@@ -322,7 +327,7 @@ export function createFluidHeroNodeMaterial(options = {}) {
                     done.assign(1.0);
                 });
             });
-        }
+        });
 
         const nrm = sceneNormal(hitPos);
         const view = normalize(cameraPosition.sub(hitPos));
