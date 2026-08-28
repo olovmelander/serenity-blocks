@@ -79,9 +79,23 @@ export const ELECTRIC_TETROMINO_TINTS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Polynomial smooth-min (IQ): blends two SDFs smoothly with knob k.
+// setLayout (2026-08-26, sweep §40): without one, a TSL Fn is INLINE — its body re-emitted at
+// every call site. sminPoly is called 7x inside sceneSDF, which the hero raymarch inlines 76x
+// (72 march steps + 4 normal taps): ~532 inlined bodies in one fragment, the exact superlinear
+// DXC pathology the skill table documents (a 20-call fragment was 113 KB / 3.7 s; layouts alone
+// took it to 14 KB / 1.9 s). Both fns here are pure (all state via params), matching three's own
+// BSDF layout pattern. Same math, one WGSL fn + calls — visually inert by construction.
 const sminPoly = Fn(([a, b, k]) => {
     const h = clamp(float(0.5).add(b.sub(a).mul(0.5).div(k)), float(0.0), float(1.0));
     return mix(b, a, h).sub(k.mul(h).mul(float(1.0).sub(h)));
+}).setLayout({
+    name: 'fd_sminPoly',
+    type: 'float',
+    inputs: [
+        { name: 'a', type: 'float' },
+        { name: 'b', type: 'float' },
+        { name: 'k', type: 'float' },
+    ],
 });
 
 // Sample the 5-stop electric palette by t in [0,1) — smooth, wraps.
@@ -92,6 +106,17 @@ const samplePaletteRamp = Fn(([t, c0, c1, c2, c3, c4]) => {
     const m23 = mix(m12, c3, smoothstep(float(0.5), float(0.75), tw));
     const m34 = mix(m23, c4, smoothstep(float(0.75), float(1.0), tw));
     return m34;
+}).setLayout({
+    name: 'fd_samplePaletteRamp',
+    type: 'vec3',
+    inputs: [
+        { name: 't', type: 'float' },
+        { name: 'c0', type: 'vec3' },
+        { name: 'c1', type: 'vec3' },
+        { name: 'c2', type: 'vec3' },
+        { name: 'c3', type: 'vec3' },
+        { name: 'c4', type: 'vec3' },
+    ],
 });
 
 // 3D curl from three offset noise samples — cheap, divergence-free-ish.
