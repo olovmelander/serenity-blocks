@@ -368,6 +368,14 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     if (!S.laneRunning) return;
     S.laneFrameId += 1;
     if (S.renderer) S.wrapRenderEntries(S.renderer);
+    // Re-assert every tick, same pattern as the re-wrap above: armWhenReady arms ONCE, and any
+    // theme that writes backend.trackTimestamp = false afterwards used to win permanently —
+    // stellar-velocity's entire GPU column was void for exactly this (stillwater had the same
+    // disarm class, fixed theme-side in 0b15db5d). Guarded on trackTimestampArmed so this never
+    // arms a device that lacks the feature.
+    if (S.trackTimestampArmed && S.renderer && S.renderer.backend) {
+      S.renderer.backend.trackTimestamp = true;
+    }
     if (S.lastFrameAt) S.rings.wall.push(t - S.lastFrameAt);
     S.lastFrameAt = t;
     if (S.cpuAccumMs > 0) { S.rings.cpu.push(S.cpuAccumMs); S.cpuAccumMs = 0; }
