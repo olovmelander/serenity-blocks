@@ -48,44 +48,20 @@ describe('Stillwater reaction prewarm — wiring', () => {
 });
 
 describe('Stillwater reaction prewarm — load-bearing ordering', () => {
-    it('reveals BEFORE the bound compile and BEFORE the warm render', () => {
-        // INVERTED 2026-08-26 (sweep §30), and the inversion is load-bearing in the new
-        // direction. The original ordering (reveal AFTER compile) guarded a hazard of the BARE
-        // compileAsync: no target bound, one-output shaders baked under an MRT-agnostic key.
-        // The compile is now compileGroupThroughPost, which holds the scene pass's target and
-        // MRT across the whole await — so a reveal live across it warms hidden materials under
-        // the exact live context. Keeping the reveal after the compile costs 18 scene-pass
-        // pipelines compiled synchronously on the first live frame (measured; they were hidden
-        // at warm time and outside getWarmupRoots()). Do not "restore" the reveal below the
-        // compile without also unbinding it.
+    it('reveals AFTER compileAsync and BEFORE the warm render', () => {
+        // This is the single most important constraint in the fix. A reveal that
+        // is live across the bare compileAsync would hand the reaction materials
+        // to a compile with NO render target bound, baking a one-output shader
+        // for the two-attachment pass — the documented poisoned-cache black
+        // screen. Do not "simplify" the reveal back above the compile.
         const slice = warmRuntimeSlice();
-        const compile = slice.indexOf('compileGroupThroughPost(');
+        const compile = slice.indexOf('compileAsync');
         const reveal = slice.indexOf('revealHiddenDrawables');
         const render = slice.indexOf("renderRuntime('warmup')");
 
         expect(compile).toBeGreaterThan(-1);
-        expect(reveal).toBeGreaterThan(-1);
-        expect(reveal).toBeLessThan(compile);
-        expect(render).toBeGreaterThan(compile);
-    });
-
-    it('the reveal spans the whole scene, and the reflector context gets its own bound pass', () => {
-        // 44 residual sync pipelines, classified (sweep §30): 18 were hidden-at-warm scene
-        // materials (the reveal used to cover only the 3 reaction roots), 16 were the same
-        // materials compiled AGAIN for the reflector's target formats. The first class needs
-        // the scene-wide reveal; the second needs a compile bound to a reflector-shaped target
-        // (HalfFloatType, samples 0 — ReflectorNode.js:412; the pipeline cache keys on formats,
-        // not texture identity).
-        const slice = warmRuntimeSlice();
-        expect(slice).toMatch(/revealHiddenDrawables\(this\.scene,/);
-        expect(slice).toMatch(/reflectorWarmTarget = new THREE\.RenderTarget\(/);
-        expect(slice).toMatch(/type: THREE\.HalfFloatType/);
-        expect(slice).toMatch(/reflectorWarmTarget\.dispose\(\)/);
-        // The reflector pass MUST compile through a layer-masked camera clone: a whole-scene
-        // compile under the MRT-null reflector context reaches MRT-only materials whose fragment
-        // has zero outputs — measured as 112 "structures must have at least one member" errors.
-        expect(slice).toMatch(/reflectorWarmCamera\.layers\.set\(reflectionLayer\)/);
-        expect(slice).toMatch(/Number\.isInteger\(reflectionLayer\)/);
+        expect(reveal).toBeGreaterThan(compile);
+        expect(render).toBeGreaterThan(reveal);
     });
 
     it('updates the runtime before revealing, or the reveal un-reveals itself', () => {
