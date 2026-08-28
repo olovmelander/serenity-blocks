@@ -17,7 +17,6 @@ import {
     float,
     Fn,
     If,
-    Loop,
     length,
     max,
     mix,
@@ -905,16 +904,10 @@ export function createStillwaterWater({
         const violet = float(0).toVar();
 
         const addRoutineResponse = () => {
-            // Loop() (2026-08-26, sweep §41): the JS for-loop unrolled responseSlots-1 nested-If
-            // slot bodies into the fragment, at BOTH makeResponseTerms call sites -- ~18 copies
-            // at High (wakeSlots 10). Section 40 measured this exact shape as DXC's superlinear
-            // pole on the fluid-dreams hero (72 unrolled Ifs: 1,653 -> 271 ms as one real WGSL
-            // loop). Identical body; the slot index becomes a node and the uniformArray reads
-            // become dynamic, which WGSL permits on uniform arrays.
-            Loop({ start: 1, end: quality.responseSlots }, ({ i }) => {
-                const state = uResponseState.element(i);
+            for (let index = 1; index < quality.responseSlots; index += 1) {
+                const state = uResponseState.element(index);
                 If(state.w.equal(STILLWATER_RESPONSE_KIND.lock), () => {
-                    const shape = uResponseShape.element(i);
+                    const shape = uResponseShape.element(index);
                     const age = uTime.sub(state.z);
                     const lifeRemaining = shape.y.sub(age);
                     const alive = smoothstep(0, 0.045, age)
@@ -956,7 +949,7 @@ export function createStillwaterWater({
                         ivory.addAssign(ring.mul(energy));
                     });
                 });
-            });
+            }
         };
 
         const specialState = uResponseState.element(0);
