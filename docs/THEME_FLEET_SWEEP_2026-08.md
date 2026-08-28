@@ -1940,8 +1940,13 @@ trade at all. It is the only unambiguous win in the campaign: nothing got worse 
 
 ### Still open on this theme
 
-41 pipelines remain synchronous and post-switch cost is untouched at ~1,068 ms — the same
-reflector/bloom residue seen on stillwater and vesper-chrysalis. And the 11.79 MB hero GLB is still
+41 pipelines remain synchronous and post-switch cost is untouched at ~1,068 ms — attributed at the
+time to "the same reflector/bloom residue seen on stillwater and vesper-chrysalis", **which the cell
+refutes** *(correction 2026-08-25: all 41 residual sync rows are the `rgba16float|4|depth24plus`
+scene-pass shape, 100 % of them `samples: 4`, while the bound warm ran before `PassNode.setup()` at
+the target's default `samples: 1` — the warm compiled real scene pipelines at the wrong sample count
+and the live pass recompiled every one. The missing pin is stillwater's `0b15db5d` two-liner; §25
+below measures it landing)*. And the 11.79 MB hero GLB is still
 fetched: `KOI_POND_HERO_LIMITS` is 0 in all six presets (`koi-pond-forest.js:78-85`, comment
 "ships off") and it shares a `Promise.all` with the two real 75 KB tree GLBs. Gating it is worth
 doing for heap and tree-arrival latency — **but not for switch time**, which it cannot affect
