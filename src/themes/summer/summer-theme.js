@@ -15,6 +15,8 @@ import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { create as createSummerMeadowScene } from '../../playground/effects/summer-meadow.effect.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
+import { revealHiddenDrawables } from '../shared/warm-hidden-drawables.js';
 import { SUMMER_TETROMINOS } from './summer-tetrominos.js';
 import { SeasonDirector } from './composition/season-director.js';
 
@@ -80,6 +82,60 @@ export default class SummerTheme extends BaseTheme {
         this.director.reset();
         this.setupResize();
         this.setupEventListeners();
+
+        // SECOND ATTEMPT (2026-08-26, sweep §37) — the §16 revert stands corrected, not
+        // re-litigated. The 2026-08-24 warm was a bare serial compileAsync that reached 10 of
+        // 121 pipelines and moved the gap nothing (+63 % firstFrame, reverted in 612ed355).
+        // The corrected instrument's full row set shows what it missed and why it could not
+        // work: ~55 MeshBasicNodeMaterials each need TWO pipelines — the default HDR context
+        // (rgba16float|4|depth24plus, 55 rows) AND the lake reflector's context
+        // (rgba16float|1|depth24plus, 53 rows) — and a single unbound whole-scene walk before
+        // the first runtime tick sees almost none of them as drawable. This warm runs the full
+        // toolkit the campaign has since proven: tick the runtime to its live state first
+        // (moonlit §23's prelude), reveal whatever is still hidden across the compile
+        // (stillwater's helper), fan out under BOTH contexts (halcyon §33's pair — safe
+        // scene-wide because the shipped config has no MRT anywhere; the TSL bloom path is
+        // opt-in behind ?bloom and null here), then one real render behind the mask.
+        if (this.isWebGPU && this.renderer?.compileAsync) {
+            this.runtime?.camera?.(0, this.camera);
+            this.runtime?.setReactive?.(this.director.getState());
+            this.runtime?.update?.(0, 0);
+            const reveal = revealHiddenDrawables(this.scene, { camera: this.camera });
+            try {
+                this.scene.updateMatrixWorld?.(true);
+                await compileGroupThroughPost(
+                    this.renderer,
+                    null,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                );
+                const reflectorWarmTarget = new THREE.RenderTarget(320, 180, {
+                    type: THREE.HalfFloatType,
+                    samples: 0,
+                });
+                try {
+                    await compileGroupThroughPost(
+                        this.renderer,
+                        { scenePass: { renderTarget: reflectorWarmTarget, getMRT: () => null } },
+                        this.scene,
+                        this.camera,
+                        this.scene,
+                        false,
+                    );
+                } finally {
+                    reflectorWarmTarget.dispose();
+                }
+                this.renderer.render(this.scene, this.camera);
+            } catch (error) {
+                console.warn('[Summer] Pipeline precompile was incomplete:', error);
+            } finally {
+                reveal.restore();
+            }
+            if (ownerGeneration !== this.lifecycleGeneration) return;
+        }
+
         this.startAnimationLoop();
 
         console.log(`[Summer] Scene created (webgpu=${this.isWebGPU})`);
