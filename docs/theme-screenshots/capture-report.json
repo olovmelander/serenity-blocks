@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-28T06:48:11.372Z",
-  "startedAt": "2026-08-28T06:47:29.990Z",
-  "runId": "2026-08-28T06-47-29-989Z",
+  "generatedAt": "2026-08-28T06:50:32.484Z",
+  "startedAt": "2026-08-28T06:49:49.757Z",
+  "runId": "2026-08-28T06-49-49-756Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,19 +23,19 @@
     "perfTargetFps": 60
   },
   "selectedThemes": [
-    "moonlit-forest"
+    "ice-temple"
   ],
   "results": [
     {
-      "theme": "moonlit-forest",
-      "displayName": "Moonlit Forest",
+      "theme": "ice-temple",
+      "displayName": "Ice Temple",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\moonlit-forest.png",
-      "report": "docs\\theme-screenshots\\results\\moonlit-forest.json",
+      "screenshot": "docs\\theme-screenshots\\ice-temple.png",
+      "report": "docs\\theme-screenshots\\results\\ice-temple.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
-      "perfCell": "reports\\theme-perf-ab-batch2\\moonlit-forest\\moonlit-forest.json",
+      "perfCell": "reports\\theme-perf-ab-batch2\\ice-temple\\ice-temple.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
