@@ -24,6 +24,7 @@ import { normalizeQuality } from '../../utils/quality.js';
 import { BLACK_HOLE_TETROMINOS } from './black-hole-tetrominos.js';
 import { BlackHolePost } from './black-hole-post.js';
 import { BlackHoleParticleCompute, BlackHoleBurstCompute, BlackHoleLensingCompute } from './black-hole-compute.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import BlackHoleFXController, {
     BLACK_HOLE_FX_COMMAND,
 } from './black-hole-fx-controller.js';
@@ -3420,6 +3421,30 @@ export default class BlackHoleTheme extends BaseTheme {
             // and blank the scene. compileAsync is only correct on the non-post path.
             try {
                 if (this.postProcessing && this.flags.usePost) {
+                    // ADDED 2026-08-26: the single real render below compiles every scene
+                    // pipeline SYNCHRONOUSLY — the fleet cell showed 0 async / 21 sync behind a
+                    // ~1,150 ms after-gap. The hazard the note above describes (bare compileAsync
+                    // baking non-MRT pipelines against the MRT framebuffer) is real, and
+                    // compileGroupThroughPost exists precisely to remove it: it binds the scene
+                    // pass's target AND MRT for the whole compile (stillwater's MRT tier runs
+                    // this, 0b15db5d), so the async fan-out builds the same pipelines the render
+                    // would, off the blocking path, at concurrency 6. The sample/type pin
+                    // duplicates PassNode.setup() (PassNode.js:765-767), which has not run yet.
+                    if (this.postProcessing.scenePass?.renderTarget) {
+                        this.postProcessing.scenePass.renderTarget.samples = this.renderer.samples;
+                        this.postProcessing.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                    }
+                    await compileGroupThroughPost(
+                        this.renderer,
+                        this.postProcessing,
+                        this.scene,
+                        this.camera,
+                        this.scene,
+                        false,
+                    );
+                    // Kept: the one real render still warms the post graph's own pipelines
+                    // (bloom chain etc.), which a scene-object compile cannot reach — §24's
+                    // residue class.
                     this.postProcessing.render();
                 } else if (this.renderer.compileAsync) {
                     await this.renderer.compileAsync(this.scene, this.camera);
