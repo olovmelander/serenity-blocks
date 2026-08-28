@@ -154,6 +154,9 @@ export class V3PostPipeline {
     _setupWebGPU(params) {
         this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
+        // Published for the warm path (sweep §36): the bound compile duck-types on
+        // postStack.scenePass.renderTarget. Everything else stays closure-local.
+        this.scenePass = scenePass;
 
         // MRT: split scene rendering into color + emissive targets so bloom
         // operates ONLY on the emissive channel. Non-emissive surfaces don't bloom.

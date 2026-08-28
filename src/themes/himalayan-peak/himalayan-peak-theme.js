@@ -23,6 +23,7 @@ import { createPeakEagles } from './rendering/peak-eagles.js';
 import { createPrayerFlags } from './rendering/prayer-flags.js';
 import { createSpindrift } from './sim/spindrift.js';
 import { PeakPostPipeline, getPeakPostProfile } from './post/peak-pipeline.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 
 // Day → alpenglow palette endpoints (lerped by AltitudeDirector.warmth).
 const PALETTE = {
@@ -238,6 +239,32 @@ export default class HimalayanPeakTheme extends BaseTheme {
         this._setupEvents();
         this._setupResize();
         this._setupPointer();
+
+        // Batch-B warm (2026-08-26, sweep §36): zero async pipelines existed — the whole compile
+        // paid synchronously at first draw. Post is created just above and the loop starts just
+        // below, so this is the plain bound warm (ice-temple §24): pin samples/type
+        // (PassNode.setup() has not run; the pipeline cache key hashes sample count), bind the
+        // scene pass's target and MRT across the fan-out at concurrency 6.
+        if (this.renderer?.compileAsync) {
+            try {
+                const postStack = this.post ?? null;
+                if (postStack?.scenePass?.renderTarget) {
+                    postStack.scenePass.renderTarget.samples = this.renderer.samples;
+                    postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                    await compileGroupThroughPost(
+                        this.renderer,
+                        postStack,
+                        this.scene,
+                        this.camera,
+                        this.scene,
+                        false,
+                    );
+                }
+            } catch (error) {
+                console.warn('[HimalayanPeak] Pipeline precompile was incomplete:', error);
+            }
+        }
+
         this._startAnimation();
 
         console.log(`[HimalayanPeak] Scene created (quality=${this.qualityName}, post=${!!this.post})`);
