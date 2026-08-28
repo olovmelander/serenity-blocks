@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-28T07:02:37.957Z",
-  "startedAt": "2026-08-28T07:01:56.075Z",
-  "runId": "2026-08-28T07-01-56-075Z",
+  "generatedAt": "2026-08-28T07:15:29.982Z",
+  "startedAt": "2026-08-28T07:14:44.451Z",
+  "runId": "2026-08-28T07-14-44-450Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,19 +23,19 @@
     "perfTargetFps": 60
   },
   "selectedThemes": [
-    "stellar-drift"
+    "golden-forest"
   ],
   "results": [
     {
-      "theme": "stellar-drift",
-      "displayName": "Stellar Drift",
+      "theme": "golden-forest",
+      "displayName": "Golden Forest",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\stellar-drift.png",
-      "report": "docs\\theme-screenshots\\results\\stellar-drift.json",
+      "screenshot": "docs\\theme-screenshots\\golden-forest.png",
+      "report": "docs\\theme-screenshots\\results\\golden-forest.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
-      "perfCell": "reports\\theme-perf-ab-batch2\\stellar-drift\\stellar-drift.json",
+      "perfCell": "reports\\theme-perf-ab-batch2\\golden-forest\\golden-forest.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
