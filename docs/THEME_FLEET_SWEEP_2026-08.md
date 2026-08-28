@@ -2752,3 +2752,34 @@ identical-shape class converted fully (§33). Summer's live default context diff
 compile-time resolution in some way not yet identified — pixel-ratio timing, output-buffer
 config, or a per-frame target the wrapper touches. Whoever picks summer up again starts there,
 with the reflector-format pass (explicit target, full conversion) as the working control.
+
+## 38. The classic-WebGL gap is an artifact floor — the GL tail de-listed
+
+**2026-08-26, three controlled experiments on misty-lake** (§35's compileAsync, then
+`initTexture`, then one real render; all reverted, final revert `22b9d5e6`; cells in
+`reports/theme-perf-ab-batch6/misty-lake/` with the §35 pair in `theme-perf-ab-batch5/`).
+
+misty-lake's cell reads: switch 87 ms, `firstFrameGpuDoneMs` 1,558 — a 1.46 s "gap" on 67 draws
+and 46,502 triangles, `fenceSync` method. Three hypotheses, three falsifications:
+
+| experiment | switch | gap | verdict |
+|---|---:|---:|---|
+| §35: awaited classic `compileAsync` | +275 ms | **−2.7 %** | not program compile |
+| `initTexture` over every reachable texture | **±0** | **−2.8 %** | not texture upload — nothing costly to upload |
+| **one real `render()` behind the mask** | **+1,264 ms** | **−3.9 %** | decisive: not first-frame work at all |
+
+The third is the proof: the real render demonstrably relocated ~1.26 s of genuine first-render
+cost into the switch — and the fence gap **stayed at 1.4 s anyway**. A gap that survives a
+complete warm measures something no warm can reach. The candidates are instrument-adjacent:
+the classic fence poll advances one `requestAnimationFrame` per check, so post-switch
+main-thread staging starves it; or ANGLE signals `SYNC_GPU_COMMANDS_COMPLETE` late. Telling
+them apart needs a switch-phase longtask observer — an **instrument** item, recorded here, not
+a theme item.
+
+**Consequence: the classic tail comes off the hit list.** misty-lake (1,412), bioluminescence
+(1,192 — §35 measured its own falsification directly), solar-eclipse (672), fall (422) and
+luminous-tides (418) all carry the same fence-method gap shape; their numbers are a floor, not a
+stall, until the instrument can see through it. Classic-theme first-frame comparisons remain
+valid *within* the class (same floor both arms) — §35/§38's A/Bs stand — but the absolute gap
+must not be read as recoverable latency. `pyrestorm` (2,206 ms, all in-switch, `switchWallMs`
+2,180) is the one classic theme with a real, differently-shaped cost and stays listed.
