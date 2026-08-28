@@ -1194,60 +1194,28 @@ export default class StillwaterTheme extends BaseTheme {
         // a refcounted session, and compiles at the scene pass's own call depth.
         const postStack = this.runtime?.getResourceState?.()?.post ?? null;
         const usesMrt = this.usesMrtScenePass();
-        try {
-            if (usesMrt && postStack?.scenePass?.renderTarget) {
-                // `PassNode.setup()` has not run yet — it runs on the first `postProcessing.render()`,
-                // and this is before that — so the target still carries RenderTarget defaults while
-                // the live pass will be `renderer.samples`. The WebGPU pipeline cache key hashes
-                // sample count, so compiling against the wrong one warms pipelines that all miss and
-                // recompile synchronously on the first live frame. This duplicates what r185 itself
-                // does at PassNode.js:765-767.
-                postStack.scenePass.renderTarget.samples = this.renderer.samples;
-                postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
-                await compileGroupThroughPost(
-                    this.renderer,
-                    postStack,
-                    this.scene,
-                    this.camera,
-                    this.scene,
-                    false,
-                );
-            } else if (!usesMrt) {
-                await this.renderer.compileAsync?.(this.scene, this.camera);
-            } else {
-                // MRT tier with no scene-pass target to bind to. A bare compileAsync here is the
-                // poisoned-cache black screen, so skipping is still correct — this is the branch the
-                // old code took unconditionally. Warn, because reaching it means the post stack was
-                // not built and the theme is about to pay the whole compile at first draw.
-                console.warn(
-                    '[Stillwater] MRT scene pass has no render target at warm time; '
-                    + 'skipping precompile rather than binding none.',
-                );
-            }
-        } catch (error) {
-            console.warn('[Stillwater] Pipeline precompile was incomplete:', error);
-        }
-        if (generation !== this.runtimeGeneration || !this.renderer) return;
 
-        // The three reaction draws are built at scene build but parked
-        // visible=false, so compileAsync and every warm render skip them and
-        // their pipelines compile on the first line clear instead — measured at
-        // 187.9ms / 171.3ms / 79.3ms with zero longtasks. Reveal them across the
-        // warm render below so that cost lands here, behind the mask.
-        //
-        // ORDERING IS LOAD-BEARING: the reveal is deliberately NOT live across
-        // the compileAsync above. That call binds no render target, so it would
-        // bake a one-output shader under a cache key carrying no target
-        // component — the exact poisoned-cache black screen this method's
-        // comment already guards against. Pinned by a source-order test.
+        // REVEAL BEFORE THE COMPILE, WIDENED TO THE WHOLE SCENE (2026-08-26, sweep §30).
+        // The previous ordering — reveal AFTER the compile — guarded against a hazard of the
+        // BARE compileAsync (no target bound, one-output shaders baked under an MRT-agnostic
+        // key). The compile below is BOUND: compileGroupThroughPost holds the scene pass's
+        // target and MRT across the whole await, so a reveal live across it hands hidden
+        // materials to a compile running under the exact live context. Measured cost of the old
+        // ordering: 18 scene-pass-shaped pipelines (9 MeshStandardNodeMaterial +
+        // 9 MeshBasicNodeMaterial) compiled SYNCHRONOUSLY in a burst on the first live frame —
+        // hidden at warm time, outside getWarmupRoots(), revealed at activation. Widening the
+        // reveal from the 3 reaction roots to the scene puts all of them into the async fan-out.
+        // Everything revealed here is dormant (alive = 0 ⇒ opacity 0) or behind the activation
+        // mask, and restore() runs in the finally below. Pinned by the source-order test, whose
+        // rationale flipped with the binding.
         const warmEnabled = readFlag('stillwaterReactionWarm', true);
         const reveal = warmEnabled
-            ? revealHiddenDrawables(this.getWarmupRoots(), {
+            ? revealHiddenDrawables(this.scene, {
                 camera: this.camera,
                 onUnreachable: (object) => {
                     this.lifecycleCounters.warmUnreachableDraws += 1;
                     console.warn(
-                        '[Stillwater] Reaction draw is outside the camera layers; '
+                        '[Stillwater] Hidden drawable is outside the camera layers; '
                         + 'its pipeline cannot be warmed:',
                         object?.name,
                     );
@@ -1256,19 +1224,81 @@ export default class StillwaterTheme extends BaseTheme {
             : { revealed: 0, skipped: 0, restore: () => {} };
 
         try {
-            // compileAsync never updates matrices, and a stale matrixWorld flips
-            // frontFaceCW in the pipeline cache key. Scoped to the revealed
-            // roots — never a forced whole-scene pass.
-            this.getWarmupRoots().forEach((root) => root?.updateMatrixWorld?.(true));
+            // The compile never updates matrices, and a stale matrixWorld flips
+            // frontFaceCW in the pipeline cache key. The reveal now spans the
+            // whole scene, so this is one full matrix pass by construction.
+            this.scene.updateMatrixWorld?.(true);
 
-            // A real post/reflection render is authoritative for MRT tiers:
-            // compileAsync(scene, camera) compiles against a one-target
-            // framebuffer and can poison r181's cache before the two-target
-            // output/emissive pass. This render goes through the shipped
-            // pipeline, so the compile context is identical to a live gameplay
-            // frame. Every revealed draw is dormant (alive = 0 => opacity 0,
-            // motes zero-area), so nothing paints.
-            // The canvas remains masked while this exact shipped graph warms.
+            try {
+                if (usesMrt && postStack?.scenePass?.renderTarget) {
+                    // `PassNode.setup()` has not run yet — it runs on the first
+                    // `postProcessing.render()`, and this is before that — so the target still
+                    // carries RenderTarget defaults while the live pass will be
+                    // `renderer.samples`. The WebGPU pipeline cache key hashes sample count, so
+                    // compiling against the wrong one warms pipelines that all miss and
+                    // recompile synchronously on the first live frame. This duplicates what r185
+                    // itself does at PassNode.js:765-767.
+                    postStack.scenePass.renderTarget.samples = this.renderer.samples;
+                    postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                    await compileGroupThroughPost(
+                        this.renderer,
+                        postStack,
+                        this.scene,
+                        this.camera,
+                        this.scene,
+                        false,
+                    );
+
+                    // SECOND PASS, REFLECTOR CONTEXT (2026-08-26, sweep §30): the lake's
+                    // `reflector()` re-renders the scene into its own RenderTarget
+                    // (HalfFloatType, samples 0, default depth buffer — ReflectorNode.js:412),
+                    // so every material the reflection can see needs a SECOND pipeline under
+                    // that context. Measured: 16 of the 44 residual sync pipelines were exactly
+                    // this shape (rgba16float|1|depth24plus). The WebGPU pipeline cache keys on
+                    // ATTACHMENT FORMATS, not texture identity (WebGPUBackend.getRenderCacheKey;
+                    // the same fact createWarmRenderTarget relies on), so a tiny private target
+                    // with the reflector's formats warms the identical pipelines without
+                    // touching the reflector node, which has not even allocated its target yet.
+                    const reflectorWarmTarget = new THREE.RenderTarget(320, 180, {
+                        type: THREE.HalfFloatType,
+                        samples: 0,
+                    });
+                    try {
+                        await compileGroupThroughPost(
+                            this.renderer,
+                            { scenePass: { renderTarget: reflectorWarmTarget, getMRT: () => null } },
+                            this.scene,
+                            this.camera,
+                            this.scene,
+                            false,
+                        );
+                    } finally {
+                        reflectorWarmTarget.dispose();
+                    }
+                } else if (!usesMrt) {
+                    // Non-MRT tier: a bare compile is safe (no MRT exists to poison), and the
+                    // live reveal simply widens what it warms.
+                    await this.renderer.compileAsync?.(this.scene, this.camera);
+                } else {
+                    // MRT tier with no scene-pass target to bind to. A bare compileAsync here is
+                    // the poisoned-cache black screen, so skipping is still correct — this is the
+                    // branch the old code took unconditionally. Warn, because reaching it means
+                    // the post stack was not built and the theme pays the whole compile at first
+                    // draw.
+                    console.warn(
+                        '[Stillwater] MRT scene pass has no render target at warm time; '
+                        + 'skipping precompile rather than binding none.',
+                    );
+                }
+            } catch (error) {
+                console.warn('[Stillwater] Pipeline precompile was incomplete:', error);
+            }
+            if (generation !== this.runtimeGeneration || !this.renderer) return;
+
+            // A real post/reflection render stays authoritative for whatever the fan-outs
+            // cannot express — the post graph's own pipelines, and the reflector's actual
+            // first FRAME update. Every revealed draw is dormant (alive = 0 => opacity 0,
+            // motes zero-area), so nothing paints, and the canvas remains masked.
             if (this.renderRuntime('warmup')) {
                 this.lifecycleCounters.warmedReactionDraws = reveal.revealed;
                 this.recordActivationMilestone('warmRenderComplete', generation);
