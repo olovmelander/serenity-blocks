@@ -767,8 +767,12 @@ export function reduceVisit(raw, { targetFps = 60 } = {}) {
             asyncSumMs: round(asyncRows.reduce((a, r) => a + (r.ms || 0), 0)),
             asyncMaxMs: asyncRows.length ? round(Math.max(...asyncRows.map((r) => r.ms || 0))) : 0,
             shapes: [...new Set(rows.map((r) => [r.targets, r.samples, r.depth].join('|')))],
-            rows: asyncRows.slice().sort((a, b) => (b.ms || 0) - (a.ms || 0)).slice(0, 25),
-            syncRows: syncRows.slice().sort((a, b) => (a.atMs || 0) - (b.atMs || 0)).slice(0, 25),
+            // 250, raised from 25 on 2026-08-26: the head-25 sample repeatedly mis-attributed
+            // residue classes — §17 called koi-pond's 41 sync rows "reflector/bloom" when 100 %
+            // were scene-pass shaped, and §13's stillwater residue was misread the same way. A
+            // fleet cell tops out around ~180 rows, so 250 is effectively "all of them".
+            rows: asyncRows.slice().sort((a, b) => (b.ms || 0) - (a.ms || 0)).slice(0, 250),
+            syncRows: syncRows.slice().sort((a, b) => (a.atMs || 0) - (b.atMs || 0)).slice(0, 250),
             pipelinesAfterFirstFrame: raw.idlePipes ?? null,
         },
         idle: {
