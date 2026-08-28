@@ -1,0 +1,814 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-28T12:28:52.669Z",
+  "runId": "2026-08-28T12-28-13-074Z",
+  "theme": "astral-weave",
+  "anchorTheme": "forest",
+  "themeMeta": {
+    "id": "astral-weave",
+    "displayName": "Astral Weave",
+    "module": "./astral-weave/astral-weave-theme.js",
+    "group": "cosmic",
+    "icon": "./astral-weave/astral-weave-theme-icon.png",
+    "resourceProfile": "heavy-gpu",
+    "performanceClass": "heavy",
+    "startupEligible": false
+  },
+  "manifest": {
+    "electron": "38.8.6",
+    "chrome": "140.0.7339.249",
+    "node": "22.22.0",
+    "platform": "win32",
+    "windowPx": {
+      "width": 1920,
+      "height": 1080
+    },
+    "windowShown": true,
+    "userDataDir": "artifacts\\theme-perf-profile\\astral-weave",
+    "dawnCache": "cold-per-theme-userdata",
+    "requestedSwitches": [
+      "force_high_performance_gpu",
+      "force-device-scale-factor=1",
+      "disable-backgrounding-occluded-windows",
+      "disable-background-timer-throttling",
+      "disable-renderer-backgrounding",
+      "enable-precise-memory-info"
+    ],
+    "idleMs": 10000,
+    "settleMs": 4000,
+    "urlParams": null,
+    "quality": "High",
+    "targetFps": 60,
+    "electronGpuDiagnostics": {
+      "gpuInfo": {
+        "auxAttributes": {
+          "amdSwitchable": false,
+          "canSupportThreadedTextureMailbox": false,
+          "directMLFeatureLevel": "Not supported",
+          "dx12FeatureLevel": "Not supported",
+          "glImplementationParts": "(gl=none,angle=none)",
+          "glResetNotificationStrategy": 0,
+          "hardwareSupportsVulkan": false,
+          "inProcessGpu": true,
+          "initializationTime": 0,
+          "isAsan": false,
+          "isClangCoverage": false,
+          "jpegDecodeAcceleratorSupported": false,
+          "optimus": false,
+          "overlayInfo": {
+            "bgra8OverlaySupport": "NONE",
+            "directComposition": false,
+            "nv12OverlaySupport": "NONE",
+            "p010OverlaySupport": "NONE",
+            "rgb10a2OverlaySupport": "NONE",
+            "supportsOverlays": false,
+            "yuy2OverlaySupport": "NONE"
+          },
+          "passthroughCmdDecoder": false,
+          "sandboxed": false,
+          "skiaBackendType": "None",
+          "subpixelFontRendering": true,
+          "supportsD3dSharedImages": false,
+          "supportsDirectML": false,
+          "supportsDx12": false,
+          "supportsVulkan": false,
+          "targetCpuBits": 64,
+          "visibilityCallbackCallCount": 0,
+          "vulkanVersion": "Not supported"
+        },
+        "gpuDevice": [
+          {
+            "active": false,
+            "deviceId": 5688,
+            "deviceString": "AMD Radeon(TM) Graphics",
+            "driverVersion": "31.0.12044.3",
+            "gpuPreference": 2,
+            "revision": 197,
+            "subSysId": 978261930,
+            "vendorId": 4098
+          },
+          {
+            "active": false,
+            "deviceId": 9437,
+            "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
+            "driverVersion": "32.0.15.7247",
+            "gpuPreference": 3,
+            "revision": 161,
+            "subSysId": 978261930,
+            "vendorId": 4318
+          },
+          {
+            "active": false,
+            "deviceId": 140,
+            "deviceString": "Microsoft Basic Render Driver",
+            "driverVersion": "10.0.26100.8972",
+            "gpuPreference": 0,
+            "revision": 0,
+            "subSysId": 0,
+            "vendorId": 5140
+          }
+        ]
+      },
+      "featureStatus": {
+        "2d_canvas": "disabled_software",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "disabled_software",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "disabled_off",
+        "rasterization": "disabled_software",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "disabled_off",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "disabled_software",
+        "video_encode": "disabled_software",
+        "vulkan": "disabled_off",
+        "webgl": "disabled_off",
+        "webgl2": "disabled_off",
+        "webgpu": "disabled_off",
+        "webnn": "disabled_off"
+      }
+    }
+  },
+  "pins": {
+    "observedAtWindowStart": {
+      "quality": "High",
+      "targetFrameRate": 60,
+      "devicePixelRatio": 1,
+      "rendererPixelRatio": 1
+    },
+    "observedAtWindowEnd": {
+      "quality": "High",
+      "targetFrameRate": 60,
+      "devicePixelRatio": 1,
+      "rendererPixelRatio": 1
+    },
+    "pinsHeld": true,
+    "pinsBrokenReason": null
+  },
+  "renderer": {
+    "kind": "WebGPURenderer",
+    "backend": "webgpu",
+    "trackTimestampArmed": true,
+    "timestampUnavailableReason": null,
+    "canvasContexts": [
+      {
+        "kind": "webgl",
+        "atMs": 719.8
+      },
+      {
+        "kind": "webgl",
+        "atMs": 883.5
+      },
+      {
+        "kind": "2d",
+        "atMs": 883.7
+      },
+      {
+        "kind": "2d",
+        "atMs": 885.1
+      },
+      {
+        "kind": "2d",
+        "atMs": 923.8
+      },
+      {
+        "kind": "webgl",
+        "atMs": 931.1
+      },
+      {
+        "kind": "2d",
+        "atMs": 1006.1
+      },
+      {
+        "kind": "2d",
+        "atMs": 1006.2
+      },
+      {
+        "kind": "2d",
+        "atMs": 1007
+      },
+      {
+        "kind": "2d",
+        "atMs": 1007.1
+      },
+      {
+        "kind": "2d",
+        "atMs": 1023.7
+      },
+      {
+        "kind": "2d",
+        "atMs": 1637.2
+      },
+      {
+        "kind": "2d",
+        "atMs": 1645.7
+      },
+      {
+        "kind": "2d",
+        "atMs": 1651.6
+      },
+      {
+        "kind": "2d",
+        "atMs": 1658.2
+      },
+      {
+        "kind": "2d",
+        "atMs": 1663.8
+      },
+      {
+        "kind": "2d",
+        "atMs": 1670
+      },
+      {
+        "kind": "2d",
+        "atMs": 1800.8
+      },
+      {
+        "kind": "2d",
+        "atMs": 1806.8
+      },
+      {
+        "kind": "2d",
+        "atMs": 1812.1
+      },
+      {
+        "kind": "2d",
+        "atMs": 3912.9
+      },
+      {
+        "kind": "2d",
+        "atMs": 3913
+      },
+      {
+        "kind": "2d",
+        "atMs": 6471
+      },
+      {
+        "kind": "2d",
+        "atMs": 6471.4
+      },
+      {
+        "kind": "2d",
+        "atMs": 6471.7
+      },
+      {
+        "kind": "2d",
+        "atMs": 6472.2
+      },
+      {
+        "kind": "2d",
+        "atMs": 7525.4
+      },
+      {
+        "kind": "2d",
+        "atMs": 7529.9
+      },
+      {
+        "kind": "2d",
+        "atMs": 7533.7
+      },
+      {
+        "kind": "webgpu",
+        "atMs": 7549
+      }
+    ],
+    "wrapped": [
+      "renderer",
+      "post"
+    ],
+    "usesMrtScenePass": false
+  },
+  "adapter": {
+    "plain": {
+      "vendor": "nvidia",
+      "architecture": "ampere",
+      "device": "",
+      "description": ""
+    },
+    "asThreeAsks": {
+      "vendor": "nvidia",
+      "architecture": "ampere",
+      "device": "",
+      "description": ""
+    },
+    "webglRendererString": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "requestedPowerPreference": "high-performance"
+  },
+  "pipelines": {
+    "count": 27,
+    "asyncCount": 18,
+    "syncCount": 9,
+    "failedCount": 0,
+    "asyncSumMs": 3209.9,
+    "asyncMaxMs": 486.3,
+    "shapes": [
+      "rgba16float,rgba16float|4|depth24plus",
+      "rgba8unorm|1|",
+      "rgba16float|1|",
+      "bgra8unorm|4|depth24plus"
+    ],
+    "rows": [
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_22",
+        "materialId": 22,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 486.3,
+        "atMs": 6825,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_23",
+        "materialId": 23,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 464.9,
+        "atMs": 6846.5,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_18",
+        "materialId": 18,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 454.2,
+        "atMs": 6857.1,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_17",
+        "materialId": 17,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 225.8,
+        "atMs": 6621,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_18",
+        "materialId": 18,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 223.2,
+        "atMs": 6623.5,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_19",
+        "materialId": 19,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 222.6,
+        "atMs": 6624.2,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_20",
+        "materialId": 20,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 203.5,
+        "atMs": 6643.3,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_17",
+        "materialId": 17,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 163.9,
+        "atMs": 7298.4,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_56",
+        "materialId": 56,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 130.3,
+        "atMs": 6626,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicMaterial_16",
+        "materialId": 16,
+        "materialClass": "MeshBasicMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 118.4,
+        "atMs": 7291,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_PointsNodeMaterial_54",
+        "materialId": 54,
+        "materialClass": "PointsNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 98.8,
+        "atMs": 7311.1,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_57",
+        "materialId": 57,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 96.9,
+        "atMs": 6658.1,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_55",
+        "materialId": 55,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 80.5,
+        "atMs": 7379,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_64",
+        "materialId": 64,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 69.7,
+        "atMs": 7392.7,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_65",
+        "materialId": 65,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 57.2,
+        "atMs": 7405.2,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_MeshBasicNodeMaterial_72",
+        "materialId": 72,
+        "materialClass": "MeshBasicNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 52.5,
+        "atMs": 7470.4,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_PointsNodeMaterial_70",
+        "materialId": 70,
+        "materialClass": "PointsNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 33.4,
+        "atMs": 7456.5,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      },
+      {
+        "label": "renderPipeline_PointsNodeMaterial_71",
+        "materialId": 71,
+        "materialClass": "PointsNodeMaterial",
+        "materialClassReason": null,
+        "materialName": null,
+        "async": true,
+        "failed": false,
+        "ms": 27.8,
+        "atMs": 7462.2,
+        "targets": "rgba16float,rgba16float",
+        "samples": 4,
+        "depth": "depth24plus"
+      }
+    ],
+    "syncRows": [
+      {
+        "label": "mipmap-rgba8unorm-2d-array",
+        "materialId": null,
+        "materialClass": null,
+        "materialClassReason": "not-in-scene-at-collection",
+        "materialName": null,
+        "async": false,
+        "failed": false,
+        "ms": null,
+        "atMs": 7290.2,
+        "targets": "rgba8unorm",
+        "samples": 1,
+        "depth": null
+      },
+      {
+        "label": "renderPipeline_Bloom_highPass_79",
+        "materialId": 79,
+        "materialClass": null,
+        "materialClassReason": "not-in-scene-at-collection",
+        "materialName": null,
+        "async": false,
+        "failed": false,
+        "ms": null,
+        "atMs": 7565.6,
+        "targets": "rgba16float",
+        "samples": 1,
+        "depth": null
+      },
+      {
+        "label": "renderPipeline_Bloom_separable_80",
+        "materialId": 80,
+        "materialClass": null,
+        "materialClassReason": "not-in-scene-at-collection",
+        "materialName": null,
+        "async": false,
+        "failed": false,
+        "ms": null,
+        "atMs": 7568.5,
+        "targets": "rgba16float",
+        "samples": 1,
+        "depth": null
+      },
+      {
+        "label": "renderPipeline_Bloom_separable_81",
+        "materialId": 81,
+        "materialClass": null,
+        "materialClassReason": "not-in-scene-at-collection",
+        "materialName": null,
+        "async": false,
+        "failed": false,
+        "ms": null,
+        "atMs": 7570.9,
+        "targets": "rgba16float",
+        "samples": 1,
+        "depth": null
+      },
+      {
+        "label": "renderPipeline_Bloom_separable_82",
+        "materialId": 82,
+        "materialClass": null,
+        "materialClassReason": "not-in-scene-at-collection",
+        "materialName": null,
+        "async": false,
+        "failed": false,
+        "ms": null,
+        "atMs": 7573.1,
+        "targets": "rgba16float",
+        "samples": 1,
+        "depth": null
+      },
+      {
+        "label": "renderPipeline_Bloom_separable_83",
+        "materialId": 83,
+        "materialClass": null,
+        "materialClassReason": "not-in-scene-at-collection",
+        "materialName": null,
+        "async": false,
+        "failed": false,
+        "ms": null,
+        "atMs": 7574.9,
+        "targets": "rgba16float",
+        "samples": 1,
+        "depth": null
+      },
+      {
+        "label": "renderPipeline_Bloom_separable_84",
+        "materialId": 84,
+        "materialClass": null,
+        "materialClassReason": "not-in-scene-at-collection",
+        "materialName": null,
+        "async": false,
+        "failed": false,
+        "ms": null,
+        "atMs": 7577,
+        "targets": "rgba16float",
+        "samples": 1,
+        "depth": null
+      },
+      {
+        "label": "renderPipeline_Bloom_comp_85",
+        "materialId": 85,
+        "materialClass": null,
+        "materialClassReason": "not-in-scene-at-collection",
+        "materialName": null,
+        "async": false,
+        "failed": false,
+        "ms": null,
+        "atMs": 7579.7,
+        "targets": "rgba16float",
+        "samples": 1,
+        "depth": null
+      },
+      {
+        "label": "renderPipeline_RenderPipeline_77",
+        "materialId": 77,
+        "materialClass": null,
+        "materialClassReason": "not-in-scene-at-collection",
+        "materialName": null,
+        "async": false,
+        "failed": false,
+        "ms": null,
+        "atMs": 7580.5,
+        "targets": "bgra8unorm",
+        "samples": 4,
+        "depth": "depth24plus"
+      }
+    ],
+    "pipelinesAfterFirstFrame": 0,
+    "visit2AsyncCount": 18,
+    "visit2SyncCount": 9
+  },
+  "switchTimings": {
+    "switchWallMs": 1237.8,
+    "managerReportedMs": null,
+    "queueDrainMs": null,
+    "createSceneEnterMs": 17.2,
+    "rendererCreatedMs": 169.8,
+    "criticalReadyMs": 1237.9,
+    "firstRenderCallMs": 1247.9,
+    "firstFrameGpuDoneMs": 1283.8,
+    "firstFrameGpuDoneMethod": "queue.onSubmittedWorkDone",
+    "allQuiescedGpuDoneMs": 3295.1,
+    "allQuiescedGpuDoneMethod": "queue.onSubmittedWorkDone",
+    "quietWaitFloorMs": 2000,
+    "firstFrameRafMs": 3300.1,
+    "visit2SwitchWallMs": 854.8
+  },
+  "idle": {
+    "windowMs": 10001.5,
+    "framesObserved": 1315,
+    "wall": {
+      "samples": 1314,
+      "p50": 7.6,
+      "p95": 8.2,
+      "p99": 8.5,
+      "min": 7,
+      "max": 16.5,
+      "budgetMs": 16.667,
+      "overBudget": 0
+    },
+    "cpuSubmitMs": {
+      "samples": 661,
+      "p50": 1.7,
+      "p95": 1.9,
+      "p99": 2.2,
+      "min": 1.5,
+      "max": 2.9
+    },
+    "gpuMs": {
+      "samples": 1012,
+      "p50": 0.983,
+      "p95": 1.114,
+      "p99": 1.573,
+      "min": 0.524,
+      "max": 1.769,
+      "quantumMs": 0.065536,
+      "sampleDiscipline": "one-push-per-resolved-query",
+      "stickySamplerSuspected": false
+    },
+    "gpuNullReason": null,
+    "longTasks": {
+      "count": 0,
+      "totalMs": 0,
+      "maxMs": 0
+    }
+  },
+  "content": {
+    "drawCalls": {
+      "p05": 121,
+      "p50": 121,
+      "p95": 121,
+      "min": 121,
+      "max": 121
+    },
+    "triangles": {
+      "p05": 152735,
+      "p50": 152735,
+      "p95": 152735,
+      "min": 152735,
+      "max": 152735
+    },
+    "steadyState": true,
+    "infoOwnership": "contested",
+    "geometries": 51,
+    "textures": 17,
+    "visit2": {
+      "drawCalls": 121,
+      "triangles": 152735
+    },
+    "contentMatch": true,
+    "contentMismatchReason": null,
+    "contentGuardAdmissible": true
+  },
+  "memory": {
+    "peakHeapMB": 60.92,
+    "p50HeapMB": 46.21,
+    "heapSamples": 40,
+    "heapDrops": 4,
+    "allocBytesPerFrame": null,
+    "allocVoidReason": "4 GC(s) inside the window",
+    "gcPerSecond": 0.4,
+    "gcCount": 4,
+    "cdpHeapDeltaBytes": 20473412,
+    "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
+  },
+  "drift": {
+    "visitGpuP50DeltaMs": 0,
+    "visitWallP95DeltaMs": 0,
+    "voidReason": null,
+    "admissible": true,
+    "inadmissibleReasons": []
+  },
+  "console": {
+    "errorCount": 0,
+    "warningCount": 7,
+    "instrumentInducedErrorCount": 0,
+    "genuineErrorCount": 0
+  },
+  "admissible": true,
+  "inadmissibleReasons": [],
+  "notes": [
+    "firstFrameGpuDoneMs is GPU-work completion for the first frame, not scanout. A page cannot observe presentation.",
+    "allQuiescedGpuDoneMs INCLUDES a 2000-2100 ms compile-quiet wait by construction. It is not a latency; use firstFrameGpuDoneMs for that.",
+    "pipelines.asyncSumMs is the sum of per-object awaited compiles (r185 Renderer awaits per object), not a wall-clock.",
+    "pipelines.syncRows always carry ms=null: createRenderPipeline returns at once and the GPU process blocks at first draw.",
+    "gpuMs is null for a classic THREE.WebGLRenderer: that renderer kind has no timestamp API in 0.185.1 (ADR-0019, ADR-0008).",
+    "Two configurations inside 0.065536 ms mean \"difference below resolution\", never \"zero cost\" (ADR-0016).",
+    "GPU samples are pushed once per RESOLVED query, never once per frame: Info.reset() does not clear render.timestamp."
+  ]
+}

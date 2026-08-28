@@ -32,7 +32,6 @@ import { V3PostPipeline, getV3PostProfile } from './post/render-pipeline.js';
 import { FluidParticleSim, getFluidBudget } from './sim/fluid-particles.js';
 import { FluidEmitters } from './sim/fluid-emitters.js';
 import { SHAPE_NAMES } from './sim/shape-formations.js';
-import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 
 // ─── Master shape pool (single, randomized) ───
 // All visual shapes go here. Every game event rolls from this same pool — the
@@ -298,32 +297,6 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         this._setupResize();
 
         // ── Start animation ──
-
-        // Batch-B warm (2026-08-26, sweep §36): zero async pipelines existed — the whole compile
-        // paid synchronously at first draw. Post is created just above and the loop starts just
-        // below, so this is the plain bound warm (ice-temple §24): pin samples/type
-        // (PassNode.setup() has not run; the pipeline cache key hashes sample count), bind the
-        // scene pass's target and MRT across the fan-out at concurrency 6.
-        if (this.renderer?.compileAsync) {
-            try {
-                const postStack = this.postPipeline ?? null;
-                if (postStack?.scenePass?.renderTarget) {
-                    postStack.scenePass.renderTarget.samples = this.renderer.samples;
-                    postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
-                    await compileGroupThroughPost(
-                        this.renderer,
-                        postStack,
-                        this.scene,
-                        this.camera,
-                        this.scene,
-                        false,
-                    );
-                }
-            } catch (error) {
-                console.warn('[ElectricDreamsV3] Pipeline precompile was incomplete:', error);
-            }
-        }
-
         this._startAnimation();
 
         console.log(`[ElectricDreamsV3] Scene created (quality=${this.qualityName}, post=${!!this.postPipeline})`);
