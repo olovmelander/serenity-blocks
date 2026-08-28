@@ -2783,3 +2783,37 @@ stall, until the instrument can see through it. Classic-theme first-frame compar
 valid *within* the class (same floor both arms) — §35/§38's A/Bs stand — but the absolute gap
 must not be read as recoverable latency. `pyrestorm` (2,206 ms, all in-switch, `switchWallMs`
 2,180) is the one classic theme with a real, differently-shaped cost and stays listed.
+
+## 39. fluid-dreams haze — plan §1.3's first theme swap, kept as the hygiene item §11.6 predicted
+
+**Commit (haze swap) + this section. 2026-08-26. Both arms n=3 admissible; ADR-0007 screenshot
+compare passed (haze field identical in tone, extent and gradient; hero pose differs only by
+animation phase — draws 19 and triangles 20,538 exact in all six runs; zero console errors).**
+
+`createVolumetricHazeNodeMaterial` unrolls 24 noise evaluations inline; with `mx_noise_float`
+that pipeline was the theme's measured pole. The mx-calibrated `snoise3` swap:
+
+| field | before (med, range) | after (med, range) | delta |
+|---|---:|---:|---:|
+| haze pipeline (#17, both passes) | 1,636 ms | 1,107 ms | −32 % |
+| asyncSum (ms) | 3,671.6 (3,531.3–3,983.3) | 3,015.3 (2,972.4–3,105.8) | **−17.9 %, ranges disjoint** |
+| firstFrame (ms) | 3,193.1 (3,124.1–3,485.3) | 3,088.2 (3,028.1–3,171.6) | −3.3 %, inside spread |
+| draws / tris / cpu / wall | — | — | unchanged |
+
+**Kept as hygiene, not claimed as latency** — which is exactly the verdict §11.6 already
+recorded for this lever class ("a cold-cache and shader-size hygiene item, NOT a latency
+lever"), now confirmed at theme scale: the compile got measurably cheaper and the player got
+nothing visible, because (a) the theme's OTHER monster — `createFluidHeroNodeMaterial`, #18 at
+~1.7 s, its own graph, no mx — still dominates, and (b) the two big compiles serialize
+(parallelism 1.08x against an Amdahl ceiling of 2.09x) so the wall tracks their sum. The
+starlight-consistency question was considered and answered: starlight's revert removed a
++77 ms *cost*; this is a −105 ms median with a mechanism-proven compile reduction and a
+one-line surface. Plan §1.3's calibration data also gains a theme-scale point: 24 layout'd
+`snoise3` calls still cost ~350–700 ms per pass on DXC — the swap's floor, matching the
+Odyssey lake's endpoint.
+
+**fluid-dreams' remaining pole is the hero surface** (#18, ~1.7 s, `createFluidHeroNodeMaterial`)
+— no MaterialX in it, so its cost is graph size (layout-less `Fn`s and/or loop unrolls of its
+own). That is a hero-visual session: playground-first, screenshot-gated, out of scope for a
+calibration pass. The curl helper in the same file turned out to be dead code and was left
+untouched.
