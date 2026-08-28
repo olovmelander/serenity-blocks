@@ -18,6 +18,7 @@ import * as THREE_WEBGPU from 'three/webgpu';
 import { mrt, vec3 } from 'three/tsl';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { compileGroupUnderLiveLoop } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { OCEAN_TETROMINOS } from './ocean-tetrominos.js';
 import { OceanAtmosphereSystem } from './ocean-atmosphere-system.js';
 import { OceanFishSystem } from './ocean-fish-system.js';
@@ -1288,11 +1289,41 @@ export default class OceanTheme extends BaseTheme {
         if (this.isWebGPU && this.renderer?.compileAsync) {
             const restoreEffects = this.gameplayEffects?.prepareForCompile?.();
             try {
-                criticalCompile = this.renderer.compileAsync(this.scene, this.camera)
-                    .catch((error) => {
-                        console.warn('[Ocean] Critical scene compile failed:', error);
-                    })
-                    .finally(() => restoreEffects?.());
+                // MEASURED 2026-08-26 (sweep §31): this bare call warmed 51 pipelines at 0.52x
+                // parallelism under NO bound target while the theme draws through oceanPost's
+                // scene pass — 76 more compiled synchronously in the first-frame gap, most of
+                // them the scene-pass shape. And the render loop is ALREADY LIVE here
+                // (firstRenderCallMs 1,668 < switchWallMs 2,039 in the cell), so the
+                // target-binding warm (compileGroupThroughPost) is not an option: a held global
+                // binding would redirect concurrent paints into the scene-pass target. The
+                // live-loop path binds nothing — it redirects the compile's target/MRT READS and
+                // launches per-object compiles in the scene pass's own prologue, which is exactly
+                // the case it was built for (Odyssey item 2.11). Sample/type pin first:
+                // PassNode.setup() has not run, and the pipeline cache key hashes sample count.
+                const postStack = this.oceanPost ?? null;
+                if (postStack?.scenePass?.renderTarget) {
+                    postStack.scenePass.renderTarget.samples = this.renderer.samples;
+                    postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                    criticalCompile = compileGroupUnderLiveLoop(
+                        this.renderer,
+                        postStack,
+                        this.scene,
+                        this.camera,
+                        this.scene,
+                    )
+                        .catch((error) => {
+                            console.warn('[Ocean] Critical scene compile failed:', error);
+                        })
+                        .finally(() => restoreEffects?.());
+                } else {
+                    // No post stack (post disabled tier): the bare call is today's context and
+                    // stays correct — no MRT exists to poison.
+                    criticalCompile = this.renderer.compileAsync(this.scene, this.camera)
+                        .catch((error) => {
+                            console.warn('[Ocean] Critical scene compile failed:', error);
+                        })
+                        .finally(() => restoreEffects?.());
+                }
             } catch (err) {
                 restoreEffects?.();
                 console.warn('[Ocean] Critical scene compile threw:', err);
@@ -1373,7 +1404,26 @@ export default class OceanTheme extends BaseTheme {
                     && this.isWebGPU
                     && this.renderer.compileAsync
                 ) {
-                    await this.renderer.compileAsync(this.scene, this.camera);
+                    // Same conversion as the critical compile above (sweep §31): the deferred
+                    // build finishes well after the reveal, so this ALWAYS runs under the live
+                    // loop with post active — the bare call here was the exact hazard row 3.4
+                    // flags. The live-loop path compiles the deferred content (hidden included)
+                    // without touching global target state; the real post render afterwards
+                    // stays, for the post graph's own pipelines.
+                    const postStack = this.oceanPost ?? null;
+                    if (postStack?.scenePass?.renderTarget) {
+                        postStack.scenePass.renderTarget.samples = this.renderer.samples;
+                        postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                        await compileGroupUnderLiveLoop(
+                            this.renderer,
+                            postStack,
+                            this.scene,
+                            this.camera,
+                            this.scene,
+                        );
+                    } else {
+                        await this.renderer.compileAsync(this.scene, this.camera);
+                    }
                     if (this.oceanPost?.enabled) this.oceanPost.render();
                 }
             } catch (error) {
