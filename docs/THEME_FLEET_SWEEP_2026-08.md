@@ -2604,3 +2604,34 @@ internals) with **nothing to overlap against** — the switch is only 373 ms. Wa
 wait, it cannot shrink it; that is exactly why the §16 attempt measured +77 ms of noise. The
 lever is the shader itself: plan §1.3's calibrated-noise swap (the Odyssey lava-lake treatment).
 Anything else re-litigates a settled negative.
+
+## 32. ocean — 4,437 ms → 3,826 ms (−13.8 %), the live-loop machinery's first theme
+
+**Commit `2e45b11f` (change), this section (evidence). 2026-08-26.** Both arms n=3 admissible.
+
+Ocean could not take the standard bound warm: its render loop is live before either warm site
+runs (`firstRenderCallMs` 1,668 < `switchWallMs` 2,039), and a held global target binding would
+redirect concurrent paints into the scene pass. This is the first theme use of
+`compileGroupUnderLiveLoop` — Odyssey item 2.11's machinery — which binds nothing: it redirects
+the compile's target/MRT *reads* and launches per-object compiles in the scene pass's own
+prologue. Both bare sites converted (the critical in-switch compile, still fire-and-forget with
+the real post render chained after; and the deferred build's warm, which had been running bare
+under a live loop with post active — the row-3.4 hazard class, now closed here).
+
+| field | before (med, range) | after (med, range) | delta |
+|---|---:|---:|---:|
+| **firstFrame (ms)** | **4,436.5** (4,431.1–4,484.2) | **3,826.3** (3,075.2–4,197.7) | **−13.8 %** |
+| switchWall (ms) | 2,024.0 (2,013.7–2,068.6) | 1,493.1 (1,487.9–1,515.9) | −26.2 % |
+| async / sync | 51/76 | 50/49 | sync −35.5 % |
+| parallelism | 0.52x (0.50–0.53) | 2.66x (1.42–5.35) | 5.1x |
+| draws / tris p50 | 196 / 538,349 | 195 / 538,195 | unchanged |
+| cpu / gpu / wall p95 | 2.5 / 1.245 / 8.3 | 2.7 / 1.311 / 8.2 | within noise |
+
+Two honest caveats. **The after-arm is noisy** — firstFrame ranges over 1,100 ms — because ocean
+streams tens of MB of assets after the reveal and the deferred warm lands at different phases
+run to run; the median stands (kill margin 11.5x) and the mechanism moved (sync −27, switch
+−531 ms with tight ranges on both). **The gap barely moved** (−3.4 % median): 39 scene-shape sync
+pipelines remain, and they are ocean's deferred/streamed content compiling at arrival — §30's
+warm-at-creation class, not reachable by any switch-time warm — plus a gap floor set by asset
+decode, not pipelines. Ocean's next lever is row 3.3 (fetch/decode in `init()`), not more compile
+work.
