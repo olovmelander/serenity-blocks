@@ -2474,3 +2474,33 @@ Nothing traded: switch, gap and first frame all fell together, and the content g
 the digit across all six runs. The kill-check margin (delta 936 ms vs before-spread 44 ms) is 21x.
 ADR-0007 for both sections: lane screenshot + console gates green on all twelve runs; compile
 scheduling and the r185-equivalent pin only, rendered image unchanged by construction.
+
+## 28. golden-forest — 4,493 ms → 3,169 ms (−29.5 %), measured through a pinned clock
+
+**Commit `61f2e262` (lane: `--perf-url-params`) + the theme commit before it (change), this section
+(evidence). 2026-08-26.** Both arms **n=5** admissible, pinned
+`goldenForestFixedDt=16.67&goldenForestSeed=1`, stamped in every cell's manifest.
+
+§18 called golden-forest the fleet's most variable theme — 37 % first-frame spread on identical
+code — and it was unmeasurable until the lane could pass determinism flags. The pin collapsed the
+spread to **2.3 %** (101 ms over five runs) with draws 304 and triangles 336,745 *exact in all ten
+runs*. The theme's gate carried three defects: a dead `webgpuWater` check (only ever assigned null;
+its skip branch never ran and had misled two code surveys), an `!useMRT` skip that avoided the warm
+exactly where it matters (the hazard it dodged is the one `compileGroupThroughPost` removes), and
+the bare unbound call itself while the theme draws through `postComposer`'s scene pass.
+
+| field | before (med, range) | after (med, range) | delta |
+|---|---:|---:|---:|
+| **firstFrame (ms)** | **4,492.9** (4,454.9–4,555.4) | **3,169.3** (3,160.5–3,208.8) | **−29.5 %** |
+| switchWall (ms) | 3,997.5 (3,957.6–4,027.4) | 2,745.2 (2,739.2–2,762.0) | −31.3 % |
+| after-gap (ms) | 497.3 (492.8–528.0) | 420.7 (407.3–469.6) | −15.4 % |
+| async / sync | 30/106 (exact ×5) | 44/65 (exact ×5) | +14 / −41 |
+| asyncSum (ms) | 2,114.0 | 7,254.4 | +243 % |
+| parallelism | 0.70x (0.69–0.70) | 2.76x (2.37–2.81) | 3.9x |
+| draws / tris p50 | 304 / 336,745 (exact ×10) | — same — | 0 |
+| cpu / gpu / wall p95 | 4.2 / 1.507 / 8.3 | 4.3 / 1.573 / 8.2 | unchanged |
+
+The −1,324 ms lands inside the ranked hit list's predicted −1.0 to −1.6 s band. 65 sync pipelines
+remain — golden-forest's post graph is the fleet's largest and §24's residue class applies at scale —
+so there is a second bite here someday, at diminishing return. Kill-check margin 13x. ADR-0007:
+lane gates green ×10; scheduling + the r185-equivalent pin only.
