@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-28T13:09:09.061Z",
-  "startedAt": "2026-08-28T13:08:23.416Z",
-  "runId": "2026-08-28T13-08-23-416Z",
+  "generatedAt": "2026-08-28T13:20:37.995Z",
+  "startedAt": "2026-08-28T13:19:53.924Z",
+  "runId": "2026-08-28T13-19-53-923Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,19 +23,19 @@
     "perfTargetFps": 60
   },
   "selectedThemes": [
-    "summer"
+    "misty-lake"
   ],
   "results": [
     {
-      "theme": "summer",
-      "displayName": "Midsommar",
+      "theme": "misty-lake",
+      "displayName": "Misty Lake",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\summer.png",
-      "report": "docs\\theme-screenshots\\results\\summer.json",
+      "screenshot": "docs\\theme-screenshots\\misty-lake.png",
+      "report": "docs\\theme-screenshots\\results\\misty-lake.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
-      "perfCell": "reports\\theme-perf-ab-batch6\\summer\\summer.json",
+      "perfCell": "reports\\theme-perf-ab-batch6\\misty-lake\\misty-lake.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
