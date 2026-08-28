@@ -208,16 +208,17 @@ export function createFluidHeroNodeMaterial(options = {}) {
         sdfInputs.push({ name: `mb${i}`, type: 'vec4' });
     }
     const maxDistValue = options.maxDist ?? 70.0;
-    const sceneSDF = Fn((inputs) => {
-        const p = inputs[0];
-        const k = inputs[1];
-        const pulse = inputs[2];
-        const shockOrigin = inputs[3];
-        const shockRadius = inputs[4];
-        const shockStrength = inputs[5];
+    const sceneSDF = Fn((args) => {
+        // NAMED access, not numeric: with a layout, the closure's argument binds parameters by
+        // the layout's input names (three's own BSDF fns destructure by name); numeric indexing
+        // is not part of that contract and read undefined — 2 TSL TypeErrors per run, every
+        // after-cell voided, before this line changed.
+        const {
+            p, k, pulse, shockOrigin, shockRadius, shockStrength,
+        } = args;
         const d = float(maxDistValue).toVar();
         for (let i = 0; i < metaballCount; i += 1) {
-            const mb = inputs[6 + i];
+            const mb = args[`mb${i}`];
             const center = mb.xyz;
             const radius = mb.w.mul(pulse);
             const dist = length(p.sub(center)).sub(radius);
