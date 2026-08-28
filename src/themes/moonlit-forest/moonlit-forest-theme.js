@@ -12,6 +12,7 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { create as createMoonlitForestScene } from '../../playground/effects/moonlit-forest-master.effect.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { MOONLIT_FOREST_TETROMINOS } from './moonlit-forest-tetrominos.js';
 import { MoonlitForestFXController } from './moonlit-forest-fx-controller.js';
 
@@ -349,7 +350,23 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.runtime.camera?.(0, this.camera);
         this.runtime.update?.(0, 0);
         try {
-            await this.renderer.compileAsync?.(this.scene, this.camera);
+            // MEASURED 2026-08-25 (sweep cell): the bare compileAsync here already warmed the
+            // RIGHT pipelines — 29 async vs 9 sync leftovers, 53 ms after-gap, the best in the
+            // WebGPU fleet — but r185 awaits pipeline promises per object, so the 25 timed
+            // compiles ran strictly one at a time: 2,497 ms of compile inside a 2,903 ms wall
+            // (0.83x parallelism), all of it inside switchWallMs. The helper fans the same
+            // compiles out at concurrency 6. There is no post stack here, so it binds nothing
+            // and preserves this call's exact render context — the argument order is three's
+            // compileAsync contract (objectToCompile, camera, targetScene), scene in both seats
+            // for a whole-scene warm.
+            await compileGroupThroughPost(
+                this.renderer,
+                null,
+                this.scene,
+                this.camera,
+                this.scene,
+                false,
+            );
         } catch (error) {
             console.warn('[MoonlitForest] Pipeline precompile was incomplete:', error);
         }
