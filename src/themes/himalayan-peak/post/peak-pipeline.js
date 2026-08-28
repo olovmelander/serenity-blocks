@@ -161,6 +161,9 @@ export class PeakPostPipeline {
     _setup(params) {
         this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
+        // Published for the warm path (sweep §36): the bound compile duck-types on
+        // postStack.scenePass.renderTarget. Everything else stays closure-local.
+        this.scenePass = scenePass;
 
         let bloomSource;
         try {

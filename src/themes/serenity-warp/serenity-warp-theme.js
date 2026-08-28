@@ -16,6 +16,7 @@ import {
 import { createSerenityWarpGameplayFX } from './serenity-warp-gameplay-fx.js';
 import { SerenityWarpReactionDirector } from './serenity-warp-reaction-director.js';
 import { SERENITY_WARP_TETROMINOS } from './serenity-warp-tetrominos.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 
 const WEBGPU_INIT_TIMEOUT_MS = 5500;
 const THEME_TETROMINO_MINIMUM_RESIDENCE_MS = 90_000;
@@ -132,6 +133,27 @@ export default class SerenityWarpTheme extends BaseTheme {
         this.createOverlay(container);
         this.setupReactivity();
         this.setupGpuResilience();
+
+        // Batch-B warm (2026-08-26, sweep §36): zero async pipelines existed and there is no
+        // post stack — moonlit-forest/halcyon-apex's shape (§23/§33): a null-bind fan-out
+        // preserves this call's default context, fanned out at concurrency 6, before the loop
+        // starts. One real render afterwards compiles leftovers behind the activation mask.
+        if (this.isWebGPU && this.renderer?.compileAsync) {
+            try {
+                await compileGroupThroughPost(
+                    this.renderer,
+                    null,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                );
+                this.renderer.render(this.scene, this.camera);
+            } catch (error) {
+                console.warn('[SerenityWarp] Pipeline precompile was incomplete:', error);
+            }
+        }
+
         this.animate();
 
         console.log(`[SerenityWarp] Scene created (${this.isWebGPU ? 'WebGPU' : 'WebGL2'})`);

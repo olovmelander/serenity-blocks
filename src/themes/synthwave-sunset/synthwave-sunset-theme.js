@@ -15,6 +15,7 @@ import { WebGLRenderer } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import {
     createGridNodeMaterial,
@@ -850,6 +851,32 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         window.addEventListener('resize', this._resizeHandler);
 
         // Start animation
+
+        // Batch-B warm (2026-08-26, sweep §36): zero async pipelines existed — the whole compile
+        // paid synchronously at first draw. Post is created just above and the loop starts just
+        // below, so this is the plain bound warm (ice-temple §24): pin samples/type
+        // (PassNode.setup() has not run; the pipeline cache key hashes sample count), bind the
+        // scene pass's target and MRT across the fan-out at concurrency 6.
+        if (this.renderer?.compileAsync) {
+            try {
+                const postStack = this.postProcessing ?? null;
+                if (postStack?.scenePass?.renderTarget) {
+                    postStack.scenePass.renderTarget.samples = this.renderer.samples;
+                    postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                    await compileGroupThroughPost(
+                        this.renderer,
+                        postStack,
+                        this.scene,
+                        this.camera,
+                        this.scene,
+                        false,
+                    );
+                }
+            } catch (error) {
+                console.warn('[SynthwaveSunset] Pipeline precompile was incomplete:', error);
+            }
+        }
+
         this.animate();
 
         console.log(`[Synthwave3D] Scene initialized with ${this.currentQuality} quality`);
