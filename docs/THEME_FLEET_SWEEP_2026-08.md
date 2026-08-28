@@ -2692,3 +2692,35 @@ program compilation cannot touch; the leading candidate is **lazy texture upload
 not stacked into this one). Both edits reverted; the GL-fleet gap class (misty-lake,
 bioluminescence, solar-eclipse 672, fall 422, luminous-tides 418, pyrestorm's 2.2 s in-switch)
 now has one falsified mechanism and one candidate mechanism on record.
+
+## 36. Batch B — the smaller themes, and the law that decides them
+
+**2026-08-26. Six zero-async themes attempted (`da28a0ce` and its parent), n=3/arm each, plus
+neon-dusk blocked. Two kept, three reverted, all evidence in `reports/theme-perf-ab-batch5/`.**
+
+| theme | gap before | firstFrame | verdict |
+|---|---:|---|---|
+| synthwave-sunset | 724 ms | 1,083 → **883 ms (−18.5 %)** | **KEEP** |
+| himalayan-peak | 592 ms | 920 → **858 ms (−6.8 %)** | **KEEP** |
+| electric-dreams-v3 | 781 ms | 1,111 → 1,150 (+3.6 %) | revert — a wash tipping negative |
+| astral-weave | 708 ms | 961 → 1,284 (+33.7 %) | revert — gap eliminated, and still lost |
+| serenity-warp | 476 ms | 706 → 1,814 (+156.9 %) | revert — 1.2 s of warm against 114 ms of compile |
+| neon-dusk | 821 ms | — | measurement-blocked: its own DRS moves the pixel-ratio pin in 6/6 baseline runs (the row-4.2 defect); unmeasurable until 4.2 lands |
+
+**The small-theme law, measured five ways.** The gap→switch trade wins only when the first-frame
+stall exceeds the warm's own awaited wall (`asyncSum / parallelism`). astral-weave is the purest
+demonstration: the warm **eliminated** its gap (708 → 46 ms) and the theme still got 324 ms
+slower, because the awaited compile cost ~986 ms — the bare first draw, which overlaps its
+pipeline compile with everything else in the gap (asset decode, texture upload, layout), was
+already the better schedule. Below a gap of roughly **700 ms** at this fleet's typical
+parallelism (~2.5–3x), the recipe reliably loses. synthwave-sunset (724 ms gap, good
+parallelism) and himalayan-peak (592 ms but a very cheap warm) sit just on the winning side;
+serenity-warp (476 ms) was never close.
+
+This closes the systematic sweep of the zero-async class. Every theme in it now carries either a
+kept, measured fix or a measured negative with its mechanism — none carries an assumption. The
+themes below this line in the gap ranking (wolfhour 529, fall 422, luminous-tides 418, …) sit in
+the regime the law says to leave alone, and the remaining large-gap items each need a different
+tool: summer a context diagnosis (§31), the GL fleet a texture-upload experiment (§35),
+sky-children a lifecycle reorder (§34), neon-dusk the row-4.2 DRS gate, stillwater and starlight
+shader-size work (§30/§31).
