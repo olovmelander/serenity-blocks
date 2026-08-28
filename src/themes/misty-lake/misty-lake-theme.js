@@ -474,19 +474,6 @@ export default class MistyLakeTheme extends BaseTheme {
 
         window.addEventListener('resize', this.boundResizeHandler);
 
-        // FIRST-FRAME WARM, EXPERIMENT 3 (2026-08-26, sweep §38). §35 falsified program
-        // compile (awaited classic compileAsync: gap −2.7 %); experiment 2 falsified texture
-        // upload (initTexture over every reachable texture: gap −2.8 %, and the switch did not
-        // even grow — nothing costly to upload). This is the decisive form: ONE REAL RENDER
-        // before the loop starts does everything the first live frame would — program compiles
-        // under live state, uploads, buffer init — synchronously behind the switch mask. If the
-        // 1.4 s gap survives THIS, it is not first-frame work at all, and the classic fleet's
-        // gap class needs re-interpretation rather than warming.
-        try {
-            this.renderer.render(this.scene, this.camera);
-        } catch (error) {
-            console.warn('[MistyLake] Warm render failed:', error);
-        }
         this.startRenderLoop();
 
         container.style.transition = 'opacity 1.5s ease-in';
