@@ -2504,3 +2504,38 @@ The −1,324 ms lands inside the ranked hit list's predicted −1.0 to −1.6 s 
 remain — golden-forest's post graph is the fleet's largest and §24's residue class applies at scale —
 so there is a second bite here someday, at diminishing return. Kill-check margin 13x. ADR-0007:
 lane gates green ×10; scheduling + the r185-equivalent pin only.
+
+## 29. The fleet, re-measured after the campaign — 95.6 s → 74.6 s of summed first-frame (−22.0 %)
+
+**2026-08-26.** All 61 themes re-swept in ONE run — runId `2026-08-26-fleet-postfix`, one adapter,
+one instrument commit, `--perf-idle-ms 10000` — with every campaign fix in the bundle. **61/61
+workers passed, 60/61 cells admissible** (neon-dusk's DRS moved its pixel-ratio pin mid-window
+again — the same row-4.2 defect §12 caught, still unfixed, still caught). This snapshot **replaces**
+`reports/theme-perf/` wholesale under §22's governance rule; §20's run remains in history as the
+pre-campaign snapshot.
+
+**Zero GPU-column voids.** stellar-velocity — the only WebGPU theme with no GPU samples in both
+earlier runs — reports a full column now; the lane's per-tick `trackTimestamp` re-arm (`8620b5f1`)
+closed that defect class fleet-wide, without touching the theme.
+
+| fleet metric (61 themes) | §20 snapshot | this snapshot | delta |
+|---|---:|---:|---:|
+| summed firstFrameGpuDoneMs | 95,642 ms | 74,617 ms | **−22.0 %** |
+| median firstFrameGpuDoneMs | 1,138 ms | 952 ms | −16.3 % |
+| worst theme | stillwater 6,505 | stillwater 5,476 | — |
+
+**Attribution discipline.** Snapshot-to-snapshot deltas include machine-day variance: the **49
+untouched themes moved −12.6 % median on identical code** (range −54 % to +9 %) — the same class of
+day effect §21 measured at +10.5 % in the other direction between the two 08-25 runs. The 12 fixed
+themes moved −23.4 % median (−34.2 % summed: 42,377 → 27,890 ms). The per-theme effect claims
+therefore live in §13–§17 and §22–§28, whose arms are same-day, protocol-matched, n≥3; this section
+claims only the fleet's current state, on one comparable snapshot, with no regression: **no theme
+is more than 20 % slower than its §20 cell, and every fixed theme is faster in-fleet**
+(moonlit-forest −71.0 %, ice-temple −59.1 %, stellar-drift −59.0 %, golden-forest −45.9 %,
+koi-pond −39.1 %, black-hole −36.4 %).
+
+**The remaining top five** are now stillwater 5,476 (its §13 fix stands; what remains is reflector
+residue + scale), ocean 4,441 (the live-loop second site, §11's deferred item), **summer 3,534 and
+starlight 3,275 — the two reverted themes, holding exactly the cost their reverts predicted** — and
+lunara 3,153. The zero-async class is otherwise extinct: 12 of row 3.1's 13 bare-call themes are
+converted, and the recipe held on every shape it met.
