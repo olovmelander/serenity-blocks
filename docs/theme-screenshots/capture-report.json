@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-28T12:01:27.051Z",
-  "startedAt": "2026-08-28T12:00:44.391Z",
-  "runId": "2026-08-28T12-00-44-390Z",
+  "generatedAt": "2026-08-28T12:35:22.571Z",
+  "startedAt": "2026-08-28T12:34:39.254Z",
+  "runId": "2026-08-28T12-34-39-253Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,19 +23,19 @@
     "perfTargetFps": 60
   },
   "selectedThemes": [
-    "bioluminescence"
+    "serenity-warp"
   ],
   "results": [
     {
-      "theme": "bioluminescence",
-      "displayName": "Bioluminescence",
+      "theme": "serenity-warp",
+      "displayName": "Serenity Warp",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\bioluminescence.png",
-      "report": "docs\\theme-screenshots\\results\\bioluminescence.json",
+      "screenshot": "docs\\theme-screenshots\\serenity-warp.png",
+      "report": "docs\\theme-screenshots\\results\\serenity-warp.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
-      "perfCell": "reports\\theme-perf-ab-batch5\\bioluminescence\\bioluminescence.json",
+      "perfCell": "reports\\theme-perf-ab-batch5\\serenity-warp\\serenity-warp.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,

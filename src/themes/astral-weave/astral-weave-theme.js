@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import * as THREE_WEBGPU from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { ASTRAL_WEAVE_TETROMINOS } from './astral-weave-tetrominos.js';
 import { AstralWeaveFXController } from './astral-weave-fx-controller.js';
@@ -596,32 +595,6 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.setupQualityListener();
         this.setupPostProcessing();
         this.configureRendererColorPipeline();
-
-        // Batch-B warm (2026-08-26, sweep §36): zero async pipelines existed — the whole compile
-        // paid synchronously at first draw. Post is created just above and the loop starts just
-        // below, so this is the plain bound warm (ice-temple §24): pin samples/type
-        // (PassNode.setup() has not run; the pipeline cache key hashes sample count), bind the
-        // scene pass's target and MRT across the fan-out at concurrency 6.
-        if (this.renderer?.compileAsync) {
-            try {
-                const postStack = this.postProcessing ?? null;
-                if (postStack?.scenePass?.renderTarget) {
-                    postStack.scenePass.renderTarget.samples = this.renderer.samples;
-                    postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
-                    await compileGroupThroughPost(
-                        this.renderer,
-                        postStack,
-                        this.scene,
-                        this.camera,
-                        this.scene,
-                        false,
-                    );
-                }
-            } catch (error) {
-                console.warn('[AstralWeave] Pipeline precompile was incomplete:', error);
-            }
-        }
-
         this.startAnimation();
 
         if (this.flags.baseline) {
