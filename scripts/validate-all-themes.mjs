@@ -60,6 +60,7 @@ const VALUE_OPTIONS = new Set([
     'perf-target-fps',
     'perf-url-params',
     'port',
+    'run-id',
     'server-timeout-ms',
     'settle-ms',
     'theme',
@@ -241,6 +242,10 @@ export function parseThemeValidationArgs(argv) {
         // One query-string fragment forwarded to the worker's app URL (e.g.
         // 'goldenForestFixedDt=16.67&goldenForestSeed=1') for pinned-content A/B arms.
         perfUrlParams: typeof raw['perf-url-params'] === 'string' ? raw['perf-url-params'] : null,
+        // Fixed run identity for chunked sweeps: a full-fleet run driven as several resumed
+        // invocations must still land ONE runId across all 61 cells — the snapshot rule
+        // (sweep section 22) keys comparability on it. Omitted -> per-invocation timestamp.
+        runId: typeof raw['run-id'] === 'string' ? raw['run-id'] : null,
         cooldownMs: parseNonNegativeInt(
             raw['cooldown-ms'],
             2_000,
@@ -772,7 +777,7 @@ export async function runThemeValidation(argv = process.argv.slice(2)) {
     }
 
     await mkdir(config.outputDir, { recursive: true });
-    const runId = new Date().toISOString().replace(/[:.]/g, '-');
+    const runId = config.runId ?? new Date().toISOString().replace(/[:.]/g, '-');
     const startedAt = new Date().toISOString();
     const baseUrl = config.externalBaseUrl
         || `http://127.0.0.1:${config.port}/`;
