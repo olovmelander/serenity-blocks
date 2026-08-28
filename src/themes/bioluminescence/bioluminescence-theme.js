@@ -1004,6 +1004,18 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.setupEventListeners();
 
         console.log('🍄 Bioluminescence: Scene created with', this.mushrooms.length, 'mushrooms,', this.crystalClusters.length, 'crystal clusters');
+        // MEASURED 2026-08-26 (sweep §35): classic-WebGL theme, 1,192 ms first-frame gap on a
+        // tiny switch — sync GLSL program compile at first draw. Classic compileAsync (r152+)
+        // rides KHR_parallel_shader_compile, so the programs compile on driver threads while
+        // this await holds the switch behind the mask; without the extension it degrades to
+        // the same sync compile, just earlier and hidden.
+        if (this.renderer?.compileAsync) {
+            try {
+                await this.renderer.compileAsync(this.scene, this.camera);
+            } catch (error) {
+                console.warn('[Bioluminescence] Shader precompile was incomplete:', error);
+            }
+        }
         this.startAnimation();
     }
 
