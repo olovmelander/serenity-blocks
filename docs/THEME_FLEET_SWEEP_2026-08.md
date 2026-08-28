@@ -2297,3 +2297,40 @@ the fleet is next swept end-to-end, the row updates with all the others.
 This is the fourth published claim in this document retracted by its own author (§19 records the
 first three). The common shape is unchanged: a number was checked on the axis under investigation
 and published without checking the axes it was not about.
+
+## 23. moonlit-forest — 2,477 ms → 909 ms (−63.3 %), the fleet's cleanest curve made 3.5x wider
+
+**Commit `a75543fb` (change), this section (evidence). 2026-08-26.** Both arms n=3 admissible, same
+instrument build (`8620b5f1`), `--perf-idle-ms 10000`, per-theme cold Dawn cache.
+
+moonlit-forest was row 3.1's counter-example — the theme whose bare `compileAsync` already warmed
+the right pipelines (29 async / 9 sync, ~52 ms after-gap, best in the WebGPU fleet). Its whole
+remaining cost was r185's per-object await: the cell's `atMs`/`ms` chain showed the timed compiles
+strictly serialised, ~2,000 ms of compile in a ~2,300 ms wall (0.86x parallelism, never more than
+2 in flight). The fix swaps the bare call for `compileGroupThroughPost` with a **null** post stack —
+there is nothing to bind, so the render context is exactly the bare call's, fanned out at
+concurrency 6 with the deferred-side-capture fix.
+
+| field | before (med, range) | after (med, range) | delta |
+|---|---:|---:|---:|
+| **firstFrame (ms)** | **2,476.6** (2,475.5–3,190.1) | **909.3** (898.2–929.8) | **−63.3 %** |
+| switchWall (ms) | 2,426.7 (2,423.7–3,129.2) | 860.7 (848.8–877.7) | −64.5 % |
+| after-gap (ms) | 51.8 (49.9–60.9) | 49.4 (48.6–52.1) | unchanged |
+| async / sync | 29/9 (exact ×3) | 33/1 (exact ×3) | +4 / −8 |
+| asyncSum (ms) | 2,002.3 | 2,681.7 | +33.9 % |
+| parallelism | 0.86x (0.84–0.87) | 3.53x (3.52–3.65) | 4.1x |
+| draws / tris p50 | 32 / 23,141 (exact ×3) | 32 / 23,141 (exact ×3) | 0 |
+| cpu p95 / wall p95 (ms) | 0.7 / 8.2 | 0.7 / 8.2 | 0 |
+
+Reading the guards: the after-gap did not move, so no cost was relocated past the switch promise;
+draws, triangles, cpu and wall are identical to the digit, so the theme renders the same content at
+the same frame cost. `asyncSum` **rose** 34 % — koi-pond's §17 explained why that is the fix
+working, not a regression: compiles overlapped under real concurrency each carry their full own
+duration, where the serial drain hid queue time inside neighbours. The 9 sync leftovers became
+warmed asyncs (29/9 → 33/1): those were the two-pass DoubleSide pipelines the deferred-side-capture
+workaround exists for, which the bare call could never warm.
+
+This is now the reference conversion for a no-post theme: **one import, six lines, −1,567 ms**, and
+the kill-check margin (delta 1,567 ms vs before-spread 715 ms) is the widest in the campaign.
+ADR-0007: the lane's own per-run screenshot + console gate passed on all six runs; the change
+touches compile scheduling only, so the rendered image is unchanged by construction.
