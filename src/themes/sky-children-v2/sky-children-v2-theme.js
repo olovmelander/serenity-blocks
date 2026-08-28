@@ -26,6 +26,7 @@ import {
     disposeVegetation,
 } from '../shared/sky-core/sky-core-vegetation.js';
 import { SkyPipeline } from './post/sky-pipeline.js';
+import { compileGroupUnderLiveLoop } from '../../rendering/odyssey/warmup/post-target-compile.js';
 
 const HERO_SHOTS = Object.freeze([
     'hero-sunset-ridge',
@@ -636,6 +637,32 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             return;
         }
         this.setupPostProcessing();
+
+        // MEASURED 2026-08-26 (sweep §34): 0 async / 34 sync pipelines behind a 1,540 ms
+        // first-frame gap, 23 of them the scene-pass shape. The loop is already live here
+        // (startAnimation() runs BEFORE buildScene, line ~632), so the binding warm is
+        // structurally unavailable — ocean's case (§32): compileGroupUnderLiveLoop redirects
+        // the compile's target/MRT reads and binds nothing. Pin first: PassNode.setup() has
+        // not run, and the pipeline cache key hashes sample count. Vegetation is deferred
+        // past this point and compiles at arrival — the known warm-at-creation residue class.
+        if (this.isWebGPU && this.renderer?.compileAsync) {
+            try {
+                const postStack = this.postComposer ?? null;
+                if (postStack?.scenePass?.renderTarget) {
+                    postStack.scenePass.renderTarget.samples = this.renderer.samples;
+                    postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                    await compileGroupUnderLiveLoop(
+                        this.renderer,
+                        postStack,
+                        this.scene,
+                        this.camera,
+                        this.scene,
+                    );
+                }
+            } catch (error) {
+                console.warn('[SkyChildrenV2] Pipeline precompile was incomplete:', error);
+            }
+        }
 
         // Defer vegetation so the first frame (mountains, sky, terrain) renders immediately
         if (this._vegetationCallbackId !== null) {

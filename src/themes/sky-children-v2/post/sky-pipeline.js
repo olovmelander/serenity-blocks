@@ -68,6 +68,9 @@ export class SkyPipeline {
     _setup(params) {
         this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
+        // Published for the warm path: compileGroupUnderLiveLoop duck-types on
+        // `postStack.scenePass.renderTarget` (sweep §34). Everything else stays closure-local.
+        this.scenePass = scenePass;
 
         let bloomSource;
         try {
