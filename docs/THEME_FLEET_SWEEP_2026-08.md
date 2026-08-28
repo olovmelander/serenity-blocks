@@ -2724,3 +2724,31 @@ the regime the law says to leave alone, and the remaining large-gap items each n
 tool: summer a context diagnosis (§31), the GL fleet a texture-upload experiment (§35),
 sky-children a lifecycle reorder (§34), neon-dusk the row-4.2 DRS gate, stillwater and starlight
 shader-size work (§30/§31).
+
+## 37. summer, second attempt — a perfect wash, and the strongest evidence yet for the law
+
+**Attempted and reverted 2026-08-26** (warm commit reverted in `3230c065`; both arms n=3
+admissible in `reports/theme-perf-ab-batch6/summer/`). firstFrame **3,583.1 → 3,569.4 ms
+(−0.4 %, 14 ms inside the 43 ms before-spread)** — a wash to the digit.
+
+Unlike the first attempt (§16: a bare serial warm that reached 10 of 121 pipelines), this one
+ran the campaign's full toolkit — runtime tick first, scene-wide reveal, null-bind fan-out for
+the default context, a private reflector-formats pass for the second context, one real render —
+and the mechanism **worked where it could**: 0/121 → 68/47, the reflector class nearly
+eliminated (53 → 3), gap 3,210 → 442 ms (−86 %), zero console errors, draws and triangles exact.
+And the theme did not get faster, because the switch absorbed ~2.75 s of awaited compile
+(asyncSum 8,185 ms at 2.34x) to remove ~2.77 s of gap.
+
+**This is §36's law at its largest scale**: summer's 3.2 s gap was never a naked stall — the GPU
+drizzled the 121 sync compiles across early frames, overlapped with asset decode and upload, and
+that natural schedule was already efficient. A warm that merely relocates compile cannot beat
+overlap; only making the compiles *cheaper* can (plan §1.3's calibrated-noise swap — summer's sky
+dome carries 12 `mx_noise_float` calls — the same lever as starlight §31 and stillwater's
+remaining monster §30).
+
+**One narrowed puzzle stays on the record**: 42 of the 55 default-context
+(`rgba16float|4|depth24plus`) pipelines *still* missed the null-bind warm, while halcyon-apex's
+identical-shape class converted fully (§33). Summer's live default context differs from its
+compile-time resolution in some way not yet identified — pixel-ratio timing, output-buffer
+config, or a per-frame target the wrapper touches. Whoever picks summer up again starts there,
+with the reflector-format pass (explicit target, full conversion) as the working control.
