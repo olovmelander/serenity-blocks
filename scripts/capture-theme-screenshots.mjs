@@ -62,6 +62,7 @@ const WORKER_VALUE_OPTIONS = new Set([
     'settle-ms',
     'switch-timeout-ms',
     'theme',
+    'url-params',
     'width',
 ]);
 // Module scope on purpose: the perf switches and the userData path must be set before
@@ -288,6 +289,11 @@ function createConfig(argv) {
             '--ready-timeout-ms',
         ),
         settleMs: parseNonNegativeInt(args['settle-ms'], 2_000, '--settle-ms'),
+        // Extra query params appended to the app URL, as one query-string fragment
+        // (e.g. "goldenForestFixedDt=16.67&goldenForestSeed=1"). Added 2026-08-26 so themes with
+        // determinism flags can be A/B'd with pinned content — golden-forest's 37 % run-to-run
+        // spread (sweep §18) is unmeasurable without it. Stamped into the cell manifest.
+        urlParams: typeof args['url-params'] === 'string' ? args['url-params'] : null,
         headed: parseBoolean(args.headed, false),
         perf: parseBoolean(args.perf, false),
         perfIdleMs: parseNonNegativeInt(args['perf-idle-ms'], 20_000, '--perf-idle-ms'),
@@ -334,6 +340,11 @@ function createTargetUrl(config) {
     url.searchParams.set('noThemeWarm', '1');
     url.searchParams.set('themeValidation', '1');
     url.searchParams.set('captureBust', config.runId);
+    if (config.urlParams) {
+        for (const [key, value] of new URLSearchParams(config.urlParams)) {
+            url.searchParams.set(key, value);
+        }
+    }
     return url.toString();
 }
 
@@ -1848,6 +1859,9 @@ async function runThemePerfLane(win, config, gpuDiagnostics) {
             // opens) but was only recoverable from the source, not the data — the one manifest
             // gap section 10 flagged. Every cell before this carries the lane default (4000).
             settleMs: config.perfSettleMs,
+            // Cells measured with pinned content (determinism query params) must say so — a
+            // pinned cell and a free-running cell are different measurements of the same theme.
+            urlParams: config.urlParams,
             quality: config.perfQuality,
             targetFps: config.perfTargetFps,
             electronGpuDiagnostics: gpuDiagnostics ?? null,

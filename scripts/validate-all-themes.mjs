@@ -58,6 +58,7 @@ const VALUE_OPTIONS = new Set([
     'perf-quality',
     'perf-settle-ms',
     'perf-target-fps',
+    'perf-url-params',
     'port',
     'server-timeout-ms',
     'settle-ms',
@@ -237,6 +238,9 @@ export function parseThemeValidationArgs(argv) {
                 ? raw['perf-profile-dir']
                 : PERF_LANE_DEFAULTS.profileDir,
         ),
+        // One query-string fragment forwarded to the worker's app URL (e.g.
+        // 'goldenForestFixedDt=16.67&goldenForestSeed=1') for pinned-content A/B arms.
+        perfUrlParams: typeof raw['perf-url-params'] === 'string' ? raw['perf-url-params'] : null,
         cooldownMs: parseNonNegativeInt(
             raw['cooldown-ms'],
             2_000,
@@ -298,6 +302,7 @@ export function buildThemeWorkerArgs({
     perfTargetFps,
     perfOutputDir,
     perfProfileDir,
+    perfUrlParams,
 }) {
     return [
         WORKER_SCRIPT,
@@ -321,6 +326,7 @@ export function buildThemeWorkerArgs({
                 '--perf-quality', String(perfQuality),
                 '--perf-target-fps', String(perfTargetFps),
                 '--perf-out', perfOutputDir,
+                ...(perfUrlParams ? ['--url-params', perfUrlParams] : []),
                 // Per-theme userData so every worker gets its OWN Dawn shader cache: a shared
                 // profile would make theme N+1's compile numbers warm-cache and incomparable.
                 '--perf-profile-dir', path.join(perfProfileDir, entry.id),
@@ -539,6 +545,7 @@ async function runThemeWorker(config, entry, baseUrl, runId) {
         perfTargetFps: config.perfTargetFps,
         perfOutputDir: config.perfOutputDir,
         perfProfileDir: config.perfProfileDir,
+        perfUrlParams: config.perfUrlParams,
     });
     const env = {
         ...process.env,
