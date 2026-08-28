@@ -474,34 +474,19 @@ export default class MistyLakeTheme extends BaseTheme {
 
         window.addEventListener('resize', this.boundResizeHandler);
 
-        // TEXTURE-UPLOAD WARM (2026-08-26, sweep §38). §35 falsified the program-compile
-        // hypothesis for this theme's 1,412 ms first-frame gap: an awaited classic
-        // compileAsync moved the gap −2.7 %. The surviving hypothesis is lazy texture upload —
-        // classic three uploads a texture to the GPU on FIRST BIND, inside the first draw.
-        // renderer.initTexture() performs exactly that upload eagerly; running it here moves
-        // the cost behind the switch mask. Falsifiable the same way: if the gap does not
-        // collapse, textures were not the gap either.
-        if (typeof this.renderer?.initTexture === 'function') {
-            const seen = new Set();
-            const initTex = (t) => {
-                if (!t || !t.isTexture || seen.has(t)) return;
-                seen.add(t);
-                try { this.renderer.initTexture(t); } catch (_) { /* upload is best-effort */ }
-            };
-            this.scene.traverse((o) => {
-                if (!o.material) return;
-                const mats = Array.isArray(o.material) ? o.material : [o.material];
-                for (const m of mats) {
-                    for (const key of Object.keys(m)) {
-                        const v = m[key];
-                        if (v && v.isTexture) initTex(v);
-                    }
-                }
-            });
-            initTex(this.scene.background);
-            initTex(this.scene.environment);
+        // FIRST-FRAME WARM, EXPERIMENT 3 (2026-08-26, sweep §38). §35 falsified program
+        // compile (awaited classic compileAsync: gap −2.7 %); experiment 2 falsified texture
+        // upload (initTexture over every reachable texture: gap −2.8 %, and the switch did not
+        // even grow — nothing costly to upload). This is the decisive form: ONE REAL RENDER
+        // before the loop starts does everything the first live frame would — program compiles
+        // under live state, uploads, buffer init — synchronously behind the switch mask. If the
+        // 1.4 s gap survives THIS, it is not first-frame work at all, and the classic fleet's
+        // gap class needs re-interpretation rather than warming.
+        try {
+            this.renderer.render(this.scene, this.camera);
+        } catch (error) {
+            console.warn('[MistyLake] Warm render failed:', error);
         }
-
         this.startRenderLoop();
 
         container.style.transition = 'opacity 1.5s ease-in';
