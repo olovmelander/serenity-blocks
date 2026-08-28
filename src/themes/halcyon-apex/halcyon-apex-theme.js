@@ -11,6 +11,7 @@ import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { create as createHalcyonApexScene } from '../../playground/effects/halcyon-apex.effect.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { HALCYON_APEX_TETROMINOS } from './halcyon-apex-tetrominos.js';
 
 function readBoolParam(...keys) {
@@ -70,6 +71,47 @@ export default class HalcyonApexTheme extends BaseTheme {
             sizes: { width, height },
             params: new URLSearchParams(window.location.search),
         });
+
+        // MEASURED 2026-08-26 (sweep §33): this theme created 0 async / 62 sync pipelines —
+        // no warm at all — behind a 1,697 ms first-frame gap. There is no post stack and no MRT
+        // anywhere in the effect, so this is moonlit-forest's shape (§23): a null-bind fan-out
+        // compiles the default-context scene pipelines async at concurrency 6, before the loop
+        // starts. The lake reflector re-renders the scene into its own target (HalfFloatType,
+        // scale 0.4 — 16 of the sampled sync rows carried that context), so a second pass runs
+        // under a tiny private target with the reflector's formats — safe scene-wide here
+        // precisely because nothing is MRT-only (contrast stillwater §30 finding 3).
+        if (this.isWebGPU && this.renderer?.compileAsync) {
+            try {
+                await compileGroupThroughPost(
+                    this.renderer,
+                    null,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                );
+                const reflectorWarmTarget = new THREE.RenderTarget(320, 180, {
+                    type: THREE.HalfFloatType,
+                    samples: 0,
+                });
+                try {
+                    await compileGroupThroughPost(
+                        this.renderer,
+                        { scenePass: { renderTarget: reflectorWarmTarget, getMRT: () => null } },
+                        this.scene,
+                        this.camera,
+                        this.scene,
+                        false,
+                    );
+                } finally {
+                    reflectorWarmTarget.dispose();
+                }
+                // One real render before the loop compiles any leftovers behind the mask.
+                this.renderer.render(this.scene, this.camera);
+            } catch (error) {
+                console.warn('[HalcyonApex] Pipeline precompile was incomplete:', error);
+            }
+        }
 
         this.setupResize();
         this.setupEventListeners();
