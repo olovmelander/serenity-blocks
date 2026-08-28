@@ -15,6 +15,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { ICE_TEMPLE_TETROMINOS } from './ice-temple-tetrominos.js';
 import { IceTemplePost } from './ice-temple-post.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import { IceTempleSnowCompute, IceTempleShardBurstCompute } from './ice-temple-compute.js';
 import * as ICE_TEMPLE_SHADERS from './ice-temple-shaders.js';
 import {
@@ -1349,8 +1350,32 @@ export default class IceTempleTheme extends BaseTheme {
         });
 
         try {
+            // MEASURED 2026-08-25 (sweep cell): the bare compileAsync here ran BEFORE binding any
+            // target while the live frame draws through this.postProcessing.render() into an
+            // rgba16float|4|depth24plus scene pass. r185 keys builder state on the render context,
+            // so the warm produced 11 async pipelines the live path partly missed and the first
+            // post frame created 28 MORE synchronously (15 of them the scene-pass shape) — a
+            // 1,310 ms after-gap. setupPostProcessing() is awaited at the createScene call site
+            // before this runs, so the post stack exists; bind the warm through it, koi-pond's
+            // shape (c59e4918), with stillwater's sample/type pin (0b15db5d): PassNode.setup()
+            // has not run yet, so the target still carries RenderTarget defaults while the live
+            // pass will be renderer.samples, and the WebGPU pipeline cache key hashes sample
+            // count. With no post stack (usePost off, or creation failed) the helper binds
+            // nothing, which is exactly today's context — just fanned out at concurrency 6.
+            const postStack = this.postProcessing ?? null;
+            if (postStack?.scenePass?.renderTarget) {
+                postStack.scenePass.renderTarget.samples = this.renderer.samples;
+                postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+            }
             await Promise.race([
-                this.renderer.compileAsync(this.scene, this.camera),
+                compileGroupThroughPost(
+                    this.renderer,
+                    postStack,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                ),
                 timeoutPromise,
             ]);
             return true;
