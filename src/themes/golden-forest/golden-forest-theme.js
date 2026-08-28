@@ -19,6 +19,7 @@ import { GOLDEN_FOREST_TETROMINOS } from './golden-forest-tetrominos.js';
 import { GoldenForestWater } from './GoldenForestWater.js';
 import { GoldenForestBirds } from './golden-forest-birds.js';
 import { GoldenForestPost } from './golden-forest-post.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 
 // PBR textures removed - using simple Firewatch-style ground
 import {
@@ -956,19 +957,35 @@ export default class GoldenForestTheme extends BaseTheme {
         // Tag the finished environment so the WebGPU lake reflector mirrors it.
         this.applyReflectionLayer();
 
-        const shouldCompileAsync = this.isWebGPU
-            && this.renderer?.compileAsync
-            && !this.flags.useMRT
-            && !this.webgpuWater?.renderTarget;
-        if (shouldCompileAsync) {
+        // REWORKED 2026-08-26 (sweep §28). Three things were wrong with the old gate:
+        // 1. `!this.webgpuWater?.renderTarget` was dead — `this.webgpuWater` is only ever
+        //    assigned null in this file, so the skip branch below it never ran.
+        // 2. `!this.flags.useMRT` skipped the warm exactly where it is most needed; the hazard
+        //    it dodged (bare compileAsync baking non-MRT pipelines under an MRT framebuffer) is
+        //    what compileGroupThroughPost exists to remove — it binds the scene pass's target
+        //    AND MRT across the compile (stillwater's MRT tier, 0b15db5d).
+        // 3. The call was bare and unbound while this theme draws through postComposer's scene
+        //    pass — ice-temple's §24 shape — and r185 drains it serially.
+        // Bind through the post stack with the sample/type pin (PassNode.setup() has not run
+        // yet), fan out at concurrency 6. With no post stack the helper binds nothing — the old
+        // context, just fanned out.
+        if (this.isWebGPU && this.renderer?.compileAsync) {
             try {
-                await this.renderer.compileAsync(this.scene, this.camera);
+                const postStack = this.postComposer ?? null;
+                if (postStack?.scenePass?.renderTarget) {
+                    postStack.scenePass.renderTarget.samples = this.renderer.samples;
+                    postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+                }
+                await compileGroupThroughPost(
+                    this.renderer,
+                    postStack,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                );
             } catch (error) {
                 console.warn('[GoldenForest] WebGPU compileAsync failed:', error);
-            }
-        } else if (this.isWebGPU && this.renderer?.compileAsync && this.webgpuWater?.renderTarget) {
-            if (this.flags.debug || this.flags.baseline) {
-                console.log('[GoldenForest] Skipping compileAsync for WebGPU reflection render-target path.');
             }
         }
 
