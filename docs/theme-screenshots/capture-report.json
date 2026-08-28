@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-28T14:14:03.281Z",
-  "startedAt": "2026-08-28T14:13:19.840Z",
-  "runId": "2026-08-28T14-13-19-839Z",
+  "generatedAt": "2026-08-28T14:41:34.439Z",
+  "startedAt": "2026-08-28T14:40:46.471Z",
+  "runId": "2026-08-28T14-40-46-470Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,19 +23,19 @@
     "perfTargetFps": 60
   },
   "selectedThemes": [
-    "fluid-dreams"
+    "stillwater"
   ],
   "results": [
     {
-      "theme": "fluid-dreams",
-      "displayName": "Fluid Dreams",
+      "theme": "stillwater",
+      "displayName": "Stillwater",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\fluid-dreams.png",
-      "report": "docs\\theme-screenshots\\results\\fluid-dreams.json",
+      "screenshot": "docs\\theme-screenshots\\stillwater.png",
+      "report": "docs\\theme-screenshots\\results\\stillwater.json",
       "lifecycleFailureCount": 0,
-      "consoleErrorCount": 1,
-      "perfCell": "reports\\theme-perf-ab-batch7\\fluid-dreams-hero\\fluid-dreams.json",
+      "consoleErrorCount": 0,
+      "perfCell": "reports\\theme-perf-ab-batch7\\stillwater-loop\\stillwater.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
