@@ -2417,3 +2417,60 @@ Cumulative koi-pond: 7,169 ms (§17 baseline) → 2,932 (§17) → **2,137 ms** 
 n=3 baseline — **−70.2 %** from where the campaign found it, now mid-pack in the fleet.
 ADR-0007: lane screenshot + console gates green ×6; the pin duplicates what `PassNode.setup()`
 does on the first frame (`PassNode.js:765-767`), so the rendered image is unchanged by construction.
+
+## 26. black-hole — 1,467 ms → 964 ms (−34.3 %), and a trade made visible
+
+**Commit `726654b5` (change), this section (evidence). 2026-08-26.** Both arms n=3 admissible.
+
+black-hole was the fleet's last zero-async WebGPU theme with a real gap: its `prewarmPipelines()`
+deliberately warmed by running **one real `postProcessing.render()`**, whose own comment (correctly)
+forbids bare `compileAsync` on the MRT path — it predates `compileGroupThroughPost`, which removes
+exactly that hazard by binding the scene pass's target and MRT across the compile. The cell showed
+the price of the sync warm: 0 async / 21 sync, and since `createRenderPipeline` returns before the
+GPU compiles, the switch resolved in ~332 ms while the player paid a **1,111 ms** invisible stall at
+the first drawn frame. The fix fans out bound (pin + concurrency 6) and keeps the real render for
+the post graph's own pipelines.
+
+| field | before (med, range) | after (med, range) | delta |
+|---|---:|---:|---:|
+| **firstFrame (ms)** | **1,467.4** (1,442.9–1,516.8) | **964.1** (960.7–984.2) | **−34.3 %** |
+| switchWall (ms) | 331.8 (316.4–365.4) | 703.0 (699.1–720.7) | **+111.9 %** |
+| after-gap (ms) | 1,111.1 (1,102.0–1,200.4) | 261.6 (261.1–263.5) | −76.5 % |
+| async / sync | 0/21 (exact ×3) | 12/9 (exact ×3) | +12 / −12 |
+| asyncSum (ms) | 0 | 1,520.6 | — |
+| parallelism | — | 2.52x (2.50–2.56) | — |
+| draws / tris p50 | 24 / 9,457 (exact ×3) | 24 / 9,457 (exact ×3) | 0 |
+| cpu / wall p95 | 0.9 / 15.9 | 1.0 / 15.9 | unchanged |
+
+**The switch got slower, on purpose, and the player got faster.** This is stillwater's §13 trade in
+its purest form: the before-arm's 332 ms switch was an artefact of sync pipeline creation — the CPU
+call returns instantly and the GPU blocks at the first draw, so the cost was real but unattributed.
+The fan-out runs ~600 ms of the same compile *measured, overlapped 2.5x, inside the switch*, and
+the first-frame stall drops 850 ms. Anyone comparing `switchWallMs` alone would call this a
+regression; `firstFrameGpuDoneMs` is the player-facing number and it fell by a third. The 9
+remaining sync rows are the §24 residue class (post-graph internals) plus the two pipelines the
+kept render still creates first.
+
+## 27. stellar-drift — 1,992 ms → 1,056 ms (−47.0 %), ice-temple's recipe verbatim
+
+**Commit `3c8ab1e0` (change), this section (evidence). 2026-08-26.** Both arms n=3 admissible.
+
+The same shape as §24 down to the timeout race: a bare `compileAsync` raced against a 3.2 s budget,
+unbound, while the theme draws through `postProcessing.render()`. 12 async / 23 sync, with the
+serial drain (0.62x parallelism) sitting inside the switch. Bind + pin + fan-out, race kept.
+
+| field | before (med, range) | after (med, range) | delta |
+|---|---:|---:|---:|
+| **firstFrame (ms)** | **1,991.5** (1,983.8–2,027.6) | **1,055.9** (1,048.8–1,058.8) | **−47.0 %** |
+| switchWall (ms) | 1,700.8 (1,694.4–1,735.2) | 980.2 (972.7–981.3) | −42.4 % |
+| after-gap (ms) | 290.7 (289.4–292.4) | 76.1 (75.7–77.5) | −73.8 % |
+| async / sync | 12/23 (exact ×3) | 13/10 (exact ×3) | +1 / −13 |
+| asyncSum (ms) | 1,019.8 | 1,898.6 | +86 % |
+| parallelism | 0.62x (0.61–0.62) | 2.41x (2.35–2.41) | 3.9x |
+| draws / tris p50 | 55 / 12,175 (exact ×3) | 55 / 12,175 (exact ×3) | 0 |
+| cpu / gpu / wall p95 | 1.4 / 2.097 / 8.3 | 1.4 / 2.163 / 8.3 | unchanged |
+
+Nothing traded: switch, gap and first frame all fell together, and the content guards are exact to
+the digit across all six runs. The kill-check margin (delta 936 ms vs before-spread 44 ms) is 21x.
+ADR-0007 for both sections: lane screenshot + console gates green on all twelve runs; compile
+scheduling and the r185-equivalent pin only, rendered image unchanged by construction.
