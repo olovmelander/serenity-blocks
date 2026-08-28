@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-25T10:29:26.893Z",
-  "runId": "2026-08-25T10-14-42-798Z",
+  "generatedAt": "2026-08-28T07:34:59.999Z",
+  "runId": "2026-08-26-fleet-postfix",
   "theme": "cosmic-chimes",
   "themeMeta": {
     "displayName": "Cosmic Chimes",
@@ -10,7 +10,7 @@
     "performanceClass": "light"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T10-14-42-798Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-26-fleet-postfix",
   "passed": true,
   "config": {
     "width": 1920,
@@ -152,7 +152,7 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-25T10:29:24.564Z",
+        "timestamp": "2026-08-28T07:34:57.695Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -163,8 +163,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-25T10:29:24.587Z",
-    "runId": "2026-08-25T10-14-42-798Z",
+    "generatedAt": "2026-08-28T07:34:57.715Z",
+    "runId": "2026-08-26-fleet-postfix",
     "theme": "cosmic-chimes",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -198,6 +198,8 @@
         "enable-precise-memory-info"
       ],
       "idleMs": 10000,
+      "settleMs": 4000,
+      "urlParams": null,
       "quality": "High",
       "targetFps": 60,
       "electronGpuDiagnostics": {
@@ -314,103 +316,103 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 697
+          "atMs": 706.6
         },
         {
           "kind": "webgl",
-          "atMs": 1057.3
+          "atMs": 1058
         },
         {
           "kind": "2d",
-          "atMs": 1057.6
+          "atMs": 1058.1
         },
         {
           "kind": "2d",
-          "atMs": 1058.6
+          "atMs": 1058.9
         },
         {
           "kind": "2d",
-          "atMs": 1093.3
+          "atMs": 1096
         },
         {
           "kind": "webgl",
-          "atMs": 1100.8
+          "atMs": 1103.7
         },
         {
           "kind": "2d",
-          "atMs": 1157.1
+          "atMs": 1172.6
         },
         {
           "kind": "2d",
-          "atMs": 1157.2
+          "atMs": 1172.6
         },
         {
           "kind": "2d",
-          "atMs": 1158
+          "atMs": 1174
         },
         {
           "kind": "2d",
-          "atMs": 1158
+          "atMs": 1174.1
         },
         {
           "kind": "2d",
-          "atMs": 1160.9
+          "atMs": 1177.3
         },
         {
           "kind": "2d",
-          "atMs": 1885.3
+          "atMs": 1850
         },
         {
           "kind": "2d",
-          "atMs": 1893.4
+          "atMs": 1858.5
         },
         {
           "kind": "2d",
-          "atMs": 1898.9
+          "atMs": 1864
         },
         {
           "kind": "2d",
-          "atMs": 1905
+          "atMs": 1869.8
         },
         {
           "kind": "2d",
-          "atMs": 1909.9
+          "atMs": 1875.2
         },
         {
           "kind": "2d",
-          "atMs": 1914.7
+          "atMs": 1880.7
         },
         {
           "kind": "2d",
-          "atMs": 2029.1
+          "atMs": 2008.3
         },
         {
           "kind": "2d",
-          "atMs": 2034.9
+          "atMs": 2014.6
         },
         {
           "kind": "2d",
-          "atMs": 2040.6
+          "atMs": 2020.7
         },
         {
           "kind": "2d",
-          "atMs": 4063.4
+          "atMs": 4084.1
         },
         {
           "kind": "2d",
-          "atMs": 4063.4
+          "atMs": 4084.2
         },
         {
           "kind": "2d",
-          "atMs": 4513.4
+          "atMs": 6523.1
         },
         {
           "kind": "2d",
-          "atMs": 4525.7
+          "atMs": 6532
         },
         {
           "kind": "2d",
-          "atMs": 4532.8
+          "atMs": 6538
         }
       ],
       "wrapped": [],
@@ -447,33 +449,33 @@
       "visit2SyncCount": 0
     },
     "switchTimings": {
-      "switchWallMs": 42.7,
+      "switchWallMs": 46.4,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 14.5,
+      "createSceneEnterMs": 12.3,
       "rendererCreatedMs": null,
-      "criticalReadyMs": 42.7,
+      "criticalReadyMs": 46.5,
       "firstRenderCallMs": null,
-      "firstFrameGpuDoneMs": 42.7,
+      "firstFrameGpuDoneMs": 46.5,
       "firstFrameGpuDoneMethod": "no-gpu-context",
-      "allQuiescedGpuDoneMs": 2061.8,
+      "allQuiescedGpuDoneMs": 2047.7,
       "allQuiescedGpuDoneMethod": "no-gpu-context",
       "quietWaitFloorMs": 2000,
-      "firstFrameRafMs": 2063,
-      "visit2SwitchWallMs": 17.9
+      "firstFrameRafMs": 2050.6,
+      "visit2SwitchWallMs": 13.8
     },
     "idle": {
-      "windowMs": 10005.6,
-      "framesObserved": 1300,
+      "windowMs": 10004.8,
+      "framesObserved": 1315,
       "wall": {
-        "samples": 1299,
-        "p50": 7.7,
-        "p95": 8.3,
+        "samples": 1314,
+        "p50": 7.6,
+        "p95": 8.2,
         "p99": 8.6,
         "min": 7,
-        "max": 16.7,
+        "max": 14.8,
         "budgetMs": 16.667,
-        "overBudget": 1
+        "overBudget": 0
       },
       "cpuSubmitMs": {
         "samples": 0,
@@ -529,15 +531,15 @@
       "contentGuardAdmissible": false
     },
     "memory": {
-      "peakHeapMB": 25.34,
-      "p50HeapMB": 23.33,
+      "peakHeapMB": 24.68,
+      "p50HeapMB": 22.78,
       "heapSamples": 40,
-      "heapDrops": 12,
+      "heapDrops": 11,
       "allocBytesPerFrame": null,
-      "allocVoidReason": "12 GC(s) inside the window",
-      "gcPerSecond": 1.199,
-      "gcCount": 12,
-      "cdpHeapDeltaBytes": 2058252,
+      "allocVoidReason": "11 GC(s) inside the window",
+      "gcPerSecond": 1.099,
+      "gcCount": 11,
+      "cdpHeapDeltaBytes": 2098256,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-25T10:46:16.122Z",
-  "runId": "2026-08-25T10-14-42-798Z",
+  "generatedAt": "2026-08-28T07:54:44.462Z",
+  "runId": "2026-08-26-fleet-postfix",
   "theme": "void-ember",
   "anchorTheme": "forest",
   "themeMeta": {
@@ -35,6 +35,8 @@
       "enable-precise-memory-info"
     ],
     "idleMs": 10000,
+    "settleMs": 4000,
+    "urlParams": null,
     "quality": "High",
     "targetFps": 60,
     "electronGpuDiagnostics": {
@@ -151,107 +153,107 @@
     "canvasContexts": [
       {
         "kind": "webgl",
-        "atMs": 669.7
+        "atMs": 696.4
       },
       {
         "kind": "webgl",
-        "atMs": 1051.2
+        "atMs": 1049.1
       },
       {
         "kind": "2d",
-        "atMs": 1051.4
+        "atMs": 1049.2
       },
       {
         "kind": "2d",
-        "atMs": 1052.2
+        "atMs": 1050.5
       },
       {
         "kind": "2d",
-        "atMs": 1091.5
+        "atMs": 1092.2
       },
       {
         "kind": "webgl",
-        "atMs": 1098.7
+        "atMs": 1100.2
       },
       {
         "kind": "2d",
-        "atMs": 1152.5
+        "atMs": 1160.9
       },
       {
         "kind": "2d",
-        "atMs": 1152.6
+        "atMs": 1161
       },
       {
         "kind": "2d",
-        "atMs": 1153.9
+        "atMs": 1162.1
       },
       {
         "kind": "2d",
-        "atMs": 1153.9
+        "atMs": 1162.1
       },
       {
         "kind": "2d",
-        "atMs": 1164.8
+        "atMs": 1174.6
       },
       {
         "kind": "2d",
-        "atMs": 1861
+        "atMs": 1791.9
       },
       {
         "kind": "2d",
-        "atMs": 1868.9
+        "atMs": 1800.3
       },
       {
         "kind": "2d",
-        "atMs": 1873.8
+        "atMs": 1806
       },
       {
         "kind": "2d",
-        "atMs": 1879.5
+        "atMs": 1812.3
       },
       {
         "kind": "2d",
-        "atMs": 1884.8
+        "atMs": 1817.7
       },
       {
         "kind": "2d",
-        "atMs": 1889.5
+        "atMs": 1823.2
       },
       {
         "kind": "2d",
-        "atMs": 1981.5
+        "atMs": 1912.7
       },
       {
         "kind": "2d",
-        "atMs": 1988.3
+        "atMs": 1918.9
       },
       {
         "kind": "2d",
-        "atMs": 1993.9
+        "atMs": 1927.8
       },
       {
         "kind": "2d",
-        "atMs": 4063.3
+        "atMs": 4066.8
       },
       {
         "kind": "2d",
-        "atMs": 4063.3
+        "atMs": 4066.9
       },
       {
         "kind": "webgpu",
-        "atMs": 4626.3
+        "atMs": 6576.4
       },
       {
         "kind": "2d",
-        "atMs": 4630.9
+        "atMs": 6579.5
       },
       {
         "kind": "2d",
-        "atMs": 4636.1
+        "atMs": 6583.6
       },
       {
         "kind": "2d",
-        "atMs": 4642
+        "atMs": 6587.6
       }
     ],
     "wrapped": [],
@@ -295,7 +297,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4627.4,
+        "atMs": 6577.1,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -309,7 +311,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4627.6,
+        "atMs": 6577.3,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -323,7 +325,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4627.6,
+        "atMs": 6577.3,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -337,7 +339,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4627.7,
+        "atMs": 6577.3,
         "targets": "bgra8unorm",
         "samples": 1,
         "depth": null
@@ -351,7 +353,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4627.9,
+        "atMs": 6577.4,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -365,7 +367,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4627.9,
+        "atMs": 6577.5,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -379,7 +381,7 @@
         "async": false,
         "failed": false,
         "ms": null,
-        "atMs": 4627.9,
+        "atMs": 6577.5,
         "targets": "rgba16float",
         "samples": 1,
         "depth": null
@@ -390,31 +392,31 @@
     "visit2SyncCount": 7
   },
   "switchTimings": {
-    "switchWallMs": 195.2,
+    "switchWallMs": 186.2,
     "managerReportedMs": null,
     "queueDrainMs": null,
-    "createSceneEnterMs": 21.8,
+    "createSceneEnterMs": 15.6,
     "rendererCreatedMs": null,
-    "criticalReadyMs": 195.2,
+    "criticalReadyMs": 186.2,
     "firstRenderCallMs": null,
-    "firstFrameGpuDoneMs": 195.2,
+    "firstFrameGpuDoneMs": 186.2,
     "firstFrameGpuDoneMethod": "no-gpu-context",
-    "allQuiescedGpuDoneMs": 2290.7,
+    "allQuiescedGpuDoneMs": 2287.2,
     "allQuiescedGpuDoneMethod": "no-gpu-context",
     "quietWaitFloorMs": 2000,
-    "firstFrameRafMs": 2293.7,
-    "visit2SwitchWallMs": 65.7
+    "firstFrameRafMs": 2293,
+    "visit2SwitchWallMs": 55.5
   },
   "idle": {
-    "windowMs": 10000.4,
+    "windowMs": 10005,
     "framesObserved": 1309,
     "wall": {
       "samples": 1308,
       "p50": 7.6,
       "p95": 8.2,
-      "p99": 8.6,
+      "p99": 8.5,
       "min": 7,
-      "max": 14.8,
+      "max": 8.8,
       "budgetMs": 16.667,
       "overBudget": 0
     },
@@ -472,15 +474,15 @@
     "contentGuardAdmissible": false
   },
   "memory": {
-    "peakHeapMB": 26.62,
-    "p50HeapMB": 24.11,
+    "peakHeapMB": 25.27,
+    "p50HeapMB": 23.64,
     "heapSamples": 40,
-    "heapDrops": 15,
+    "heapDrops": 9,
     "allocBytesPerFrame": null,
-    "allocVoidReason": "15 GC(s) inside the window",
-    "gcPerSecond": 1.5,
-    "gcCount": 15,
-    "cdpHeapDeltaBytes": -156320,
+    "allocVoidReason": "9 GC(s) inside the window",
+    "gcPerSecond": 0.9,
+    "gcCount": 9,
+    "cdpHeapDeltaBytes": 712068,
     "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
   },
   "drift": {

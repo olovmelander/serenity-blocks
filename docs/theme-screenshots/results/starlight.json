@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-25T10:31:40.278Z",
-  "runId": "2026-08-25T10-14-42-798Z",
+  "generatedAt": "2026-08-28T07:37:29.930Z",
+  "runId": "2026-08-26-fleet-postfix",
   "theme": "starlight",
   "themeMeta": {
     "displayName": "Starlight",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T10-14-42-798Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-26-fleet-postfix",
   "passed": true,
   "config": {
     "width": 1920,
@@ -135,16 +135,16 @@
     "samples": 20107,
     "luminance": {
       "min": 0,
-      "max": 246.0582,
-      "mean": 1.8732729696125678,
-      "range": 246.0582,
-      "variance": 183.33168530863796
+      "max": 242.34580000000003,
+      "mean": 1.9412517133336653,
+      "range": 242.34580000000003,
+      "variance": 193.52027857517263
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 126,
-    "warningCount": 6,
+    "entryCount": 127,
+    "warningCount": 7,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -152,42 +152,49 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-25T10:31:09.072Z",
+        "timestamp": "2026-08-28T07:36:52.989Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T10:31:09.077Z",
+        "timestamp": "2026-08-28T07:36:52.993Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 4694,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T10:31:13.521Z",
+        "timestamp": "2026-08-28T07:36:57.267Z",
         "level": 2,
         "message": "THREE.WebGPUTimestampQueryPool [render]: Maximum number of queries exceeded, when using trackTimestamp it is necessary to resolves the queries via renderer.resolveTimestampsAsync( THREE.TimestampQuery.RENDER ).",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T10:31:28.628Z",
+        "timestamp": "2026-08-28T07:37:11.653Z",
+        "level": 2,
+        "message": "THREE.WebGPUTimestampQueryPool [compute]: Maximum number of queries exceeded, when using trackTimestamp it is necessary to resolves the queries via renderer.resolveTimestampsAsync( THREE.TimestampQuery.COMPUTE ).",
+        "line": 5,
+        "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
+      },
+      {
+        "timestamp": "2026-08-28T07:37:16.389Z",
         "level": 2,
         "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
         "line": 5,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T10:31:28.630Z",
+        "timestamp": "2026-08-28T07:37:16.391Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 4694,
         "sourceId": "http://127.0.0.1:4174/assets/three-BPCBPfzf.js"
       },
       {
-        "timestamp": "2026-08-25T10:31:37.944Z",
+        "timestamp": "2026-08-28T07:37:27.624Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -198,8 +205,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-25T10:31:37.971Z",
-    "runId": "2026-08-25T10-14-42-798Z",
+    "generatedAt": "2026-08-28T07:37:27.639Z",
+    "runId": "2026-08-26-fleet-postfix",
     "theme": "starlight",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -233,6 +240,8 @@
         "enable-precise-memory-info"
       ],
       "idleMs": 10000,
+      "settleMs": 4000,
+      "urlParams": null,
       "quality": "High",
       "targetFps": 60,
       "electronGpuDiagnostics": {
@@ -349,107 +358,107 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 674.5
+          "atMs": 708.2
         },
         {
           "kind": "webgl",
-          "atMs": 778.7
+          "atMs": 1075.3
         },
         {
           "kind": "2d",
-          "atMs": 778.9
+          "atMs": 1075.5
         },
         {
           "kind": "2d",
-          "atMs": 780.1
+          "atMs": 1076.6
         },
         {
           "kind": "2d",
-          "atMs": 815.6
+          "atMs": 1122.6
         },
         {
           "kind": "webgl",
-          "atMs": 823.1
+          "atMs": 1132.2
         },
         {
           "kind": "2d",
-          "atMs": 877.4
+          "atMs": 1201.3
         },
         {
           "kind": "2d",
-          "atMs": 877.4
+          "atMs": 1201.4
         },
         {
           "kind": "2d",
-          "atMs": 878.4
+          "atMs": 1202.2
         },
         {
           "kind": "2d",
-          "atMs": 878.4
+          "atMs": 1202.2
         },
         {
           "kind": "2d",
-          "atMs": 887.8
+          "atMs": 1213.8
         },
         {
           "kind": "2d",
-          "atMs": 1705
+          "atMs": 1931.3
         },
         {
           "kind": "2d",
-          "atMs": 1715.1
+          "atMs": 1939.5
         },
         {
           "kind": "2d",
-          "atMs": 1721.7
+          "atMs": 1945.2
         },
         {
           "kind": "2d",
-          "atMs": 1730
+          "atMs": 1950.9
         },
         {
           "kind": "2d",
-          "atMs": 1735
+          "atMs": 1955.9
         },
         {
           "kind": "2d",
-          "atMs": 1740.1
+          "atMs": 1960.9
         },
         {
           "kind": "2d",
-          "atMs": 1830.2
+          "atMs": 2071.4
         },
         {
           "kind": "2d",
-          "atMs": 1837
+          "atMs": 2078.1
         },
         {
           "kind": "2d",
-          "atMs": 1842.3
+          "atMs": 2083.5
         },
         {
           "kind": "2d",
-          "atMs": 3784.6
+          "atMs": 4115.1
         },
         {
           "kind": "2d",
-          "atMs": 3784.7
+          "atMs": 4115.1
         },
         {
           "kind": "webgpu",
-          "atMs": 4504.9
+          "atMs": 6758
         },
         {
           "kind": "2d",
-          "atMs": 4695.1
+          "atMs": 6901.4
         },
         {
           "kind": "2d",
-          "atMs": 4701.5
+          "atMs": 6905.4
         },
         {
           "kind": "2d",
-          "atMs": 4707
+          "atMs": 6908.8
         }
       ],
       "wrapped": [
@@ -496,7 +505,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4634.1,
+          "atMs": 6849.4,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -510,7 +519,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4653.5,
+          "atMs": 6867.9,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -524,7 +533,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4657.2,
+          "atMs": 6871.3,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -538,7 +547,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4660.1,
+          "atMs": 6873.8,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -552,7 +561,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4666.1,
+          "atMs": 6878.3,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -566,7 +575,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4671.6,
+          "atMs": 6881.4,
           "targets": "rgba16float,rgba16float",
           "samples": 4,
           "depth": "depth24plus"
@@ -580,7 +589,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4675.2,
+          "atMs": 6884.4,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -594,7 +603,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4679.5,
+          "atMs": 6887.7,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -608,7 +617,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4682.5,
+          "atMs": 6891.7,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -622,7 +631,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4685.3,
+          "atMs": 6894,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -636,7 +645,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4688,
+          "atMs": 6896,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -650,7 +659,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4690.3,
+          "atMs": 6897.8,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -664,7 +673,7 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4693.7,
+          "atMs": 6900.3,
           "targets": "rgba16float",
           "samples": 1,
           "depth": null
@@ -678,60 +687,60 @@
           "async": false,
           "failed": false,
           "ms": null,
-          "atMs": 4694.3,
+          "atMs": 6900.8,
           "targets": "bgra8unorm",
           "samples": 4,
           "depth": "depth24plus"
         }
       ],
-      "pipelinesAfterFirstFrame": 2,
+      "pipelinesAfterFirstFrame": 4,
       "visit2AsyncCount": 0,
       "visit2SyncCount": 14
     },
     "switchTimings": {
-      "switchWallMs": 452.5,
+      "switchWallMs": 373.4,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 12.9,
-      "rendererCreatedMs": 163.2,
-      "criticalReadyMs": 452.5,
-      "firstRenderCallMs": 241.1,
-      "firstFrameGpuDoneMs": 3439.3,
+      "createSceneEnterMs": 12.3,
+      "rendererCreatedMs": 161.8,
+      "criticalReadyMs": 373.4,
+      "firstRenderCallMs": 216.3,
+      "firstFrameGpuDoneMs": 3275.2,
       "firstFrameGpuDoneMethod": "queue.onSubmittedWorkDone",
-      "allQuiescedGpuDoneMs": 5511.9,
+      "allQuiescedGpuDoneMs": 5359.9,
       "allQuiescedGpuDoneMethod": "queue.onSubmittedWorkDone",
       "quietWaitFloorMs": 2000,
-      "firstFrameRafMs": 5515.8,
-      "visit2SwitchWallMs": 275.5
+      "firstFrameRafMs": 5367.1,
+      "visit2SwitchWallMs": 217.8
     },
     "idle": {
-      "windowMs": 10001.3,
-      "framesObserved": 1301,
+      "windowMs": 10003.9,
+      "framesObserved": 1307,
       "wall": {
-        "samples": 1300,
+        "samples": 1306,
         "p50": 7.6,
         "p95": 8.2,
-        "p99": 8.5,
+        "p99": 8.6,
         "min": 7,
-        "max": 39.4,
+        "max": 46.7,
         "budgetMs": 16.667,
         "overBudget": 2
       },
       "cpuSubmitMs": {
-        "samples": 659,
-        "p50": 1.4,
-        "p95": 1.6,
-        "p99": 1.8,
+        "samples": 662,
+        "p50": 0.8,
+        "p95": 1,
+        "p99": 1.4,
         "min": 0.7,
-        "max": 7.2
+        "max": 8.6
       },
       "gpuMs": {
-        "samples": 647,
-        "p50": 1.966,
-        "p95": 2.425,
-        "p99": 2.818,
-        "min": 1.442,
-        "max": 3.67,
+        "samples": 657,
+        "p50": 2.032,
+        "p95": 2.621,
+        "p99": 3.015,
+        "min": 1.376,
+        "max": 3.277,
         "quantumMs": 0.065536,
         "sampleDiscipline": "one-push-per-resolved-query",
         "stickySamplerSuspected": false
@@ -747,20 +756,20 @@
       "drawCalls": {
         "p05": 19,
         "p50": 19,
-        "p95": 21,
+        "p95": 23,
         "min": 19,
-        "max": 21
+        "max": 23
       },
       "triangles": {
         "p05": 145453,
         "p50": 145453,
-        "p95": 145549,
+        "p95": 146509,
         "min": 145453,
-        "max": 145549
+        "max": 146509
       },
       "steadyState": false,
       "infoOwnership": "contested",
-      "geometries": 6,
+      "geometries": 7,
       "textures": 14,
       "visit2": {
         "drawCalls": 19,
@@ -771,27 +780,27 @@
       "contentGuardAdmissible": true
     },
     "memory": {
-      "peakHeapMB": 42.82,
-      "p50HeapMB": 35.56,
+      "peakHeapMB": 42.1,
+      "p50HeapMB": 35.58,
       "heapSamples": 40,
-      "heapDrops": 8,
+      "heapDrops": 7,
       "allocBytesPerFrame": null,
-      "allocVoidReason": "8 GC(s) inside the window",
-      "gcPerSecond": 0.8,
-      "gcCount": 8,
-      "cdpHeapDeltaBytes": 9994320,
+      "allocVoidReason": "7 GC(s) inside the window",
+      "gcPerSecond": 0.7,
+      "gcCount": 7,
+      "cdpHeapDeltaBytes": 17172096,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {
       "visitGpuP50DeltaMs": 0.131,
-      "visitWallP95DeltaMs": 0.1,
+      "visitWallP95DeltaMs": 0,
       "voidReason": null,
       "admissible": true,
       "inadmissibleReasons": []
     },
     "console": {
       "errorCount": 0,
-      "warningCount": 6,
+      "warningCount": 7,
       "instrumentInducedErrorCount": 0,
       "genuineErrorCount": 0
     },

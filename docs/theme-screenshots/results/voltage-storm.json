@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-25T10:42:07.115Z",
-  "runId": "2026-08-25T10-14-42-798Z",
+  "generatedAt": "2026-08-28T07:49:49.949Z",
+  "runId": "2026-08-26-fleet-postfix",
   "theme": "voltage-storm",
   "themeMeta": {
     "displayName": "Voltage Storm",
@@ -10,7 +10,7 @@
     "performanceClass": "light"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-25T10-14-42-798Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-26-fleet-postfix",
   "passed": true,
   "config": {
     "width": 1920,
@@ -136,9 +136,9 @@
     "luminance": {
       "min": 4.5054,
       "max": 241.7208,
-      "mean": 9.40765154424015,
+      "mean": 9.364700522207977,
       "range": 237.2154,
-      "variance": 85.47599155866969
+      "variance": 85.40784292099063
     }
   },
   "console": {
@@ -152,7 +152,7 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-25T10:42:04.781Z",
+        "timestamp": "2026-08-28T07:49:47.627Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 8,
@@ -163,8 +163,8 @@
   },
   "perf": {
     "schemaVersion": 1,
-    "generatedAt": "2026-08-25T10:42:04.813Z",
-    "runId": "2026-08-25T10-14-42-798Z",
+    "generatedAt": "2026-08-28T07:49:47.650Z",
+    "runId": "2026-08-26-fleet-postfix",
     "theme": "voltage-storm",
     "anchorTheme": "forest",
     "themeMeta": {
@@ -198,6 +198,8 @@
         "enable-precise-memory-info"
       ],
       "idleMs": 10000,
+      "settleMs": 4000,
+      "urlParams": null,
       "quality": "High",
       "targetFps": 60,
       "electronGpuDiagnostics": {
@@ -314,107 +316,107 @@
       "canvasContexts": [
         {
           "kind": "webgl",
-          "atMs": 702.4
+          "atMs": 700.9
         },
         {
           "kind": "webgl",
-          "atMs": 1049.1
+          "atMs": 1075.1
         },
         {
           "kind": "2d",
-          "atMs": 1049.2
+          "atMs": 1075.2
         },
         {
           "kind": "2d",
-          "atMs": 1050
+          "atMs": 1076.5
         },
         {
           "kind": "2d",
-          "atMs": 1085.2
+          "atMs": 1123.9
         },
         {
           "kind": "webgl",
-          "atMs": 1092.4
+          "atMs": 1135.1
         },
         {
           "kind": "2d",
-          "atMs": 1145.4
+          "atMs": 1195.4
         },
         {
           "kind": "2d",
-          "atMs": 1145.4
+          "atMs": 1195.5
         },
         {
           "kind": "2d",
-          "atMs": 1146.6
+          "atMs": 1196.7
         },
         {
           "kind": "2d",
-          "atMs": 1146.6
+          "atMs": 1196.7
         },
         {
           "kind": "2d",
-          "atMs": 1158.6
+          "atMs": 1207.5
         },
         {
           "kind": "2d",
-          "atMs": 1758.7
+          "atMs": 1894.8
         },
         {
           "kind": "2d",
-          "atMs": 1767.2
+          "atMs": 1903
         },
         {
           "kind": "2d",
-          "atMs": 1772.7
+          "atMs": 1908.3
         },
         {
           "kind": "2d",
-          "atMs": 1779.6
+          "atMs": 1913.7
         },
         {
           "kind": "2d",
-          "atMs": 1787.3
+          "atMs": 1918.4
         },
         {
           "kind": "2d",
-          "atMs": 1793.4
+          "atMs": 1923.4
         },
         {
           "kind": "2d",
-          "atMs": 1898
+          "atMs": 2013.1
         },
         {
           "kind": "2d",
-          "atMs": 1904
+          "atMs": 2018.8
         },
         {
           "kind": "2d",
-          "atMs": 1909.5
+          "atMs": 2023.7
         },
         {
           "kind": "2d",
-          "atMs": 4051.5
+          "atMs": 4106.8
         },
         {
           "kind": "2d",
-          "atMs": 4051.6
+          "atMs": 4106.8
         },
         {
           "kind": "webgl2",
-          "atMs": 4391.6
+          "atMs": 6530.8
         },
         {
           "kind": "2d",
-          "atMs": 4579.1
+          "atMs": 6683.6
         },
         {
           "kind": "2d",
-          "atMs": 4585.1
+          "atMs": 6687.7
         },
         {
           "kind": "2d",
-          "atMs": 4589
+          "atMs": 6691.7
         }
       ],
       "wrapped": [],
@@ -451,31 +453,31 @@
       "visit2SyncCount": 0
     },
     "switchTimings": {
-      "switchWallMs": 241.4,
+      "switchWallMs": 193.3,
       "managerReportedMs": null,
       "queueDrainMs": null,
-      "createSceneEnterMs": 22.4,
+      "createSceneEnterMs": 14,
       "rendererCreatedMs": null,
-      "criticalReadyMs": 241.4,
+      "criticalReadyMs": 193.4,
       "firstRenderCallMs": null,
-      "firstFrameGpuDoneMs": 241.4,
+      "firstFrameGpuDoneMs": 193.4,
       "firstFrameGpuDoneMethod": "no-gpu-context",
-      "allQuiescedGpuDoneMs": 2323.8,
+      "allQuiescedGpuDoneMs": 2268.3,
       "allQuiescedGpuDoneMethod": "no-gpu-context",
       "quietWaitFloorMs": 2000,
-      "firstFrameRafMs": 2328.3,
-      "visit2SwitchWallMs": 124.1
+      "firstFrameRafMs": 2274.3,
+      "visit2SwitchWallMs": 99.7
     },
     "idle": {
-      "windowMs": 10002.1,
+      "windowMs": 10000.4,
       "framesObserved": 1315,
       "wall": {
         "samples": 1314,
         "p50": 7.6,
         "p95": 8.2,
-        "p99": 8.6,
+        "p99": 8.5,
         "min": 7,
-        "max": 14.9,
+        "max": 9.1,
         "budgetMs": 16.667,
         "overBudget": 0
       },
@@ -533,15 +535,15 @@
       "contentGuardAdmissible": false
     },
     "memory": {
-      "peakHeapMB": 26.49,
-      "p50HeapMB": 23.9,
+      "peakHeapMB": 25,
+      "p50HeapMB": 23.05,
       "heapSamples": 40,
-      "heapDrops": 14,
+      "heapDrops": 12,
       "allocBytesPerFrame": null,
-      "allocVoidReason": "14 GC(s) inside the window",
-      "gcPerSecond": 1.4,
-      "gcCount": 14,
-      "cdpHeapDeltaBytes": 452808,
+      "allocVoidReason": "12 GC(s) inside the window",
+      "gcPerSecond": 1.2,
+      "gcCount": 12,
+      "cdpHeapDeltaBytes": -815672,
       "cdpHeapNote": "brackets BOTH visits and the switch, not just the idle window"
     },
     "drift": {

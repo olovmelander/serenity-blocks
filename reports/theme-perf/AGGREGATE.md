@@ -1,6 +1,6 @@
 # Theme perf lane — aggregate
 
-Cells: **61**, admissible **59**, inadmissible **2** (kept and marked, never dropped).
+Cells: **61**, admissible **60**, inadmissible **1** (kept and marked, never dropped).
 
 Adapter(s) observed: `ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)`
 
@@ -8,102 +8,101 @@ Adapter(s) observed: `ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x00002
 
 | # | theme | kind | worst pipeline ms | sync pipes | switch ms | first frame GPU ms | idle wall p95 | cpu p95 | gpu p95 | draws | GC/s | adm |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|:--:|
-| 1 | lunara | WebGPURenderer | 3027 | 22 | 3862 | 4118 | 8.20 | 2.80 | 1.245 | 75 | 0.40 | ✓ |
-| 2 | stillwater | WebGPURenderer | 2873 | 44 | 4561 | 6505 | 8.30 | 3.00 | 0.721 | 60 | 0.40 | ✓ |
-| 3 | ocean | WebGPURenderer | 2640 | 76 | 2862 | 5447 | 8.30 | 4.00 | 1.114 | 197 | 0.50 | ✓ |
-| 4 | fluid-dreams | WebGPURenderer | 2255 | 10 | 2918 | 3781 | 15.20 | 1.60 | 1.442 | 19 | 0.60 | ✓ |
-| 5 | neon-district | WebGPURenderer | 1738 | 156 | 644 | 1203 | 22.90 | 9.10 | 1.376 | 471 | 0.60 | ✓ |
-| 6 | vesper-chrysalis | WebGPURenderer | 1580 | 62 | 2840 | 3737 | 22.30 | 3.90 | 1.245 | 106 | 0.40 | ✓ |
-| 7 | golden-forest | WebGPURenderer | 1054 | 106 | 5123 | 5673 | 16.10 | 7.00 | 1.507 | 324 | 0.80 | ✓ |
-| 8 | koi-pond | WebGPURenderer | 920 | 41 | 2383 | 3495 | 8.30 | 2.30 | 0.721 | 43 | 0.40 | ✓ |
-| 9 | ice-temple | WebGPURenderer | 670 | 28 | 2634 | 3944 | 8.40 | 3.80 | 0.328 | 114 | 0.40 | ✓ |
-| 10 | wolfhour | WebGPURenderer | 553 | 18 | 656 | 1210 | 8.20 | 1.90 | 1.049 | 32 | 0.30 | ✓ |
-| 11 | bioluminescence-2 | WebGPURenderer | 379 | 52 | 1786 | 2768 | 15.60 | 4.30 | 1.180 | 251 | 0.40 | ✓ |
-| 12 | stellar-drift | WebGPURenderer | 322 | 23 | 2176 | 2560 | 8.30 | 2.20 | 1.835 | 55 | 0.40 | ✓ |
-| 13 | moonlit-forest | WebGPURenderer | 292 | 9 | 3011 | 3064 | 8.20 | 0.90 | 1.442 | 32 | 0.90 | ✓ |
-| 14 | cosmic-noir | WebGPURenderer | 169 | 18 | 1164 | 1447 | 8.30 | 1.90 | 0.590 | 30 | 1.10 | ✓ |
-| 15 | chromadelic-highway | WebGPURenderer | 153 | 27 | 1480 | 1651 | 16.30 | 2.30 | 0.459 | 68 | 0.90 | ✓ |
-| 16 | stellar-velocity | WebGPURenderer | 129 | 23 | 955 | 1139 | 15.60 | 2.50 | — | 54 | 1.60 | ✗ |
-| 17 | chiral-gold | WebGPURenderer | 70 | 17 | 757 | 1138 | 22.50 | 1.50 | 0.524 | 25 | 1.20 | ✓ |
-| 18 | pyrestorm | WebGLRenderer | 0 | 0 | 2270 | 2289 | 8.20 | 0.80 | — | 54 | 1.20 | ✓ |
-| 19 | moonrise-summit | WebGLRenderer | 0 | 0 | 1719 | 1732 | 8.20 | 0.70 | — | 33 | 1.20 | ✓ |
-| 20 | blood-moon | WebGLRenderer | 0 | 0 | 1596 | 1649 | 8.20 | 0.70 | — | 43 | 1.20 | ✓ |
-| 21 | crystal-cave | WebGLRenderer | 0 | 0 | 1075 | 1104 | 8.30 | 3.10 | — | 268 | 0.80 | ✓ |
-| 22 | sakura-twilight | WebGLRenderer | 0 | 0 | 1065 | 1074 | 8.20 | 0.70 | — | 22 | 1.00 | ✓ |
-| 23 | halcyon-apex | WebGPURenderer | 0 | 62 | 906 | 2634 | 8.20 | 4.60 | 0.721 | 308 | 0.40 | ✓ |
-| 24 | rainy-window | WebGLRenderer | 0 | 0 | 816 | 846 | 8.20 | 0.70 | — | 11 | 2.50 | ✓ |
-| 25 | sky-children | WebGPURenderer | 0 | 34 | 771 | 2850 | 15.20 | 2.20 | 1.049 | 63 | 0.50 | ✓ |
-| 26 | neon-dusk | WebGPURenderer | 0 | 28 | 674 | 1520 | 15.60 | 1.90 | 0.918 | 56 | 0.80 | ✗ |
-| 27 | geode | WebGLRenderer | 0 | 0 | 624 | 644 | 8.20 | 2.30 | — | 201 | 2.30 | ✓ |
-| 28 | sunset | WebGLRenderer | 0 | 0 | 587 | 616 | 8.20 | 0.70 | — | 32 | 1.20 | ✓ |
-| 29 | cinder-drift | WebGLRenderer | 0 | 0 | 574 | 583 | 8.20 | 0.20 | — | 11 | 1.20 | ✓ |
-| 30 | singing-bowl | WebGLRenderer | 0 | 0 | 477 | 492 | 8.20 | 0.70 | — | 35 | 1.10 | ✓ |
-| 31 | summer | WebGPURenderer | 0 | 121 | 453 | 3812 | 8.20 | 3.20 | 2.294 | 186 | 0.30 | ✓ |
-| 32 | starlight | WebGPURenderer | 0 | 14 | 453 | 3439 | 8.20 | 1.60 | 2.425 | 19 | 0.80 | ✓ |
-| 33 | synthwave-sunset | WebGPURenderer | 0 | 23 | 424 | 1169 | 15.60 | 2.50 | 0.721 | 111 | 2.00 | ✓ |
-| 34 | nimbus-veil | WebGLRenderer | 0 | 0 | 416 | 428 | 8.20 | 0.60 | — | 31 | 1.40 | ✓ |
-| 35 | himalayan-peak | WebGPURenderer | 0 | 14 | 385 | 1031 | 8.20 | 1.70 | 1.507 | 20 | 0.80 | ✓ |
-| 36 | black-hole | WebGPURenderer | 0 | 21 | 379 | 1529 | 16.40 | 1.50 | 0.393 | 24 | 1.40 | ✓ |
-| 37 | winter | WebGPURenderer | 0 | 26 | 366 | 655 | 8.20 | 1.80 | 1.901 | 32 | 0.80 | ✓ |
-| 38 | fall | WebGLRenderer | 0 | 0 | 360 | 793 | 8.20 | 0.60 | — | 22 | 1.10 | ✓ |
-| 39 | electric-dreams-v3 | WebGPURenderer | 0 | 11 | 357 | 1174 | 8.30 | 1.50 | 1.901 | 16 | 1.30 | ✓ |
-| 40 | aurora | WebGLRenderer | 0 | 0 | 345 | 351 | 8.20 | 0.30 | — | 13 | 1.10 | ✓ |
-| 41 | galaxy | WebGLRenderer | 0 | 0 | 337 | 346 | 8.20 | 0.30 | — | 12 | 1.10 | ✓ |
-| 42 | bioluminescence | WebGLRenderer | 0 | 0 | 323 | 1593 | 8.20 | 4.00 | — | 152 | 0.90 | ✓ |
-| 43 | astral-weave | WebGPURenderer | 0 | 27 | 285 | 1279 | 8.50 | 3.20 | 1.114 | 121 | 0.40 | ✓ |
-| 44 | verdant-hills | WebGPURenderer | 0 | 6 | 269 | 379 | 8.20 | 1.50 | 1.311 | 110 | 1.10 | ✓ |
-| 45 | shifting-sands | WebGPURenderer | 0 | 18 | 258 | 462 | 15.30 | 1.70 | 1.442 | 28 | 1.00 | ✓ |
-| 46 | serenity-warp | WebGPURenderer | 0 | 46 | 253 | 896 | 8.30 | 1.90 | 1.573 | 36 | 0.30 | ✓ |
-| 47 | aether-tides | — | 0 | 0 | 247 | 247 | 8.20 | — | — | — | 1.30 | ✓ |
-| 48 | voltage-storm | — | 0 | 0 | 241 | 241 | 8.20 | — | — | — | 1.40 | ✓ |
-| 49 | nebula-flow | — | 0 | 0 | 237 | 237 | 8.20 | — | — | — | 1.30 | ✓ |
-| 50 | supernova | WebGLRenderer | 0 | 0 | 237 | 269 | 8.20 | 0.20 | — | 4 | 1.10 | ✓ |
-| 51 | chromatic-impasto | — | 0 | 0 | 224 | 224 | 8.20 | — | — | — | 1.10 | ✓ |
-| 52 | void-ember | — | 0 | 7 | 195 | 195 | 8.20 | — | — | — | 1.50 | ✓ |
-| 53 | tornado | WebGPURenderer | 0 | 11 | 184 | 280 | 8.20 | 1.60 | 1.966 | 16 | 1.90 | ✓ |
-| 54 | moonlit-greenhouse | — | 0 | 0 | 99 | 99 | 15.30 | — | — | — | 1.60 | ✓ |
-| 55 | misty-lake | WebGLRenderer | 0 | 0 | 97 | 1612 | 8.30 | 1.00 | — | 67 | 1.20 | ✓ |
-| 56 | waves | WebGLRenderer | 0 | 0 | 86 | 480 | 8.20 | 0.50 | — | 17 | 1.00 | ✓ |
-| 57 | luminous-tides | WebGLRenderer | 0 | 0 | 84 | 565 | 8.20 | 0.90 | — | 28 | 2.00 | ✓ |
-| 58 | solar-eclipse | WebGLRenderer | 0 | 0 | 83 | 819 | 8.20 | 1.50 | — | 67 | 2.60 | ✓ |
-| 59 | mountain | — | 0 | 0 | 50 | 50 | 8.20 | — | — | — | 1.20 | ✓ |
-| 60 | cosmic-chimes | — | 0 | 0 | 43 | 43 | 8.30 | — | — | — | 1.20 | ✓ |
-| 61 | forest | — | 0 | 0 | 30 | 30 | 8.20 | — | — | — | 1.00 | ✓ |
+| 1 | lunara | WebGPURenderer | 2280 | 22 | 2911 | 3153 | 8.30 | 1.70 | 1.376 | 75 | 0.40 | ✓ |
+| 2 | stillwater | WebGPURenderer | 2232 | 44 | 3592 | 5476 | 8.20 | 1.80 | 0.786 | 60 | 0.40 | ✓ |
+| 3 | neon-district | WebGPURenderer | 1806 | 165 | 546 | 1062 | 8.20 | 5.30 | 1.442 | 417 | 0.60 | ✓ |
+| 4 | fluid-dreams | WebGPURenderer | 1677 | 10 | 2246 | 3103 | 8.20 | 1.00 | 1.442 | 19 | 0.60 | ✓ |
+| 5 | vesper-chrysalis | WebGPURenderer | 1272 | 62 | 2270 | 3105 | 15.90 | 2.50 | 1.114 | 106 | 0.40 | ✓ |
+| 6 | golden-forest | WebGPURenderer | 1109 | 65 | 2713 | 3068 | 8.30 | 4.60 | 1.638 | 330 | 0.60 | ✓ |
+| 7 | koi-pond | WebGPURenderer | 732 | 10 | 1743 | 2130 | 8.30 | 1.40 | 0.721 | 43 | 0.60 | ✓ |
+| 8 | ice-temple | WebGPURenderer | 692 | 13 | 1330 | 1612 | 8.20 | 2.20 | 0.459 | 112 | 0.70 | ✓ |
+| 9 | wolfhour | WebGPURenderer | 538 | 18 | 527 | 1056 | 8.20 | 1.20 | 1.376 | 32 | 0.40 | ✓ |
+| 10 | ocean | WebGPURenderer | 401 | 76 | 2039 | 4441 | 8.20 | 2.40 | 1.180 | 196 | 0.60 | ✓ |
+| 11 | black-hole | WebGPURenderer | 397 | 9 | 715 | 972 | 15.90 | 1.00 | 0.393 | 24 | 1.40 | ✓ |
+| 12 | stellar-drift | WebGPURenderer | 303 | 10 | 972 | 1051 | 8.20 | 1.50 | 1.901 | 55 | 0.40 | ✓ |
+| 13 | moonlit-forest | WebGPURenderer | 293 | 1 | 841 | 890 | 8.20 | 0.70 | 1.638 | 32 | 0.80 | ✓ |
+| 14 | bioluminescence-2 | WebGPURenderer | 273 | 52 | 1317 | 2271 | 8.20 | 2.60 | 1.245 | 251 | 0.40 | ✓ |
+| 15 | chromadelic-highway | WebGPURenderer | 130 | 27 | 1153 | 1272 | 15.90 | 1.40 | 0.393 | 69 | 1.00 | ✓ |
+| 16 | cosmic-noir | WebGPURenderer | 122 | 18 | 907 | 1173 | 8.20 | 1.20 | 1.180 | 30 | 0.90 | ✓ |
+| 17 | stellar-velocity | WebGPURenderer | 98 | 23 | 750 | 884 | 8.20 | 1.60 | 0.393 | 54 | 1.90 | ✓ |
+| 18 | chiral-gold | WebGPURenderer | 66 | 17 | 633 | 996 | 16.20 | 1.00 | 0.459 | 25 | 1.40 | ✓ |
+| 19 | pyrestorm | WebGLRenderer | 0 | 0 | 2180 | 2206 | 8.20 | 0.50 | — | 54 | 1.00 | ✓ |
+| 20 | moonrise-summit | WebGLRenderer | 0 | 0 | 1581 | 1590 | 8.20 | 0.50 | — | 33 | 1.00 | ✓ |
+| 21 | blood-moon | WebGLRenderer | 0 | 0 | 1553 | 1601 | 8.20 | 0.40 | — | 43 | 1.30 | ✓ |
+| 22 | crystal-cave | WebGLRenderer | 0 | 0 | 987 | 1009 | 8.20 | 2.10 | — | 339 | 1.40 | ✓ |
+| 23 | sakura-twilight | WebGLRenderer | 0 | 0 | 944 | 952 | 8.20 | 0.50 | — | 21 | 1.00 | ✓ |
+| 24 | rainy-window | WebGLRenderer | 0 | 0 | 799 | 827 | 8.20 | 0.50 | — | 11 | 1.90 | ✓ |
+| 25 | halcyon-apex | WebGPURenderer | 0 | 62 | 727 | 2424 | 8.20 | 3.00 | 0.852 | 308 | 0.40 | ✓ |
+| 26 | sky-children | WebGPURenderer | 0 | 34 | 578 | 2118 | 8.10 | 1.40 | 0.983 | 73 | 0.50 | ✓ |
+| 27 | cinder-drift | WebGLRenderer | 0 | 0 | 551 | 557 | 8.20 | 0.20 | — | 11 | 1.00 | ✓ |
+| 28 | geode | WebGLRenderer | 0 | 0 | 541 | 558 | 8.20 | 1.30 | — | 189 | 2.60 | ✓ |
+| 29 | sunset | WebGLRenderer | 0 | 0 | 535 | 565 | 8.20 | 0.50 | — | 32 | 1.10 | ✓ |
+| 30 | neon-dusk | WebGPURenderer | 0 | 28 | 531 | 1352 | 8.20 | 1.10 | 0.786 | 56 | 0.90 | ✗ |
+| 31 | singing-bowl | WebGLRenderer | 0 | 0 | 405 | 418 | 8.20 | 0.50 | — | 34 | 1.20 | ✓ |
+| 32 | summer | WebGPURenderer | 0 | 121 | 388 | 3534 | 8.20 | 2.00 | 2.425 | 186 | 0.40 | ✓ |
+| 33 | starlight | WebGPURenderer | 0 | 14 | 373 | 3275 | 8.20 | 1.00 | 2.621 | 19 | 0.70 | ✓ |
+| 34 | nimbus-veil | WebGLRenderer | 0 | 0 | 364 | 373 | 8.20 | 0.40 | — | 31 | 1.40 | ✓ |
+| 35 | synthwave-sunset | WebGPURenderer | 0 | 23 | 352 | 1071 | 8.20 | 1.50 | 0.655 | 111 | 2.00 | ✓ |
+| 36 | himalayan-peak | WebGPURenderer | 0 | 14 | 327 | 922 | 8.20 | 1.10 | 1.769 | 20 | 0.60 | ✓ |
+| 37 | winter | WebGPURenderer | 0 | 26 | 318 | 516 | 8.20 | 1.10 | 2.228 | 32 | 0.80 | ✓ |
+| 38 | electric-dreams-v3 | WebGPURenderer | 0 | 11 | 311 | 1092 | 8.20 | 1.00 | 1.966 | 16 | 1.30 | ✓ |
+| 39 | fall | WebGLRenderer | 0 | 0 | 301 | 722 | 8.20 | 0.40 | — | 22 | 1.00 | ✓ |
+| 40 | galaxy | WebGLRenderer | 0 | 0 | 294 | 301 | 8.20 | 0.20 | — | 12 | 1.20 | ✓ |
+| 41 | bioluminescence | WebGLRenderer | 0 | 0 | 268 | 1460 | 8.20 | 2.90 | — | 188 | 2.10 | ✓ |
+| 42 | aurora | WebGLRenderer | 0 | 0 | 264 | 272 | 8.20 | 0.20 | — | 13 | 1.00 | ✓ |
+| 43 | serenity-warp | WebGPURenderer | 0 | 46 | 257 | 728 | 8.20 | 1.20 | 2.163 | 36 | 0.30 | ✓ |
+| 44 | astral-weave | WebGPURenderer | 0 | 27 | 252 | 1001 | 8.20 | 1.80 | 1.311 | 121 | 0.30 | ✓ |
+| 45 | verdant-hills | WebGPURenderer | 0 | 6 | 234 | 308 | 8.30 | 1.00 | 0.459 | 83 | 1.30 | ✓ |
+| 46 | shifting-sands | WebGPURenderer | 0 | 18 | 227 | 375 | 8.20 | 1.00 | 1.245 | 28 | 1.00 | ✓ |
+| 47 | supernova | WebGLRenderer | 0 | 0 | 226 | 232 | 8.20 | 0.20 | — | 4 | 1.00 | ✓ |
+| 48 | aether-tides | — | 0 | 0 | 216 | 216 | 8.20 | — | — | — | 1.20 | ✓ |
+| 49 | voltage-storm | — | 0 | 0 | 193 | 193 | 8.20 | — | — | — | 1.20 | ✓ |
+| 50 | nebula-flow | — | 0 | 0 | 191 | 191 | 8.20 | — | — | — | 1.10 | ✓ |
+| 51 | chromatic-impasto | — | 0 | 0 | 187 | 187 | 8.20 | — | — | — | 1.00 | ✓ |
+| 52 | void-ember | — | 0 | 7 | 186 | 186 | 8.20 | — | — | — | 0.90 | ✓ |
+| 53 | tornado | WebGPURenderer | 0 | 11 | 177 | 249 | 8.20 | 1.00 | 1.901 | 16 | 1.60 | ✓ |
+| 54 | moonlit-greenhouse | — | 0 | 0 | 97 | 97 | 8.70 | — | — | — | 1.40 | ✓ |
+| 55 | misty-lake | WebGLRenderer | 0 | 0 | 80 | 1491 | 8.20 | 0.60 | — | 67 | 1.10 | ✓ |
+| 56 | solar-eclipse | WebGLRenderer | 0 | 0 | 71 | 743 | 8.20 | 1.00 | — | 67 | 2.70 | ✓ |
+| 57 | waves | WebGLRenderer | 0 | 0 | 69 | 406 | 8.20 | 0.40 | — | 17 | 1.00 | ✓ |
+| 58 | luminous-tides | WebGLRenderer | 0 | 0 | 68 | 487 | 8.20 | 0.60 | — | 28 | 1.80 | ✓ |
+| 59 | cosmic-chimes | — | 0 | 0 | 46 | 47 | 8.20 | — | — | — | 1.10 | ✓ |
+| 60 | mountain | — | 0 | 0 | 43 | 43 | 8.30 | — | — | — | 1.20 | ✓ |
+| 61 | forest | — | 0 | 0 | 14 | 14 | 8.20 | — | — | — | 1.20 | ✓ |
 
 ## Inadmissible cells, and why
 
 - **neon-dusk** — pins: rendererPixelRatio moved 0.85 -> 0.7999999999999999 during the window
-- **stellar-velocity** — no GPU timestamp samples (no-resolved-timestamp-in-window)
 
 ## Worst single pipelines across the fleet
 
 | theme | ms | material class | label |
 |---|---:|---|---|
-| lunara | 3027 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_23` |
-| stillwater | 2873 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_23` |
-| ocean | 2640 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_32` |
-| fluid-dreams | 2255 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_18` |
-| fluid-dreams | 2004 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_17` |
-| neon-district | 1738 | MeshPhysicalNodeMaterial | `renderPipeline_MeshPhysicalNodeMaterial_259` |
-| stillwater | 1607 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_19` |
-| vesper-chrysalis | 1580 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_44` |
-| vesper-chrysalis | 1316 | MeshPhysicalNodeMaterial | `renderPipeline_MeshPhysicalNodeMaterial_46` |
-| lunara | 1221 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_27` |
-| golden-forest | 1054 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_45` |
-| stillwater | 952 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_20` |
-| stillwater | 940 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_21` |
-| koi-pond | 920 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_27` |
-| stillwater | 912 | MeshStandardNodeMaterial | `renderPipeline_MeshStandardNodeMaterial_22` |
-| lunara | 889 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_27` |
-| vesper-chrysalis | 798 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_16` |
-| koi-pond | 728 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_28` |
-| vesper-chrysalis | 715 | MeshPhysicalNodeMaterial | `renderPipeline_MeshPhysicalNodeMaterial_49` |
-| vesper-chrysalis | 688 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_51` |
-| ice-temple | 670 | MeshPhysicalMaterial | `renderPipeline_MeshPhysicalMaterial_28` |
-| vesper-chrysalis | 649 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_45` |
-| stillwater | 616 | MeshStandardNodeMaterial | `renderPipeline_MeshStandardNodeMaterial_25` |
-| stillwater | 616 | MeshStandardNodeMaterial | `renderPipeline_MeshStandardNodeMaterial_25` |
-| stillwater | 595 | MeshStandardNodeMaterial | `renderPipeline_MeshStandardNodeMaterial_26` |
+| lunara | 2280 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_23` |
+| stillwater | 2232 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_23` |
+| neon-district | 1806 | MeshPhysicalNodeMaterial | `renderPipeline_MeshPhysicalNodeMaterial_252` |
+| fluid-dreams | 1677 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_18` |
+| fluid-dreams | 1565 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_17` |
+| vesper-chrysalis | 1272 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_44` |
+| stillwater | 1172 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_19` |
+| golden-forest | 1109 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_45` |
+| vesper-chrysalis | 1057 | MeshPhysicalNodeMaterial | `renderPipeline_MeshPhysicalNodeMaterial_46` |
+| golden-forest | 1021 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_46` |
+| lunara | 975 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_27` |
+| koi-pond | 732 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_27` |
+| lunara | 697 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_27` |
+| ice-temple | 692 | MeshPhysicalMaterial | `renderPipeline_MeshPhysicalMaterial_29` |
+| ice-temple | 672 | MeshPhysicalMaterial | `renderPipeline_MeshPhysicalMaterial_22` |
+| stillwater | 661 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_20` |
+| vesper-chrysalis | 659 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_16` |
+| stillwater | 651 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_21` |
+| stillwater | 619 | MeshStandardNodeMaterial | `renderPipeline_MeshStandardNodeMaterial_22` |
+| ice-temple | 615 | MeshPhysicalMaterial | `renderPipeline_MeshPhysicalMaterial_28` |
+| vesper-chrysalis | 606 | MeshPhysicalNodeMaterial | `renderPipeline_MeshPhysicalNodeMaterial_49` |
+| koi-pond | 585 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_28` |
+| vesper-chrysalis | 557 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_51` |
+| wolfhour | 538 | MeshBasicNodeMaterial | `renderPipeline_MeshBasicNodeMaterial_20` |
+| stillwater | 538 | MeshStandardNodeMaterial | `renderPipeline_MeshStandardNodeMaterial_25` |
 
 ## Sync pipeline creations (post-reveal stall candidates)
 
@@ -111,69 +110,69 @@ These carry `ms: null` by construction — the call returns before the GPU compi
 
 | theme | sync count | first at ms | labels (first 5) |
 |---|---:|---:|---|
-| neon-district | 156 | 4458 | `mipmap-rgba8unorm-2d-array` `renderPipeline_PMREM_cubemap_23` `renderPipeline_PMREM_ggx_22` `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_PointsNodeMaterial_17` |
-| summer | 121 | 4606 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_22` `renderPipeline_MeshBasicNodeMaterial_19` `renderPipeline_MeshBasicNodeMaterial_20` |
-| golden-forest | 106 | 5851 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_20` `renderPipeline_MeshBasicMaterial_47` `renderPipeline_MeshBasicNodeMaterial_44` `renderPipeline_ShadowMaterial_115` |
-| ocean | 76 | 4686 | `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshBasicNodeMaterial_41` `renderPipeline_MeshBasicNodeMaterial_42` `renderPipeline_MeshBasicNodeMaterial_42` `renderPipeline_MeshBasicNodeMaterial_42` |
-| halcyon-apex | 62 | 4715 | `mipmap-rgba8unorm-2d-array` `mipmap-rgba8unorm-srgb-2d-array` `renderPipeline_MeshStandardNodeMaterial_33` `renderPipeline_MeshStandardNodeMaterial_32` `renderPipeline_MeshStandardNodeMaterial_17` |
-| vesper-chrysalis | 62 | 4594 | `renderPipeline_PMREM.Background_42` `renderPipeline_MeshBasicNodeMaterial_32` `renderPipeline_MeshBasicNodeMaterial_39` `renderPipeline_MeshBasicNodeMaterial_35` `renderPipeline_MeshBasicNodeMaterial_37` |
-| bioluminescence-2 | 52 | 5829 | `mipmap-rgba8unorm-srgb-2d-array` `renderPipeline_MeshBasicNodeMaterial_199` `renderPipeline_MeshBasicNodeMaterial_177` `renderPipeline_MeshBasicNodeMaterial_178` `renderPipeline_MeshBasicNodeMaterial_195` |
-| serenity-warp | 46 | 4817 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_17` `mipmap-rgba8unorm-2d-array` `renderPipeline_PMREM_cubemap_48` `renderPipeline_PMREM_ggx_47` |
-| stillwater | 44 | 5608 | `renderPipeline_MeshStandardNodeMaterial_58` `renderPipeline_MeshStandardNodeMaterial_25` `renderPipeline_MeshStandardNodeMaterial_25` `renderPipeline_MeshStandardNodeMaterial_26` `renderPipeline_MeshBasicNodeMaterial_16` |
-| koi-pond | 41 | 6531 | `renderPipeline_MeshBasicNodeMaterial_28` `renderPipeline_MeshBasicNodeMaterial_24` `renderPipeline_MeshBasicNodeMaterial_30` `renderPipeline_MeshStandardNodeMaterial_31` `renderPipeline_MeshStandardNodeMaterial_35` |
-| sky-children | 34 | 4668 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_outputColorTransform_17` `renderPipeline_MeshBasicMaterial_19` `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshBasicNodeMaterial_20` |
-| ice-temple | 28 | 4677 | `mipmap-rgba8unorm-srgb-2d-array` `renderPipeline_PMREM_equirect_48` `renderPipeline_PMREM_ggx_47` `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshPhysicalMaterial_28` |
-| neon-dusk | 28 | 4926 | `renderPipeline_MeshBasicMaterial_16` `renderPipeline_MeshBasicNodeMaterial_27` `renderPipeline_PointsNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_25` `renderPipeline_MeshBasicNodeMaterial_25` |
-| astral-weave | 27 | 4737 | `renderPipeline_PointsNodeMaterial_54` `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshBasicNodeMaterial_69` `renderPipeline_MeshBasicNodeMaterial_69` `renderPipeline_MeshBasicNodeMaterial_62` |
-| chromadelic-highway | 27 | 4773 | `mipmap-rgba8unorm-2d-array` `renderPipeline_outputColorTransform_60` `renderPipeline_MeshBasicNodeMaterial_52` `renderPipeline_MeshBasicNodeMaterial_44` `renderPipeline_MeshBasicNodeMaterial_40` |
-| winter | 26 | 4735 | `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_18` `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshBasicNodeMaterial_20` `renderPipeline_MeshBasicNodeMaterial_19` |
-| stellar-drift | 23 | 5020 | `mipmap-rgba8unorm-srgb-2d-array` `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshStandardNodeMaterial_53` `renderPipeline_MeshStandardNodeMaterial_45` `renderPipeline_MeshBasicNodeMaterial_37` |
-| stellar-velocity | 23 | 5231 | `renderPipeline_MeshStandardNodeMaterial_46` `renderPipeline_MeshStandardNodeMaterial_46` `renderPipeline_MeshStandardNodeMaterial_46` `renderPipeline_SpriteNodeMaterial_25` `renderPipeline_MeshBasicNodeMaterial_20` |
-| synthwave-sunset | 23 | 4650 | `renderPipeline_MeshBasicMaterial_16` `renderPipeline_MeshBasicNodeMaterial_34` `renderPipeline_MeshBasicNodeMaterial_29` `renderPipeline_MeshBasicNodeMaterial_29` `renderPipeline_MeshBasicNodeMaterial_25` |
-| lunara | 22 | 4567 | `renderPipeline_PMREM.Background_21` `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_PMREM_blur_19` `renderPipeline_PMREM_blur_19` |
-| black-hole | 21 | 4618 | `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_PointsNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_19` `renderPipeline_MeshBasicNodeMaterial_20` |
-| cosmic-noir | 18 | 5011 | `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshStandardNodeMaterial_24` `renderPipeline_MeshBasicNodeMaterial_19` `renderPipeline_MeshBasicNodeMaterial_19` `renderPipeline_PointsNodeMaterial_18` |
-| shifting-sands | 18 | 4766 | `renderPipeline_MeshBasicNodeMaterial_26` `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicMaterial_25` `mipmap-rgba8unorm-2d-array` `renderPipeline_SpriteMaterial_21` |
-| wolfhour | 18 | 4989 | `renderPipeline_MeshBasicNodeMaterial_20` `renderPipeline_MeshBasicNodeMaterial_30` `renderPipeline_MeshBasicNodeMaterial_22` `renderPipeline_MeshBasicNodeMaterial_19` `renderPipeline_MeshBasicNodeMaterial_21` |
-| chiral-gold | 17 | 5190 | `renderPipeline_outputColorTransform_28` `renderPipeline_PointsNodeMaterial_20` `renderPipeline_MeshBasicNodeMaterial_22` `renderPipeline_MeshBasicNodeMaterial_22` `renderPipeline_PointsNodeMaterial_16` |
-| himalayan-peak | 14 | 4587 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_20` `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_LineBasicNodeMaterial_19` `renderPipeline_MeshBasicNodeMaterial_17` |
-| starlight | 14 | 4634 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_MeshBasicNodeMaterial_19` |
-| electric-dreams-v3 | 11 | 4781 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_Bloom_highPass_19` `renderPipeline_Bloom_separable_20` |
-| tornado | 11 | 4620 | `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_PointsNodeMaterial_18` `renderPipeline_Bloom_highPass_20` `renderPipeline_Bloom_separable_21` |
-| fluid-dreams | 10 | 7106 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_RTT_21` `renderPipeline_Bloom_highPass_22` `renderPipeline_Bloom_separable_23` `renderPipeline_Bloom_separable_24` |
-| moonlit-forest | 9 | 7329 | `renderPipeline_MeshBasicNodeMaterial_20` `renderPipeline_MeshBasicNodeMaterial_20` `renderPipeline_MeshBasicNodeMaterial_21` `renderPipeline_MeshBasicNodeMaterial_21` `renderPipeline_MeshBasicNodeMaterial_39` |
-| void-ember | 7 | 4627 | `void-ember/scene-pipeline` `void-ember/particle-pipeline` `void-ember/post-pipeline` `void-ember/present-pipeline` `void-ember/bloom-prefilter-pipeline` |
-| verdant-hills | 6 | 4533 | `renderPipeline_MeshLambertNodeMaterial_53` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_PointsNodeMaterial_217` |
+| neon-district | 165 | 6539 | `mipmap-rgba8unorm-2d-array` `renderPipeline_PMREM_cubemap_23` `renderPipeline_PMREM_ggx_22` `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_PointsNodeMaterial_17` |
+| summer | 121 | 6525 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_22` `renderPipeline_MeshBasicNodeMaterial_19` `renderPipeline_MeshBasicNodeMaterial_20` |
+| ocean | 76 | 6832 | `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshBasicNodeMaterial_41` `renderPipeline_MeshBasicNodeMaterial_42` `renderPipeline_MeshBasicNodeMaterial_42` `renderPipeline_MeshBasicNodeMaterial_42` |
+| golden-forest | 65 | 6817 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_20` `renderPipeline_MeshBasicNodeMaterial_44` `renderPipeline_ShadowMaterial_112` `renderPipeline_MeshStandardMaterial_48` |
+| halcyon-apex | 62 | 6866 | `mipmap-rgba8unorm-2d-array` `mipmap-rgba8unorm-srgb-2d-array` `renderPipeline_MeshStandardNodeMaterial_33` `renderPipeline_MeshStandardNodeMaterial_32` `renderPipeline_MeshStandardNodeMaterial_17` |
+| vesper-chrysalis | 62 | 6465 | `renderPipeline_PMREM.Background_42` `renderPipeline_MeshBasicNodeMaterial_32` `renderPipeline_MeshBasicNodeMaterial_39` `renderPipeline_MeshBasicNodeMaterial_35` `renderPipeline_MeshBasicNodeMaterial_37` |
+| bioluminescence-2 | 52 | 7476 | `mipmap-rgba8unorm-srgb-2d-array` `renderPipeline_MeshBasicNodeMaterial_199` `renderPipeline_MeshBasicNodeMaterial_177` `renderPipeline_MeshBasicNodeMaterial_178` `renderPipeline_MeshBasicNodeMaterial_195` |
+| serenity-warp | 46 | 6872 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_17` `mipmap-rgba8unorm-2d-array` `renderPipeline_PMREM_cubemap_48` `renderPipeline_PMREM_ggx_47` |
+| stillwater | 44 | 7607 | `renderPipeline_MeshStandardNodeMaterial_58` `renderPipeline_MeshStandardNodeMaterial_25` `renderPipeline_MeshStandardNodeMaterial_25` `renderPipeline_MeshStandardNodeMaterial_26` `renderPipeline_MeshBasicNodeMaterial_16` |
+| sky-children | 34 | 6615 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_outputColorTransform_17` `renderPipeline_MeshBasicMaterial_19` `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshBasicNodeMaterial_20` |
+| neon-dusk | 28 | 6878 | `renderPipeline_MeshBasicMaterial_16` `renderPipeline_MeshBasicNodeMaterial_27` `renderPipeline_PointsNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_25` `renderPipeline_MeshBasicNodeMaterial_25` |
+| astral-weave | 27 | 6799 | `renderPipeline_PointsNodeMaterial_54` `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshBasicNodeMaterial_69` `renderPipeline_MeshBasicNodeMaterial_69` `renderPipeline_MeshBasicNodeMaterial_41` |
+| chromadelic-highway | 27 | 6673 | `mipmap-rgba8unorm-2d-array` `renderPipeline_outputColorTransform_60` `renderPipeline_MeshBasicNodeMaterial_52` `renderPipeline_MeshBasicNodeMaterial_44` `renderPipeline_MeshBasicNodeMaterial_40` |
+| winter | 26 | 6835 | `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_18` `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshBasicNodeMaterial_20` `renderPipeline_MeshBasicNodeMaterial_19` |
+| stellar-velocity | 23 | 7118 | `renderPipeline_MeshStandardNodeMaterial_46` `renderPipeline_MeshStandardNodeMaterial_46` `renderPipeline_MeshStandardNodeMaterial_46` `renderPipeline_SpriteNodeMaterial_25` `renderPipeline_MeshBasicNodeMaterial_20` |
+| synthwave-sunset | 23 | 6729 | `renderPipeline_MeshBasicMaterial_16` `renderPipeline_MeshBasicNodeMaterial_34` `renderPipeline_MeshBasicNodeMaterial_29` `renderPipeline_MeshBasicNodeMaterial_29` `renderPipeline_MeshBasicNodeMaterial_25` |
+| lunara | 22 | 6645 | `renderPipeline_PMREM.Background_21` `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_PMREM_blur_19` `renderPipeline_PMREM_blur_19` |
+| cosmic-noir | 18 | 6948 | `mipmap-rgba8unorm-2d-array` `renderPipeline_MeshStandardNodeMaterial_24` `renderPipeline_MeshBasicNodeMaterial_19` `renderPipeline_MeshBasicNodeMaterial_19` `renderPipeline_PointsNodeMaterial_18` |
+| shifting-sands | 18 | 6824 | `renderPipeline_MeshBasicNodeMaterial_26` `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicMaterial_25` `mipmap-rgba8unorm-2d-array` `renderPipeline_SpriteMaterial_21` |
+| wolfhour | 18 | 6686 | `renderPipeline_MeshBasicNodeMaterial_20` `renderPipeline_MeshBasicNodeMaterial_30` `renderPipeline_MeshBasicNodeMaterial_22` `renderPipeline_MeshBasicNodeMaterial_19` `renderPipeline_MeshBasicNodeMaterial_21` |
+| chiral-gold | 17 | 7064 | `renderPipeline_outputColorTransform_28` `renderPipeline_MeshBasicNodeMaterial_22` `renderPipeline_MeshBasicNodeMaterial_22` `renderPipeline_PointsNodeMaterial_20` `renderPipeline_PointsNodeMaterial_16` |
+| himalayan-peak | 14 | 6731 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_20` `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_LineBasicNodeMaterial_19` `renderPipeline_MeshBasicNodeMaterial_17` |
+| starlight | 14 | 6849 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_MeshBasicNodeMaterial_19` |
+| ice-temple | 13 | 6680 | `mipmap-rgba8unorm-srgb-2d-array` `renderPipeline_PMREM_equirect_48` `renderPipeline_PMREM_ggx_47` `mipmap-rgba8unorm-2d-array` `mipmap-rgba16float-2d-array` |
+| electric-dreams-v3 | 11 | 6840 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_Bloom_highPass_19` `renderPipeline_Bloom_separable_20` |
+| tornado | 11 | 6721 | `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_PointsNodeMaterial_18` `renderPipeline_Bloom_highPass_20` `renderPipeline_Bloom_separable_21` |
+| fluid-dreams | 10 | 8579 | `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_RTT_21` `renderPipeline_Bloom_highPass_22` `renderPipeline_Bloom_separable_23` `renderPipeline_Bloom_separable_24` |
+| koi-pond | 10 | 8034 | `renderPipeline_MeshStandardNodeMaterial_35` `renderPipeline_MeshStandardNodeMaterial_35` `renderPipeline_Bloom_highPass_62` `renderPipeline_Bloom_separable_63` `renderPipeline_Bloom_separable_64` |
+| stellar-drift | 10 | 6849 | `mipmap-rgba8unorm-srgb-2d-array` `mipmap-rgba8unorm-2d-array` `renderPipeline_Bloom_highPass_56` `renderPipeline_Bloom_separable_57` `renderPipeline_Bloom_separable_58` |
+| black-hole | 9 | 7121 | `renderPipeline_Bloom_highPass_29` `renderPipeline_Bloom_separable_30` `renderPipeline_Bloom_separable_31` `renderPipeline_Bloom_separable_32` `renderPipeline_Bloom_separable_33` |
+| void-ember | 7 | 6577 | `void-ember/scene-pipeline` `void-ember/particle-pipeline` `void-ember/post-pipeline` `void-ember/present-pipeline` `void-ember/bloom-prefilter-pipeline` |
+| verdant-hills | 6 | 6583 | `renderPipeline_MeshLambertNodeMaterial_35` `renderPipeline_MeshBasicNodeMaterial_17` `renderPipeline_MeshBasicNodeMaterial_18` `renderPipeline_MeshBasicNodeMaterial_16` `renderPipeline_PointsNodeMaterial_217` |
+| moonlit-forest | 1 | 7242 | `renderPipeline_outputColorTransform_42` |
 
 ## Drift between the two visits (bounds how much of a delta is noise)
 
 | theme | gpu p50 Δ | wall p95 Δ | content match | void reason |
 |---|---:|---:|:--:|---|
 | aether-tides | — | — | ✗ | theme owns no three renderer — nothing to content-match |
-| astral-weave | <0.065536 | 0.20 | ✓ | — |
+| astral-weave | 0.262 | 0.00 | ✓ | — |
 | aurora | — | — | ✗ | draw calls unavailable in one visit |
-| bioluminescence-2 | <0.065536 | 0.20 | ✓ | — |
-| bioluminescence | — | — | ✗ | draw calls differ (v1=152, v2=146) |
-| black-hole | <0.065536 | 0.20 | ✓ | — |
+| bioluminescence-2 | <0.065536 | 0.10 | ✓ | — |
+| bioluminescence | — | — | ✗ | draw calls differ (v1=188, v2=137) |
+| black-hole | <0.065536 | 0.00 | ✓ | — |
 | blood-moon | — | — | ✗ | draw calls differ (v1=43, v2=28) |
-| chiral-gold | <0.065536 | 0.40 | ✓ | — |
-| chromadelic-highway | <0.065536 | 0.20 | ✓ | — |
+| chiral-gold | <0.065536 | 0.30 | ✓ | — |
+| chromadelic-highway | — | — | ✗ | draw calls differ (v1=69, v2=68) |
 | chromatic-impasto | — | — | ✗ | theme owns no three renderer — nothing to content-match |
 | cinder-drift | — | — | ✗ | draw calls unavailable in one visit |
 | cosmic-chimes | — | — | ✗ | theme owns no three renderer — nothing to content-match |
-| cosmic-noir | <0.065536 | 0.10 | ✓ | — |
-| crystal-cave | — | — | ✗ | draw calls differ (v1=268, v2=227) |
+| cosmic-noir | <0.065536 | 0.00 | ✓ | — |
+| crystal-cave | — | — | ✗ | draw calls differ (v1=339, v2=299) |
 | electric-dreams-v3 | <0.065536 | 0.10 | ✓ | — |
 | fall | — | — | ✗ | draw calls differ (v1=22, v2=7) |
 | fluid-dreams | 0.066 | 0.10 | ✓ | — |
 | forest | — | — | ✗ | theme owns no three renderer — nothing to content-match |
 | galaxy | — | — | ✗ | draw calls unavailable in one visit |
-| geode | — | — | ✗ | draw calls differ (v1=201, v2=159) |
-| golden-forest | — | — | ✗ | draw calls differ (v1=324, v2=312) |
-| halcyon-apex | 0.066 | 0.10 | ✓ | — |
-| himalayan-peak | 0.197 | 0.00 | ✓ | — |
-| ice-temple | <0.065536 | 0.20 | ✓ | — |
-| koi-pond | <0.065536 | 0.00 | ✓ | — |
+| geode | — | — | ✗ | draw calls differ (v1=189, v2=163) |
+| golden-forest | — | — | ✗ | draw calls differ (v1=330, v2=328) |
+| halcyon-apex | <0.065536 | 0.00 | ✓ | — |
+| himalayan-peak | 0.196 | 0.00 | ✓ | — |
+| ice-temple | — | — | ✗ | draw calls differ (v1=112, v2=113) |
+| koi-pond | <0.065536 | 0.10 | ✓ | — |
 | luminous-tides | — | — | ✗ | draw calls differ (v1=28, v2=13) |
 | lunara | <0.065536 | 0.10 | ✓ | — |
 | misty-lake | — | — | ✗ | draw calls differ (v1=67, v2=52) |
@@ -182,34 +181,34 @@ These carry `ms: null` by construction — the call returns before the GPU compi
 | moonrise-summit | — | — | ✗ | draw calls unavailable in one visit |
 | mountain | — | — | ✗ | theme owns no three renderer — nothing to content-match |
 | nebula-flow | — | — | ✗ | theme owns no three renderer — nothing to content-match |
-| neon-district | — | — | ✗ | draw calls differ (v1=471, v2=428) |
-| neon-dusk | 0.066 | 0.00 | ✓ | — |
+| neon-district | — | — | ✗ | draw calls differ (v1=417, v2=406) |
+| neon-dusk | 0.196 | 0.00 | ✓ | — |
 | nimbus-veil | — | — | ✗ | draw calls differ (v1=31, v2=16) |
-| ocean | — | — | ✗ | draw calls differ (v1=197, v2=196) |
+| ocean | — | — | ✗ | draw calls differ (v1=196, v2=197) |
 | pyrestorm | — | — | ✗ | draw calls differ (v1=54, v2=38) |
 | rainy-window | — | — | ✗ | draw calls differ (v1=11, v2=4) |
-| sakura-twilight | — | — | ✗ | draw calls differ (v1=22, v2=1) |
-| serenity-warp | <0.065536 | 0.10 | ✓ | — |
-| shifting-sands | <0.065536 | 0.20 | ✓ | — |
-| singing-bowl | — | — | ✗ | draw calls differ (v1=35, v2=20) |
-| sky-children | — | — | ✗ | draw calls differ (v1=63, v2=68) |
+| sakura-twilight | — | — | ✗ | draw calls unavailable in one visit |
+| serenity-warp | <0.065536 | 0.00 | ✓ | — |
+| shifting-sands | <0.065536 | 0.00 | ✓ | — |
+| singing-bowl | — | — | ✗ | draw calls differ (v1=34, v2=20) |
+| sky-children | — | — | ✗ | draw calls differ (v1=73, v2=75) |
 | solar-eclipse | — | — | ✗ | draw calls differ (v1=67, v2=51) |
-| starlight | 0.131 | 0.10 | ✓ | — |
+| starlight | 0.131 | 0.00 | ✓ | — |
 | stellar-drift | <0.065536 | 0.00 | ✓ | — |
-| stellar-velocity | — | 0.10 | ✓ | — |
+| stellar-velocity | <0.065536 | 0.00 | ✓ | — |
 | stillwater | — | 0.00 | ✓ | — |
-| summer | 0.197 | 0.00 | ✓ | — |
+| summer | 0.131 | 0.10 | ✓ | — |
 | sunset | — | — | ✗ | draw calls differ (v1=32, v2=6) |
 | supernova | — | — | ✗ | draw calls unavailable in one visit |
-| synthwave-sunset | <0.065536 | 0.20 | ✓ | — |
-| tornado | <0.065536 | 0.10 | ✓ | — |
-| verdant-hills | — | — | ✗ | draw calls differ (v1=110, v2=120) |
-| vesper-chrysalis | 0.066 | 0.40 | ✓ | — |
+| synthwave-sunset | <0.065536 | 0.00 | ✓ | — |
+| tornado | 0.589 | 0.10 | ✓ | — |
+| verdant-hills | — | — | ✗ | draw calls differ (v1=83, v2=86) |
+| vesper-chrysalis | <0.065536 | 0.10 | ✓ | — |
 | void-ember | — | — | ✗ | theme owns no three renderer — nothing to content-match |
 | voltage-storm | — | — | ✗ | theme owns no three renderer — nothing to content-match |
 | waves | — | — | ✗ | draw calls differ (v1=17, v2=2) |
-| winter | <0.065536 | 0.10 | ✓ | — |
-| wolfhour | 0.066 | 0.00 | ✓ | — |
+| winter | <0.065536 | 0.00 | ✓ | — |
+| wolfhour | <0.065536 | 0.00 | ✓ | — |
 
 ---
 
