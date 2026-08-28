@@ -2817,3 +2817,35 @@ Odyssey lake's endpoint.
 own). That is a hero-visual session: playground-first, screenshot-gated, out of scope for a
 calibration pass. The curl helper in the same file turned out to be dead code and was left
 untouched.
+
+## 40. fluid-dreams hero — 1,653 ms → 271 ms compile (−84 %), and which rewrite actually did it
+
+**Three commits (steps 1–3), this section (evidence). 2026-08-26. Every step measured n=3
+admissible against §39's after-arm; ADR-0007 screenshot gate passed (iridescent surface, palette,
+smooth-min silhouette all correct; zero console errors).**
+
+§39 left `createFluidHeroNodeMaterial` — a 72-step raymarched metaball surface — as the theme's
+~1.7 s pole with no MaterialX in it. Three candidate mechanisms, tested separately, in cost order:
+
+| step | change | hero pipeline | firstFrame | verdict |
+|---|---|---:|---:|---|
+| 1 | `setLayout` on the pure helpers (`sminPoly` ×532 inlines, palette ramp) | 1,653 → 1,578 | −5.8 % | real but minor |
+| 2 | `sceneSDF` parameter-pure + layout'd (captures → args, per-count fn name) | ~1,578 (unchanged) | −5.7 % (cum.) | **not the pole** |
+| 3 | **`Loop()` instead of the 72 JS-unrolled `If`-blocks** | **→ 271 ms** | **3,088 → 2,370 (−23.2 %)** | **the pole** |
+
+**The finding that generalises: DXC's superlinear cost here was the unrolled branch chain, not
+the helper inlining.** Two structural rewrites that "should" have shrunk the fragment barely
+moved it; replacing the JS `for`+`If` unroll with one real WGSL loop — identical body, identical
+`done`-flag semantics — collapsed the compile by 6x. Runtime cost of the real loop: one GPU
+quantum (gpu p95 1.507 → 1.573 ms), against draws/tris/cpu exact. asyncSum −47.5 %, switch
+−35.7 %, kill margin 5x.
+
+Two API facts paid for along the way, recorded for the next TSL session: **a layout'd `Fn`'s
+closure binds its parameters by layout input *name*, not by index** (numeric indexing reads
+`undefined` — 2 TSL TypeErrors per run, six voided cells, before the named destructure); and a
+variadic layout can be built dynamically (per-preset input lists with a per-count fn name) so
+long as access is named.
+
+**fluid-dreams cumulative, §39+§40: firstFrame 3,193 → 2,370 ms (−25.8 %)**, the haze and hero
+both off the fleet's worst-pipeline list. The theme's remaining ~1.6 s of switch is scene build
+and the §36-class small residue — no measured pole remains.
