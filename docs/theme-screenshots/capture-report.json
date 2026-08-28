@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-28T06:50:32.484Z",
-  "startedAt": "2026-08-28T06:49:49.757Z",
-  "runId": "2026-08-28T06-49-49-756Z",
+  "generatedAt": "2026-08-28T06:52:51.698Z",
+  "startedAt": "2026-08-28T06:52:08.007Z",
+  "runId": "2026-08-28T06-52-08-007Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,19 +23,19 @@
     "perfTargetFps": 60
   },
   "selectedThemes": [
-    "ice-temple"
+    "koi-pond"
   ],
   "results": [
     {
-      "theme": "ice-temple",
-      "displayName": "Ice Temple",
+      "theme": "koi-pond",
+      "displayName": "Koi Pond",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\ice-temple.png",
-      "report": "docs\\theme-screenshots\\results\\ice-temple.json",
+      "screenshot": "docs\\theme-screenshots\\koi-pond.png",
+      "report": "docs\\theme-screenshots\\results\\koi-pond.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
-      "perfCell": "reports\\theme-perf-ab-batch2\\ice-temple\\ice-temple.json",
+      "perfCell": "reports\\theme-perf-ab-batch2\\koi-pond\\koi-pond.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,

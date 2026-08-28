@@ -2376,3 +2376,44 @@ so a null post stack falling through to an unbound fan-out is today's context, s
 ADR-0007: lane screenshot + console gates passed on all six runs; compile scheduling and
 r185-equivalent target normalisation only (the pin duplicates `PassNode.js:765-767`), so the
 rendered image is unchanged by construction.
+
+## 25. koi-pond, part two — the sample pin: 3,024 ms → 2,137 ms (−29.3 %), cumulative −70.2 %
+
+**Commit `e3029aa8` (change), this section (evidence). 2026-08-26.** Both arms n=3 admissible, same
+instrument build, `--perf-idle-ms 10000`.
+
+§17's fix bound the warm through the post target but dropped one line of stillwater's `0b15db5d`
+recipe: the sample pin. `PassNode.setup()` has not run at warm time, so the scene-pass target still
+carried `samples: 1` while the live pass runs at `renderer.samples` (4) — and the WebGPU pipeline
+cache key hashes sample count. §17 called the resulting 41-pipeline residue "reflector/bloom",
+which the cell refuted (100 % of the sampled rows were the scene-pass shape at `samples: 4`). Two
+lines pin `renderTarget.samples` and `texture.type` before the compile.
+
+| field | before (med, range) | after (med, range) | delta |
+|---|---:|---:|---:|
+| **firstFrame (ms)** | **3,023.8** (2,941.0–3,068.4) | **2,136.6** (2,089.2–2,155.4) | **−29.3 %** |
+| switchWall (ms) | 1,947.1 (1,890.3–1,952.0) | 1,748.5 (1,701.4–1,751.6) | −10.2 % |
+| after-gap (ms) | 1,076.7 (1,050.7–1,116.4) | 388.1 (387.8–403.8) | −64.0 % |
+| async / sync | 31/41 (exact ×3) | 31/**10** (exact ×3) | 0 / −31 |
+| asyncSum (ms) | 7,213.7 | 7,012.1 | −2.8 % |
+| parallelism | 4.33x | 4.18x | unchanged |
+| draws / tris p50 | 43 / 122,096 (exact ×3) | 43 / 122,096 (exact ×3) | 0 |
+| cpu / gpu / wall p95 | 1.5 / 0.721 / 8.2 | 1.4 / 0.721 / 8.2 | unchanged |
+
+**The signature is cleanly different from the fan-out fixes, and it is the predicted one.**
+moonlit-forest and ice-temple moved `asyncCount` and `asyncSum` (more work warmed, measured under
+concurrency); here both are *unchanged* — the pin added no compiles. It made the 31 pipelines the
+warm was already building land on the cache key the live pass actually looks up, so the live frame
+stopped rebuilding them: sync 41 → 10, and the `samples: 4` scene-shape residue specifically went
+41 → 2. The 10 that remain are 7 × `rgba16float|1` post-graph internals (ice-temple's §24 residue
+class) plus singletons.
+
+One prediction was wrong and is recorded: the §25 forecast (made in the ranked hit list) expected
+`asyncSum` to fall back toward ~5,300 on the theory that the double-compile inflated it. It did not
+move (−2.8 %) — the warm-side compiles always cost what they cost; the waste was only ever the
+*sync* half. The mechanism proof is the sync-shape elimination, not the async sum.
+
+Cumulative koi-pond: 7,169 ms (§17 baseline) → 2,932 (§17) → **2,137 ms** against this batch's own
+n=3 baseline — **−70.2 %** from where the campaign found it, now mid-pack in the fleet.
+ADR-0007: lane screenshot + console gates green ×6; the pin duplicates what `PassNode.setup()`
+does on the first frame (`PassNode.js:765-767`), so the rendered image is unchanged by construction.
