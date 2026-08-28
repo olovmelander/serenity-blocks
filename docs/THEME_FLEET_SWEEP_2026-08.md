@@ -2539,3 +2539,68 @@ residue + scale), ocean 4,441 (the live-loop second site, §11's deferred item),
 starlight 3,275 — the two reverted themes, holding exactly the cost their reverts predicted** — and
 lunara 3,153. The zero-async class is otherwise extinct: 12 of row 3.1's 13 bare-call themes are
 converted, and the recipe held on every shape it met.
+
+## 30. stillwater, second attempt — reverted, and three mechanism findings worth the runs
+
+**Attempted and reverted 2026-08-26** (`239bf6b5` + `424a9e08`, reverted in `f612fd48`; evidence
+cells in `reports/theme-perf-ab-batch4/stillwater/`). The full sync-row classification (possible
+once `4f10d1e1` raised the row caps) split stillwater's 44 residual sync pipelines into 18
+MRT-scene-shape + 16 reflector-shape + 9 post internals, and the design targeted the first two:
+a scene-wide reveal across the bound compile, and a second fan-out under a private
+reflector-formats target with a layer-masked camera.
+
+Measured, n=3/arm: firstFrame **5,585 → 5,324 (−4.7 %)** — but switchWall **3,715 → 4,653
+(+25 %)**. The gap fell 64 % and nearly all of it reappeared inside the switch. The kill-check
+passed on the letter (delta 261 ms > before-spread 152 ms) and failed in substance: draws/tris/
+frame cost unchanged, mechanism claims wrong. Reverted.
+
+**Finding 1 — the 18 "hidden" materials are not hidden; they do not exist yet.** `asyncCount`
+rose exactly 3 (the reaction roots the old code already revealed). The scene-wide reveal found
+nothing more because those objects are created at activation, after the warm. No reveal reaches
+an object that has not been constructed. A real fix is warm-at-creation (compile the material as
+the object is added, off the visible frame), which is a different architecture, not a warm-order
+tweak.
+
+**Finding 2 — the reflector pass works but cannot overlap.** It compiled the water's
+reflector-context monster async (`asyncMax` 2,261 → 3,077 ms) and collapsed the gap — awaited
+in-switch at 2.78x parallelism, extending the switch by nearly the gap it saved. The two bound
+passes cannot run concurrently: `acquireCompileBinding` refcounts ONE session per renderer, so a
+second acquire under a different target would reuse the first binding. Overlapping them needs
+either per-target sessions or the live-loop read-redirect machinery.
+
+**Finding 3 — a whole-scene compile under an MRT-null context is a WGSL generator trap.** The
+first draft compiled the whole scene under the reflector's single-target context and produced
+**112 deterministic console errors** — `struct OutputType: structures must have at least one
+member` — one per MRT-only material whose fragment has zero outputs without MRT. Compile honours
+camera layers exactly like render (`Renderer._projectObject`), so the fix is a camera clone with
+`layers.set(reflectionLayer)`. The lane's console gate voided every such cell — ADR-0016's
+machinery working as designed: a warm that creates invalid pipelines never got measured as a win.
+
+stillwater keeps §13 (10,421 → ~5,5 s) and remains the fleet's worst. Its remaining levers, in
+order: the ~2.2 s single-pipeline water compile (a shader-size problem — plan 1.3's calibrated
+noise swap, the same class as starlight's §31 verdict), and warm-at-creation for activation-time
+content.
+
+## 31. summer and starlight, re-diagnosed under the corrected instrument — the reverts hold, for different reasons
+
+**No code change; cells from the 2026-08-26 snapshot.** Both §16 reverts were re-examined with
+full row visibility.
+
+**summer (0 async / 121 sync, gap 3,147 ms) — the revert's *theory* was wrong, its *decision*
+right.** §16 recorded "no post stack is a reason NOT to warm". The cell refutes the theory: the
+121 sync pipelines carry `rgba16float` target shapes (9 × `|4|depth24plus` + 16 × `|1|depth24plus`
+in the sample), and the scene has a lake `reflector()` — the failed warm added 2,180 ms because it
+was BARE (canvas-context keys that all missed), not because warming cannot help. But the correct
+fix is not mechanical either: the effect's post stack lives in a closure the runtime never
+exposes (`summer-meadow.effect.js` builds `RenderPipeline` + `scenePass` locally), the cell shows
+**no dual-target shape at lane quality** — so the MRT bloom path is not what runs — and the
+`rgba16float|4` single-target context owner is not yet identified. Summer needs a diagnostic
+session of its own: expose the post stack from the effect, map the `|4` context, then the
+standard bind + pin + fan-out. Expected win if the contexts map cleanly: most of the 3.1 s gap.
+
+**starlight (0 async / 14 sync, gap 2,902 ms) — the revert holds outright.** Fourteen pipelines
+cannot fill 2.9 s by count; the gap is one or two monster compiles (6 MRT scene materials + post
+internals) with **nothing to overlap against** — the switch is only 373 ms. Warming moves the
+wait, it cannot shrink it; that is exactly why the §16 attempt measured +77 ms of noise. The
+lever is the shader itself: plan §1.3's calibrated-noise swap (the Odyssey lava-lake treatment).
+Anything else re-litigates a settled negative.
