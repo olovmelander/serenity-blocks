@@ -47,6 +47,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
+import { snoise3 } from '../../rendering/odyssey/chapter-environments/shared/odyssey-tsl-noise.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Electric palette — vibrant hero (5 stops)
@@ -374,7 +375,14 @@ export function createVolumetricHazeNodeMaterial(options = {}) {
                 p.y.mul(0.06).add(uTime.mul(0.04)),
                 p.z.mul(0.06).add(s.mul(0.8)).add(uTime.mul(0.02)),
             );
-            const n = mx_noise_float(sample);
+            // SWAPPED 2026-08-26 (plan §1.3, sweep §39): this JS loop unrolls `steps` (24 at the
+            // shipped preset) noise evaluations inline in one fragment. With `mx_noise_float` —
+            // MaterialX's integer-hash Perlin, a DXC compile pathology — this ONE pipeline
+            // measured 1,518 ms of compile, 44 % of the theme's entire async warm. `snoise3` is
+            // the mx-calibrated Ashima simplex (same std and feature size; odyssey-tsl-noise.js),
+            // carries a setLayout so all 24 calls emit ONE WGSL fn, and is the exact swap that
+            // took the Odyssey lava lake from 7.2 s to ~1 s on 2026-08-21.
+            const n = snoise3(sample);
             accum.addAssign(n.mul(float(1.0).sub(s.mul(0.7))));
         }
         return accum.div(float(Math.max(1, steps))).mul(uDensity);
