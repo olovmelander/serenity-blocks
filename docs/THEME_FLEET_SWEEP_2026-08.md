@@ -2849,3 +2849,21 @@ long as access is named.
 **fluid-dreams cumulative, §39+§40: firstFrame 3,193 → 2,370 ms (−25.8 %)**, the haze and hero
 both off the fleet's worst-pipeline list. The theme's remaining ~1.6 s of switch is scene build
 and the §36-class small residue — no measured pole remains.
+
+## 41. stillwater's water — the §40 lever tested, and a clean miss recorded
+
+**Attempted and reverted 2026-08-26** (revert commit above; cells in
+`reports/theme-perf-ab-batch7/stillwater-loop/`, baseline reused from batch 4 — same code, same
+instrument). §40's Loop-over-unroll finding was applied to the water graph's only JS-side unroll:
+the response system's ~18 nested-If slot bodies (wakeSlots 10 at High, two `makeResponseTerms`
+sites). Result: pipeline #23 went 2,261 → 2,197 ms (−2.9 %), asyncSum ranges overlapping,
+firstFrame 82 ms inside a 152 ms spread. **The response unroll is not the water's pole.**
+
+What this buys the next session: stillwater's 2.2 s water compile is now known NOT to be (a)
+MaterialX noise in the §39 sense, (b) helper inlining, or (c) an unrolled branch chain — the
+three mechanisms the campaign has tools for. The remaining candidates are the premium
+`materialXFlow` path (mx flow is a different primitive from `mx_noise_float` and was never
+swapped), band-construction graph mass, or sheer node count — and telling those apart needs the
+generated-WGSL bisect (`initScript` wrapping `createRenderPipelineAsync`, dump the labeled
+module), a dedicated deep session. gpu p95 and every content guard sat exact through the
+experiment; the change was safe, just not the answer.
