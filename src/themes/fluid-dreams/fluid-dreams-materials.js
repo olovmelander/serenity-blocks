@@ -147,7 +147,6 @@ const curlNoise3 = Fn(([p]) => {
 export function createFluidHeroNodeMaterial(options = {}) {
     const marchSteps = Math.max(24, Math.min(160, Math.floor(options.marchSteps ?? 72)));
     const metaballCount = Math.max(3, Math.min(8, Math.floor(options.metaballCount ?? 7)));
-    const maxDist = float(options.maxDist ?? 70.0);
     const epsilon = float(options.epsilon ?? 0.001);
 
     const material = new MeshBasicNodeMaterial({
@@ -188,23 +187,62 @@ export function createFluidHeroNodeMaterial(options = {}) {
     // Scene SDF — smooth union of metaballs + shockwave ring deformation.
     // Each metaball radius is scaled by (1 + uHeroPulse * 0.18) so piece locks
     // and line clears drive a brief "breath" through the surface.
-    const sceneSDF = Fn(([p]) => {
-        let d = float(maxDist).toVar();
-        const k = uSmoothK;
-        const pulseScale = float(1.0).add(uHeroPulse.mul(0.18));
+    //
+    // REWORKED FOR setLayout (2026-08-26, sweep §40, step 2): this fn is inlined at 76 sites
+    // (72 unrolled march steps + 4 tetrahedral normal taps), and a layout'd fn cannot capture
+    // outer nodes (three's own layout'd fns are all parameter-pure — BSDF pattern), so every
+    // former capture is now an argument the call sites pass: the uniforms travel as args, the
+    // pulse scale is hoisted to factory scope, and maxDist is re-created inside from the plain
+    // JS number. metaballCount varies by preset, so the input list and the fn name are built
+    // per count. Same math to the digit — one WGSL fn plus 76 calls instead of 76 bodies.
+    const pulseScale = float(1.0).add(uHeroPulse.mul(0.18));
+    const sdfInputs = [
+        { name: 'p', type: 'vec3' },
+        { name: 'k', type: 'float' },
+        { name: 'pulse', type: 'float' },
+        { name: 'shockOrigin', type: 'vec3' },
+        { name: 'shockRadius', type: 'float' },
+        { name: 'shockStrength', type: 'float' },
+    ];
+    for (let i = 0; i < metaballCount; i += 1) {
+        sdfInputs.push({ name: `mb${i}`, type: 'vec4' });
+    }
+    const maxDistValue = options.maxDist ?? 70.0;
+    const sceneSDF = Fn((inputs) => {
+        const p = inputs[0];
+        const k = inputs[1];
+        const pulse = inputs[2];
+        const shockOrigin = inputs[3];
+        const shockRadius = inputs[4];
+        const shockStrength = inputs[5];
+        const d = float(maxDistValue).toVar();
         for (let i = 0; i < metaballCount; i += 1) {
-            const center = metaballUniforms[i].xyz;
-            const radius = metaballUniforms[i].w.mul(pulseScale);
+            const mb = inputs[6 + i];
+            const center = mb.xyz;
+            const radius = mb.w.mul(pulse);
             const dist = length(p.sub(center)).sub(radius);
             d.assign(sminPoly(d, dist, k));
         }
-        // Shockwave: subtract a thin radial bulge centred on uShockwaveOrigin.
-        const shockDist = length(p.sub(uShockwaveOrigin));
+        // Shockwave: subtract a thin radial bulge centred on shockOrigin.
+        const shockDist = length(p.sub(shockOrigin));
         const ringWidth = float(2.5);
-        const ring = smoothstep(ringWidth, float(0.0), abs(shockDist.sub(uShockwaveRadius)));
-        d.assign(d.sub(ring.mul(uShockwaveStrength)));
+        const ring = smoothstep(ringWidth, float(0.0), abs(shockDist.sub(shockRadius)));
+        d.assign(d.sub(ring.mul(shockStrength)));
         return d;
+    }).setLayout({
+        name: `fd_sceneSDF_${metaballCount}`,
+        type: 'float',
+        inputs: sdfInputs,
     });
+    const callSDF = (p) => sceneSDF(
+        p,
+        uSmoothK,
+        pulseScale,
+        uShockwaveOrigin,
+        uShockwaveRadius,
+        uShockwaveStrength,
+        ...metaballUniforms,
+    );
 
     // Tetrahedral normal sampling — 4 SDF evals (vs 6 for axis-aligned diffs).
     const sceneNormal = Fn(([p]) => {
@@ -213,10 +251,10 @@ export function createFluidHeroNodeMaterial(options = {}) {
         const k2 = vec3(float(-1.0), float(-1.0), float(1.0));
         const k3 = vec3(float(-1.0), float(1.0), float(-1.0));
         const k4 = vec3(float(1.0), float(1.0), float(1.0));
-        const n = k1.mul(sceneSDF(p.add(k1.mul(e))))
-            .add(k2.mul(sceneSDF(p.add(k2.mul(e)))))
-            .add(k3.mul(sceneSDF(p.add(k3.mul(e)))))
-            .add(k4.mul(sceneSDF(p.add(k4.mul(e)))));
+        const n = k1.mul(callSDF(p.add(k1.mul(e))))
+            .add(k2.mul(callSDF(p.add(k2.mul(e)))))
+            .add(k3.mul(callSDF(p.add(k3.mul(e)))))
+            .add(k4.mul(callSDF(p.add(k4.mul(e)))));
         return normalize(n);
     });
 
@@ -272,7 +310,7 @@ export function createFluidHeroNodeMaterial(options = {}) {
         for (let i = 0; i < marchSteps; i += 1) {
             If(done.equal(float(0.0)), () => {
                 const p = ro.add(rd.mul(t));
-                const d = sceneSDF(p);
+                const d = callSDF(p);
                 If(d.lessThan(epsilon), () => {
                     done.assign(1.0);
                     realHit.assign(1.0);
