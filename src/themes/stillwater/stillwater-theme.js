@@ -1259,21 +1259,36 @@ export default class StillwaterTheme extends BaseTheme {
                     // the same fact createWarmRenderTarget relies on), so a tiny private target
                     // with the reflector's formats warms the identical pipelines without
                     // touching the reflector node, which has not even allocated its target yet.
-                    const reflectorWarmTarget = new THREE.RenderTarget(320, 180, {
-                        type: THREE.HalfFloatType,
-                        samples: 0,
-                    });
-                    try {
-                        await compileGroupThroughPost(
-                            this.renderer,
-                            { scenePass: { renderTarget: reflectorWarmTarget, getMRT: () => null } },
-                            this.scene,
-                            this.camera,
-                            this.scene,
-                            false,
-                        );
-                    } finally {
-                        reflectorWarmTarget.dispose();
+                    //
+                    // THE CAMERA'S LAYER MASK IS LOAD-BEARING. The reflection draws layer
+                    // REFLECTION_LAYER only (the water module sets the reflection camera's
+                    // layers, and compile honours layers the same way render does —
+                    // Renderer._projectObject tests object.layers against camera.layers).
+                    // A whole-scene compile under this MRT-null context also reaches
+                    // MRT-only materials the reflection never draws, whose fragment then has
+                    // ZERO outputs — measured as 112 console errors of "struct OutputType {}:
+                    // structures must have at least one member", one per warmed-and-invalid
+                    // pipeline, on the first draft of this pass.
+                    const reflectionLayer = this.runtime?.getDiagnostics?.()?.water?.reflectionLayer ?? null;
+                    if (Number.isInteger(reflectionLayer)) {
+                        const reflectorWarmCamera = this.camera.clone();
+                        reflectorWarmCamera.layers.set(reflectionLayer);
+                        const reflectorWarmTarget = new THREE.RenderTarget(320, 180, {
+                            type: THREE.HalfFloatType,
+                            samples: 0,
+                        });
+                        try {
+                            await compileGroupThroughPost(
+                                this.renderer,
+                                { scenePass: { renderTarget: reflectorWarmTarget, getMRT: () => null } },
+                                this.scene,
+                                reflectorWarmCamera,
+                                this.scene,
+                                false,
+                            );
+                        } finally {
+                            reflectorWarmTarget.dispose();
+                        }
                     }
                 } else if (!usesMrt) {
                     // Non-MRT tier: a bare compile is safe (no MRT exists to poison), and the

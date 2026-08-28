@@ -81,6 +81,11 @@ describe('Stillwater reaction prewarm — load-bearing ordering', () => {
         expect(slice).toMatch(/reflectorWarmTarget = new THREE\.RenderTarget\(/);
         expect(slice).toMatch(/type: THREE\.HalfFloatType/);
         expect(slice).toMatch(/reflectorWarmTarget\.dispose\(\)/);
+        // The reflector pass MUST compile through a layer-masked camera clone: a whole-scene
+        // compile under the MRT-null reflector context reaches MRT-only materials whose fragment
+        // has zero outputs — measured as 112 "structures must have at least one member" errors.
+        expect(slice).toMatch(/reflectorWarmCamera\.layers\.set\(reflectionLayer\)/);
+        expect(slice).toMatch(/Number\.isInteger\(reflectionLayer\)/);
     });
 
     it('updates the runtime before revealing, or the reveal un-reveals itself', () => {
