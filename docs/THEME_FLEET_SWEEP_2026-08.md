@@ -2635,3 +2635,60 @@ pipelines remain, and they are ocean's deferred/streamed content compiling at ar
 warm-at-creation class, not reachable by any switch-time warm — plus a gap floor set by asset
 decode, not pipelines. Ocean's next lever is row 3.3 (fetch/decode in `init()`), not more compile
 work.
+
+## 33. halcyon-apex — 2,416 ms → 1,875 ms (−22.4 %), the theme that never warmed
+
+**Commit `282fb1b0` (change), this section (evidence). 2026-08-26. Both arms n=3 admissible.**
+
+halcyon-apex created **zero** pipelines before its first frame — `createScene` built the runtime
+and started the loop, no compile of any kind — and paid 62 sync pipelines behind a 1,697 ms gap.
+An earlier survey refuted a "bound warm" here because there is no post stack to bind; the
+refutation predated moonlit-forest's §23 proof that a **null-bind** fan-out preserves the default
+context. With no MRT anywhere in the effect, the reflector-context second pass is safe scene-wide
+(the §30 empty-struct trap needs MRT-only materials, which cannot exist here).
+
+| field | before (med, range) | after (med, range) | delta |
+|---|---:|---:|---:|
+| **firstFrame (ms)** | **2,415.8** (2,380.8–2,488.0) | **1,875.2** (1,872.4–1,885.6) | **−22.4 %** |
+| switchWall (ms) | 731.7 (730.9–789.2) | 1,169.0 (1,166.7–1,174.4) | +59.8 % |
+| after-gap (ms) | 1,684.1 (1,649.9–1,698.8) | 706.2 (705.7–711.2) | −58.1 % |
+| async / sync | 0/62 (exact ×3) | 38/29 (exact ×3) | +38 / −33 |
+| parallelism | — | 2.75x (2.75–2.77) | — |
+| draws / tris p50 | 308 / 21,389 (exact ×3) | — same — | 0 |
+| gpu p95 (ms) | 0.852 | 0.655 | −23 % |
+
+The switch grew 437 ms (the §26 trade — measured compile replacing an invisible first-draw
+stall) and the player got 541 ms faster, kill margin 5x.
+
+## 34. sky-children — reverted at +97 %, and the live-loop path's precondition found
+
+**Attempted and reverted 2026-08-26** (`69b37bc4`, reverted in `45d2bd83`; evidence in
+`reports/theme-perf-ab-batch5/sky-children/`). firstFrame **2,186 → 4,302 ms (+96.8 %)** — the
+worst measured outcome of the campaign, caught by the arm, never shipped beyond the branch.
+
+The mechanism is a precondition of §32's machinery that ocean satisfied silently:
+`compileGroupUnderLiveLoop` launches each per-object compile inside the **scene pass's own render
+prologue**. Ocean's loop renders through `oceanPost` from its first frame, so launches drain at
+frame rate. sky-children's loop runs before `buildScene` but does **not** render through its post
+during the build window — so the launches serialised against a prologue that never fired: the
+cells show a median of ONE async pipeline at parallelism 1.0, a 3.0 s await extending the switch
+7x, and the 34-pipeline sync storm intact behind it. **The live-loop path requires the scene pass
+to actually render during the compile window.** The original assessment — sky-children needs its
+lifecycle reordered (warm before `startAnimation()`) — stands, now with a measurement behind it.
+
+## 35. misty-lake and bioluminescence — the classic-WebGL gap is not program compile
+
+**Attempted and reverted 2026-08-26** (`e1936e9a`, reverted in `45d2bd83`; evidence in
+`reports/theme-perf-ab-batch5/`). First controlled experiment on the classic-renderer half of the
+fleet (row 5.6): both themes carry a >1.1 s gap on a tiny switch (misty-lake 1,412 ms on 79;
+bioluminescence 1,192 on 268) with zero WebGPU pipelines by construction, and the obvious
+hypothesis was sync GLSL program compile at first draw. An awaited classic `compileAsync`
+(KHR_parallel_shader_compile) before each loop start tested it.
+
+**Falsified cleanly on both**: the switch grew ~275 ms and the gap moved **−2.7 % / −1.9 %** —
+warmed programs would have collapsed it. The classic gap is therefore dominated by something
+program compilation cannot touch; the leading candidate is **lazy texture upload at first bind**
+(`renderer.initTexture` is the tool for that hypothesis — a different experiment, deliberately
+not stacked into this one). Both edits reverted; the GL-fleet gap class (misty-lake,
+bioluminescence, solar-eclipse 672, fall 422, luminous-tides 418, pyrestorm's 2.2 s in-switch)
+now has one falsified mechanism and one candidate mechanism on record.
