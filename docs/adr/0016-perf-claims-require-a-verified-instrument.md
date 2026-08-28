@@ -51,6 +51,15 @@ unless all four hold:
    `config.autoDriftScale`, and record the achieved position.
 4. **The machine is quiet.** No browser tab rendering WebGPU, no stray Vite server. A single
    run is a hypothesis; a claim needs a repeat that agrees.
+5. **A differential claim reports n ≥ 3 per arm, as median + range, with both arms on the same
+   instrument build and the same protocol** (amended 2026-08-25). Not every *field* needs this —
+   some are structural and land identically on every run while others swing 30 %+ on identical
+   code; which is which is an empirical property of the instrument, and publishing it is part of
+   verifying the instrument. The theme lane's field-by-field table is
+   `THEME_FLEET_SWEEP_2026-08.md` §18; other harnesses owe their own. And when choosing a
+   representative run from an arm, check the fields the change was NOT about — a median on one
+   axis can be the outlier on another (the sweep retracted a published cell for exactly this,
+   §22).
 
 Quantisation is part of the reading, not noise to average away: GPU timestamps land on
 **65.536 µs** boundaries, so two configurations in the same bucket mean "difference below
