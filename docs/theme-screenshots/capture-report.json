@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-08-28T12:35:22.571Z",
-  "startedAt": "2026-08-28T12:34:39.254Z",
-  "runId": "2026-08-28T12-34-39-253Z",
+  "generatedAt": "2026-08-28T13:09:09.061Z",
+  "startedAt": "2026-08-28T13:08:23.416Z",
+  "runId": "2026-08-28T13-08-23-416Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 61,
   "selectedThemeCount": 1,
@@ -23,19 +23,19 @@
     "perfTargetFps": 60
   },
   "selectedThemes": [
-    "serenity-warp"
+    "summer"
   ],
   "results": [
     {
-      "theme": "serenity-warp",
-      "displayName": "Serenity Warp",
+      "theme": "summer",
+      "displayName": "Midsommar",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\serenity-warp.png",
-      "report": "docs\\theme-screenshots\\results\\serenity-warp.json",
+      "screenshot": "docs\\theme-screenshots\\summer.png",
+      "report": "docs\\theme-screenshots\\results\\summer.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
-      "perfCell": "reports\\theme-perf-ab-batch5\\serenity-warp\\serenity-warp.json",
+      "perfCell": "reports\\theme-perf-ab-batch6\\summer\\summer.json",
       "perfAdmissible": true,
       "perfInadmissibleReasons": [],
       "processFailureCount": 0,
