@@ -27,6 +27,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { STELLAR_DRIFT_TETROMINOS } from './stellar-drift-tetrominos.js';
 import { StellarDriftPost } from './stellar-drift-post.js';
+import { compileGroupThroughPost } from '../../rendering/odyssey/warmup/post-target-compile.js';
 import {
     createStellarStarfieldMaterial,
     createStellarPlanetMaterial,
@@ -2063,8 +2064,27 @@ export default class StellarDriftTheme extends BaseTheme {
         let timeoutId = null;
 
         try {
+            // ice-temple's shape and fix (sweep §24, 2026-08-26): this bare call warmed 12
+            // pipelines under an unbound context while the live frame draws through
+            // postProcessing.render() into the scene pass — 23 more compiled synchronously
+            // behind the switch. setupPostProcessing() runs synchronously just before this at
+            // the createScene call site, so the stack exists; bind through it with the
+            // sample/type pin (PassNode.setup() has not run yet), fan out at concurrency 6.
+            // With no post stack the helper binds nothing — today's context, just fanned out.
+            const postStack = this.postProcessing ?? null;
+            if (postStack?.scenePass?.renderTarget) {
+                postStack.scenePass.renderTarget.samples = this.renderer.samples;
+                postStack.scenePass.renderTarget.texture.type = this.renderer.getOutputBufferType();
+            }
             await Promise.race([
-                this.renderer.compileAsync(this.scene, this.camera),
+                compileGroupThroughPost(
+                    this.renderer,
+                    postStack,
+                    this.scene,
+                    this.camera,
+                    this.scene,
+                    false,
+                ),
                 new Promise((_, reject) => {
                     timeoutId = setTimeout(() => {
                         reject(new Error(`compileAsync timeout after ${timeoutMs}ms`));
