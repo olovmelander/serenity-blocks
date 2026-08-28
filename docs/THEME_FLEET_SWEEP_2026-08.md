@@ -1,6 +1,9 @@
-# Theme fleet sweep — 61 themes, Stage 1 (static census + ranked hit list)
+# Theme fleet sweep — 61 themes: census, measured sweep, and per-theme fixes
 
-Status: **Stage 1 complete (2026-08-23). Stage 2 (the one measured GPU sweep) NOT run — awaiting go-ahead.**
+Status: **Stages 0–3 complete. Stage 1 (static census) 2026-08-23 = Part A. Stage 2 (the measured
+GPU sweep, all 61) 2026-08-24, re-measured on the corrected instrument 2026-08-25 (§20) = Part B.
+Stage 4 (fixes, one theme at a time) IN PROGRESS = Part C: seven landed (§13–§17, §22), two
+reverted and recorded (§16).**
 Owner: rendering. Fills in [R185_FAST_AND_BEAUTIFUL_PLAN_2026-08.md](R185_FAST_AND_BEAUTIFUL_PLAN_2026-08.md)
 Phase 3 (theme switch), Phase 4 (frame time) and Phase 5 (look better) with per-theme evidence.
 This is **not** a parallel roadmap: every item here is numbered against that plan's rows.
@@ -1881,6 +1884,9 @@ Seven themes attempted, five kept:
 | fluid-dreams | 3,807 | 3,015 | −20.8 % |
 
 **Aggregate: 30,379 ms → 17,157 ms across five themes (−43.5 %).**
+*(2026-08-25 append: §17's koi-pond makes it six — 37,548 ms → 20,089 ms, the −46.5 % that §19 and
+§21 quote. The two totals differ by exactly koi-pond's 7,169 → 2,932; this line is the
+reconciliation.)*
 
 ## 17. koi-pond — 7,169 ms → 2,932 ms (−59.1 %), and the switch itself got faster
 
