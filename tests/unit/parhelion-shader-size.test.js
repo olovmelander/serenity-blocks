@@ -83,7 +83,7 @@ const DOME_WGSL_BUDGET = 15 * 1024;
 const DOME_HELPERS = [
     'ph_prof', 'ph_spectral', 'ph_softCap', 'ph_calmBox', 'ph_laneW', 'ph_haze', 'ph_skyOut', 'ph_lens',
     'ph_halo', 'ph_haloTint', 'ph_dogs', 'ph_parhelic', 'ph_uta', 'ph_crown', 'ph_sunPillar', 'ph_lowitz',
-    'ph_arcGlow', 'ph_ridge', 'ph_cairn', 'od_noise2', 'od_hash21',
+    'ph_arcGlow', 'ph_ridge', 'od_noise2', 'od_hash21',
 ];
 
 describe('parhelion dome WGSL size gate', () => {
@@ -125,7 +125,7 @@ describe('parhelion dome WGSL size gate', () => {
 
 describe('parhelion tiers shape the dome graph', () => {
     it('Minimal drops crown/Lowitz, uses one noise eval and tones in-material', () => {
-        const wgsl = buildFragment(createDomeMaterial(createSharedUniforms({ minimalRidge: true }), 'Minimal'));
+        const wgsl = buildFragment(createDomeMaterial(createSharedUniforms(), 'Minimal'));
         const fns = fnNames(wgsl);
         expect(fns).not.toContain('ph_crown');
         expect(fns).not.toContain('ph_lowitz');

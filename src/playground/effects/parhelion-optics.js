@@ -323,9 +323,9 @@ export const phArcGlow = /* @__PURE__ */ Fn(([phiM, phiO, xG, slot]) => {
 
 /**
  * Distant ice ridges: vec4(rgb, coverage). Ridge height (rad above the horizon) for a ridge
- * noise sample `n`, higher on the left (asymmetry) — mirrored on the CPU by ridgeHeightCpu()
- * for uCairnBase. Backlit ice-blue faces, gold-tipped toward the sun (stronger out in the
- * lanes). The caller hazes the colour toward ph_haze.
+ * noise sample `n`, higher on the left (asymmetry) — mirrored on the CPU by ridgeHeightCpu().
+ * Backlit ice-blue faces, gold-tipped toward the sun (stronger out in the lanes). The caller
+ * hazes the colour toward ph_haze.
  */
 export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, n]) => {
     const peaks = float(1.0).sub(abs(n.mul(2.0).sub(1.0)));
@@ -341,27 +341,6 @@ export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, n]) => {
 }).setLayout({
     name: 'ph_ridge', type: 'vec4', inputs: [f('az'), f('el'), f('sunward'), f('laneW'), f('n')],
 });
-
-/**
- * The cairn: four rime-capped blocks stacked like a resting S-piece — cells (0,0),(1,0),(1,1),(2,1)
- * — on the left ridge at az −0.46, standing on `ridgeTop`. vec4(rgb, coverage).
- */
-export const phCairn = /* @__PURE__ */ Fn(([az, el, ridgeTop]) => {
-    // Cell space: x 0..3 across, y 0..2 up (the bottom row sunk 0.3 cell into the ridge).
-    const lp = vec2(az.add(0.46).div(0.0042).add(1.5), el.sub(ridgeTop).div(0.0042).add(0.3));
-    const id = floor(lp);
-    const shift = id.x.sub(id.y);
-    // Occupied: rows 0–1, and column − row ∈ {0, 1} → (0,0),(1,0),(1,1),(2,1).
-    const occ = step(abs(shift.sub(0.5)), 0.5).mul(step(abs(id.y.sub(0.5)), 0.5));
-    const fp = fract(lp).sub(0.5);
-    const sd = length(max(abs(fp).sub(0.34), 0.0)).sub(0.1);
-    const cover = smoothstep(0.12, -0.12, sd).mul(occ);
-    // Rime on exposed top faces only: every block but (1,0), which (1,1) covers.
-    const exposed = float(1.0).sub(float(1.0).sub(id.y).mul(shift));
-    const rime = smoothstep(0.18, 0.30, fp.y).mul(exposed);
-    // (The spec's gold sun-edge rim is sub-pixel on 4 px cells: omitted to keep the dome small.)
-    return vec4(mix(linearColor(0x2A3350), linearColor(0xD8E4F4), rime), cover);
-}).setLayout({ name: 'ph_cairn', type: 'vec4', inputs: [f('az'), f('el'), f('ridgeTop')] });
 
 /**
  * One sastrugi blade per cell of a wind-aligned grid `g` (x along the wind, y across it, +y
@@ -398,7 +377,7 @@ export const phSastrugi = /* @__PURE__ */ Fn(([g, aa, seed]) => {
 });
 
 // ---------------------------------------------------------------------------------------
-// CPU mirrors (for uniforms computed once: uCairnBase)
+// CPU mirrors of the dome's ground silhouette (composition checks and tests)
 // ---------------------------------------------------------------------------------------
 
 function fractCpu(x) {
@@ -454,6 +433,3 @@ export function ridgeHeightCpu(az, useNoise = true) {
     const left = smoothstepCpu(-0.15, -0.55, az) * 0.010;
     return 0.009 + peaks * 0.020 + Math.sin(az * 31) * 0.003 + left;
 }
-
-/** Cairn azimuth (rad): x ≈ 0.17 at 16:9, on the higher left ridge. */
-export const CAIRN_AZ = -0.46;
