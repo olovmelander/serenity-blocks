@@ -118,7 +118,7 @@ export const FLAG_REGISTRY = [
         default: false,
         purpose: 'opt-in protocol-v2 raw snapshot frames for the plan §6A.4 two-peer bandwidth soak',
         kind: 'refactor',
-        expiry: '2026-09-30',
+        expiry: '2026-10-31',
         reader: 'flags',
     },
 
