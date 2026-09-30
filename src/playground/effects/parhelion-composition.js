@@ -66,38 +66,6 @@ export const DOG_AZ = 0.391197;
 /** Reaction motes live on a plane this far in front of the rest camera (m, along S). */
 export const MOTE_PLANE_DEPTH = 55;
 
-/**
- * Camera breathing (§2.5): amplitudes (rad, m) and periods (s). Rotation-dominant, and the
- * stone solver's margin absorbs the worst case. Reduced motion scales it by 0.3.
- */
-export const BREATHING = Object.freeze({
-    YAW: 0.20 * DEG,
-    YAW_PERIOD: 47,
-    PITCH: 0.15 * DEG,
-    PITCH_PERIOD: 61,
-    X: 0.4,
-    X_PERIOD: 37,
-    Y: 0.3,
-    Y_PERIOD: 53,
-    REDUCED_MOTION_SCALE: 0.3,
-});
-
-/**
- * Breathing pose at time `t` (s), allocation-free. Apply with rotation order 'YXZ':
- * `camera.position = CAM_REST + (x, y, 0)`, `rotation.y = yaw` (three's sign: positive turns
- * left), `rotation.x = E + pitch`. Fixed phase offsets keep the four sines from aligning.
- * @param {number} t seconds (the integrated, seekable clock)
- * @param {number} scale 1, or BREATHING.REDUCED_MOTION_SCALE
- * @param {{yaw:number,pitch:number,x:number,y:number}} out
- */
-export function breathingPose(t, scale, out) {
-    out.yaw = BREATHING.YAW * scale * Math.sin((TWO_PI * t) / BREATHING.YAW_PERIOD);
-    out.pitch = BREATHING.PITCH * scale * Math.sin((TWO_PI * t) / BREATHING.PITCH_PERIOD + 1.3);
-    out.x = BREATHING.X * scale * Math.sin((TWO_PI * t) / BREATHING.X_PERIOD + 2.1);
-    out.y = BREATHING.Y * scale * Math.sin((TWO_PI * t) / BREATHING.Y_PERIOD + 0.7);
-    return out;
-}
-
 /** Ring stations: 12 clock positions, station 0 at the top, clockwise. */
 export const STATION_COUNT = 12;
 
@@ -155,6 +123,28 @@ export const STONE = Object.freeze({
     BANDS: 12,
     /** An off-centre card (|centre − 0.5| beyond this) is never stone-backed. */
     CENTRE_TOLERANCE: 0.04,
+});
+
+/**
+ * Camera life (§2.5, revised): the shared ThemeCameraRig (src/themes/shared/camera-rig.js),
+ * exactly as every other theme — the idle breathing float plus damped pointer parallax — but
+ * re-aimed at CAMERA_FOCUS, the point on the Vigil Stone's front face on the rest centre ray.
+ * Re-aiming there keeps the stone (and the DOM card on it) put while the sky, the halo, the
+ * hounds and the snow swing around it, and the parallax scale keeps the hidden sun well inside
+ * the stone's core (tests/unit/parhelion-camera-rig.test.js). Scales are the rig's multipliers.
+ */
+export const CAMERA_RIG = Object.freeze({
+    /** Distance (m) along S from the rest camera to the stone's front face (z ≈ −117). */
+    FOCUS_DIST: 117 / COS_E,
+    BREATHE_SCALE: 1,
+    POINTER_SCALE: 0.5,
+});
+
+/** The rig's focus: the stone face behind the board centre. */
+export const CAMERA_FOCUS = Object.freeze({
+    x: CAM_REST.x + S.x * CAMERA_RIG.FOCUS_DIST,
+    y: CAM_REST.y + S.y * CAMERA_RIG.FOCUS_DIST,
+    z: CAM_REST.z + S.z * CAMERA_RIG.FOCUS_DIST,
 });
 
 /**
