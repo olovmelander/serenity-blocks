@@ -33,7 +33,7 @@ vi.mock('../../src/rendering/webgpu-compute-pipeline-async.js', () => ({
     compileComputeAsync: computeMocks.compileComputeAsync,
 }));
 
-vi.mock('../../src/themes/shared/async-render-pipelines.js', () => ({
+vi.mock('../../src/rendering/async-render-pipelines.js', () => ({
     preloadAsyncRenderPipelines: pipelineMocks.preload,
     beginAsyncRenderPipelines: pipelineMocks.begin,
 }));

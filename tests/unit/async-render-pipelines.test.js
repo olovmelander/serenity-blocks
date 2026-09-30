@@ -12,10 +12,10 @@ import {
     isFinalComposite,
     isOneShotRenderTarget,
     preloadAsyncRenderPipelines,
-} from '../../src/themes/shared/async-render-pipelines.js';
+} from '../../src/rendering/async-render-pipelines.js';
 
 // Behaviour of the loading-surface async render-pipeline sessions
-// (src/themes/shared/async-render-pipelines.js) against a fake backend class injected through
+// (src/rendering/async-render-pipelines.js) against a fake backend class injected through
 // preloadAsyncRenderPipelines(). The fake's createRenderPipeline mirrors the r185
 // WebGPUPipelineUtils contract pinned in async-render-pipelines-contract.test.js:
 //   promises === null → synchronous create: the pipeline slot is filled before it returns;
