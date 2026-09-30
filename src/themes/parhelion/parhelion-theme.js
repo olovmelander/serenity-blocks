@@ -383,6 +383,30 @@ export default class ParhelionTheme extends BaseTheme {
         );
         this.registerEventListener(window, 'settingsChanged', onSettings);
         this.registerEventListener(window, 'gameOver', () => this.resetReactions());
+
+        // Pointer parallax for the shared camera rig (koi's pattern): primary mouse/pen only,
+        // re-centred on leave/cancel/blur, off while paused or under reduced motion.
+        const resetPointer = () => this.runtime?.resetPointer?.();
+        const handlePointerMove = (event) => {
+            const width = this.appliedSize?.w || window.innerWidth;
+            const height = this.appliedSize?.h || window.innerHeight;
+            const clientX = Number(event?.clientX);
+            const clientY = Number(event?.clientY);
+            if (!this.isActive || this.isPaused || this.reducedMotion
+                || event?.isPrimary === false || event?.pointerType === 'touch'
+                || !Number.isFinite(clientX) || !Number.isFinite(clientY) || !(width > 0) || !(height > 0)) {
+                resetPointer();
+                return;
+            }
+            const x = Math.max(-1, Math.min(1, (clientX / width) * 2 - 1));
+            const y = Math.max(-1, Math.min(1, 1 - (clientY / height) * 2));
+            this.runtime?.setPointer?.(x, y);
+        };
+        this.registerEventListener(window, 'pointermove', handlePointerMove, { passive: true });
+        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'pointercancel', resetPointer, { passive: true });
+        this.registerEventListener(window, 'blur', resetPointer);
+
         if (typeof this.reducedMotionQuery?.addEventListener === 'function') {
             this.registerEventListener(this.reducedMotionQuery, 'change', () => this.applyReactionSettings(null));
         }

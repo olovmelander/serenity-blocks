@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-    BREATHING,
     CAM_REST,
     CROWN_CAP_Y,
     DEFAULT_LAYOUT,
@@ -21,7 +20,6 @@ import {
     TAN_V,
     U,
     VFOV_DEG,
-    breathingPose,
     cardFromBoard,
     dirToScreen,
     laneAnchors,
@@ -781,28 +779,5 @@ describe('Parhelion right sundog vs the HUD (§15.2, risk 4)', () => {
         // breathing (1366×768, ~4 px; 7.6 px at rest) and 0.0050 at 1584×787. Only the faint
         // e^-4 tail grazes the glass edge there, and the HUD is a weak calm rect over glass.
         expect(Math.min(...Object.values(clearance))).toBeGreaterThan(0.0025);
-    });
-});
-
-describe('Parhelion camera breathing (§2.5)', () => {
-    it('never breathes past the spec extremes, and reduced motion scales it down', () => {
-        expect(BREATHING.YAW).toBeLessThanOrEqual(SPEC_BREATH.yaw + 1e-12);
-        expect(BREATHING.PITCH).toBeLessThanOrEqual(SPEC_BREATH.pitch + 1e-12);
-        expect(BREATHING.X).toBeLessThanOrEqual(SPEC_BREATH.x);
-        expect(BREATHING.Y).toBeLessThanOrEqual(SPEC_BREATH.y);
-        const pose = {
-            yaw: 0, pitch: 0, x: 0, y: 0,
-        };
-        let peakYaw = 0;
-        for (let t = 0; t < 400; t += 0.25) {
-            expect(breathingPose(t, 1, pose)).toBe(pose);
-            peakYaw = Math.max(peakYaw, Math.abs(pose.yaw));
-            expect(Math.abs(pose.pitch)).toBeLessThanOrEqual(SPEC_BREATH.pitch + 1e-12);
-            expect(Math.abs(pose.x)).toBeLessThanOrEqual(SPEC_BREATH.x + 1e-12);
-            expect(Math.abs(pose.y)).toBeLessThanOrEqual(SPEC_BREATH.y + 1e-12);
-        }
-        expect(peakYaw).toBeGreaterThan(0.9 * SPEC_BREATH.yaw);
-        breathingPose(11.75, BREATHING.REDUCED_MOTION_SCALE, pose);
-        expect(Math.abs(pose.yaw)).toBeLessThanOrEqual(0.3 * SPEC_BREATH.yaw + 1e-12);
     });
 });

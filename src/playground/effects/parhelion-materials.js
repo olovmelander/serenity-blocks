@@ -56,11 +56,9 @@ import {
     CAM_REST, DEFAULT_LAYOUT, DOG_AZ, R22, S, STONE, TAN_V, U,
 } from './parhelion-composition.js';
 import {
-    CAIRN_AZ,
     RIDGE_NOISE,
     linearColor,
     phArcGlow,
-    phCairn,
     phCalmBox,
     phCrown,
     phDogs,
@@ -77,7 +75,6 @@ import {
     phSunPillar,
     phTone,
     phUta,
-    ridgeHeightCpu,
 } from './parhelion-optics.js';
 
 // ---------------------------------------------------------------------------------------
@@ -206,9 +203,8 @@ function rectVec4(r) {
 /**
  * Creates the shared uniform bag once; every material reads from it. The CPU side writes
  * values in place (deduped by the effect runtime); nothing here is re-created per frame.
- * @param {{ minimalRidge?: boolean }} [options]
  */
-export function createSharedUniforms({ minimalRidge = false } = {}) {
+export function createSharedUniforms() {
     const arcSlots = Array.from({ length: ARC_SLOTS }, () => new THREE.Vector4(0, 0, 1, 0));
     // Hound pillars (§5.6): (birth, amp, beadStartV, life) and (worldX, worldZ, width, height).
     const pillarSlots = Array.from({ length: PILLAR_LANES }, () => new THREE.Vector4(-1e4, 0, 1.05, 1));
@@ -244,8 +240,6 @@ export function createSharedUniforms({ minimalRidge = false } = {}) {
         uDustGain: uniform(1),
         uDensity: uniform(0.6),
         uRim: uniform(REST_RIM),
-        // Ridge height at the cairn's azimuth, computed on the CPU once from the shader's formula.
-        uCairnBase: uniform(ridgeHeightCpu(CAIRN_AZ, !minimalRidge)),
         // Calm rect and screen.
         uCalmUnion: uniform(rectVec4(DEFAULT_LAYOUT.card)),
         uAspect: uniform(aspect),
@@ -344,7 +338,7 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
         const haze = phHaze(d, sunward, u.uWarmth).toVar();
         const skyCore = select(d.y.lessThan(0.0), haze, mix(lens, outSky, inner));
 
-        // ── Distant ridges (1 noise eval; sine ridges at Minimal) and the cairn.
+        // ── Distant ice ridges, higher on the left (1 noise eval; sine ridges at Minimal).
         const ridgeN = tier.skyEvals >= 2
             ? noise2(vec2(az.mul(RIDGE_NOISE.AZ_SCALE), RIDGE_NOISE.ROW))
             : sin(az.mul(RIDGE_NOISE.AZ_SCALE * 1.7).add(1.1)).mul(0.5).add(0.5);
@@ -352,9 +346,7 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
         const rid = phRidge(az, el, sunward, laneW, ridgeN);
         const baseHaze = smoothstep(0.004, -0.006, el).mul(0.5).add(0.12);
         const ridCol = mix(rid.rgb, haze, baseHaze);
-        const withRidge = mix(skyCore, ridCol, rid.a);
-        const cairn = phCairn(az, el, u.uCairnBase);
-        const sky = mix(withRidge, cairn.rgb, cairn.a);
+        const sky = mix(skyCore, ridCol, rid.a);
 
         // ── The halo display.
         const parhelic = linearColor(0xF5F1EA).mul(phParhelic(az, el, u.uPc.x, u.uPc.y, u.uK0.z));

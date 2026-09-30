@@ -31,20 +31,21 @@
  *   ?parhelionK1=a,b,c,d    optics gain override (crown, sunPillar, lowitz, displayDim)
  *   ?parhelionCounters=1    whole-frame draw/triangle counters (owns renderer.info — never in game)
  *   ?parhelionIcon=1        hub-icon framing: wider lens, no board (Serenity layout, no calm rects)
+ *   ?parhelionPointer=x,y   hold a pointer-parallax deflection (NDC, each in [-1, 1])
  */
 
 import * as THREE from 'three/webgpu';
 import {
     CAM_REST,
     CAMERA_FAR,
+    CAMERA_FOCUS,
     CAMERA_NEAR,
-    E,
+    CAMERA_RIG,
     FALLBACK_RECT,
     MEASURED_VIEWPORTS,
     STONE,
     TAN_V,
     VFOV_DEG,
-    breathingPose,
     cardFromBoard,
     pixelAngle,
     solveStone,
@@ -69,6 +70,7 @@ import {
     createPillarMaterial,
 } from './parhelion-particles.js';
 import { CALM_RECTS_MAX, ParhelionPost } from './parhelion-post.js';
+import { ThemeCameraRig } from '../../themes/shared/camera-rig.js';
 import { ParhelionOpticsState } from '../../themes/parhelion/sim/parhelion-optics-state.js';
 import { CUE } from '../../themes/parhelion/sim/parhelion-reaction-director.js';
 
@@ -418,7 +420,7 @@ export function create(ctx) {
     const pulseAge = Math.max(0, readNumber(params, 'parhelionPulseAge', 0.5));
     let pulsePending = Boolean(pulseCue);
 
-    const u = createSharedUniforms({ minimalRidge: tier.skyEvals < 2 });
+    const u = createSharedUniforms();
     const disposables = [];
 
     // ── Drawables. Opaque order: stone (0) → snow (1) → dome (10), so early-z rejects the dome;
@@ -651,11 +653,30 @@ export function create(ctx) {
 
     // ── Frame: optics state → uniforms (deduped), then the theme's own shake on the camera.
     let now = 0;
-    let breathScale = 1;
     const shake = { yaw: 0, pitch: 0 };
-    const pose = {
-        yaw: 0, pitch: 0, x: 0, y: 0,
-    };
+
+    // Camera life: the shared ThemeCameraRig (breathing + pointer parallax, as every theme),
+    // re-aimed at the stone face behind the board so the stone stays put under the card while
+    // the world swings around it. idlePhase 0 keeps ?t= captures reproducible.
+    const cameraRig = new ThemeCameraRig(camera, {
+        focus: CAMERA_FOCUS,
+        rest: CAM_REST,
+        breathe: true,
+        pointer: true,
+        breatheScale: CAMERA_RIG.BREATHE_SCALE,
+        pointerScale: CAMERA_RIG.POINTER_SCALE,
+        idlePhase: 0,
+    });
+    let cameraTime = null;
+    let pointerAllowed = true;
+    // ?parhelionPointer=x,y (playground): hold a pointer deflection, damping pre-settled.
+    const pointerPreview = String(params?.get?.('parhelionPointer') || '').split(',').map(Number);
+    if (pointerPreview.length === 2 && pointerPreview.every(Number.isFinite)) {
+        cameraRig.setPointer(pointerPreview[0], pointerPreview[1]);
+        cameraRig.breathe = false;
+        for (let i = 0; i < 60; i++) cameraRig.apply(0.1, CAM_REST);
+        cameraRig.breathe = true;
+    }
 
     function writeOptics(out) {
         const { clocks } = out;
@@ -710,7 +731,8 @@ export function create(ctx) {
             }
         }
         post?.setBloomKick(out.bloomKick);
-        ({ breathScale } = out);
+        // Reduced motion: the optics state's camera breath scale (0.3) damps the rig's float.
+        cameraRig.breatheScale = CAMERA_RIG.BREATHE_SCALE * out.breathScale;
         shake.yaw = out.shake.yawDeg * DEG;
         shake.pitch = out.shake.pitchDeg * DEG;
     }
@@ -730,7 +752,7 @@ export function create(ctx) {
         }
         now = t;
         writeOptics(out);
-        // Rotational shake on top of the rest + breathing pose camera() just set (§2.5).
+        // Rotational shake on top of the pose the camera rig just set in camera() (§2.5).
         if (shake.yaw !== 0 || shake.pitch !== 0) {
             camera.rotation.x += shake.pitch;
             camera.rotation.y += shake.yaw;
@@ -787,6 +809,19 @@ export function create(ctx) {
         },
         configure(options) {
             optics.configure(options);
+            // Reduced motion: no pointer parallax (the breathing is damped via the optics state).
+            if (options && typeof options.reducedMotion === 'boolean') {
+                pointerAllowed = !options.reducedMotion;
+                cameraRig.pointer = pointerAllowed;
+                if (!pointerAllowed) cameraRig.setPointer(0, 0);
+            }
+        },
+        /** Pointer in normalised device coords, each axis in [-1, 1] (the wrapper's pointermove). */
+        setPointer(x, y) {
+            if (pointerAllowed) cameraRig.setPointer(x, y);
+        },
+        resetPointer() {
+            cameraRig.setPointer(0, 0);
         },
         resetSession() {
             optics.resetSession();
@@ -798,11 +833,13 @@ export function create(ctx) {
                 cam.far = CAMERA_FAR;
                 cam.updateProjectionMatrix();
             }
-            // Breathing (§2.5): mostly rotation, analytic in time — the composition module's pose.
-            breathingPose(time, breathScale, pose);
-            cam.position.set(CAM_REST.x + pose.x, CAM_REST.y + pose.y, CAM_REST.z);
-            cam.rotation.order = 'YXZ';
-            cam.rotation.set(E + pose.pitch, pose.yaw, 0);
+            // Breathing + pointer parallax through the shared rig, stepped by this frame's time
+            // delta (a backwards seek rewinds it; a fixed ?t= holds it still, reproducibly).
+            const t = Number(time) || 0;
+            if (cameraTime !== null && t < cameraTime) cameraRig.reset();
+            const dt = cameraTime === null ? 0 : Math.min(Math.max(t - cameraTime, 0), 0.1);
+            cameraTime = t;
+            cameraRig.apply(dt, CAM_REST);
         },
         getRendererCounters() {
             return { ...counters };
@@ -853,7 +890,6 @@ export function create(ctx) {
                 counters: { ...counters },
                 warmth: u.uWarmth.value,
                 breath: u.uBreath.value,
-                cairnBase: u.uCairnBase.value,
             };
         },
         dispose() {
