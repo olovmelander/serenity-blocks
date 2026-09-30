@@ -4,10 +4,12 @@
   "checkedFiles": [
     "src/core/board.js",
     "src/core/cascade-resolver.js",
+    "src/core/combo-tracker.js",
     "src/core/constants.js",
     "src/core/fixed-hit-stop-policy.js",
     "src/core/fixed-tick-clock.js",
     "src/core/flags.js",
+    "src/core/game-modes/board-effect-callbacks.js",
     "src/core/game-modes/local-multiplayer-fixed-tick.js",
     "src/core/game-modes/local-multiplayer-loop.js",
     "src/core/game-modes/odyssey-fixed-tick.js",
@@ -48,8 +50,15 @@
     "src/events/lock-origin.js",
     "src/events/multiplayer-events.js",
     "src/rendering/odyssey/chapter-environments/registry.js",
+    "src/rendering/webgpu-compute-pipeline-async.js",
+    "src/themes/shared/async-render-pipelines.js",
     "src/themes/shared/bloom-dispose.js",
+    "src/themes/shared/camera-rig.js",
     "src/themes/shared/composer-dispose.js",
+    "src/themes/shared/mrt-blend.js",
+    "src/themes/shared/warm-hidden-drawables.js",
+    "src/themes/theme-frame-pacer.js",
+    "src/ui/startup-ident-hold.js",
     "src/utils/gpu-loss-coordinator.js",
     "src/utils/viewport.js"
   ]

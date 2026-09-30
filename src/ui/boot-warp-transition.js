@@ -10,10 +10,12 @@
  *
  * Boot handoff (src/main.js):
  *   1. ident held ≥4s
- *   2. `await warp.prewarm()`            (compile masked by the ident)
+ *   2. `await warp.prewarm()`            (pipelines created async, masked by the ident)
  *   3. `introAnimation.show()`           (intro warms behind the opaque warp canvas)
- *   4. quick-fade the ident              → reveals the warp's diamond beneath
- *   5. `await warp.play()`               → the dive (intro is rendering behind)
+ *   4. `await warp.play()`, held at BOOT_WARP_HOLD_PROGRESS until the shell is dismissed. The
+ *      ident first settles onto what the warp's first frames replicate (.sb-warp-arming); at the
+ *      reveal a match-cut switches the replicated layers off and only the wordmark and arcs
+ *      dissolve (an image logo cross-dissolves instead) → the dive (intro rendering behind)
  *   6. `await warp.fadeOut()`            → crossfades to the live intro
  *   7. `warp.dispose()`
  *
@@ -24,10 +26,12 @@
  * so it stays pixel-identical to the playground iteration harness.
  */
 import * as THREE from 'three/webgpu';
-import { createWarpParticles } from './boot-warp-transition-scene.js';
+import { createWarpParticles, DEFAULT_MARK_OFFSET_Y_PX, warpFovAt } from './boot-warp-transition-scene.js';
 import { markStartup } from './startup-debug.js';
 import { gpuResilience } from '../utils/gpu-context-resilience.js';
+import { compileComputeAsync, isAsyncComputeCapable } from '../rendering/webgpu-compute-pipeline-async.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import { readFlag } from '../core/flags.js';
 import {
     BOOT_WARP_DEFAULT_DURATION_MS,
     BOOT_WARP_FADE_PROGRESS,
@@ -64,6 +68,25 @@ function nowMs() {
 
 function elapsedSince(startedAt) {
     return Math.round((nowMs() - startedAt) * 10) / 10;
+}
+
+/**
+ * Centre of the CSS studio-ident mark in CSS px, so the warp's match frame lands exactly on it
+ * (the logo group centres mark + name, which puts the mark ~31 px above the viewport centre).
+ * @returns {{x: number, y: number}|null}
+ */
+function readIdentMarkCenter() {
+    // Best effort: a failed read only costs the exact anchor (the scene falls back to the
+    // ident's layout default), never the warp.
+    try {
+        if (typeof document === 'undefined') return null;
+        const mark = document.querySelector('#startup-shell .startup-logo__mark');
+        const rect = mark?.getBoundingClientRect?.();
+        if (!rect || !(rect.width > 0 && rect.height > 0)) return null;
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -192,6 +215,29 @@ export class BootWarpTransition {
             durationMs: elapsedSince(startedAt),
         });
         return Boolean(result);
+    }
+
+    /**
+     * The match frame is drawn in CSS pixels around the ident's mark, measured at prewarm. If
+     * the window changed size since, re-measure (buffer, aspect, mark) so the cut still lines
+     * up instead of the browser stretching the old buffer.
+     * @returns {boolean} true when the viewport changed (the caller rebuilds viewProj)
+     */
+    _syncViewport() {
+        if (typeof window === 'undefined' || !this.renderer || !this.warp || !this.camera) return false;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        if (!(w > 0 && h > 0) || (w === this._viewportW && h === this._viewportH)) return false;
+        this._viewportW = w;
+        this._viewportH = h;
+        this.renderer.setSize(w, h, false);
+        this.warp.setViewport(w, h);
+        const markCenter = readIdentMarkCenter();
+        if (markCenter) this.warp.setGemCenterPx(markCenter.x, markCenter.y);
+        else this.warp.setGemCenterPx(w / 2, h / 2 + DEFAULT_MARK_OFFSET_Y_PX);
+        this.camera.aspect = w / h;
+        this.warp.setAspect(w / h);
+        return true;
     }
 
     async _prewarmInternal() {
@@ -325,8 +371,20 @@ export class BootWarpTransition {
             const warp = createWarpParticles({
                 count: this.count,
                 aspect,
+                viewportWidth: w,
                 viewportHeight: h,
                 compute: typeof renderer.compute === 'function',
+            });
+            warp.setViewport(w, h);
+            this._viewportW = w;
+            this._viewportH = h;
+            const markCenter = readIdentMarkCenter();
+            if (markCenter) warp.setGemCenterPx(markCenter.x, markCenter.y);
+            markStartup('boot-warp:ident-anchor', {
+                id: this.debugId,
+                measured: Boolean(markCenter),
+                x: markCenter ? Math.round(markCenter.x * 10) / 10 : null,
+                y: markCenter ? Math.round(markCenter.y * 10) / 10 : null,
             });
             if (!warp.computeNode) { // WebGL2 fallback slipped through — no compute, bail
                 this.lastPrewarmStatus = 'compute-unavailable';
@@ -345,23 +403,73 @@ export class BootWarpTransition {
                 hasComputeNode: Boolean(warp.computeNode),
             });
 
-            // Prime the pipelines while the ident still covers the screen — and, crucially,
-            // WAIT for the GPU to execute that work. `compute()`/`render()` only build the
-            // pipeline objects and queue a submit; on a cold Dawn/driver pipeline cache the
-            // real shader compile happens when the GPU runs the commands. Queueing it and
-            // moving on meant the compile landed inside play(), starving rAF for ~3s: the
-            // ident cross-dissolved onto a warp already at progress ~0.48, and the flight
-            // then ran out before its visible contract (a frozen tail before the fade).
-            // Awaiting submitted-work-done keeps that cost behind the ident, where the
-            // module header always claimed it was.
+            // Prime the pipelines while the ident still covers the screen, and WAIT for the GPU
+            // to finish, so no compile lands inside play() (a cold compile there starved rAF
+            // for ~3s and the ident dissolved onto a warp already at progress ~0.48).
+            //
+            // The particle render pipeline goes through compileAsync
+            // (createRenderPipelineAsync): Dawn compiles it off the GPU process main thread,
+            // which also draws the compositor, so the ident keeps animating meanwhile. A
+            // synchronous render() compile froze every frame on screen (measured 2.9 s for one
+            // heavy pipeline, vs a 61 ms worst frame through compileAsync). compileAsync
+            // resolves the same frame-buffer target as render() (r185 Renderer.js:908-910),
+            // so play() reuses exactly this pipeline.
+            //
+            // The compute pipeline goes to Dawn's async workers too (r185 has no async compute
+            // path of its own; see webgpu-compute-pipeline-async.js). It is kicked off BEFORE
+            // compileAsync: its compile window runs synchronously inside the call, so both
+            // compiles are in flight together. What stays synchronous is the small ACES/sRGB
+            // output quad, which compileAsync never builds. Rollback: ?themeWarmAsync=0 skips the
+            // async prime (the synchronous prime frames below then compile it, as before).
             const primeStartedAt = nowMs();
             markStartup('boot-warp:prime-compute-start', { id: this.debugId, steps: PRIME_PROGRESS_STEPS.length });
+            warp.setProgress(0);
+            warp.setTime(0);
+            const computeCompile = isAsyncComputeCapable(renderer)
+                ? compileComputeAsync(renderer, warp.computeNode, { timeoutMs: PRIME_GPU_IDLE_TIMEOUT_MS })
+                    .catch((error) => ({ status: 'error', message: error?.message || String(error) }))
+                : null;
+            if (typeof renderer.compileAsync === 'function' && readFlag('themeWarmAsync', true)) {
+                await renderer.compileAsync(scene, camera);
+                markStartup('boot-warp:prime-async-compiled', {
+                    id: this.debugId,
+                    durationMs: elapsedSince(primeStartedAt),
+                });
+            }
+            if (this._disposed) {
+                markStartup('boot-warp:prime-late-after-dispose', { id: this.debugId }, { level: 'warn' });
+                return false;
+            }
+            if (computeCompile !== null) {
+                const computeResult = await computeCompile;
+                markStartup('boot-warp:prime-compute-compiled', {
+                    id: this.debugId,
+                    status: computeResult.status,
+                    created: computeResult.created,
+                    failed: computeResult.failed,
+                    compileMs: computeResult.ms,
+                    durationMs: elapsedSince(primeStartedAt),
+                }, computeResult.status === 'ready' ? undefined : { level: 'warn' });
+                if (this._disposed) {
+                    markStartup('boot-warp:prime-late-after-dispose', { id: this.debugId }, { level: 'warn' });
+                    return false;
+                }
+                if (computeResult.status === 'error') {
+                    // The TSL build threw: same outcome as the old synchronous throw.
+                    throw new Error(`warp compute build failed: ${computeResult.message}`);
+                }
+                if (computeResult.status === 'timeout' || computeResult.status === 'failed') {
+                    // Never present an uncomputed warp (empty velocity buffers draw oversized
+                    // particles). Not a retryable status: the orchestrator falls back to the CSS
+                    // reveal instead of retrying the same compile.
+                    this.lastPrewarmStatus = `compute-${computeResult.status}`;
+                    this.dispose();
+                    return false;
+                }
+            }
             for (const primeProgress of PRIME_PROGRESS_STEPS) {
                 warp.setProgress(primeProgress);
                 warp.setTime(primeProgress * 4);
-                // Sync compute()/render() on purpose: r181's computeAsync/renderAsync are
-                // deprecated wrappers that only await init() — they do NOT wait for the GPU.
-                // The queue drain below is what actually forces the compile.
                 renderer.compute(warp.computeNode);
                 renderer.render(scene, camera);
             }
@@ -445,11 +553,19 @@ export class BootWarpTransition {
      * @param {object} [opts]
      * @param {number} [opts.durationMs] default BOOT_WARP_DEFAULT_DURATION_MS
      * @param {(p:number, state:object)=>void} [opts.onProgress]
+     * @param {number} [opts.holdAtProgress] progress the flight may not pass while `isHeld()`
+     * @param {() => boolean} [opts.isHeld] true while the caller still covers the canvas
      * @returns {Promise<object>}
      */
     play(opts = {}) {
         const durationMs = Math.max(600, opts.durationMs || BOOT_WARP_DEFAULT_DURATION_MS);
         const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+        const isHeld = typeof opts.isHeld === 'function' ? opts.isHeld : null;
+        const holdElapsedMs = Number.isFinite(opts.holdAtProgress)
+            ? Math.max(0, opts.holdAtProgress) * durationMs
+            : Infinity;
+        const viewProj = new THREE.Matrix4();
+        let fov = this.camera?.fov ?? 45;
         if (!this._ready || this._disposed || !this.warp) {
             return Promise.resolve({
                 status: 'not-ready',
@@ -476,7 +592,7 @@ export class BootWarpTransition {
         // ANIMATION time, accumulated from rendered frames with a clamped per-frame delta —
         // NOT wall clock. See BOOT_WARP_MAX_FRAME_DELTA_MS: the flight must play its whole
         // arc even if the compositor stalls, because the handoff is choreographed against
-        // progress (reveal 0.06 / title 0.84 / fade 0.9) and a skipped span is a cut.
+        // progress (reveal 0.02 / title 0.84 / fade 0.9) and a skipped span is a cut.
         let elapsed = 0;
         let firstFrameRendered = false;
         let healthyFrames = 0;
@@ -514,6 +630,11 @@ export class BootWarpTransition {
                     healthyFrames = frameDeltaMs <= BOOT_WARP_HEALTHY_FRAME_DELTA_MS
                         ? healthyFrames + 1
                         : 0;
+                }
+                if (isHeld && elapsed > holdElapsedMs) {
+                    let held = false;
+                    try { held = isHeld() === true; } catch { held = false; }
+                    if (held) elapsed = holdElapsedMs;
                 }
                 lastFrameAt = now;
                 const wallElapsedMs = now - start;
@@ -574,6 +695,17 @@ export class BootWarpTransition {
                     return;
                 }
                 try {
+                    const resized = this._syncViewport();
+                    const nextFov = warpFovAt(p);
+                    if ((resized || nextFov !== fov) && this.camera) {
+                        fov = nextFov;
+                        this.camera.fov = fov;
+                        this.camera.updateProjectionMatrix();
+                        this.warp.setViewProj(viewProj.multiplyMatrices(
+                            this.camera.projectionMatrix,
+                            this.camera.matrixWorldInverse,
+                        ));
+                    }
                     this.warp.setProgress(p);
                     this.warp.setTime(elapsed / 1000);
                     this.renderer.compute(this.warp.computeNode);
