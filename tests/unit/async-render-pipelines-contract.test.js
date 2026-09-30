@@ -2,9 +2,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { CubeUVReflectionMapping } from 'three/src/constants.js';
 import QuadMesh from 'three/src/renderers/common/QuadMesh.js';
-import { isFinalComposite, isOneShotRenderTarget } from '../../src/themes/shared/async-render-pipelines.js';
+import { isFinalComposite, isOneShotRenderTarget } from '../../src/rendering/async-render-pipelines.js';
 
-// Pinned-version contract for src/themes/shared/async-render-pipelines.js.
+// Pinned-version contract for src/rendering/async-render-pipelines.js.
 //
 // The session wrapper turns an OWNED renderer's live `backend.createRenderPipeline(renderObject,
 // null)` into the compileAsync branch (a promises array) so the compile runs through
@@ -95,7 +95,7 @@ function jsFilesUnder(rel) {
 
 describe('three r185 render-pipeline contract (async render pipelines)', () => {
     it('is pinned to three 0.185.1', () => {
-        const why = 're-verify src/themes/shared/async-render-pipelines.js against the new three';
+        const why = 're-verify src/rendering/async-render-pipelines.js against the new three';
         expect(pkg.version, why).toBe('0.185.1');
     });
 

@@ -8,7 +8,7 @@ import {
     getAsyncRenderPipelineDiagnostics,
     isAsyncPipelineBackend,
     preloadAsyncRenderPipelines,
-} from '../../src/themes/shared/async-render-pipelines.js';
+} from '../../src/rendering/async-render-pipelines.js';
 
 // beginLoadingSurface() preloads the backend prototype itself, through the default loader
 // (import('three/webgpu')). Route that import to the test's fake backend: real three costs
@@ -23,7 +23,7 @@ vi.mock('three/webgpu', () => ({
 // whenLoadingSurfaceEngaged / canUseAsyncLoadingSurface / isThemeKnownAsync).
 //
 // The theme double renders through a fake three r185 WebGPUBackend whose createRenderPipeline
-// lives on the prototype (what shared/async-render-pipelines.js wraps). Its live render always
+// lives on the prototype (what rendering/async-render-pipelines.js wraps). Its live render always
 // passes promises = null, exactly like Pipelines.getForRender; only an owning session turns that
 // into the async create. Frames come from a fake-timer driven requestAnimationFrame, and the
 // theme's own render loop runs first in every tick, as a browser runs rAF callbacks in order.

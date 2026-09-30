@@ -4,7 +4,7 @@ import {
 import VoidEmberTheme from '../../src/themes/void-ember/void-ember-theme.js';
 
 // VoidEmber builds its own raw WebGPU pipelines, so the three-renderer session in
-// shared/async-render-pipelines.js never sees them (ADR-0020). It must create every pipeline
+// rendering/async-render-pipelines.js never sees them (ADR-0020). It must create every pipeline
 // with the *Async variants and survive a stop()/rebuild landing while the shaders compile.
 
 const COMPUTE_PIPELINE_KEYS = [
