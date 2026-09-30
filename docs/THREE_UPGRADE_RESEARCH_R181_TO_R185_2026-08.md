@@ -787,6 +787,10 @@ gated on a future Electron).
   (#32551 — 111 `.compute(` sites currently have no prewarm path). Take it as a normal
   minor upgrade **from r185** on our schedule — the whole point of landing 0.185.1 now is
   that r186 becomes a small delta instead of a five-release cliff.
+- **r186 + ADR-0020:** switch `src/rendering/webgpu-compute-pipeline-async.js` to the native
+  `compileComputeAsync`, drop its create hook and the `syncComputePipelines` flag, keep the dispatch
+  guard; re-run both ADR-0020 contract tests (`async-render-pipelines-contract`,
+  `three-r185-compute-pipeline-contract`) and the boot-smoothness probe.
 
 ## 14. Primary sources
 

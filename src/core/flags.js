@@ -118,11 +118,12 @@ export const FLAG_REGISTRY = [
         default: false,
         purpose: 'opt-in protocol-v2 raw snapshot frames for the plan §6A.4 two-peer bandwidth soak',
         kind: 'refactor',
-        expiry: '2026-09-30',
+        expiry: '2026-10-31',
         reader: 'flags',
     },
 
-    // ── Boot / intro (local readers in main.js / boot-warp-transition.js / intro-animation.js) ──
+    // ── Boot / intro (local readers in main.js / boot-warp-transition.js / intro-animation.js;
+    //    themeWarmAsync / syncComputePipelines go through readFlag, ADR-0020) ──
     {
         name: 'noThemeWarm', default: false, purpose: 'kill-switch: skip pre-intro theme WebGPU warm', kind: 'refactor', graduationBar: 'plan §4.7 boot state machine replaces the warm choreography', reader: 'local',
     },
@@ -131,6 +132,25 @@ export const FLAG_REGISTRY = [
     },
     {
         name: 'introV2', default: true, purpose: 'intro v2 vs legacy intro', kind: 'refactor', graduationBar: 'delete legacy intro after one stable release on v2', reader: 'local',
+    },
+    {
+        name: 'themeWarmAsync',
+        default: true,
+        purpose: 'boot/loading surfaces create render pipelines async (intro, theme prewarm, mode-entry '
+            + 'overlay + its content wait, boot-warp prime, void-ember) and the ident runs its moving hold; '
+            + 'rollback =0 (ADR-0020)',
+        kind: 'refactor',
+        graduationBar: 'delete after scripts/boot-smoothness-probe.mjs cold boot + --scenario=mode-entry stay clean '
+            + 'for one release',
+        reader: 'flags',
+    },
+    {
+        name: 'syncComputePipelines',
+        default: false,
+        purpose: 'rollback: create compute pipelines synchronously (the pre-async r185 path, incl. void-ember)',
+        kind: 'refactor',
+        graduationBar: 'delete with the three r186 upgrade (native compileComputeAsync); keep the dispatch guard',
+        reader: 'flags',
     },
     {
         name: 'winterLegacy', default: false, purpose: 'force legacy WebGL winter scene vs Wonderland rebuild', kind: 'refactor', graduationBar: 'delete after Wonderland ships a full release without regression', reader: 'local',

@@ -278,19 +278,139 @@ body {
     animation: sb-mark-ignite 1.3s var(--sb-ease-out) both;
 }
 
-/* ── HOLD (during warm): park all reveal anims + drop will-change; only a slow opacity
-   breathe (5.5s) so a dropped frame under GPU saturation is invisible. ── */
-.startup-shell.sb-lit .startup-logo__glow,
+/* Orbiting light arcs: the ident's "still alive" motion while the game boots behind it.
+   Each ring is rasterized once (static conic arc + ring mask) and only its transform and
+   opacity animate, so it keeps turning on the compositor through main-thread work — the
+   same recipe as Banvy's boot ring. (A synchronous GPU pipeline compile still stalls the
+   compositor itself: the boot path creates its pipelines async (ADR-0020), and the cases that
+   stay synchronous get .sb-lit--static or .sb-lit--paused below.) */
+.startup-logo__orbit {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 196px;
+    height: 196px;
+    margin: -98px 0 0 -98px;
+    border-radius: 50%;
+    pointer-events: none;
+    background: conic-gradient(from 0deg,
+            rgba(140, 215, 255, 0) 0deg 250deg,
+            rgba(140, 215, 255, 0.5) 320deg,
+            rgba(228, 248, 255, 0.95) 352deg,
+            rgba(140, 215, 255, 0) 353deg 360deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+    opacity: 0;
+}
+
+/* The arcs only turn in the moving hold: with no async path behind the ident (.sb-lit--static)
+   a synchronous compile would stop them mid-turn, so they stay hidden as before ADR-0020. */
+.startup-shell.sb-lit:not(.sb-lit--static) .startup-logo__orbit {
+    will-change: transform, opacity;
+    animation:
+        sb-orbit-in 1.1s var(--sb-ease-out) both,
+        sb-orbit-spin 3.4s linear infinite;
+}
+
+.startup-logo__orbit--far {
+    width: 244px;
+    height: 244px;
+    margin: -122px 0 0 -122px;
+    background: conic-gradient(from 180deg,
+            rgba(168, 120, 222, 0) 0deg 270deg,
+            rgba(168, 120, 222, 0.38) 330deg,
+            rgba(206, 170, 255, 0.72) 356deg,
+            rgba(168, 120, 222, 0) 357deg 360deg);
+}
+
+.startup-shell.sb-lit:not(.sb-lit--static) .startup-logo__orbit--far {
+    animation:
+        sb-orbit-in 1.3s var(--sb-ease-out) 0.2s both,
+        sb-orbit-spin-reverse 6.4s linear 0.2s infinite;
+}
+
+@keyframes sb-orbit-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes sb-orbit-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes sb-orbit-spin-reverse {
+    from { transform: rotate(360deg); }
+    to { transform: rotate(0deg); }
+}
+
+/* A light band crossing the facets, clipped by the mark's diamond. Transform only. */
+.startup-logo__glint {
+    position: absolute;
+    inset: -30%;
+    pointer-events: none;
+    background: linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.5) 50%, transparent 58%);
+    transform: translateX(-120%);
+}
+
+/* ── HOLD (during boot work): park the one-shot reveal animations and switch to loops that
+   only animate transform/opacity. The splash must keep MOVING while the game loads; the
+   old static hold (only an imperceptible opacity breathe) read as a frozen screen. ── */
 .startup-shell.sb-lit .startup-logo__mark,
 .startup-shell.sb-lit .startup-logo__image,
 .startup-shell.sb-lit .startup-logo__name,
-.startup-shell.sb-lit .startup-logo__sheen,
 .startup-shell.sb-lit .startup-shell__eyebrow {
     animation: none !important;
     will-change: auto;
 }
 
-.startup-shell.sb-lit .startup-logo {
+.startup-shell.sb-lit .startup-logo__glow {
+    animation: sb-glow-breathe 4.8s ease-in-out infinite;
+    will-change: transform, opacity;
+}
+
+@keyframes sb-glow-breathe {
+    0%, 100% { opacity: 0.78; transform: scale(1); }
+    50% { opacity: 0.96; transform: scale(1.08); }
+}
+
+.startup-shell.sb-lit .startup-logo__glint {
+    animation: sb-glint 4.8s ease-in-out 0.6s infinite;
+    will-change: transform;
+}
+
+@keyframes sb-glint {
+    0% { transform: translateX(-120%); }
+    34%, 100% { transform: translateX(120%); }
+}
+
+.startup-shell.sb-lit .startup-logo__sheen {
+    animation: sb-sheen-loop 4.8s var(--sb-ease-out) 2.1s infinite;
+}
+
+@keyframes sb-sheen-loop {
+    0% { transform: translateX(-160%); }
+    28%, 100% { transform: translateX(360%); }
+}
+
+/* Static hold — only when the warm behind the ident compiles SYNCHRONOUSLY (?themeWarmAsync=0,
+   or no async backend): that stalls the compositor itself, so moving loops would visibly stop
+   and jump. Park the glow/glint/sheen loops (the orbit arcs stay hidden) and keep the old
+   imperceptible breathe. */
+.startup-shell.sb-lit--static .startup-logo__glow,
+.startup-shell.sb-lit--static .startup-logo__glint,
+.startup-shell.sb-lit--static .startup-logo__sheen {
+    animation: none !important;
+    will-change: auto;
+}
+
+/* Parked where the warp's replica draws it (GLOW_OPACITY / GLOW_SCALE), so the cut matches. */
+.startup-shell.sb-lit--static .startup-logo__glow {
+    opacity: 0.87;
+    transform: scale(1.04);
+}
+
+.startup-shell.sb-lit--static .startup-logo {
     animation: sb-breathe 5.5s ease-in-out infinite;
 }
 
@@ -299,22 +419,77 @@ body {
     50% { opacity: 1; }
 }
 
+/* A warm on a synchronous renderer (classic WebGL / WebGL2 backend) is running: freeze the loops
+   in place (src/ui/startup-ident-hold.js), so its compile stalls show the frame the pause holds
+   and neither edge jumps. */
+.startup-shell.sb-lit.sb-lit--paused .startup-logo__orbit,
+.startup-shell.sb-lit.sb-lit--paused .startup-logo__glow,
+.startup-shell.sb-lit.sb-lit--paused .startup-logo__glint,
+.startup-shell.sb-lit.sb-lit--paused .startup-logo__sheen {
+    animation-play-state: paused;
+}
+
+/* The warp is about to take over (~130 ms before the match-cut): fade the glint band out
+   (opacity — its loop only moves transform), and settle the glow and the logo onto the values
+   the GPU replica draws (glow 0.87 / scale 1.04, mark at full opacity), from wherever their
+   loops were. */
+.startup-shell.sb-warp-arming .startup-logo__glint {
+    opacity: 0;
+    transition: opacity 80ms linear;
+}
+
+/* Final values; src/ui/startup-ident-hold.js eases onto them with Web Animations (Chromium starts
+   no CSS transition when the same change removes the breathe animation). */
+.startup-shell.sb-warp-arming .startup-logo__glow {
+    animation: none !important;
+    opacity: 0.87;
+    transform: scale(1.04);
+}
+
+.startup-shell.sb-warp-arming .startup-logo {
+    animation: none;
+    opacity: 1;
+}
+
 /* ═══ EXIT — "Diamond Ignition → Nebula Birth": one continuous ~2.75s masterpiece reveal.
    The held diamond OVERLOADS into a full-frame white-out that the live intro nebula +
    "SERENITY BLOCKS" title develop out of — no cut, no black gap. Multi-layer, all
    compositor-only (transform / opacity / filter + screen blends). ═══ */
 
-/* Warp handoff: when the WebGPU particle reveal takes over, the ident just does a
-   fast opacity fade to expose the warp's diamond beneath (no CSS develop-out). The
-   warp canvas (z:15000, opaque black) sits under the shell, so this crossfades the
-   ident straight into the live particle diamond. */
+/* Warp handoff — a true match-cut. The WebGPU warp's first frames reproduce this shell
+   pixel-for-pixel (backdrop gradients, grain, vignette, spotlight, letterbox bars, glow and
+   the faceted mark; boot-warp-transition-scene.js, verified against a capture of this DOM),
+   so those layers switch off on the handoff frame with no visible change. Only what the GPU
+   does not draw — the wordmark and the orbit arcs — dissolves, into the ignition flare. */
 .startup-shell.is-warp-out {
     animation: none !important;
-    /* Gentle ease-out cross-dissolve, front-loaded onto the warp's ignition flare
-       (light-covers-cut) so the DOM ident hands to the GPU gem with no visible seam. */
+    pointer-events: none;
+}
+
+.startup-shell.is-warp-out:not(.has-image-logo) {
+    background: transparent;
+    transition: none;
+}
+
+.startup-shell.is-warp-out:not(.has-image-logo) > :not(.startup-logo),
+.startup-shell.is-warp-out:not(.has-image-logo) .startup-logo__glow,
+.startup-shell.is-warp-out:not(.has-image-logo) .startup-logo__mark {
+    animation: none !important;
+    transition: none !important;
+    opacity: 0 !important;
+}
+
+.startup-shell.is-warp-out:not(.has-image-logo) .startup-logo__markwrap,
+.startup-shell.is-warp-out:not(.has-image-logo) .startup-logo__name {
+    animation: none !important;
+    transition: opacity 360ms var(--sb-ease-out);
+    opacity: 0;
+}
+
+/* A custom logo image has no GPU replica: keep the whole-shell cross-dissolve for it. */
+.startup-shell.is-warp-out.has-image-logo {
     transition: opacity 420ms var(--sb-ease-out);
     opacity: 0;
-    pointer-events: none;
 }
 
 /* Dark stage backing stays opaque THROUGH the bloom peak, then fades under the white,
@@ -502,7 +677,9 @@ body {
     .startup-logo__mark,
     .startup-logo { transform: none !important; filter: none !important; }
     .startup-logo__name-text { transform: none !important; }
-    .startup-logo__sheen { display: none; }
+    .startup-logo__sheen,
+    .startup-logo__orbit,
+    .startup-logo__glint { display: none; }
     .startup-shell.is-hidden {
         animation: none !important;
         transition: opacity 0.6s ease-out;

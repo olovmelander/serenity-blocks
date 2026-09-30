@@ -1,6 +1,7 @@
 /* eslint-disable no-await-in-loop, no-constant-condition */
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { markStartup } from './startup-debug.js';
+import { setIdentArming } from './startup-ident-hold.js';
 
 export const INTRO_RENDERER_READY_TIMEOUT_MS = 8000;
 // Prewarm now waits for the GPU to actually EXECUTE the primed frames (see
@@ -10,7 +11,12 @@ export const INTRO_RENDERER_READY_TIMEOUT_MS = 8000;
 export const BOOT_WARP_PREWARM_TIMEOUT_MS = 12000;
 export const BOOT_WARP_MIN_VISIBLE_MS = 5000;
 export const BOOT_WARP_DEFAULT_DURATION_MS = 6500;
-export const BOOT_WARP_REVEAL_PROGRESS = 0.06;
+// The warp's first frames are a pixel match of the CSS ident (boot-warp-transition-scene.js),
+// so the ident can hand over almost immediately; the ignition flare is timed from here.
+export const BOOT_WARP_REVEAL_PROGRESS = 0.02;
+// Until the ident has actually been dismissed the flight holds on that match frame: a slow
+// cadence gate must never let the ignition play out unseen behind the opaque ident.
+export const BOOT_WARP_HOLD_PROGRESS = 0.03;
 export const BOOT_WARP_FADE_PROGRESS = 0.9;
 export const BOOT_WARP_TITLE_PROGRESS = 0.84;
 export const BOOT_WARP_FADE_OUT_MS = 880;
@@ -210,49 +216,62 @@ export async function playBootWarpHandoff(options = {}) {
         return interruptedStatus();
     }
 
-    const playResult = await warpTransition.play({
-        durationMs: timing.durationMs,
-        onProgress: (progress, state = {}) => {
-            if (signal?.aborted) return;
-            latestProgress = progress;
-            // The handoff needs THREE proofs, not one: the gem is lit (progress), a frame
-            // was drawn (firstFrameRendered), and frames are actually reaching the screen
-            // (cadenceHealthy). Without the last one the ident could cross-dissolve onto a
-            // warp that was about to freeze for seconds on a cold pipeline compile.
-            const readyToReveal = state.firstFrameRendered !== false
-                && progress >= timing.revealProgress;
-            if (readyToReveal && revealReadyAt === null) {
-                revealReadyAt = nowMs();
-            }
-            const cadenceGraceExpired = revealReadyAt !== null
-                && (nowMs() - revealReadyAt) >= BOOT_WARP_CADENCE_GRACE_MS;
-            if (!shellDismissed
-                && readyToReveal
-                && (state.cadenceHealthy !== false || cadenceGraceExpired)) {
-                if (state.cadenceHealthy === false) {
-                    markStartup('boot-warp:reveal-cadence-grace-expired', {
+    // The match-cut lands a few frames into play(): let the ident settle onto what the GPU replica
+    // draws first (glint gone, glow at its parked value), so the cut cannot catch a loop mid-way.
+    setIdentArming(true);
+
+    let playResult;
+    try {
+        playResult = await warpTransition.play({
+            durationMs: timing.durationMs,
+            holdAtProgress: BOOT_WARP_HOLD_PROGRESS,
+            isHeld: () => !shellDismissed && !signal?.aborted,
+            onProgress: (progress, state = {}) => {
+                if (signal?.aborted) return;
+                latestProgress = progress;
+                // The handoff needs THREE proofs, not one: the gem is lit (progress), a frame
+                // was drawn (firstFrameRendered), and frames are actually reaching the screen
+                // (cadenceHealthy). Without the last one the ident could cross-dissolve onto a
+                // warp that was about to freeze for seconds on a cold pipeline compile.
+                const readyToReveal = state.firstFrameRendered !== false
+                    && progress >= timing.revealProgress;
+                if (readyToReveal && revealReadyAt === null) {
+                    revealReadyAt = nowMs();
+                }
+                const cadenceGraceExpired = revealReadyAt !== null
+                    && (nowMs() - revealReadyAt) >= BOOT_WARP_CADENCE_GRACE_MS;
+                if (!shellDismissed
+                    && readyToReveal
+                    && (state.cadenceHealthy !== false || cadenceGraceExpired)) {
+                    if (state.cadenceHealthy === false) {
+                        markStartup('boot-warp:reveal-cadence-grace-expired', {
+                            progress,
+                            waitedMs: roundMs(nowMs() - revealReadyAt),
+                            frameDeltaMs: state.frameDeltaMs,
+                        }, { level: 'warn' });
+                    }
+                    shellDismissed = true;
+                    visibleStartedAt = nowMs();
+                    markStartup('boot-warp:visible-start', {
                         progress,
-                        waitedMs: roundMs(nowMs() - revealReadyAt),
-                        frameDeltaMs: state.frameDeltaMs,
-                    }, { level: 'warn' });
+                        durationMs: timing.durationMs,
+                        firstFrameRendered: state.firstFrameRendered === true,
+                    });
+                    if (!warpAudioStarted) {
+                        warpAudioStarted = true;
+                        soundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
+                    }
+                    markStartup('startup-shell:dismiss-request', { reason: 'warp-handoff' });
+                    dismissStartupShell?.('warp-handoff', { quick: true });
                 }
-                shellDismissed = true;
-                visibleStartedAt = nowMs();
-                markStartup('boot-warp:visible-start', {
-                    progress,
-                    durationMs: timing.durationMs,
-                    firstFrameRendered: state.firstFrameRendered === true,
-                });
-                if (!warpAudioStarted) {
-                    warpAudioStarted = true;
-                    soundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
-                }
-                markStartup('startup-shell:dismiss-request', { reason: 'warp-handoff' });
-                dismissStartupShell?.('warp-handoff', { quick: true });
-            }
-            maybeRelease('warp-progress');
-        },
-    });
+                maybeRelease('warp-progress');
+            },
+        });
+    } finally {
+        // No handoff happened (play failed, or ended before the reveal): the ident stays up for
+        // the CSS fallback, with its loops back on.
+        if (!shellDismissed) setIdentArming(false);
+    }
 
     const normalizedResult = playResult || {
         status: 'unknown',
@@ -278,7 +297,7 @@ export async function playBootWarpHandoff(options = {}) {
 
     // play() has resolved, so the flight is over and nothing is animating any more. A
     // top-up here holds a FROZEN final frame, so it is capped hard: on a correct reveal
-    // (progress ~0.06) the visible span is already ~5.5s and the top-up is zero, and if
+    // (progress ~0.02-0.03) the visible span is already ~5.7s and the top-up is zero, and if
     // the reveal was late for any reason a short beat beats a dead multi-second hold.
     const remainingVisibleMs = timing.minVisibleMs - visibleMs();
     if (remainingVisibleMs > 0) {
@@ -373,6 +392,8 @@ export function getStartupThemeBusyState(theme) {
     if (theme.prewarmPromise && theme.isPrewarming !== false) {
         reasons.push('shader-prewarm-promise');
     }
+    // Render pipelines still compiling on Dawn's workers (themes/shared/async-render-pipelines.js).
+    if (Number(theme.asyncPipelinesInFlight) > 0) reasons.push('async-pipelines');
 
     return {
         busy: reasons.length > 0,
@@ -416,6 +437,35 @@ function waitMsOrAbort(ms, setTimeoutFn, clearTimeoutFn, signal) {
         signal.addEventListener('abort', onAbort, { once: true });
         timerId = setTimeoutFn(() => finish(true), ms);
     });
+}
+
+const CONTENT_LOAD_REASONS = new Set([
+    'building-load',
+    'background-load',
+    'deferred-material-load',
+    'scene-creation',
+    'building-load-promise',
+    'background-load-promise',
+    'deferred-material-load-promise',
+]);
+
+/**
+ * Wait (bounded) until a theme's own content loads are done — its streamed buildings,
+ * background and deferred materials; not its shader prewarm or pipelines in flight. A loading
+ * surface that lifts before them reveals a half-built scene even when every pipeline requested
+ * so far has landed.
+ * @param {() => object|null} getTheme
+ * @param {{ maxWaitMs?: number, pollMs?: number }} [options]
+ * @returns {Promise<boolean>} true when the loads finished within the budget
+ */
+export async function waitForThemeContentLoaded(getTheme, { maxWaitMs = 6000, pollMs = 100 } = {}) {
+    const startedAt = nowMs();
+    for (;;) {
+        const { reasons } = getStartupThemeBusyState(typeof getTheme === 'function' ? getTheme() : null);
+        if (!reasons.some((reason) => CONTENT_LOAD_REASONS.has(reason))) return true;
+        if (nowMs() - startedAt >= maxWaitMs) return false;
+        await new Promise((resolve) => { setTimeout(resolve, pollMs); });
+    }
 }
 
 /**
