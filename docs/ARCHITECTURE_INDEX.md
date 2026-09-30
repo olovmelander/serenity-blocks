@@ -36,7 +36,8 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [CHROMADELIC_HIGHWAY_ART_DIRECTION.md](CHROMADELIC_HIGHWAY_ART_DIRECTION.md) | Reference | Theme art direction. |
 | [CHROMADELIC_HIGHWAY_BASELINE_CAPTURE_PROTOCOL.md](CHROMADELIC_HIGHWAY_BASELINE_CAPTURE_PROTOCOL.md) | Reference | Theme validation context. |
 | [CHROMADELIC_HIGHWAY_RELEASE_QA_CHECKLIST.md](CHROMADELIC_HIGHWAY_RELEASE_QA_CHECKLIST.md) | Reference | Theme QA context. |
-| [CHROMADELIC_HIGHWAY_WEBGPU_UPGRADE_PLAN.md](CHROMADELIC_HIGHWAY_WEBGPU_UPGRADE_PLAN.md) | Reference | Theme plan; use WebGPU workflow before acting. |
+| [CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md](CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md) | Reference | Shipped design of the rebuilt theme (composition solver, world/post modules, tiers, event language) with perf and screenshot evidence. |
+| [CHROMADELIC_HIGHWAY_WEBGPU_UPGRADE_PLAN.md](CHROMADELIC_HIGHWAY_WEBGPU_UPGRADE_PLAN.md) | Superseded | Rendering/composition parts replaced by the 2026-09 visual overhaul; keep for history. |
 | [COSMIC_NOIR_PERF_AUDIT_2026-06-30.md](COSMIC_NOIR_PERF_AUDIT_2026-06-30.md) | Reference | Theme performance evidence. |
 | [cosmic-cursor-global-fix-plan.md](cosmic-cursor-global-fix-plan.md) | Reference | UI fix plan. |
 | [gameplay-effects-plan.md](gameplay-effects-plan.md) | Reference | Gameplay effects plan. |
