@@ -1,5 +1,11 @@
 # Chromadelic Highway Theme - WebGPU Hybrid Upgrade Plan (World-Class Revision)
 
+> **Superseded (2026-09):** the theme was rebuilt around a single `WebGPURenderer` node path on
+> both backends (no GLSL twin, no MRT, no compute, closed-form GPU animation, a composition
+> solver and a new post stack). See
+> [CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md](CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md)
+> for the shipped design, tiers and budgets. The capability matrix below is historical.
+
 ## Executive Summary
 
 This revision converts the previous aspirational plan into a production-grade migration and quality plan aligned with the current codebase.

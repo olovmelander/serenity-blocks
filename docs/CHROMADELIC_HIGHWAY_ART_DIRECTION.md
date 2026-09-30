@@ -1,5 +1,9 @@
 # Chromadelic Highway Art Direction Packet
 
+> The 2026-09 overhaul implements this direction as "the board is the sun" — see
+> [CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md](CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md)
+> for the composition, value ladder and event language as shipped.
+
 ## Intent
 
 Deliver a high-speed psychedelic tunnel aesthetic that feels cinematic, musical, and readable during gameplay.

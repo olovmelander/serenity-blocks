@@ -1,330 +1,333 @@
 /**
- * Chromadelic Highway - WebGPU Post Processing
- * Emissive-only bloom + chromatic aberration + vignette + ACES tonemap (WebGPU path)
- * Cinematic flourishes (Extreme/Ultra): radial chroma curve, god rays, anamorphic flare,
- * pace-driven barrel distortion.
+ * Chromadelic Highway — post stack (TSL RenderPipeline, both WebGPURenderer backends).
+ *
+ * One scene pass (no MRT, no compute; MSAA only on High and up), one bloom chain (Medium and
+ * up) and ONE full-screen output pass:
+ *   scene tap → board veil (the board card and HUD are translucent, so what shows through them is
+ *   soft-clipped, hue-preserving) → bloom (max-channel soft-knee prefilter over 4 taps, so every
+ *   hue blooms alike and thin lines do not flicker) → luminance contrast (the tone curve below is
+ *   linear under 0.72, so mid-tone contrast is added first; the floor is left alone) →
+ *   "neon-neutral" tone map (hue-faithful: emitter cores roll to white while their halos stay
+ *   saturated) → vibrance, violet floor, event contrast dip → value-aware top/bottom vignette →
+ *   sRGB encode → grain on the dark floor (High and up) → triangular dither.
+ *
+ * Values are authored scene-linear, so the authored value ladder is what reaches the screen.
+ * Only thin emitters exceed the 1.0 bloom threshold.
  */
 
 import * as THREE from 'three/webgpu';
 import {
-    emissive,
-    mrt,
-    output,
-    pass,
-    viewportUV,
-    uniform,
+    Fn,
     clamp,
+    dot,
     float,
+    floor,
     length,
+    max,
+    min,
     mix,
+    pass,
+    pow,
+    renderOutput,
+    screenCoordinate,
+    screenSize,
+    screenUV,
+    select,
     smoothstep,
+    step,
+    uniform,
+    uv,
     vec2,
     vec3,
-    dot,
-    fract,
-    sin,
+    vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
-import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
+import {
+    chdHash21, chdMax3, chdRoundBoxSdf, chdSoftClip,
+} from './chromadelic-highway-tsl.js';
+
+/**
+ * Per-tier look. `bloom: false` builds no BloomNode (Low/Minimal, as the old theme did); the
+ * emitters carry their own authored halos. `msaa` is the scene pass sample count.
+ */
+export const POST_LOOK = {
+    Extreme: {
+        bloom: true, bloomStrength: 0.8, bloomResolution: 0.4, grain: true, msaa: 4,
+    },
+    Ultra: {
+        bloom: true, bloomStrength: 0.75, bloomResolution: 0.375, grain: true, msaa: 4,
+    },
+    // Every thin element is anti-aliased analytically (lines, ring strips, discs, stars), so
+    // scene MSAA is indistinguishable at High (measured) and kept only on the showcase tiers.
+    High: {
+        bloom: true, bloomStrength: 0.7, bloomResolution: 0.325, grain: true, msaa: 0,
+    },
+    Medium: {
+        bloom: true, bloomStrength: 0.62, bloomResolution: 0.25, grain: false, msaa: 0,
+    },
+    Low: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, grain: false, msaa: 0,
+    },
+    Minimal: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, grain: false, msaa: 0,
+    },
+};
+
+export const BLOOM_THRESHOLD = 1.0;
+export const BLOOM_KNEE = 0.4;
+export const BLOOM_RADIUS = 0.3;
+
+const LUMA = vec3(0.2126, 0.7152, 0.0722);
+const min3 = (c) => min(c.x, min(c.y, c.z));
+
+/**
+ * "Neon-neutral": the Khronos PBR Neutral curve with a later shoulder (startComp 0.72), a
+ * stronger path to white for saturated emitters (desat 0.32) and a quarter-strength toe (the
+ * full toe squares neutral darks below 0.08, which crushes the violet floor). Branchless.
+ */
+export const chdNeonNeutral = /* @__PURE__ */ Fn(([cIn, startComp, desat, toe]) => {
+    const c = vec3(cIn);
+    const x = min3(c);
+    const off = toe.mul(mix(float(0.04), x.sub(x.mul(x).mul(6.25)), float(1.0).sub(step(0.08, x))));
+    const col = c.sub(off).toVar();
+    const peak = chdMax3(col);
+    const d = float(1.0).sub(startComp);
+    const np = float(1.0).sub(d.mul(d).div(max(peak.add(d).sub(startComp), 1e-4)));
+    const g = float(1.0).sub(float(1.0).div(desat.mul(peak.sub(np)).add(1.0)));
+    const compressed = mix(col.mul(np.div(max(peak, 1e-4))), vec3(np), g);
+    return mix(compressed, col, float(1.0).sub(step(startComp, peak)));
+}).setLayout({
+    name: 'chd_neonNeutral',
+    type: 'vec3',
+    inputs: [
+        { name: 'cIn', type: 'vec3' },
+        { name: 'startComp', type: 'float' },
+        { name: 'desat', type: 'float' },
+        { name: 'toe', type: 'float' },
+    ],
+});
+
+/** A render pipeline that only encodes the scene (the no-post / fallback path). */
+export function createPassThroughPipeline(renderer, scene, camera) {
+    const pipeline = new THREE.RenderPipeline(renderer);
+    const scenePass = pass(scene, camera, { samples: 0 });
+    pipeline.outputNode = scenePass; // outputColorTransform: renderer tone mapping + sRGB
+    return {
+        render: () => pipeline.render(),
+        update() {},
+        setLayout() {},
+        setSize() {},
+        setGrainEnabled() {},
+        dispose() {
+            scenePass.dispose();
+            pipeline.dispose();
+        },
+    };
+}
 
 export class ChromadelicHighwayPost {
+    /**
+     * @param {THREE.WebGPURenderer} renderer
+     * @param {THREE.Scene} scene
+     * @param {THREE.Camera} camera
+     * @param {object} [params]
+     * @param {object} [params.look]          POST_LOOK entry
+     * @param {number} [params.samples]       scene-pass MSAA samples (default look.msaa)
+     * @param {number} [params.aspect]
+     * @param {boolean} [params.grain=true]   false in deterministic capture modes
+     * @param {boolean} [params.falseColor]   debug: band the pre-tone-map max channel
+     */
     constructor(renderer, scene, camera, params = {}) {
+        const look = params.look || POST_LOOK.High;
+        this.look = look;
         this.renderer = renderer;
-        this.useMRT = params.useMRT ?? true;
-        // Bloom is a heavy multi-pass blur; render it at ~65% like the Winter pipeline
-        // (was 0.8). Bloom is inherently soft so the lower internal resolution is not
-        // perceptible, but it cuts bloom pixel work by ~(0.8/0.65)^2 ≈ 1.5x.
-        this.bloomDownsample = params.bloomDownsample ?? 0.65;
         this.postProcessing = new THREE.RenderPipeline(renderer);
-
-        this.scenePass = pass(scene, camera);
-        if (this.useMRT) {
-            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
-        }
-
+        this.scenePass = pass(scene, camera, { samples: params.samples ?? look.msaa ?? 0 });
         const sceneColor = this.scenePass.getTextureNode('output');
-        const bloomSource = this.useMRT ? this.scenePass.getTextureNode('emissive') : sceneColor;
-        const emissiveSampler = this.useMRT ? this.scenePass.getTextureNode('emissive') : sceneColor;
 
-        // Bloom - stronger for psychedelic neon glow
-        const bloomStrength = params.bloomStrength ?? 0.5;
-        const bloomRadius = params.bloomRadius ?? 0.3;
-        const bloomThreshold = params.bloomThreshold ?? 0.2;
-        this.bloomNode = bloom(bloomSource, bloomStrength, bloomRadius, bloomThreshold);
+        this.uAspect = uniform(params.aspect ?? 1.78);
+        this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
+        this.uDip = uniform(0); // event contrast dip of everything that is not blooming
+        this.uBloomBoost = uniform(0); // 0..1 → ≤ +10 % bloom
+        this.uContrast = uniform(1.12);
+        this.uBoardRect = uniform(new THREE.Vector4(0.4, 0.067, 0.6, 0.951)); // screen fractions
+        this.uHudRect = uniform(new THREE.Vector4(0.626, 0.25, 0.714, 0.75));
+        this.uVeil = uniform(0); // eased 0 → 1 once the DOM rects are known and stable
+        this.uHudVeil = uniform(0);
+        this.boardSeen = false; // a board rect has been set (the veil may fade over it)
+        this.hudLive = false; // the HUD was on screen with the last board
+        this.grainEnabled = params.grain !== false && look.grain === true;
+        this.uGrain = uniform(this.grainEnabled ? 3 / 255 : 0);
+        this.uGrainPhase = uniform(0);
 
-        // Downsample bloom for performance
-        const originalBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
-        this.bloomNode.setSize = (width, height) => {
-            originalBloomSetSize(width * this.bloomDownsample, height * this.bloomDownsample);
-        };
-
-        // Uniforms for dynamic control
-        this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.0015);
-        this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.0);
-        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.5);
-        this.uExposure = uniform(params.exposure ?? 0.94);
-        this.uContrast = uniform(params.contrast ?? 1.2);
-        this.uSaturation = uniform(params.saturation ?? 1.08);
-        this.uTintStrength = uniform(params.tintStrength ?? 0.1);
-        this.uDitherStrength = uniform(params.ditherStrength ?? 0.00055);
-        // Deep violet bias — keeps shadows neutral-purple, lifts magenta highlights
-        this.uTint = uniform(new THREE.Color(1.0, 0.93, 1.1));
-        // Shadow preservation: prevents deep blacks from being washed to grey by saturation boost
-        this.uShadowFloor = uniform(params.shadowFloor ?? 0.08);
-
-        // Cinematic flourish uniforms (Extreme/Ultra usually drive these; default 0 = off)
-        // Radial chroma multiplier curve: 0 at center, +uRadialChromaBoost at edges.
-        this.uRadialChromaBoost = uniform(params.radialChromaBoost ?? 1.4);
-        // Anamorphic horizontal flare: sums bloom samples along ±X for a horizontal streak.
-        this.uAnamorphicStrength = uniform(params.anamorphicStrength ?? 0.0);
-        // God-ray (radial streak) sourced from the emissive pass around uGodRaySun (screen UV).
-        this.uGodRayStrength = uniform(params.godRayStrength ?? 0.0);
-        this.uGodRaySun = uniform(new THREE.Vector2(
-            params.godRaySunX ?? 0.5,
-            params.godRaySunY ?? 0.47, // Road vanishing point sits slightly below center
-        ));
-        // Barrel distortion: pulls UVs outward radially. Theme drives this with play pace.
-        this.uBarrelStrength = uniform(params.barrelStrength ?? 0.0);
-        // One-shot wormhole pulse on TETRIS (Phase 6 wires this).
-        this.uWormholeStrength = uniform(0.0);
-        // Wet-road reflection from the emissive MRT, gated to showcase tiers by the theme.
-        this.uRoadReflectionStrength = uniform(params.roadReflectionStrength ?? 0.0);
-        this.uTime = uniform(params.time ?? 0.0);
-
-        // Depth-fog bloom attenuation — softens distant emissives without erasing them.
-        // The scene already has its own FogExp2; this is an additional thin pass that
-        // tints far pixels toward fog color and slightly reduces bloom on them.
-        this.fogNear = uniform(params.fogNear ?? 0.45);
-        this.fogFar = uniform(params.fogFar ?? 0.95);
-        this.fogDensity = uniform(params.fogDensity ?? 0.55);
-        this.fogBloomAttenuation = uniform(params.fogBloomAttenuation ?? 0.22);
-        this.fogColor = uniform(params.fogColor ?? new THREE.Color(0x0a0418));
-
-        // Build post-processing pipeline
-        const baseUV = viewportUV;
-        const centered = baseUV.sub(0.5).mul(2.0);
-        const dist = length(centered);
-
-        // Barrel distortion: pulls UV outward as a function of radius² (classic lens).
-        // Adds with wormhole pulse for cinematic TETRIS punctuation.
-        const totalBarrel = this.uBarrelStrength.add(this.uWormholeStrength.mul(0.6));
-        const barrelOffset = centered.mul(dist.mul(dist)).mul(totalBarrel.mul(0.5));
-        const uvNode = baseUV.add(barrelOffset);
-
-        // Depth-fog: sample linear depth, build a [0..1] fog amount, mix scene → fog color.
-        // This must run BEFORE vignette/chroma so they operate on fogged base.
-        const linearDepth = this.scenePass.getLinearDepthNode();
-        const fogFactor = smoothstep(this.fogNear, this.fogFar, linearDepth);
-        const fogAmount = clamp(fogFactor.mul(this.fogDensity), float(0.0), float(1.0));
-        const baseSampleRaw = sceneColor.sample(uvNode);
-        const baseSample = mix(baseSampleRaw, this.fogColor, fogAmount);
-
-        // Vignette (computed on undistorted UV so edges remain consistent)
-        const vignette = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.5), dist);
-        const vignetteColor = mix(
-            baseSample.mul(float(1.0).sub(this.uVignetteDarkness)),
-            baseSample,
-            vignette,
-        );
-
-        // Radial chromatic aberration: zero at center, ramps with radius² for that
-        // cinematic lens feel where edges separate into R/B fringes.
-        const radialChroma = this.uChromaticStrength
-            .mul(float(1.0).add(this.uRadialChromaBoost.mul(dist.mul(dist))))
-            .add(this.uWormholeStrength.mul(0.006));
-        const chroma = chromaticAberration(vignetteColor, radialChroma, vec2(0.5, 0.5), 1.1);
-
-        // Build-time flourish gates. A flourish whose per-quality ceiling is 0 is permanently
-        // disabled by the theme (its strength uniform is clamped to Math.min(0, …) === 0 every
-        // frame), so the only thing its node graph contributes is dead emissive-texture taps.
-        // Skipping construction at those tiers removes ~16 full-screen texture samples per pixel
-        // (god-ray 6-tap + anamorphic 5×2-tap) with byte-identical output — a real GPU win on the
-        // weak hardware that actually runs Medium/Low/Minimal.
-        const enableGodRays = (params.godRayStrength ?? 0) > 0;
-        const enableAnamorphic = (params.anamorphicStrength ?? 0) > 0;
-        const enableRoadReflection = (params.roadReflectionStrength ?? 0) > 0;
-
-        // Screen-space god rays — radial streaks sampled from the emissive MRT pass.
-        // Direction is from the configured sun-point (default: road vanishing point) outward.
-        // Cheap 6-tap accumulation, weighted by 1/N to keep cost bounded.
-        let godRays = vec3(0.0);
-        if (enableGodRays) {
-            const sunUV = this.uGodRaySun;
-            const rayDir = uvNode.sub(sunUV);
-            const rayLen = length(rayDir).add(1e-4);
-            const rayUnit = rayDir.div(rayLen);
-            const rayFalloff = smoothstep(0.6, 0.0, rayLen); // brightest near sun
-            // 4 taps (was 6) at wider spacing → SAME reach (4*0.06 = 6*0.04 = 0.24), fewer
-            // emissive samples. Final gain renormalised (0.18 → 0.30) so the summed weight
-            // (decay sum 1.5 vs 2.5) yields identical brightness. Visually indistinguishable.
-            const rayStepCount = 4;
-            const rayStepSize = 0.06;
-            for (let i = 1; i <= rayStepCount; i++) {
-                const offset = rayUnit.mul(float(-i * rayStepSize));
-                const sampleUV = uvNode.add(offset);
-                const sample = emissiveSampler.sample(sampleUV).rgb;
-                const decay = float(1.0 - i / rayStepCount);
-                godRays = godRays.add(sample.mul(decay));
-            }
-            godRays = godRays.mul(rayFalloff).mul(this.uGodRayStrength.mul(0.30));
+        // ── Bloom: max-channel soft knee over a 4-tap box (Medium and up) ──
+        this.bloomNode = null;
+        if (look.bloom) {
+            this.bloomNode = bloom(sceneColor, look.bloomStrength, BLOOM_RADIUS, BLOOM_THRESHOLD);
+            this.bloomNode.threshold.value = BLOOM_THRESHOLD;
+            this.bloomNode.smoothWidth.value = BLOOM_KNEE;
+            this.bloomNode.setResolutionScale(look.bloomResolution);
+            const { uSrcTexel } = this;
+            // BloomNode's documented hook, read once at setup: set before anything compiles.
+            // Inline (no setLayout): `input` must stay the raw scene TextureNode for .sample().
+            this.bloomNode.highPassFn = Fn(({ input, threshold, smoothWidth }) => {
+                const st = uv();
+                const o = uSrcTexel.mul(1.25);
+                const tap = (dx, dy) => clamp(input.sample(st.add(vec2(o.x.mul(dx), o.y.mul(dy)))).rgb, 0.0, 6.0);
+                const c = tap(1, 1).add(tap(-1, 1)).add(tap(1, -1)).add(tap(-1, -1))
+                    .mul(0.25);
+                const br = chdMax3(c);
+                const soft = clamp(br.sub(threshold).add(smoothWidth), 0.0, smoothWidth.mul(2.0));
+                const w = max(soft.mul(soft).div(smoothWidth.mul(4.0).add(1e-4)), br.sub(threshold)).div(max(br, 1e-4));
+                return vec4(c.mul(w), 1.0);
+            });
         }
 
-        // Anamorphic horizontal flare — wide horizontal streak from bright emissives.
-        // Cheap 5-tap horizontal blur of the emissive pass, additively composed.
-        let anamorphic = vec3(0.0);
-        if (enableAnamorphic) {
-            // 3 tap-pairs (was 5) at the SAME spread; final gain renormalised (0.06 → 0.12) so
-            // the summed weight (decay sum 1.0 vs 2.0 per side) yields identical flare intensity.
-            // Saves 4 emissive samples per pixel; the streak is soft so this is imperceptible.
-            const flareTaps = 3;
-            const flareSpread = 0.045;
-            for (let i = 1; i <= flareTaps; i++) {
-                const dx = (i / flareTaps) * flareSpread;
-                const sampleA = emissiveSampler.sample(vec2(uvNode.x.add(float(dx)), uvNode.y)).rgb;
-                const sampleB = emissiveSampler.sample(vec2(uvNode.x.sub(float(dx)), uvNode.y)).rgb;
-                const decay = float(1.0 - i / flareTaps);
-                anamorphic = anamorphic.add(sampleA.mul(decay)).add(sampleB.mul(decay));
-            }
-            // Bias the flare warm (slight gold/magenta) so it reads as lens optic, not just bloom.
-            const flareTint = vec3(1.05, 0.88, 1.18);
-            anamorphic = anamorphic.mul(flareTint).mul(this.uAnamorphicStrength.mul(0.12));
-        }
+        const falseColor = params.falseColor === true;
+        const outputFn = Fn(() => {
+            const centered = screenUV.sub(0.5).toVar();
+            const p = screenUV.mul(screenSize).toVar();
+            const S = vec3(sceneColor.sample(screenUV).rgb).toVar();
 
-        // Subtle wet-road reflection: mirror bright emissives from above the road horizon
-        // into the lower screen with a small ripple. This keeps the road glossy without
-        // adding a physical water layer or another scene pass. Gated like the flourishes above:
-        // at tiers where the ceiling is 0 this tap is dead, so its node isn't built.
-        let roadReflection = vec3(0.0);
-        if (enableRoadReflection) {
-            const roadHorizonY = float(0.48);
-            const roadMask = smoothstep(roadHorizonY, roadHorizonY.sub(0.36), uvNode.y)
-                .mul(smoothstep(0.05, 0.34, baseUV.x))
-                .mul(smoothstep(0.95, 0.66, baseUV.x));
-            const ripple = sin(baseUV.x.mul(58.0).add(this.uTime.mul(1.7))).mul(0.004)
-                .add(sin(baseUV.y.mul(41.0).sub(this.uTime.mul(1.1))).mul(0.003));
-            const reflectionUV = vec2(
-                uvNode.x.add(ripple.mul(0.45)),
-                roadHorizonY.add(roadHorizonY.sub(uvNode.y).mul(0.82)).add(ripple),
+            // ── Board veil: what shows through the card / HUD is soft-clipped ──
+            const hScale = screenSize.y.div(1080.0);
+            const sdfC = chdRoundBoxSdf(p, this.uBoardRect.mul(vec4(screenSize, screenSize)), hScale.mul(20.0));
+            const sdfH = chdRoundBoxSdf(p, this.uHudRect.mul(vec4(screenSize, screenSize)), hScale.mul(12.0));
+            const inC = float(1.0).sub(smoothstep(-24.0, 0.0, sdfC)).mul(this.uVeil);
+            const bandC = smoothstep(hScale.mul(110.0), 0.0, sdfC).mul(step(0.0, sdfC)).mul(this.uVeil);
+            const inH = float(1.0).sub(smoothstep(-8.0, 0.0, sdfH)).mul(this.uHudVeil);
+            S.assign(mix(S, chdSoftClip(S, float(0.1)).mul(0.85), inC));
+            S.assign(mix(S, chdSoftClip(S, float(0.12)), inH));
+            S.mulAssign(float(1.0).sub(bandC.mul(0.12)));
+
+            // ── Bloom composite ──
+            let B = vec3(0.0);
+            if (this.bloomNode) {
+                let bl = vec3(this.bloomNode.getTextureNode().sample(screenUV).rgb);
+                // Faint-halo unifier: dim halos lean violet so seven hues read as one light.
+                const faint = float(1.0).sub(smoothstep(0.02, 0.35, chdMax3(bl))).mul(0.35);
+                bl = mix(bl, bl.mul(vec3(0.86, 0.74, 1.22)), faint);
+                bl = bl.mul(float(1.0).add(this.uBloomBoost.mul(0.1)));
+                bl = bl.mul(max(float(1.0).sub(inC.mul(0.8)).sub(inH.mul(0.6)).sub(bandC.mul(0.3)), 0.0));
+                B = bl;
+            }
+            const H = S.add(B).toVar();
+
+            // ── Luminance contrast before the tone map (the floor is left alone) ──
+            const Lh = max(dot(H, LUMA), 1e-4);
+            H.mulAssign(pow(Lh.div(0.18), this.uContrast.sub(1.0).mul(smoothstep(0.012, 0.06, Lh))));
+
+            // ── Tone map + grade (scene-linear) ──
+            const T = chdNeonNeutral(H, float(0.72), float(0.32), float(0.25)).toVar();
+            const tl = dot(T, LUMA);
+            const tMax = chdMax3(T);
+            const sat = tMax.sub(min3(T)).div(max(tMax, 1e-4));
+            T.assign(mix(vec3(tl), T, float(1.0).add(float(0.12).mul(float(1.0).sub(sat)).mul(smoothstep(0.02, 0.2, tl)))));
+            // Violet floor: pure black never reaches the screen.
+            T.addAssign(vec3(0.001, 0.0004, 0.0036).mul(float(1.0).sub(smoothstep(0.0, 0.05, tl))));
+            // Event contrast dip: everything that is not blooming steps back.
+            T.mulAssign(float(1.0).sub(this.uDip.mul(float(1.0).sub(smoothstep(0.03, 0.25, chdMax3(B))))));
+            // Value-aware top/bottom bands (the bottom corners hold the road wedges) + weak radial.
+            const edge = max(
+                float(1.0).sub(smoothstep(0.0, 0.13, screenUV.y)),
+                float(1.0).sub(smoothstep(0.0, 0.1, float(1.0).sub(screenUV.y))),
             );
-            roadReflection = emissiveSampler.sample(reflectionUV).rgb
-                .mul(vec3(0.72, 0.58, 1.0))
-                .mul(roadMask)
-                .mul(this.uRoadReflectionStrength);
-        }
+            T.mulAssign(float(1.0).sub(edge.mul(float(0.22).add(tl.mul(0.187)))));
+            const rad = length(centered.mul(vec2(this.uAspect.div(1.778), 1.0)).mul(2.0));
+            T.mulAssign(float(1.0).sub(smoothstep(0.6, 1.2, rad).mul(0.1)));
 
-        // Combine: scene+chroma + bloom + god rays + anamorphic flare + road reflection.
-        // Bloom-like additives are attenuated by depth fog so distant emissives blend
-        // into the haze rather than punching out as floating bright dots.
-        const bloomAtten = clamp(float(1.0).sub(fogAmount.mul(this.fogBloomAttenuation)), float(0.0), float(1.0));
-        const combined = chroma
-            .add(this.bloomNode.mul(bloomAtten))
-            .add(godRays.mul(bloomAtten))
-            .add(anamorphic.mul(bloomAtten))
-            .add(roadReflection);
+            // ── Encode, then finish in display space ──
+            const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
+            const px = floor(screenCoordinate);
+            // Grain on the dark floor only (±1.5/255, 24 Hz phase from the sim clock).
+            const gp = this.uGrainPhase;
+            const gn = chdHash21(px.add(vec2(gp.mul(113.1), gp.mul(71.7)))).sub(0.5);
+            D.addAssign(gn.mul(this.uGrain).mul(float(1.0).sub(smoothstep(0.02, 0.06, chdMax3(D)))));
+            // Triangular ±1/255 dither (static: captures stay deterministic).
+            const dth = chdHash21(px).add(chdHash21(px.add(vec2(17.17, 17.17)))).sub(1.0);
+            D.addAssign(dth.div(255.0));
 
-        // ACES Filmic Tone Mapping
-        const exposed = combined.mul(this.uExposure);
-        const acesA = float(2.51);
-        const acesB = float(0.03);
-        const acesC = float(2.43);
-        const acesD = float(0.59);
-        const acesE = float(0.14);
-        const acesNum = exposed.mul(exposed.mul(acesA).add(acesB));
-        const acesDen = exposed.mul(exposed.mul(acesC).add(acesD)).add(acesE);
-        let graded = clamp(acesNum.div(acesDen), float(0.0), float(1.0));
+            let output = vec4(clamp(D, 0.0, 1.0), 1.0);
+            if (falseColor) {
+                // Debug: band the pre-tone-map max channel after the veil (blue < .1 < green <
+                // .6 < yellow < 1 < orange < 2.5 < red). Only thin emitters should show orange/red.
+                const m = chdMax3(S.add(B));
+                const fc = select(
+                    m.lessThan(0.1),
+                    vec3(0.05, 0.1, 0.6),
+                    select(
+                        m.lessThan(0.6),
+                        vec3(0.1, 0.55, 0.15),
+                        select(
+                            m.lessThan(1.0),
+                            vec3(0.85, 0.8, 0.1),
+                            select(m.lessThan(2.5), vec3(1.0, 0.45, 0.05), vec3(0.95, 0.05, 0.05)),
+                        ),
+                    ),
+                );
+                output = vec4(fc, 1.0);
+            }
+            return output;
+        });
 
-        // Color grading: saturation (shadow-aware), contrast, tint
-        // Shadow guard: scale saturation back toward 1.0 in deep blacks so they stay neutral-purple
-        // rather than getting pulled into a muddy grey by uniform saturation boost.
-        const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
-        const shadowMask = smoothstep(this.uShadowFloor, this.uShadowFloor.add(0.18), luma);
-        const localSat = mix(float(1.0), this.uSaturation, shadowMask);
-        graded = mix(vec3(luma), graded, localSat);
-        graded = graded.sub(0.5).mul(this.uContrast).add(0.5);
-        graded = mix(graded, graded.mul(this.uTint), this.uTintStrength);
-
-        // Dither to prevent banding
-        const noise = fract(sin(dot(baseUV, vec2(12.9898, 78.233))).mul(43758.5453));
-        const dither = noise.sub(0.5).mul(this.uDitherStrength);
-        graded = clamp(graded.add(dither), float(0.0), float(1.0));
-
-        this.postProcessing.outputNode = graded;
+        this.postProcessing.outputColorTransform = false;
+        this.postProcessing.outputNode = outputFn();
         this.postProcessing.needsUpdate = true;
         this.size = { width: 0, height: 0 };
     }
 
-    update(params = {}) {
-        if (params.bloomStrength !== undefined && this.bloomNode.strength) {
-            this.bloomNode.strength.value = params.bloomStrength;
-        }
-        if (params.chromaticStrength !== undefined) {
-            this.uChromaticStrength.value = params.chromaticStrength;
-        }
-        if (params.vignetteOffset !== undefined) {
-            this.uVignetteOffset.value = params.vignetteOffset;
-        }
-        if (params.vignetteDarkness !== undefined) {
-            this.uVignetteDarkness.value = params.vignetteDarkness;
-        }
-        if (params.exposure !== undefined) {
-            this.uExposure.value = params.exposure;
-        }
-        if (params.barrelStrength !== undefined) {
-            this.uBarrelStrength.value = params.barrelStrength;
-        }
-        if (params.anamorphicStrength !== undefined) {
-            this.uAnamorphicStrength.value = params.anamorphicStrength;
-        }
-        if (params.godRayStrength !== undefined) {
-            this.uGodRayStrength.value = params.godRayStrength;
-        }
-        if (params.godRaySun) {
-            this.uGodRaySun.value.set(params.godRaySun.x, params.godRaySun.y);
-        }
-        if (params.wormholeStrength !== undefined) {
-            this.uWormholeStrength.value = params.wormholeStrength;
-        }
-        if (params.roadReflectionStrength !== undefined) {
-            this.uRoadReflectionStrength.value = params.roadReflectionStrength;
-        }
+    /**
+     * Per-frame uniforms. All optional.
+     * @param {{time?: number, dip?: number, bloomBoost?: number}} params
+     */
+    update(params) {
         if (params.time !== undefined) {
-            this.uTime.value = params.time;
+            // Deterministic under seek, and small enough to keep the hash precise.
+            this.uGrainPhase.value = Math.floor(params.time * 24) % 256;
         }
-        if (params.fogNear !== undefined) {
-            this.fogNear.value = params.fogNear;
+        if (params.dip !== undefined) this.uDip.value = params.dip;
+        if (params.bloomBoost !== undefined) this.uBloomBoost.value = params.bloomBoost;
+    }
+
+    /**
+     * Board/HUD rects in screen fractions (x0, y0, x1, y1; y down), or null to fade that veil
+     * out. `strength` 0..1 is applied as-is (the caller eases it): once the board is gone the
+     * last rects stay, so the eased strength fades the veil where the board was.
+     */
+    setLayout(board, hud, strength = 1) {
+        if (board) {
+            this.uBoardRect.value.set(board.x0, board.y0, board.x1, board.y1);
+            this.boardSeen = true;
+            this.hudLive = Boolean(hud);
         }
-        if (params.fogFar !== undefined) {
-            this.fogFar.value = params.fogFar;
-        }
-        if (params.fogDensity !== undefined) {
-            this.fogDensity.value = params.fogDensity;
-        }
-        if (params.fogBloomAttenuation !== undefined) {
-            this.fogBloomAttenuation.value = params.fogBloomAttenuation;
-        }
-        if (params.fogColor !== undefined && this.fogColor) {
-            this.fogColor.value = params.fogColor;
-        }
+        if (hud) this.uHudRect.value.set(hud.x0, hud.y0, hud.x1, hud.y1);
+        this.uVeil.value = this.boardSeen ? strength : 0;
+        this.uHudVeil.value = this.hudLive ? strength : 0;
+    }
+
+    setGrainEnabled(enabled) {
+        this.uGrain.value = enabled && this.look.grain === true ? 3 / 255 : 0;
     }
 
     render() {
         this.postProcessing.render();
     }
 
-    setSize(width, height) {
+    /**
+     * The scene pass and bloom chain size themselves from the drawing buffer every frame
+     * (PassNode/BloomNode.updateBefore); only the aspect and the prefilter texel need this.
+     */
+    setSize(width, height, bufferWidth = width, bufferHeight = height) {
         this.size.width = width;
         this.size.height = height;
-        this.scenePass.setSize(width, height);
-        if (this.bloomNode?._separableBlurMaterials?.length) {
-            this.bloomNode.setSize(width, height);
-        }
+        if (width > 0 && height > 0) this.uAspect.value = width / height;
+        if (bufferWidth > 0 && bufferHeight > 0) this.uSrcTexel.value.set(1 / bufferWidth, 1 / bufferHeight);
     }
 
     dispose() {
         this.scenePass.dispose();
-        disposeBloomNodeDeep(this.bloomNode);
+        if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing.dispose();
     }
 }
