@@ -426,6 +426,13 @@ const RAW_THEME_REGISTRY = [
         icon: './vesper-chrysalis/vesper-chrysalis-theme-icon.png',
         group: 'fantasy',
     },
+    {
+        id: 'parhelion',
+        displayName: 'Parhelion',
+        module: './parhelion/parhelion-theme.js',
+        icon: './parhelion/parhelion-theme-icon.png',
+        group: 'sky',
+    },
 ];
 
 const HEAVY_GPU_THEME_IDS = new Set([
@@ -479,6 +486,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'stellar-velocity',
     'stellar-drift',
     'vesper-chrysalis',
+    'parhelion',
 ]);
 
 export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({

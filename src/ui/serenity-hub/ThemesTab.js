@@ -379,6 +379,7 @@ export class ThemesTab {
             Pyrestorm: 'flame',
             'Neon Dusk': 'city',
             Stillwater: 'droplet',
+            Parhelion: 'sun',
         };
         return icons[theme.displayName] || 'palette';
     }
