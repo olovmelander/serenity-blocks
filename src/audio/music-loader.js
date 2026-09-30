@@ -81,6 +81,7 @@ export function getSongForTheme(themeName, songsData) {
         'electric-dreams': 'ElectricDreams',
         'chromadelic-highway': 'ElectricDreams',
         'black-hole': 'BlackHole',
+        parhelion: 'EtherealEchoes',
     };
     const explicitTrack = explicitThemeSongMap[themeName];
     if (explicitTrack && songsData.some((s) => nameToKey(s.name) === explicitTrack)) {
