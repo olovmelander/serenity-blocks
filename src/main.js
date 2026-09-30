@@ -79,10 +79,16 @@ import { GameModeUI } from './ui/game-mode-ui.js';
 import { introAnimation } from './ui/intro-animation.js';
 import { playBootWarpStartupSequence } from './ui/boot-warp-orchestrator.js';
 import {
+    getStartupThemeBusyState,
+    waitForStartupThemeIdle,
+    waitForThemeContentLoaded,
+} from './ui/boot-warp-startup.js';
+import {
     STARTUP_IDENT_MIN_VISIBLE_MS,
     createStartupPipelineController,
 } from './ui/startup-pipeline-controller.js';
 import { markStartup } from './ui/startup-debug.js';
+import { identHoldIsStatic, onIdentHoldWarmPhase, probeWebGPUAdapter } from './ui/startup-ident-hold.js';
 import { DemoManager } from './core/demo/DemoManager.js';
 import { DemoBrowser } from './ui/demo-browser.js';
 import {
@@ -475,6 +481,8 @@ function initStartupLogo() {
             const el = document.querySelector(sel);
             if (el) el.style.display = 'none';
         });
+        // The warp's match frame replicates the text ident, not an image: dissolve instead.
+        document.getElementById('startup-shell')?.classList.add('has-image-logo');
     }
 }
 
@@ -2603,6 +2611,12 @@ class SerenityBlocks {
             // renderer alive during the warp — SAFE now because the warp REUSES the intro's
             // GPUDevice (BootWarpTransition({ device })), so it's theme-device + shared-intro/
             // warp-device = 2 contexts (works), not 3 (which blanked the warp on heavy themes).
+            // Async render-pipeline sessions need the WebGPU backend prototype resolved before a
+            // theme starts (the app has loaded 'three/webgpu' early, so this settles at once).
+            const asyncPipelinesReady = Promise.all([
+                this.themeManager?.preloadAsyncRenderPipelines?.(),
+                probeWebGPUAdapter(), // navigator.gpu can exist with no adapter: the ident hold's style
+            ]);
             await this._withStartupBudget(this.loadInitialTheme(), 6500, 'pre-intro initial theme load');
 
             if (typeof window !== 'undefined') {
@@ -2612,9 +2626,10 @@ class SerenityBlocks {
                 }
             }
 
-            // Finish the ident REVEAL on the uncontested GPU, then flip the splash to a STATIC
-            // hold (.sb-lit) BEFORE the heavy warm so the GPU-saturating compile can't stutter
-            // the splash animation.
+            // Finish the ident REVEAL, then switch the splash to its looping hold (.sb-lit):
+            // the one-shot reveal keyframes are parked and transform/opacity loops keep it
+            // moving on the compositor while the warm runs behind it.
+            await this._withStartupBudget(asyncPipelinesReady, 2000, 'async pipeline preload');
             await this._finishStartupRevealBeforeWarm();
 
             // Generous budget (15s) so heavy themes (neon-district) actually FINISH compiling
@@ -2626,10 +2641,10 @@ class SerenityBlocks {
     }
 
     /**
-     * Wait until the studio-ident entrance reveal (~1.65s) has played out on the
-     * uncontested GPU, then add `.sb-lit` to freeze the splash into a fully-lit static
-     * hold (parks every reveal animation + drops will-change). Called right before the
-     * GPU-heavy theme warm so nothing animated competes with the saturated GPU process.
+     * Wait until the studio-ident entrance reveal (~1.65s) has played out, then add
+     * `.sb-lit`: the one-shot reveal keyframes are parked and the hold loops (orbiting
+     * arcs, glow breathe, glint, sheen — transform/opacity only) take over, so the splash
+     * keeps moving on the compositor while the theme warm runs behind it.
      * @returns {Promise<void>}
      */
     async _finishStartupRevealBeforeWarm() {
@@ -2646,6 +2661,12 @@ class SerenityBlocks {
             }
             const shell = document.getElementById('startup-shell');
             if (shell) {
+                // No async pipelines (rollback / no WebGPU): the warm compiles synchronously,
+                // which stalls the compositor itself, so moving loops would stop and jump. Keep
+                // the old static hold there (a sync-renderer theme pauses it: startup-ident-hold).
+                if (identHoldIsStatic(this.themeManager)) {
+                    shell.classList.add('sb-lit--static');
+                }
                 shell.classList.add('sb-lit');
             }
         } catch (error) {
@@ -2691,10 +2712,19 @@ class SerenityBlocks {
             // time. Cost for light themes is small and absorbed by the ident-hold window;
             // prewarmTheme() has its own guards and the resume safety-net makes the worst
             // case identical to no-warm. (Disable everything with ?noThemeWarm=1.)
+            // Boots that skipped the intro never ran its preload; the warm and later loading
+            // surfaces need the backend prototype resolved to create pipelines async.
+            await this._withStartupBudget(tm.preloadAsyncRenderPipelines?.(), 2000, 'async pipeline preload');
             const warmStartedAt = typeof performance !== 'undefined' && performance.now
                 ? performance.now()
                 : Date.now();
-            const warmed = await tm.prewarmTheme(themeName);
+            const warmed = await tm.prewarmTheme(themeName, {
+                isThemeBusy: (theme) => getStartupThemeBusyState(theme).busy,
+                onPhase: (phase, payload) => {
+                    markStartup(`theme-warm:${phase}`, payload);
+                    onIdentHoldWarmPhase(phase, payload);
+                },
+            });
             performanceMonitor.recordEvent('startup_theme_prewarm', {
                 theme: themeName,
                 warmed,
@@ -2768,6 +2798,8 @@ class SerenityBlocks {
         ]);
 
         const startGameWithModeHandler = async (e) => {
+            let releaseLoadingSurface = () => {};
+            let calmHoldActive = false;
             try {
                 const { mode } = e.detail;
                 console.log('[Main] Starting game with mode from card selection:', mode);
@@ -2782,12 +2814,20 @@ class SerenityBlocks {
 
                 // --- Phase 1: Show cinematic loading overlay + fade out intro music ---
                 const displayName = MODE_DISPLAY_NAMES[mode];
-                if (!modeHandlesStartupOverlay && displayName) {
+                const overlayShown = !modeHandlesStartupOverlay && Boolean(displayName);
+                if (overlayShown) {
                     showCinematicLoadingOverlay(displayName);
                 }
 
                 // Music fade-out is handled by performTrackSwitch when the
                 // theme-linked track change triggers — no separate fade needed here.
+
+                // While the overlay covers the screen, a theme started or resumed below creates
+                // its render pipelines async, so the overlay keeps animating through a cold
+                // build instead of freezing on a synchronous compile.
+                releaseLoadingSurface = (overlayShown && this.themeManager?.beginLoadingSurface)
+                    ? this.themeManager.beginLoadingSurface('mode-start')
+                    : () => {};
 
                 // --- Phase 2: Wait for overlay to cover screen, then do heavy work ---
                 await new Promise((r) => setTimeout(r, 500));
@@ -2802,13 +2842,45 @@ class SerenityBlocks {
                 // Only a cold build (un-warmed theme) needs the calm-hold that hides the
                 // motion so it doesn't stutter mid-animation. `hasStarted` on the pending
                 // (parked) instance means it's warm; missing/false => treat as cold.
-                const pendingThemeWarm = this.themeManager?.pendingThemeInstance?.hasStarted === true;
-                const useCalmHold = !modeHandlesStartupOverlay && !pendingThemeWarm;
+                // A menu theme switch still loading its module would otherwise be read as the OLD
+                // theme below (the calm-hold decision and the engaged waiter are per theme).
+                const tm = this.themeManager;
+                if (tm?.switchDrainPromise) {
+                    await this._withStartupBudget(tm.switchDrainPromise, 3000, 'theme switch drain');
+                }
+                const pendingThemeWarm = tm?.pendingThemeInstance?.hasStarted === true;
+                // A cold build keeps the calm-hold until its start() has resolved (createScene's own
+                // synchronous PMREM bakes and first compute are behind it). After that, async
+                // pipelines keep the GPU process free, so the motion comes back — but only for a
+                // theme that builds async: known from earlier this session, or proven by its first
+                // async pipeline. WebGL / shared-renderer themes (or a boot with no async path)
+                // compile synchronously and keep the hold for the whole build.
+                const asyncFirstEntry = tm?.canUseAsyncLoadingSurface?.() === true;
+                const targetThemeName = tm?.pendingThemeName || tm?.activeThemeName;
+                const knownAsyncEntry = asyncFirstEntry && tm.isThemeKnownAsync?.(targetThemeName) === true;
+                const useCalmHold = overlayShown && !pendingThemeWarm;
+                const entryT0 = performance.now();
+                let calmReleasedAtMs = null;
+                let themeStarted = false;
+                let buildEngaged = knownAsyncEntry;
+                const releaseCalmHold = () => {
+                    if (!calmHoldActive || !themeStarted || !buildEngaged) return;
+                    calmHoldActive = false;
+                    calmReleasedAtMs = Math.round(performance.now() - entryT0);
+                    setCinematicLoadingOverlayBuilding(false);
+                };
                 if (useCalmHold) {
                     setCinematicLoadingOverlayBuilding(true);
+                    calmHoldActive = true;
                     await new Promise((resolve) => {
                         requestAnimationFrame(() => requestAnimationFrame(resolve));
                     });
+                    if (asyncFirstEntry && !knownAsyncEntry) {
+                        tm.whenLoadingSurfaceEngaged?.(targetThemeName).then((engaged) => {
+                            buildEngaged = engaged;
+                            releaseCalmHold();
+                        });
+                    }
                 }
 
                 // Activate the mode (sets up UI/DOM elements)
@@ -2816,16 +2888,44 @@ class SerenityBlocks {
 
                 // Start the game (includes theme resume)
                 await this.gameModeManager.startCurrentMode();
+                themeStarted = true;
+                releaseCalmHold();
 
                 // --- Phase 3: Wait for theme to be ready ---
                 if (!modeHandlesStartupOverlay && this.themeManager?.waitForThemeReady) {
-                    const themeReady = await this.themeManager.waitForThemeReady(3000);
+                    const themeReady = await this.themeManager.waitForThemeReady(
+                        asyncFirstEntry && !pendingThemeWarm ? 6000 : 3000,
+                    );
                     console.log('[Main] Theme ready:', themeReady);
+                    // Lift the overlay onto a complete frame, not objects popping in: first the
+                    // theme's streamed content (a cold neon-district builds its city in chunks, so
+                    // its pipelines read quiet before most are even requested), then its pipelines.
+                    // The overlay keeps animating meanwhile; a warm entry passes in a few frames.
+                    // One ~9 s budget: past it the retained session keeps late pipelines async
+                    // (they appear a moment later), which beats holding the overlay much longer.
+                    const settleT0 = performance.now();
+                    // Rollback / no overlay: HEAD's timing (no content wait).
+                    const contentLoaded = !(asyncFirstEntry && overlayShown) || await waitForThemeContentLoaded(
+                        () => this.themeManager?.activeTheme || null,
+                        { maxWaitMs: 7500 },
+                    );
+                    const settleBudgetMs = Math.max(1500, 9000 - (performance.now() - settleT0));
+                    const settled = await this.themeManager.whenLoadingSurfacePipelinesSettled?.(settleBudgetMs);
+                    performanceMonitor.recordEvent('mode_entry_pipelines_settle', {
+                        mode,
+                        theme: targetThemeName,
+                        contentLoaded,
+                        settled: settled !== false,
+                        ms: Math.round(performance.now() - settleT0),
+                        calmHold: useCalmHold,
+                        calmReleasedAtMs,
+                    });
                 }
 
                 // Cold build complete — GPU is free again. Bring the overlay's motion
                 // back so the cinematic reveal reads as smooth, not a sudden un-freeze.
-                if (useCalmHold) {
+                if (calmHoldActive) {
+                    calmHoldActive = false;
                     setCinematicLoadingOverlayBuilding(false);
                 }
 
@@ -2841,6 +2941,24 @@ class SerenityBlocks {
                 // Local multiplayer owns the cinematic overlay lifecycle once the
                 // match config modal is confirmed. Dismissing the shared overlay
                 // here races with the in-mode countdown and can hide it mid-count.
+                //
+                // The async-pipeline session outlives the overlay until the theme is idle:
+                // themes that stream content in progressively (neon-district builds its city
+                // in chunks) would otherwise compile that content synchronously during the
+                // first seconds of play (measured: 41 sync creations, a 2.4 s hitch). Late
+                // scenery now appears a moment later instead of freezing the game. Bounded.
+                const releaseNow = releaseLoadingSurface;
+                releaseLoadingSurface = () => {};
+                waitForStartupThemeIdle(() => this.themeManager?.activeTheme || null, {
+                    maxWaitMs: 20000,
+                    stableMs: 1000,
+                })
+                    .then(() => this.themeManager?.whenLoadingSurfacePipelinesSettled?.(5000))
+                    .catch(() => {})
+                    .finally(releaseNow);
+                // Off screen from here: themes started later (another mode's own reveal) are not
+                // armed by this surface; the ones it already armed keep their sessions.
+                releaseNow.uncover?.();
                 if (!modeHandlesStartupOverlay) {
                     dismissCinematicLoadingOverlay(800);
                 }
@@ -2856,6 +2974,8 @@ class SerenityBlocks {
                 }
             } catch (error) {
                 console.error('[Main] Failed to start game from card selection:', error);
+                calmHoldActive = false; // a late engaged callback must not touch a later overlay
+                releaseLoadingSurface();
                 dismissCinematicLoadingOverlay(300);
                 alert(`Failed to start game: ${error.message}`);
             }

@@ -6,6 +6,12 @@
 
 import { INTRO_PHASES } from './intro-visual-config.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
+import { readFlag } from '../core/flags.js';
+import { markStartup } from './startup-debug.js';
+import {
+    beginAsyncRenderPipelines,
+    preloadAsyncRenderPipelines,
+} from '../themes/shared/async-render-pipelines.js';
 
 const INTRO_TETROMINO_BLOCKED_POINTER_SELECTOR = [
     'a[href]',
@@ -665,6 +671,7 @@ export class IntroAnimation {
                     this.threeRenderer = webgpuRenderer;
                     this.isWebGPU = true;
                     this.threeRenderer.setVisualProfile?.('cinematic_clean');
+                    await this.beginIntroPipelineSession(webgpuRenderer);
                     performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
                         backend: 'webgpu',
                         durationMs: (typeof performance !== 'undefined' && performance.now
@@ -727,6 +734,43 @@ export class IntroAnimation {
      */
     setSoundManager(soundManager) {
         this.soundManager = soundManager;
+    }
+
+    /**
+     * Until the intro's render pipelines have been created, create them asynchronously
+     * (createRenderPipelineAsync) instead of synchronously on its first frames: a synchronous
+     * create compiles on the GPU-process main thread and froze the whole screen — the studio
+     * ident in front of the intro included — for several seconds on a cold shader cache.
+     * Pending pipelines only skip their draws, and the intro is hidden under the ident/warp
+     * meanwhile. The session ends once no pipeline is in flight or requested for 30 frames.
+     * Rollback: ?themeWarmAsync=0.
+     * @param {object} visual the WebGPU intro renderer wrapper
+     */
+    async beginIntroPipelineSession(visual) {
+        const renderer = visual?.renderer;
+        if (!renderer || !readFlag('themeWarmAsync', true)) return;
+        try {
+            await preloadAsyncRenderPipelines(); // 'three/webgpu' is already loaded: settles at once
+        } catch {
+            return;
+        }
+        this.endIntroPipelineSession?.();
+        const session = beginAsyncRenderPipelines({ name: 'intro', renderer }, { label: 'intro' });
+        if (!session) return;
+        markStartup('intro:pipelines-async-start');
+        const startedAt = performance.now();
+        let ended = false;
+        const end = (reason) => {
+            if (ended) return;
+            ended = true;
+            const stats = session.end();
+            markStartup('intro:pipelines-async-end', {
+                reason, ms: Math.round(performance.now() - startedAt), ...stats,
+            });
+        };
+        this.endIntroPipelineSession = () => end('replaced');
+        session.settle({ maxMs: 15000, quietFrames: 30 })
+            .then((quiet) => end(quiet ? 'quiet' : 'timeout'), () => end('error'));
     }
 
     /**

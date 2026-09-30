@@ -1,6 +1,7 @@
 /* eslint-disable import/no-unresolved */
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { readFlag } from '../../core/flags.js';
 import {
     getLowerVoidEmberTier,
     getVoidEmberPresetFromEffectQuality,
@@ -323,11 +324,30 @@ export default class VoidEmberTheme extends BaseTheme {
         this.startAnimation();
     }
 
+    /**
+     * Creates its own pipelines async (ADR-0020), off three's backend, so a loading surface
+     * covering this theme's build can keep its motion. Rollbacks: ?themeWarmAsync=0 and
+     * ?syncComputePipelines=1 (either makes part of the build synchronous again).
+     * @returns {boolean}
+     */
+    get buildsPipelinesAsync() {
+        return readFlag('themeWarmAsync', true) && !readFlag('syncComputePipelines', false);
+    }
+
     async initWebGPU(buildVersion) {
         if (!this.canvas || typeof navigator === 'undefined' || !navigator.gpu) {
             return false;
         }
 
+        let device = null;
+        let published = false; // this.webgpu holds this build's device
+        const releaseDevice = () => {
+            try {
+                device?.destroy();
+            } catch {
+                // noop
+            }
+        };
         try {
             const adapter = await navigator.gpu.requestAdapter(getWebGPUAdapterOptions());
             if (!adapter || buildVersion !== this.buildVersion) {
@@ -337,7 +357,6 @@ export default class VoidEmberTheme extends BaseTheme {
             const supportsTimestampQuery = typeof adapter.features?.has === 'function'
                 && adapter.features.has('timestamp-query');
 
-            let device;
             if (supportsTimestampQuery) {
                 try {
                     device = await adapter.requestDevice({
@@ -351,11 +370,13 @@ export default class VoidEmberTheme extends BaseTheme {
             }
 
             if (!device || buildVersion !== this.buildVersion) {
+                releaseDevice();
                 return false;
             }
 
             const context = this.canvas.getContext('webgpu');
             if (!context) {
+                releaseDevice();
                 return false;
             }
 
@@ -384,6 +405,7 @@ export default class VoidEmberTheme extends BaseTheme {
             this.webgpu = createEmptyWebGPUState();
             this.webgpu.adapter = adapter;
             this.webgpu.device = device;
+            published = true;
             this.webgpu.context = context;
             this.webgpu.format = format;
             this.webgpu.sceneFormat = sceneFormat;
@@ -392,7 +414,15 @@ export default class VoidEmberTheme extends BaseTheme {
                 minFilter: 'linear',
             });
 
-            this.createPipelines();
+            const pipelinesReady = await this.createPipelines();
+            if (!pipelinesReady || buildVersion !== this.buildVersion) {
+                // stop() or a rebuild ran while the shaders compiled: this device is orphaned.
+                if (this.webgpu.device === device) {
+                    this.webgpu = createEmptyWebGPUState();
+                }
+                device.destroy();
+                return false;
+            }
             this.createOrResizeResources();
             this.setupTimestampQuery();
             this.setupRendererResilience(null, {
@@ -403,17 +433,45 @@ export default class VoidEmberTheme extends BaseTheme {
             this.renderBackend = 'webgpu';
             return true;
         } catch (error) {
+            if (buildVersion !== this.buildVersion || (published && this.webgpu.device !== device)) {
+                // A stale build (stop() or a rebuild ran while its shaders compiled) must not
+                // tear down the newer build's runtime: release only its own device.
+                if (published && this.webgpu.device === device) {
+                    this.webgpu = createEmptyWebGPUState();
+                }
+                releaseDevice();
+                return false;
+            }
             console.warn('[VoidEmber] WebGPU init failed, switching to 2D fallback:', error);
+            if (!published) releaseDevice(); // teardown only sees a published device
             this.teardownGPUResources();
             return false;
         }
     }
 
-    createPipelines() {
+    /**
+     * Creates every pipeline with the *Async variants: a synchronous create compiles on the GPU
+     * process main thread, which also draws the compositor, so the loading overlay froze while
+     * this theme's shaders compiled (ADR-0020). Resolves false when the device was replaced
+     * while compiling; the caller owns the stale-build check.
+     */
+    async createPipelines() {
         const { device, sceneFormat, format } = this.webgpu;
         if (!device) {
-            return;
+            return false;
         }
+        // Rollbacks (ADR-0020): ?syncComputePipelines=1, ?themeWarmAsync=0.
+        const asyncCompute = !readFlag('syncComputePipelines', false)
+            && typeof device.createComputePipelineAsync === 'function';
+        const asyncRender = readFlag('themeWarmAsync', true)
+            && typeof device.createRenderPipelineAsync === 'function';
+        const computePipeline = (descriptor) => (asyncCompute
+            ? device.createComputePipelineAsync(descriptor)
+            : device.createComputePipeline(descriptor));
+        const renderPipeline = (descriptor) => (asyncRender
+            ? device.createRenderPipelineAsync(descriptor)
+            : device.createRenderPipeline(descriptor));
+        const pending = {};
 
         const flowComputeModule = device.createShaderModule({
             label: 'void-ember/flow-compute',
@@ -436,7 +494,7 @@ export default class VoidEmberTheme extends BaseTheme {
             code: presentWGSL,
         });
 
-        this.webgpu.flowComputePipeline = device.createComputePipeline({
+        pending.flowComputePipeline = computePipeline({
             label: 'void-ember/flow-compute-pipeline',
             layout: 'auto',
             compute: {
@@ -445,7 +503,7 @@ export default class VoidEmberTheme extends BaseTheme {
             },
         });
 
-        this.webgpu.particleComputePipeline = device.createComputePipeline({
+        pending.particleComputePipeline = computePipeline({
             label: 'void-ember/particle-compute-pipeline',
             layout: 'auto',
             compute: {
@@ -454,7 +512,7 @@ export default class VoidEmberTheme extends BaseTheme {
             },
         });
 
-        this.webgpu.scenePipeline = device.createRenderPipeline({
+        pending.scenePipeline = renderPipeline({
             label: 'void-ember/scene-pipeline',
             layout: 'auto',
             vertex: {
@@ -471,7 +529,7 @@ export default class VoidEmberTheme extends BaseTheme {
             },
         });
 
-        this.webgpu.particlePipeline = device.createRenderPipeline({
+        pending.particlePipeline = renderPipeline({
             label: 'void-ember/particle-pipeline',
             layout: 'auto',
             vertex: {
@@ -649,7 +707,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             },
         });
 
-        this.webgpu.postPipeline = device.createRenderPipeline({
+        pending.postPipeline = renderPipeline({
             label: 'void-ember/post-pipeline',
             layout: 'auto',
             vertex: {
@@ -666,7 +724,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             },
         });
 
-        this.webgpu.presentPipeline = device.createRenderPipeline({
+        pending.presentPipeline = renderPipeline({
             label: 'void-ember/present-pipeline',
             layout: 'auto',
             vertex: {
@@ -697,7 +755,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             code: bloomUpWGSL,
         });
 
-        this.webgpu.bloomPrefilterPipeline = device.createRenderPipeline({
+        pending.bloomPrefilterPipeline = renderPipeline({
             label: 'void-ember/bloom-prefilter-pipeline',
             layout: 'auto',
             vertex: { module: bloomPrefilterModule, entryPoint: 'vs_main' },
@@ -709,7 +767,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             primitive: { topology: 'triangle-list' },
         });
 
-        this.webgpu.bloomDownPipeline = device.createRenderPipeline({
+        pending.bloomDownPipeline = renderPipeline({
             label: 'void-ember/bloom-down-pipeline',
             layout: 'auto',
             vertex: { module: bloomDownModule, entryPoint: 'vs_main' },
@@ -721,7 +779,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             primitive: { topology: 'triangle-list' },
         });
 
-        this.webgpu.bloomUpPipeline = device.createRenderPipeline({
+        pending.bloomUpPipeline = renderPipeline({
             label: 'void-ember/bloom-up-pipeline',
             layout: 'auto',
             vertex: { module: bloomUpModule, entryPoint: 'vs_main' },
@@ -739,6 +797,16 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             },
             primitive: { topology: 'triangle-list' },
         });
+
+        const keys = Object.keys(pending);
+        const pipelines = await Promise.all(keys.map((key) => pending[key]));
+        if (this.webgpu.device !== device) {
+            return false;
+        }
+        keys.forEach((key, index) => {
+            this.webgpu[key] = pipelines[index];
+        });
+        return true;
     }
 
     createOrResizeResources() {
