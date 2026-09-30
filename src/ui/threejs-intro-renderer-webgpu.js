@@ -30,6 +30,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { compileComputeAsync, isAsyncComputeCapable } from '../rendering/webgpu-compute-pipeline-async.js';
 import { disposeBloomNodeDeep } from '../themes/shared/bloom-dispose.js';
 
 import { IntroParticleCompute } from './intro-particle-compute.js';
@@ -138,6 +139,11 @@ export default class ThreeJSIntroRendererWebGPU {
         this.lastQualityCheck = 0;
         this.dynamicQualityEnabled = false;
         this.computeFrameCounter = 0;
+        // Compute dispatch waits until the async compute pipelines exist (see startComputeCompile);
+        // true by default so a renderer without the async path keeps today's behaviour.
+        this._computeReady = true;
+        this.computeReadyPromise = null;
+        this._destroyed = false;
         this.spawnInterval = this.quality.spawnInterval;
         this.tetrominoRecyclingPolicy = IntroTetrominoCompute.normalizeRecyclingPolicy();
 
@@ -263,6 +269,10 @@ export default class ThreeJSIntroRendererWebGPU {
 
             this.initTetrominoCompute();
             this.initParticleCompute();
+            // Both compute graphs are final here: create their pipelines on Dawn's async
+            // workers now (a synchronous create on the first frame froze the whole screen,
+            // studio ident included). Not awaited: init() is raced against a 10 s budget.
+            this.startComputeCompile();
 
             if (this.enableVolumetricNebula) {
                 this.createVolumetricNebula();
@@ -1444,7 +1454,8 @@ export default class ThreeJSIntroRendererWebGPU {
             this.particleCompute.update(delta, this.simulationTime);
         }
 
-        const shouldCompute = (this.computeFrameCounter++ % this.quality.computeFrameSkip) === 0;
+        const shouldCompute = this._computeReady === true
+            && (this.computeFrameCounter++ % this.quality.computeFrameSkip) === 0;
         if (shouldCompute) {
             if (this.particleCompute?.computeNode) {
                 this.renderer.compute(this.particleCompute.computeNode);
@@ -1615,7 +1626,34 @@ export default class ThreeJSIntroRendererWebGPU {
         }
     }
 
+    /**
+     * Create the particle + tetromino compute pipelines asynchronously (r185 has no async compute
+     * path of its own; see webgpu-compute-pipeline-async.js). Until they exist, update() skips
+     * the dispatch: frames drawn meanwhile show the CPU-initialised, static particles — hidden
+     * behind the studio ident at boot.
+     * @returns {Promise<object>|null}
+     */
+    startComputeCompile() {
+        const nodes = [this.tetrominoCompute?.computeNode, this.particleCompute?.computeNode].filter(Boolean);
+        if (nodes.length === 0 || !isAsyncComputeCapable(this.renderer)) return null;
+        this._computeReady = false;
+        this.computeReadyPromise = compileComputeAsync(this.renderer, nodes)
+            .catch((error) => ({ status: 'error', message: error?.message || String(error) }))
+            .then((result) => {
+                if (result.status !== 'ready') {
+                    console.warn('[IntroWebGPU] Async compute compile:', result.status, result.message || '');
+                }
+                // 'error' = the TSL build threw inside the compile window: keep the dispatch gated
+                // (static particles) rather than re-throwing from update() every frame, which
+                // would kill the render loop.
+                if (!this._destroyed && result.status !== 'error') this._computeReady = true;
+                return result;
+            });
+        return this.computeReadyPromise;
+    }
+
     destroy() {
+        this._destroyed = true;
         if (this._onResize) {
             window.removeEventListener('resize', this._onResize);
             this._onResize = null;

@@ -9,6 +9,14 @@ import {
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { assetManager } from '../utils/asset-manager.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
+import { readFlag } from '../core/flags.js';
+import {
+    beginAsyncRenderPipelines,
+    getAsyncRenderPipelineDiagnostics,
+    isAsyncPipelineBackend,
+    isAsyncRenderPipelinesReady,
+    preloadAsyncRenderPipelines,
+} from './shared/async-render-pipelines.js';
 
 /** Timeout in ms for theme init() and start() — prevents game freeze from hanging themes */
 const THEME_LIFECYCLE_TIMEOUT = 10000;
@@ -1160,6 +1168,7 @@ export class ThemeManager {
         // Start the theme (this calls createScene and initializes everything)
         console.log('[ThemeManager] Starting theme:', themeName);
         try {
+            this._armLoadingSurfaceSession(themeInstance, themeName);
             const started = await withTimeout(
                 themeInstance.start(this.webglRenderer, {
                     assetManager: this.assetManager,
@@ -1238,6 +1247,197 @@ export class ThemeManager {
     }
 
     /**
+     * Keep a parked theme's warm session until its deferred loading is done: no busy flags, no
+     * pipelines in flight, stable for a second. Bounded, and ended early when the theme is
+     * entered (the loading-surface session takes over), replaced or disposed.
+     */
+    _retainPrewarmSession(theme, themeName, retained, { isBusy = () => false, maxMs = 20000, stableMs = 1000 } = {}) {
+        const startedAt = performance.now();
+        let idleSince = null;
+        const tick = () => {
+            const now = performance.now();
+            const cached = this.themeInstances.get(themeName) === theme;
+            if (this.isDisposed || !cached || theme.isDisposed === true || theme.cleanupComplete === true) {
+                retained.finish('dropped');
+                return;
+            }
+            if (this.activeTheme === theme) {
+                retained.finish('entered');
+                return;
+            }
+            let busy = retained.session.inFlight > 0;
+            try { busy = busy || isBusy(theme) === true; } catch (e) { /* treat as idle */ }
+            if (busy) {
+                idleSince = null;
+            } else if (idleSince === null) {
+                idleSince = now;
+            }
+            if (idleSince !== null && now - idleSince >= stableMs) {
+                retained.finish('idle');
+                return;
+            }
+            if (now - startedAt >= maxMs) {
+                retained.finish('retain-timeout');
+                return;
+            }
+            setTimeout(tick, 250);
+        };
+        setTimeout(tick, 250);
+    }
+
+    /** Loading-surface warms create render pipelines async (rollback: ?themeWarmAsync=0). */
+    isAsyncWarmEnabled() {
+        return readFlag('themeWarmAsync', true);
+    }
+
+    /**
+     * Resolve the WebGPU backend prototype the async sessions wrap. Sessions can only start
+     * synchronously once this has resolved (the app loads 'three/webgpu' early anyway).
+     * @returns {Promise<object|null>}
+     */
+    preloadAsyncRenderPipelines() {
+        return this.isAsyncWarmEnabled() ? preloadAsyncRenderPipelines() : Promise.resolve(null);
+    }
+
+    /**
+     * Whether a loading surface begun now can arm async sessions at all (flag on AND the
+     * backend prototype resolved). A WebGL / shared-renderer theme still builds synchronously.
+     * @returns {boolean}
+     */
+    canUseAsyncLoadingSurface() {
+        return this.isAsyncWarmEnabled() && isAsyncRenderPipelinesReady();
+    }
+
+    /**
+     * True once `themeName` has created a pipeline async in this session (its renderer is on the
+     * wrapped WebGPU backend), or declared `buildsPipelinesAsync` (a raw-WebGPU theme that creates
+     * its own pipelines async), so a cold build of it will not freeze a loading surface beyond its
+     * start(). Forgotten again when a surface releases it on a non-async backend (device loss).
+     * @param {string|null|undefined} themeName
+     * @returns {boolean}
+     */
+    isThemeKnownAsync(themeName) {
+        return Boolean(themeName) && this._asyncEngagedThemes?.has(themeName) === true;
+    }
+
+    _rememberAsyncTheme(themeName) {
+        if (!themeName) return;
+        this._asyncEngagedThemes ??= new Set();
+        this._asyncEngagedThemes.add(themeName);
+    }
+
+    /**
+     * Resolves true when a theme armed under the current loading surface creates its first
+     * pipeline async, or right after arming for a `buildsPipelinesAsync` theme (its build is
+     * proven not to freeze the surface), false once the surface is
+     * released without that. Lets a cold entry into a theme of unknown renderer kind keep the
+     * calm-hold only until the build proves async. Pass the target theme's name: a session still
+     * held open for another theme (a previous entry's retained surface) must not answer for it.
+     * @param {string} [themeName]
+     * @returns {Promise<boolean>}
+     */
+    whenLoadingSurfaceEngaged(themeName) {
+        if (!(this._loadingSurfaceDepth > 0)) return Promise.resolve(false);
+        for (const session of this._loadingSessions?.values() ?? []) {
+            const engaged = session.engaged || session.surfaceEngaged === true;
+            if (engaged && (!themeName || session.themeName === themeName)) return Promise.resolve(true);
+        }
+        return new Promise((resolve) => {
+            this._loadingEngagedWaiters ??= [];
+            this._loadingEngagedWaiters.push({ themeName, resolve });
+        });
+    }
+
+    _settleLoadingEngagedWaiters(engaged, themeName) {
+        const waiters = this._loadingEngagedWaiters ?? [];
+        this._loadingEngagedWaiters = waiters.filter((waiter) => {
+            if (engaged && waiter.themeName && waiter.themeName !== themeName) return true;
+            waiter.resolve(engaged);
+            return false;
+        });
+    }
+
+    /**
+     * Declare that a loading surface (overlay, splash) covers the screen. Until the returned
+     * release runs, themes started or resumed here create their render pipelines async, so the
+     * surface keeps animating instead of freezing on a synchronous compile. Refcounted.
+     * The release also carries `uncover()`: once the surface is off screen its sessions keep
+     * running (late pipelines stay async), but themes started after that are no longer armed —
+     * a later mode that owns its own reveal must not inherit a surface that no longer covers it.
+     * @param {string} [reason]
+     * @returns {(() => void) & { uncover: () => void }} idempotent release
+     */
+    beginLoadingSurface(reason = 'loading') {
+        if (!this.isAsyncWarmEnabled()) return Object.assign(() => {}, { uncover: () => {} });
+        // Boots that skipped the intro may not have resolved the prototype yet; the surface
+        // usually covers the screen for a while before the theme starts.
+        this.preloadAsyncRenderPipelines().catch(() => {});
+        this._loadingSurfaceDepth = (this._loadingSurfaceDepth ?? 0) + 1;
+        this._loadingSurfaceCovering = (this._loadingSurfaceCovering ?? 0) + 1;
+        this._loadingSessions ??= new Map();
+        let released = false;
+        let covering = true;
+        const uncover = () => {
+            if (!covering) return;
+            covering = false;
+            this._loadingSurfaceCovering -= 1;
+        };
+        const release = () => {
+            if (released) return;
+            released = true;
+            uncover();
+            this._loadingSurfaceDepth -= 1;
+            if (this._loadingSurfaceDepth > 0) return;
+            this._settleLoadingEngagedWaiters(false);
+            for (const [theme, session] of this._loadingSessions) {
+                // After a device loss WebGPU themes rebuild on the WebGL2 backend: forget them.
+                if (!isAsyncPipelineBackend(theme?.renderer?.backend) && theme?.buildsPipelinesAsync !== true) {
+                    this._asyncEngagedThemes?.delete(session.themeName);
+                }
+                performanceMonitor.recordEvent('theme_loading_surface_async_pipelines', {
+                    reason,
+                    theme: theme?.name,
+                    ...session.end(),
+                });
+            }
+            this._loadingSessions.clear();
+        };
+        return Object.assign(release, { uncover });
+    }
+
+    _armLoadingSurfaceSession(theme, themeName) {
+        if (!(this._loadingSurfaceCovering > 0) || !theme || this._loadingSessions?.has(theme)) return null;
+        const session = beginAsyncRenderPipelines(theme, { label: `loading:${themeName}` }); // sync; null if not preloaded
+        if (session) {
+            session.themeName = themeName;
+            this._loadingSessions.set(theme, session);
+            const engage = () => {
+                session.surfaceEngaged = true; // also for a theme whose pipelines bypass three
+                this._rememberAsyncTheme(themeName);
+                if (session.active) this._settleLoadingEngagedWaiters(true, themeName);
+            };
+            // A raw-WebGPU theme (void-ember) creates its own pipelines async, off three's backend.
+            if (theme.buildsPipelinesAsync === true) queueMicrotask(engage);
+            else session.onEngaged(engage);
+        }
+        return session;
+    }
+
+    /**
+     * Wait (bounded) until the themes armed under the current loading surface have no async
+     * pipeline in flight and requested none for a few frames — so the surface lifts onto a
+     * complete frame rather than objects popping in.
+     * @param {number} [maxMs]
+     * @returns {Promise<boolean>}
+     */
+    async whenLoadingSurfacePipelinesSettled(maxMs = 5000) {
+        const list = [...(this._loadingSessions?.values() ?? [])];
+        if (list.length === 0) return true;
+        const settled = await Promise.all(list.map((s) => s.settle({ maxMs, quietFrames: 6 })));
+        return settled.every(Boolean);
+    }
+
+    /**
      * Boot-time pre-warm (AAA "compile shaders during the loading screen" pattern):
      * build a theme's scene + compile its WebGPU pipelines during the idle menu window
      * so the first mode entry resolves via the proven-smooth ~15ms quick-resume path
@@ -1250,11 +1450,28 @@ export class ThemeManager {
      * the real entry's resume emits it. Best-effort: on failure the cold build + the
      * loading-overlay calm-hold still cover entry.
      *
+     * Async path (default, rollback ?themeWarmAsync=0): the theme's own live renders create
+     * their render pipelines with createRenderPipelineAsync (shared/async-render-pipelines.js),
+     * so the warm does not freeze the loading surface in front of it beyond the exempt
+     * synchronous creates (PMREM bakes, the final composite). It exits once the scene is stable,
+     * the theme is not busy AND no pipeline has been requested for a few frames, instead of 30
+     * extra frames plus a bare whole-scene compileAsync sweep (an MRT-poison vector on MRT
+     * themes). A theme still loading content keeps its session after parking until it is idle
+     * (_retainPrewarmSession), so that content does not compile synchronously either.
+     *
      * @param {string} themeName
-     * @param {{ maxWarmMs?: number, postWarmFrames?: number }} [options]
+     * @param {{ maxWarmMs?: number, postWarmFrames?: number, asyncTailMs?: number,
+     *   isThemeBusy?: ((theme: object) => boolean)|null,
+     *   onPhase?: ((phase: string, payload: object) => void)|null }} [options]
      * @returns {Promise<boolean>} true if the theme ended up warm + parked
      */
-    async prewarmTheme(requestedTheme, { maxWarmMs = 7000, postWarmFrames = 30 } = {}) {
+    async prewarmTheme(requestedTheme, {
+        maxWarmMs = 7000,
+        postWarmFrames = 30,
+        asyncTailMs = 3000,
+        isThemeBusy = null,
+        onPhase = null,
+    } = {}) {
         const themeName = resolveThemeId(requestedTheme);
         if (!themeName || this.isTransitioning) return false;
         if (this.isPackagedWindowsSafeMode()) return false;
@@ -1276,6 +1493,13 @@ export class ThemeManager {
             }
         });
 
+        const emitPhase = (name, payload = {}) => {
+            try { onPhase?.(name, { theme: themeName, ...payload }); } catch (e) { /* diagnostics only */ }
+        };
+        const isBusy = (t) => {
+            try { return isThemeBusy?.(t) === true; } catch (e) { return false; }
+        };
+
         const prewarmGeneration = this.lifecycleGeneration;
         const assertPrewarmOwner = (phase) => {
             if (this.isDisposed || prewarmGeneration !== this.lifecycleGeneration) {
@@ -1287,6 +1511,8 @@ export class ThemeManager {
             }
         };
         let theme = null;
+        // A warm session the parked theme may keep while its deferred loading finishes.
+        let retainedWarm = null;
         this.isTransitioning = true;
         try {
             theme = await this.loadTheme(themeName);
@@ -1300,6 +1526,18 @@ export class ThemeManager {
             if (!theme.hasStarted) {
                 console.log(`[ThemeManager] Pre-warming theme (hidden): ${themeName}`);
                 theme._prewarmHidden = true;
+                // Synchronous: null unless the backend prototype was preloaded, so the await
+                // structure (and the race-safety semantics) before theme.start are unchanged.
+                const session = this.isAsyncWarmEnabled()
+                    ? beginAsyncRenderPipelines(theme, { label: `prewarm:${themeName}` })
+                    : null;
+                if (theme.buildsPipelinesAsync === true) this._rememberAsyncTheme(themeName);
+                else session?.onEngaged(() => this._rememberAsyncTheme(themeName));
+                let asyncActive = false;
+                let exitReason = 'max-warm';
+                let warmWindowCompleted = false;
+                const warmT0 = performance.now();
+                emitPhase('start', { session: session !== null });
                 try {
                     ensureThemeContainer(themeName);
                     const started = await withTimeout(
@@ -1318,34 +1556,80 @@ export class ThemeManager {
                         throw new Error(`Theme "${themeName}" prewarm was cancelled`);
                     }
 
+                    const backend = theme.renderer?.backend;
+                    asyncActive = session !== null
+                        && backend?.isWebGPUBackend === true
+                        && isAsyncPipelineBackend(backend);
+                    // Classic / WebGL2 backend / shared renderer → the legacy warm below.
+                    if (session && !asyncActive) session.end();
+                    emitPhase('started', {
+                        asyncActive,
+                        // A dedicated classic/WebGL2 renderer compiles its programs synchronously
+                        // in the frames ahead (the shared renderer's are few and warm).
+                        syncRenderer: !asyncActive && theme.buildsPipelinesAsync !== true
+                            && Boolean(theme.renderer) && theme.renderer !== this.webglRenderer,
+                        startMs: Math.round(performance.now() - warmT0),
+                        async: session?.stats.async ?? 0,
+                    });
+
                     // Let the theme's own render loop compile scene pipelines: wait for
                     // the scene graph to stop growing (deferred rIC subsystems finished).
                     const startedAt = performance.now();
                     let stableFrames = 0;
                     let lastCount = -1;
-                    while (performance.now() - startedAt < maxWarmMs) {
-                        // eslint-disable-next-line no-await-in-loop
-                        await withTimeout(
-                            nextFrame(),
-                            1000,
-                            `Theme "${themeName}" prewarm frame`,
-                        );
+                    for (;;) {
+                        const elapsed = performance.now() - startedAt;
+                        if (elapsed >= maxWarmMs) {
+                            // Async: allow a bounded tail while pipelines are still in flight.
+                            const tail = asyncActive && session.inFlight > 0 && elapsed < maxWarmMs + asyncTailMs;
+                            if (!tail) {
+                                exitReason = asyncActive && session.inFlight > 0 ? 'tail-cap' : 'max-warm';
+                                break;
+                            }
+                        }
+                        try {
+                            // eslint-disable-next-line no-await-in-loop
+                            await withTimeout(
+                                nextFrame(),
+                                asyncActive ? 3000 : 1000,
+                                `Theme "${themeName}" prewarm frame`,
+                            );
+                        } catch (frameError) {
+                            if (!asyncActive) throw frameError; // legacy semantics unchanged
+                            // A multi-second main-thread TSL build is not a broken theme: park
+                            // the warm instead of throwing it away.
+                            exitReason = 'frame-timeout';
+                            break;
+                        }
+                        if (asyncActive) session.noteFrame();
                         assertPrewarmOwner('scene stabilization');
-                        if (this.activeTheme) break; // user entered — abandon warm
+                        if (this.activeTheme) { // user entered — abandon warm
+                            exitReason = 'entered';
+                            break;
+                        }
                         const count = theme.scene?.children?.length ?? 0;
                         if (count === lastCount) {
                             stableFrames += 1;
-                            if (stableFrames >= 45) break;
                         } else {
                             stableFrames = 0;
                             lastCount = count;
                         }
+                        if (asyncActive) {
+                            if (stableFrames >= 30 && session.isQuiet(12) && !isBusy(theme)) {
+                                exitReason = 'quiet';
+                                break;
+                            }
+                        } else if (stableFrames >= 45) {
+                            exitReason = 'stable';
+                            break;
+                        }
                     }
 
-                    // Extra frames so post-processing + any late materials compile
-                    // through the real render path (post pipelines are NOT covered by
-                    // compileAsync(scene) — they compile on the first post.render()).
-                    for (let i = 0; i < postWarmFrames && !this.activeTheme; i += 1) {
+                    // Legacy path only: extra frames so post-processing + any late materials
+                    // compile through the real render path (post pipelines are NOT covered by
+                    // compileAsync(scene) — they compile on the first post.render()). The async
+                    // path already requested them from the live loop above.
+                    for (let i = 0; !asyncActive && i < postWarmFrames && !this.activeTheme; i += 1) {
                         // eslint-disable-next-line no-await-in-loop
                         await withTimeout(
                             nextFrame(),
@@ -1355,8 +1639,11 @@ export class ThemeManager {
                         assertPrewarmOwner('post-warm frames');
                     }
 
-                    // Final compile sweep for stragglers.
-                    if (typeof theme.renderer?.compileAsync === 'function' && theme.scene && theme.camera) {
+                    // Final compile sweep for stragglers (legacy path only).
+                    if (!asyncActive
+                        && typeof theme.renderer?.compileAsync === 'function'
+                        && theme.scene
+                        && theme.camera) {
                         try {
                             await withTimeout(
                                 Promise.resolve(theme.renderer.compileAsync(theme.scene, theme.camera)),
@@ -1371,14 +1658,43 @@ export class ThemeManager {
                         }
                         assertPrewarmOwner('final compile');
                     }
+                    emitPhase('settled', { asyncActive, exitReason, inFlight: session?.inFlight ?? 0 });
+                    warmWindowCompleted = true;
                 } finally {
                     theme._prewarmHidden = false;
+                    const finish = (endReason) => {
+                        const stats = session ? session.end() : null;
+                        if (stats && asyncActive) {
+                            const report = {
+                                theme: themeName,
+                                exitReason,
+                                endReason,
+                                warmMs: Math.round(performance.now() - warmT0),
+                                ...stats,
+                                ...getAsyncRenderPipelineDiagnostics(),
+                            };
+                            performanceMonitor.recordEvent('theme_prewarm_async_pipelines', report);
+                            if (typeof window !== 'undefined') window.__THEME_WARM_ASYNC__ = report;
+                        }
+                        emitPhase('end', { asyncActive, exitReason, endReason });
+                    };
+                    // A theme that is still loading content (building chunks, deferred materials,
+                    // its own compileAsync) keeps the async session after parking, so that
+                    // content never compiles synchronously in front of the boot screen.
+                    if (warmWindowCompleted && asyncActive && session?.active
+                        && (isBusy(theme) || session.inFlight > 0)) {
+                        retainedWarm = { session, finish };
+                    } else {
+                        finish(warmWindowCompleted ? 'settled' : 'failed');
+                    }
                 }
             }
 
             // If the user entered a mode mid-warm, activateThemeInstance already took
             // over — don't clobber it.
             if (this.activeTheme) {
+                retainedWarm?.finish('entered');
+                retainedWarm = null;
                 if (this.activeTheme !== theme) {
                     this.disposeThemeInstance(theme, themeName, {
                         removeFromCache: true,
@@ -1406,8 +1722,14 @@ export class ThemeManager {
             this.activeTheme = null;
             this.themesSuspended = true;
             console.log(`[ThemeManager] Theme pre-warmed + parked for instant first entry: ${themeName}`);
+            if (retainedWarm) {
+                this._retainPrewarmSession(theme, themeName, retainedWarm, { isBusy });
+                retainedWarm = null;
+            }
             return true;
         } catch (error) {
+            retainedWarm?.finish('failed');
+            retainedWarm = null;
             console.warn(`[ThemeManager] prewarmTheme failed for "${themeName}":`, error);
             if (theme && this.activeTheme !== theme) {
                 this.disposeThemeInstance(theme, themeName, {
@@ -1596,6 +1918,7 @@ export class ThemeManager {
             this.themesSuspended = false;
 
             // Try to resume the theme (restores contexts without recreating scene)
+            this._armLoadingSurfaceSession(themeInstance, themeName);
             const resumed = typeof themeInstance.resume === 'function'
                 ? themeInstance.resume()
                 : false;

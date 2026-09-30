@@ -29,6 +29,7 @@ an agent will happily re-add a forbidden pattern unless the constraint is loadab
 | [0017](0017-act-i-stays-a-diorama-the-ocean-deepens-in-world.md) | Act I stays a diorama; the ocean deepens in-world | accepted |
 | [0018](0018-three-js-pinning-and-upgrade-protocol.md) | three.js is pinned exactly and upgraded by protocol, not by bump | accepted |
 | [0019](0019-gate-on-renderer-kind-not-backend.md) | Themes gate material and post-processing choices on renderer kind, not backend | accepted |
+| [0020](0020-loading-surfaces-create-pipelines-async.md) | While a loading surface is up, render pipelines (and boot compute pipelines) are created asynchronously | accepted |
 
 Format per record: **Status / Date / Context / Decision / Consequences / Enforcement.**
 New records: next number, kebab-case slug, add a row here.

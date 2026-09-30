@@ -19,6 +19,7 @@ const rendererMocks = vi.hoisted(() => ({
     bootRender: vi.fn(),
     bootRenderAsync: vi.fn(),
     bootCompute: vi.fn(),
+    bootCompileAsync: null,
     warpDispose: vi.fn(),
 }));
 
@@ -87,6 +88,10 @@ vi.mock('three/webgpu', () => {
             rendererMocks.bootCompute(node);
         }
 
+        get compileAsync() {
+            return rendererMocks.bootCompileAsync;
+        }
+
         renderAsync(scene, camera) {
             return rendererMocks.bootRenderAsync(scene, camera);
         }
@@ -139,8 +144,12 @@ vi.mock('../../src/ui/boot-warp-transition-scene.js', () => ({
         setViewProj() {},
         setProgress() {},
         setTime() {},
+        setViewport() {},
+        setGemCenterPx() {},
         dispose: rendererMocks.warpDispose,
     }),
+    DEFAULT_MARK_OFFSET_Y_PX: -31,
+    warpFovAt: () => 45,
 }));
 
 function createClassList(element) {
@@ -342,6 +351,7 @@ beforeEach(() => {
     rendererMocks.bootRender.mockReset();
     rendererMocks.bootRenderAsync.mockReset().mockResolvedValue(undefined);
     rendererMocks.bootCompute.mockReset();
+    rendererMocks.bootCompileAsync = null;
     rendererMocks.warpDispose.mockReset();
 });
 
@@ -648,7 +658,8 @@ describe('boot warp startup decision', () => {
         const shortTiming = resolveBootWarpTiming(new URLSearchParams('warpDur=100'));
         const visibleWindowMs = shortTiming.durationMs * (BOOT_WARP_FADE_PROGRESS - BOOT_WARP_REVEAL_PROGRESS);
         expect(shortTiming.requestedDurationMs).toBe(100);
-        expect(shortTiming.durationMs).toBe(5953);
+        // ceil(5000 / (0.9 - 0.02)): a change to any of those constants must update this on purpose.
+        expect(shortTiming.durationMs).toBe(5682);
         expect(shortTiming.durationMs).toBeGreaterThanOrEqual(shortTiming.minDurationMs);
         expect(visibleWindowMs).toBeGreaterThanOrEqual(BOOT_WARP_MIN_VISIBLE_MS);
         expect(BOOT_WARP_TITLE_PROGRESS).toBeLessThan(BOOT_WARP_FADE_PROGRESS);
@@ -1112,6 +1123,25 @@ describe('boot warp prewarm budget', () => {
         expect(rendererMocks.bootCompute).toHaveBeenCalledWith({ id: 'compute-node' });
         expect(rendererMocks.bootRender).toHaveBeenCalled();
         expect(rendererMocks.bootRenderAsync).not.toHaveBeenCalled();
+        expect(transition.lastPrewarmStatus).toBe('ready');
+    });
+
+    it('compiles the particle pipeline through compileAsync before the synchronous prime', async () => {
+        installDom();
+        const order = [];
+        rendererMocks.bootCompileAsync = vi.fn(async () => { order.push('compileAsync'); });
+        rendererMocks.bootCompute.mockImplementation(() => { order.push('compute'); });
+        rendererMocks.bootRender.mockImplementation(() => { order.push('render'); });
+        const { BootWarpTransition } = await import('../../src/ui/boot-warp-transition.js');
+        const transition = new BootWarpTransition();
+
+        await expect(transition.prewarm({ timeoutMs: 100 })).resolves.toBe(true);
+
+        // Async first: the heavy render pipeline must never be created by a sync render(),
+        // which compiles on the GPU process main thread and freezes the ident on screen.
+        expect(rendererMocks.bootCompileAsync).toHaveBeenCalledTimes(1);
+        expect(order[0]).toBe('compileAsync');
+        expect(order.slice(1)).toContain('render');
         expect(transition.lastPrewarmStatus).toBe('ready');
     });
 

@@ -11,6 +11,7 @@ import {
     createFramePacer, resetFramePacer, shouldRenderAtTargetFps, resolveTargetFps,
 } from './theme-frame-pacer.js';
 import { readFlag } from '../core/flags.js';
+import { adoptRendererForTheme } from './shared/async-render-pipelines.js';
 
 // Global render scale (set by settings system)
 let globalRenderScale = 1.0;
@@ -749,6 +750,9 @@ export class BaseTheme {
                 || (requiresActiveOwner && !this.isActive)) {
                 throw new Error(`${label} was cancelled`);
             }
+            // A loading-surface session for this theme owns the renderer even before
+            // this.renderer is assigned (shared/async-render-pipelines.js).
+            adoptRendererForTheme(this, renderer);
             return renderer;
         } catch (error) {
             if (!initSettled) {
