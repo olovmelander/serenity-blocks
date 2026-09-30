@@ -11,7 +11,7 @@ import { markStartup } from './startup-debug.js';
 import {
     beginAsyncRenderPipelines,
     preloadAsyncRenderPipelines,
-} from '../themes/shared/async-render-pipelines.js';
+} from '../rendering/async-render-pipelines.js';
 
 const INTRO_TETROMINO_BLOCKED_POINTER_SELECTOR = [
     'a[href]',

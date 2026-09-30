@@ -392,7 +392,7 @@ export function getStartupThemeBusyState(theme) {
     if (theme.prewarmPromise && theme.isPrewarming !== false) {
         reasons.push('shader-prewarm-promise');
     }
-    // Render pipelines still compiling on Dawn's workers (themes/shared/async-render-pipelines.js).
+    // Render pipelines still compiling on Dawn's workers (rendering/async-render-pipelines.js).
     if (Number(theme.asyncPipelinesInFlight) > 0) reasons.push('async-pipelines');
 
     return {

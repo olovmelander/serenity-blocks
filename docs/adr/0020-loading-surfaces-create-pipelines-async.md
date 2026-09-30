@@ -41,7 +41,7 @@ cover, and batched `compileAsync` before its render loop starts.
    replica draws (`.sb-warp-arming`, eased with Web Animations: Chromium starts no CSS
    transition when the same change removes the loop's animation).
 2. **While a loading surface is up, a surface-owned renderer's live renders create render
-   pipelines async** — `src/themes/shared/async-render-pipelines.js`: a session-scoped wrapper
+   pipelines async** — `src/rendering/async-render-pipelines.js`: a session-scoped wrapper
    on `WebGPUBackend.prototype.createRenderPipeline` passes a promise sink to three's own async
    branch. The descriptor is still built from live render state, so targets, MRT, samples, call
    depth and draw side are correct by construction. A pending pipeline skips that object's draw

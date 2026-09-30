@@ -16,7 +16,7 @@ import {
     isAsyncPipelineBackend,
     isAsyncRenderPipelinesReady,
     preloadAsyncRenderPipelines,
-} from './shared/async-render-pipelines.js';
+} from '../rendering/async-render-pipelines.js';
 
 /** Timeout in ms for theme init() and start() — prevents game freeze from hanging themes */
 const THEME_LIFECYCLE_TIMEOUT = 10000;
@@ -1451,7 +1451,7 @@ export class ThemeManager {
      * loading-overlay calm-hold still cover entry.
      *
      * Async path (default, rollback ?themeWarmAsync=0): the theme's own live renders create
-     * their render pipelines with createRenderPipelineAsync (shared/async-render-pipelines.js),
+     * their render pipelines with createRenderPipelineAsync (src/rendering/async-render-pipelines.js),
      * so the warm does not freeze the loading surface in front of it beyond the exempt
      * synchronous creates (PMREM bakes, the final composite). It exits once the scene is stable,
      * the theme is not busy AND no pipeline has been requested for a few frames, instead of 30
