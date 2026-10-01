@@ -65,7 +65,9 @@ export const CLOUD_BANK_RADIUS = 620;
  * in noise space, which reads as a per-pixel hash, not weather. Frequency is now DERIVED
  * from the radius so the two cannot drift apart again.
  */
-export const CLOUD_BANK_NOISE_CELLS = 10.5;
+// 10.5 -> 7.5 (item 10): seen from ABOVE as a cloud sea, ten cells across the shell drew a
+// camouflage of small patches; fewer, broader billows read as rolling cloud tops.
+export const CLOUD_BANK_NOISE_CELLS = 7.5;
 /** Vertical squash — a stratus lens, not a sphere. */
 export const CLOUD_BANK_Y_SCALE = 0.35;
 /**
@@ -87,7 +89,9 @@ const BANK_AURORA = new THREE.Color(SEAM_56_AURORA_BRIDGE.ambientLight);
  * Overall level of the limb band. The bank used to derive its brightness from filling the
  * frame; a horizon band has to be given one.
  */
-const BANK_LIMB_GAIN = 0.42;
+// 0.42 -> 0.38 with the soft sea (item 10): the bank no longer has sky-coloured holes in it,
+// so the same level over a continuous cloud floor would lift the whole lower frame.
+const BANK_LIMB_GAIN = 0.38;
 /** Peak alpha of the band. Replaces the old 1.25 gain, which clamped the shell opaque. */
 const BANK_LIMB_ALPHA_GAIN = 0.95;
 
@@ -117,8 +121,11 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // cells of flat blur across the whole volume). ~10.5 cells across the shell at any
     // radius. The mesh's Y squash stretches this field horizontally into strata for free.
     const p = positionLocal.mul(CLOUD_BANK_NOISE_CELLS / radius);
-    const slow = fbm3(p.add(vec3(0.0, uTime.mul(0.02), 0.0)), 4);
-    const fast = fbm3(p.mul(3.1).add(vec3(uTime.mul(0.06), 0.0, uTime.mul(0.045))), 3);
+    // 4+3 -> 3+2 octaves (item 10): the soft sea below wants broad billows, not the fine grain
+    // that read as noise, and the bank is the seam's most expensive pass (3.86 ms measured
+    // before its maskNode) — two octaves fewer on every limb fragment.
+    const slow = fbm3(p.add(vec3(0.0, uTime.mul(0.02), 0.0)), 3);
+    const fast = fbm3(p.mul(3.1).add(vec3(uTime.mul(0.06), 0.0, uTime.mul(0.045))), 2);
     const billowRaw = clamp(slow.mul(0.72).add(fast.mul(0.42)), 0.0, 1.0);
     const billow = smoothstep(0.22, 0.78, billowRaw);
     const veil = smoothstep(0.28, 0.86, billow);
@@ -160,7 +167,12 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // clamp(0.9333^2 * 1.25) = 1.0 exactly. That is why the bank read as an occluder rather
     // than as weather, and it is what was HIDING the chapter-6 arrival pop behind it.
     const d = clamp(uDensity, 0.0, 1.0);
-    const alphaShape = mix(veil, float(1.0), d);
+    // A CLOUD SEA, NOT A STENCIL (item 10). `mix(veil, 1, d)` cut billow-shaped HOLES through
+    // the band at every density short of 1, and the void showed through them as navy — a
+    // camouflage plane of white blobs on black (capture, before/after with the bank hidden).
+    // The floor of the alpha is now 0.6, so the sea is continuous and the billows only thin
+    // it; the void reads ABOVE the limb, where it belongs.
+    const alphaShape = mix(veil.mul(0.4).add(0.6), float(1.0), d);
     const opacity = clamp(
         limbProfile.mul(alphaShape).mul(d).mul(BANK_LIMB_ALPHA_GAIN),
         0.0,
@@ -184,7 +196,10 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // Falls back to the authored constant when there is no world (the `?odysseyOneWorld=0`
     // recovery path still builds this bank, and it must not throw there).
     const entryLit = palette ? palette.top : uDaylit;
-    const entryShade = palette ? palette.underShade : uDaylit;
+    // The shade tone is pulled a third of the way to the lit one (item 10): seen from above the
+    // sea is SUNLIT cloud tops with soft blue troughs, and the full under-shade family read, after
+    // the grade, as saturated navy patches between white ones.
+    const entryShade = palette ? mix(palette.underShade, palette.top, 0.35) : uDaylit;
     const a = clamp(uAltitude, 0.0, 1.0);
     // ⚠️ THE BRIDGE RAMP USED TO START AT ZERO, and that made the restyle nearly pointless:
     // the bank's dead band means it only becomes visible around seamT 0.30, by which point
@@ -222,12 +237,15 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // TWO FLAT BANDS ON THE ENTRY TONE, the field's grammar: the billow picks which band a
     // patch is in, and the step between them is narrow. This is what makes the approach read
     // as cloud MASSES closing in rather than as a fog gradient thickening.
-    const entryBand = smoothstep(0.44, 0.56, billow);
+    // Softened and lowered 0.44..0.56 -> 0.12..0.50 (item 10): the crisp two-tone over a 0.12
+    // billow window drew hard-edged patches at limb distance. Now most of the sea is lit tops
+    // and only the deep troughs turn to shade, with a broad turn between.
+    const entryBand = smoothstep(0.12, 0.50, billow);
     const entry = mix(entryShade, entryLit, entryBand);
     const base = mix(mix(entry, uBridge, toBridge), uVoid, toVoid);
     // Aurora on the bright billows, strongest mid-crossing where the bank is densest — the
     // aurora seen from inside the weather rather than painted on a dome behind it.
-    const auroraAmt = billow.mul(d).mul(smoothstep(0.15, 0.6, a).mul(smoothstep(1.0, 0.6, a))).mul(0.35);
+    const auroraAmt = billow.mul(d).mul(smoothstep(0.15, 0.6, a).mul(oneMinus(smoothstep(0.6, 1.0, a)))).mul(0.35);
     // INTERIOR FORM IN THE COLOUR TERM, never the alpha (the torn-curtain lesson) — but
     // QUANTISED, so the bank speaks the deck's language. The deck is now poster cumulus with
     // two flat value bands and a drawn edge (cloud plan Waves 1-2); a smooth `0.42 + 0.72 *
@@ -239,8 +257,10 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // bands: stacking a 0.44..0.90 multiply on top of an already-banded colour double-darkens
     // the shadow band and pushes the bank below the sky behind it, which is the one rule this
     // palette must never break (a cloud is lighter than the sky at every point).
-    const bandLit = smoothstep(0.46, 0.54, billow);
-    const posterised = float(0.72).add(bandLit.mul(0.22)).add(billow.mul(0.08));
+    // Gentler steps (item 10): 0.72/0.94 two-tone at a 0.08 window is what made the sea
+    // blotchy; a soft lift keeps the rolling form without the stencil.
+    const bandLit = smoothstep(0.36, 0.64, billow);
+    const posterised = float(0.80).add(bandLit.mul(0.15)).add(billow.mul(0.06));
     // The limb is now the only bright thing left in frame, so its LEVEL is an art lever in
     // its own right rather than whatever the density envelope happens to produce. Applied
     // last, after the bands and the aurora, so it scales the finished tone.

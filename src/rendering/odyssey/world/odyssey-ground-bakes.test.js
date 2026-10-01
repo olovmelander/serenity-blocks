@@ -286,6 +286,22 @@ describe('the palette encodes the measured bar, not a taste', () => {
         expect(vegetation.ambient).toBeLessThan(0.34);
     });
 
+    it('keeps snow in shade luminous: brighter than every other family, deep or open (item 5)', () => {
+        // Snow is lit by the sky it faces and by bounce off the lit snow around it. The shipped
+        // graph shaded it as mineral (0.22) and the massif read as a beige dune; the floor must
+        // stay above vegetation's, and a couloir (deep) above the open-ground deep floor.
+        const { snow, vegetation, deepAmbient } = ODYSSEY_GROUND_SHADE;
+        expect(snow.ambient).toBeGreaterThan(vegetation.ambient);
+        expect(snow.ambient).toBeLessThan(0.6);
+        expect(snow.deep).toBeGreaterThan(deepAmbient);
+        expect(snow.deep).toBeLessThan(snow.ambient);
+        // ...and it carries the sky's hue, unlike vegetation (whose shade measured not-blue).
+        expect(snow.skyChroma).toBeGreaterThan(0.25);
+        // Snow is the coolest pole on the island: blue at or above red at both ends.
+        expect(ODYSSEY_GROUND_PALETTE.snow.dry[2]).toBeGreaterThanOrEqual(ODYSSEY_GROUND_PALETTE.snow.dry[0]);
+        expect(ODYSSEY_GROUND_PALETTE.snow.damp[2]).toBeGreaterThan(ODYSSEY_GROUND_PALETTE.snow.damp[0]);
+    });
+
     it('desaturates rock in shade and leaves vegetation alone (G1)', () => {
         // The measured asymmetry, and the reason no blue tint appears anywhere in the graph:
         // desaturating a warm colour raises its relative blue by itself.
