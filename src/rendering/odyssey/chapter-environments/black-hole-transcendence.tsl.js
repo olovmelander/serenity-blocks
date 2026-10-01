@@ -85,9 +85,9 @@ export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4), op
     const body = smoothstep(0.50, 0.78, cloud);
     // Amplitudes are set against the display-space grade (2026-10-01): linear 0.07 already
     // reads as a strong violet there, so the nebulosity stays a whisper.
-    let nebula = vec3(0.024, 0.006, 0.030).mul(body); // deep magenta-violet
-    nebula = nebula.add(vec3(0.005, 0.007, 0.020).mul(smoothstep(0.40, 0.66, cloud))); // indigo haze
-    nebula = nebula.add(vec3(0.040, 0.022, 0.009).mul(smoothstep(0.62, 0.86, veins)).mul(body)); // gold veins
+    let nebula = vec3(0.012, 0.003, 0.015).mul(body); // deep magenta-violet
+    nebula = nebula.add(vec3(0.002, 0.003, 0.008).mul(smoothstep(0.45, 0.70, cloud))); // indigo haze
+    nebula = nebula.add(vec3(0.030, 0.016, 0.006).mul(smoothstep(0.64, 0.88, veins)).mul(body)); // gold veins
     const color = base.add(nebula.mul(uEnergy.mul(0.25).add(0.85)));
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -272,7 +272,7 @@ export function createLensedFoldMaterialTSL(uTime = uniform(0), options = {}) {
     const fall = pow(oneMinus(smoothstep(1.04, 1.42, rr)), 1.6);
     const profile = rise.mul(fall);
     const beam = pow(clamp(side.mul(0.5).add(1.0), 0.4, 1.5), 2.0);
-    const underside = mix(float(0.5), float(1.0), smoothstep(-0.25, 0.25, above));
+    const underside = mix(float(0.3), float(1.0), smoothstep(-0.25, 0.25, above));
     const turb = fbm3(vec3(angle.mul(2.5), rr.mul(4.0), uTime.mul(0.05)), 2);
     const striae = sin(rr.mul(70.0).add(turb.mul(8.0))).mul(0.5).add(0.5);
     const texture = mix(float(0.6), float(1.0), striae.mul(striae)).mul(turb.mul(0.6).add(0.7));
