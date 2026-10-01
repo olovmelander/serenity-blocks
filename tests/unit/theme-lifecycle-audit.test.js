@@ -32,6 +32,7 @@ describe('theme-lifecycle-audit heuristics', () => {
         vi.restoreAllMocks();
     });
 
+    // The subprocess audits the full theme tree; allow its 30s deadline plus startup.
     it('executes the lifecycle CLI instead of silently skipping main()', () => {
         const result = spawnSync(
             process.execPath,
@@ -48,7 +49,7 @@ describe('theme-lifecycle-audit heuristics', () => {
         expect(result.stdout).toContain(
             'Theme lifecycle audit passed with no obvious issues.',
         );
-    });
+    }, 35_000);
 
     it('passes a theme whose stop() and cleanup() chain to super', () => {
         const src = `

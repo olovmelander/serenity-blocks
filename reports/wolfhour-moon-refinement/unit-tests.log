@@ -1,0 +1,64 @@
+{
+  "command": "npx vitest run tests/unit/wolfhour-ambient-integration.test.js tests/unit/wolfhour-landscape.test.js tests/unit/wolfhour-meteor.test.js tests/unit/wolfhour-sky.test.js tests/unit/wolfhour-effect-accumulation.test.js",
+  "exitCode": 0,
+  "summary": "5 passed (5); 53 passed (53)",
+  "startedAt": "2026-10-01T13:00:11.437Z",
+  "completedAt": "2026-10-01T13:00:19.326Z",
+  "durationSeconds": 7.8864516,
+  "signal": null,
+  "error": null,
+  "log": "unit-tests.log"
+}
+
+STDOUT
+
+ RUN  v3.2.7 C:/Users/olov_/repos/serenity-blocks
+
+ ✓ tests/unit/wolfhour-meteor.test.js (9 tests) 21ms
+ ✓ tests/unit/wolfhour-sky.test.js (3 tests) 112ms
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > preserves earlier lunar reactions when successive events claim new slots
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the Minimal quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the Low quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the Medium quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the High quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the Ultra quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the Extreme quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > replaces only the closest-to-expiry reaction when the bounded pool is full
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > adds effect-state energy and clamps it at the configured cap
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps ambient meteors alive and emits the combo-five crash once per lock
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > tracks combo progress and reactive origins independently per player
+[Wolfhour] Theme constructed
+
+ ✓ tests/unit/wolfhour-effect-accumulation.test.js (11 tests) 23ms
+ ✓ tests/unit/wolfhour-landscape.test.js (14 tests) 1901ms
+   ✓ Wolfhour alpine landscape > builds finite terrain with valid nondegenerate triangles and bounded light response  346ms
+   ✓ Wolfhour alpine landscape > reproduces the same terrain and baked lighting from a seed  459ms
+ ✓ tests/unit/wolfhour-ambient-integration.test.js (16 tests) 1996ms
+
+ Test Files  5 passed (5)
+      Tests  53 passed (53)
+   Start at  15:00:15
+   Duration  3.64s (transform 504ms, setup 0ms, collect 2.86s, tests 4.05s, environment 1ms, prepare 1.36s)
+
+
+STDERR

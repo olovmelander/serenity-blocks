@@ -840,7 +840,8 @@ export class OceanReefDwellerSystem {
                 if (!mat) return mat;
                 const hasVertexColors = !!(child.geometry?.getAttribute?.('color'))
                     || mat.vertexColors === true;
-                const nodeMat = new MeshStandardNodeMaterial({
+                const MaterialClass = this.isWebGPU ? MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
+                const nodeMat = new MaterialClass({
                     color: mat.color || new THREE.Color(0xffffff),
                     map: mat.map ?? null,
                     normalMap: mat.normalMap ?? null,
@@ -854,13 +855,15 @@ export class OceanReefDwellerSystem {
                     fog: true,
                     toneMapped: true,
                 });
-                if (hasVertexColors) {
+                if (hasVertexColors && this.isWebGPU) {
                     const vColor = attribute('color', 'vec3');
                     // NodeMaterial applies COLOR_0 automatically when
                     // vertexColors is true. Supply only the boost here so the
                     // painted hue is not multiplied by itself a second time.
                     nodeMat.colorNode = materialColor.rgb.mul(TRIPOSR_VERTEX_COLOR_BOOST);
                     nodeMat.emissiveNode = vColor.mul(TRIPOSR_EMISSIVE_BOOST);
+                } else if (hasVertexColors) {
+                    nodeMat.color.multiplyScalar(TRIPOSR_VERTEX_COLOR_BOOST);
                 }
                 nodeMat.name = `${mat.name || 'seahorse'} reef-dweller PBR`;
                 nodeMat.userData = { aquaticFaunaMaterial: true };

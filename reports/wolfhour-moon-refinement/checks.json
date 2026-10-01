@@ -1,0 +1,35 @@
+[
+  {
+    "command": "npx vitest run tests/unit/wolfhour-ambient-integration.test.js tests/unit/wolfhour-landscape.test.js tests/unit/wolfhour-meteor.test.js tests/unit/wolfhour-sky.test.js tests/unit/wolfhour-effect-accumulation.test.js",
+    "exitCode": 0,
+    "summary": "5 passed (5); 53 passed (53)",
+    "startedAt": "2026-10-01T13:00:11.437Z",
+    "completedAt": "2026-10-01T13:00:19.326Z",
+    "durationSeconds": 7.8864516,
+    "signal": null,
+    "error": null,
+    "log": "unit-tests.log"
+  },
+  {
+    "command": "npm run typecheck",
+    "exitCode": 0,
+    "summary": "tsc --noEmit passed.",
+    "startedAt": "2026-10-01T13:00:19.328Z",
+    "completedAt": "2026-10-01T13:00:24.660Z",
+    "durationSeconds": 5.331997800000001,
+    "signal": null,
+    "error": null,
+    "log": "typecheck.log"
+  },
+  {
+    "command": "npx eslint src/themes/wolfhour/wolfhour-sky.js src/themes/wolfhour/wolfhour-composition.js",
+    "exitCode": 0,
+    "summary": "Scoped ESLint passed with no diagnostics.",
+    "startedAt": "2026-10-01T13:00:24.662Z",
+    "completedAt": "2026-10-01T13:00:27.000Z",
+    "durationSeconds": 2.3377266,
+    "signal": null,
+    "error": null,
+    "log": "scoped-eslint.log"
+  }
+]

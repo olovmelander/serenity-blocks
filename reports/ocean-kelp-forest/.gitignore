@@ -1,0 +1,31 @@
+# Raw authoring protocol responses; retain authored scene, script and proofs.
+mcp-*.json
+
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/kelp-studio.png
+!/study-first/capture.png
+!/study-first/result.json
+
+# Successful lighting and final forest captures; failed diagnostics remain local.
+!/study-lit/capture.png
+!/study-lit/result.json
+!/study-final/capture.png
+!/study-final/result.json
+
+# Accepted production-theme evidence and the verification summary.
+!/production-extreme/capture.png
+!/production-extreme/result.json
+!/production-low/capture.png
+!/production-low/result.json
+!/production-webgl/capture.png
+!/production-webgl/result.json
+!/production-high-combo/capture.png
+!/production-high-combo/result.json
+!/verification-summary.json
+
+# Logs explicitly cited by the accepted verification summary.
+!/unit-tests.log
+!/lint.log
+!/build.log

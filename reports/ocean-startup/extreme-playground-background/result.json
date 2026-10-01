@@ -1,0 +1,1001 @@
+{
+  "url": "http://127.0.0.1:5185/playground.html?effect=ocean-reef-light&models=blender&life=1&t=8&quality=Extreme&width=1600&height=732&profile=1&trackTimestamp=1",
+  "adapter": {
+    "vendor": "nvidia",
+    "architecture": "ampere",
+    "device": "",
+    "description": ""
+  },
+  "backend": "WebGPU · nvidia ampere",
+  "diagnostics": {
+    "loaded": true,
+    "quality": "Extreme",
+    "camera": [
+      2.7444010483366474,
+      26.0204781437839,
+      86.69037693618706
+    ],
+    "fish": {
+      "assetVersion": "v7-triposr-seahorse",
+      "proceduralSchoolFish": 320,
+      "proceduralHeroFish": 7,
+      "activeProceduralFish": 327,
+      "activeSchoolFish": 320,
+      "activeHeroFish": 7,
+      "proceduralSchoolsInstanced": true,
+      "authoredSchoolModels": 4,
+      "heroAssetLayer": {
+        "enabled": true,
+        "requestedCount": 2,
+        "activeCount": 2,
+        "maxActive": 7,
+        "loadedAssetIds": [
+          "atelier-manta",
+          "atelier-cuttlefish"
+        ],
+        "statuses": {
+          "atelier-manta": "loaded",
+          "atelier-cuttlefish": "loaded"
+        },
+        "errors": {
+          "atelier-manta": null,
+          "atelier-cuttlefish": null
+        },
+        "sourceMode": "blender-hero-assets-procedural-schools",
+        "activeAssets": [
+          {
+            "id": "atelier-manta",
+            "modelVersion": "ocean-atelier-2026-10",
+            "triangleCount": 750,
+            "animationNames": [
+              "creature_manta_Swim_Loop"
+            ],
+            "opacity": 1,
+            "position": {
+              "x": -30,
+              "y": 42,
+              "z": -35
+            }
+          },
+          {
+            "id": "atelier-cuttlefish",
+            "modelVersion": "ocean-atelier-2026-10",
+            "triangleCount": 818,
+            "animationNames": [
+              "creature_cuttlefish_Swim_Loop"
+            ],
+            "opacity": 1,
+            "position": {
+              "x": 39,
+              "y": 31,
+              "z": -12
+            }
+          }
+        ],
+        "manifest": [
+          {
+            "id": "atelier-manta",
+            "url": "http://127.0.0.1:5185/src/themes/ocean/assets/blender-reef/creature-manta.glb",
+            "runtimeScale": 2.8,
+            "referenceSpeed": 7,
+            "forwardAxis": "+X",
+            "animationNames": [
+              "creature_manta_Swim_Loop"
+            ],
+            "triangleCount": 750,
+            "modelVersion": "ocean-atelier-2026-10",
+            "sourceMode": "blender-mcp-project-authored",
+            "license": "MIT-project-local"
+          },
+          {
+            "id": "atelier-cuttlefish",
+            "url": "http://127.0.0.1:5185/src/themes/ocean/assets/blender-reef/creature-cuttlefish.glb",
+            "runtimeScale": 2.1,
+            "referenceSpeed": 5,
+            "forwardAxis": "+X",
+            "animationNames": [
+              "creature_cuttlefish_Swim_Loop"
+            ],
+            "triangleCount": 818,
+            "modelVersion": "ocean-atelier-2026-10",
+            "sourceMode": "blender-mcp-project-authored",
+            "license": "MIT-project-local"
+          }
+        ]
+      }
+    },
+    "atmosphere": {
+      "bottomAssets": {
+        "authoredGardens": {
+          "requestedVariants": 8,
+          "variantCount": 8,
+          "drawCalls": 8,
+          "instanceCount": 23,
+          "triangleCount": 14292,
+          "animatedVariants": 4,
+          "assets": [
+            {
+              "id": "coral-rosette",
+              "count": 3,
+              "triangleCount": 768,
+              "animated": false
+            },
+            {
+              "id": "coral-antler",
+              "count": 3,
+              "triangleCount": 876,
+              "animated": false
+            },
+            {
+              "id": "anemone-lantern",
+              "count": 3,
+              "triangleCount": 720,
+              "animated": true
+            },
+            {
+              "id": "seaweed-spiral",
+              "count": 3,
+              "triangleCount": 552,
+              "animated": true
+            },
+            {
+              "id": "grass-meadow",
+              "count": 4,
+              "triangleCount": 432,
+              "animated": true
+            },
+            {
+              "id": "stone-ridge",
+              "count": 3,
+              "triangleCount": 440,
+              "animated": false
+            },
+            {
+              "id": "reef-arch",
+              "count": 1,
+              "triangleCount": 696,
+              "animated": false
+            },
+            {
+              "id": "pearl-cluster",
+              "count": 3,
+              "triangleCount": 600,
+              "animated": true
+            }
+          ],
+          "errors": []
+        },
+        "foregroundRocks": {
+          "requestedCount": 6,
+          "proceduralCount": 6,
+          "discoveredGlbCount": 2,
+          "glbEnabled": false,
+          "glbLoadedCount": 0,
+          "statuses": {},
+          "errors": {},
+          "optimizationNote": "procedural-rocks-default-no-heavy-glb-swap"
+        },
+        "coralOvergrowth": {
+          "mode": "procedural-instanced",
+          "densityPerRock": 2,
+          "requestedClusters": 12,
+          "createdClusters": 12,
+          "instanceCount": 58,
+          "meshCount": 4
+        },
+        "importedSeabedDetails": {
+          "requestedCount": 10,
+          "loadedCount": 0,
+          "plantCount": 0,
+          "seaweedCount": 0,
+          "coralCount": 0,
+          "rockCount": 0,
+          "statuses": {},
+          "errors": {},
+          "activeCount": 0,
+          "manifest": {
+            "plants": [
+              {
+                "id": "seagrass-quaternius-01-cc0",
+                "kind": "seagrass-detail",
+                "fileName": "seagrass-quaternius-01-cc0.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "third-party-cc0",
+                "license": "CC0",
+                "author": "Quaternius",
+                "sourceUrl": "https://poly.pizza/m/vUJjrRsFp4",
+                "attributionRequired": false,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 155,
+                "triangleBudget": {
+                  "min": 100,
+                  "max": 4000
+                },
+                "byteSize": 79796,
+                "maxBytes": 614400,
+                "textureCount": 1,
+                "textureBudget": 3,
+                "runtimeScale": 1,
+                "placementRole": "seagrass-detail",
+                "materialMode": "runtime-height-sway",
+                "sourcePriority": 30
+              },
+              {
+                "id": "seagrass-quaternius-tall-cc0",
+                "kind": "seagrass-detail",
+                "fileName": "seagrass-quaternius-tall-cc0.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "third-party-cc0",
+                "license": "CC0",
+                "author": "Quaternius",
+                "sourceUrl": "https://poly.pizza/m/JSIYtscPmP",
+                "attributionRequired": false,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 326,
+                "triangleBudget": {
+                  "min": 100,
+                  "max": 4000
+                },
+                "byteSize": 88020,
+                "maxBytes": 614400,
+                "textureCount": 1,
+                "textureBudget": 3,
+                "runtimeScale": 0.8,
+                "placementRole": "seagrass-detail",
+                "materialMode": "runtime-height-sway",
+                "sourcePriority": 29
+              },
+              {
+                "id": "seagrass-quaternius-wispy-cc0",
+                "kind": "seagrass-detail",
+                "fileName": "seagrass-quaternius-wispy-cc0.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "third-party-cc0",
+                "license": "CC0",
+                "author": "Quaternius",
+                "sourceUrl": "https://poly.pizza/m/Msr9zx66VU",
+                "attributionRequired": false,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 494,
+                "triangleBudget": {
+                  "min": 100,
+                  "max": 4000
+                },
+                "byteSize": 97188,
+                "maxBytes": 614400,
+                "textureCount": 1,
+                "textureBudget": 3,
+                "runtimeScale": 0.95,
+                "placementRole": "seagrass-detail",
+                "materialMode": "runtime-height-sway",
+                "sourcePriority": 28
+              }
+            ],
+            "seaweed": [
+              {
+                "id": "kelp-google-ccby",
+                "kind": "poly-pizza-kelp",
+                "fileName": "kelp-google-ccby.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "third-party-cc-by",
+                "license": "CC-BY-4.0",
+                "author": "Poly by Google",
+                "sourceUrl": "https://poly.pizza/m/4cFllH6Iazk",
+                "attributionRequired": true,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 784,
+                "triangleBudget": {
+                  "min": 100,
+                  "max": 4000
+                },
+                "byteSize": 267024,
+                "maxBytes": 614400,
+                "textureCount": 1,
+                "textureBudget": 3,
+                "runtimeScale": 2.75,
+                "placementRole": "hero-kelp",
+                "materialMode": "runtime-height-sway",
+                "sourcePriority": 44
+              },
+              {
+                "id": "kelp-christopher-ccby",
+                "kind": "poly-pizza-kelp",
+                "fileName": "kelp-christopher-ccby.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "third-party-cc-by",
+                "license": "CC-BY-4.0",
+                "author": "Christopher F",
+                "sourceUrl": "https://poly.pizza/m/3VhttTFyADO",
+                "attributionRequired": true,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 3440,
+                "triangleBudget": {
+                  "min": 100,
+                  "max": 4000
+                },
+                "byteSize": 326520,
+                "maxBytes": 614400,
+                "textureCount": 0,
+                "textureBudget": 3,
+                "runtimeScale": 4.2,
+                "placementRole": "hero-kelp",
+                "materialMode": "runtime-height-sway",
+                "sourcePriority": 42
+              },
+              {
+                "id": "seaweed-laney-03-ccby",
+                "kind": "poly-pizza-seaweed",
+                "fileName": "seaweed-laney-03-ccby.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "third-party-cc-by",
+                "license": "CC-BY-4.0",
+                "author": "Laney XR Labs",
+                "sourceUrl": "https://poly.pizza/m/f_gXhnf06Oc",
+                "attributionRequired": true,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 1832,
+                "triangleBudget": {
+                  "min": 100,
+                  "max": 4000
+                },
+                "byteSize": 104560,
+                "maxBytes": 614400,
+                "textureCount": 0,
+                "textureBudget": 3,
+                "runtimeScale": 5.6,
+                "placementRole": "hero-kelp",
+                "materialMode": "runtime-height-sway",
+                "sourcePriority": 40
+              },
+              {
+                "id": "seaweed-laney-02-ccby",
+                "kind": "poly-pizza-seaweed",
+                "fileName": "seaweed-laney-02-ccby.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "third-party-cc-by",
+                "license": "CC-BY-4.0",
+                "author": "Laney XR Labs",
+                "sourceUrl": "https://poly.pizza/m/b_eanaL8C6j",
+                "attributionRequired": true,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 1424,
+                "triangleBudget": {
+                  "min": 100,
+                  "max": 4000
+                },
+                "byteSize": 80216,
+                "maxBytes": 614400,
+                "textureCount": 0,
+                "textureBudget": 3,
+                "runtimeScale": 5.4,
+                "placementRole": "hero-kelp",
+                "materialMode": "runtime-height-sway",
+                "sourcePriority": 38
+              },
+              {
+                "id": "seaweed-laney-01-ccby",
+                "kind": "poly-pizza-seaweed",
+                "fileName": "seaweed-laney-01-ccby.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "third-party-cc-by",
+                "license": "CC-BY-4.0",
+                "author": "Laney XR Labs",
+                "sourceUrl": "https://poly.pizza/m/461xlaa6SZW",
+                "attributionRequired": true,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 998,
+                "triangleBudget": {
+                  "min": 100,
+                  "max": 4000
+                },
+                "byteSize": 56632,
+                "maxBytes": 614400,
+                "textureCount": 0,
+                "textureBudget": 3,
+                "runtimeScale": 5.3,
+                "placementRole": "hero-kelp",
+                "materialMode": "runtime-height-sway",
+                "sourcePriority": 36
+              }
+            ],
+            "corals": [
+              {
+                "id": "coral-reef-set-minipoly-cc0",
+                "kind": "purple-blue-coral-carpet",
+                "fileName": "coral-reef-set-minipoly-cc0.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "third-party-cc0",
+                "license": "CC0",
+                "author": "MiniPoly",
+                "sourceUrl": "https://poly.pizza/m/74GL45Fvdh",
+                "attributionRequired": false,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 6080,
+                "triangleBudget": {
+                  "min": 3000,
+                  "max": 8000
+                },
+                "byteSize": 395956,
+                "maxBytes": 1048576,
+                "textureCount": 3,
+                "textureBudget": 4,
+                "runtimeScale": 0.35,
+                "baseRotation": null,
+                "placementRole": "carpet-patch",
+                "materialMode": "preserve-pbr-underwater-rim",
+                "sourcePriority": 30
+              },
+              {
+                "id": "coral-brush-blue-01",
+                "kind": "blue-brush-coral",
+                "fileName": "coral-brush-blue-01.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "blender-only-project-authored",
+                "license": "MIT-project-local",
+                "author": "Serenity Blocks Blender asset pipeline",
+                "sourceUrl": null,
+                "attributionRequired": false,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 2016,
+                "triangleBudget": {
+                  "min": 3000,
+                  "max": 8000
+                },
+                "byteSize": 147184,
+                "maxBytes": 1048576,
+                "textureCount": null,
+                "textureBudget": 4,
+                "runtimeScale": 3,
+                "baseRotation": null,
+                "placementRole": "carpet-patch",
+                "materialMode": "preserve-pbr-underwater-rim",
+                "sourcePriority": 0
+              },
+              {
+                "id": "coral-carpet-purple-01",
+                "kind": "purple-blue-coral-carpet",
+                "fileName": "coral-carpet-purple-01.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "blender-only-project-authored",
+                "license": "MIT-project-local",
+                "author": "Serenity Blocks Blender asset pipeline",
+                "sourceUrl": null,
+                "attributionRequired": false,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 2884,
+                "triangleBudget": {
+                  "min": 3000,
+                  "max": 8000
+                },
+                "byteSize": 194804,
+                "maxBytes": 1048576,
+                "textureCount": null,
+                "textureBudget": 4,
+                "runtimeScale": 3,
+                "baseRotation": null,
+                "placementRole": "carpet-patch",
+                "materialMode": "preserve-pbr-underwater-rim",
+                "sourcePriority": 0
+              },
+              {
+                "id": "coral-plate-green-01",
+                "kind": "green-yellow-plate-coral",
+                "fileName": "coral-plate-green-01.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "blender-only-project-authored",
+                "license": "MIT-project-local",
+                "author": "Serenity Blocks Blender asset pipeline",
+                "sourceUrl": null,
+                "attributionRequired": false,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 4176,
+                "triangleBudget": {
+                  "min": 3000,
+                  "max": 8000
+                },
+                "byteSize": 174508,
+                "maxBytes": 1048576,
+                "textureCount": null,
+                "textureBudget": 4,
+                "runtimeScale": 3,
+                "baseRotation": null,
+                "placementRole": "carpet-patch",
+                "materialMode": "preserve-pbr-underwater-rim",
+                "sourcePriority": 0
+              },
+              {
+                "id": "coral-tube-orange-01",
+                "kind": "orange-tube-sponge-cluster",
+                "fileName": "coral-tube-orange-01.glb",
+                "modelVersion": "v2-poly-pizza-environment-assets",
+                "sourceMode": "blender-only-project-authored",
+                "license": "MIT-project-local",
+                "author": "Serenity Blocks Blender asset pipeline",
+                "sourceUrl": null,
+                "attributionRequired": false,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 5520,
+                "triangleBudget": {
+                  "min": 3000,
+                  "max": 8000
+                },
+                "byteSize": 278744,
+                "maxBytes": 1048576,
+                "textureCount": null,
+                "textureBudget": 4,
+                "runtimeScale": 3,
+                "baseRotation": null,
+                "placementRole": "carpet-patch",
+                "materialMode": "preserve-pbr-underwater-rim",
+                "sourcePriority": 0
+              }
+            ],
+            "rocks": [
+              {
+                "id": "rock-1-quaternius-large-cc0",
+                "kind": "foreground-rock",
+                "fileName": "rock-1-quaternius-large-cc0.glb",
+                "modelVersion": "v1-poly-pizza-cc0-rock-details",
+                "sourceMode": "third-party-cc0",
+                "license": "CC0",
+                "author": "Quaternius",
+                "sourceUrl": "https://poly.pizza/m/54jZKTAt5p",
+                "attributionRequired": false,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 222,
+                "triangleBudget": {
+                  "min": 50,
+                  "max": 600
+                },
+                "byteSize": 18608,
+                "maxBytes": 262144,
+                "textureCount": 1,
+                "textureBudget": 1,
+                "runtimeScale": 1,
+                "materialMode": "runtime-rock-material-override"
+              },
+              {
+                "id": "rock-2-kenney-cc0",
+                "kind": "foreground-rock",
+                "fileName": "rock-2-kenney-cc0.glb",
+                "modelVersion": "v1-poly-pizza-cc0-rock-details",
+                "sourceMode": "third-party-cc0",
+                "license": "CC0",
+                "author": "Kenney",
+                "sourceUrl": "https://poly.pizza/m/cBqdRdLDDL",
+                "attributionRequired": false,
+                "coordinateForward": "+Z decorative / Y up",
+                "yUp": true,
+                "triangleCount": 120,
+                "triangleBudget": {
+                  "min": 50,
+                  "max": 600
+                },
+                "byteSize": 8380,
+                "maxBytes": 262144,
+                "textureCount": 0,
+                "textureBudget": 1,
+                "runtimeScale": 1,
+                "materialMode": "runtime-rock-material-override"
+              }
+            ]
+          }
+        },
+        "oversizedAssetWarnings": []
+      },
+      "heroReefWalls": {
+        "requestedCount": 4,
+        "placeholderCount": 4,
+        "loadedCount": 2,
+        "statuses": {
+          "atelier-buttress": "loaded",
+          "atelier-outcrop": "loaded"
+        },
+        "errors": {
+          "atelier-buttress": null,
+          "atelier-outcrop": null
+        },
+        "placementCapacity": 5,
+        "manifest": [
+          {
+            "modelVersion": "ocean-atelier-2026-10",
+            "sourceMode": "blender-mcp-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks",
+            "yUp": true,
+            "textureCount": 0,
+            "sourcePriority": 100,
+            "id": "atelier-buttress",
+            "kind": "sun-pillar",
+            "triangleCount": 1868,
+            "byteSize": 46420,
+            "runtimeScale": 4.4,
+            "url": "http://127.0.0.1:5185/src/themes/ocean/assets/blender-reef/reef-buttress.glb"
+          },
+          {
+            "modelVersion": "ocean-atelier-2026-10",
+            "sourceMode": "blender-mcp-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks",
+            "yUp": true,
+            "textureCount": 0,
+            "sourcePriority": 100,
+            "id": "atelier-outcrop",
+            "kind": "left-canyon-wall",
+            "triangleCount": 1376,
+            "byteSize": 34604,
+            "runtimeScale": 6.4,
+            "url": "http://127.0.0.1:5185/src/themes/ocean/assets/blender-reef/reef-outcrop.glb"
+          }
+        ],
+        "activeCount": 4,
+        "glbLoadedCount": 2
+      },
+      "coralCarpetPatches": {
+        "requestedCount": 2,
+        "placeholderCount": 2,
+        "loadedCount": 2,
+        "statuses": {
+          "coral-reef-set-minipoly-cc0": "loaded",
+          "coral-tube-orange-01": "loaded"
+        },
+        "errors": {
+          "coral-reef-set-minipoly-cc0": null,
+          "coral-tube-orange-01": null
+        },
+        "manifest": [
+          {
+            "id": "coral-reef-set-minipoly-cc0",
+            "kind": "purple-blue-coral-carpet",
+            "fileName": "coral-reef-set-minipoly-cc0.glb",
+            "modelVersion": "v2-poly-pizza-environment-assets",
+            "sourceMode": "third-party-cc0",
+            "license": "CC0",
+            "author": "MiniPoly",
+            "sourceUrl": "https://poly.pizza/m/74GL45Fvdh",
+            "attributionRequired": false,
+            "coordinateForward": "+Z decorative / Y up",
+            "yUp": true,
+            "triangleCount": 6080,
+            "triangleBudget": {
+              "min": 3000,
+              "max": 8000
+            },
+            "byteSize": 395956,
+            "maxBytes": 1048576,
+            "textureCount": 3,
+            "textureBudget": 4,
+            "runtimeScale": 0.35,
+            "baseRotation": null,
+            "placementRole": "carpet-patch",
+            "materialMode": "preserve-pbr-underwater-rim",
+            "sourcePriority": 30
+          },
+          {
+            "id": "coral-brush-blue-01",
+            "kind": "blue-brush-coral",
+            "fileName": "coral-brush-blue-01.glb",
+            "modelVersion": "v2-poly-pizza-environment-assets",
+            "sourceMode": "blender-only-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks Blender asset pipeline",
+            "sourceUrl": null,
+            "attributionRequired": false,
+            "coordinateForward": "+Z decorative / Y up",
+            "yUp": true,
+            "triangleCount": 2016,
+            "triangleBudget": {
+              "min": 3000,
+              "max": 8000
+            },
+            "byteSize": 147184,
+            "maxBytes": 1048576,
+            "textureCount": null,
+            "textureBudget": 4,
+            "runtimeScale": 3,
+            "baseRotation": null,
+            "placementRole": "carpet-patch",
+            "materialMode": "preserve-pbr-underwater-rim",
+            "sourcePriority": 0
+          },
+          {
+            "id": "coral-carpet-purple-01",
+            "kind": "purple-blue-coral-carpet",
+            "fileName": "coral-carpet-purple-01.glb",
+            "modelVersion": "v2-poly-pizza-environment-assets",
+            "sourceMode": "blender-only-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks Blender asset pipeline",
+            "sourceUrl": null,
+            "attributionRequired": false,
+            "coordinateForward": "+Z decorative / Y up",
+            "yUp": true,
+            "triangleCount": 2884,
+            "triangleBudget": {
+              "min": 3000,
+              "max": 8000
+            },
+            "byteSize": 194804,
+            "maxBytes": 1048576,
+            "textureCount": null,
+            "textureBudget": 4,
+            "runtimeScale": 3,
+            "baseRotation": null,
+            "placementRole": "carpet-patch",
+            "materialMode": "preserve-pbr-underwater-rim",
+            "sourcePriority": 0
+          },
+          {
+            "id": "coral-plate-green-01",
+            "kind": "green-yellow-plate-coral",
+            "fileName": "coral-plate-green-01.glb",
+            "modelVersion": "v2-poly-pizza-environment-assets",
+            "sourceMode": "blender-only-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks Blender asset pipeline",
+            "sourceUrl": null,
+            "attributionRequired": false,
+            "coordinateForward": "+Z decorative / Y up",
+            "yUp": true,
+            "triangleCount": 4176,
+            "triangleBudget": {
+              "min": 3000,
+              "max": 8000
+            },
+            "byteSize": 174508,
+            "maxBytes": 1048576,
+            "textureCount": null,
+            "textureBudget": 4,
+            "runtimeScale": 3,
+            "baseRotation": null,
+            "placementRole": "carpet-patch",
+            "materialMode": "preserve-pbr-underwater-rim",
+            "sourcePriority": 0
+          },
+          {
+            "id": "coral-tube-orange-01",
+            "kind": "orange-tube-sponge-cluster",
+            "fileName": "coral-tube-orange-01.glb",
+            "modelVersion": "v2-poly-pizza-environment-assets",
+            "sourceMode": "blender-only-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks Blender asset pipeline",
+            "sourceUrl": null,
+            "attributionRequired": false,
+            "coordinateForward": "+Z decorative / Y up",
+            "yUp": true,
+            "triangleCount": 5520,
+            "triangleBudget": {
+              "min": 3000,
+              "max": 8000
+            },
+            "byteSize": 278744,
+            "maxBytes": 1048576,
+            "textureCount": null,
+            "textureBudget": 4,
+            "runtimeScale": 3,
+            "baseRotation": null,
+            "placementRole": "carpet-patch",
+            "materialMode": "preserve-pbr-underwater-rim",
+            "sourcePriority": 0
+          }
+        ],
+        "activeCount": 2,
+        "glbLoadedCount": 2
+      },
+      "heroCorals": {
+        "requestedCount": 4,
+        "placeholderCount": 4,
+        "loadedCount": 4,
+        "statuses": {
+          "atelier-sponge": "loaded",
+          "atelier-staghorn": "loaded",
+          "atelier-fan": "loaded",
+          "atelier-foliose": "loaded"
+        },
+        "errors": {
+          "atelier-sponge": null,
+          "atelier-staghorn": null,
+          "atelier-fan": null,
+          "atelier-foliose": null
+        },
+        "manifest": [
+          {
+            "modelVersion": "ocean-atelier-2026-10",
+            "sourceMode": "blender-mcp-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks",
+            "yUp": true,
+            "textureCount": 0,
+            "sourcePriority": 100,
+            "placementRole": "hero-colony",
+            "id": "atelier-sponge",
+            "kind": "purple-tube-sponge",
+            "triangleCount": 1512,
+            "byteSize": 38300,
+            "runtimeScale": 2.6,
+            "url": "http://127.0.0.1:5185/src/themes/ocean/assets/blender-reef/coral-sponge.glb"
+          },
+          {
+            "modelVersion": "ocean-atelier-2026-10",
+            "sourceMode": "blender-mcp-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks",
+            "yUp": true,
+            "textureCount": 0,
+            "sourcePriority": 100,
+            "placementRole": "hero-colony",
+            "id": "atelier-staghorn",
+            "kind": "branching-coral",
+            "triangleCount": 2002,
+            "byteSize": 52596,
+            "runtimeScale": 2.3,
+            "url": "http://127.0.0.1:5185/src/themes/ocean/assets/blender-reef/coral-staghorn.glb"
+          },
+          {
+            "modelVersion": "ocean-atelier-2026-10",
+            "sourceMode": "blender-mcp-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks",
+            "yUp": true,
+            "textureCount": 0,
+            "sourcePriority": 100,
+            "placementRole": "hero-colony",
+            "id": "atelier-foliose",
+            "kind": "table-coral",
+            "triangleCount": 1244,
+            "byteSize": 31872,
+            "runtimeScale": 2.8,
+            "url": "http://127.0.0.1:5185/src/themes/ocean/assets/blender-reef/coral-foliose.glb"
+          },
+          {
+            "modelVersion": "ocean-atelier-2026-10",
+            "sourceMode": "blender-mcp-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks",
+            "yUp": true,
+            "textureCount": 0,
+            "sourcePriority": 100,
+            "placementRole": "hero-colony",
+            "id": "atelier-fan",
+            "kind": "fan-coral",
+            "triangleCount": 2142,
+            "byteSize": 121180,
+            "runtimeScale": 2.6,
+            "animated": true,
+            "url": "http://127.0.0.1:5185/src/themes/ocean/assets/blender-reef/coral-fan.glb"
+          }
+        ],
+        "instancedMeshCount": 4,
+        "optimizationNote": "phase-I: 4 placements collapsed to 4 InstancedMesh draw calls",
+        "activeCount": 4,
+        "glbLoadedCount": 4
+      },
+      "heroKelp": {
+        "requestedCount": 4,
+        "placeholderCount": 4,
+        "loadedCount": 4,
+        "statuses": {
+          "atelier-ribbon-kelp": "loaded"
+        },
+        "errors": {
+          "atelier-ribbon-kelp": null
+        },
+        "manifest": [
+          {
+            "modelVersion": "ocean-atelier-2026-10",
+            "sourceMode": "blender-mcp-project-authored",
+            "license": "MIT-project-local",
+            "author": "Serenity Blocks",
+            "yUp": true,
+            "textureCount": 0,
+            "sourcePriority": 100,
+            "id": "atelier-ribbon-kelp",
+            "kind": "ribbon-kelp-grove",
+            "triangleCount": 1520,
+            "byteSize": 100316,
+            "runtimeScale": 1.7,
+            "animated": true,
+            "url": "http://127.0.0.1:5185/src/themes/ocean/assets/blender-reef/kelp.glb"
+          }
+        ],
+        "activeCount": 4,
+        "glbLoadedCount": 4
+      }
+    }
+  },
+  "profile": {
+    "enabled": true,
+    "backend": "WebGPU · nvidia ampere",
+    "effect": "ocean-reef-light",
+    "seed": 1470239127,
+    "fixedTime": 8,
+    "captureMeta": null,
+    "internalResolution": {
+      "width": 1600,
+      "height": 732,
+      "cssWidth": 1600,
+      "cssHeight": 732,
+      "pixelRatio": 1
+    },
+    "cpuMs": {
+      "samples": 652,
+      "p50": 1.9000000022351742,
+      "p95": 3,
+      "p99": 3.800000000745058,
+      "max": 5.699999999254942
+    },
+    "frameMs": {
+      "samples": 651,
+      "p50": 6.099999997764826,
+      "p95": 8,
+      "p99": 10.899999998509884,
+      "max": 1577.4000000022352
+    },
+    "gpuMs": {
+      "samples": 21,
+      "p50": 0.6174719999999999,
+      "p95": 0.6635519999999998,
+      "p99": 6.483967999999998,
+      "max": 6.483967999999998
+    },
+    "computeMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "droppedFrames": {
+      "budgetMs": 16.666666666666668,
+      "dropped": 1,
+      "total": 651,
+      "ratio": 0.0015360983102918587
+    },
+    "memory": {
+      "supported": true,
+      "startBytes": 132813453,
+      "currentBytes": 139831051,
+      "peakBytes": 159827267,
+      "growthBytes": 7017598,
+      "growthMB": 6.692502975463867
+    },
+    "activeParticles": null,
+    "gpuTimestamp": {
+      "requested": true,
+      "renderStatus": "available",
+      "computeStatus": "unavailable",
+      "error": null,
+      "computeError": null
+    },
+    "renderer": null,
+    "gpuMemory": {
+      "totalMB": 44.83043098449707,
+      "texturesMB": 40.931915283203125,
+      "attributesMB": 2.087390899658203,
+      "indexAttributesMB": 0.9369277954101562,
+      "storageAttributesMB": 0,
+      "uniformBuffersMB": 0.1466217041015625,
+      "programsMB": 0.7275753021240234,
+      "renderTargets": 14,
+      "textures": 46,
+      "geometries": 119
+    }
+  },
+  "measured": null,
+  "messages": []
+}

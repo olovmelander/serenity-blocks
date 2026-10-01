@@ -26,6 +26,7 @@
 *.ico   binary
 *.icns  binary
 *.glb   binary
+*.blend binary
 *.gltf  binary
 *.ktx2  binary
 *.basis binary
@@ -47,3 +48,6 @@
 *.dll   binary
 *.node  binary
 *.wasm  binary
+
+# Frozen benchmark input must preserve original bytes, including whitespace.
+reports/cosmic-noir-polish/baseline-source/** -text -whitespace

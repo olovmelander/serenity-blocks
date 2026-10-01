@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 700" preserveAspectRatio="none" focusable="false">
+                <defs>
+                    <linearGradient id="sb-aurora-color" x1="0" y1="0" x2="1" y2="0">
+                        <stop stop-color="#32f4d2" stop-opacity=".24"/>
+                        <stop offset=".35" stop-color="#8cffe7" stop-opacity=".8"/>
+                        <stop offset=".7" stop-color="#ba98ff" stop-opacity=".72"/>
+                        <stop offset="1" stop-color="#ec8de8" stop-opacity=".2"/>
+                    </linearGradient>
+                    <linearGradient id="sb-aurora-veil" x1="0" y1="1" x2="0" y2="0">
+                        <stop stop-color="white" stop-opacity=".65"/>
+                        <stop offset=".6" stop-color="white" stop-opacity=".09"/>
+                        <stop offset="1" stop-color="white" stop-opacity="0"/>
+                    </linearGradient>
+                    <mask id="sb-aurora-mask"><rect width="1440" height="700" fill="url(#sb-aurora-veil)"/></mask>
+                    <filter id="sb-aurora-soft" filterUnits="userSpaceOnUse" x="-200" y="-300" width="1840" height="1300"><feGaussianBlur stdDeviation="19"/></filter>
+                    <filter id="sb-aurora-edge" filterUnits="userSpaceOnUse" x="-200" y="-300" width="1840" height="1300"><feGaussianBlur stdDeviation="2"/></filter>
+                </defs>
+                <g fill="none" stroke="url(#sb-aurora-color)">
+                    <path d="M-80 420 C220 540 370 270 650 270 S1040 180 1530 310" stroke-width="135" filter="url(#sb-aurora-soft)" opacity=".6"/>
+                    <path d="M-80 425 C220 545 370 275 650 275 S1040 185 1530 315" stroke-width="1.5" filter="url(#sb-aurora-edge)"/>
+                    <path d="M-80 415 C220 535 370 265 650 265 S1040 175 1530 305" stroke-width="55" filter="url(#sb-aurora-soft)" mask="url(#sb-aurora-mask)"/>
+                    <path d="M-100 240 C250 160 440 430 760 200 S1180 290 1510 100" stroke-width="60" filter="url(#sb-aurora-soft)" opacity=".18"/>
+                </g>
+            </svg>

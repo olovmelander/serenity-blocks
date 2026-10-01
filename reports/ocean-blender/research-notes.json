@@ -1,0 +1,81 @@
+{
+  "title": "Ocean biodiversity art direction research",
+  "researchedOn": "2026-10-01",
+  "scope": "Primary developer sources for ABZU and Subnautica 2, applied to original Serenity Blocks Ocean models and composition.",
+  "method": "Read official studio articles, the developer-authored Steam description, and an interview containing firsthand Giant Squid developer explanations. Source observations are separated from our own design applications. No game assets, models, textures, or distinctive creature designs were copied.",
+  "principles": [
+    {
+      "id": "recognizable-silhouettes",
+      "principle": "Give each species a readable silhouette before adding surface detail.",
+      "source": {
+        "title": "Modelling Sealife - Eagle Ray",
+        "url": "https://giantsquidstudios.com/Modeling-Sealife-Eagle-Ray",
+        "publisher": "Giant Squid",
+        "author": "Bryce Warner, Environment Artist",
+        "type": "Official developer process article"
+      },
+      "sourceObservation": "Giant Squid describes studying real animals, selecting likeness-defining shapes, and simplifying models and textures so the creature remains identifiable at distance.",
+      "originalApplication": "Create distinct disk, needle, ray, bell, and compact reef-fish silhouettes. Differentiate flora through rounded rosettes, fine antlers, hollow tubes, spiral ribbons, and tapered grass. Preserve large painted color regions instead of filling every surface with noisy detail.",
+      "performanceApplication": "Spend existing geometry budgets on silhouette and use vertex colors instead of additional texture maps. Reuse each species mesh across an instanced population."
+    },
+    {
+      "id": "habitat-pockets",
+      "principle": "Organize biodiversity into distinct habitats with deliberate open space.",
+      "source": {
+        "title": "Subnautica 2 - About This Game",
+        "url": "https://store.steampowered.com/app/1962700/Subnautica_2/",
+        "publisher": "Unknown Worlds Entertainment via Steam",
+        "type": "Official developer product description"
+      },
+      "sourceObservation": "The developer describes vibrant biomes and biodiversity ranging from small creatures to towering Leviathans, with exploration extending from shallow water into the depths.",
+      "originalApplication": "Compose warm coral colonies on the left, a golden meadow on the right, and cooler stone and pearl habitats farther back. Keep the central sand channel readable. Use smaller clustered colonies around a few dominant formations to establish scale and depth; these palette and placement choices are our interpretation, not a description of Subnautica 2's implementation.",
+      "performanceApplication": "Replace existing imported seabed details with eight instanced model groups, bounded to 23 placements and 14,292 triangles at High quality."
+    },
+    {
+      "id": "life-through-motion",
+      "principle": "Make different life forms move in different but related ways.",
+      "source": {
+        "title": "Get to know the ocean in Journey-like diving adventure Abzu",
+        "url": "https://www.unrealengine.com/developer-interviews/get-to-know-the-ocean-in-journey-like-diving-adventure-abzu?lang=en-US",
+        "publisher": "Epic Games / Unreal Engine",
+        "author": "Jeremy Peel, interviewing Giant Squid developers Derek Cornish and Brian Balamut",
+        "type": "Firsthand developer interview published by the engine vendor"
+      },
+      "sourceObservation": "Giant Squid's developers explain how shoaling fish and reactive kelp contribute to a dynamic underwater environment, and how underwater illumination was designed to support artistic control.",
+      "originalApplication": "Combine compact schooling motion, slow ray glides, jellyfish pulses, and current-driven grass and frond tips. Vary animation phase between instances so colonies share a current without moving in unison. Let occasional larger creatures provide a different temporal rhythm behind the reef.",
+      "performanceApplication": "Sample authored morph clips into existing native instance morph textures. Keep planted transforms static and retain shared geometry and material draws."
+    },
+    {
+      "id": "mystery-through-contrast",
+      "principle": "Reserve luminous detail for quiet, shaded areas.",
+      "source": {
+        "title": "Audio Narratives",
+        "url": "https://giantsquidstudios.com/Audio-Narratives",
+        "publisher": "Giant Squid",
+        "author": "Steve Green, Sound Designer; narrative prompt by Matt Nava",
+        "type": "Official developer art and atmosphere process article"
+      },
+      "sourceObservation": "Giant Squid's atmosphere narrative contrasts clear open sand, a busy reef, tall grass, a stony floor, and a dark cave occupied by small bioluminescent life.",
+      "originalApplication": "Use the open sand channel as a visual rest between denser reef pockets. Place restrained pearl and anemone highlights in deeper habitats while preserving dark bases and cool distant silhouettes. The result should suggest discoveries beyond the visible foreground without coating the whole scene in glow.",
+      "performanceApplication": "Encode luminous tip masks as vertex attributes and reuse the existing material and post-processing pipeline; add no lights, render passes, or texture taps."
+    },
+    {
+      "id": "calm-fluidity",
+      "principle": "Fluid motion should preserve a tranquil and legible view.",
+      "source": {
+        "title": "Fluid Motion in ABZU",
+        "url": "https://giantsquidstudios.com/Fluid-Motion-in-ABZU",
+        "publisher": "Giant Squid",
+        "author": "Max Kaufmann, Gameplay Engineer",
+        "type": "Official developer movement and camera process article"
+      },
+      "sourceObservation": "Giant Squid describes predictable drift, damped movement, and camera rules that avoid uncontrolled swinging while preserving the underwater atmosphere.",
+      "originalApplication": "Keep camera parallax gentle and let current motion carry the sense of immersion. Animate tips more than rooted bases, preserve closed loop seams, and give larger animals slower trajectories. Gameplay effects can briefly strengthen existing glow and current responses without disrupting the scene's composition.",
+      "performanceApplication": "Reuse existing camera, current, glow, and update systems. Keep static placement matrices unchanged during flora animation."
+    }
+  ],
+  "reviewNotes": {
+    "attribution": "All proposed palettes, species groupings, placements, animation parameters, and runtime budget decisions are original applications inferred from the sources, not claims about either reference game's exact rendering pipeline.",
+    "validation": "Research informs direction only. Runtime appearance and performance require the project's isolated playground screenshot and measurement workflow."
+  }
+}

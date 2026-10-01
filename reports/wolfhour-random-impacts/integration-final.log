@@ -1,0 +1,39 @@
+{
+  "command": "npx vitest run tests/unit/wolfhour-ambient-integration.test.js",
+  "exitCode": 0,
+  "summary": "Final fallback follow-up: 1 passed (1); 20 passed (20)",
+  "startedAt": "2026-10-01T14:16:42.557Z",
+  "completedAt": "2026-10-01T14:17:52.088Z",
+  "signal": null,
+  "error": null,
+  "log": "integration-final.log"
+}
+
+STDOUT
+
+ RUN  v3.2.7 C:/Users/olov_/repos/serenity-blocks
+
+ ✓ tests/unit/wolfhour-ambient-integration.test.js (20 tests) 12652ms
+   ✓ Wolfhour ambient integration > connects lunar reaction aliases to the sky owner without constructing legacy ambient objects  2456ms
+   ✓ Wolfhour ambient integration > updates and expires real lunar uniforms while the shared effect energy decays  1300ms
+   ✓ Wolfhour ambient integration > spawns crashes against the new terrain when the legacy mountain list is empty  1085ms
+   ✓ Wolfhour ambient integration > distributes pooled crashes from one gameplay origin across both shoulders at aspect 0.5625  661ms
+   ✓ Wolfhour ambient integration > distributes pooled crashes from one gameplay origin across both shoulders at aspect 1.7777777777777777  648ms
+   ✓ Wolfhour ambient integration > does not consume an impact target when the crash pool is already at capacity  525ms
+   ✓ Wolfhour ambient integration > keeps portrait meteor impacts within the actual camera frame  1136ms
+   ✓ Wolfhour ambient integration > moves distant sky and successive ridges at distinct apparent rates at aspect 0.5625  415ms
+   ✓ Wolfhour ambient integration > moves distant sky and successive ridges at distinct apparent rates at aspect 1.7777777777777777  560ms
+   ✓ Wolfhour ambient integration > keeps an impact on the same mountain point through camera motion at aspect 0.5625  767ms
+   ✓ Wolfhour ambient integration > keeps an impact on the same mountain point through camera motion at aspect 1.7777777777777777  565ms
+   ✓ Wolfhour ambient integration > restarts pooled dust and debris on the first impact frame  394ms
+   ✓ Wolfhour ambient integration > keeps a live crash attached through portrait and ultrawide aspect changes  406ms
+   ✓ Wolfhour ambient integration > stops drawing an expired shockwave while its dust and debris finish fading  439ms
+   ✓ Wolfhour ambient integration > disposes moon aliases once through their owner and allows a clean subsequent build  1082ms
+
+ Test Files  1 passed (1)
+      Tests  20 passed (20)
+   Start at  16:17:16
+   Duration  33.74s (transform 4.26s, setup 0ms, collect 10.20s, tests 12.65s, environment 3ms, prepare 1.83s)
+
+
+STDERR

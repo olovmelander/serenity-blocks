@@ -1,0 +1,30 @@
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/after-repeat/result.json
+!/after/combo-linger.png
+!/after/combo.png
+!/after/idle.png
+!/after/lock.png
+!/after/result.json
+!/before-repeat/result.json
+!/final-preview/capture.png
+!/final-preview/result.json
+!/preview-combo/capture.png
+!/preview-combo/result.json
+!/preview-linger/capture.png
+!/preview-linger/result.json
+!/preview-low-final/capture.png
+!/preview-low-final/result.json
+!/preview-strong/capture.png
+!/preview-strong/result.json
+!/webgl-verified/combo-linger.png
+!/webgl-verified/combo.png
+!/webgl-verified/idle.png
+!/webgl-verified/result.json
+
+# Explicitly cited validation logs; other process output remains local.
+!/build.log
+!/lint.log
+!/tests.log
+!/typecheck.log

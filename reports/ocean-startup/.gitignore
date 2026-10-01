@@ -1,0 +1,14 @@
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/extreme-before/capture.png
+!/extreme-before/result.json
+!/extreme-final/capture.png
+!/extreme-final/result.json
+!/extreme-playground-background/capture.png
+!/extreme-playground-background/result.json
+!/extreme-playground-final/capture.png
+!/extreme-playground-final/result.json
+!/ultra-final/capture.png
+!/ultra-final/result.json
+!/verification-summary.json

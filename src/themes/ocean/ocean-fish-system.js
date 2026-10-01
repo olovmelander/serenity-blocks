@@ -34,6 +34,7 @@ import {
     summarizeFaunaAssetManifest,
 } from './ocean-fauna-assets.js';
 import { getModelForwardVector } from './ocean-rare-fauna-system.js';
+import { OCEAN_ATELIER_CREATURES, upgradeOceanSchoolModels } from './ocean-school-models.js';
 
 const FORWARD = new THREE.Vector3(1, 0, 0);
 const FISH_AREA_X = 135;
@@ -683,6 +684,9 @@ export class OceanFishSystem {
         this.isWebGPU = isWebGPU;
         this.disposed = false;
         this.loadGeneration = 0;
+        this.authoredBiodiversity = preset?.atmosphere?.biodiversityAssets === true;
+        this.heroAssetCatalogue = this.authoredBiodiversity ? OCEAN_ATELIER_CREATURES : OCEAN_HERO_FISH_ASSETS;
+        this.schoolModelLoadPromise = null;
 
         this.meshes = [];
         this.materials = [];
@@ -761,10 +765,10 @@ export class OceanFishSystem {
         this.heroAssetRecords = new Map();
         this.heroAssetCreatures = [];
         this.heroAssetStatus = Object.fromEntries(
-            OCEAN_HERO_FISH_ASSETS.map((asset) => [asset.id, 'idle']),
+            this.heroAssetCatalogue.map((asset) => [asset.id, 'idle']),
         );
         this.heroAssetErrors = Object.fromEntries(
-            OCEAN_HERO_FISH_ASSETS.map((asset) => [asset.id, null]),
+            this.heroAssetCatalogue.map((asset) => [asset.id, null]),
         );
         this.gameplaySurge = 0;
         this.gameplaySurgeAnchor = new THREE.Vector3();
@@ -782,6 +786,7 @@ export class OceanFishSystem {
         // Priming only writes the first active wave into instance matrices.
         // Later schools stay outside mesh.count until their reveal timer fires.
         this.updateMatrices();
+        if (this.authoredBiodiversity) this.schoolModelLoadPromise = upgradeOceanSchoolModels(this);
     }
 
     assignSpecies() {
@@ -974,7 +979,10 @@ export class OceanFishSystem {
         }
 
         this.meshes.forEach((mesh, speciesIndex) => {
-            if (mesh) mesh.count = activeSpeciesCounts[speciesIndex] || 0;
+            if (!mesh) return;
+            const active = activeSpeciesCounts[speciesIndex] || 0;
+            if (mesh.userData.setActiveCount) mesh.userData.setActiveCount(active);
+            else mesh.count = active;
         });
     }
 
@@ -1062,13 +1070,13 @@ export class OceanFishSystem {
     }
 
     initHeroAssetLayer() {
-        if (!this.scene || this.heroAssetCount <= 0 || !OCEAN_HERO_FISH_ASSETS.length) return;
+        if (!this.scene || this.heroAssetCount <= 0 || !this.heroAssetCatalogue.length) return;
         if (this.heroAssetLoadPromise) return;
 
         this.heroAssetLoadStarted = true;
         const generation = this.loadGeneration;
         this.heroAssetLoadPromise = (async () => {
-            const assetsToLoad = OCEAN_HERO_FISH_ASSETS.slice(0, this.heroAssetCount);
+            const assetsToLoad = this.heroAssetCatalogue.slice(0, this.heroAssetCount);
             const promises = assetsToLoad.map((asset) => this.loadHeroAsset(asset));
             await Promise.all(promises);
             if (this.disposed || generation !== this.loadGeneration || !this.scene) return [];
@@ -1126,7 +1134,8 @@ export class OceanFishSystem {
 
                 const hasVertexColors = !!(child.geometry?.getAttribute?.('color'))
                     || source.vertexColors === true;
-                const nodeMat = new MeshStandardNodeMaterial({
+                const MaterialClass = this.isWebGPU ? MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
+                const nodeMat = new MaterialClass({
                     color: source.color || new THREE.Color(0xffffff),
                     map: source.map ?? null,
                     normalMap: source.normalMap ?? null,
@@ -1144,18 +1153,20 @@ export class OceanFishSystem {
                     toneMapped: true,
                 });
 
-                const uTime = uniform(0);
-                const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.18);
+                const uTime = this.isWebGPU ? uniform(0) : null;
+                if (this.isWebGPU) {
+                    const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.18);
 
-                const viewDir = tslNormalize(cameraPosition.sub(positionWorld));
-                const rimFresnel = tslPow(
-                    float(1.0).sub(tslMax(dot(normalWorld, viewDir), float(0.0))),
-                    float(2.5),
-                );
-                const rimColor = vec3(0.1, 0.5, 0.6).mul(rimFresnel).mul(0.14);
-                const causticColor = vec3(0.4, 0.9, 0.8).mul(caustic).mul(0.1);
+                    const viewDir = tslNormalize(cameraPosition.sub(positionWorld));
+                    const rimFresnel = tslPow(
+                        float(1.0).sub(tslMax(dot(normalWorld, viewDir), float(0.0))),
+                        float(2.5),
+                    );
+                    const rimColor = vec3(0.1, 0.5, 0.6).mul(rimFresnel).mul(0.14);
+                    const causticColor = vec3(0.4, 0.9, 0.8).mul(caustic).mul(0.1);
 
-                nodeMat.emissiveNode = causticColor.add(rimColor);
+                    nodeMat.emissiveNode = causticColor.add(rimColor);
+                }
                 if (source.emissiveMap) {
                     nodeMat.emissiveMap = source.emissiveMap;
                     nodeMat.emissiveIntensity = source.emissiveIntensity !== undefined ? source.emissiveIntensity : 1;
@@ -1173,7 +1184,7 @@ export class OceanFishSystem {
                     aquaticFaunaMaterial: true,
                     sourceMaterial: source.name || null,
                     alphaDistanceFade: true,
-                    underwaterRimHint: true,
+                    underwaterRimHint: this.isWebGPU,
                 };
                 source.dispose();
                 return nodeMat;
@@ -1184,7 +1195,7 @@ export class OceanFishSystem {
 
     spawnHeroAssetInstances() {
         if (!this.scene || this.heroAssetCount <= 0) return;
-        const records = OCEAN_HERO_FISH_ASSETS
+        const records = this.heroAssetCatalogue
             .map((asset) => this.heroAssetRecords.get(asset.id))
             .filter(Boolean);
         if (!records.length) return;
@@ -1287,6 +1298,11 @@ export class OceanFishSystem {
         creature.laneZ = randRange(18, 76);
         creature.phase = randRange(0, Math.PI * 2);
         creature.age = 0;
+        if (this.authoredBiodiversity) {
+            creature.speed = randRange(3.5, 6.2);
+            creature.laneY = randRange(24, 44);
+            creature.laneZ = randRange(-55, -8);
+        }
 
         if (forcedPosition) {
             creature.group.position.copy(forcedPosition);
@@ -1310,6 +1326,7 @@ export class OceanFishSystem {
 
         const perf = typeof window !== 'undefined' ? window.perfMonitor : null;
         const dt = clamp(delta || 0.016, 0.001, 0.033);
+        this._authoredSchoolTime = elapsed;
         this.updatePopulationReveal(dt);
         const activeGameplaySurge = this.gameplaySurge;
         this.gameplaySurge = Math.max(0, this.gameplaySurge - dt * 0.74);
@@ -1353,6 +1370,7 @@ export class OceanFishSystem {
             this.updateMatrices(heroHeavyTick);
             perf?.endSection('ocean.fish.matrices');
         }
+        this.meshes.forEach((mesh) => mesh?.userData.update?.(elapsed));
 
         this.materials.forEach((material) => {
             if (!material) return;
@@ -1956,6 +1974,7 @@ export class OceanFishSystem {
             activeSchoolFish: this.activeSchoolFish,
             activeHeroFish: this.activeHeroFish,
             proceduralSchoolsInstanced: true,
+            authoredSchoolModels: this.meshes.filter((mesh) => mesh?.userData.authoredSchool).length,
             heroAssetLayer: {
                 enabled: this.heroAssetCount > 0,
                 requestedCount: this.heroAssetCount,
@@ -1977,7 +1996,7 @@ export class OceanFishSystem {
                         z: roundMetric(creature.group.position.z),
                     },
                 })),
-                manifest: summarizeFaunaAssetManifest().heroFish,
+                manifest: this.authoredBiodiversity ? this.heroAssetCatalogue : summarizeFaunaAssetManifest().heroFish,
             },
         };
     }
@@ -2071,10 +2090,12 @@ export class OceanFishSystem {
         this.heroAssetRecords.clear();
         this.heroAssetLoadPromise = null;
         this.heroAssetLoader = null;
+        this.schoolModelLoadPromise = null;
 
         this.meshes.forEach((mesh) => {
             if (!mesh) return;
             this.scene?.remove(mesh);
+            mesh.dispose?.();
             mesh.geometry?.dispose();
             if (Array.isArray(mesh.material)) mesh.material.forEach((material) => material.dispose());
             else mesh.material?.dispose();

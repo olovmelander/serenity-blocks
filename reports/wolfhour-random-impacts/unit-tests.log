@@ -1,0 +1,82 @@
+{
+  "command": "npx vitest run tests/unit/wolfhour-ambient-integration.test.js tests/unit/wolfhour-landscape.test.js tests/unit/wolfhour-meteor.test.js tests/unit/wolfhour-sky.test.js tests/unit/wolfhour-effect-accumulation.test.js",
+  "exitCode": 0,
+  "summary": "5 passed (5); 63 passed (63)",
+  "startedAt": "2026-10-01T14:08:21.565Z",
+  "completedAt": "2026-10-01T14:08:40.010Z",
+  "signal": null,
+  "error": null,
+  "log": "unit-tests.log"
+}
+
+STDOUT
+
+ RUN  v3.2.7 C:/Users/olov_/repos/serenity-blocks
+
+ ✓ tests/unit/wolfhour-meteor.test.js (9 tests) 40ms
+ ✓ tests/unit/wolfhour-sky.test.js (3 tests) 434ms
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > preserves earlier lunar reactions when successive events claim new slots
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the Minimal quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the Low quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the Medium quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the High quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the Ultra quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps an accumulation budget on the Extreme quality tier
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > replaces only the closest-to-expiry reaction when the bounded pool is full
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > adds effect-state energy and clamps it at the configured cap
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > keeps ambient meteors alive and emits the combo-five crash once per lock
+[Wolfhour] Theme constructed
+
+stdout | tests/unit/wolfhour-effect-accumulation.test.js > Wolfhour effect accumulation > tracks combo progress and reactive origins independently per player
+[Wolfhour] Theme constructed
+
+ ✓ tests/unit/wolfhour-effect-accumulation.test.js (11 tests) 42ms
+ ✓ tests/unit/wolfhour-ambient-integration.test.js (19 tests) 6277ms
+   ✓ Wolfhour ambient integration > connects lunar reaction aliases to the sky owner without constructing legacy ambient objects  760ms
+   ✓ Wolfhour ambient integration > updates and expires real lunar uniforms while the shared effect energy decays  402ms
+   ✓ Wolfhour ambient integration > spawns crashes against the new terrain when the legacy mountain list is empty  486ms
+   ✓ Wolfhour ambient integration > distributes pooled crashes from one gameplay origin across both shoulders at aspect 0.5625  349ms
+   ✓ Wolfhour ambient integration > distributes pooled crashes from one gameplay origin across both shoulders at aspect 1.7777777777777777  368ms
+   ✓ Wolfhour ambient integration > does not consume an impact target when the crash pool is already at capacity  348ms
+   ✓ Wolfhour ambient integration > keeps portrait meteor impacts within the actual camera frame  314ms
+   ✓ Wolfhour ambient integration > moves distant sky and successive ridges at distinct apparent rates at aspect 0.5625  330ms
+   ✓ Wolfhour ambient integration > keeps an impact on the same mountain point through camera motion at aspect 0.5625  401ms
+   ✓ Wolfhour ambient integration > keeps an impact on the same mountain point through camera motion at aspect 1.7777777777777777  392ms
+   ✓ Wolfhour ambient integration > keeps a live crash attached through portrait and ultrawide aspect changes  411ms
+   ✓ Wolfhour ambient integration > stops drawing an expired shockwave while its dust and debris finish fading  594ms
+   ✓ Wolfhour ambient integration > disposes moon aliases once through their owner and allows a clean subsequent build  558ms
+ ✓ tests/unit/wolfhour-landscape.test.js (21 tests) 7499ms
+   ✓ Wolfhour alpine landscape > builds finite terrain with valid nondegenerate triangles and bounded light response  1050ms
+   ✓ Wolfhour alpine landscape > reproduces the same terrain and baked lighting from a seed  1130ms
+   ✓ Wolfhour alpine landscape > keeps High within four opaque draws and 120,000 actual triangles, with cheaper Low geometry  620ms
+   ✓ Wolfhour alpine landscape > places meteor impacts on a finite visible skyline for Low  317ms
+   ✓ Wolfhour alpine landscape > places meteor impacts on a finite visible skyline for High  322ms
+   ✓ Wolfhour alpine landscape > reproduces a distributed impact sequence from an injected random source  643ms
+   ✓ Wolfhour alpine landscape > keeps randomized impacts finite and within world limits while moving at aspect 0.5625  361ms
+   ✓ Wolfhour alpine landscape > keeps randomized impacts finite and within world limits while moving at aspect 1.7777777777777777  306ms
+
+ Test Files  5 passed (5)
+      Tests  63 passed (63)
+   Start at  16:08:27
+   Duration  11.90s (transform 2.83s, setup 0ms, collect 8.47s, tests 14.29s, environment 4ms, prepare 4.98s)
+
+
+STDERR

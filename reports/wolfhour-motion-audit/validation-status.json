@@ -1,0 +1,42 @@
+[
+  {
+    "script": "typecheck",
+    "command": "npm run typecheck",
+    "startedAt": "2026-10-01T12:52:13.061Z",
+    "completedAt": "2026-10-01T12:52:20.156Z",
+    "durationSeconds": 7.091162199999999,
+    "exitCode": 0,
+    "signal": null,
+    "error": null
+  },
+  {
+    "script": "build",
+    "command": "npm run build",
+    "startedAt": "2026-10-01T12:52:20.160Z",
+    "completedAt": "2026-10-01T12:52:55.707Z",
+    "durationSeconds": 35.5470772,
+    "exitCode": 0,
+    "signal": null,
+    "error": null
+  },
+  {
+    "script": "lint:ci",
+    "command": "npm run lint:ci",
+    "startedAt": "2026-10-01T12:52:55.709Z",
+    "completedAt": "2026-10-01T12:54:13.428Z",
+    "durationSeconds": 77.7187689,
+    "exitCode": 0,
+    "signal": null,
+    "error": null
+  },
+  {
+    "script": "audit:theme-lifecycle",
+    "command": "npm run audit:theme-lifecycle",
+    "startedAt": "2026-10-01T12:54:13.431Z",
+    "completedAt": "2026-10-01T12:54:16.413Z",
+    "durationSeconds": 2.9819648000000014,
+    "exitCode": 0,
+    "signal": null,
+    "error": null
+  }
+]

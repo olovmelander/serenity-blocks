@@ -1,0 +1,213 @@
+{
+  "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?shipping=1&t=8&quality=High",
+  "targets": [
+    {
+      "x": -518.1879759957229,
+      "y": 187.79099749423833,
+      "z": -1384.908000689373,
+      "localX": -530.7282105374413,
+      "launchX": 244.92951444592484,
+      "launchY": 757.8310706958464
+    },
+    {
+      "x": 663.9421837791936,
+      "y": 301.97378391351765,
+      "z": -1433.025412580306,
+      "localX": 651.4019492374752,
+      "launchX": 1339.457122159311,
+      "launchY": 789.7851644454386
+    },
+    {
+      "x": 519.5932313960656,
+      "y": 263.3695019017107,
+      "z": -1413.7557859720685,
+      "localX": 507.05299685434716,
+      "launchX": 1181.9715462435445,
+      "launchY": 796.1693593265204
+    },
+    {
+      "x": -727.8872301908624,
+      "y": 292.12255356752775,
+      "z": -1429.0035129957184,
+      "localX": -740.4274647325808,
+      "launchX": -62.49537430336011,
+      "launchY": 770.4614773583239
+    },
+    {
+      "x": -445.00035215270077,
+      "y": 124.4383673190457,
+      "z": -1357.5184094551346,
+      "localX": -457.5405866944192,
+      "launchX": 294.64238168537577,
+      "launchY": 737.7140444356148
+    },
+    {
+      "x": 471.44166757887706,
+      "y": 204.11307262772564,
+      "z": -1391.396943137258,
+      "localX": 458.90143303715865,
+      "launchX": -241.801990063394,
+      "launchY": 743.0773362918546
+    },
+    {
+      "x": 654.2484723794045,
+      "y": 292.4030614199389,
+      "z": -1429.855236546435,
+      "localX": 641.708237837686,
+      "launchX": 1333.8712522867118,
+      "launchY": 660.031422050699
+    },
+    {
+      "x": -616.2098649683575,
+      "y": 277.0781532542768,
+      "z": -1422.5452057684806,
+      "localX": -628.7500995100759,
+      "launchX": 57.24484589466533,
+      "launchY": 726.6632325729944
+    },
+    {
+      "x": -697.0942516992073,
+      "y": 300.4720828875182,
+      "z": -1432.2136247360293,
+      "localX": -709.6344862409258,
+      "launchX": -1264.4576421350105,
+      "launchY": 788.2524376160022
+    },
+    {
+      "x": -503.7126621776705,
+      "y": 177.03415108040073,
+      "z": -1379.9884888572874,
+      "localX": -516.2528967193889,
+      "launchX": -1281.3156970647638,
+      "launchY": 687.1037612781895
+    },
+    {
+      "x": 596.009698606976,
+      "y": 287.3547767840115,
+      "z": -1425.9812217335266,
+      "localX": 583.4694640652576,
+      "launchX": -56.17239493712543,
+      "launchY": 762.2236762775328
+    },
+    {
+      "x": 715.5303896527762,
+      "y": 299.09319013713605,
+      "z": -1430.331210834645,
+      "localX": 702.9901551110578,
+      "launchX": 84.66069673405309,
+      "launchY": 763.4651043112065
+    }
+  ],
+  "screenshots": [
+    {
+      "index": 0,
+      "screenshot": "shipping-sequence-left-1.png"
+    },
+    {
+      "index": 1,
+      "screenshot": "shipping-sequence-right-1.png"
+    },
+    {
+      "index": 2,
+      "screenshot": "shipping-sequence-right-2.png"
+    },
+    {
+      "index": 3,
+      "screenshot": "shipping-sequence-left-2.png"
+    }
+  ],
+  "ready": {
+    "stats": {
+      "calls": 644,
+      "frameCalls": 0,
+      "drawCalls": 0,
+      "triangles": 0,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0.131072,
+      "width": 1280,
+      "height": 720,
+      "pixelRatio": 1,
+      "camera": {
+        "x": 24.115835657150782,
+        "y": 6.111445458405573,
+        "top": 496.20547826912815,
+        "left": -882.14307247845
+      },
+      "memory": {
+        "attributes": 34,
+        "attributesSize": 4768344,
+        "geometries": 10,
+        "indexAttributes": 9,
+        "indexAttributesSize": 1287648,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 24,
+        "programsSize": 47907,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 13,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 18,
+        "texturesSize": 37024038,
+        "uniformBuffers": 32,
+        "uniformBuffersSize": 3328,
+        "total": 43131265
+      },
+      "time": 8,
+      "seed": 73013,
+      "quality": "High",
+      "shipping": true,
+      "runtimeFeatures": {
+        "usePost": true,
+        "useMRT": false,
+        "useCompute": false,
+        "qualityAllowsCompute": true,
+        "qualityAllowsPost": true,
+        "qualityAllowsMRT": true,
+        "spirits": "material",
+        "ambient": "off",
+        "starTwinkle": "material",
+        "meteorTrail": "cpu",
+        "debris": "shader",
+        "postProfile": "full",
+        "cameraShakeScale": 0.6,
+        "starCount": 6000,
+        "ambientParticles": 1000
+      },
+      "pointer": {
+        "x": 0,
+        "y": 0
+      },
+      "activeEvents": {
+        "stars": 0,
+        "meteors": 0,
+        "crashes": 0,
+        "beams": 0,
+        "rifts": 0,
+        "waves": 0,
+        "queue": 0
+      }
+    },
+    "adapter": {
+      "vendor": "nvidia",
+      "architecture": "ampere",
+      "device": "",
+      "description": ""
+    }
+  },
+  "asset": {
+    "url": "http://127.0.0.1:4178/assets/prototype-WoIlrnT8.js",
+    "sha256": "e135670c0184c4d7421fab39a9e3dd402d0262a6071359b9c7a8669d0020569d"
+  },
+  "console": {
+    "content": [
+      {
+        "type": "text",
+        "text": "## Console messages\nShowing 1-3 of 3 (Page 1 of 1).\nmsgid=1 [warn] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127 (0 args)\nmsgid=2 [log] [Wolfhour] Theme constructed (1 args)\nmsgid=3 [log] Wolfhour isolated prototype ready [object Object] (2 args)"
+      }
+    ]
+  },
+  "errors": []
+}

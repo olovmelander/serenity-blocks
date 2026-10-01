@@ -1,0 +1,13 @@
+{
+  "issue": "Combo crashes reused the board-edge event origin, which clamped to the same mountain shoulder. Missing origins selected only two fixed coordinates.",
+  "change": "Sample both visible shoulder intervals with the theme's seeded RNG. Exclude neighborhoods of the last two terrain-local landing coordinates, then sample the exact baked crest. Failed pool acquisitions do not advance landing history. Legacy peaks are randomized with a preference for visible peaks.",
+  "visual": {
+    "instrument": "Chrome DevTools MCP, isolated native WebGPU fixture using the actual theme crash methods.",
+    "playground": "playground-target-0.png",
+    "landscape": "shipping-sequence.json",
+    "portrait": "portrait-sequence.json",
+    "result": "Each sequence used the identical gameplay origin for 12 pooled spawns and produced 6 left-side and 6 right-side landings at varied ridge positions. Captured both sides; no browser/WebGPU errors."
+  },
+  "checks": "checks.json",
+  "rendering": "Selection runs only when a crash successfully spawns. Particle budgets, materials, draw passes and frame-loop updates are unchanged. No new full-game FPS measurement was performed."
+}

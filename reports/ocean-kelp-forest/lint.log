@@ -1,0 +1,49 @@
+
+C:\Users\olov_\repos\serenity-blocks\scripts\capture-ocean-refinement.mjs
+   10:1  warning  This line has a length of 126. Maximum allowed is 120  max-len
+   60:1  warning  This line has a length of 197. Maximum allowed is 120  max-len
+  119:1  warning  This line has a length of 129. Maximum allowed is 120  max-len
+
+C:\Users\olov_\repos\serenity-blocks\src\playground\effects\ocean-reef-light.effect.js
+    7:1  warning  This line has a length of 198. Maximum allowed is 120  max-len
+    8:1  warning  This line has a length of 129. Maximum allowed is 120  max-len
+   78:1  warning  This line has a length of 128. Maximum allowed is 120  max-len
+  214:1  warning  This line has a length of 126. Maximum allowed is 120  max-len
+
+C:\Users\olov_\repos\serenity-blocks\src\themes\ocean\ocean-atmosphere-system.js
+  2467:1  warning  This line has a length of 145. Maximum allowed is 120  max-len
+  2645:1  warning  This line has a length of 124. Maximum allowed is 120  max-len
+  3294:1  warning  This line has a length of 138. Maximum allowed is 120  max-len
+
+C:\Users\olov_\repos\serenity-blocks\src\themes\ocean\ocean-fauna-assets.js
+  43:1  warning  This line has a length of 121. Maximum allowed is 120  max-len
+
+C:\Users\olov_\repos\serenity-blocks\src\themes\ocean\ocean-gameplay-effects.js
+  487:1  warning  This line has a length of 134. Maximum allowed is 120  max-len
+
+C:\Users\olov_\repos\serenity-blocks\src\themes\ocean\ocean-kelp-assets.js
+  40:1  warning  This line has a length of 124. Maximum allowed is 120  max-len
+  42:1  warning  This line has a length of 134. Maximum allowed is 120  max-len
+  51:1  warning  This line has a length of 124. Maximum allowed is 120  max-len
+  52:1  warning  This line has a length of 124. Maximum allowed is 120  max-len
+  53:1  warning  This line has a length of 124. Maximum allowed is 120  max-len
+
+C:\Users\olov_\repos\serenity-blocks\src\themes\ocean\ocean-reef-dweller-system.js
+  804:1  warning  This line has a length of 122. Maximum allowed is 120  max-len
+
+C:\Users\olov_\repos\serenity-blocks\src\themes\ocean\ocean-theme.js
+  4038:1  warning  This line has a length of 124. Maximum allowed is 120  max-len
+  4039:1  warning  This line has a length of 127. Maximum allowed is 120  max-len
+  4573:1  warning  This line has a length of 122. Maximum allowed is 120  max-len
+  4882:1  warning  This line has a length of 146. Maximum allowed is 120  max-len
+  4979:1  warning  This line has a length of 168. Maximum allowed is 120  max-len
+  4989:1  warning  This line has a length of 200. Maximum allowed is 120  max-len
+  4996:1  warning  This line has a length of 314. Maximum allowed is 120  max-len
+
+C:\Users\olov_\repos\serenity-blocks\tests\unit\ocean-garden-models.test.js
+  138:1  warning  This line has a length of 121. Maximum allowed is 120  max-len
+  141:1  warning  This line has a length of 122. Maximum allowed is 120  max-len
+  144:1  warning  This line has a length of 123. Maximum allowed is 120  max-len
+  145:1  warning  This line has a length of 126. Maximum allowed is 120  max-len
+
+✖ 29 problems (0 errors, 29 warnings)

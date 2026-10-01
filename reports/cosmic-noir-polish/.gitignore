@@ -1,0 +1,32 @@
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/after-game/combo-linger.png
+!/after-game/combo.png
+!/after-game/idle.png
+!/after-game/lock.png
+!/after-game/result.json
+!/after-pinned/capture.png
+!/after-pinned/result.json
+!/after-repeat/capture.png
+!/after-repeat/result.json
+!/baseline-hashes.json
+!/before-game/result.json
+!/before-verified/capture.png
+!/before-verified/result.json
+!/preview-combo/capture.png
+!/preview-combo/result.json
+!/preview-low/capture.png
+!/preview-low/result.json
+!/preview-no-chroma/capture.png
+!/preview-no-chroma/result.json
+!/webgl-low/combo-linger.png
+!/webgl-low/combo.png
+!/webgl-low/idle.png
+!/webgl-low/result.json
+
+# Explicitly cited validation logs; other process output remains local.
+!/build.log
+!/lint.log
+!/tests.log
+!/typecheck.log

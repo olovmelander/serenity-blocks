@@ -61,6 +61,11 @@ import {
     tslWarmCoolAttenuation,
 } from './ocean-tsl-helpers.js';
 import { OCEAN_SHAFT_LAYOUT } from './ocean-lighting-rig.js';
+import { applyReefComposition, composeReefCoralPlacements } from './ocean-composition.js';
+import { getBlenderCoralRecords, getBlenderKelpRecords, getBlenderReefRecords } from './ocean-blender-assets.js';
+import { createOceanMorphSampler } from './ocean-jellyfish-model.js';
+import { createOceanGardenModels } from './ocean-garden-models.js';
+import { createOceanForestKelpMaterial } from './ocean-forest-materials.js';
 
 const SHAFT_COLOR = new THREE.Color(0x8ae8ff);
 const SHAFT_WARMTH = new THREE.Color(0xfff5d6);
@@ -544,6 +549,7 @@ function disposeObject(root) {
     const materials = new Set();
 
     root.traverse((object) => {
+        if (object.isInstancedMesh) object.dispose();
         if (object.geometry) geometries.add(object.geometry);
         if (object.material) {
             if (Array.isArray(object.material)) {
@@ -565,7 +571,7 @@ function disposeObject(root) {
 // placements use it — by extracting the merged meshes from the prepared scene
 // and rebuilding them as InstancedMeshes. With 10 hero coral placements
 // sharing 1 variant × 3 materials, draws drop from 30 → 3.
-function buildPlacementInstanceMeshes(placements, pickRecordFor, resultsById) {
+function buildPlacementInstanceMeshes(placements, pickRecordFor, resultsById, authoredMorphs = []) {
     const byVariant = new Map();
     placements.forEach((placement, originalIndex) => {
         const record = pickRecordFor(placement, originalIndex);
@@ -573,7 +579,9 @@ function buildPlacementInstanceMeshes(placements, pickRecordFor, resultsById) {
         const result = resultsById.get(record.id);
         if (!result || result.status !== 'fulfilled') return;
         if (!byVariant.has(record.id)) {
-            byVariant.set(record.id, { record, scene: result.value.scene, slots: [] });
+            byVariant.set(record.id, {
+                record, scene: result.value.scene, animations: result.value.animations, slots: [],
+            });
         }
         byVariant.get(record.id).slots.push({ placement, originalIndex });
     });
@@ -581,7 +589,9 @@ function buildPlacementInstanceMeshes(placements, pickRecordFor, resultsById) {
     const meshes = [];
     const indexToVariantSlot = new Map();
     const dummy = new THREE.Object3D();
-    byVariant.forEach(({ record, scene, slots }, variantId) => {
+    byVariant.forEach(({
+        record, scene, animations, slots,
+    }, variantId) => {
         const count = slots.length;
         if (count <= 0) return;
         const localMinY = scene.userData?.localMinY ?? 0;
@@ -594,6 +604,20 @@ function buildPlacementInstanceMeshes(placements, pickRecordFor, resultsById) {
             inst.userData.assetId = record.id;
             inst.userData.assetStatus = 'glb-loaded-instanced';
             inst.userData.triangleCount = record.triangleCount;
+            if (record.animated && child.geometry.morphAttributes.position?.length) {
+                const pose = { morphTargetInfluences: [...child.morphTargetInfluences] };
+                // r186 updates an unused UniformArrayNode if a multi-instance
+                // mesh exposes influences alongside its morph texture.
+                if (count === 1) inst.morphTargetInfluences = pose.morphTargetInfluences;
+                inst.morphTargetDictionary = { ...child.morphTargetDictionary };
+                for (let i = 0; i < count; i++) inst.setMorphAt(i, pose);
+                authoredMorphs.push({
+                    mesh: inst,
+                    sample: createOceanMorphSampler(child, animations?.[0]),
+                    phase: record.runtimeScale ?? 0,
+                    pose,
+                });
+            }
             for (let i = 0; i < count; i += 1) {
                 const { placement } = slots[i];
                 const scale = (placement.scale ?? 1) * (record.runtimeScale ?? 1);
@@ -742,14 +766,18 @@ function createFallbackHeroKelpGeometry(height = 8, width = 0.58, segments = 12)
     return geometry;
 }
 
-function createHeroKelpNodeMaterial() {
-    const material = new MeshBasicNodeMaterial({
+function createHeroKelpNodeMaterial({ authored = false } = {}) {
+    if (authored) return createOceanForestKelpMaterial();
+    const MaterialClass = authored ? MeshStandardNodeMaterial : MeshBasicNodeMaterial;
+    const material = new MaterialClass({
         // Hero kelp blades are thin and viewed from both sides as the camera
         // drifts, so DoubleSide stays — but the cost from kelp is already
         // small (it's the rim/caustic glow that's expensive elsewhere).
         side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.94,
+        transparent: false,
+        opacity: 1,
+        vertexColors: authored,
+        ...(authored ? { roughness: 0.78, metalness: 0 } : {}),
     });
 
     const uTime = uniform(0);
@@ -774,11 +802,16 @@ function createHeroKelpNodeMaterial() {
     // samples. Visual: the tip glow still appears in the rendered color.
     const tipHighlight = tip.mul(smoothstep(float(0.74), float(1.0), aHeight).mul(0.1));
 
-    material.colorNode = color.add(tipHighlight);
-    material.positionNode = positionLocal.add(vec3(swayX, float(0.0), swayZ));
+    material.colorNode = authored ? materialColor.rgb : color.add(tipHighlight);
+    // Blender morph targets carry the authored bend and ribbon flutter.
+    if (!authored) material.positionNode = positionLocal.add(vec3(swayX, float(0.0), swayZ));
     material.emissiveNode = vec3(0);
     material.userData = { uTime, uCurrentStrength };
     return material;
+}
+
+function createHeroKelpStandardMaterial() {
+    return createOceanForestKelpMaterial({ isWebGPU: false });
 }
 
 function createHeroKelpShaderMaterial() {
@@ -1095,6 +1128,7 @@ function createHeroReefNodeMaterial(sourceMaterial) {
         side: sourceMaterial?.side === THREE.DoubleSide ? THREE.FrontSide : (sourceMaterial?.side ?? THREE.FrontSide),
         transparent: sourceMaterial?.transparent ?? false,
         opacity: sourceMaterial?.opacity ?? 1,
+        vertexColors: sourceMaterial?.vertexColors === true,
         alphaTest: sourceMaterial?.alphaTest ?? 0.02,
     });
     const uTime = uniform(0);
@@ -1115,7 +1149,7 @@ function createHeroReefNodeMaterial(sourceMaterial) {
     // WS B1: rim + caustic move from emissiveNode → colorNode so the reef
     // doesn't contribute to MRT emissive (god-ray Loop / bloom samples).
     material.colorNode = tslWarmCoolAttenuation(
-        mix(baseSurface, sandColor, sandWeight).add(tint),
+        mix(baseSurface, sandColor, sandWeight.mul(sourceMaterial?.vertexColors ? 0.18 : 1)).add(tint),
         viewDistance,
         float(0.82),
     );
@@ -1150,6 +1184,7 @@ function createHeroReefStandardMaterial(sourceMaterial) {
         side: sourceMaterial?.side === THREE.DoubleSide ? THREE.FrontSide : (sourceMaterial?.side ?? THREE.FrontSide),
         transparent: sourceMaterial?.transparent ?? false,
         opacity: sourceMaterial?.opacity ?? 1,
+        vertexColors: sourceMaterial?.vertexColors === true,
         alphaTest: sourceMaterial?.alphaTest ?? 0.02,
     });
 
@@ -1221,6 +1256,8 @@ export class OceanAtmosphereSystem {
         this.coralCarpetPatches = [];
         this.heroCorals = [];
         this.heroKelp = [];
+        this.authoredMorphs = [];
+        this.gardenModels = null;
         this.importedSeabedDetails = [];
         this.coralOvergrowthInstances = [];
         // Tracking arrays for bisect drill-down. Without these, atmosphere
@@ -1365,6 +1402,10 @@ export class OceanAtmosphereSystem {
                     if (!this.skipFlags.importedSeabed) this.createImportedSeabedDetails();
                 },
             },
+            {
+                name: 'atmosphereComposition',
+                run: () => { applyReefComposition(this); },
+            },
         ];
     }
 
@@ -1481,7 +1522,7 @@ export class OceanAtmosphereSystem {
             name: 'atmosphereHeroReefFinalize',
             run: () => {
                 if (this.disposed) return;
-                if (this.settings.reefWallGlbEnabled === true) {
+                if (this.settings.reefWallGlbEnabled === true || this.settings.blenderAssets === true) {
                     this.enqueueUpgradeTask(() => this.upgradeHeroReefWallsFromGLB(placements));
                 } else {
                     this.heroReefStats.manifest = summarizeReefAssetManifest().heroReef;
@@ -1673,12 +1714,16 @@ export class OceanAtmosphereSystem {
         return group;
     }
 
-    async upgradeHeroReefWallsFromGLB(placements) {
+    async upgradeHeroReefWallsFromGLB(sourcePlacements) {
         const generation = this.upgradeGeneration;
-        const allRecords = getHeroReefAssetRecords();
-        this.heroReefStats.manifest = summarizeReefAssetManifest().heroReef;
+        const authored = this.settings.blenderAssets === true;
+        // The two nearest anchors are rebuilt; keep the inexpensive distant arch/stack.
+        const placements = authored ? sourcePlacements.slice(0, 2) : sourcePlacements;
+        const allRecords = authored ? getBlenderReefRecords() : getHeroReefAssetRecords();
+        this.heroReefStats.manifest = authored ? allRecords : summarizeReefAssetManifest().heroReef;
         const pickRecord = (records, placement, index) => {
-            const preferred = records.find((record) => record.id === placement.idHint);
+            const preferred = records.find((record) => (authored
+                ? record.kind === placement.kind : record.id === placement.idHint));
             return preferred || records[index % records.length];
         };
         const records = selectUniqueRecordsForPlacements(allRecords, placements, pickRecord);
@@ -1874,6 +1919,13 @@ export class OceanAtmosphereSystem {
             this.group.add(rock);
         }
         this.foregroundRockStats.proceduralCount = this.foregroundRocks.length;
+
+        // Ground the rocks before placing their world-space coral overgrowth.
+        // Deferred GLB upgrades retain these anchored placement coordinates.
+        applyReefComposition(this);
+        placements.forEach((placement, index) => {
+            placement.y = this.foregroundRocks[index].position.y;
+        });
 
         const rockUrls = getHeroRockAssetUrls();
         this.foregroundRockStats.discoveredGlbCount = rockUrls.length;
@@ -2337,12 +2389,17 @@ export class OceanAtmosphereSystem {
         return group;
     }
 
-    async upgradeHeroCoralsFromGLB(placements) {
+    async upgradeHeroCoralsFromGLB(sourcePlacements) {
         const generation = this.upgradeGeneration;
-        const allRecords = getHeroCoralAssetRecords()
+        const authored = this.settings.blenderAssets === true;
+        const placements = authored
+            ? sourcePlacements.map((placement, index) => ({
+                ...placement,
+                kind: index === 2 ? 'fan-coral' : placement.kind,
+            })) : sourcePlacements;
+        const allRecords = (authored ? getBlenderCoralRecords() : getHeroCoralAssetRecords())
             .filter((record) => record.placementRole !== 'carpet-patch');
-        this.heroCoralStats.manifest = summarizeCoralAssetManifest().heroCorals
-            .filter((record) => record.placementRole !== 'carpet-patch');
+        this.heroCoralStats.manifest = allRecords;
         const pickRecord = (records, placement, index) => {
             const preferred = records.find((record) => record.kind === placement.kind);
             return preferred || records[index % records.length];
@@ -2379,34 +2436,33 @@ export class OceanAtmosphereSystem {
         // step takes those merged meshes and rebuilds them as InstancedMesh
         // shared across ALL placements using the same variant. For 10
         // placements × 1 variant × ~3 materials, draws drop from 30 → 3.
-        const { meshes } = buildPlacementInstanceMeshes(
-            placements,
+        const { meshes, indexToVariantSlot } = buildPlacementInstanceMeshes(
+            composeReefCoralPlacements(placements),
             (placement, index) => pickRecord(allRecords, placement, index),
             resultsById,
+            this.authoredMorphs,
         );
 
         // Remove existing placeholder roots; replace this.heroCorals[] with
         // references to the new InstancedMeshes so bisect drill-down + dispose
-        // still work. We keep the array length = placements.length so the
-        // index → entry mapping for atmosphereSystem.heroCorals stays usable;
-        // multiple indices may point at the same InstancedMesh which is fine.
+        // still work. Preserve each placement's variant identity; placements
+        // sharing a variant deliberately reference the same InstancedMesh.
         placements.forEach((_placement, i) => {
+            const slot = indexToVariantSlot.get(i);
+            if (!slot) return; // Keep the procedural colony when its model failed to load.
             const old = this.heroCorals[i];
             if (old?.parent) {
                 this.group.remove(old);
                 disposeObject(old);
             }
-            // Point every index at the first InstancedMesh as a stable
-            // reference; visibility toggles on it affect all placements
-            // simultaneously (which is what the bisect scenario wants).
-            this.heroCorals[i] = meshes[0] || null;
+            this.heroCorals[i] = meshes.find((mesh) => mesh.userData.assetId === slot.variantId) || null;
         });
 
         meshes.forEach((mesh) => {
             mesh.userData.isOceanHeroCoral = true;
             this.group.add(mesh);
         });
-        this.heroCoralStats.loadedCount = placements.length;
+        this.heroCoralStats.loadedCount = indexToVariantSlot.size;
         this.heroCoralStats.instancedMeshCount = meshes.length;
         this.heroCoralStats.optimizationNote = `phase-I: ${placements.length} placements collapsed to ${meshes.length} InstancedMesh draw calls`;
     }
@@ -2464,7 +2520,9 @@ export class OceanAtmosphereSystem {
         // Now collapse N child meshes → 1 mesh per unique material. Each
         // placement's scene.clone(true) downstream inherits the merged shape,
         // so 10 placements × 50 children → 10 placements × M materials.
-        mergeMeshesByMaterial(root);
+        // Authored animated assets are already one mesh. Keep their named morph
+        // streams intact so the glTF clip can drive the final instanced colony.
+        if (!record?.animated) mergeMeshesByMaterial(root);
         cacheLocalMinY(root);
     }
 
@@ -2529,8 +2587,9 @@ export class OceanAtmosphereSystem {
 
     async upgradeHeroKelpFromGLB(placements) {
         const generation = this.upgradeGeneration;
-        const records = getHeroKelpAssetRecords();
-        this.heroKelpStats.manifest = summarizeKelpAssetManifest().heroKelp;
+        const authored = this.settings.blenderAssets === true;
+        const records = (authored ? getBlenderKelpRecords() : getHeroKelpAssetRecords()).slice(0, placements.length);
+        this.heroKelpStats.manifest = records;
         if (!records.length) return;
 
         records.forEach((record) => {
@@ -2552,7 +2611,7 @@ export class OceanAtmosphereSystem {
                 console.warn(`🌊 [Ocean] kelp ${record.id} GLB load failed:`, result.reason);
                 return;
             }
-            this.prepareHeroKelpAsset(result.value.scene);
+            this.prepareHeroKelpAsset(result.value.scene, { authored });
             this.heroKelpStats.statuses[record.id] = 'loaded';
         });
 
@@ -2579,18 +2638,29 @@ export class OceanAtmosphereSystem {
                 disposeObject(old);
             }
             this.heroKelp[i] = root;
+            if (authored) {
+                root.traverse((child) => {
+                    if (!child.isMesh || !child.geometry.morphAttributes.position?.length) return;
+                    this.authoredMorphs.push({
+                        mesh: child, sample: createOceanMorphSampler(child, result.value.animations?.[0]), phase: i * 2.399,
+                    });
+                });
+            }
             this.heroKelpStats.loadedCount += 1;
             this.group.add(root);
         });
     }
 
-    prepareHeroKelpAsset(root) {
+    prepareHeroKelpAsset(root, { authored = false } = {}) {
         // Phase G.2: hero kelp uses ONE material for every child — share it
         // across the asset and let mergeMeshesByMaterial collapse all child
         // meshes into a single draw call per kelp clone.
-        const sharedMaterial = this.isWebGPU ? createHeroKelpNodeMaterial() : createHeroKelpShaderMaterial();
+        let sharedMaterial;
+        if (this.isWebGPU) sharedMaterial = createHeroKelpNodeMaterial({ authored });
+        else if (authored) sharedMaterial = createHeroKelpStandardMaterial();
+        else sharedMaterial = createHeroKelpShaderMaterial();
         if (this.isWebGPU) this.tslUserData.push(sharedMaterial.userData);
-        else this.uniforms.push(sharedMaterial.uniforms);
+        else if (sharedMaterial.uniforms) this.uniforms.push(sharedMaterial.uniforms);
 
         root.traverse((child) => {
             if (!child.isMesh) return;
@@ -2604,7 +2674,7 @@ export class OceanAtmosphereSystem {
             child.material = sharedMaterial;
         });
         // All children share one material → merge collapses them all to ONE draw call.
-        mergeMeshesByMaterial(root);
+        if (!authored) mergeMeshesByMaterial(root);
         cacheLocalMinY(root);
     }
 
@@ -2612,6 +2682,12 @@ export class OceanAtmosphereSystem {
         const count = Math.max(0, Math.floor(this.settings.importedSeabedDetailCount ?? 0));
         this.importedSeabedDetailStats.requestedCount = count;
         if (count <= 0) return;
+        if (this.settings.biodiversityAssets === true) {
+            this.scheduleAssetUpgrade(() => {
+                this.enqueueUpgradeTask(() => this.upgradeGardenModels(count));
+            }, 850);
+            return;
+        }
 
         const placements = IMPORTED_SEABED_DETAIL_PLACEMENTS.slice(0, count).map((placement, i) => {
             const y = this.getSeabedHeight(placement.x, placement.z);
@@ -2626,6 +2702,17 @@ export class OceanAtmosphereSystem {
         this.scheduleAssetUpgrade(() => {
             this.enqueueUpgradeTask(() => this.upgradeImportedSeabedDetailsFromGLB(placements));
         }, 1250);
+    }
+
+    async upgradeGardenModels(detailCount) {
+        const generation = this.upgradeGeneration;
+        const garden = await createOceanGardenModels({
+            getSeabedHeight: this.getSeabedHeight, isWebGPU: this.isWebGPU, detailCount,
+        });
+        if (this.isUpgradeStale(generation)) { garden?.dispose(); return; }
+        this.gardenModels?.dispose();
+        this.gardenModels = garden;
+        if (garden) this.group.add(garden.group);
     }
 
     async upgradeImportedSeabedDetailsFromGLB(placements) {
@@ -3574,12 +3661,31 @@ export class OceanAtmosphereSystem {
             if (strengthChanged && userData.uCurrentStrength) userData.uCurrentStrength.value = currentStrength;
             if (glowChanged && userData.uGlowIntensity) userData.uGlowIntensity.value = glowIntensity;
         });
+        this.gardenModels?.update(elapsed, currentStrength, glowIntensity);
+        this.authoredMorphs.forEach(({
+            mesh, sample, phase, pose,
+        }) => {
+            if (mesh.isInstancedMesh) {
+                for (let i = 0; i < mesh.count; i++) {
+                    const weights = sample(elapsed * 0.72, phase + i * 2.399);
+                    for (let j = 0; j < weights.length; j++) pose.morphTargetInfluences[j] = weights[j];
+                    mesh.setMorphAt(i, pose);
+                }
+                if (mesh.morphTexture) mesh.morphTexture.needsUpdate = true;
+            } else {
+                const weights = sample(elapsed * 0.72, phase);
+                for (let j = 0; j < weights.length; j++) mesh.morphTargetInfluences[j] = weights[j];
+            }
+        });
         // Glow + dust billboard meshes (up to ~504 instances at Extreme) update
         // at 30 Hz on the odd-frame stride group. Slow drift; visually identical.
         // ?oceanNoAtmosphereBillboards=1 sets skipBillboards to suppress entirely.
         if (billboardHeavyTick && !skipBillboards) {
             this.updateBillboards(elapsed, currentStrength, glowIntensity);
         }
+        // WeakSet guards make this a small identity check after initial seating;
+        // newly replaced GLB roots receive exactly the same staging once.
+        applyReefComposition(this);
     }
 
     collectSignoff() {
@@ -3587,6 +3693,7 @@ export class OceanAtmosphereSystem {
         const kelpManifest = summarizeKelpAssetManifest();
         return {
             bottomAssets: {
+                authoredGardens: this.gardenModels?.diagnostics || null,
                 foregroundRocks: this.foregroundRockStats,
                 coralOvergrowth: this.coralOvergrowthStats,
                 importedSeabedDetails: {
@@ -3607,7 +3714,7 @@ export class OceanAtmosphereSystem {
                 glbLoadedCount: this.heroReefWalls.filter(
                     (reef) => reef?.userData?.assetStatus === 'glb-loaded',
                 ).length,
-                manifest: summarizeReefAssetManifest().heroReef,
+                manifest: this.heroReefStats.manifest || summarizeReefAssetManifest().heroReef,
             },
             coralCarpetPatches: {
                 ...this.coralCarpetStats,
@@ -3621,9 +3728,10 @@ export class OceanAtmosphereSystem {
                 ...this.heroCoralStats,
                 activeCount: this.heroCorals.filter(Boolean).length,
                 glbLoadedCount: this.heroCorals.filter(
-                    (coral) => coral?.userData?.assetStatus === 'glb-loaded',
+                    (coral) => coral?.userData?.assetStatus?.startsWith('glb-loaded'),
                 ).length,
-                manifest: coralManifest.filter((record) => record.placementRole !== 'carpet-patch'),
+                manifest: this.heroCoralStats.manifest
+                    || coralManifest.filter((record) => record.placementRole !== 'carpet-patch'),
             },
             heroKelp: {
                 ...this.heroKelpStats,
@@ -3631,7 +3739,7 @@ export class OceanAtmosphereSystem {
                 glbLoadedCount: this.heroKelp.filter(
                     (kelp) => kelp?.userData?.assetStatus === 'glb-loaded',
                 ).length,
-                manifest: kelpManifest.heroKelp,
+                manifest: this.heroKelpStats.manifest || kelpManifest.heroKelp,
             },
         };
     }
@@ -3659,6 +3767,8 @@ export class OceanAtmosphereSystem {
 
     dispose() {
         this.disposed = true;
+        this.gardenModels?.dispose();
+        this.gardenModels = null;
         this.upgradeGeneration += 1;
         this.assetUpgradeTimers?.forEach((timer) => clearTimeout(timer));
         this.assetUpgradeTimers = [];
@@ -3682,6 +3792,7 @@ export class OceanAtmosphereSystem {
         this.coralCarpetPatches = [];
         this.heroCorals = [];
         this.heroKelp = [];
+        this.authoredMorphs = [];
         this.coralOvergrowthInstances = [];
         this._coralOvergrowthCache = null;
         this.bottomAssetWarnings = [];

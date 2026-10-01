@@ -1,0 +1,40 @@
+# Local source snapshots and minified capture fixtures are reproducible inputs.
+original/
+production-original/
+production-prototype/
+chrome-tools.json
+# Retain the accepted reference-directed captures; intermediate studies stay local.
+prototype-*.png
+prototype-*.json
+diagnostic-*.png
+diagnostic-*.json
+playground-production-*.json
+playground-production-*.png
+original-high-*.png
+original-high-*.json
+original-summary.json
+reference-high-v1.*
+reference-high-v2.*
+reference-combo.*
+reference-low.*
+original-production-*
+lint-scoped.json
+
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/original-final-high.json
+!/original-final-high.png
+!/reference-final-combo.json
+!/reference-final-combo.png
+!/reference-final-crash.json
+!/reference-final-crash.png
+!/reference-final-high.json
+!/reference-final-high.png
+!/reference-final-playground.json
+!/reference-final-playground.png
+!/reference-final-portrait.json
+!/reference-final-portrait.png
+!/reference-final-square.json
+!/reference-final-square.png
+!/verification.json

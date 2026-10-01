@@ -1,0 +1,514 @@
+{
+  "createdAt": "2026-10-01T12:56:26.367Z",
+  "direction": "The supplied Wolfhour cover: silver left wall, shadowed right massif, black central valley and fine stars. Stronger layer depth, natural moon shading and restrained meteor reactions.",
+  "findings": [
+    "The prior orthographic scene translated all layers together, eliminating depth cues. Camera motion now drives distinct sky, moon, fog and mountain responses, with damped pointer movement.",
+    "Terrain crest notches were extruded vertically into fabric-like folds. Relief now uses absolute elevation with irregular diagonal crags and broken snow gullies; local texture coordinates prevent swimming.",
+    "Subpixel stars could flicker during movement. Derivative-filtered cores conserve light, with faint clustered stars and rare brighter anchors in one instanced draw.",
+    "Pooled impact shader ages were stale on reuse. They now reset before the first impact frame; fragments are smaller, dust is restrained and expired shockwaves stop drawing.",
+    "Impacts needed the same terrain transform during motion and aspect changes. Landing anchors now follow both layer translation and aspect scaling."
+  ],
+  "scope": "Isolated native WebGPU Wolfhour, including actual theme event methods and a playground board proxy. Full-game FPS, iGPU and WebGL fallback appearance were not measured.",
+  "instrument": {
+    "browser": "Chrome DevTools MCP 1.7.0; private headless Chrome profile; NVIDIA Ampere native WebGPU.",
+    "baseline": "Frozen completed previous Wolfhour pass, not repository HEAD. See baseline-manifest.json.",
+    "comparison": "1280x720, DPR1, High, seed73013, production minified fixtures, post enabled, MRT/compute disabled in both; two 180-frame windows from t8 to t11 after45 warm frames each.",
+    "method": "One sample per resolved GPU timestamp; CPU includes update and render. Draw calls match exactly and triangle count differs by less than2%. RAF intervals include query synchronization and are not gameplay FPS.",
+    "limits": "GPU timestamp buckets are65.536 microseconds. Equal buckets mean difference below resolution, not zero added cost. Capture browsers ran sequentially after build/lint completed; the shared workstation and user-owned development services were not exclusively controlled."
+  },
+  "performance": {
+    "contentMatched": true,
+    "baseline": [
+      {
+        "gpuMs": {
+          "count": 180,
+          "p50": 0.196608,
+          "p95": 0.32767999999999997,
+          "min": 0.065536,
+          "max": 0.45875199999999994
+        },
+        "cpuUpdateRenderMs": {
+          "count": 180,
+          "p50": 1.699999999254942,
+          "p95": 2.800000000745058,
+          "min": 1.199999999254942,
+          "max": 5.400000002235174
+        },
+        "content": {
+          "calls": 22,
+          "triangles": 121715,
+          "points": 0
+        },
+        "dimensions": {
+          "width": 1280,
+          "height": 720,
+          "pixelRatio": 1
+        },
+        "startTime": 8,
+        "endTime": 11
+      },
+      {
+        "gpuMs": {
+          "count": 180,
+          "p50": 0.196608,
+          "p95": 0.32767999999999997,
+          "min": 0.065536,
+          "max": 0.45875199999999994
+        },
+        "cpuUpdateRenderMs": {
+          "count": 180,
+          "p50": 1.3999999985098839,
+          "p95": 1.699999999254942,
+          "min": 0.8999999985098839,
+          "max": 1.800000000745058
+        },
+        "content": {
+          "calls": 22,
+          "triangles": 121715,
+          "points": 0
+        },
+        "dimensions": {
+          "width": 1280,
+          "height": 720,
+          "pixelRatio": 1
+        },
+        "startTime": 8,
+        "endTime": 11
+      }
+    ],
+    "revised": [
+      {
+        "gpuMs": {
+          "count": 180,
+          "p50": 0.196608,
+          "p95": 0.262144,
+          "min": 0.065536,
+          "max": 0.39321599999999995
+        },
+        "cpuUpdateRenderMs": {
+          "count": 180,
+          "p50": 1.6000000014901161,
+          "p95": 1.9000000022351742,
+          "min": 1.300000000745058,
+          "max": 2.300000000745058
+        },
+        "content": {
+          "calls": 22,
+          "triangles": 119315,
+          "points": 0
+        },
+        "dimensions": {
+          "width": 1280,
+          "height": 720,
+          "pixelRatio": 1
+        },
+        "startTime": 8,
+        "endTime": 11
+      },
+      {
+        "gpuMs": {
+          "count": 180,
+          "p50": 0.196608,
+          "p95": 0.32767999999999997,
+          "min": 0.065536,
+          "max": 0.32767999999999997
+        },
+        "cpuUpdateRenderMs": {
+          "count": 180,
+          "p50": 1.5,
+          "p95": 1.800000000745058,
+          "min": 1.199999999254942,
+          "max": 2.099999997764826
+        },
+        "content": {
+          "calls": 22,
+          "triangles": 119315,
+          "points": 0
+        },
+        "dimensions": {
+          "width": 1280,
+          "height": 720,
+          "pixelRatio": 1
+        },
+        "startTime": 8,
+        "endTime": 11
+      }
+    ],
+    "firstRevisedLaunch": [
+      {
+        "gpuMs": {
+          "count": 180,
+          "p50": 0.262144,
+          "p95": 0.39321599999999995,
+          "min": 0.131072,
+          "max": 0.45875199999999994
+        },
+        "cpuUpdateRenderMs": {
+          "count": 180,
+          "p50": 1.5999999977648258,
+          "p95": 2.100000001490116,
+          "min": 0.8999999985098839,
+          "max": 2.699999999254942
+        },
+        "content": {
+          "calls": 22,
+          "triangles": 119315,
+          "points": 0
+        },
+        "dimensions": {
+          "width": 1280,
+          "height": 720,
+          "pixelRatio": 1
+        },
+        "startTime": 8,
+        "endTime": 11
+      },
+      {
+        "gpuMs": {
+          "count": 180,
+          "p50": 0.262144,
+          "p95": 0.39321599999999995,
+          "min": 0.131072,
+          "max": 0.524288
+        },
+        "cpuUpdateRenderMs": {
+          "count": 180,
+          "p50": 1.199999999254942,
+          "p95": 1.6000000014901161,
+          "min": 0.8999999985098839,
+          "max": 3.100000001490116
+        },
+        "content": {
+          "calls": 22,
+          "triangles": 119315,
+          "points": 0
+        },
+        "dimensions": {
+          "width": 1280,
+          "height": 720,
+          "pixelRatio": 1
+        },
+        "startTime": 8,
+        "endTime": 11
+      }
+    ],
+    "interpretation": "The final repeated GPU medians matched the prior pass. An earlier launch of the same final bundle measured one timestamp bucket higher in both windows, retained here rather than discarded. This is an observed isolated result, not an exclusive-machine or full-game FPS guarantee. Geometry decreased by2400 triangles with22 draws unchanged."
+  },
+  "motion": {
+    "baseline": {
+      "cameraDeltaX": 0.7936279054670998,
+      "layers": [
+        {
+          "name": "Mesh",
+          "cameraRelativeDeltaX": -0.7936279054670998
+        },
+        {
+          "name": "Mesh",
+          "cameraRelativeDeltaX": -0.7936279054670998
+        },
+        {
+          "name": "Mesh",
+          "cameraRelativeDeltaX": -0.7936279054670998
+        },
+        {
+          "name": "Mesh",
+          "cameraRelativeDeltaX": -0.7936279054670998
+        },
+        {
+          "name": "Mesh",
+          "cameraRelativeDeltaX": -0.7936279054670998
+        },
+        {
+          "name": "distant-cirque",
+          "cameraRelativeDeltaX": -0.7936279054670998
+        },
+        {
+          "name": "moonlit-massif",
+          "cameraRelativeDeltaX": -0.7936279054670998
+        },
+        {
+          "name": "shadowed-granite-spurs",
+          "cameraRelativeDeltaX": -0.7936279054670998
+        },
+        {
+          "name": "foreground-spurs",
+          "cameraRelativeDeltaX": -0.7936279054670998
+        }
+      ]
+    },
+    "revised": {
+      "cameraDeltaX": 6.796660127035949,
+      "layers": [
+        {
+          "name": "Wolfhour sky plane",
+          "cameraRelativeDeltaX": -0.16991650317589801
+        },
+        {
+          "name": "Wolfhour stars",
+          "cameraRelativeDeltaX": -0.30584970571661785
+        },
+        {
+          "name": "Wolfhour moon",
+          "cameraRelativeDeltaX": -0.5777161107980646
+        },
+        {
+          "name": "Wolfhour lunar atmosphere",
+          "cameraRelativeDeltaX": -0.5777161107980646
+        },
+        {
+          "name": "Wolfhour valley mist",
+          "cameraRelativeDeltaX": -5.097495095276962
+        },
+        {
+          "name": "distant-cirque",
+          "cameraRelativeDeltaX": -1.2233988228664714
+        },
+        {
+          "name": "moonlit-massif",
+          "cameraRelativeDeltaX": -3.2623968609772565
+        },
+        {
+          "name": "shadowed-granite-spurs",
+          "cameraRelativeDeltaX": -5.981060911791635
+        },
+        {
+          "name": "foreground-spurs",
+          "cameraRelativeDeltaX": -8.427858557524576
+        }
+      ]
+    }
+  },
+  "validation": {
+    "unitTests": "53 passed across5 Wolfhour suites, including real camera/parallax integration, terrain-local impact attachment through resize, pooled ages, cleanup, and capped-frame animation timing.",
+    "scopedEslint": "Passed for new leaf modules, post and playground effect.",
+    "repositoryChecks": [
+      {
+        "command": "npm run typecheck",
+        "exitCode": 0,
+        "summary": "Passed: tsc --noEmit. No stderr warnings."
+      },
+      {
+        "command": "npm run build",
+        "exitCode": 0,
+        "summary": "Production build and boot-closure check passed. Vite reported mixed static/dynamic import warnings for core/constants.js, utils/performance-monitor.js, and themes/base-theme.js. No build failure from concurrent Blood Moon work."
+      },
+      {
+        "command": "npm run lint:ci",
+        "exitCode": 0,
+        "summary": "Lint ratchet passed: 1334 errors versus allowed baseline 1336; 997 warnings; 0 fatal errors. This is a baseline-comparison pass, not a warning-free lint result. Baseline was not changed."
+      },
+      {
+        "command": "npm run audit:theme-lifecycle",
+        "exitCode": 0,
+        "summary": "Theme lifecycle audit passed with no obvious issues."
+      }
+    ],
+    "visual": "All nine final screenshots inspected; zero browser/WebGPU errors. Portrait Low and landscape/ultrawide High, pointer extremes, board proxy, combo, descent and impact."
+  },
+  "compiledAssets": {
+    "baseline": [
+      {
+        "url": "http://127.0.0.1:4180/assets/prototype-DLmjhz9E.js",
+        "bytes": 1518307,
+        "sha256": "bc507d9aec85fab10b0ad391ec14c6f8c0599dc679c6eb46d741151eccdee3f7"
+      }
+    ],
+    "revised": [
+      {
+        "url": "http://127.0.0.1:4178/assets/prototype-BbthPdB1.js",
+        "bytes": 1523394,
+        "sha256": "88b5c474c46bf57cdda12f80fb28d2eed8b7254e9a1402c46e996114c6ee5f67"
+      }
+    ]
+  },
+  "sourceHashes": {
+    "src/themes/wolfhour/wolfhour-composition.js": "4f6c77f8d72f96a79ee9abb69c3043a8ae09bdb5137583e97b6bdc80f791279c",
+    "src/themes/wolfhour/wolfhour-compute.js": "2875754b103657fae890a032d8ec08b0874da5ab515f6e3f15a4eb250da1d804",
+    "src/themes/wolfhour/wolfhour-fallback-materials.js": "5a536831b5164b729268f3dcd86c3ad83dce8ed7bb94ce3038d3831bbd7d24d5",
+    "src/themes/wolfhour/wolfhour-grade.js": "15f189bffb5bfb3448d1af9903d12166f4f3d28dd1a153eaba71e310f31df36d",
+    "src/themes/wolfhour/wolfhour-landscape.js": "0b52c0232ad247faa06b6fd55df8c6bab228f1786d92a9f03bee0ebeac9e3174",
+    "src/themes/wolfhour/wolfhour-materials.js": "8fda63d5f8009556e15020d66937cbe3a8e28ce2140c9a25735e85a80dbb28d4",
+    "src/themes/wolfhour/wolfhour-meteor.js": "a2f614a4bd88f953b6174a021e24beb41e66d800102ea6daec01762a706362af",
+    "src/themes/wolfhour/wolfhour-post.js": "a4185115011a3795c068ac59fe1fa258c7e37bd4d5161c284040d863c2de340b",
+    "src/themes/wolfhour/wolfhour-shaders.js": "0a675ecc4676e8db001f7a2edc2ceb86fc59b40b7f28e3e7884e5a42bffb8d56",
+    "src/themes/wolfhour/wolfhour-sky.js": "65f002178fec56a39c7435bc411b8c515d0842fd0e950c9e0fb27bfd2eaa6ba1",
+    "src/themes/wolfhour/wolfhour-tetrominos.js": "593f8c9a1cd668481960645d5b201c47f397e5acae3de9c58391b60a93e19721",
+    "src/themes/wolfhour/wolfhour-theme.js": "81a78042faa014f24a33d773696fd8a135a0a2bdc978fed743f7b352148ccc32",
+    "src/playground/effects/wolfhour.effect.js": "96a91daa817bd68f05dfa7a20da5f5901d6acba05d6b7a9def470a91f626a168",
+    "reports/wolfhour-overhaul/prototype-fixture.js": "05a546b493f8548c0c2f6ceaaf3a5984355a03a3765099118adc5e408056ab02"
+  },
+  "captures": {
+    "revised-idle": {
+      "screenshot": "revised-idle.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=1",
+      "createdAt": "2026-10-01T12:51:27.110Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "quality": "High",
+      "errors": [],
+      "activeEvents": {
+        "stars": 0,
+        "meteors": 0,
+        "crashes": 0,
+        "beams": 0,
+        "rifts": 0,
+        "waves": 0,
+        "queue": 0
+      }
+    },
+    "revised-combo": {
+      "screenshot": "revised-combo.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=1&event=combo&eventAge=0.35&combo=5",
+      "createdAt": "2026-10-01T12:51:33.910Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "quality": "High",
+      "errors": [],
+      "activeEvents": {
+        "stars": 1,
+        "meteors": 3,
+        "crashes": 1,
+        "beams": 2,
+        "rifts": 2,
+        "waves": 1,
+        "queue": 0
+      }
+    },
+    "revised-descent": {
+      "screenshot": "revised-descent.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=1&event=crash&eventAge=1.05&combo=5&pointerX=0.8&pointerY=-0.4",
+      "createdAt": "2026-10-01T12:51:41.578Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "quality": "High",
+      "errors": [],
+      "activeEvents": {
+        "stars": 0,
+        "meteors": 3,
+        "crashes": 1,
+        "beams": 2,
+        "rifts": 2,
+        "waves": 0,
+        "queue": 0
+      }
+    },
+    "revised-impact": {
+      "screenshot": "revised-impact.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=1&event=crash&eventAge=1.7&combo=5&pointerX=0.8&pointerY=-0.4",
+      "createdAt": "2026-10-01T12:51:49.154Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "quality": "High",
+      "errors": [],
+      "activeEvents": {
+        "stars": 0,
+        "meteors": 3,
+        "crashes": 1,
+        "beams": 0,
+        "rifts": 0,
+        "waves": 0,
+        "queue": 0
+      }
+    },
+    "revised-left": {
+      "screenshot": "revised-left.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=24&quality=High&shipping=1&pointerX=-1&pointerY=0.6",
+      "createdAt": "2026-10-01T12:51:57.547Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "quality": "High",
+      "errors": [],
+      "activeEvents": {
+        "stars": 0,
+        "meteors": 0,
+        "crashes": 0,
+        "beams": 0,
+        "rifts": 0,
+        "waves": 0,
+        "queue": 0
+      }
+    },
+    "revised-right": {
+      "screenshot": "revised-right.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=24&quality=High&shipping=1&pointerX=1&pointerY=-0.6",
+      "createdAt": "2026-10-01T12:52:07.684Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "quality": "High",
+      "errors": [],
+      "activeEvents": {
+        "stars": 0,
+        "meteors": 0,
+        "crashes": 0,
+        "beams": 0,
+        "rifts": 0,
+        "waves": 0,
+        "queue": 0
+      }
+    },
+    "revised-portrait": {
+      "screenshot": "revised-portrait.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=50&quality=Low&shipping=1&pointerX=1&pointerY=1",
+      "createdAt": "2026-10-01T12:52:16.990Z",
+      "viewport": [
+        540,
+        960
+      ],
+      "quality": "Low",
+      "errors": [],
+      "activeEvents": {
+        "stars": 0,
+        "meteors": 0,
+        "crashes": 0,
+        "beams": 0,
+        "rifts": 0,
+        "waves": 0,
+        "queue": 0
+      }
+    },
+    "revised-board": {
+      "screenshot": "revised-board.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=50&quality=High&shipping=0&board=1&pointerX=-0.7&pointerY=0.2",
+      "createdAt": "2026-10-01T12:52:24.711Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "quality": "High",
+      "errors": [],
+      "activeEvents": null
+    },
+    "revised-wide": {
+      "screenshot": "revised-wide.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=50&quality=High&shipping=1&pointerX=1&pointerY=1",
+      "createdAt": "2026-10-01T12:52:33.790Z",
+      "viewport": [
+        1536,
+        432
+      ],
+      "quality": "High",
+      "errors": [],
+      "activeEvents": {
+        "stars": 0,
+        "meteors": 0,
+        "crashes": 0,
+        "beams": 0,
+        "rifts": 0,
+        "waves": 0,
+        "queue": 0
+      }
+    }
+  }
+}

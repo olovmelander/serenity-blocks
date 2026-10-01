@@ -90,6 +90,12 @@
     /* Allow clicks to pass through to modal */
 }
 
+/* The same gentle twinkle spans the opening cover, live intro and mode loading. */
+.intro-starfield {
+    z-index: 2;
+    opacity: 0.7;
+}
+
 .intro-warp-overlay {
     position: absolute;
     inset: 0;
@@ -598,41 +604,21 @@
     .intro-shimmer, .intro-chromatic, .intro-warp-overlay { opacity: 0 !important; }
 }
 
-/* Shrink title to top logo animation */
+/* Resting menu geometry. The handoff layer owns the move into this slot. */
 .shrink-to-logo {
     --menu-logo-top: 24px;
     --menu-logo-scale: 0.2;
-    animation: shrinkToLogo 1.15s cubic-bezier(0.37, 0.01, 0.12, 1) forwards !important;
+    animation: none !important;
     position: fixed !important;
     left: 50% !important;
+    top: var(--menu-logo-top);
     transform: translateX(-50%) !important;
     transform-origin: top center !important;
     z-index: 200 !important;
-    transition: top 350ms cubic-bezier(0.4, 0, 0.2, 1), transform 350ms cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-out;
-    will-change: transform, top, filter;
+    transition: opacity 0.3s ease-out;
 }
 
-.shrink-to-logo .intro-shimmer {
-    /* One bright specular sweep across the wordmark as it launches upward
-       (finishes well before the menu cards take over the logo). */
-    animation: shimmerReveal 0.55s cubic-bezier(0.4, 0, 0.2, 1) 0.08s 1 forwards !important;
-}
-
-@keyframes shrinkToLogo {
-    from {
-        top: 50%;
-        transform: translate(-50%, -50%) perspective(1000px) scale(1);
-    }
-
-    /* One clean, monotonic glide that lands EXACTLY on the menu's computed logo
-       slot (same --menu-logo-top / --menu-logo-scale the menu pins to), so the
-       title flows perfectly into position with no secondary correction. The
-       fallbacks apply until updateMenuLogoLayout() resolves the real values. */
-    to {
-        top: var(--menu-logo-top, 24px);
-        transform: translate(-50%, 0) perspective(1000px) scale(var(--menu-logo-scale, 0.2));
-    }
-}
+.shrink-to-logo .intro-shimmer { animation: none !important; opacity: 0; }
 
 /* Main menu: keep the intro title as the logo — hide the static menu logo instead. */
 body.start-modal-open .intro-title-container.shrink-to-logo {
@@ -643,9 +629,48 @@ body.start-modal-open .intro-title-container.shrink-to-logo {
     perspective: none !important;
     transform-style: flat !important;
     will-change: auto !important;
-    transition: top 350ms cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-out !important;
+    transition: opacity 0.3s ease-out !important;
     animation: none !important;
     pointer-events: none !important;
+}
+
+/* One transform-only flight stays above both screens while their layout changes. */
+.intro-menu-wordmark-flight {
+    position: fixed;
+    z-index: 11000;
+    pointer-events: none;
+    transform-origin: top left;
+    will-change: transform;
+}
+.intro-menu-wordmark-flight__image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-origin: center;
+    animation: sb-wordmark-pulse var(--sb-logo-pulse-duration) ease-in-out infinite;
+    will-change: transform, opacity;
+}
+.intro-menu-wordmark-flight__caption {
+    position: absolute;
+    top: calc(100% + 28px);
+    width: 100%;
+    text-align: center;
+    white-space: nowrap;
+    text-transform: uppercase;
+    animation: intro-menu-caption-out 200ms ease-out forwards;
+}
+@keyframes intro-menu-caption-out { to { opacity: 0; } }
+body.intro-menu-handoff .intro-title-container,
+body.intro-menu-handoff .main-menu-logo { visibility: hidden !important; }
+/* Let the wordmark leave the center before the cards become prominent. */
+body.intro-menu-handoff.start-modal-open .game-mode-cards-container {
+    animation-delay: 340ms;
+}
+/* The destination must remain still while the incoming artwork reaches it. */
+body.intro-menu-revealed.start-modal-open .main-menu-logo {
+    animation: none !important;
+    translate: none;
+    opacity: 1;
 }
 
 body.start-modal-open .intro-title-container.shrink-to-logo::before {
