@@ -62,15 +62,19 @@ import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-u
 import {
     createVoidSkyTSL,
     createBlackHoleTSL,
+    OMEN_SHADOW_RADIUS,
+    orientBlackHoleOmen,
     createHeroPlanetTSL,
     createDistantGalaxyTSL,
+    GALAXY_INCLINATION,
     createNebulaPillarTSL,
     createAsteroidRockTSL,
 } from './cosmic-expanse.tsl.js';
 import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
+import { GARGANTUA_LOCK, resolveGargantuaLockPosition } from './black-hole-transcendence.tsl.js';
 import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
-import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import { pickStellarClass } from './odyssey-stellar-ramp.js';
 
 /**
@@ -168,8 +172,10 @@ export const APPROACH = {
     // odyssey-ch6-approach-resolve.mjs with the galaxy moved FIRST (entry 0.35), then the
     // planet against the widened band (entry 0.03, -0.14; moved 77 u, distance 1151 -> 1147
     // so apparent size holds).
+    // Masterpiece pass (2026-10): the giant is x1.35 bigger at both ends of the march (it
+    // read as a small flat-striped disc). Only `s` changed — positions are the solved fit.
     planetA: {
-        x: 880, y: 352, z: -207, s: 34 / 28,
+        x: 880, y: 352, z: -207, s: (34 / 28) * 1.35,
     },
     // planetB moved along the EXIT CAMERA'S RIGHT vector (the exit forward runs
     // nearly down local +x, so screen-lateral is mostly ±z, not ±x — the first nudge
@@ -177,7 +183,7 @@ export const APPROACH = {
     // dive took the exit axis: the giant must stay clear of the dive line
     // (separation ≥ 0.2 asserted). Distance held ~756 so apparent size is unchanged.
     planetB: {
-        x: 855, y: 60, z: -89, s: 60 / 28,
+        x: 855, y: 60, z: -89, s: (60 / 28) * 1.35,
     },
     // Wave 1C: moved right-of-centre to re-open the planet's band (see planetA note).
     // Entry ndc (0.35, 0.27), distance 1214 vs 1215 before — apparent size preserved.
@@ -300,6 +306,9 @@ const BRIDGE_LEVEL = 0.65;
 const BRIDGE_CHROMA = 0.55;
 
 const _approachVec = new THREE.Vector3();
+const _omenLock = new THREE.Vector3();
+// Chapter ease at which the omen starts gliding onto ch7's lock pose (see the handoff).
+const OMEN_HANDOFF_START = 0.86;
 
 // B3 (Overdraw) — hard caps on the nebula billboard tiers. The wispy nebula is a
 // fill-rate multiplier (many large overlapping additive quads), so the COUNT is capped
@@ -315,6 +324,30 @@ const NEBULA_FAR_CAP = 90;
 // runaway the instance count. Two tiers (near brighter, far dimmer) give parallax depth.
 const DUST_NEAR_CAP = 650;
 const DUST_FAR_CAP = 800;
+
+// ── THE STARFIELD (masterpiece pass, 2026-10) ────────────────────────────────────────
+// The two shells used to sit at r 200-330 / 120-190 around the chapter centre — NEARER than
+// every hero (750-1260 u) and every nebula (z -300..-1390), so stars drew IN FRONT of the gas
+// and the planet, and with billboardWorld facing the world origin rather than the camera
+// most of them rendered as edge-on slivers. They now live on deep shells just inside the
+// 2400 u dome (behind everything), are billboarded in their own frame, and are sized for
+// that distance (a 3-8 px quad around a 1-2 px core). A share of the far tier is pulled
+// into the dome's galactic plane so the sky has a Milky Way, not an even sprinkle.
+export const CH6_STARFIELD = Object.freeze({
+    far: Object.freeze({
+        radiusMin: 1950, radiusSpan: 330, sizeBase: 6, sizeSpan: 13, perParticle: 5.5, min: 600,
+    }),
+    near: Object.freeze({
+        radiusMin: 1700, radiusSpan: 220, sizeBase: 9, sizeSpan: 22, perParticle: 1.1, min: 160,
+    }),
+    // Share of the far tier seated in the galactic band, and the band's half-thickness.
+    bandShare: 0.45,
+    bandSigma: 0.09,
+    // The dome bake's galactic lane axis (odyssey-cosmic-backdrop.js COSMIC_BACKDROP_DEFAULTS).
+    bandAxis: Object.freeze([0.4, 0.18, 1.0]),
+    // Diffraction spikes are the brightest class's signature only (coreGain ≥ this).
+    spikeCoreGain: 1.15,
+});
 
 export const COSMIC_ENTRY_CONTINUITY_SETTINGS = Object.freeze({
     starRevealStart: 0.04,
@@ -487,11 +520,8 @@ export function resolveCosmicCorridorFrame(chapterRange) {
 //   ?odysseyCh6NoDust=1    — dust tiers + suction debris + streak motes
 //   ?odysseyCh6NoStars=1   — both instanced starfield tiers
 //   ?odysseyCh6NoAurora=1  — the hero's auroral crown, BOTH halves (Wave 5)
-//   ?odysseyCh6LegacyKeyFrame=1 — ADD-BACK polarity: restores the Wave 6 lighting slip,
-//                            i.e. the masses' corridor-local key dotted against world
-//                            normals raw (55.8-95.5 deg off the accretion key). The
-//                            SHIPPED default now applies that key in the frame it was
-//                            authored in (25.7-57.1 deg). Owner flipped it 2026-08-16.
+//   (`?odysseyCh6LegacyKeyFrame=1` is RETIRED, 2026-10: the nebula masses are emissive gas
+//    now and have no key light whose frame could slip.)
 // Polarity: every flag REMOVES its tier, so `baseline` is the shipped chapter and each
 // differential is that tier's own cost (draws + fill + vertex + pipeline — the tier is
 // never built, the `no-water` lever shape). The asteroid garland (12 opaque instances)
@@ -515,7 +545,6 @@ function resolveCh6BisectLevers() {
         dust: !readCh6UrlFlag('odysseyCh6NoDust'),
         stars: !readCh6UrlFlag('odysseyCh6NoStars'),
         aurora: !readCh6UrlFlag('odysseyCh6NoAurora'),
-        authoredKeyFrame: !readCh6UrlFlag('odysseyCh6LegacyKeyFrame'),
     };
 }
 
@@ -589,7 +618,6 @@ export function createCosmicExpanseEnvironment(options = {}) {
     const blackHole = bisect.heroes ? createBlackHole(uniforms) : null;
     if (blackHole) {
         blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
-        blackHole.rotation.x = -1.12;
         blackHole.scale.setScalar(APPROACH.bhScaleA);
         group.add(blackHole);
         group.userData.blackHole = blackHole;
@@ -625,15 +653,17 @@ export function createCosmicExpanseEnvironment(options = {}) {
         group.userData.debris = debris;
     }
 
-    // 6. Crisp pinpoint starfield — TWO depth tiers so Space reads DEEP + CLEAR
-    // with sharp hot-white pinpoints (the opposite of Sky's haze): a sparse, far
-    // shell of small hard pinpoints + a nearer tier of brighter, fewer stars.
-    const starsFar = !bisect.stars ? null : createVoidStars(uniforms, Math.max(96, Math.floor(particleCount * 2.4)), {
-        radiusMin: 200,
-        radiusSpan: 130,
-        sizeBase: 0.7,
-        sizeSpan: 1.6,
+    // 6. Crisp pinpoint starfield — TWO depth tiers on deep shells BEHIND everything (see
+    // CH6_STARFIELD): a dense far field with a galactic band, static, and a sparser, brighter,
+    // gently twinkling near tier whose rare B stars carry the diffraction spikes.
+    const starsFar = !bisect.stars ? null : createVoidStars(uniforms, Math.max(
+        CH6_STARFIELD.far.min,
+        Math.floor(particleCount * CH6_STARFIELD.far.perParticle),
+    ), {
+        ...CH6_STARFIELD.far,
         coreExp: 2.6,
+        twinkle: false,
+        bandShare: CH6_STARFIELD.bandShare,
         name: 'void-stars-far',
     });
     if (starsFar) {
@@ -641,13 +671,13 @@ export function createCosmicExpanseEnvironment(options = {}) {
         group.userData.starsFar = starsFar;
     }
 
-    const starsNear = !bisect.stars ? null : createVoidStars(uniforms, Math.max(36, Math.floor(particleCount * 0.7)), {
-        radiusMin: 120,
-        radiusSpan: 70,
+    const starsNear = !bisect.stars ? null : createVoidStars(uniforms, Math.max(
+        CH6_STARFIELD.near.min,
+        Math.floor(particleCount * CH6_STARFIELD.near.perParticle),
+    ), {
+        ...CH6_STARFIELD.near,
         // B3b — crisper punch-through near tier so stars read OVER the brightest cloud:
         // bigger base, hotter core, a small constant emissive floor, wider diffraction.
-        sizeBase: 1.8,
-        sizeSpan: 2.8,
         coreExp: 2.0,
         coreMult: 1.45,
         spikeWidth: 11.0,
@@ -672,8 +702,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // `ch6-nebula-sprites`, so the differential IS the swap's price in one window.
     const nebulaSprites = readCh6UrlFlag('odysseyCh6NebulaSprites');
     const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL({
-        authoredFrame: bisect.authoredKeyFrame,
-        corridorQuaternion: corridorFrame.quaternion,
+        uTime: uniforms.uTime,
     }) : null;
     if (nebulaField) {
         corridor.add(nebulaField.mesh);
@@ -1003,7 +1032,7 @@ function createNebulaVolume(uniforms, count, opts = {}) {
 
     // gl_PointSize ~4..90px → small world size; the perspective term is automatic.
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(center, aSize);
+    material.positionNode = billboardLocal(center, aSize);
 
     // ── BLOOD-MOON WISP TEXTURE (adapted to TSL) ──────────────────────────────────
     // Each wisp used to be a flat radial-feather disc — the cause of the "flat pink
@@ -1157,7 +1186,7 @@ function createSuctionParticles(uniforms, count) {
     // gl_PointSize (2 + progress*2)px → small world size; perspective is automatic.
     const size = progress.mul(0.5).add(0.5);
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(center, size);
+    material.positionNode = billboardLocal(center, size);
     // Redshift as it falls in (blue -> orange-red).
     material.colorNode = mix(vec3(0.45, 0.65, 1.0), vec3(1.0, 0.3, 0.12), oneMinus(progress));
     // glow = pow(1 - dist*2, 1.4) round-discarded at dist > 0.5; alpha = progress.
@@ -1176,15 +1205,19 @@ function createSuctionParticles(uniforms, count) {
 
 function createVoidStars(uniforms, count, opts = {}) {
     const {
-        radiusMin = 200,
-        radiusSpan = 120,
-        sizeBase = 0.8,
-        sizeSpan = 2.4,
+        radiusMin = CH6_STARFIELD.far.radiusMin,
+        radiusSpan = CH6_STARFIELD.far.radiusSpan,
+        sizeBase = CH6_STARFIELD.far.sizeBase,
+        sizeSpan = CH6_STARFIELD.far.sizeSpan,
         coreExp = 2.6,
         coreMult = 1.15,
         spikeWidth = 14.0,
         emissiveFloor = 0.0,
         brightWeight = 0.0,
+        // Far tier: static (a distant field does not visibly scintillate, and a static layer
+        // under a twinkling one is what makes the twinkle read). Near tier: per-star twinkle.
+        twinkle = true,
+        bandShare = 0,
         name = 'void-stars',
     } = opts;
 
@@ -1212,13 +1245,32 @@ function createVoidStars(uniforms, count, opts = {}) {
         return ((rngState ^ (rngState >>> 13)) >>> 0) / 4294967296;
     };
 
+    // Galactic-plane basis (n = plane normal; u, v span the plane).
+    const n = new THREE.Vector3(...CH6_STARFIELD.bandAxis).normalize();
+    const u = new THREE.Vector3(0, 1, 0).cross(n).normalize();
+    const v = n.clone().cross(u).normalize();
+    const dir = new THREE.Vector3();
+
     for (let i = 0; i < count; i++) {
-        const theta = rng() * Math.PI * 2;
-        const phi = Math.acos(2 * rng() - 1);
+        if (rng() < bandShare) {
+            // In the band: a random azimuth in the plane, a gaussian-ish latitude off it.
+            const az = rng() * Math.PI * 2;
+            const lat = ((rng() + rng() + rng()) / 3 - 0.5) * 2 * CH6_STARFIELD.bandSigma * 2.2;
+            dir.copy(u)
+                .multiplyScalar(Math.cos(az))
+                .addScaledVector(v, Math.sin(az))
+                .multiplyScalar(Math.cos(lat))
+                .addScaledVector(n, Math.sin(lat))
+                .normalize();
+        } else {
+            const theta = rng() * Math.PI * 2;
+            const phi = Math.acos(2 * rng() - 1);
+            dir.set(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta));
+        }
         const r = radiusMin + rng() * radiusSpan;
-        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        positions[i * 3 + 1] = r * Math.cos(phi);
-        positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3] = r * dir.x;
+        positions[i * 3 + 1] = r * dir.y;
+        positions[i * 3 + 2] = r * dir.z;
         twinkles[i] = rng() * Math.PI * 2;
 
         // `brightWeight` (the near tier's punch dial) now biases the DRAW toward the hot
@@ -1252,20 +1304,23 @@ function createVoidStars(uniforms, count, opts = {}) {
     const aBase = attribute('aBase', 'vec3');
     const aSize = attribute('aSize', 'float');
     const aTwinkle = attribute('aTwinkle', 'float');
-    const aColor = attribute('aColor', 'vec3');
+    const aColor = attribute('aColor', 'vec4');
 
-    // twinkle = 0.78 + 0.22 * sin(...): keep stars mostly ON (sharp + persistent),
-    // only a gentle scintillation, so the field never dims into haze. Slightly
-    // higher floor than before so the pinpoints stay crisp against the deeper black.
-    const twinkle = sin(time.mul(2.2).add(aTwinkle)).mul(0.22).add(0.78);
-    const size = aSize.mul(twinkle).mul(0.62);
+    // TWINKLE IN ALPHA ONLY, at a per-star rate. It used to scale the SIZE at one shared
+    // 2.2 rad/s, so the whole field pulsed in lockstep and sub-pixel stars popped in and out
+    // as their quads shrank under a pixel. Now each star scintillates at its own rate
+    // (0.7-3.3 rad/s, derived from its phase) and depth, and its footprint never changes.
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(aBase, size);
+    material.positionNode = billboardLocal(aBase, aSize);
     material.colorNode = aColor.xyz;
-    // Sharp HOT pinpoint: a very tight core (high exponent) for a crisp center, a
-    // faint thin halo for a glow seat, plus a subtle 4-point diffraction glint along
-    // the sprite axes so the brightest stars read as hot pinpoints. All feathered to
-    // 0 before the quad edge — crisp, not hazy.
+    let scint = float(1.0);
+    if (twinkle) {
+        const rate = fract(aTwinkle.mul(1.618)).mul(2.6).add(0.7);
+        const depth = fract(aTwinkle.mul(2.414)).mul(0.25).add(0.15);
+        scint = varying(float(1.0).sub(sin(time.mul(rate).add(aTwinkle)).mul(0.5).add(0.5).mul(depth)));
+    }
+    // Sharp HOT pinpoint: a very tight core (high exponent) for a crisp center and a faint
+    // thin halo for a glow seat, feathered to 0 before the quad edge — crisp, not hazy.
     const p = uv().sub(0.5);
     const dist = length(p);
     const fall = oneMinus(dist.mul(2.0)).max(0.0);
@@ -1273,20 +1328,25 @@ function createVoidStars(uniforms, count, opts = {}) {
     // tighter, harder pinpoint and a low gain a soft one. That is what tells a big dim
     // red giant apart from a near blue-white — size alone just makes a bigger dot.
     const core = pow(fall, aColor.w.mul(coreExp)).mul(coreMult);
-    const halo = pow(fall, 1.2).mul(0.14);
-    // Diffraction spikes: bright along x≈0 and y≈0, decaying with radius — a thin
-    // hot cross that sells the "pinpoint star" sparkle without bloating the sprite. The
-    // near tier widens these (smaller multiplier → fatter cross) for punchier glints.
+    const halo = pow(fall, 1.6).mul(0.10);
+    // Diffraction spikes ONLY on the brightest class — a thin hot cross on every star made
+    // the field read as a sprinkle of plus-signs; on the few B stars it reads as brilliance.
+    const spikeMask = smoothstep(CH6_STARFIELD.spikeCoreGain - 0.03, CH6_STARFIELD.spikeCoreGain + 0.03, aColor.w);
     const spike = pow(oneMinus(p.x.abs().mul(spikeWidth)).max(0.0), 3.0)
         .add(pow(oneMinus(p.y.abs().mul(spikeWidth)).max(0.0), 3.0))
         .mul(fall.mul(fall))
-        .mul(0.5);
-    const vAlpha = varying(twinkle);
+        .mul(0.6)
+        .mul(spikeMask);
     // A small constant emissive floor (near tier) keeps the brightest pinpoints reading
-    // OVER bright nebula cloud rather than washing out against it. Capped via core math.
+    // OVER bright nebula cloud rather than washing out against it.
     const floorTerm = fall.mul(fall).mul(emissiveFloor);
+    // MAGNITUDE: a per-star brightness drawn from its phase (no new attribute), heavily
+    // skewed faint — a real sky is a dust of faint stars with a few bright ones, not an
+    // even snowfall of identical dots.
+    const magnitude = pow(fract(aTwinkle.mul(1.37)), 2.5).mul(0.82).add(0.18);
     material.opacityNode = core.add(halo).add(spike).add(floorTerm)
-        .mul(vAlpha)
+        .mul(magnitude)
+        .mul(scint)
         .mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
@@ -1390,7 +1450,7 @@ function createCosmicDust(uniforms, count, opts = {}) {
     const sizeWorld = aSize.mul(sparkPulse).mul(energy.mul(0.25).add(0.85));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(center, sizeWorld);
+    material.positionNode = billboardLocal(center, sizeWorld);
     // Hot-cored mote: tight core + thin halo + a small spark-only diffraction glint, all
     // feathered to 0 before the quad edge (crisp, not hazy). Sparks get a warm-white core
     // lift so they read as energetic glints; dust stays the instance tint.
@@ -1445,9 +1505,37 @@ const _asteroidDummy = new THREE.Object3D();
  * holeward edges, the violet rim directional fills the far sides. Per-rock tumble
  * data lives in userData; update() rewrites the instance matrices with a shared dummy.
  */
+// A lumpy rock, not a ball (masterpiece pass): the garland's detail-1 icosahedra read as
+// perfectly round dark discs — "holes punched in the nebula". Each vertex is pushed in/out by
+// a seeded value-noise of its direction; the geometry is non-indexed, so coincident vertices
+// get the same push (no cracks) and the recomputed normals stay faceted, like stone.
+function createAsteroidGeometry() {
+    const geometry = new THREE.IcosahedronGeometry(1, 2);
+    const pos = geometry.getAttribute('position');
+    const lump = (x, y, z) => {
+        const h = Math.sin((x * 12.9898) + (y * 78.233) + (z * 37.719)) * 43758.5453;
+        return h - Math.floor(h);
+    };
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i += 1) {
+        v.fromBufferAttribute(pos, i).normalize();
+        // Two octaves of lattice hash on the direction: a few big lobes + chipped facets.
+        const qx = Math.round(v.x * 2.2);
+        const qy = Math.round(v.y * 2.2);
+        const qz = Math.round(v.z * 2.2);
+        const big = lump(qx, qy, qz);
+        const small = lump(Math.round(v.x * 5), Math.round(v.y * 5), Math.round(v.z * 5));
+        const r = 0.74 + (big * 0.34) + (small * 0.12);
+        pos.setXYZ(i, v.x * r, v.y * r * 0.82, v.z * r);
+    }
+    pos.needsUpdate = true;
+    geometry.computeVertexNormals();
+    return geometry;
+}
+
 function createAsteroidGarland() {
     const count = 12;
-    const geometry = new THREE.IcosahedronGeometry(1, 1);
+    const geometry = createAsteroidGeometry();
     // The authored note claimed an "orange accretion rim + violet fill come free from the
     // chapter's two lights" — in practice the rig is one dim ambient plus a point light
     // 600u away, so 0x0b0e18 rendered as pure black. That went unnoticed while the garland
@@ -1566,9 +1654,13 @@ export function createAuroraFilamentBridge(uniforms) {
         BRIDGE_CHROMA,
     ).mul(BRIDGE_LEVEL);
     const vertical = smoothstep(0.0, 0.3, vUv.y).mul(smoothstep(1.0, 0.2, vUv.y));
-    // Linger as a visible aurora across most of the crossing, then dissolve into nebula filaments
-    // (was smoothstep(0.22,0.44) → gone by ~18% local progress, too brief to read as the hero aurora).
-    const alive = oneMinus(smoothstep(0.5, 0.85, uApproach));
+    // GONE BY A QUARTER OF THE CHAPTER (masterpiece pass, 2026-10). It used to linger to
+    // approach 0.85, and once recoloured the three curtains overhead read in-game as one huge
+    // flat crimson smear filling the right third of every ch6 frame (bisected 2026-10-01: with
+    // the nebula hidden the smear was these planes over the dome's posterized rust lane — the
+    // lane is re-baked soft in odyssey-cosmic-backdrop.js). The greeting is a 5→6 beat; the
+    // deep-space frame belongs to the nebulae.
+    const alive = oneMinus(smoothstep(0.06, 0.24, uApproach));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = graded.mul(strands.add(0.4));
@@ -1638,7 +1730,7 @@ function createStreakMotes(uniforms, count) {
     const center = vec3(aBase.x, aBase.y, travel.sub(620.0));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(center, 2.6);
+    material.positionNode = billboardLocal(center, 2.6);
     // Elongated streak mask along the travel diagonal (fixed angle in quad space).
     // THE DIVE STRETCH (Wave 5): as the BH dive begins (uApproach past bhDiveStart)
     // the streaks elongate ~2.3x and brighten — the acceleration read for the fall.
@@ -1655,7 +1747,10 @@ function createStreakMotes(uniforms, count) {
         1.4,
     );
     material.colorNode = vec3(0.56, 0.69, 0.94); // cool starlight streak (#8FB0FF family)
-    material.opacityNode = streak.mul(diveT.mul(0.24).add(0.34)).mul(materialOpacity);
+    // Near fade: billboarded properly (billboardLocal) a streak rushing past the lens swells
+    // into a big soft blue oval — it reads as a smudge, not speed. Fade it out inside ~120 u.
+    const nearFade = smoothstep(40.0, 140.0, length(cameraPosition.sub(positionWorld)));
+    material.opacityNode = streak.mul(diveT.mul(0.24).add(0.34)).mul(nearFade).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -1872,13 +1967,34 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
                 THREE.MathUtils.lerp(APPROACH.bhZb, APPROACH.bhZc, t),
             );
         }
-        // Subtle precession of the whole assembly.
-        blackHole.rotation.z -= delta * 0.04;
+        // THE 6->7 HANDOFF (masterpiece pass): over the last stretch of the dive the omen
+        // glides onto ch7's camera lock — the same spot, the same size (shadow 132 u) — so as
+        // the chapters cross-fade the two black holes coincide and read as one. Needs a REAL
+        // camera (a view direction); a bare position probe keeps the authored dive pose.
+        if (camera?.isCamera) {
+            const handoff = THREE.MathUtils.smoothstep(ease, OMEN_HANDOFF_START, 1);
+            if (handoff > 0) {
+                resolveGargantuaLockPosition(camera, _omenLock).sub(group.position);
+                blackHole.position.lerp(_omenLock, handoff);
+                blackHole.scale.setScalar(THREE.MathUtils.lerp(
+                    blackHole.scale.x,
+                    GARGANTUA_LOCK.shadowRadius / OMEN_SHADOW_RADIUS,
+                    handoff,
+                ));
+            }
+        }
+        // Square to the eye (ch7's Gargantua pose): the shadow faces the camera and the disk
+        // band reads across the frame wherever the corridor turns.
+        orientBlackHoleOmen(blackHole, camera);
     }
     if (debris && blackHole) {
-        // Keep the infall seated on the hole as it looms.
+        // Keep the infall seated on the hole as it looms — and IN its disk plane.
         debris.position.copy(blackHole.position);
         debris.scale.copy(blackHole.scale);
+        const { face, diskPivot } = blackHole.userData;
+        if (face && diskPivot) {
+            debris.quaternion.copy(blackHole.quaternion).multiply(face.quaternion).multiply(diskPivot.quaternion);
+        }
     }
 
     const { heroPlanet } = group.userData;
@@ -1954,9 +2070,16 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         );
         galaxy.position.copy(_approachVec);
         galaxy.scale.setScalar(THREE.MathUtils.lerp(APPROACH.galaxyA.s, APPROACH.galaxyB.s, ease));
-        // Slow billboard roll so the spiral arms turn (the quad stays camera-facing
-        // via billboardWorld, but its z-roll spins the sprite's uv frame).
-        galaxy.rotation.z += delta * 0.012;
+        // FACE THE EYE, THEN INCLINE (masterpiece pass): the quad was a fixed +Z plane that
+        // only rolled, seen nearly edge-on from the real camera. Turned to the eye every frame
+        // (the group is translated, never rotated, so lookAt's parent frame is world-aligned)
+        // and tilted by a fixed ~60°, the spiral reads as a real inclined disc from anywhere.
+        // The arm phase itself turns in the shader (bounded, ~0.01 rad/s).
+        if (camera?.position) {
+            galaxy.lookAt(camera.position);
+            galaxy.rotateX(GALAXY_INCLINATION);
+            galaxy.rotateZ(0.6);
+        }
     }
 
     const { diskLight } = group.userData;
