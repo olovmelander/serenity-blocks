@@ -1,0 +1,207 @@
+{
+  "date": "2026-10-01",
+  "stage": "Phase 0 preparation; dependency bump and runtime acceptance pending",
+  "startingCommit": "9c035b9e51d93750d848d0305fedac8e727c8223",
+  "installedVersion": "0.185.1",
+  "candidateVersion": "0.186.1",
+  "tarballIntegrity": "sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA==",
+  "tarballIntegrityVerified": true,
+  "preparationFilesSha256": {
+    "src/themes/base-theme.js": "d0ec4307fb55de617db3852e95437c77c1e5971782a4ff5c97bbdb6107db925e",
+    "src/rendering/webgpu-compute-pipeline-async.js": "86904aa890b811475a7dd5747fd64316d5799732daddd8975a4c712a55d12010",
+    "tests/unit/base-theme-dispose-timestamp-quiesce.test.js": "f169d5bd291ffb68f9bc36201c3d6c0d86c29a47e6cfa5978e38f2ba0f9c7869",
+    "tests/unit/webgpu-compute-pipeline-async.test.js": "af77e3462fd56cab43cf4f113436fa6c2c84f926287b82cffe080dc088db9e3b",
+    "tests/unit/odyssey-tsl-noise-emission.test.js": "075bde7444c28b0f00f49567dfbe4a68c3ae3f002281466aca85e5fd24cfb009",
+    "tests/unit/odyssey-tsl-fn-binding-guard.test.js": "97e088bc00e099e56420a8e21aad51ab7dcd4afd885b1c19021d325b64424949",
+    "tests/unit/earth-core-lake-noise-bake.test.js": "26fdd6a4498296a60a60451a98aba39981bb14f77a20ece5447c8b5b01e975ec",
+    "tests/unit/koi-pond-theme.test.js": "a9e5730881877aa9723685f1857a2ad873824508de791eed89a8a49b082fbf8e"
+  },
+  "r185": {
+    "command": "node node_modules/vitest/vitest.mjs run --maxWorkers=2 --reporter=json",
+    "rawReport": ".cache/three-r186/r185-final-tests.json",
+    "startedAt": "2026-10-01T06:47:31.944Z",
+    "files": 383,
+    "totalTests": 4101,
+    "passed": 4101,
+    "failed": 0,
+    "skipped": 0,
+    "failedFiles": []
+  },
+  "r186": {
+    "command": "node node_modules/vitest/vitest.mjs run --maxWorkers=2 --reporter=json",
+    "rawReport": ".cache/three-r186/r186-final-tests.json",
+    "startedAt": "2026-10-01T06:49:16.994Z",
+    "files": 383,
+    "totalTests": 4101,
+    "passed": 4087,
+    "failed": 13,
+    "skipped": 1,
+    "failedFiles": [
+      {
+        "file": "tests/unit/async-render-pipelines-contract.test.js",
+        "message": "",
+        "failures": [
+          {
+            "name": "three r185 render-pipeline contract (async render pipelines) is pinned to three 0.185.1",
+            "message": "AssertionError: re-verify src/rendering/async-render-pipelines.js against the new three: expected '0.186.1' to be '0.185.1' // Object.is equality"
+          },
+          {
+            "name": "three r185 render-pipeline contract (async render pipelines) WebGPUPipelineUtils.createRenderPipeline(renderObject, promises) the header's WebGPUPipelineUtils.js line numbers still point at the anchors",
+            "message": "AssertionError: line 72: expected '' to contain 'createRenderPipeline( renderObject, p…'"
+          },
+          {
+            "name": "three r185 render-pipeline contract (async render pipelines) Pipelines the header's Pipelines.js line numbers still point at the anchors",
+            "message": "AssertionError: line 160: expected '\\t */' to contain 'getForRender( renderObject, promises …'"
+          },
+          {
+            "name": "three r185 render-pipeline contract (async render pipelines) Renderer._renderObjectDirect gates backend.draw on Pipelines.isReady",
+            "message": "AssertionError: line 3725: expected '\\t\\tif ( material.allowOverride === t…' to contain 'if ( this._pipelines.isReady( renderO…'"
+          },
+          {
+            "name": "three r185 render-pipeline contract (async render pipelines) WebGPUBackend.draw returns early on pipelineData.error (what the scope repair clears)",
+            "message": "AssertionError: line 1909: expected '' to contain 'if ( pipelineData.error === true ) re…'"
+          },
+          {
+            "name": "three r185 render-pipeline contract (async render pipelines) PMREMGenerator._createRenderTarget marks its targets the way isOneShotRenderTarget reads them",
+            "message": "AssertionError: line 899: expected '' to contain 'function _createRenderTarget( width, …'"
+          },
+          {
+            "name": "three r185 render-pipeline contract (async render pipelines) final composite (isFinalComposite) RenderPipeline draws its output QuadMesh with no output conversion → straight to the canvas",
+            "message": "AssertionError: expected '_getFrameBufferTarget() {\\n\\n\\t\\tif (…' to match /const useToneMapping = currentToneMa…/\\"
+          }
+        ]
+      },
+      {
+        "file": "tests/unit/odyssey-post-target-compile.test.js",
+        "message": "",
+        "failures": [
+          {
+            "name": "the r185 hold-across-await contract pins three's compileAsync parameter order from the installed source",
+            "message": "AssertionError: expected 'import Animation from \\'./Animation.j…' to match /async compileAsync\\(\\s*scene,\\s*camer…/"
+          }
+        ]
+      },
+      {
+        "file": "tests/unit/stillwater-webgpu-dispose-contract.test.js",
+        "message": "",
+        "failures": [
+          {
+            "name": "Stillwater terminal WebGPU device disposal contract WebGPUBackend.dispose destroys the owned device on r185",
+            "message": "AssertionError: expected -1 to be greater than -1"
+          }
+        ]
+      },
+      {
+        "file": "tests/unit/three-r185-compute-pipeline-contract.test.js",
+        "message": "",
+        "failures": [
+          {
+            "name": "three r185 compute-pipeline contract (async compute helper) is pinned to three 0.185.1",
+            "message": "AssertionError: re-verify webgpu-compute-pipeline-async.js; on r186+ delete the create hook, keep the guard: expected '0.186.1' to be '0.185.1' // Object.is equality"
+          },
+          {
+            "name": "three r185 compute-pipeline contract (async compute helper) r185 still has no native async compute path",
+            "message": "AssertionError: expected 'import Animation from \\'./Animation.j…' not to contain 'compileComputeAsync('"
+          },
+          {
+            "name": "three r185 compute-pipeline contract (async compute helper) Pipelines caches the pipeline before asking the backend to create it",
+            "message": "AssertionError: expected 'import DataMap from \\'./DataMap.js\\';…' to match /this\\.caches\\.set\\( cacheKey, pipelin…/"
+          },
+          {
+            "name": "three r185 compute-pipeline contract (async compute helper) WebGPUBackend.compute reads the GPU pipeline slot and sets it unguarded",
+            "message": "AssertionError: expected '// debugger tools\\n// import \\'https:…' to contain 'this.pipelineUtils.createComputePipel…'"
+          }
+        ]
+      }
+    ]
+  },
+  "finalKoiFixtureRerun": {
+    "versions": [
+      "0.185.1",
+      "0.186.1"
+    ],
+    "testsPassedEach": 9
+  },
+  "typecheck": {
+    "r185": "passed",
+    "r186": "passed"
+  },
+  "candidateBuild": {
+    "status": "passed",
+    "bootClosure": "passed",
+    "threeManualChunkPreserved": true,
+    "entryStaticClosureKB": 12,
+    "log": ".cache/three-r186/r186-final-build.log"
+  },
+  "smoke": {
+    "tool": "Playwright MCP (Chrome DevTools MCP unavailable)",
+    "effect": "pulse-sphere",
+    "fixedTimeSeconds": 8,
+    "orbit": false,
+    "canvas": {
+      "width": 1034,
+      "height": 681
+    },
+    "webgpuAdapter": {
+      "vendor": "nvidia",
+      "architecture": "ampere"
+    },
+    "captures": [
+      {
+        "file": "pulse-sphere-r185-webgpu.png",
+        "version": "0.185.1",
+        "backend": "WebGPU",
+        "ready": true,
+        "consoleWarnings": 0,
+        "consoleErrors": 0,
+        "visuallyInspected": true,
+        "sha256": "1fceb0b5b6139f1f21b32c58f892000a98c66051581cf88a7e6c3b3fdd554779"
+      },
+      {
+        "file": "pulse-sphere-r186-webgpu.png",
+        "version": "0.186.1",
+        "backend": "WebGPU",
+        "ready": true,
+        "consoleWarnings": 0,
+        "consoleErrors": 0,
+        "visuallyInspected": true,
+        "sha256": "92aed62bae1ec1f4ba6c83456f866448a4ad17ef8e2ca0793127ced52f21515f"
+      },
+      {
+        "file": "pulse-sphere-r186-webgl.png",
+        "version": "0.186.1",
+        "backend": "WebGL2",
+        "ready": true,
+        "consoleWarnings": 0,
+        "consoleErrors": 0,
+        "visuallyInspected": true,
+        "sha256": "86dd0f2b772af895e621a4a18f9f5491a4dac9ce0ac2dad788be8875f777b7ed"
+      }
+    ],
+    "nativeCompute": {
+      "version": "0.186.1",
+      "kernel": "values[instanceIndex] = float(instanceIndex) + 3",
+      "elements": 4,
+      "status": "ready",
+      "created": 1,
+      "failed": 0,
+      "readback": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "consoleWarnings": 0,
+      "consoleErrors": 0
+    },
+    "limits": "Single-effect browser smoke and compute correctness only; no full-theme, Electron, gameplay, visual parity or performance acceptance claim."
+  },
+  "lint": {
+    "ratchet": "passed at existing baseline",
+    "errors": 1404,
+    "baseline": 1404,
+    "warnings": 987,
+    "fatal": 0,
+    "computeHelper": "passed"
+  }
+}

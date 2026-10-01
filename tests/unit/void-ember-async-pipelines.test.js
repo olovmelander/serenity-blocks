@@ -176,18 +176,18 @@ describe('VoidEmberTheme async pipeline creation', () => {
                 'the serenity.syncComputePipelines=1 localStorage flag',
                 { storage: { 'serenity.syncComputePipelines': '1' } },
             ],
-        ])('%s rolls the compute pipelines back to the sync creates; render stays async', async (_label, win) => {
+        ])('%s is retired and no longer disables async compute', async (_label, win) => {
             stubWindow(win);
             const device = makeDevice();
             const theme = makeTheme(device);
 
             await expect(theme.createPipelines()).resolves.toBe(true);
-            expect(device.createComputePipeline).toHaveBeenCalledTimes(2);
-            expect(device.createComputePipelineAsync).not.toHaveBeenCalled();
+            expect(device.createComputePipeline).not.toHaveBeenCalled();
+            expect(device.createComputePipelineAsync).toHaveBeenCalledTimes(2);
             expect(device.createRenderPipelineAsync).toHaveBeenCalledTimes(7);
             expect(device.createRenderPipeline).not.toHaveBeenCalled();
             for (const key of COMPUTE_PIPELINE_KEYS) {
-                expect(theme.webgpu[key], key).toMatchObject({ sync: true });
+                expect(theme.webgpu[key], key).toMatchObject({ async: true });
             }
             for (const key of RENDER_PIPELINE_KEYS) {
                 expect(theme.webgpu[key], key).toMatchObject({ async: true });

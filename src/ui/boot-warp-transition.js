@@ -254,11 +254,11 @@ export class BootWarpTransition {
         if (this.sharedDevice) {
             // three.js skips requestAdapter/requestDevice when a device is passed — the warp
             // then shares the intro's device (no 3rd context). Passing `device` also means
-            // r185's WebGPUBackend.dispose() treats it as NOT owned and skips device.destroy(),
-            // so warp.dispose() leaves the intro's device alive. ORDERING CONSTRAINT (r185):
-            // the INTRO renderer owns this device, and r185 destroys owned devices on dispose —
-            // the warp must therefore always be disposed BEFORE the intro's destroy() can run.
-            // boot-warp-orchestrator's `finally { warpTransition.dispose() }` enforces this at
+            // r186's WebGPUBackend.dispose() treats it as NOT owned and skips device.destroy(),
+            // so warp.dispose() leaves the intro's device alive. ORDERING CONSTRAINT:
+            // the INTRO renderer owns this device; await the warp's async disposal before
+            // the intro's destroy() can run and destroy that shared device.
+            // boot-warp-orchestrator's awaited finally block enforces this at
             // handoff end; do not move warp disposal after any intro teardown.
             rendererParams.device = this.sharedDevice;
         }
@@ -283,13 +283,13 @@ export class BootWarpTransition {
                 id: this.debugId,
                 message: error?.message || String(error),
             }, { level: 'warn' });
-            try { renderer.dispose(); } catch { /* partial init */ }
+            try { await renderer.dispose(); } catch { /* partial init */ }
             if (this.renderer === renderer) this.renderer = null;
             return false;
         }
         if (this._disposed) {
             markStartup('boot-warp:init-late-after-dispose', { id: this.debugId }, { level: 'warn' });
-            try { renderer.dispose(); } catch { /* late timeout cleanup */ }
+            try { await renderer.dispose(); } catch { /* late timeout cleanup */ }
             if (this.renderer === renderer) this.renderer = null;
             return false;
         }
@@ -302,7 +302,7 @@ export class BootWarpTransition {
                 isWebGPUBackend: renderer.backend?.isWebGPUBackend === true,
                 isWebGLBackend: renderer.backend?.isWebGLBackend === true,
             }, { level: 'warn' });
-            renderer.dispose?.();
+            try { await renderer.dispose?.(); } catch { /* failed fallback cleanup */ }
             if (this.renderer === renderer) this.renderer = null;
             return false;
         }
@@ -415,11 +415,10 @@ export class BootWarpTransition {
             // resolves the same frame-buffer target as render() (r185 Renderer.js:908-910),
             // so play() reuses exactly this pipeline.
             //
-            // The compute pipeline goes to Dawn's async workers too (r185 has no async compute
-            // path of its own; see webgpu-compute-pipeline-async.js). It is kicked off BEFORE
-            // compileAsync: its compile window runs synchronously inside the call, so both
-            // compiles are in flight together. What stays synchronous is the small ACES/sRGB
-            // output quad, which compileAsync never builds. Rollback: ?themeWarmAsync=0 skips the
+            // The compute pipeline uses r186's native compileComputeAsync. It is started BEFORE
+            // compileAsync so both can progress together; the helper guards dispatches while
+            // native node building yields or GPU compilation is pending. The small ACES/sRGB
+            // output quad stays synchronous because compileAsync never builds it. ?themeWarmAsync=0 skips the
             // async prime (the synchronous prime frames below then compile it, as before).
             const primeStartedAt = nowMs();
             markStartup('boot-warp:prime-compute-start', { id: this.debugId, steps: PRIME_PROGRESS_STEPS.length });
@@ -818,6 +817,7 @@ export class BootWarpTransition {
     }
 
     dispose() {
+        if (this._disposed && !this.renderer) return this._disposePromise;
         const hadLiveResources = Boolean(
             this.renderer || this.scene || this.camera || this.warp || this.canvas || this._raf,
         );
@@ -847,7 +847,9 @@ export class BootWarpTransition {
         try { this._eventBusUnsub?.(); } catch { /* noop */ } finally { this._eventBusUnsub = null; }
         this._monitoredDevice = null;
         try { if (this.warp) { this.scene?.remove(this.warp.mesh); this.warp.dispose(); } } catch { /* noop */ }
-        try { this.renderer?.dispose(); } catch { /* noop */ }
+        let disposal;
+        try { disposal = this.renderer?.dispose(); } catch { /* noop */ }
+        this._disposePromise = Promise.resolve(disposal).catch(() => {});
         try { this.canvas?.remove(); } catch { /* noop */ }
         this.renderer = null;
         this.scene = null;
@@ -855,6 +857,7 @@ export class BootWarpTransition {
         this.warp = null;
         this.canvas = null;
         this._playState = null;
+        return this._disposePromise;
     }
 }
 

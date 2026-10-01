@@ -658,6 +658,43 @@ describe('Stillwater production adapter regression gates', () => {
         expect(sharedRenderer.cleanup).toHaveBeenCalledTimes(1);
     });
 
+    it.each(['resolve', 'reject'])('waits for pooled renderer disposal to %s before destroying its device', async (outcome) => {
+        createFakeDom();
+        const theme = trackTheme();
+        await theme.start({ loadTheme: vi.fn(), stop: vi.fn() });
+        const [renderer] = stillwaterMocks.rendererInstances;
+        const { device } = renderer.backend;
+        let settleDisposal;
+        renderer.dispose.mockImplementation(() => new Promise((resolve, reject) => {
+            settleDisposal = outcome === 'resolve' ? resolve : reject;
+        }));
+        theme.stop();
+        StillwaterTheme.disposeSharedResources();
+        expect(device.destroy).not.toHaveBeenCalled();
+        expect(renderer.backend.device).toBe(device);
+        settleDisposal(outcome === 'reject' ? new Error('device lost during disposal') : undefined);
+        await vi.waitFor(() => expect(device.destroy).toHaveBeenCalledTimes(1));
+        expect(renderer.backend.device).toBeNull();
+    });
+
+    it('waits for owned renderer disposal before destroying its device', async () => {
+        createFakeDom();
+        const theme = trackTheme();
+        await theme.start({ loadTheme: vi.fn(), stop: vi.fn() });
+        const [renderer] = stillwaterMocks.rendererInstances;
+        const { device } = renderer.backend;
+        let settleDisposal;
+        renderer.dispose.mockImplementation(() => new Promise((resolve) => { settleDisposal = resolve; }));
+        const completion = theme.disposeOwnedRenderer(renderer);
+        expect(theme.renderer).toBeNull();
+        expect(device.destroy).not.toHaveBeenCalled();
+        expect(renderer.backend.device).toBe(device);
+        settleDisposal();
+        await completion;
+        expect(device.destroy).toHaveBeenCalledTimes(1);
+        expect(renderer.backend.device).toBeNull();
+    });
+
     it('resolves validation timestamp queries before reusing a pooled renderer', async () => {
         createFakeDom({ search: '?stillwaterValidation=1' });
         const sharedRenderer = { loadTheme: vi.fn(), stop: vi.fn() };

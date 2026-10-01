@@ -168,7 +168,7 @@ describe('the r185 hold-across-await contract', () => {
             'utf8',
         );
         // Signature + the JSDoc that defines the third parameter as the target SCENE.
-        expect(src).toMatch(/async compileAsync\(\s*scene,\s*camera,\s*targetScene\s*=\s*null\s*\)/);
+        expect(src).toMatch(/async compileAsync\(\s*scene,\s*camera,\s*targetScene\s*=\s*null,\s*onProgress\s*=\s*null\s*\)/);
         expect(src).toMatch(/@param \{\?Scene\} targetScene - If the first argument is a 3D object/);
         // The first argument is what gets projected; lights come from targetScene.
         expect(src).toMatch(/this\._projectObject\(\s*scene,\s*camera,\s*0,\s*renderList/);

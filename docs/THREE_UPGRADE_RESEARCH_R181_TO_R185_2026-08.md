@@ -774,6 +774,11 @@ gated on a future Electron).
 
 ## 13. Rollback & r186 watch
 
+> **2026-10-01:** r186 is published. Execution continues in
+> [Three.js r185 to r186 upgrade](THREE_UPGRADE_R185_TO_R186_2026-10.md), targeting
+> `0.186.1`. The watch list below is historical input; the successor audits the actual
+> tarball, including async renderer disposal and the native compute failure contract.
+
 - Rollback = revert the Phase 1 commit (`package.json` + lockfile + with-bump code ride
   together; Phase 0 items are r181-compatible and stay). The `three` Vite manualChunk
   isolates the library for clean A/B builds.

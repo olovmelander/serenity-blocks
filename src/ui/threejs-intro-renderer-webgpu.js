@@ -230,7 +230,7 @@ export default class ThreeJSIntroRendererWebGPU {
 
             if (!this.renderer.backend?.isWebGPUBackend) {
                 console.warn('[IntroWebGPU] WebGPU backend not available');
-                this.renderer.dispose();
+                await this.renderer.dispose();
                 return false;
             }
 
@@ -1627,8 +1627,8 @@ export default class ThreeJSIntroRendererWebGPU {
     }
 
     /**
-     * Create the particle + tetromino compute pipelines asynchronously (r185 has no async compute
-     * path of its own; see webgpu-compute-pipeline-async.js). Until they exist, update() skips
+     * Create the particle + tetromino compute pipelines with r186's native compiler
+     * (see webgpu-compute-pipeline-async.js). Until they exist, update() skips
      * the dispatch: frames drawn meanwhile show the CPU-initialised, static particles — hidden
      * behind the studio ident at boot.
      * @returns {Promise<object>|null}
@@ -1754,7 +1754,10 @@ export default class ThreeJSIntroRendererWebGPU {
         try { this._resilienceUnsub?.(); } catch { /* noop */ } finally { this._resilienceUnsub = null; }
 
         if (this.renderer) {
-            this.renderer.dispose();
+            // r186 returns a promise; visible cleanup remains synchronous.
+            Promise.resolve(this.renderer.dispose()).catch((error) => {
+                console.warn('[IntroWebGPU] Renderer disposal failed:', error);
+            });
             this.renderer = null;
         }
 

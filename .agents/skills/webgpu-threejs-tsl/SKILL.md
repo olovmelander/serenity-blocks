@@ -1,16 +1,16 @@
 ---
 name: webgpu-threejs-tsl
-description: Three.js WebGPU + TSL reference (node materials, compute shaders, post-processing) verified against this repo's pinned three 0.185.1 (r185). Use when creating or changing any visual surface — a theme (src/themes), a playground effect (src/playground/effects), an Odyssey chapter (src/rendering/odyssey) — or when working with shaders, particles, glow/bloom, reflections, auroras, GPU compute, node materials, or debugging WebGPU validation errors and TSL compile failures. Not for Phaser 2D code, DOM/CSS UI, Electron shell, or audio work.
+description: Three.js WebGPU + TSL reference (node materials, compute shaders, post-processing) verified against this repo's pinned three 0.186.1 (r186). Use when creating or changing any visual surface — a theme (src/themes), a playground effect (src/playground/effects), an Odyssey chapter (src/rendering/odyssey) — or when working with shaders, particles, glow/bloom, reflections, auroras, GPU compute, node materials, or debugging WebGPU validation errors and TSL compile failures. Not for Phaser 2D code, DOM/CSS UI, Electron shell, or audio work.
 ---
 
-# WebGPU Three.js with TSL (three r185)
+# WebGPU Three.js with TSL (three r186)
 
 TSL (Three.js Shading Language) is a node-based shader abstraction: you write GPU
 shaders in JavaScript instead of GLSL/WGSL strings. Every visual surface in this
 repo (themes, playground effects, Odyssey chapters) is WebGPU/TSL.
 
-**Version contract:** this repo pins `three@0.185.1` (r185). Everything in this skill was
-verified against that version. TSL churns fast between releases — when an API is in
+**Version contract:** this repo pins `three@0.186.1` (r186). The migration-sensitive APIs below
+were reverified against that package; historical r185 notes describe retained behavior. TSL churns fast between releases — when an API is in
 doubt, the source of truth is `node_modules/three/src/Three.TSL.js` (TSL exports)
 and `node_modules/three/src/Three.WebGPU.js` (renderer/material exports), not your
 training data and not the three.js wiki.
@@ -36,7 +36,7 @@ const material = new THREE.MeshStandardNodeMaterial();
 material.colorNode = color(0xff0000).mul(oscSine(time));  // oscSine already returns 0..1
 ```
 
-The post class was renamed `RenderPipeline` in r183; in r185 `THREE.PostProcessing`
+The post class was renamed `RenderPipeline` in r183; in r186 `THREE.PostProcessing`
 is a fully-functional **deprecated alias** that logs one warnOnce per pipeline
 ("has been renamed to RenderPipeline"). **Repo policy: construct
 `RenderPipeline`** — the repo-wide rename has landed, so a `PostProcessing`
@@ -72,8 +72,8 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
 | Per-frame uniform upload you didn't intend | Mutating a `THREE.Color`/`Vector` inside `uniform(...)` in place still uploads every frame | Fine when intended; don't assume unchanged-value writes are free |
 | Oscillation stuck in upper half | `oscSine` already returns 0..1 | Drop the `.mul(0.5).add(0.5)` remap |
 | Emissive-only (selective) bloom does nothing | Selective bloom needs MRT; most themes here run bloom on the composite without MRT | Check the theme's `useMRT` before promising selective bloom; see `docs/post-processing.md` § MRT |
-| Additive glow stops blooming / glows stomp black after r185 | MRT secondary attachments default to `NoBlending` in r185 | Use `withEmissiveMaterialBlending` from `src/themes/shared/mrt-blend.js` — it does `setBlendMode('emissive', new BlendMode(MaterialBlending))` and patches the upstream `merge()` blendModes bug |
-| First-visit hitch despite `compileAsync`, or warmed materials rebuild wrong | r185 `compileAsync` defers node building to a per-object loop that **yields to the main thread** — a bind/compile/restore-synchronously recipe restores state mid-await and silently poisons the MRT-agnostic builder cache | Hold bindings across the whole `await` (loop idle only), or warm by actually rendering once — render-warm is unchanged and remains the only live-loop-safe warm (see Odyssey warm-up) |
+| Additive glow stops blooming / glows stomp black after r185 | MRT secondary attachments default to `NoBlending` in r185 | Use `withEmissiveMaterialBlending` from `src/themes/shared/mrt-blend.js` — it does `setBlendMode('emissive', new BlendMode(MaterialBlending))` ; r186 preserves blend modes during `merge()` natively |
+| First-visit hitch despite `compileAsync`, or warmed materials rebuild wrong | r185 `compileAsync` defers node building to a per-object loop that **yields to the main thread** — a bind/compile/restore-synchronously recipe restores state mid-await and silently poisons the MRT-agnostic builder cache | Use Odyssey's `warmup/post-target-compile.js` for scoped target/MRT bindings across deferred builds; keep its side, call-depth and live-loop guards |
 | Backgrounded tab burns GPU | Loop keeps computing/rendering when hidden | `shouldRenderFrame()` gate + clamp `delta` in the update loop (pattern in every theme) |
 | Works in dev, black in packaged Electron | Absolute `/assets/...` fetch resolves to filesystem root under `file://` | Use relative `./assets/...` |
 | ONE pipeline takes seconds to compile (startup freeze / slow theme entry); the WGSL is small | `mx_noise_float` / `mx_fractal_noise_*` (MaterialX Perlin) hashes the lattice with an **integer** Bob-Jenkins mix; once DXC inlines every evaluation the compile grows superlinearly — 20 evaluations = **7.3 s** on an RTX 3070 (Odyssey lava lake, 2026-08-21). r185's `select()` emission doubled what r181 cost | Use the Ashima simplex port `snoise3` / `simplex3` in `chapter-environments/shared/odyssey-tsl-noise.js` (mx-calibrated: same std and feature size), value noise, or a baked texture. Diagnose with an `initScript` that wraps `GPUDevice.prototype.createRenderPipelineAsync` and sorts by duration — the label names the material |
@@ -92,6 +92,17 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
 > four reversed-edge smoothsteps rendering the theme's sun, halo, cloud band and haze.
 > Prefer forward edges for readability; do not "fix" a working reversed one on this rule's say-so.
 
+## r186 lifecycle and compute
+
+- Use `compileComputeAsync` from `src/rendering/webgpu-compute-pipeline-async.js`
+  on loading surfaces. It delegates to native compilation, checks actual GPU readiness,
+  and blocks dispatch while nodes build or pipelines fail. A resolved native compile
+  promise alone does not prove success. The `syncComputePipelines` rollback is retired.
+- `await renderer.dispose()` before destroying/nulling a device or releasing a shared
+  device owner. Canvas removal and reference clearing may remain immediate. Observe
+  disposal rejection even in fire-and-forget cleanup. See Stillwater and boot warp.
+- r186 removes WebGPU `PCFSoftShadowMap`; use `PCFShadowMap`.
+
 ## Doc map — read on demand, not up front
 
 - `docs/core-concepts.md` — types, operators, uniforms, control flow. Read when writing
@@ -100,7 +111,7 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
   configuring a material.
 - `docs/compute-shaders.md` — storage buffers, compute passes, atomics, GPU↔CPU readback.
   Read for particles/simulation work.
-- `docs/post-processing.md` — RenderPipeline, `pass()`, MRT, every r185 display effect
+- `docs/post-processing.md` — RenderPipeline, `pass()`, MRT, display effects
   with verified import paths. Read for bloom/grade/DoF/etc.
 - `docs/noise-and-utility-nodes.md` — built-in noise (mx_* / triNoise3D), per-instance
   variation, billboarding, UV/blend utilities. Read BEFORE hand-rolling noise or

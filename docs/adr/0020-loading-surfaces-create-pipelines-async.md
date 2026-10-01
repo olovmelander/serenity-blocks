@@ -61,9 +61,10 @@ cover, and batched `compileAsync` before its render loop starts.
    an overlay actually covers the screen, and is `uncover()`ed when the overlay lifts: its
    sessions keep running, but themes started later (another mode's own reveal) are not armed.
 3. **Boot surfaces create their compute pipelines async** through
-   `src/rendering/webgpu-compute-pipeline-async.js` (a compile window around the real
-   `renderer.compute()` plus a permanent dispatch guard): the intro and the boot warp. On the r186
-   upgrade use the native `compileComputeAsync` and keep the guard. **Themes' live
+   `src/rendering/webgpu-compute-pipeline-async.js`: the intro and the boot warp. Since r186.1,
+   it delegates to native `compileComputeAsync`, verifies cached GPU pipeline readiness,
+   and guards dispatch during node building and pending/failed pipeline creation.
+   The r185 descriptor/create hook is removed. **Themes' live
    `renderer.compute()` stays synchronous**: a skipped dispatch would lose one-shot init kernels,
    the compute analogue of the PMREM hazard. Raw-WebGPU themes (void-ember) call the device's
    `create*PipelineAsync` themselves.
@@ -105,8 +106,8 @@ cover, and batched `compileAsync` before its render loop starts.
 
 ## Enforcement
 
-- `tests/unit/async-render-pipelines-contract.test.js`, `tests/unit/three-r185-compute-pipeline-contract.test.js`:
-  pin the r185 internals both helpers depend on (a three upgrade fails loudly; listed in ADR-0018).
+- `tests/unit/async-render-pipelines-contract.test.js`, `tests/unit/three-r186-compute-pipeline-contract.test.js`:
+  pin the r186.1 internals both helpers depend on (a three upgrade fails loudly; listed in ADR-0018).
 - `tests/unit/async-render-pipelines.test.js`, `tests/unit/webgpu-compute-pipeline-async.test.js`,
   `tests/unit/theme-prewarm-async.test.js`, `tests/unit/intro-async-pipelines.test.js`,
   `tests/unit/boot-warp-handoff.test.js`: behaviour.
@@ -119,4 +120,5 @@ cover, and batched `compileAsync` before its render loop starts.
   machine (ADR-0016). Reference runs: `reports/boot-smoothness/README.md`.
 - Rollbacks: `?themeWarmAsync=0` (render pipelines, the loading-surface sessions and the mode-entry
   content wait, the boot warp's `compileAsync` prime, void-ember's render pipelines, and the
-  ident's moving hold), `?syncComputePipelines=1` (compute, incl. void-ember's).
+  ident's moving hold). The r185 `syncComputePipelines` rollback was retired with r186.1;
+  both native compute compilation and void-ember's raw-WebGPU compute stay asynchronous.

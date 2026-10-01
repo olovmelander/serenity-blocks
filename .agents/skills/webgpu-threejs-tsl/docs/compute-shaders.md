@@ -474,7 +474,7 @@ scene.add(particles);
 // IMPORTANT: Always initialize the renderer first
 await renderer.init();
 
-// Synchronous compute (preferred since r181; unchanged in r185)
+// Synchronous dispatch (after any loading-surface precompile has finished)
 renderer.compute(computeShader);
 
 // Multiple computes
@@ -482,9 +482,26 @@ renderer.compute(computeInit);
 renderer.compute(computePhysics);
 renderer.compute(computeCollisions);
 
-// Note: computeAsync() has been deprecated since r181 (still deprecated in r185).
+// Note: computeAsync() remains deprecated in r186; compileComputeAsync() is different.
 // Use await renderer.init() at startup, then renderer.compute() synchronously.
 ```
+
+### Compile before dispatch on loading surfaces (r186)
+
+The native `renderer.compileComputeAsync(nodes)` builds nodes and GPU pipelines
+without dispatching. Use the repository wrapper on intro/boot/loading surfaces:
+
+```javascript
+import { compileComputeAsync } from '../../rendering/webgpu-compute-pipeline-async.js';
+const result = await compileComputeAsync(renderer, computeShader, { timeoutMs: 9000 });
+if (result.status === 'ready') renderer.compute(computeShader);
+```
+
+Native compilation can resolve despite pipeline creation failure. The wrapper checks
+cached GPU slots and guards both the asynchronous node-build interval and pending/failed
+backend pipelines. A timeout leaves those guards active until native work settles.
+The r185 descriptor hook and `syncComputePipelines` rollback were removed. WebGL2
+compute is unsupported; retain the caller's existing fallback path.
 
 ## Reading Back Data (GPU to CPU)
 

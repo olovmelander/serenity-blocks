@@ -17,7 +17,7 @@ import {
 //   - the camera FOV curve keeps the match frame at the base 45° the gem size is solved for;
 //   - play() follows a window resize (buffer, viewport, re-measured gem anchor, aspect,
 //     viewProj) on that frame, and does no per-frame work while the size is unchanged;
-//   - ?themeWarmAsync=0 rolls the prime back off compileAsync (compute keeps its own lever);
+//   - ?themeWarmAsync=0 rolls the render prime back off compileAsync (compute stays native async);
 //   - the handoff arms the ident (`sb-warp-arming`) right before play(), best effort.
 // Mocking follows tests/unit/startup-animation-reliability.test.js.
 
@@ -73,7 +73,7 @@ vi.mock('three/webgpu', async (importOriginal) => {
         }
 
         dispose() {
-            rendererMocks.bootRendererDispose();
+            return rendererMocks.bootRendererDispose();
         }
 
         setPixelRatio() {}
@@ -871,9 +871,8 @@ describe('BootWarpTransition prewarm themeWarmAsync rollback (src/core/flags.js 
         expect(transition._ready).toBe(true);
     });
 
-    it('leaves the async compute compile to its own lever when themeWarmAsync is off', async () => {
-        // ADR-0020 rollbacks: themeWarmAsync=0 covers the compileAsync prime only;
-        // compute rolls back separately via ?syncComputePipelines=1.
+    it('keeps native async compute when themeWarmAsync is off', async () => {
+        // themeWarmAsync=0 covers the render prime only; r186 compute stays async.
         installViewport(1280, 720, { search: '?themeWarmAsync=0' });
         installDom();
         const computeDone = deferred();
@@ -901,6 +900,24 @@ describe('BootWarpTransition prewarm themeWarmAsync rollback (src/core/flags.js 
 });
 
 describe('playBootWarpHandoff hold wiring', () => {
+    it.each(['resolve', 'reject'])('waits for renderer disposal to %s while detaching immediately', async (outcome) => {
+        installDom();
+        const transition = await primedTransition();
+        const disposed = deferred();
+        rendererMocks.bootRendererDispose.mockReturnValueOnce(disposed.promise);
+        const completion = transition.dispose();
+        const settled = vi.fn();
+        completion.then(settled);
+        await settle();
+        expect(transition.renderer).toBeNull();
+        expect(settled).not.toHaveBeenCalled();
+        expect(transition.dispose()).toBe(completion);
+        if (outcome === 'resolve') disposed.resolve();
+        else disposed.reject(new Error('device lost during disposal'));
+        await completion;
+        expect(settled).toHaveBeenCalledTimes(1);
+    });
+
     it('holds the flight at BOOT_WARP_HOLD_PROGRESS until the startup shell is dismissed', async () => {
         const {
             BOOT_WARP_HOLD_PROGRESS,

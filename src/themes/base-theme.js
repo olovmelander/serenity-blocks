@@ -616,7 +616,7 @@ export class BaseTheme {
     }
 
     disposeRenderer(renderer = this.renderer, { nullInstance = true } = {}) {
-        if (!renderer || renderer === this.webglRenderer) return;
+        if (!renderer || renderer === this.webglRenderer) return undefined;
 
         let domElement = null;
         try {
@@ -632,11 +632,21 @@ export class BaseTheme {
             }
         }
         const releaseGpu = () => {
+            let completion;
             if (typeof renderer.dispose === 'function') {
-                try {
-                    renderer.dispose();
-                } catch (error) {
+                const reportDisposeError = (error) => {
                     console.warn(`[BaseTheme] Failed to dispose renderer for ${this.name}:`, error);
+                };
+                try {
+                    // r185 disposes synchronously; r186 returns a promise while the
+                    // backend drains timestamp queries. Observe failures without
+                    // delaying canvas detach or retaining this renderer on the theme.
+                    const disposal = renderer.dispose();
+                    if (typeof disposal?.then === 'function') {
+                        completion = Promise.resolve(disposal).catch(reportDisposeError);
+                    }
+                } catch (error) {
+                    reportDisposeError(error);
                 }
             }
             if (typeof renderer.forceContextLoss === 'function') {
@@ -646,6 +656,7 @@ export class BaseTheme {
                     console.warn(`[BaseTheme] Failed to force WebGL context loss for ${this.name}:`, error);
                 }
             }
+            return completion;
         };
         // three r185: WebGPUBackend.dispose() fires the timestamp pools' ASYNC
         // dispose() without awaiting it and then destroys the owned device, so
@@ -657,13 +668,14 @@ export class BaseTheme {
         // stuck query can never wedge teardown); loop stop, canvas detach and
         // the reference clear below stay synchronous.
         const pendingResolves = collectPendingTimestampResolves(renderer);
+        let disposal;
         if (pendingResolves.length > 0) {
-            Promise.race([
+            disposal = Promise.race([
                 Promise.allSettled(pendingResolves),
                 new Promise((resolve) => { setTimeout(resolve, 300); }),
             ]).then(releaseGpu, releaseGpu);
         } else {
-            releaseGpu();
+            disposal = releaseGpu();
         }
         try {
             if (domElement?.parentNode) {
@@ -679,6 +691,9 @@ export class BaseTheme {
         } catch (error) {
             console.warn(`[BaseTheme] Failed to clear renderer reference for ${this.name}:`, error);
         }
+        // The visible teardown stays synchronous; owners of a shared/pooled device
+        // can wait before their terminal device-destroy backstop (three r186).
+        return disposal;
     }
 
     /**

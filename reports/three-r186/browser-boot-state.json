@@ -1,0 +1,656 @@
+{
+  "theme": {
+    "lifecycle": "running",
+    "generation": 2,
+    "rendererIdentity": 1,
+    "backend": "WebGPU",
+    "isWebGPU": true,
+    "isWebGL": false,
+    "forceWebGL": false,
+    "validation": {
+      "enabled": false,
+      "driverActive": false,
+      "framePending": false,
+      "gpuTimestampSupported": false,
+      "gpuTimestampTracking": false,
+      "activation": null
+    },
+    "rendererPowerPreference": "high-performance",
+    "rendererPoolReused": true,
+    "rendererAnimation": {
+      "requestActive": true,
+      "pausedByLifecycle": false,
+      "suspendedForValidation": false
+    },
+    "recoveryAttempted": false,
+    "quality": "High",
+    "qualityProfile": "High",
+    "pixelRatio": 1,
+    "antialiasing": true,
+    "bloom": true,
+    "reducedMotion": false,
+    "layout": {
+      "layout": "solo",
+      "aspect": 1.5183553597650514,
+      "narrow": true,
+      "playerCount": 1,
+      "camera": {
+        "position": [
+          0,
+          14.5,
+          43
+        ],
+        "target": [
+          0,
+          3.8,
+          -15
+        ],
+        "fov": 46,
+        "near": 0.1,
+        "far": 520,
+        "layoutPullback": 0,
+        "narrowPullback": 4,
+        "totalPullback": 4
+      },
+      "boardSafeRegions": [
+        {
+          "x": 0.32,
+          "y": 0.09,
+          "width": 0.36,
+          "height": 0.82
+        }
+      ]
+    },
+    "readiness": {
+      "critical": true,
+      "full": true
+    },
+    "counters": {
+      "scheduledFrames": 528,
+      "allowedFrames": 528,
+      "gatedFrames": 0,
+      "simulationUpdates": 528,
+      "composedRenders": 529,
+      "warmupRenders": 1,
+      "warmedReactionDraws": 3,
+      "warmUnreachableDraws": 0,
+      "gameplayRenders": 528,
+      "validationRenders": 0,
+      "animationLoopStarts": 1,
+      "terminalWebGpuDeviceDestroys": 0,
+      "rendererPoolClaims": 1,
+      "rendererPoolStores": 0,
+      "rendererAnimationPauseStops": 0,
+      "rendererAnimationResumeStarts": 0,
+      "layoutApplications": 1,
+      "resizes": 0,
+      "pauses": 0,
+      "resumes": 0,
+      "settingsRebuilds": 0,
+      "recoveries": 0
+    },
+    "frame": {
+      "enabled": false,
+      "sampleCount": 0,
+      "averageFrameMs": null,
+      "averageFps": null,
+      "p95FrameMs": null,
+      "p99FrameMs": null,
+      "lastRawFrameMs": null,
+      "maximumRawFrameMs": null,
+      "simulationDeltaCapMs": 100
+    },
+    "renderer": {
+      "autoReset": false,
+      "render": {
+        "calls": 14365,
+        "frameCalls": 17,
+        "drawCalls": 60,
+        "triangles": 138099,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "compute": {
+        "calls": 0,
+        "frameCalls": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 107,
+        "attributesSize": 548580,
+        "geometries": 35,
+        "indexAttributes": 28,
+        "indexAttributesSize": 443736,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 101,
+        "programsSize": 957546,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 32,
+        "texturesSize": 31837575,
+        "uniformBuffers": 95,
+        "uniformBuffersSize": 97920,
+        "total": 33885357
+      }
+    },
+    "runtime": {
+      "id": "stillwater-masterpiece",
+      "waves": [
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "quality": "High",
+      "reducedMotion": false,
+      "mrtMissing": 0,
+      "nonNodeMaterials": 0,
+      "materials": {
+        "tracked": 33,
+        "mrtMissing": 0,
+        "nonNodeMaterials": 0,
+        "selectiveBloom": true,
+        "finalSweepComplete": true
+      },
+      "layout": {
+        "id": "solo",
+        "cameraPullback": 4
+      },
+      "composition": {
+        "waterOwnsCamera": true,
+        "waterProxies": false,
+        "waterPost": false,
+        "forestMode": "flora",
+        "forestTerrain": false,
+        "reflectionLayer": 2,
+        "forestTransform": {
+          "scaleX": 0.52,
+          "scaleY": 0.52,
+          "scaleZ": 0.52,
+          "x": 0,
+          "y": 1,
+          "z": -4
+        },
+        "offering": {
+          "beat": "rest",
+          "intimacy": 0.05,
+          "separation": 22,
+          "lanternIntensity": 0.34802357820808416,
+          "reach": 0,
+          "dawn": 0.014848377777777802,
+          "petrified": false,
+          "featureToken": null,
+          "response": null
+        },
+        "postOutputs": 1
+      },
+      "query": {
+        "event": "idle",
+        "fxAge": 0.42,
+        "lineCount": 4,
+        "comboCount": 10,
+        "seeded": true
+      },
+      "readiness": {
+        "criticalReady": true,
+        "targetReady": true
+      },
+      "reaction": {
+        "eventEnergy": 0,
+        "tideStrength": 0,
+        "levelEnrichment": 0,
+        "levelEnrichmentTarget": 0,
+        "routeCounts": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "director": {
+          "time": 22.2725666666667,
+          "enchantmentTide": 0,
+          "tideTarget": 0,
+          "activeStreams": 1,
+          "pendingStreams": 0,
+          "scheduledBeats": 0,
+          "droppedEvents": 0,
+          "droppedBeats": 0,
+          "sinkErrors": 0,
+          "attached": true,
+          "disposed": false,
+          "reducedMotion": false,
+          "intensity": 1,
+          "streams": [
+            {
+              "index": 0,
+              "assigned": true,
+              "source": null,
+              "levelId": null,
+              "player": 0,
+              "pending": false,
+              "lastComboCount": 0,
+              "lastComboTier": 0,
+              "tideTarget": 0,
+              "level": 0
+            },
+            {
+              "index": 1,
+              "assigned": false,
+              "source": null,
+              "levelId": null,
+              "player": 0,
+              "pending": false,
+              "lastComboCount": 0,
+              "lastComboTier": 0,
+              "tideTarget": 0,
+              "level": 0
+            },
+            {
+              "index": 2,
+              "assigned": false,
+              "source": null,
+              "levelId": null,
+              "player": 0,
+              "pending": false,
+              "lastComboCount": 0,
+              "lastComboTier": 0,
+              "tideTarget": 0,
+              "level": 0
+            },
+            {
+              "index": 3,
+              "assigned": false,
+              "source": null,
+              "levelId": null,
+              "player": 0,
+              "pending": false,
+              "lastComboCount": 0,
+              "lastComboTier": 0,
+              "tideTarget": 0,
+              "level": 0
+            },
+            {
+              "index": 4,
+              "assigned": false,
+              "source": null,
+              "levelId": null,
+              "player": 0,
+              "pending": false,
+              "lastComboCount": 0,
+              "lastComboTier": 0,
+              "tideTarget": 0,
+              "level": 0
+            }
+          ],
+          "rowBuffers": [
+            {
+              "0": 0,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            {
+              "0": 0,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            {
+              "0": 0,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            {
+              "0": 0,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            {
+              "0": 0,
+              "1": 0,
+              "2": 0,
+              "3": 0
+            }
+          ],
+          "beatDue": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "5": 0,
+            "6": 0,
+            "7": 0
+          },
+          "beatSpecial": {
+            "0": 0,
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "4": 0,
+            "5": 0,
+            "6": 0,
+            "7": 0
+          },
+          "sinkOptions": {
+            "sequence": 1,
+            "channel": "dimple",
+            "cue": "rune-dimple",
+            "source": null,
+            "levelId": null,
+            "player": 0,
+            "streamIndex": 0,
+            "originX": 0.55,
+            "originY": 0.9375,
+            "boardX": 5.5,
+            "boardY": 22.75,
+            "hasPosition": false,
+            "positionX": 0,
+            "positionY": 0,
+            "strength": 0.34,
+            "motionScale": 1,
+            "durationMs": 520,
+            "moteCount": 4,
+            "lineCount": 0,
+            "comboCount": 0,
+            "comboTier": 0,
+            "cascadeCount": 1,
+            "cascadeDepth": 0,
+            "depth": 0,
+            "level": 0,
+            "dropDistance": 0,
+            "direction": 0,
+            "rowCount": 0,
+            "specialPriority": 0,
+            "reducedMotion": false,
+            "echoOf": ""
+          }
+        }
+      },
+      "water": {
+        "id": "stillwater-water",
+        "wave": 3,
+        "quality": "High",
+        "layout": "solo",
+        "backend": "WebGPU",
+        "reflectionRequest": "auto",
+        "reflectionMode": "reflector",
+        "reflectionScale": 0.3,
+        "reflectionLayer": 2,
+        "flowModel": "materialx-broad-analytic-warp",
+        "materialXFlow": true,
+        "detailFlow": false,
+        "calmMask": true,
+        "shoreDepth": true,
+        "contactDarkening": true,
+        "submergedShapes": 5,
+        "causticLayers": 1,
+        "responsesEnabled": true,
+        "responseGraphModel": "lean-four-wake",
+        "responseEvent": "idle",
+        "wakeSlots": 10,
+        "responseSlotBytes": 320,
+        "reservedSpecialSlot": 0,
+        "tetrisDepthWakes": 4,
+        "lakeRings": 22,
+        "lakeVertices": 2205,
+        "lakeTriangles": 4224,
+        "physicalDisplacement": true,
+        "opticalResponse": true,
+        "emissiveResponse": true,
+        "computeFeedback": false,
+        "proxies": false,
+        "moonHalo": true,
+        "lights": 0,
+        "post": false,
+        "boardGuide": false,
+        "grade": "ACES-1.0-teal-shadow-warm-highlight",
+        "activeResponseSlots": 0,
+        "peakResponseSlots": 1,
+        "responseEventWrites": 1,
+        "responseOverwrites": 0,
+        "suppressedLocks": 0,
+        "responseGraphActive": false,
+        "responseGraphMode": "idle",
+        "waterMaterialVersion": 1
+      },
+      "forest": {
+        "wave": 4,
+        "mode": "flora",
+        "includeTerrain": false,
+        "includeShoreRoots": false,
+        "reflectionLayer": 2,
+        "reflectionRenderables": 5,
+        "quality": "High",
+        "reducedMotion": false,
+        "motionScale": 1,
+        "enchantmentTide": 0,
+        "boardSafe": true,
+        "boardSafeHalfWidth": 24,
+        "focalIntrusions": 0,
+        "layoutSignature": "2d038190",
+        "counts": {
+          "heroTrees": 5,
+          "midTrees": 12,
+          "farTrees": 13,
+          "forestTrees": 30,
+          "nearCanopies": 14,
+          "farCanopies": 6,
+          "canopyClusters": 20,
+          "roots": 0,
+          "boulders": 15,
+          "reeds": 208,
+          "lilies": 12,
+          "mushroomClusters": 4,
+          "mushrooms": 24
+        },
+        "draws": {
+          "direct": 13,
+          "estimated": 12,
+          "terrain": 1,
+          "trees": 5,
+          "authoredHeroes": true,
+          "dressing": 3,
+          "flora": 3,
+          "treeTarget": [
+            4,
+            7
+          ],
+          "floraMaximum": 4,
+          "lowForestFloraMaximum": 15
+        },
+        "lights": 2,
+        "realMushroomLights": 0,
+        "particles": 0,
+        "postProcessing": false,
+        "characters": false,
+        "rendererDrawCalls": 60,
+        "cameraAttached": true
+      },
+      "characters": {
+        "mode": "all",
+        "spiritState": "observe",
+        "trollState": "retreat",
+        "trollGesture": "idle",
+        "trollPose": {
+          "glance": 0,
+          "turn": 0,
+          "pause": 0,
+          "delight": 0,
+          "wary": 0,
+          "bow": 0,
+          "lookUp": 0
+        },
+        "spiritX": -19.139478558584518,
+        "trollX": 23.50146792650597,
+        "levelWarmth": 0,
+        "boardSafe": true,
+        "criticalReady": true,
+        "targetReady": true,
+        "targetLod": "high",
+        "targetTriangles": 17081,
+        "realLights": 1,
+        "directDrawEstimate": 9,
+        "reflectionDrawEstimate": 3,
+        "authoredSpiritReady": true,
+        "leanTier": false,
+        "gltfTimings": null
+      },
+      "atmosphere": {
+        "quality": "High",
+        "fogMode": "analytic-distance-height",
+        "coloredDepth": true,
+        "activeMotes": 280,
+        "moteCapacity": 280,
+        "moteDraws": 1,
+        "mistLayerCount": 1,
+        "mistDraws": 1,
+        "mistModel": "materialx-fractal",
+        "softParticles": true,
+        "trueViewportDepthFade": true,
+        "reducedMotion": false,
+        "perFrameAllocations": 0
+      },
+      "reactions": {
+        "quality": "High",
+        "moteCapacity": 192,
+        "activeMoteSlots": 0,
+        "shaftCapacity": 3,
+        "specialSlots": 1,
+        "runeModel": "mycelial-premium",
+        "runeMaxScale": 22.799999999999997,
+        "draws": 0,
+        "idleDraws": 0,
+        "maxDraws": 3,
+        "reducedMotion": false,
+        "emittedMotes": 4,
+        "emittedShafts": 0,
+        "emittedRunes": 0,
+        "tide": 0,
+        "perEventResourceCreation": 0
+      },
+      "post": {
+        "quality": "High",
+        "painterly": true,
+        "painterlyStrength": 0.85,
+        "boardRect": {
+          "x": 0.32,
+          "y": 0.09,
+          "width": 0.36,
+          "height": 0.82
+        },
+        "gradeMode": "full",
+        "useBloom": true,
+        "useMRT": true,
+        "bloomScale": 0.45,
+        "lutSize": 16,
+        "useLut": true,
+        "analyticGrade": false,
+        "selectiveBloom": true,
+        "nonEmissiveBloomRejected": true,
+        "toneMapping": "ACESFilmic",
+        "outputTransformCount": 1,
+        "postClass": "THREE.RenderPipeline",
+        "disposed": false
+      }
+    }
+  },
+  "pipelines": [
+    {
+      "label": "computePipeline_compute",
+      "at": 7610.700000001118,
+      "ms": 506.19999999925494,
+      "ok": true
+    },
+    {
+      "label": "computePipeline_compute",
+      "at": 8170.300000000745,
+      "ms": 105.19999999925494,
+      "ok": true
+    },
+    {
+      "label": "computePipeline_compute",
+      "at": 8262.300000000745,
+      "ms": 6732.0999999996275,
+      "ok": true
+    }
+  ],
+  "trace": [
+    {
+      "phase": "boot-warp:prime-compute-compiled",
+      "t": 15778.7,
+      "timestamp": "2026-10-01T08:56:01.146Z",
+      "payload": {
+        "id": 1,
+        "status": "ready",
+        "created": 1,
+        "failed": 0,
+        "compileMs": 7542,
+        "durationMs": 7542.2
+      }
+    },
+    {
+      "phase": "boot-warp:handoff-complete",
+      "t": 23462.7,
+      "timestamp": "2026-10-01T08:56:08.830Z",
+      "payload": {
+        "status": "complete",
+        "firstFrameRendered": true,
+        "durationMs": 6500,
+        "elapsedMs": 6509.299999998882,
+        "wallElapsedMs": 6683.5,
+        "progress": 1,
+        "shellDismissed": true,
+        "titleRevealed": true,
+        "visibleMs": 6810.5,
+        "totalHandoffMs": 6951.2,
+        "timing": {
+          "durationMs": 6500,
+          "requestedDurationMs": null,
+          "minDurationMs": 5682,
+          "minVisibleMs": 5000,
+          "revealProgress": 0.02,
+          "fadeProgress": 0.9,
+          "titleProgress": 0.84,
+          "fadeOutMs": 880
+        }
+      }
+    },
+    {
+      "phase": "boot-warp:dispose",
+      "t": 23462.9,
+      "timestamp": "2026-10-01T08:56:08.830Z",
+      "payload": {
+        "id": 1,
+        "ready": true,
+        "playing": false,
+        "status": "ready"
+      }
+    },
+    {
+      "phase": "startup-pipeline:menu-visible",
+      "t": 34177.6,
+      "timestamp": "2026-10-01T08:56:19.545Z",
+      "payload": {
+        "elapsedMs": 33796,
+        "introStatus": "done",
+        "introSkipReason": null,
+        "degraded": false
+      }
+    }
+  ]
+}

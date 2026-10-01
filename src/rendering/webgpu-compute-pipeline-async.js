@@ -1,130 +1,64 @@
 // @ts-check
 /**
- * @fileoverview Async compute-pipeline creation for three 0.185.1 (r185).
+ * Native async compute compilation for three 0.186.1.
  *
- * WHY: a synchronous `device.createComputePipeline` compiles on the GPU-process main thread,
- * which also draws the display compositor, so every animation on screen freezes while it runs
- * (a heavy pipeline measured 2.9 s). `createComputePipelineAsync` compiles on Dawn's worker
- * threads and the screen keeps presenting (worst frame 61-91 ms, same shader). r185 has no
- * async compute path at all; r186 adds `renderer.compileComputeAsync`.
+ * Boot surfaces compile on Dawn's workers before dispatching. Native compileComputeAsync
+ * yields while building nodes, before a pipeline is cached, so a live compute() must also
+ * wait during that interval (otherwise it creates the pipeline synchronously). The backend
+ * guard covers cached pending/failed pipelines: r186 still calls setPipeline unguarded.
  *
- * r185 chain: Renderer.compute (Renderer.js:2718) → Pipelines.getForCompute (Pipelines.js:86)
- *   → _getComputePipeline: caches.set (:359) → backend.createComputePipeline(pipeline, bindings)
- *   → WebGPUPipelineUtils.createComputePipeline → device.createComputePipeline (:417)  — SYNC.
- *
- * {@link compileComputeAsync} runs the REAL `renderer.compute(list)` inside a synchronous
- * "compile window" (so onInit, the dispose listener, the node build and bind groups are all
- * three's own bookkeeping) while a create hook swaps the sync create for an async one and a
- * dispatch guard drops the window's dispatch.
- *
- * GUARD (kept permanently): WebGPUBackend.compute (:1608-1612) calls setPipeline(undefined)
- * for a pipeline whose async create is still pending → WebIDL TypeError → the caller's rAF loop
- * dies. r186 has the same hole, so on the r186 upgrade delete the create hook and keep the guard.
- * RULE: await compileComputeAsync before any ONE-SHOT dispatch (the guard drops dispatches while
- * the pipeline is pending); per-frame simulations simply start a few frames later.
- *
- * Rollback: ?syncComputePipelines=1 (or localStorage serenity.syncComputePipelines=1) installs
- * nothing — exactly today's r185 behaviour.
- * Pinned by tests/unit/three-r185-compute-pipeline-contract.test.js.
+ * A native compile promise resolves even on GPU validation/creation failure. Read the
+ * actual pipeline slot before reporting ready. A timeout only stops waiting; both guards
+ * remain installed until compilation settles. Await readiness before one-shot dispatches.
+ * Pinned by tests/unit/three-r186-compute-pipeline-contract.test.js.
  */
-import { readFlag } from '../core/flags.js';
-
 const STATE = new WeakMap(); // backend -> state
 const TIMEOUT = Symbol('compute-compile-timeout');
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-export function asyncComputeDisabled() {
-    return readFlag('syncComputePipelines', false);
-}
-
-/**
- * Synchronous capability check, so callers can keep today's path with no extra awaits.
- * @param {any} renderer
- * @returns {boolean}
- */
+/** @param {any} renderer */
 export function isAsyncComputeCapable(renderer) {
-    if (asyncComputeDisabled()) return false;
     const backend = renderer?.backend;
-    const device = backend?.device;
-    return !!backend && backend.isWebGPUBackend === true
+    return backend?.isWebGPUBackend === true
+        && typeof renderer.compileComputeAsync === 'function'
+        && typeof renderer.compute === 'function'
+        && typeof renderer._pipelines?.has === 'function'
+        && typeof renderer._pipelines?.get === 'function'
         && typeof backend.get === 'function'
-        && typeof backend.compute === 'function'
-        && typeof backend.createComputePipeline === 'function'
-        && typeof device?.createComputePipelineAsync === 'function'
-        && typeof device.createPipelineLayout === 'function';
+        && typeof backend.compute === 'function';
 }
 
-// Mirrors r185 WebGPUPipelineUtils.createComputePipeline (:380-433), but pops the validation
-// scope SYNCHRONOUSLY: createComputePipelineAsync reports its own errors by rejecting, and a
-// scope held across an await on the shared intro/warp device would swallow the live loop's errors.
-function createAsyncInto(backend, renderer, state, pipeline, bindings) {
-    const { device } = backend;
-    const stage = pipeline.computeProgram;
-    const compute = backend.get(stage).module; // { module, entryPoint: 'main' } (WebGPUBackend.js:2308-2311)
-    const pipelineData = backend.get(pipeline);
-    const bindGroupLayouts = bindings.map((group) => backend.get(group).layout.layoutGPU);
-    const label = `computePipeline_${stage.stage}${stage.name ? `_${stage.name}` : ''}`;
-    device.pushErrorScope('validation');
-    let created;
-    try {
-        const layout = device.createPipelineLayout({ bindGroupLayouts });
-        created = device.createComputePipelineAsync({ label, layout, compute });
-    } catch (error) {
-        created = Promise.reject(error);
-    }
-    const layoutScope = device.popErrorScope(); // always balanced
-    return Promise.allSettled([created, layoutScope]).then(([pipelineResult, scopeResult]) => {
-        const scopeError = scopeResult.status === 'fulfilled' ? scopeResult.value : scopeResult.reason;
-        if (pipelineResult.status === 'fulfilled' && !scopeError) {
-            pipelineData.pipeline = pipelineResult.value; // the slot the sync path fills (:417)
-            state.created += 1;
-            return { label, ok: true };
-        }
-        pipelineData.error = true; // .pipeline stays undefined → the guard keeps skipping it
-        state.failed += 1;
-        const pipelineError = pipelineResult.status === 'rejected' ? pipelineResult.reason : null;
-        const reason = scopeError?.message || pipelineError?.message || 'unknown';
-        if (renderer._isDeviceLost !== true) {
-            // eslint-disable-next-line no-console
-            console.error(`WebGPURenderer: Async compute pipeline creation failed (${label}): ${reason}`);
-        }
-        return { label, ok: false, reason };
-    });
-}
-
-/**
- * Install the dispatch guard (always) and, on r185, the async-capable create hook. Idempotent.
- * @param {any} renderer
- * @returns {null | {collector: Array<Promise<any>>|null, suppressDispatch: boolean, skippedPending: number, created: number, failed: number}}
- */
+/** Install guards without replacing native pipeline creation. Idempotent. @param {any} renderer */
 export function installAsyncComputePipelines(renderer) {
     if (!isAsyncComputeCapable(renderer)) return null;
     const { backend } = renderer;
     const existing = STATE.get(backend);
     if (existing) return existing;
     const state = {
-        collector: null, suppressDispatch: false, skippedPending: 0, created: 0, failed: 0,
+        pendingNodes: new Map(), skippedPending: 0, created: 0, failed: 0,
     };
 
     const baseCompute = backend.compute;
     backend.compute = function computeUnlessPending(group, node, bindings, pipeline, dispatchSize = null) {
-        if (state.suppressDispatch) return undefined; // compile window: never dispatch
-        const gpuPipeline = this.get(pipeline).pipeline; // the same read as WebGPUBackend.js:1608
-        if (gpuPipeline === undefined || gpuPipeline === null) {
-            state.skippedPending += 1; // pending (or failed) async create
+        const data = this.get(pipeline);
+        if (data.error === true || data.pipeline == null) {
+            state.skippedPending += 1;
             return undefined;
         }
         return baseCompute.call(this, group, node, bindings, pipeline, dispatchSize);
     };
 
-    if (typeof renderer.compileComputeAsync !== 'function') { // r185 only
-        const baseCreate = backend.createComputePipeline;
-        backend.createComputePipeline = function createMaybeAsync(pipeline, bindings) {
-            if (state.collector === null) return baseCreate.call(this, pipeline, bindings); // exact r185 path
-            state.collector.push(createAsyncInto(this, renderer, state, pipeline, bindings));
+    const rendererCompute = renderer.compute;
+    renderer.compute = function computeUnlessBuilding(nodes, dispatchSize = null) {
+        const pending = Array.isArray(nodes)
+            ? nodes.some((node) => state.pendingNodes.has(node))
+            : state.pendingNodes.has(nodes);
+        if (pending) {
+            state.skippedPending += 1;
             return undefined;
-        };
-    }
+        }
+        return rendererCompute.call(this, nodes, dispatchSize);
+    };
     STATE.set(backend, state);
     return state;
 }
@@ -137,14 +71,10 @@ function withBudget(promise, ms) {
 }
 
 /**
- * Create the compute pipelines for `computeNodes` on Dawn's async workers. With an initialized
- * renderer the compile window (TSL build, bind groups, createShaderModule, async create kick-off)
- * runs SYNCHRONOUSLY inside this call, so a caller can start compileAsync right after and both
- * compile concurrently. A TSL build that throws rejects the returned promise.
  * @param {any} renderer
  * @param {any} computeNodes
  * @param {{timeoutMs?: number}} [options]
- * @returns {Promise<{status: 'ready'|'failed'|'timeout'|'unsupported'|'disabled'|'device-lost', created: number, failed: number, results: Array<any>, ms: number, skippedPending?: number}>}
+ * @returns {Promise<{status: 'ready'|'failed'|'timeout'|'unsupported'|'device-lost', created: number, failed: number, results: Array<any>, ms: number, skippedPending?: number}>}
  */
 export async function compileComputeAsync(renderer, computeNodes, { timeoutMs = 0 } = {}) {
     const startedAt = nowMs();
@@ -153,26 +83,42 @@ export async function compileComputeAsync(renderer, computeNodes, { timeoutMs = 
         status, created: 0, failed: 0, results: [], ms: Math.round(nowMs() - startedAt), ...extra,
     });
     if (list.length === 0) return done('ready');
-    if (asyncComputeDisabled()) return done('disabled');
     if (renderer?.initialized === false) await renderer.init();
     if (renderer?._isDeviceLost === true) return done('device-lost');
     const state = installAsyncComputePipelines(renderer);
     if (state === null) return done('unsupported');
-    let work;
-    if (typeof renderer.compileComputeAsync === 'function') { // r186+: native path, guard only
-        work = renderer.compileComputeAsync(list).then(() => list.map(() => ({ ok: true })));
-    } else {
-        const pending = [];
-        state.collector = pending;
-        state.suppressDispatch = true;
+    const pipelines = renderer._pipelines;
+    // DataMap.get creates an entry. Do not call it for unseen nodes before
+    // compilation: native onInit/dispose registration is gated by has().
+    const existingPipelines = new Set(list
+        .filter((node) => pipelines.has(node))
+        .map((node) => pipelines.get(node).pipeline).filter(Boolean));
+    for (const node of list) state.pendingNodes.set(node, (state.pendingNodes.get(node) || 0) + 1);
+    const work = (async () => {
         try {
-            renderer.compute(list); // real r185 bookkeeping; the guard drops the dispatch
+            await renderer.compileComputeAsync(list);
+            const checked = new Set();
+            const results = [];
+            for (const node of list) {
+                const pipeline = pipelines.has(node) ? pipelines.get(node).pipeline : null;
+                if (pipeline && checked.has(pipeline)) continue;
+                if (pipeline) checked.add(pipeline);
+                const data = pipeline ? renderer.backend.get(pipeline) : null;
+                const ok = data?.pipeline != null && data.error !== true;
+                if (ok && existingPipelines.has(pipeline)) continue;
+                results.push({ ok });
+                if (ok) state.created += 1;
+                else state.failed += 1;
+            }
+            return results;
         } finally {
-            state.collector = null;
-            state.suppressDispatch = false;
+            for (const node of list) {
+                const remaining = state.pendingNodes.get(node) - 1;
+                if (remaining > 0) state.pendingNodes.set(node, remaining);
+                else state.pendingNodes.delete(node);
+            }
         }
-        work = Promise.all(pending);
-    }
+    })();
     const results = await withBudget(work, timeoutMs);
     if (results === TIMEOUT) return done('timeout', { skippedPending: state.skippedPending });
     const failed = results.filter((r) => !r.ok).length;
@@ -181,10 +127,7 @@ export async function compileComputeAsync(renderer, computeNodes, { timeoutMs = 
     });
 }
 
-/**
- * @param {any} renderer
- * @returns {null | {skippedPending: number, created: number, failed: number}}
- */
+/** @param {any} renderer */
 export function getAsyncComputeStats(renderer) {
     const state = renderer?.backend ? STATE.get(renderer.backend) : undefined;
     return state ? { skippedPending: state.skippedPending, created: state.created, failed: state.failed } : null;

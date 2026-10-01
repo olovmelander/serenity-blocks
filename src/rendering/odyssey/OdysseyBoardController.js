@@ -4463,7 +4463,9 @@ export class OdysseyBoardController {
         });
 
         // Dispose renderer
-        this.renderer?.dispose();
+        Promise.resolve(this.renderer?.dispose()).catch((error) => {
+            console.warn('[OdysseyBoardController] Renderer disposal failed:', error);
+        });
         this.composer?.dispose?.();
 
         // Remove canvas

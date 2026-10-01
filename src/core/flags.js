@@ -123,7 +123,7 @@ export const FLAG_REGISTRY = [
     },
 
     // ── Boot / intro (local readers in main.js / boot-warp-transition.js / intro-animation.js;
-    //    themeWarmAsync / syncComputePipelines go through readFlag, ADR-0020) ──
+    //    themeWarmAsync goes through readFlag, ADR-0020) ──
     {
         name: 'noThemeWarm', default: false, purpose: 'kill-switch: skip pre-intro theme WebGPU warm', kind: 'refactor', graduationBar: 'plan §4.7 boot state machine replaces the warm choreography', reader: 'local',
     },
@@ -142,14 +142,6 @@ export const FLAG_REGISTRY = [
         kind: 'refactor',
         graduationBar: 'delete after scripts/boot-smoothness-probe.mjs cold boot + --scenario=mode-entry stay clean '
             + 'for one release',
-        reader: 'flags',
-    },
-    {
-        name: 'syncComputePipelines',
-        default: false,
-        purpose: 'rollback: create compute pipelines synchronously (the pre-async r185 path, incl. void-ember)',
-        kind: 'refactor',
-        graduationBar: 'delete with the three r186 upgrade (native compileComputeAsync); keep the dispatch guard',
         reader: 'flags',
     },
     {

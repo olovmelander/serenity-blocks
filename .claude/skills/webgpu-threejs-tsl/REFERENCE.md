@@ -221,7 +221,7 @@ const compute2 = Fn(() => { /* ... */ })().compute(count, [64]);
 import { pass } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
-// r185: RenderPipeline is the real class (renamed from PostProcessing in r183;
+// r186: RenderPipeline is the real class (renamed from PostProcessing in r183;
 // the old name is a deprecated warn-once alias). The repo-wide rename has landed.
 const postProcessing = new THREE.RenderPipeline(renderer);
 const scenePass = pass(scene, camera);
@@ -286,11 +286,11 @@ const gradient = mix(colorA, colorB, positionLocal.y.mul(0.5).add(0.5));
 
 ```javascript
 // Listen for device loss
-renderer.backend.device.lost.then((info) => {
+renderer.backend.device.lost.then(async (info) => {
   if (info.reason === 'unknown') {
     // Unexpected loss - recover
-    renderer.dispose();
-    initWebGPU();  // Reinitialize
+    await renderer.dispose();
+    await initWebGPU();  // Reinitialize
   }
 });
 
@@ -352,9 +352,21 @@ if (adapter.limits.maxBufferSize >= desiredSize) {
 
 See `docs/limits-and-features.md` for full details.
 
-## Version Notes (installed: 0.185.1 / r185)
+## Version Notes (installed: 0.186.1 / r186)
 
-**r185 (this repo — changes vs the previous r181 pin):**
+**r186 changes from the r185 pin:**
+- Native `renderer.compileComputeAsync(nodes)` compiles without dispatching. Use the
+  repo's `webgpu-compute-pipeline-async.js` wrapper to verify GPU slots and guard
+  pending/failed dispatch; native compilation may resolve with an error flag.
+- Renderer/backend disposal is asynchronous; await it before destroying a shared
+  GPU device or nulling the backend device. Handle rejected disposal promises.
+- MRT merge now preserves blend modes; the prototype patch is removed. Explicit
+  `MaterialBlending` on emissive attachments remains necessary.
+- `compileAsync(scene, camera, targetScene = null, onProgress = null)` retains the
+  first three arguments and deferred builds; retain Odyssey's scoped target bindings.
+- WebGPU `PCFSoftShadowMap` is removed; use `PCFShadowMap`.
+
+**Retained r185 behavior (changes vs the previous r181 pin):**
 - `PostProcessing` was renamed `RenderPipeline` in r183; in r185 `PostProcessing` is a
   fully-functional deprecated warn-once alias. **Repo policy: construct
   `RenderPipeline`** — the repo-wide rename has landed; a `PostProcessing` deprecation
@@ -362,8 +374,7 @@ See `docs/limits-and-features.md` for full details.
 - TSL `atan2` removed → two-arg `atan(y, x)`. TSL `.equals` removed → `.equal`.
 - MRT secondary attachments default to `NoBlending` — restore emissive blending via
   `withEmissiveMaterialBlending(...)` from `src/themes/shared/mrt-blend.js`
-  (`setBlendMode('emissive', new BlendMode(MaterialBlending))` + a patch for the
-  upstream `merge()` blendModes bug).
+  (`setBlendMode('emissive', new BlendMode(MaterialBlending))`; r186 merges blend modes natively).
 - `positionNode` ordering **inverted** vs r181 (verified from generated WGSL): r181 ran
   `positionNode` first (`positionLocal` inside it = raw geometry) and applied
   instance/batch/skin matrices after its output; r185 applies the matrices first
@@ -373,8 +384,8 @@ See `docs/limits-and-features.md` for full details.
   InstancedMesh collapses instancing on r185.
 - `compileAsync` defers node building to a per-object main-thread-yielding loop — a
   bind/compile/restore-synchronously recipe silently poisons the MRT-agnostic builder
-  cache. Hold bindings across the `await` (loop idle only), or warm by actually
-  rendering once (render-warm is unchanged and remains the only live-loop-safe warm).
+  cache. Use Odyssey's `warmup/post-target-compile.js` scoped binding helper,
+  retaining its side, call-depth and live-loop protections.
 - `backend.hasTimestamp(uid)` → `hasTimestampQuery(uid)`; `hasTimestamp` is now a
   boolean **capability getter** — calling it like a function is a TypeError, and
   truthiness checks silently changed meaning.

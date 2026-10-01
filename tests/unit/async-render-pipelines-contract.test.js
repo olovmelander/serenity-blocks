@@ -8,7 +8,7 @@ import { isFinalComposite, isOneShotRenderTarget } from '../../src/rendering/asy
 //
 // The session wrapper turns an OWNED renderer's live `backend.createRenderPipeline(renderObject,
 // null)` into the compileAsync branch (a promises array) so the compile runs through
-// createRenderPipelineAsync, relying on the r185 internals pinned here:
+// createRenderPipelineAsync, relying on the r186 internals pinned here:
 //   - the live path hands the backend promises = null, compileAsync hands it an array;
 //   - Pipelines caches the pipeline and sets renderObject.pipeline BEFORE the backend create
 //     (its sole caller), so the wrapper can read backend.get(renderObject.pipeline);
@@ -93,10 +93,10 @@ function jsFilesUnder(rel) {
         .map((p) => ({ path: `${rel}${p}`, text: readFileSync(new URL(p, root), 'utf8') }));
 }
 
-describe('three r185 render-pipeline contract (async render pipelines)', () => {
-    it('is pinned to three 0.185.1', () => {
+describe('three r186 render-pipeline contract (async render pipelines)', () => {
+    it('is pinned to three 0.186.1', () => {
         const why = 're-verify src/rendering/async-render-pipelines.js against the new three';
-        expect(pkg.version, why).toBe('0.185.1');
+        expect(pkg.version, why).toBe('0.186.1');
     });
 
     it('three/webgpu exports the WebGPUBackend class whose prototype the preload resolves', () => {
@@ -155,11 +155,11 @@ describe('three r185 render-pipeline contract (async render pipelines)', () => {
         });
 
         it('the header\'s WebGPUPipelineUtils.js line numbers still point at the anchors', () => {
-            atLine(srcPipelineUtils, 72, CREATE_RENDER_PIPELINE);
-            atLine(srcPipelineUtils, 261, 'if ( promises === null ) {');
-            atLine(srcPipelineUtils, 292, 'device.createRenderPipelineAsync( _renderPipelineDescriptor );');
-            atLine(srcPipelineUtils, 316, 'const errorScope = await device.popErrorScope();');
-            atLine(srcPipelineUtils, 339, 'promises.push( p );');
+            atLine(srcPipelineUtils, 71, CREATE_RENDER_PIPELINE);
+            atLine(srcPipelineUtils, 260, 'if ( promises === null ) {');
+            atLine(srcPipelineUtils, 291, 'device.createRenderPipelineAsync( _renderPipelineDescriptor );');
+            atLine(srcPipelineUtils, 315, 'const errorScope = await device.popErrorScope();');
+            atLine(srcPipelineUtils, 338, 'promises.push( p );');
         });
     });
 
@@ -200,12 +200,12 @@ describe('three r185 render-pipeline contract (async render pipelines)', () => {
         });
 
         it('the header\'s Pipelines.js line numbers still point at the anchors', () => {
-            atLine(srcPipelines, 160, 'getForRender( renderObject, promises = null ) {');
-            atLine(srcPipelines, 255, 'isReady( renderObject ) {');
-            atLine(srcPipelines, 331, 'updateForRender( renderObject ) {');
-            atLine(srcPipelines, 333, 'this.getForRender( renderObject );');
-            atLine(srcPipelines, 380, GET_RENDER_PIPELINE);
-            atLine(srcPipelines, 400, 'this.backend.createRenderPipeline( renderObject, promises );');
+            atLine(srcPipelines, 161, 'getForRender( renderObject, promises = null ) {');
+            atLine(srcPipelines, 256, 'isReady( renderObject ) {');
+            atLine(srcPipelines, 332, 'updateForRender( renderObject ) {');
+            atLine(srcPipelines, 334, 'this.getForRender( renderObject );');
+            atLine(srcPipelines, 382, GET_RENDER_PIPELINE);
+            atLine(srcPipelines, 402, 'this.backend.createRenderPipeline( renderObject, promises );');
         });
     });
 
@@ -230,7 +230,7 @@ describe('three r185 render-pipeline contract (async render pipelines)', () => {
         for (const body of bodies) expect(body).toMatch(re);
         // No other draw path in the renderer bypasses the gate.
         expect(srcRenderer.match(/\.backend\.draw\(/g)).toHaveLength(1);
-        atLine(srcRenderer, 3725, 'if ( this._pipelines.isReady( renderObject ) ) {');
+        atLine(srcRenderer, 3895, 'if ( this._pipelines.isReady( renderObject ) ) {');
     });
 
     it('WebGPUBackend.draw returns early on pipelineData.error (what the scope repair clears)', () => {
@@ -241,7 +241,7 @@ describe('three r185 render-pipeline contract (async render pipelines)', () => {
         );
         const bodies = bothMethods('class WebGPUBackend extends Backend {', srcBackend, 'draw( renderObject, info ) {');
         for (const body of bodies) expect(body).toMatch(re);
-        atLine(srcBackend, 1909, 'if ( pipelineData.error === true ) return;');
+        atLine(srcBackend, 2220, 'if ( pipelineData.error === true ) return;');
     });
 
     it('Backend exposes backend.renderer (set by init) and a stable per-object get()', () => {
@@ -275,8 +275,8 @@ describe('three r185 render-pipeline contract (async render pipelines)', () => {
             expect(body).toContain("cubeUVRenderTarget.texture.name = 'PMREM.cubeUv';");
             expect(body).toContain('cubeUVRenderTarget.texture.isPMREMTexture = true;');
         }
-        atLine(srcPmrem, 899, PMREM_CREATE_TARGET);
-        atLine(srcPmrem, 916, 'return cubeUVRenderTarget;');
+        atLine(srcPmrem, 838, PMREM_CREATE_TARGET);
+        atLine(srcPmrem, 855, 'return cubeUVRenderTarget;');
     });
 
     describe('final composite (isFinalComposite)', () => {
@@ -298,13 +298,16 @@ describe('three r185 render-pipeline contract (async render pipelines)', () => {
                 expect(body).toMatch(renderRe);
             }
             // …and with neither tone mapping nor a colour-space change there is no framebuffer target.
-            const noTargetRe = adjacent(
-                /const useToneMapping = currentToneMapping !== NoToneMapping;/,
-                /const useColorSpace = currentColorSpace !== ColorManagement\.workingColorSpace;/,
-                /if \( useToneMapping === false && useColorSpace === false \) return null;/,
+            const needsTargetRe = adjacent(
+                /const useToneMapping = this\.currentToneMapping !== NoToneMapping;/,
+                /const useColorSpace = this\.currentColorSpace !== ColorManagement\.workingColorSpace;/,
+                /return useToneMapping \|\| useColorSpace;/,
             );
+            for (const body of bothMethods('class Renderer {', srcRenderer, 'get needsFrameBufferTarget() {')) {
+                expect(body).toMatch(needsTargetRe);
+            }
             for (const body of bothMethods('class Renderer {', srcRenderer, '_getFrameBufferTarget() {')) {
-                expect(body).toMatch(noTargetRe);
+                expect(body).toContain('if ( this.needsFrameBufferTarget === false ) return null;');
             }
         });
 
