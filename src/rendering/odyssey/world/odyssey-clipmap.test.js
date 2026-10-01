@@ -145,6 +145,7 @@ describe('clipmap stage discipline in the water material', () => {
         /^\s*const wVertUv = /, // bed UV for the shallow-water taper (.level(0) fetch)
         /^\s*const wVertDist = /, // per-wave camera-distance envelope input
         /^\s*const swellVert = /, // the displacement field itself
+        /^\s*const swashVert = /, // the shore run-up, a vertex-stage displacement term
         /^\s*waterMat\.positionNode = /, // the displacement, written to geometry
         /^\s*const wUv = varying\(/, // handed to the fragment stage EXPLICITLY
     ];
@@ -179,13 +180,17 @@ describe('clipmap stage discipline in the water material', () => {
         // be satisfied by deleting the ripple normal outright, which is how the ceiling's
         // mottling would quietly disappear again.
         const source = codeLines.join('\n');
-        ['const rippleA = ', 'const rippleB = '].forEach((decl) => {
+        // The ripple FETCHES carry the coordinate since the topside glitter and shore foam began
+        // reading the fetch's `.b` as well as its `.rg` — `rippleA/B` are now swizzles of them.
+        ['const rippleTexA = ', 'const rippleTexB = '].forEach((decl) => {
             const line = codeLines.find((candidate) => candidate.includes(decl));
             expect(line, `${decl} not found`).toBeTruthy();
             expect(line, `${decl}must sample on positionWorld.xz`).toContain('positionWorld.xz');
         });
-        // The whitecap break-up noise, and the crest term the underside's SSS rides.
-        expect(source).toMatch(/const capNoise = snoise3\(vec3\(\s*positionWorld\.x/);
+        // The whitecap break-up, and the crest term the underside's SSS rides. The break-up was
+        // a per-pixel simplex on positionWorld; it is now the ripple fetches' scalar channel,
+        // which inherits their positionWorld.xz coordinate (pinned above) at no ALU.
+        expect(source).toMatch(/const capBreak = rippleTexA\.b/);
         expect(source).toContain("varying(swell, 'vSwell')");
         expect(source).toMatch(/const crestMask = clamp\(vSwell\./);
     });
