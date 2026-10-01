@@ -300,6 +300,17 @@ const LAKE_TINT_DEFAULT = 'alpine';
  */
 const WATER_JADE = Object.freeze([0.20, 0.72, 0.60]);
 /**
+ * THE UNDERWATER LIGHT LADDER (item 4) — the two poles the submerged frame now walks between.
+ * The colour script's water keyframes are all steel/navy blues, so every submerged frame was
+ * one mid-blue from edge to edge: a "flat uniform blue void". Light under water is not
+ * uniform: it is a luminous teal ceiling where the surface lets the sky in, falling to deep
+ * indigo where the water column is long. These lean the existing plates toward those poles
+ * (never replace them — the script still owns the journey's hue walk), authored bright and
+ * saturated for the grade like every palette here.
+ */
+const UW_LUMINOUS = Object.freeze([0.10, 0.50, 0.54]);
+const UW_INDIGO = Object.freeze([0.014, 0.026, 0.090]);
+/**
  * ATMOSPHERIC THINNING (Wave 3 / F3): how much of each mass's body the full thin removes,
  * as a fraction of its distance to the mass centre. 0.30 at the schedule's 0.85 cap means
  * a mass ends the climb at ~74% of its authored size — visibly losing scale, still a cloud.
@@ -1017,7 +1028,7 @@ export function createOdysseyWorld({
         // without a directional term every up-ray converged to the same shallow plate —
         // capture-measured at p=0.130 as 90% of the frame's pixels in ONE luma band. A
         // grazing ray is a long horizontal water column and must darken like one.
-        const surfaceGlow = clamp(dirY, 0, 1).pow(2.2).mul(0.5);
+        const surfaceGlow = clamp(dirY, 0, 1).pow(2.2).mul(0.55);
         const grazing = float(1).sub(abs(dirY)).pow(3);
         // BANDED DEPTH, not one exponential (plan §3.4.1 — Ponyo's stacked plates). Depth is
         // shown as discrete hue steps within one temperature family, which is how every
@@ -1027,10 +1038,22 @@ export function createOdysseyWorld({
         // reading darker near the surface than at mid-depth.
         const depthBelow = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(160), 0, 1);
         const bandShallow = mix(uWaterShallow, uWaterMid, smoothstep(float(0.10), float(0.42), depthBelow));
-        const banded = mix(bandShallow, uWaterDeep, smoothstep(float(0.45), float(0.92), depthBelow));
-        const convergePlate = mix(uWaterMid, uWaterDeep, uEyeDepth);
+        // The deep end leans INDIGO (item 4): a long water column is violet-dark, not grey-navy.
+        const deepIndigo = mix(uWaterDeep, vec3(...UW_INDIGO), 0.55);
+        const banded = mix(bandShallow, deepIndigo, smoothstep(float(0.45), float(0.92), depthBelow));
+        const convergePlate = mix(uWaterMid, deepIndigo, uEyeDepth);
         const bandedDir = mix(banded, convergePlate, grazing);
-        const waterTarget = mix(bandedDir, skyColourSubmergedUp.mul(0.45), surfaceGlow);
+        // ...and the overhead lift leans LUMINOUS TEAL, brightest near the surface: the ceiling
+        // the ascent camera stares at for the whole chapter glows instead of sitting mid-blue.
+        const glowTarget = mix(
+            skyColourSubmergedUp.mul(0.45),
+            // Dimmed hard with the eye's depth: the glow is the SURFACE's, so 120 u down it must
+            // sit back and let the shafts be the luminous accents (the value hierarchy) rather
+            // than wash the whole frame teal — the first capture's read.
+            vec3(...UW_LUMINOUS).mul(float(1).sub(uEyeDepth.mul(0.72))),
+            0.60,
+        );
+        const waterTarget = mix(bandedDir, glowTarget, surfaceGlow);
         // Component-wise mix against the same target: the hue WALKS with distance (red gone
         // first, blue last) instead of every channel arriving together. This is what puts
         // value structure back into the frame the steam veil used to supply.
@@ -1329,6 +1352,14 @@ export function createOdysseyWorld({
         const wetReach = float(ODYSSEY_SEA_LEVEL + SWASH_BASE + SWASH_RUN + 0.22);
         const wetSand = smoothstep(wetReach.add(0.30), wetReach, height).mul(kSand);
         albedo = albedo.mul(mix(vec3(1), vec3(0.70, 0.66, 0.66), wetSand.mul(0.85)));
+        // THE SEABED (item 4). Everything under the shelf is weighted "sand", so the ocean floor
+        // wore the BEACH palette — warm khaki under a blue column, which the water's red-first
+        // extinction turned into grey murk. Below a few metres it leans to a cool green-grey bed
+        // with the sand atlas's own grain doubled into speckle (mean-preserving, like the tooth).
+        const seabed = smoothstep(float(ODYSSEY_SEA_LEVEL - 4), float(ODYSSEY_SEA_LEVEL - 30), height)
+            .mul(kSand);
+        const bedSpeckle = mix(float(1), atlas.b.div(float(atlasAvg[2])), float(0.55));
+        albedo = mix(albedo, vec3(0.20, 0.31, 0.28).mul(bedSpeckle), seabed.mul(0.75));
         const wetGlisten = smoothstep(swashHere.add(0.55), swashHere.add(0.04), height)
             .mul(smoothstep(swashHere.sub(0.10), swashHere.add(0.04), height))
             .mul(kSand)
@@ -1400,6 +1431,9 @@ export function createOdysseyWorld({
         const causticTex = texture(detailTex, causticUv);
         const causticWeb = min(causticTex.b, clamp(causticTex.a.sub(0.42).mul(3.57), 0, 1));
         const caustic = smoothstep(float(ODYSSEY_SEA_LEVEL), float(ODYSSEY_SEA_LEVEL - 7), height)
+            // Item 4: projected surface light FADES with the column above it — the deep floor
+            // was as caustic-lit as the shelf, which flattened the depth read.
+            .mul(smoothstep(float(ODYSSEY_SEA_LEVEL - 150), float(ODYSSEY_SEA_LEVEL - 25), height))
             .mul(smoothstep(sin(uTime.mul(0.7)).mul(0.04).add(0.52), float(0.80), causticWeb))
             // Projected surface light cannot paint a cliff wall or the underside of a ledge.
             .mul(clamp(normal.y, 0, 1))
@@ -1637,8 +1671,12 @@ export function createOdysseyWorld({
     const downwelling = clamp(skyDir.y, 0, 1).pow(2.2)
         .add(smoothstep(float(-0.15), float(0.35), skyDir.y).mul(0.22));
     const skyWater = mix(
-        mix(uWaterMid, uWaterDeep, uEyeDepth),
-        mix(uWaterMid, skyColourSubmergedGraze.mul(0.42), float(0.35)),
+        mix(uWaterMid, mix(uWaterDeep, vec3(...UW_INDIGO), 0.55), uEyeDepth),
+        mix(
+            mix(uWaterMid, skyColourSubmergedGraze.mul(0.42), float(0.35)),
+            vec3(...UW_LUMINOUS).mul(0.85),
+            float(0.40),
+        ),
         clamp(downwelling, 0, 1),
     );
     skyMat.colorNode = toOutput(mix(skyAir, skyWater, uSubmerged));
@@ -2040,8 +2078,29 @@ export function createOdysseyWorld({
             const sss = crestMask.mul(grazing).mul(clamp(dot(uSunDir, vec3(0, 1, 0)), 0, 1));
             const upCos = clamp(dot(viewDir.negate(), wN), 0, 1);
             const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
+            // THE CAUSTIC WEB ON THE CEILING (item 4). Seen from below, a rippled surface is a
+            // net of bright refracted lines, not a mottle. The lines are where the two ripple
+            // layers' scalar fields CROSS (|A - B| ~ 0): an iso-contour of two decorrelated,
+            // independently scrolling fields is a meandering net that re-forms as they slide —
+            // which is how real caustic nets move — and it costs no fetch at all (both texels are
+            // already resident). The first cut thresholded the floor's min(b, a) web instead and
+            // drew the 256-texel tile as a grid of identical blobs across the whole ceiling; an
+            // iso-line of two layers at a non-integer scale ratio has no such period.
+            // Footprint-widened so it never aliases, and near-field only by EYE distance (3D —
+            // the ascent looks straight up, so the overhead ceiling has ~zero HORIZONTAL range
+            // and a planar fade let the net tile the whole sky from 117 u down: measured). The
+            // line weight swells and breaks with the first field, so the net has thick bright
+            // knots and gaps like a real caustic instead of reading as a contour map.
+            const ceilDiff = rippleTexA.b.sub(rippleTexB.b);
+            const ceilAA = abs(dFdx(ceilDiff)).add(abs(dFdy(ceilDiff)));
+            const ceilWidth = rippleTexA.b.mul(0.032).add(0.008);
+            const ceilLines = float(1).sub(smoothstep(float(0.0), ceilAA.add(ceilWidth), abs(ceilDiff)))
+                .mul(smoothstep(float(0.30), float(0.55), rippleTexB.b.add(rippleTexA.b.mul(0.3))))
+                .mul(float(1).sub(smoothstep(float(22), float(62), length(positionWorld.sub(cameraPosition)))))
+                .mul(snellWindow.mul(0.7).add(0.3));
             const windowSky = skyColourSubmergedUp.mul(1.30)
-                .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2));
+                .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2))
+                .add(vec3(...UW_LUMINOUS).mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.5)));
             const tirBody = mix(uWaterMid, uWaterDeep, uEyeDepth).mul(0.6);
             const underside = mix(tirBody, windowSky, snellWindow)
                 .add(uWaterGlow.mul(sss).mul(0.55));
@@ -2799,7 +2858,11 @@ export function createOdysseyWorld({
     // WAVE 4: the cap is the REAL number. Four research findings priced this system at "22
     // cones" off the old cap while the submerged rail has ever only yielded 9 — the code's
     // own constant was the source of the wrong number, so it now states the truth.
-    const rayCount = Math.min(9, sunkPoints.length);
+    // Item 4: seated along the OPEN-WATER span, not the raw submerged samples (three of which
+    // are the Earth Core shaft), and three more of them — the ascent looks straight up through
+    // them, so a fan of shafts converging on the surface is the chapter's hero read.
+    const rayPoints = openWater.length > 2 ? openWater : sunkPoints;
+    const rayCount = Math.min(12, rayPoints.length);
     let rayMesh = null;
     let rayMat = null;
     if (rayCount > 2) {
@@ -2818,7 +2881,10 @@ export function createOdysseyWorld({
         // the grazing angle IS the silhouette; fading it there means the shape has no visible
         // boundary at all.
         const rayView = normalize(cameraPosition.sub(positionWorld));
-        const eFade = abs(dot(normalWorld, rayView)).pow(0.85).toVar();
+        // Steeper than the shipped 0.85 (item 4): with the shafts finally bright enough to
+        // read, the cone silhouettes drew hard straight edges; a faster fall toward edge-on
+        // leaves a soft-edged shaft.
+        const eFade = abs(dot(normalWorld, rayView)).pow(1.25).toVar();
         // NEAR fade: the rail passes THROUGH these shafts, and a 220 u cone a few metres from
         // the eye fills the frame with one flat wedge. Same lesson as the cloud deck.
         const rayNear = smoothstep(float(14), float(85), length(positionWorld.sub(cameraPosition)));
@@ -2834,8 +2900,11 @@ export function createOdysseyWorld({
             .mul(0.55)
             .add(0.45);
         // Bypasses toOutput (no grade on the shafts), so it takes the departure fade directly.
+        // Item 4: a luminous teal-white, not the script's sun. Under water the script's sun is
+        // a dim steel blue (0x4080a0 at mid-water), and ADDED onto a blue column it carried no
+        // contrast at all — the shafts were present in every capture and readable in none.
         rayMat.colorNode = mix(
-            uSunColour.mul(vec3(0.75, 0.92, 1.0)).mul(uOutputScale),
+            mix(uSunColour, vec3(0.62, 0.96, 1.0), 0.65).mul(uOutputScale),
             uWorldFadeColour,
             uWorldFade,
         );
@@ -2843,7 +2912,7 @@ export function createOdysseyWorld({
         // of the camera, and DoubleSide additive pays both walls — at the old master the
         // shafts read as solid pipes.
         rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(rayShimmerSafe).mul(uSubmerged)
-            .mul(0.34)
+            .mul(0.52)
             .toVar();
         rayMat.transparent = true;
         rayMat.blending = THREE.AdditiveBlending;
@@ -2867,7 +2936,7 @@ export function createOdysseyWorld({
         const fullTilt = new THREE.Quaternion()
             .setFromUnitVectors(new THREE.Vector3(0, 1, 0), sunDirV);
         const tilt = new THREE.Quaternion().slerp(fullTilt, 0.35);
-        const rayGeo = new THREE.ConeGeometry(7, 240, 14, 1, true);
+        const rayGeo = new THREE.ConeGeometry(10, 240, 14, 1, true);
         // WAVE 4: RIGHT WAY UP. ConeGeometry seats the wide base (uv.y=0, where vFade is
         // brightest) at the BOTTOM and the apex at the top — so the shafts were brightest at
         // their deep end, the bright base buried below the seabed, and the thin dark apex
@@ -2880,7 +2949,7 @@ export function createOdysseyWorld({
         const rPos = new THREE.Vector3();
         const rScl = new THREE.Vector3();
         for (let i = 0; i < rayCount; i += 1) {
-            const pt = sunkPoints[Math.floor((i / rayCount) * sunkPoints.length)];
+            const pt = rayPoints[Math.floor((i / rayCount) * rayPoints.length)];
             const a = hash01(i * 3 + 1) * Math.PI * 2;
             const r = 18 + (hash01(i * 3 + 2) * 46);
             // Base (wide, bright end) just above the surface; the apex feathers down to
@@ -2951,7 +3020,10 @@ export function createOdysseyWorld({
         // previously-buried motes into open water, so the additive fill they can spend is
         // clamped — a mote may never exceed ~1.2 degrees of screen no matter how close it
         // drifts to the eye. Far motes keep their world size (the min never binds).
-        const moteSize = mS.mul(0.6).add(0.5);
+        // Item 4: ~3 % of motes are BIOLUMINESCENT — three times the size, a warmer cyan, and
+        // slow to pulse — the rare larger glows that make a column of specks read as alive.
+        const mGlow = tslStep(0.97, fract(mS.mul(7.13)));
+        const moteSize = mS.mul(0.6).add(0.5).mul(mGlow.mul(2.0).add(1));
         const moteDist = length(moteCenter.sub(cameraPosition));
         const moteSizeClamped = min(moteSize, moteDist.mul(0.02).add(0.04));
         moteMat.positionNode = billboardWorld(moteCenter, moteSizeClamped);
@@ -2961,13 +3033,21 @@ export function createOdysseyWorld({
         // background darkens with depth — the same inverse the vault's ember gate uses.
         const mDepth = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(120), 0, 1);
         moteMat.colorNode = mix(
-            mix(vec3(0.55, 0.85, 0.90), vec3(0.35, 0.75, 0.80), mDepth)
-                .mul(mDepth.mul(0.9).add(0.35))
-                .mul(uOutputScale),
+            mix(
+                mix(vec3(0.55, 0.85, 0.90), vec3(0.35, 0.75, 0.80), mDepth)
+                    .mul(mDepth.mul(0.9).add(0.35)),
+                vec3(0.42, 1.0, 0.84),
+                mGlow,
+            ).mul(uOutputScale),
             uWorldFadeColour,
             uWorldFade,
         );
-        moteMat.opacityNode = mRadial.mul(mRadial).mul(uSubmerged).mul(0.42);
+        // TWINKLE: each speck catches the light on its own slow clock (a drifting flake turning),
+        // so the field glitters instead of sitting as a static star map.
+        const mTwinkle = sin(uTime.mul(mS.mul(2.6).add(0.9)).add(mS.mul(40))).mul(0.5).add(0.5);
+        const mPulse = sin(uTime.mul(0.7).add(mS.mul(17))).mul(0.35).add(0.65);
+        moteMat.opacityNode = mRadial.mul(mRadial).mul(uSubmerged)
+            .mul(mix(mTwinkle.mul(mTwinkle).mul(0.55).add(0.12), mPulse.mul(0.75), mGlow));
         moteMat.transparent = true;
         moteMat.depthWrite = false;
         moteMat.blending = THREE.AdditiveBlending;
@@ -3140,7 +3220,8 @@ export function createOdysseyWorld({
         const fFish = attribute('aFish', 'vec4');
         const fLook = attribute('aLook', 'vec4');
         const fS = fFish.w;
-        const fScale = fLook.w;
+        // x1.2 after the first capture: at 40-110 u the 1.3-1.7 m hulls were 6-10 px slivers.
+        const fScale = fLook.w.mul(1.2);
         const fOmega = fPathB.y;
         const fHand = tslStep(0, fOmega).mul(2).sub(1);
         // THE RIBBON: an ellipse with a 2-per-lap vertical undulation, so a school rises and
@@ -3201,13 +3282,17 @@ export function createOdysseyWorld({
         const fDorsal = smoothstep(float(-0.10), float(0.24), positionGeometry.y);
         const fTint = fLook.xyz;
         const fBack = fTint.mul(vec3(0.20, 0.30, 0.36));
-        const fBelly = mix(fTint, vec3(0.86, 0.93, 0.95), float(0.50));
+        // The belly is lighter than the back but still DARKER than the lit water around it:
+        // pure countershading camouflages a fish against the surface (that is its purpose in
+        // nature), and a fish the eye cannot find is no life at all. Silhouettes first, with the
+        // silver reserved for the flash — the first capture's bright bellies all but vanished.
+        const fBelly = mix(fTint, vec3(0.86, 0.93, 0.95), float(0.25)).mul(0.62);
         const fAlbedo = mix(fBelly, fBack, fDorsal);
         // Down-welling light: the surface is the only lamp. Wrapped, so a belly seen from below
         // is lit by the bright water around it rather than going black.
         const fDown = clamp(fN.y.mul(0.5).add(0.5), 0, 1);
         const fDepth = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(180), 0, 1);
-        const fLight = mix(float(0.62), float(1.25), fDown).mul(float(1).sub(fDepth.mul(0.45)));
+        const fLight = mix(float(0.50), float(1.05), fDown).mul(float(1).sub(fDepth.mul(0.45)));
         // THE FLASH: the flank mirrors the surface when the reflected eye ray climbs into the
         // Snell window (y > ~0.8). Flanks only — a belly or back cannot flash.
         const fRefl = reflect(fV.negate(), fN);
