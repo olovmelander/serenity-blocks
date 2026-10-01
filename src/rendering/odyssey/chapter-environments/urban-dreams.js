@@ -31,11 +31,14 @@ import {
     clamp,
     float,
     fract,
+    mix,
     oneMinus,
     sin,
     smoothstep,
+    step,
     uniform,
     uv,
+    vec2,
     vec3,
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
@@ -44,7 +47,7 @@ import {
     getChapterPathRange,
     getOdysseyPathCurve,
 } from '../path-utils.js';
-import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import {
     computeStageBasis,
     stageBasisToQuaternion,
@@ -63,6 +66,7 @@ import {
     createNeonHazeStackTSL,
     createSkylineSilhouetteTSL,
     createHorizonHazeTSL,
+    billboardStageVertical,
 } from './urban-dreams.tsl.js';
 
 export const URBAN_DREAMS_CONFIG = {
@@ -166,75 +170,81 @@ function createNeonRails() {
     return group;
 }
 
-// Rain wrap geometry: streaks spawn across this Y span and fall (world -Y), respawning at
-// the top once they pass the bottom. These constants mirror the former CPU loop's bounds
-// (spawn ~[-120, 240], floor -150) so the look is unchanged — the fall is now a uTime-driven
-// sawtooth in the shader instead of a per-frame JS rewrite of the aBase array (Batch5).
-const RAIN_SPAN_TOP = 240; // respawn height
-const RAIN_SPAN_BOTTOM = -150; // floor before wrap
-const RAIN_SPAN = RAIN_SPAN_TOP - RAIN_SPAN_BOTTOM; // 390
-const RAIN_FALL_SPEED = 96; // world units/sec (≈ 1.6/frame × 60fps, matches old loop)
+// Rain wrap geometry (CORRIDOR space, 2026-10): streaks spawn across this local-Y span and
+// fall along the city's -Y (its gravity), respawning at the top. The fall is a uTime-driven
+// sawtooth in the shader (Batch5), no CPU loop.
+const RAIN_SPAN_TOP = 150; // respawn height (above the eye line)
+const RAIN_SPAN_BOTTOM = -60; // the street datum
+const RAIN_SPAN = RAIN_SPAN_TOP - RAIN_SPAN_BOTTOM;
+const RAIN_FALL_SPEED = 120; // corridor units/sec
+const RAIN_COUNT = 900;
 
 function createRainCurtain(uniforms) {
     const uTime = uniforms?.uTime ?? uniform(0);
-    const count = 340;
+    const uRainDensity = uniforms?.uRainDensity ?? uniform(1);
+    const count = RAIN_COUNT;
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
-    // Per-streak phase + speed jitter so the curtain doesn't fall in lockstep (replaces the
-    // former `(index % 5) * 0.08` per-streak speed variance from the CPU loop).
     const phases = new Float32Array(count);
     const speeds = new Float32Array(count);
+    const seeds = new Float32Array(count);
 
     for (let index = 0; index < count; index += 1) {
         const stride = index * 3;
-        // WORLD-space spread around the near-vertical climb the camera makes through this
-        // chapter. The rain mesh lives on the UNROTATED group, so X/Z are lateral and Y is
-        // the climb axis (and gravity). A wide X/Z box blankets the canyon; a tall Y range
-        // keeps streaks present from below the camera up past the finale spire ahead.
-        positions[stride] = (Math.random() - 0.5) * 280;
-        positions[stride + 1] = Math.random() * 360 - 120; // initial Y (also the phase seed)
-        positions[stride + 2] = (Math.random() - 0.5) * 280;
-        sizes[index] = 2.5 + Math.random() * 3.5;
-        phases[index] = Math.random(); // 0..1 fall-cycle offset
-        speeds[index] = 0.86 + (index % 5) * 0.05; // mild per-streak speed variance
+        // A volume around the camera's actual travel (corridor z +120 → -60) and out over
+        // the boulevard; denser near the lane where it reads against the dark towers.
+        const lateral = (Math.random() - 0.5) * (Math.random() < 0.6 ? 90 : 260);
+        positions[stride] = lateral;
+        positions[stride + 1] = 0; // Y comes from the shader sawtooth
+        positions[stride + 2] = 140 - Math.random() * 260;
+        sizes[index] = 2.2 + Math.random() * 3.2;
+        phases[index] = Math.random();
+        speeds[index] = 0.82 + Math.random() * 0.36;
+        seeds[index] = Math.random();
     }
 
-    // Instanced billboard quads (THREE.Points renders as 1px on WebGPU). The fall animation
-    // is now driven entirely in the shader from `uTime` + per-instance phase/speed — no
-    // per-frame CPU loop over the aBase array and no needsUpdate re-upload (Batch5). aBase
-    // holds the static spawn X/Z and the streak's seed Y; the shader computes the falling Y.
     const geometry = makeQuadInstancedGeometry(count, {
         aBase: { array: positions, itemSize: 3 },
         aSize: { array: sizes, itemSize: 1 },
         aRainPhase: { array: phases, itemSize: 1 },
         aRainSpeed: { array: speeds, itemSize: 1 },
+        aRainSeed: { array: seeds, itemSize: 1 },
     });
 
     const aBase = attribute('aBase', 'vec3');
     const aSize = attribute('aSize', 'float');
     const aRainPhase = attribute('aRainPhase', 'float');
     const aRainSpeed = attribute('aRainSpeed', 'float');
+    const aRainSeed = attribute('aRainSeed', 'float');
 
-    // uTime-driven falling Y: a per-streak sawtooth wrapping over [BOTTOM, TOP]. fract()
-    // gives the 0..1 cycle position; map it down from TOP so 0 = just respawned at the top
-    // and 1 = at the floor. Phase + speed are per-instance so streaks fall out of lockstep.
     const cycle = fract(
         aRainPhase.add(uTime.mul(RAIN_FALL_SPEED / RAIN_SPAN).mul(aRainSpeed)),
     );
     const fallY = float(RAIN_SPAN_TOP).sub(cycle.mul(RAIN_SPAN));
     const center = vec3(aBase.x, fallY, aBase.z);
 
-    // World-space billboard half-extent (pixel gl_PointSize → small world size).
-    const positionNode = billboardWorld(center, aSize.mul(0.55));
+    // Thin, tall streak standing on the CITY's up (yaw-only facing in stage space), so it
+    // falls straight down the frame now that the camera shares the corridor frame (in world
+    // space it used to fall along the view axis, toward the lens).
+    const positionNode = billboardStageVertical(center, vec2(aSize.mul(0.045), aSize.mul(1.1)));
 
-    // Narrow in x, tall in y -> a falling streak inside each sprite quad.
     const c = uv().sub(0.5);
-    const streak = smoothstep(0.5, 0.0, c.x.abs().mul(7.0)).mul(smoothstep(0.5, 0.0, c.y.abs()));
+    const streak = smoothstep(0.5, 0.05, c.x.abs()).mul(smoothstep(0.5, 0.0, c.y.abs()));
+    // Rain CATCHES THE NEON: most drops are cool white-blue, a share glints magenta / cyan.
+    const tint = mix(
+        vec3(0.62, 0.74, 1.0),
+        mix(vec3(1.0, 0.3, 0.78), vec3(0.2, 0.9, 1.0), step(0.6, fract(aRainSeed.mul(17.0)))),
+        step(0.62, aRainSeed),
+    );
+    // Thins out over the finale resolve (drops above the density cut are dropped).
+    const alive = step(aRainSeed, uRainDensity);
+    const uOpacity = uniform(1); // 7→8 crossfade bridge (rain used to POP in at the seam)
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = vec3(0.72, 0.95, 1.0);
-    material.opacityNode = clamp(streak.mul(0.5), 0.0, 1.0);
+    material.colorNode = tint;
+    material.opacityNode = clamp(streak.mul(0.42), 0.0, 1.0).mul(alive).mul(uOpacity);
+    material.uniforms = { uOpacity };
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -402,6 +412,8 @@ export function createUrbanDreamsEnvironment() {
         uIgniteRadius: uniform(0),
         // Resolve: 0 = every building alive, 1 = every building guttered out.
         uDim: uniform(0),
+        // Rain density (0..1): thins out over the finale resolve.
+        uRainDensity: uniform(1),
     };
     group.userData.uniforms = uniforms;
 
@@ -501,7 +513,7 @@ export function createUrbanDreamsEnvironment() {
     // uOpacity bridge: with an opacityNode, material.opacity is a dead write (r181+), so the
     // billboard ignored the 7→8 crossfade and POPPED in at the seam.
     const holoOpacity = uniform(1);
-    holoMaterial.opacityNode = holoEdge.mul(0.55).mul(holoOpacity);
+    holoMaterial.opacityNode = holoEdge.mul(0.42).mul(holoOpacity);
     holoMaterial.uniforms = { uOpacity: holoOpacity };
     holoMaterial.transparent = true;
     holoMaterial.depthWrite = false;
@@ -526,7 +538,8 @@ export function createUrbanDreamsEnvironment() {
     });
     // The sign stands ON the deck facing the approach; the camera flies over the bridge
     // (corridor z +12) around local 0.75 — compression under the sign, release to the spire.
-    holoBillboard.position.y = BRIDGE_DECK_Y + 4.5 + 11 + 0.5;
+    holoBillboard.scale.y = 0.6;
+    holoBillboard.position.y = BRIDGE_DECK_Y + 4.5 + 11 * 0.6 + 0.5;
     gateBridge.position.set(0, 0, 12);
     gateBridge.scale.set(0.62, 1, 1); // span the boulevard (inner banks), not the whole city
     // A slim deck with a neon edge strip (same holo material: +1 draw, no new pipeline)
@@ -556,13 +569,11 @@ export function createUrbanDreamsEnvironment() {
     corridor.add(hazeStack);
     group.userData.hazeStack = hazeStack;
 
-    // Rain stays on the UNROTATED group (like every other shared billboard, which only
-    // tolerates a pure-translation model matrix — a rotated parent would tilt the
-    // camera-facing quads). It is spread in WORLD space around the climbing path and falls
-    // in world -Y, which reads as near-vertical streaks down the frame. The fall is driven
-    // in-shader from the shared uTime (Batch5) — no per-frame aBase rewrite.
+    // Rain lives IN the corridor (2026-10) and falls along the CITY's down: in world space
+    // the climb is nearly vertical, so the old world -Y fall streamed along the view axis
+    // into the lens. The stage-space billboard keeps each streak upright on the city's up.
     const rain = createRainCurtain(uniforms);
-    group.add(rain);
+    corridor.add(rain);
     group.userData.rain = rain;
 
     const spire = createNeonCitySpire(uniforms);
