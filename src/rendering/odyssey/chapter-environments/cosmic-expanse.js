@@ -1505,9 +1505,37 @@ const _asteroidDummy = new THREE.Object3D();
  * holeward edges, the violet rim directional fills the far sides. Per-rock tumble
  * data lives in userData; update() rewrites the instance matrices with a shared dummy.
  */
+// A lumpy rock, not a ball (masterpiece pass): the garland's detail-1 icosahedra read as
+// perfectly round dark discs — "holes punched in the nebula". Each vertex is pushed in/out by
+// a seeded value-noise of its direction; the geometry is non-indexed, so coincident vertices
+// get the same push (no cracks) and the recomputed normals stay faceted, like stone.
+function createAsteroidGeometry() {
+    const geometry = new THREE.IcosahedronGeometry(1, 2);
+    const pos = geometry.getAttribute('position');
+    const lump = (x, y, z) => {
+        const h = Math.sin((x * 12.9898) + (y * 78.233) + (z * 37.719)) * 43758.5453;
+        return h - Math.floor(h);
+    };
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i += 1) {
+        v.fromBufferAttribute(pos, i).normalize();
+        // Two octaves of lattice hash on the direction: a few big lobes + chipped facets.
+        const qx = Math.round(v.x * 2.2);
+        const qy = Math.round(v.y * 2.2);
+        const qz = Math.round(v.z * 2.2);
+        const big = lump(qx, qy, qz);
+        const small = lump(Math.round(v.x * 5), Math.round(v.y * 5), Math.round(v.z * 5));
+        const r = 0.74 + (big * 0.34) + (small * 0.12);
+        pos.setXYZ(i, v.x * r, v.y * r * 0.82, v.z * r);
+    }
+    pos.needsUpdate = true;
+    geometry.computeVertexNormals();
+    return geometry;
+}
+
 function createAsteroidGarland() {
     const count = 12;
-    const geometry = new THREE.IcosahedronGeometry(1, 1);
+    const geometry = createAsteroidGeometry();
     // The authored note claimed an "orange accretion rim + violet fill come free from the
     // chapter's two lights" — in practice the rig is one dim ambient plus a point light
     // 600u away, so 0x0b0e18 rendered as pure black. That went unnoticed while the garland
@@ -1719,7 +1747,10 @@ function createStreakMotes(uniforms, count) {
         1.4,
     );
     material.colorNode = vec3(0.56, 0.69, 0.94); // cool starlight streak (#8FB0FF family)
-    material.opacityNode = streak.mul(diveT.mul(0.24).add(0.34)).mul(materialOpacity);
+    // Near fade: billboarded properly (billboardLocal) a streak rushing past the lens swells
+    // into a big soft blue oval — it reads as a smudge, not speed. Fade it out inside ~120 u.
+    const nearFade = smoothstep(40.0, 140.0, length(cameraPosition.sub(positionWorld)));
+    material.opacityNode = streak.mul(diveT.mul(0.24).add(0.34)).mul(nearFade).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;

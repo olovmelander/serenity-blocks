@@ -573,9 +573,12 @@ export function createAsteroidRockTSL() {
     let color = mix(uDark, uLit, wrapped);
     color = color.add(uWarm.mul(bounce).mul(0.38));
 
-    // Fresnel rim so the silhouette edge separates from whatever is behind it.
-    const fres = pow(oneMinus(max(0.0, dot(normalView, positionViewDirection))), 2.6);
-    color = color.add(vec3(0.55, 0.52, 0.72).mul(fres).mul(0.20));
+    // Fresnel rim so the silhouette edge separates from whatever is behind it. Masterpiece
+    // pass: the rocks now sit in front of glowing gas, so the rim is the nebula's own light
+    // wrapping the silhouette (rose over violet) and strong enough to read — at 0.2 they were
+    // flat dark discs, read as holes in the cloud.
+    const fres = pow(oneMinus(max(0.0, dot(normalView, positionViewDirection))), 2.2);
+    color = color.add(mix(vec3(0.42, 0.40, 0.78), vec3(0.95, 0.52, 0.66), fres).mul(fres).mul(0.55));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
