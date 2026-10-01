@@ -26,6 +26,7 @@ body {
     --sb-logo-loading-width: min(380px, 68vw, 72svh);
     --sb-logo-title-width: min(520px, 70vw, 80svh);
     --sb-logo-menu-width: min(180px, 50vw, 52svh);
+    --sb-logo-pulse-duration: 2.8s;
 }
 
 /* Aurora opening. All warm-up motion uses compositor transforms and opacity. */
@@ -120,7 +121,7 @@ body {
     background:
         radial-gradient(ellipse 38% 42% at 33% 45%, #a78bfa1f, transparent 100%),
         radial-gradient(ellipse 35% 40% at 65% 55%, #8cebd91f, transparent 100%);
-    animation: sb-logo-breathe 6s ease-in-out infinite;
+    animation: sb-logo-breathe var(--sb-logo-pulse-duration) ease-in-out infinite;
     pointer-events: none;
 }
 .startup-logo__name {
@@ -138,6 +139,8 @@ body {
     width: 100%;
     height: auto;
     overflow: visible;
+    transform-origin: center;
+    animation: sb-wordmark-pulse var(--sb-logo-pulse-duration) ease-in-out infinite;
 }
 .startup-logo__tagline {
     color: #c8d6e6;
@@ -173,7 +176,7 @@ body {
     background: #b8a4ff;
     box-shadow: 0 0 13px #a6b6e63d;
     opacity: 0.25;
-    animation: sb-loading-wave 2.8s ease-in-out infinite;
+    animation: sb-loading-wave var(--sb-logo-pulse-duration) ease-in-out infinite;
 }
 .startup-loading__lights i:nth-child(2) { animation-delay: 0.16s; background: #aac7f6; }
 .startup-loading__lights i:nth-child(3) { animation-delay: 0.32s; background: #9ee8ed; }
@@ -187,10 +190,11 @@ body {
 }
 .startup-shell:is(.sb-lit--static, .sb-lit--paused) :is(
     .startup-shell__aurora, .startup-shell__nebula, .startup-shell__stars,
-    .startup-logo__glow, .startup-logo__tile, .startup-loading__lights i
+    .startup-logo__glow, .startup-logo__name-text, .startup-logo__tile, .startup-loading__lights i
 ) { animation-play-state: paused !important; }
 .startup-shell.sb-lit--static .startup-logo__tile { animation: none; }
 .startup-shell.sb-warp-arming .startup-logo__glow,
+.startup-shell.sb-warp-arming .startup-logo__name-text,
 .startup-shell.sb-warp-arming .startup-logo { animation: none; }
 .startup-shell.sb-warp-arming .startup-logo__glow { opacity: 0.87; transform: scale(1.04); }
 .startup-shell.is-warp-out { pointer-events: none; }
@@ -226,8 +230,13 @@ body {
     to { opacity: 1; transform: translateY(var(--sb-logo-y, -8px)); }
 }
 @keyframes sb-logo-breathe {
-    0%, 100% { opacity: 0.6; transform: scale(0.95); }
-    50% { opacity: 0.95; transform: scale(1.06); }
+    0%, 100% { opacity: 0.95; transform: scale(1.06); }
+    50% { opacity: 0.6; transform: scale(0.95); }
+}
+@keyframes sb-wordmark-pulse {
+    /* Start at the handoff's exact resting pose and stay within the logo's bounds. */
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.88; transform: scale(0.976); }
 }
 @keyframes sb-loading-wave {
     0%, 65%, 100% { transform: translateY(0); opacity: 0.2; }

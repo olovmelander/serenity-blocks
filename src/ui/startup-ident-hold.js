@@ -123,6 +123,21 @@ function settleKeyframes(shell) {
                 keyframes: [{ opacity: style.opacity, transform: style.transform }, REPLICA_GLOW],
             });
         }
+        // Settle the loading pulse before the wordmark's measured title handoff.
+        // Its wrapper stays untransformed, so the destination geometry is stable.
+        const wordmark = shell.querySelector?.('.startup-logo__name-text');
+        if (wordmark && typeof wordmark.animate === 'function') {
+            const style = getComputedStyle(wordmark);
+            out.push({
+                el: wordmark,
+                // Release the transform so CSS can move the wordmark into the title.
+                fill: 'none',
+                keyframes: [
+                    { opacity: style.opacity, transform: style.transform },
+                    { opacity: '1', transform: 'scale(1)' },
+                ],
+            });
+        }
         const logo = shell.querySelector?.('.startup-logo');
         if (logo && typeof logo.animate === 'function') {
             const { opacity } = getComputedStyle(logo);
@@ -166,9 +181,9 @@ export function setIdentArming(on) {
     } catch {
         return;
     }
-    armingAnimations = settles.map(({ el, keyframes }) => {
+    armingAnimations = settles.map(({ el, keyframes, fill = 'forwards' }) => {
         try {
-            return el.animate(keyframes, { duration: 110, easing: 'linear', fill: 'forwards' });
+            return el.animate(keyframes, { duration: 110, easing: 'linear', fill });
         } catch {
             return null;
         }
