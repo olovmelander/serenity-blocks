@@ -1071,77 +1071,101 @@ export function createHologramSignsTSL(uTime, uEnergy) {
     };
 }
 
-// ── Full-corridor WET STREET (one long road under the climb; backstop, NO bloom) ──
+// ── Wet street: a dark glossy plane carrying long neon reflections (NO bloom) ─────
+
+export const CH8_WET_STREET_SETTINGS = Object.freeze({
+    width: 720,
+    length: 1400,
+    // Reflection streaks are stretched ALONG the street (toward the viewer) — real wet-
+    // asphalt reflections elongate 2–4× vertically on screen.
+    streakStretch: 3.2,
+    reflectGain: 0.85,
+    sunReflectGain: 0.6,
+});
 
 export function createWetReflectionPlaneTSL(uTime, uEnergy) {
     const uTimeNode = uTime ?? uniform(0);
     const uEnergyNode = uEnergy ?? uniform(0.45);
+    const S = CH8_WET_STREET_SETTINGS;
 
-    // One long wet road spanning the WHOLE climb, lying flat under the corridor at the
-    // street datum so the camera always has a floor (no ~80% void). u runs across the lane
-    // (width), v runs along its length (depth toward the finale). Wet asphalt base + neon
-    // lanes scrolling along the length + a bright cyan centerline under the path conduit.
+    // 2026-10 rewrite: the old street was an ADDITIVE wash (lane smears + centerline) that
+    // read as a flat pale-lilac floor. Now a near-black wet-asphalt plane (normal blend, so
+    // it is the city's dark ground) whose light comes from reflections:
+    //   • neon/window reflection streaks hashed along the boulevard edges, stretched 3×
+    //     along the street and broken by a drifting puddle mask so they shimmer,
+    //   • the Retrosun's long warm reflection down the centre toward the horizon,
+    //   • a faint cyan echo of the path conduit, and a grazing-angle sky sheen.
     const p = uv();
-    const acrossSigned = p.x.sub(0.5); // -0.5..0.5 across the lane
+    // World-ish street coordinates (u across, v along; +v toward the far end).
+    const sx = p.x.sub(0.5).mul(S.width);
+    const sz = p.y.mul(S.length);
 
-    // Puddle ripple distortion + along-length scroll (the road slides under the camera).
-    // Octave count trimmed by one (5→4) as a per-fragment cost reduction; the puddle
-    // ripple is a subtle distortion driver, so the finest octave is not load-bearing.
-    const ripple = fbm2(vec2(p.x.mul(7.0), p.y.mul(3.0).add(uTimeNode.mul(0.22))), 3); // 4->3 oct (perf): 280x1400 wet-street floor, finest octave not load-bearing
+    // Puddles: large slow fbm blobs — inside a puddle the reflection is crisp and strong,
+    // on the damp asphalt between them it is weaker and broken.
+    const puddle = smoothstep(0.42, 0.62, fbm2(vec2(sx.mul(0.012), sz.mul(0.006)), 3));
+    const ripple = sin(sz.mul(0.9).add(sx.mul(0.15)).sub(uTimeNode.mul(1.6))).mul(0.5).add(0.5);
+    const shimmer = mix(ripple.mul(0.6).add(0.4), 1.0, puddle.mul(0.6));
 
-    // NEON LANE SMEARS aligned to the tower banks: vertical bright bands at the lateral X
-    // of the inner/mid/outer walls so each smear reads as a tower's reflection on the wet
-    // road (cheap wall→floor reflection). Mirrored on ±x via abs().
-    const lanePos = acrossSigned.abs().add(ripple.mul(0.012));
-    const laneAt = (x) => pow(smoothstep(0.05, 0.0, lanePos.sub(x).abs()), 1.4);
-    const lanes = laneAt(0.115) // inner wall (≈ lateral 32 / half-width 280)
-        .add(laneAt(0.18)) // curtain bank
-        .add(laneAt(0.25)) // mid wall
-        .add(laneAt(0.40)); // outer skyline
-    // Lanes brighter near the buildings (frame top) and streak along the length.
-    const laneFlow = sin(p.y.mul(30.0).sub(uTimeNode.mul(2.0)).add(ripple.mul(5.0)))
-        .mul(0.5).add(0.5);
-    const laneGlow = lanes.mul(laneFlow.mul(0.5).add(0.5));
-
-    // CENTERLINE CYAN GLOW directly beneath the path conduit — a soft bright strip down
-    // the middle of the road tying the wet street to the cyan path identity.
-    const centerline = pow(smoothstep(0.045, 0.0, acrossSigned.abs()), 1.5);
-    const centerShimmer = sin(p.y.mul(20.0).sub(uTimeNode.mul(2.6))).mul(0.2).add(0.8);
-
-    const cyan = vec3(0.0, 0.85, 1.0);
-    const magenta = vec3(1.0, 0.18, 0.68);
-    // Lane colour leans cyan near centre, magenta toward the far walls (cyan owns the road).
-    const laneColor = mix(cyan, magenta, acrossSigned.abs().mul(1.6).add(ripple.mul(0.1)));
-    // Deep indigo wet-asphalt base so the road body is never pure black even between lanes.
-    const asphalt = vec3(0.012, 0.016, 0.040);
-
-    const color = asphalt
-        .add(laneColor.mul(laneGlow.mul(0.34)))
-        .add(cyan.mul(centerline).mul(centerShimmer).mul(0.38));
-
-    // Distance fade so the near road is rich and the far end dissolves into haze, plus a
-    // gentle edge feather so the road edges don't read as a hard rectangle.
-    const lengthFade = smoothstep(1.0, 0.04, p.y).mul(0.7).add(0.3);
-    const edgeFeather = smoothstep(0.5, 0.42, acrossSigned.abs());
-    const alpha = clamp(
-        color.length().mul(lengthFade).mul(edgeFeather)
-            .mul(uEnergyNode.mul(0.4).add(0.7)),
-        0.0,
-        0.62,
+    // Reflection streak lanes: columns ~6 u wide hashed across the street; each column
+    // carries a few long streak segments (a lit window/sign column reflected) along v.
+    const colW = 6.0;
+    const col = floor(sx.div(colW));
+    const colRnd = hash21(vec2(col, 3.1));
+    const colX = fract(sx.div(colW));
+    const streakCore = pow(smoothstep(0.5, 0.0, colX.sub(0.5).abs()), 2.2);
+    const segLen = float(26.0 * S.streakStretch);
+    const seg = floor(sz.div(segLen));
+    const segRnd = hash21(vec2(col, seg));
+    const segV = fract(sz.div(segLen));
+    const segShape = smoothstep(0.0, 0.25, segV).mul(oneMinus(smoothstep(0.55, 1.0, segV)));
+    const streakOn = step(0.55, segRnd).mul(step(0.3, colRnd));
+    // Brighter toward the building edges of the boulevard, quiet in the middle lane.
+    const edgeBias = smoothstep(14.0, 36.0, sx.abs()).mul(oneMinus(smoothstep(150.0, 320.0, sx.abs())));
+    const streakTint = mix(
+        mix(vec3(1.0, 0.25, 0.7), vec3(0.0, 0.8, 1.0), step(0.5, fract(colRnd.mul(5.3)))),
+        vec3(1.0, 0.62, 0.3),
+        step(0.72, fract(colRnd.mul(11.7))),
     );
+    const streaks = streakTint.mul(streakCore).mul(segShape).mul(streakOn).mul(edgeBias)
+        .mul(shimmer)
+        .mul(S.reflectGain);
+
+    // The Retrosun's reflection: a warm magenta-orange band down the centre, brightening
+    // toward the far end (the horizon) and broken into rungs by the ripple.
+    const sunBand = smoothstep(26.0, 0.0, sx.abs()).mul(smoothstep(0.15, 0.85, p.y));
+    const sunRungs = step(0.45, fract(sz.mul(0.045).sub(uTimeNode.mul(0.12)))).mul(0.5).add(0.5);
+    const sunReflect = mix(vec3(1.0, 0.2, 0.45), vec3(1.0, 0.55, 0.15), p.y)
+        .mul(sunBand).mul(sunRungs).mul(shimmer)
+        .mul(S.sunReflectGain);
+
+    // Faint cyan echo directly beneath the path conduit.
+    const center = pow(smoothstep(3.0, 0.0, sx.abs()), 1.5).mul(0.12);
+    const centerTint = vec3(0.0, 0.7, 0.9).mul(center);
+
+    // Grazing-angle sheen of the violet light-pollution sky on the wet surface.
+    const fres = pow(oneMinus(max(0.0, dot(normalize(normalView), positionViewDirection))), 4.0);
+    const sky = vec3(0.09, 0.03, 0.14).mul(fres).mul(puddle.mul(0.5).add(0.5));
+
+    const asphalt = vec3(0.006, 0.007, 0.016);
+    const energy = uEnergyNode.mul(0.3).add(0.8);
+    const color = asphalt.add(streaks.add(sunReflect).add(centerTint).mul(energy)).add(sky);
+
+    // Feather only the far end into the horizon haze; the near street is solid ground.
+    const farFade = oneMinus(smoothstep(0.88, 1.0, p.y));
+    const edgeFeather = smoothstep(0.5, 0.47, p.x.sub(0.5).abs());
 
     const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = color.mul(uEnergyNode.mul(0.25).add(0.82));
-    material.opacityNode = alpha.mul(uOpacity);
+    material.colorNode = color;
+    material.opacityNode = farFade.mul(edgeFeather).mul(uOpacity);
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
-    material.blending = THREE.AdditiveBlending;
+    material.blending = THREE.NormalBlending;
     material.side = THREE.DoubleSide;
 
     // Lay the road flat under the whole corridor (local -Z forward, so length runs along z).
-    const geometry = new THREE.PlaneGeometry(280, 1400, 1, 1);
+    const geometry = new THREE.PlaneGeometry(S.width, S.length, 1, 1);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'wet-neon-reflection-plane-tsl';
     mesh.position.set(0, STREET_Y, -520);
@@ -1158,7 +1182,8 @@ function createHazeMaterial(uTime, uEnergy) {
     const fog = fbm2(vUv.mul(5.0).add(vec2(uTime.mul(0.05), 0.0)), 3); // 5->3 oct (perf): 9 radial-masked ground-haze pools
     const radial = smoothstep(0.55, 0.0, length(c));
     const color = mix(vec3(0.0, 0.34, 0.48), vec3(0.48, 0.08, 0.34), vUv.x);
-    const a = radial.mul(fog.mul(0.14).add(0.12)).mul(uEnergy.mul(0.34).add(0.48));
+    // Halved 2026-10: over the new dark wet street these pools are mist, not a floor wash.
+    const a = radial.mul(fog.mul(0.07).add(0.05)).mul(uEnergy.mul(0.34).add(0.48));
 
     const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
@@ -1280,9 +1305,9 @@ export function createNeonHazeStackTSL(uTime, uEnergy) {
     // Cyan low / magenta high vertical gradient — the chapter's two-tone air.
     const hazeColor = mix(vec3(0.0, 0.34, 0.52), vec3(0.50, 0.06, 0.36), vUv.y);
     const alpha = clamp(
-        radial.mul(fog.mul(0.45).add(0.45)).mul(uEnergyNode.mul(0.36).add(0.28)).mul(0.16),
+        radial.mul(fog.mul(0.45).add(0.45)).mul(uEnergyNode.mul(0.36).add(0.28)).mul(0.09),
         0.0,
-        0.26,
+        0.14,
     );
 
     const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
