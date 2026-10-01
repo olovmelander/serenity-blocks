@@ -45,6 +45,10 @@ import {
 } from '../path-utils.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import {
+    computeStageBasis,
+    stageBasisToQuaternion,
+} from '../composition/odyssey-stage-frame.js';
+import {
     createSkyGradientTSL,
     createSynthwaveSunTSL,
     createCityBlocksTSL,
@@ -366,32 +370,14 @@ function computeCorridorOrientation() {
     const tEnd = findT(range.end.y);
 
     // Average the tangent across the chapter for a stable corridor axis (the path wobbles
-    // in z but climbs steadily in y near the finale).
-    const forward = new THREE.Vector3();
-    const SAMPLES = 16;
-    const sample = new THREE.Vector3();
-    for (let i = 0; i <= SAMPLES; i += 1) {
-        const t = tStart + (tEnd - tStart) * (i / SAMPLES);
-        curve.getTangentAt(t, sample).normalize();
-        forward.add(sample);
-    }
-    if (forward.lengthSq() < 1e-6) {
+    // in z but climbs steadily in y near the finale). The basis maths lives in the shared
+    // stage-frame module so the CAMERA rides exactly this frame (stage framing key) — the
+    // city's up is the camera's up, so the towers stand upright on screen.
+    const basis = computeStageBasis(curve, tStart, tEnd);
+    if (!basis) {
         return quaternion;
     }
-    forward.normalize();
-
-    // Build a basis whose local +Z = -forward (so local -Z = camera forward). Near-vertical
-    // tangents make world-up degenerate, so fall back to world +Z as the reference up.
-    const worldUp = new THREE.Vector3(0, 1, 0);
-    const refUp = Math.abs(forward.dot(worldUp)) > 0.9
-        ? new THREE.Vector3(0, 0, 1)
-        : worldUp;
-    const zAxis = forward.clone().multiplyScalar(-1);
-    const xAxis = new THREE.Vector3().crossVectors(refUp, zAxis).normalize();
-    const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
-    const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
-    quaternion.setFromRotationMatrix(basis);
-    return quaternion;
+    return stageBasisToQuaternion(basis, quaternion);
 }
 
 export function createUrbanDreamsEnvironment() {
