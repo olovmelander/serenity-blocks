@@ -192,6 +192,20 @@ const FIELD_CENTROID_BEND = 0.30;
 // create — the same term doing useful work before, and harm after.
 /** Quantised silver-lining strength. Deliberately small — the references show a rim, not a bloom. */
 const FIELD_MIE_GAIN = 0.10;
+/**
+ * How far the baked crevice occlusion (`color.r`) slides the lit/shade band threshold (item 8).
+ * The sculptor has baked analytic AO into every vertex since Wave 1 and the paint never read
+ * it — only `color.b` (the seed) — so the dark creases between lobes that make a cumulus read
+ * as CAULIFLOWER never appeared, and each mass shaded as one smooth potato. Shifting the
+ * THRESHOLD (never multiplying the colour) keeps every pixel on one of the two authored tones:
+ * a crevice simply falls into the shade tone a little earlier than the open lobe beside it.
+ */
+// 1.0, not a gentle 0.4: Act II is FRONT-LIT (sun behind the rail), so the faces the camera
+// sees sit at wrap 0.8-1.0, far above the 0.42..0.62 band — a small shift moved a threshold the
+// pixels had already passed (the forest's logged lesson) and the first capture showed nothing.
+const FIELD_AO_SHIFT = 1.0;
+/** How much a tower's crown (`color.g`, height in mass) whitens toward pure cloud white. */
+const FIELD_CROWN_WHITE = 0.38;
 
 /**
  * THE NORTH LAKE'S WATER PALETTE (owner-directed colour pass 2026-08-16).
@@ -1500,7 +1514,9 @@ export function createOdysseyWorld({
         // Cavity occlusion: the baked plate's AO already knows what the landform shadows, but it
         // is baked at a radius that cannot see a gully. This is the small-scale half of the same
         // term, and the split is by RADIUS so neither owns the other's job.
-        const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(formGate)), 0.62, 1.0);
+        // Cavity takes the landform gate at HALF weight beyond the detail range: at full weight the
+        // far gullies drew as dark grey smudges on the slopes (capture, item 6).
+        const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(max(detailGate, formGate.mul(0.5)))), 0.62, 1.0);
         // THE AMBIENT owns the floor — the one thing Lambert cannot supply and the one thing the
         // shipped graph had wrong (0.06 against the references' 0.27-0.32). It is per-material
         // (rock takes less sky than a meadow does) and deepens where the baked occlusion says
@@ -2798,14 +2814,45 @@ export function createOdysseyWorld({
     // Witness reuses from its vegetation. w=0.75 keeps the whole mass lit and moves the
     // terminator far around the limb, which is what "no hard terminator" looks like.
     const cfWrap = clamp(dot(cfN, uSunDir).add(0.75).div(1.75), 0, 1).toVar('fieldWrap');
+    // THE BAKED SCULPT, finally read (item 8): `color.r` is the crevice occlusion (1 open,
+    // lower in a fold between lobes), `color.g` the height within the mass (0 base, 1 crown).
+    const cfBake = attribute('color', 'vec3');
+    const cfOcc = float(1).sub(cfBake.x);
+    const cfCrown = cfBake.y;
     // TWO bands on the wrapped term, deliberately WIDE (0.42..0.62) so the step is a soft
-    // turn rather than the deck's 8% drawn line. Edges are never equal.
-    const cfBand = smoothstep(float(0.42), float(0.62), cfWrap);
+    // turn rather than the deck's 8% drawn line — and SLID by the crevice occlusion, so the
+    // folds between lobes drop into the shade tone while the lobes themselves stay lit. That is
+    // the cauliflower: dark creases, bright bulges, every pixel still on an authored tone.
+    // Edges are never equal (the shift moves both).
+    const cfShift = cfOcc.mul(FIELD_AO_SHIFT);
+    const cfBand = smoothstep(float(0.42).add(cfShift), float(0.62).add(cfShift), cfWrap).toVar('fieldBand');
     const cfBody = mix(cloudUnderShade, cloudTop, cfBand).toVar('fieldBody');
     // The underside stays its own family, keyed to the BENT normal's up component so the
-    // whole mass turns together instead of each lobe flipping on its own.
-    const cfUnder = mix(cloudUnderLit, cloudUnderShade, smoothstep(float(-0.20), float(-0.70), cfN.y));
-    const cfLit = mix(cfBody, cfUnder, smoothstep(float(0.05), float(-0.25), cfN.y)).toVar('fieldLit');
+    // whole mass turns together instead of each lobe flipping on its own. (Forward-edge
+    // smoothsteps: `1 - smoothstep(lo, hi, x)` reads as the descending ramp it is.)
+    // ...and the underside family takes the same crevice shift, because from the climb the
+    // camera mostly sees cumulus from BELOW, where the lit band never reaches: a fold in the
+    // base drops into the under-shade tone before the open belly around it does.
+    const cfUnder = mix(
+        cloudUnderLit,
+        cloudUnderShade,
+        float(1).sub(smoothstep(float(-0.70).add(cfShift.mul(0.6)), float(-0.20).add(cfShift.mul(0.6)), cfN.y)),
+    );
+    const cfLitBase = mix(cfBody, cfUnder, float(1).sub(smoothstep(float(-0.25), float(0.05), cfN.y)));
+    // CROWNS WHITEN: a tower's top sees the most sky and the most sun, so the upper third of
+    // every mass leans to pure cloud white where it is lit — the bright cauliflower heads over
+    // cooler, creased bodies that the reference cumulus all share.
+    // THE CREASE: the deepest folds (the sculptor's p10 occlusion and below) take a third,
+    // deeper cool tone — the painted dark line between two cauliflower heads. Quantised like
+    // every other tone here (a narrow step on the occlusion), so it draws a crease rather than
+    // smudging a gradient, and kept LIGHTER than the sky behind it (the anti-navy rule).
+    const cfCrease = smoothstep(float(0.30), float(0.42), cfOcc).mul(0.75);
+    const cfCreaseTone = cloudUnderShade.mul(vec3(0.84, 0.86, 0.94));
+    const cfLit = mix(
+        mix(cfLitBase, cfCreaseTone, cfCrease),
+        cloudWhite,
+        smoothstep(float(0.55), float(0.95), cfCrown).mul(cfBand).mul(FIELD_CROWN_WHITE),
+    ).toVar('fieldLit');
     // Mie: peaks when the view looks into the sun; attenuated by an N.L thickness proxy
     // (the cloud is optically thinner where it faces edge-on), then QUANTISED into the
     // grammar so it reads as a painted rim rather than a bloom.
