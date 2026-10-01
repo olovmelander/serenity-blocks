@@ -23,678 +23,241 @@ body {
     --lock-ripple-border-color: rgba(100, 200, 255, 0.8);
     --lock-ripple-shadow-color: rgba(100, 200, 255, 0.6);
     --global-sunset-flare-strength: 1;
+    --sb-logo-loading-width: min(380px, 68vw, 72svh);
+    --sb-logo-title-width: min(520px, 70vw, 80svh);
+    --sb-logo-menu-width: min(180px, 50vw, 52svh);
 }
 
-/* Serenity Blocks game ident. The faceted mark is the exact silhouette used by the
-   WebGPU warp, so the first transition is a material change instead of a logo cut. */
-:root {
-    --sb-accent: #8cd7ff;
-    --sb-accent-2: #8ea6ff;
-    --sb-accent-3: #c77dff;
-    --sb-ink: #050610;
-    --sb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-    --sb-ease-lockup: cubic-bezier(0.34, 1.56, 0.64, 1);
-    --sb-ease-in: cubic-bezier(0.7, 0, 0.84, 0);
-}
-
+/* Aurora opening. All warm-up motion uses compositor transforms and opacity. */
 .startup-shell {
     position: fixed;
     inset: 0;
     z-index: 20000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: grid;
+    place-items: center;
     overflow: hidden;
-    /* Opaque stage: renderer warm-up stays invisible behind the ident. */
-    background:
-        radial-gradient(ellipse at 50% 46%, rgba(49, 104, 155, 0.26) 0%, rgba(70, 42, 112, 0.12) 34%, transparent 67%),
-        linear-gradient(180deg, #090b13 0%, #03040a 56%, #010207 100%),
-        var(--sb-ink);
-    /* EXIT crossfade — long enough to overlap onto the live intro (no black gap). */
-    transition: opacity 0.9s var(--sb-ease-out), visibility 0.9s var(--sb-ease-out);
-    animation: sb-void-in 0.8s var(--sb-ease-out) both;
+    isolation: isolate;
+    color: #d7ede9;
+    opacity: 1;
+    transition: opacity 560ms ease-in-out;
 }
-
-@keyframes sb-void-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-/* Static cinematic framing — zero-per-frame paint, safe during the warm hold. */
-.startup-shell__spotlight {
+.startup-shell::before {
+    content: '';
     position: absolute;
     inset: 0;
-    pointer-events: none;
+    z-index: -1;
     background:
-        linear-gradient(90deg, transparent 0%, rgba(140, 215, 255, 0.035) 42%, rgba(199, 125, 255, 0.026) 58%, transparent 100%);
+        radial-gradient(ellipse at 30% 30%, #166675 0%, transparent 58%),
+        radial-gradient(ellipse at 78% 38%, #533b91 0%, transparent 56%),
+        radial-gradient(ellipse at 50% 82%, #183866 0%, transparent 62%),
+        #0a1433;
 }
-
+.startup-shell__aurora {
+    position: absolute;
+    width: 120%;
+    height: 75%;
+    left: -10%;
+    top: -10%;
+    opacity: 0.95;
+    transform-origin: 50% 20%;
+    animation: sb-aurora-drift 18s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+.startup-shell__aurora svg { width: 100%; height: 100%; overflow: visible; }
+.startup-shell__nebula {
+    position: absolute;
+    inset: -15%;
+    background:
+        radial-gradient(ellipse at 36% 50%, #36eac336, transparent 32%),
+        radial-gradient(ellipse at 64% 56%, #bf68ed38, transparent 35%),
+        radial-gradient(ellipse at 52% 42%, #729cff30, transparent 26%);
+    animation: sb-nebula-breathe 12s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+.startup-shell__stars {
+    position: absolute;
+    inset: -8%;
+    pointer-events: none;
+    opacity: 0.65;
+    background-image:
+        radial-gradient(1px 1px at 23px 31px, #e2f6ff 90%, transparent),
+        radial-gradient(1px 1px at 113px 97px, #93b8c7 90%, transparent),
+        radial-gradient(1px 1px at 53px 159px, #bbadcf 90%, transparent),
+        radial-gradient(1.5px 1.5px at 227px 167px, #b5dace 70%, transparent);
+    background-size: 197px 193px, 257px 239px, 307px 283px, 467px 397px;
+    animation: sb-star-drift 36s linear infinite alternate;
+}
+.startup-shell__stars--far {
+    opacity: 0.22;
+    transform: rotate(173deg) scale(1.2);
+    animation: sb-stars-breathe 7s ease-in-out infinite alternate;
+}
 .startup-shell__vignette {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.62) 100%);
+    background: radial-gradient(ellipse at 50% 42%, transparent 36%, #04091b77 100%);
 }
-
-.startup-shell__grain {
+.startup-shell__horizon {
     position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.045;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    width: min(72vw, 800px);
+    height: 1px;
+    bottom: 22%;
+    background: linear-gradient(90deg, transparent, #9adae033, transparent);
 }
-
-/* Letterbox bars — transform-only slide, only during reveal/exit. */
-.startup-shell__letterbox {
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 5.5vh;
-    background: #000;
-    z-index: 2;
-    animation: sb-bar-in 0.6s var(--sb-ease-out) 0.05s both;
-}
-
-.startup-shell__letterbox--top { top: 0; transform: translateY(-100%); }
-.startup-shell__letterbox--bottom { bottom: 0; transform: translateY(100%); }
-
-@keyframes sb-bar-in { to { transform: translateY(0); } }
-
-/* Exit whiteout the intro nebula "develops" out of. */
-.startup-shell__bloom {
-    position: absolute;
-    inset: 0;
-    z-index: 5;
-    pointer-events: none;
-    opacity: 0;
-    background: radial-gradient(ellipse at 50% 48%, #ffffff 0%, rgba(224, 240, 255, 0.9) 30%, transparent 70%);
-}
-
-/* ── LOGO GROUP (reveals, holds, and exits as one) ── */
 .startup-logo {
     position: relative;
-    z-index: 3;
     display: flex;
+    align-items: center;
     flex-direction: column;
-    align-items: center;
-    gap: 30px;
+    gap: 32px;
+    transform: translateY(var(--sb-logo-y, -8px));
+    animation: sb-logo-arrive 1.6s ease-out both;
 }
-
-.startup-logo__markwrap {
-    position: relative;
-    width: 150px;
-    height: 150px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-/* Baked radial bloom behind the mark — static; the primary "still but stunning" tool. */
 .startup-logo__glow {
     position: absolute;
-    width: 280px;
-    height: 280px;
-    border-radius: 50%;
-    pointer-events: none;
-    background: radial-gradient(circle, rgba(140, 215, 255, 0.24) 0%, rgba(199, 125, 255, 0.09) 40%, transparent 72%);
-    filter: blur(22px);
-    animation: sb-glow-ignite 1.3s var(--sb-ease-out) both;
-}
-
-@keyframes sb-glow-ignite {
-    0% { opacity: 0; transform: scale(0.4); }
-    55% { opacity: 1; transform: scale(1.12); }
-    100% { opacity: 0.78; transform: scale(1); }
-}
-
-.startup-logo__mark {
-    position: relative;
-    width: 118px;
-    height: 118px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-    background: conic-gradient(from 45deg,
-            #dff8ff 0deg 90deg,
-            #75c6ee 90deg 180deg,
-            #7186e8 180deg 270deg,
-            #a878de 270deg 360deg);
-    filter:
-        drop-shadow(0 0 8px rgba(215, 247, 255, 0.64))
-        drop-shadow(0 0 26px rgba(115, 198, 238, 0.42))
-        drop-shadow(0 0 58px rgba(168, 120, 222, 0.22));
-    /* REVEAL: ignite-from-dark focus-pull; parked by .sb-lit for the warm hold. */
-    animation: sb-mark-ignite 1.3s var(--sb-ease-out) both;
-    will-change: opacity, transform, filter;
-}
-
-.startup-logo__mark span {
-    width: 36px;
-    height: 36px;
-    clip-path: inherit;
-    background: rgba(238, 250, 255, 0.88);
-    box-shadow: 0 0 22px rgba(216, 244, 255, 0.72);
-}
-
-.startup-logo__mark::before,
-.startup-logo__mark::after {
-    content: '';
-    position: absolute;
+    inset: -140px -120px;
+    background:
+        radial-gradient(ellipse 38% 42% at 33% 45%, #a78bfa1f, transparent 100%),
+        radial-gradient(ellipse 35% 40% at 65% 55%, #8cebd91f, transparent 100%);
+    animation: sb-logo-breathe 6s ease-in-out infinite;
     pointer-events: none;
 }
-
-.startup-logo__mark::before {
-    inset: 2px;
-    clip-path: inherit;
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.5), transparent 42%),
-        linear-gradient(315deg, rgba(78, 207, 255, 0.25), transparent 52%);
-}
-
-.startup-logo__mark::after {
-    inset: 0;
-    background:
-        linear-gradient(90deg, transparent 49.35%, rgba(228, 246, 255, 0.5) 50%, transparent 50.65%),
-        linear-gradient(0deg, transparent 49.35%, rgba(228, 246, 255, 0.38) 50%, transparent 50.65%);
-    mix-blend-mode: screen;
-}
-
-@keyframes sb-mark-ignite {
-    0% { opacity: 0; filter: blur(10px) brightness(1.5); transform: scale(0.86); }
-    60% { opacity: 1; }
-    100% { opacity: 1; filter: blur(0) brightness(1); transform: scale(1); }
-}
-
-/* NAME — static gradient fill; tracking "locks up" via scaleX (NOT letter-spacing → no reflow). */
 .startup-logo__name {
     position: relative;
-    overflow: hidden;
-    animation: sb-name-in 0.9s var(--sb-ease-lockup) 0.45s both;
+    width: var(--sb-logo-loading-width);
+    line-height: 0;
 }
-
-.startup-logo__name-text {
-    display: inline-block;
-    font-family: 'Orbitron', sans-serif;
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: 0;
-    padding-left: 0;
-    text-transform: uppercase;
-    text-align: center;
-    background: linear-gradient(100deg, #ffffff 0%, #d7f5ff 46%, #8ea6ff 66%, #ffffff 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
+.startup-logo__tile {
+    transform-box: fill-box;
     transform-origin: center;
+    animation: sb-block-settle 1.35s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
 }
-
-@keyframes sb-name-in {
-    0% { opacity: 0; transform: translateY(10px) scaleX(1.28); }
-    100% { opacity: 1; transform: translateY(0) scaleX(1); }
+.startup-logo__name-text {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
 }
-
-@media (max-width: 480px) {
-    .startup-logo__name-text {
-        font-size: 20px;
-    }
+.startup-logo__tagline {
+    color: #c8d6e6;
+    font-size: clamp(8px, 1vw, 10px);
+    letter-spacing: 0.24em;
+    word-spacing: 0.12em;
+    padding-left: 0.24em;
+    text-transform: uppercase;
+    white-space: nowrap;
 }
-
-/* One-shot light-sweep sheen — transform-driven overlay, fires as the name lands. */
-.startup-logo__sheen {
+.startup-logo__image {
+    display: block;
+    max-width: min(70vw, 400px);
+    max-height: 180px;
+    object-fit: contain;
+}
+.startup-logo__image[hidden] { display: none; }
+.startup-shell.has-image-logo .startup-logo__name { width: min(280px, 64vw); }
+.startup-loading {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 40%;
-    height: 100%;
-    pointer-events: none;
-    background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0) 30%, rgba(230, 245, 255, 0.85) 50%, rgba(255, 255, 255, 0) 70%, transparent 100%);
-    mix-blend-mode: screen;
-    transform: translateX(-160%);
-    animation: sb-sheen 1.1s var(--sb-ease-out) 1.05s both;
+    bottom: max(9%, env(safe-area-inset-bottom));
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 22px;
 }
-
-@keyframes sb-sheen { to { transform: translateX(360%); } }
-
-.startup-shell__eyebrow {
-    color: rgba(160, 196, 255, 0.78);
-    font-size: 12px;
+.startup-loading__lights { display: flex; gap: 13px; height: 12px; align-items: center; }
+.startup-loading__lights i {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: #b8a4ff;
+    box-shadow: 0 0 13px #a6b6e63d;
+    opacity: 0.25;
+    animation: sb-loading-wave 2.8s ease-in-out infinite;
+}
+.startup-loading__lights i:nth-child(2) { animation-delay: 0.16s; background: #aac7f6; }
+.startup-loading__lights i:nth-child(3) { animation-delay: 0.32s; background: #9ee8ed; }
+.startup-loading__lights i:nth-child(4) { animation-delay: 0.48s; background: #c5f1cf; }
+.startup-loading__lights i:nth-child(5) { animation-delay: 0.64s; background: #ffac88; }
+.startup-loading__caption {
+    color: #b2cdde;
+    font-size: 9px;
     letter-spacing: 0.22em;
     text-transform: uppercase;
-    animation: sb-fade-up 0.8s var(--sb-ease-out) 0.1s both;
 }
-
-@keyframes sb-fade-up {
-    from { opacity: 0; transform: translateY(6px); }
+.startup-shell:is(.sb-lit--static, .sb-lit--paused) :is(
+    .startup-shell__aurora, .startup-shell__nebula, .startup-shell__stars,
+    .startup-logo__glow, .startup-logo__tile, .startup-loading__lights i
+) { animation-play-state: paused !important; }
+.startup-shell.sb-lit--static .startup-logo__tile { animation: none; }
+.startup-shell.sb-warp-arming .startup-logo__glow,
+.startup-shell.sb-warp-arming .startup-logo { animation: none; }
+.startup-shell.sb-warp-arming .startup-logo__glow { opacity: 0.87; transform: scale(1.04); }
+.startup-shell.is-warp-out { pointer-events: none; }
+.startup-shell.is-warp-out::before,
+.startup-shell.is-warp-out > :not(.startup-logo),
+.startup-shell.is-warp-out .startup-logo__glow,
+.startup-shell.is-warp-out .startup-logo__image {
+    animation: sb-background-open var(--sb-opening-duration, 3200ms) ease-in-out both;
+}
+.startup-shell.is-warp-out .startup-logo__tagline {
+    /* Clear the supporting copy before the growing wordmark reaches its line. */
+    animation: sb-tagline-release 240ms ease-out both;
+}
+.startup-shell.is-warp-out .startup-logo__name-text {
+    transform-origin: center;
+    animation: sb-wordmark-connect var(--sb-opening-duration, 3200ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.startup-shell.is-hidden { opacity: 0; pointer-events: none; transition-duration: 1.2s; }
+.startup-shell.is-hidden .startup-logo { animation: sb-logo-depart 1.2s ease-in-out both; }
+@keyframes sb-aurora-drift {
+    from { transform: translate3d(-1.5%, 0, 0) rotate(-2deg) scale(1); opacity: 0.8; }
+    to { transform: translate3d(2%, 3%, 0) rotate(1deg) scale(1.05); opacity: 1; }
+}
+@keyframes sb-nebula-breathe { to { opacity: 0.65; transform: translate3d(2%, -2%, 0) scale(1.08); } }
+@keyframes sb-block-settle {
+    from { opacity: 0; transform: translateY(-32px); }
     to { opacity: 1; transform: translateY(0); }
 }
-
-.startup-logo__image {
-    max-width: 300px;
-    max-height: 160px;
-    object-fit: contain;
-    filter: drop-shadow(0 0 30px rgba(140, 180, 255, 0.4));
-    animation: sb-mark-ignite 1.3s var(--sb-ease-out) both;
+@keyframes sb-star-drift { to { transform: translate3d(18px, -12px, 0); } }
+@keyframes sb-stars-breathe { to { opacity: 0.38; } }
+@keyframes sb-logo-arrive {
+    from { opacity: 0; transform: translateY(3px); }
+    to { opacity: 1; transform: translateY(var(--sb-logo-y, -8px)); }
 }
-
-/* Orbiting light arcs: the ident's "still alive" motion while the game boots behind it.
-   Each ring is rasterized once (static conic arc + ring mask) and only its transform and
-   opacity animate, so it keeps turning on the compositor through main-thread work — the
-   same recipe as Banvy's boot ring. (A synchronous GPU pipeline compile still stalls the
-   compositor itself: the boot path creates its pipelines async (ADR-0020), and the cases that
-   stay synchronous get .sb-lit--static or .sb-lit--paused below.) */
-.startup-logo__orbit {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 196px;
-    height: 196px;
-    margin: -98px 0 0 -98px;
-    border-radius: 50%;
-    pointer-events: none;
-    background: conic-gradient(from 0deg,
-            rgba(140, 215, 255, 0) 0deg 250deg,
-            rgba(140, 215, 255, 0.5) 320deg,
-            rgba(228, 248, 255, 0.95) 352deg,
-            rgba(140, 215, 255, 0) 353deg 360deg);
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
-    mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
-    opacity: 0;
+@keyframes sb-logo-breathe {
+    0%, 100% { opacity: 0.6; transform: scale(0.95); }
+    50% { opacity: 0.95; transform: scale(1.06); }
 }
-
-/* The arcs only turn in the moving hold: with no async path behind the ident (.sb-lit--static)
-   a synchronous compile would stop them mid-turn, so they stay hidden as before ADR-0020. */
-.startup-shell.sb-lit:not(.sb-lit--static) .startup-logo__orbit {
-    will-change: transform, opacity;
-    animation:
-        sb-orbit-in 1.1s var(--sb-ease-out) both,
-        sb-orbit-spin 3.4s linear infinite;
+@keyframes sb-loading-wave {
+    0%, 65%, 100% { transform: translateY(0); opacity: 0.2; }
+    30% { transform: translateY(-4px); opacity: 0.95; }
 }
-
-.startup-logo__orbit--far {
-    width: 244px;
-    height: 244px;
-    margin: -122px 0 0 -122px;
-    background: conic-gradient(from 180deg,
-            rgba(168, 120, 222, 0) 0deg 270deg,
-            rgba(168, 120, 222, 0.38) 330deg,
-            rgba(206, 170, 255, 0.72) 356deg,
-            rgba(168, 120, 222, 0) 357deg 360deg);
+@keyframes sb-logo-depart { to { opacity: 0; transform: translateY(-20px) scale(1.025); } }
+@keyframes sb-background-open {
+    0% { opacity: 1; }
+    75%, 100% { opacity: 0; }
 }
-
-.startup-shell.sb-lit:not(.sb-lit--static) .startup-logo__orbit--far {
-    animation:
-        sb-orbit-in 1.3s var(--sb-ease-out) 0.2s both,
-        sb-orbit-spin-reverse 6.4s linear 0.2s infinite;
+@keyframes sb-tagline-release { to { opacity: 0; } }
+@keyframes sb-wordmark-connect {
+    0% { opacity: 1; transform: translate(0, 0) scale(1); }
+    84% { opacity: 1; transform: translate(var(--sb-title-x, 0px), var(--sb-title-y, 0px)) scale(var(--sb-title-scale-x, 1), var(--sb-title-scale-y, 1)); }
+    94%, 100% { opacity: 0; transform: translate(var(--sb-title-x, 0px), var(--sb-title-y, 0px)) scale(var(--sb-title-scale-x, 1), var(--sb-title-scale-y, 1)); }
 }
-
-@keyframes sb-orbit-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
+@media (max-width: 480px) {
+    .startup-logo { gap: 26px; }
+    .startup-logo__tagline { font-size: 9px; }
+    .startup-shell__aurora { width: 190%; left: -45%; height: 65%; }
 }
-
-@keyframes sb-orbit-spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+@media (max-height: 480px) {
+    .startup-logo { gap: 12px; --sb-logo-y: -16px; }
+    .startup-loading { bottom: 6%; gap: 12px; }
+    .startup-shell__horizon { display: none; }
 }
-
-@keyframes sb-orbit-spin-reverse {
-    from { transform: rotate(360deg); }
-    to { transform: rotate(0deg); }
-}
-
-/* A light band crossing the facets, clipped by the mark's diamond. Transform only. */
-.startup-logo__glint {
-    position: absolute;
-    inset: -30%;
-    pointer-events: none;
-    background: linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.5) 50%, transparent 58%);
-    transform: translateX(-120%);
-}
-
-/* ── HOLD (during boot work): park the one-shot reveal animations and switch to loops that
-   only animate transform/opacity. The splash must keep MOVING while the game loads; the
-   old static hold (only an imperceptible opacity breathe) read as a frozen screen. ── */
-.startup-shell.sb-lit .startup-logo__mark,
-.startup-shell.sb-lit .startup-logo__image,
-.startup-shell.sb-lit .startup-logo__name,
-.startup-shell.sb-lit .startup-shell__eyebrow {
-    animation: none !important;
-    will-change: auto;
-}
-
-.startup-shell.sb-lit .startup-logo__glow {
-    animation: sb-glow-breathe 4.8s ease-in-out infinite;
-    will-change: transform, opacity;
-}
-
-@keyframes sb-glow-breathe {
-    0%, 100% { opacity: 0.78; transform: scale(1); }
-    50% { opacity: 0.96; transform: scale(1.08); }
-}
-
-.startup-shell.sb-lit .startup-logo__glint {
-    animation: sb-glint 4.8s ease-in-out 0.6s infinite;
-    will-change: transform;
-}
-
-@keyframes sb-glint {
-    0% { transform: translateX(-120%); }
-    34%, 100% { transform: translateX(120%); }
-}
-
-.startup-shell.sb-lit .startup-logo__sheen {
-    animation: sb-sheen-loop 4.8s var(--sb-ease-out) 2.1s infinite;
-}
-
-@keyframes sb-sheen-loop {
-    0% { transform: translateX(-160%); }
-    28%, 100% { transform: translateX(360%); }
-}
-
-/* Static hold — only when the warm behind the ident compiles SYNCHRONOUSLY (?themeWarmAsync=0,
-   or no async backend): that stalls the compositor itself, so moving loops would visibly stop
-   and jump. Park the glow/glint/sheen loops (the orbit arcs stay hidden) and keep the old
-   imperceptible breathe. */
-.startup-shell.sb-lit--static .startup-logo__glow,
-.startup-shell.sb-lit--static .startup-logo__glint,
-.startup-shell.sb-lit--static .startup-logo__sheen {
-    animation: none !important;
-    will-change: auto;
-}
-
-/* Parked where the warp's replica draws it (GLOW_OPACITY / GLOW_SCALE), so the cut matches. */
-.startup-shell.sb-lit--static .startup-logo__glow {
-    opacity: 0.87;
-    transform: scale(1.04);
-}
-
-.startup-shell.sb-lit--static .startup-logo {
-    animation: sb-breathe 5.5s ease-in-out infinite;
-}
-
-@keyframes sb-breathe {
-    0%, 100% { opacity: 0.9; }
-    50% { opacity: 1; }
-}
-
-/* A warm on a synchronous renderer (classic WebGL / WebGL2 backend) is running: freeze the loops
-   in place (src/ui/startup-ident-hold.js), so its compile stalls show the frame the pause holds
-   and neither edge jumps. */
-.startup-shell.sb-lit.sb-lit--paused .startup-logo__orbit,
-.startup-shell.sb-lit.sb-lit--paused .startup-logo__glow,
-.startup-shell.sb-lit.sb-lit--paused .startup-logo__glint,
-.startup-shell.sb-lit.sb-lit--paused .startup-logo__sheen {
-    animation-play-state: paused;
-}
-
-/* The warp is about to take over (~130 ms before the match-cut): fade the glint band out
-   (opacity — its loop only moves transform), and settle the glow and the logo onto the values
-   the GPU replica draws (glow 0.87 / scale 1.04, mark at full opacity), from wherever their
-   loops were. */
-.startup-shell.sb-warp-arming .startup-logo__glint {
-    opacity: 0;
-    transition: opacity 80ms linear;
-}
-
-/* Final values; src/ui/startup-ident-hold.js eases onto them with Web Animations (Chromium starts
-   no CSS transition when the same change removes the breathe animation). */
-.startup-shell.sb-warp-arming .startup-logo__glow {
-    animation: none !important;
-    opacity: 0.87;
-    transform: scale(1.04);
-}
-
-.startup-shell.sb-warp-arming .startup-logo {
-    animation: none;
-    opacity: 1;
-}
-
-/* ═══ EXIT — "Diamond Ignition → Nebula Birth": one continuous ~2.75s masterpiece reveal.
-   The held diamond OVERLOADS into a full-frame white-out that the live intro nebula +
-   "SERENITY BLOCKS" title develop out of — no cut, no black gap. Multi-layer, all
-   compositor-only (transform / opacity / filter + screen blends). ═══ */
-
-/* Warp handoff — a true match-cut. The WebGPU warp's first frames reproduce this shell
-   pixel-for-pixel (backdrop gradients, grain, vignette, spotlight, letterbox bars, glow and
-   the faceted mark; boot-warp-transition-scene.js, verified against a capture of this DOM),
-   so those layers switch off on the handoff frame with no visible change. Only what the GPU
-   does not draw — the wordmark and the orbit arcs — dissolves, into the ignition flare. */
-.startup-shell.is-warp-out {
-    animation: none !important;
-    pointer-events: none;
-}
-
-.startup-shell.is-warp-out:not(.has-image-logo) {
-    background: transparent;
-    transition: none;
-}
-
-.startup-shell.is-warp-out:not(.has-image-logo) > :not(.startup-logo),
-.startup-shell.is-warp-out:not(.has-image-logo) .startup-logo__glow,
-.startup-shell.is-warp-out:not(.has-image-logo) .startup-logo__mark {
-    animation: none !important;
-    transition: none !important;
-    opacity: 0 !important;
-}
-
-.startup-shell.is-warp-out:not(.has-image-logo) .startup-logo__markwrap,
-.startup-shell.is-warp-out:not(.has-image-logo) .startup-logo__name {
-    animation: none !important;
-    transition: opacity 360ms var(--sb-ease-out);
-    opacity: 0;
-}
-
-/* A custom logo image has no GPU replica: keep the whole-shell cross-dissolve for it. */
-.startup-shell.is-warp-out.has-image-logo {
-    transition: opacity 420ms var(--sb-ease-out);
-    opacity: 0;
-}
-
-/* Dark stage backing stays opaque THROUGH the bloom peak, then fades under the white,
-   so the eye never sees the stage dissolve to black. */
-.startup-shell.is-hidden {
-    animation: sb-backing-out 2.75s var(--sb-ease-in) both;
-    pointer-events: none;
-}
-
-@keyframes sb-backing-out {
-    0%, 40% { opacity: 1; }
-    100% { opacity: 0; }
-}
-
-/* Logo group rack-focus dissolve — spent into the light. */
-.startup-shell.is-hidden .startup-logo {
-    animation: sb-logo-rack 1.65s var(--sb-ease-in) both;
-    will-change: transform, filter, opacity;
-}
-
-@keyframes sb-logo-rack {
-    0% { opacity: 1; transform: scale(1); filter: blur(0) brightness(1); }
-    8% { opacity: 1; transform: scale(0.94); filter: blur(0) brightness(1.05); }
-    45% { opacity: 1; transform: scale(1.34); filter: blur(1px) brightness(1.7); }
-    72% { opacity: 0.4; transform: scale(1.7); filter: blur(7px) brightness(2.1); }
-    100% { opacity: 0; transform: scale(2.05); filter: blur(16px) brightness(2.4); }
-}
-
-/* Diamond mark super-ignites toward the viewer and becomes the flash. */
-.startup-shell.is-hidden .startup-logo__mark {
-    animation: sb-mark-overload 1.4s var(--sb-ease-in) both;
-    will-change: transform, filter, opacity;
-}
-
-@keyframes sb-mark-overload {
-    0% { transform: scale(1); filter: blur(0) brightness(1); opacity: 1; }
-    45% { transform: scale(1.5); filter: blur(2px) brightness(2.6); opacity: 1; }
-    100% { transform: scale(2.3); filter: blur(14px) brightness(3.2); opacity: 0; }
-}
-
-/* Baked glow super-novas to fill toward the whiteout. */
-.startup-shell.is-hidden .startup-logo__glow {
-    animation: sb-glow-supernova 1.5s var(--sb-ease-out) both;
-    will-change: transform, opacity;
-}
-
-@keyframes sb-glow-supernova {
-    0% { opacity: 0.78; transform: scale(1); }
-    40% { opacity: 1; transform: scale(2.4); }
-    100% { opacity: 0; transform: scale(3.6); }
-}
-
-/* Bloom white-out envelope — the master clock (peak 0.92 at 40% ≈ 1.1s). screen-blend
-   ADDS to the nebula behind; peak ≤0.92 so it reads as overexposure, not a white card. */
-.startup-shell.is-hidden .startup-shell__bloom {
-    animation: sb-bloom-envelope 2.75s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-    mix-blend-mode: screen;
-    will-change: opacity, transform;
-}
-
-@keyframes sb-bloom-envelope {
-    0% { opacity: 0; transform: scale(0.88); }
-    22% { opacity: 0.55; transform: scale(1.02); }
-    40% { opacity: 0.92; transform: scale(1.14); }
-    58% { opacity: 0.62; transform: scale(1.22); }
-    100% { opacity: 0; transform: scale(1.34); }
-}
-
-/* Radial lens-flare glint riding the peak (pseudo-element, no extra DOM). */
-.startup-shell.is-hidden .startup-shell__bloom::after {
-    content: '';
-    position: absolute;
-    top: 48%;
-    left: 50%;
-    width: 44vmax;
-    height: 44vmax;
-    transform: translate(-50%, -50%) scale(0.2);
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(142, 166, 255, 0.35) 18%, transparent 42%);
-    mix-blend-mode: screen;
-    opacity: 0;
-    will-change: opacity, transform;
-    animation: sb-flare-glint 0.95s ease-out 0.72s both;
-}
-
-@keyframes sb-flare-glint {
-    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
-    45% { opacity: 0.9; transform: translate(-50%, -50%) scale(1.05); }
-    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); }
-}
-
-/* Horizontal anamorphic flare — reuse the spotlight layer, scaleX/scaleY only. */
-.startup-shell.is-hidden .startup-shell__spotlight {
-    background: linear-gradient(90deg, transparent 0%, rgba(150, 210, 255, 0) 30%, rgba(224, 244, 255, 0.9) 50%, rgba(150, 210, 255, 0) 70%, transparent 100%);
-    mix-blend-mode: screen;
-    opacity: 0;
-    transform: scaleY(0.02) scaleX(0.4);
-    transform-origin: 50% 48%;
-    will-change: opacity, transform;
-    animation: sb-anamorphic 1.1s cubic-bezier(0.16, 1, 0.3, 1) 0.62s both;
-}
-
-@keyframes sb-anamorphic {
-    0% { opacity: 0; transform: scaleY(0.02) scaleX(0.4); }
-    35% { opacity: 1; transform: scaleY(0.07) scaleX(1.2); }
-    100% { opacity: 0; transform: scaleY(0.02) scaleX(1.45); }
-}
-
-/* Ember / dust dissolve — the diamond's matter drifts outward, seeding the nebula. */
-.startup-shell.is-hidden .startup-shell__ember {
-    animation: sb-ember-rise 2.3s cubic-bezier(0.3, 0.7, 0.2, 1) 0.15s both;
-    will-change: transform, opacity;
-}
-
-.startup-shell.is-hidden .startup-shell__ember--far {
-    animation: sb-ember-rise2 2.4s cubic-bezier(0.3, 0.7, 0.2, 1) 0.3s both;
-}
-
-@keyframes sb-ember-rise {
-    0% { opacity: 0; transform: translate3d(0, 0, 0) scale(1); }
-    30% { opacity: 0.9; }
-    100% { opacity: 0; transform: translate3d(0, -13vh, 0) scale(1.4); }
-}
-
-@keyframes sb-ember-rise2 {
-    0% { opacity: 0; transform: translate3d(0, 0, 0) scale(1); }
-    30% { opacity: 0.55; }
-    100% { opacity: 0; transform: translate3d(0, -21vh, 0) scale(1.65); }
-}
-
-/* Chromatic fringe on the studio name as it dissolves. */
-.startup-shell.is-hidden .startup-logo__name {
-    animation: sb-name-chroma 0.8s ease-out 0.55s both;
-}
-
-@keyframes sb-name-chroma {
-    0% { filter: none; }
-    50% { filter: drop-shadow(2px 0 0 rgba(140, 215, 255, 0.85)) drop-shadow(-2px 0 0 rgba(142, 166, 255, 0.85)); }
-    100% { filter: drop-shadow(6px 0 0 rgba(140, 215, 255, 0)) drop-shadow(-6px 0 0 rgba(142, 166, 255, 0)); }
-}
-
-/* Letterbox bars retract. */
-.startup-shell.is-hidden .startup-shell__letterbox--top {
-    transform: translateY(-100%);
-    transition: transform 0.8s var(--sb-ease-in);
-}
-
-.startup-shell.is-hidden .startup-shell__letterbox--bottom {
-    transform: translateY(100%);
-    transition: transform 0.8s var(--sb-ease-in);
-}
-
-/* Ember dot-field base (rest) styles — hidden until the exit animates them. */
-.startup-shell__ember {
-    position: absolute;
-    inset: -12%;
-    z-index: 6;
-    pointer-events: none;
-    opacity: 0;
-    mix-blend-mode: screen;
-    background-image: radial-gradient(rgba(200, 236, 255, 0.9) 0.8px, transparent 1.6px);
-    background-size: 46px 46px;
-}
-
-.startup-shell__ember--far {
-    z-index: 4;
-    background-image: radial-gradient(rgba(150, 180, 255, 0.75) 0.8px, transparent 1.6px);
-    background-size: 74px 74px;
-}
-
-/* ── prefers-reduced-motion: clean crossfade, no flash/streak/embers, no black gap. ── */
 @media (prefers-reduced-motion: reduce) {
-    .startup-shell,
-    .startup-shell__letterbox,
-    .startup-logo__glow,
-    .startup-logo__mark,
-    .startup-logo__image,
-    .startup-logo__name,
-    .startup-shell__eyebrow,
-    .startup-logo { animation: none !important; }
-    .startup-logo__glow,
-    .startup-logo__mark,
-    .startup-logo__name,
-    .startup-shell__eyebrow,
-    .startup-logo__image { opacity: 1 !important; }
-    .startup-logo__mark,
-    .startup-logo { transform: none !important; filter: none !important; }
-    .startup-logo__name-text { transform: none !important; }
-    .startup-logo__sheen,
-    .startup-logo__orbit,
-    .startup-logo__glint { display: none; }
-    .startup-shell.is-hidden {
-        animation: none !important;
-        transition: opacity 0.6s ease-out;
-        opacity: 0;
-    }
-    .startup-shell.is-hidden .startup-logo,
-    .startup-shell.is-hidden .startup-logo__mark,
-    .startup-shell.is-hidden .startup-logo__glow,
-    .startup-shell.is-hidden .startup-shell__bloom,
-    .startup-shell.is-hidden .startup-shell__spotlight,
-    .startup-shell.is-hidden .startup-shell__ember { animation: none !important; }
-    .startup-shell.is-hidden .startup-logo { transition: opacity 0.55s ease; opacity: 0; transform: none; filter: none; }
-    .startup-shell.is-hidden .startup-shell__bloom,
-    .startup-shell.is-hidden .startup-shell__ember { display: none !important; }
-    .startup-shell__spotlight { display: none; }
+    .startup-shell *, .startup-shell *::before, .startup-shell *::after { animation: none !important; }
+    .startup-shell.is-hidden, .startup-shell.is-warp-out { transition-duration: 250ms; }
+    .startup-loading__lights i { opacity: 0.65; }
 }
 
 /* --- Background Container --- */
@@ -19985,6 +19548,7 @@ body.serenity-mode.cursor-hidden * {
 /* === Floating Game Mode Cards (over intro animation) === */
 .modal.game-mode-selection {
     background: transparent;
+    align-items: safe center;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     pointer-events: none;
@@ -20043,6 +19607,16 @@ body.start-modal-open .game-mode-cards-container {
         0 0 12px rgba(96, 165, 250, 0.28),
         0 2px 10px rgba(0, 0, 0, 0.35);
 }
+
+.main-menu-logo img {
+    display: block;
+    margin-inline: auto;
+    width: var(--sb-logo-menu-width);
+    height: auto;
+    object-fit: contain;
+}
+
+.modal .main-menu-logo { animation: none; line-height: 1; }
 
 @keyframes cardsFloatIn {
     from {
@@ -20386,6 +19960,12 @@ body.start-modal-open .game-mode-card:focus-visible {
     .game-mode-card {
         padding: 18px 15px;
     }
+}
+
+/* Reserve the profile card's top row when the logo is inside the scrolling menu.
+   The card may appear after Steam initialization, so reserve this space up front. */
+@media (max-width: 768px), (max-height: 700px) {
+    body.start-modal-open .game-mode-cards-container { padding-top: 82px; }
 }
 
 /* === Headphone Recommendation Badge === */

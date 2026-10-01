@@ -80,6 +80,7 @@
         })();
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="preload" as="image" href="./assets/branding/serenity-blocks-logo.svg">
     <!-- Fonts are self-hosted (public/fonts/) so startup never blocks on a font CDN;
          offline/firewalled machines previously stalled the whole boot here (SB-01). -->
     <link rel="stylesheet" href="/styles/fonts.css">
@@ -173,30 +174,54 @@
         <span class="demo-text">Watching Replay</span>
     </div>
 
-    <!-- Serenity Blocks game ident. It masks renderer warm-up, then match-dissolves
-         into the same faceted diamond rendered by the WebGPU boot warp. -->
-    <div id="startup-shell" class="startup-shell" role="status" aria-label="Serenity Blocks">
-        <div class="startup-shell__grain" aria-hidden="true"></div>
+    <!-- Opaque, compositor-animated cover while the opening and title prepare. -->
+    <div id="startup-shell" class="startup-shell" role="status" aria-label="Serenity Blocks. Preparing your space.">
+        <div class="startup-shell__aurora" aria-hidden="true">
+            <svg viewBox="0 0 1440 700" preserveAspectRatio="none" focusable="false">
+                <defs>
+                    <linearGradient id="sb-aurora-color" x1="0" y1="0" x2="1" y2="0">
+                        <stop stop-color="#32f4d2" stop-opacity=".24"/>
+                        <stop offset=".35" stop-color="#8cffe7" stop-opacity=".8"/>
+                        <stop offset=".7" stop-color="#ba98ff" stop-opacity=".72"/>
+                        <stop offset="1" stop-color="#ec8de8" stop-opacity=".2"/>
+                    </linearGradient>
+                    <linearGradient id="sb-aurora-veil" x1="0" y1="1" x2="0" y2="0">
+                        <stop stop-color="white" stop-opacity=".65"/>
+                        <stop offset=".6" stop-color="white" stop-opacity=".09"/>
+                        <stop offset="1" stop-color="white" stop-opacity="0"/>
+                    </linearGradient>
+                    <mask id="sb-aurora-mask"><rect width="1440" height="700" fill="url(#sb-aurora-veil)"/></mask>
+                    <filter id="sb-aurora-soft" filterUnits="userSpaceOnUse" x="-200" y="-300" width="1840" height="1300"><feGaussianBlur stdDeviation="19"/></filter>
+                    <filter id="sb-aurora-edge" filterUnits="userSpaceOnUse" x="-200" y="-300" width="1840" height="1300"><feGaussianBlur stdDeviation="2"/></filter>
+                </defs>
+                <g fill="none" stroke="url(#sb-aurora-color)">
+                    <path d="M-80 420 C220 540 370 270 650 270 S1040 180 1530 310" stroke-width="135" filter="url(#sb-aurora-soft)" opacity=".6"/>
+                    <path d="M-80 425 C220 545 370 275 650 275 S1040 185 1530 315" stroke-width="1.5" filter="url(#sb-aurora-edge)"/>
+                    <path d="M-80 415 C220 535 370 265 650 265 S1040 175 1530 305" stroke-width="55" filter="url(#sb-aurora-soft)" mask="url(#sb-aurora-mask)"/>
+                    <path d="M-100 240 C250 160 440 430 760 200 S1180 290 1510 100" stroke-width="60" filter="url(#sb-aurora-soft)" opacity=".18"/>
+                </g>
+            </svg>
+        </div>
+        <div class="startup-shell__nebula" aria-hidden="true"></div>
+        <div class="startup-shell__stars startup-shell__stars--far" aria-hidden="true"></div>
+        <div class="startup-shell__stars" aria-hidden="true"></div>
         <div class="startup-shell__vignette" aria-hidden="true"></div>
-        <div class="startup-shell__spotlight" aria-hidden="true"></div>
-        <div class="startup-shell__letterbox startup-shell__letterbox--top" aria-hidden="true"></div>
-        <div class="startup-shell__letterbox startup-shell__letterbox--bottom" aria-hidden="true"></div>
-        <div class="startup-shell__bloom" aria-hidden="true"></div>
-        <div class="startup-shell__ember startup-shell__ember--far" aria-hidden="true"></div>
-        <div class="startup-shell__ember" aria-hidden="true"></div>
+        <div class="startup-shell__horizon" aria-hidden="true"></div>
 
         <div class="startup-logo" id="startup-logo-group">
             <img id="startup-logo-image" class="startup-logo__image" src="" alt="Serenity Blocks logo" hidden>
-            <div class="startup-logo__markwrap" aria-hidden="true">
-                <div class="startup-logo__glow"></div>
-                <div class="startup-logo__orbit startup-logo__orbit--far"></div>
-                <div class="startup-logo__orbit"></div>
-                <div class="startup-logo__mark"><span></span><i class="startup-logo__glint"></i></div>
-            </div>
+            <div class="startup-logo__glow" aria-hidden="true"></div>
             <div class="startup-logo__name">
-                <span class="startup-logo__name-text">SERENITY&nbsp;BLOCKS</span>
-                <span class="startup-logo__sheen" aria-hidden="true"></span>
+                <svg class="startup-logo__name-text startup-logo__mark" viewBox="0 0 650 248" width="650" height="248" role="img" aria-label="Serenity Blocks" focusable="false">
+                    <use href="./assets/branding/serenity-blocks-logo.svg#sb-wordmark-base"/>
+                    <use class="startup-logo__tile" href="./assets/branding/serenity-blocks-logo.svg#sb-wordmark-tile"/>
+                </svg>
             </div>
+            <div class="startup-logo__tagline">Stack · Breath · Ascend</div>
+        </div>
+        <div class="startup-loading" aria-hidden="true">
+            <div class="startup-loading__lights"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="startup-loading__caption">Preparing your space</div>
         </div>
     </div>
 
@@ -1361,7 +1386,7 @@
 
     <div id="start-modal" class="modal game-mode-selection">
         <div class="game-mode-cards-container">
-            <h1 class="main-menu-logo" aria-label="Serenity Blocks">Serenity Blocks</h1>
+            <h1 class="main-menu-logo" aria-label="Serenity Blocks"><img src="./assets/branding/serenity-blocks-logo.svg" width="650" height="248" alt="" aria-hidden="true"></h1>
             <div class="game-mode-card" data-mode="single" id="single-player-card-btn" tabindex="0">
                 <div class="mode-card-icon">
                     <svg class="cs-icon cs-icon--solo" viewBox="0 0 24 24" width="48" height="48" fill="none"

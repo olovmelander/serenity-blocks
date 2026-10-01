@@ -136,18 +136,19 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
     animation: cs-shimmer 9s ease-in-out 0.4s infinite;
 }
 
-/* Compact tagline under the title (echoes the menu's "STACK · BREATHE · ASCEND") */
+/* The same brand tagline used throughout the opening and menu. */
 #serenity-hub-panel .hub-title::after {
-    content: 'BREATHE · FOCUS · FLOW';
+    content: 'STACK · BREATH · ASCEND';
     display: block;
     margin-top: 5px;
     font-family: 'Space Mono', monospace;
     font-size: 9px;
     font-weight: 700;
-    letter-spacing: 0.34em;
-    text-indent: 0.34em;
-    color: rgba(190, 205, 245, 0.50);
-    -webkit-text-fill-color: rgba(190, 205, 245, 0.50);
+    letter-spacing: 0.24em;
+    word-spacing: 0.12em;
+    text-indent: 0.24em;
+    color: rgba(192, 215, 229, 0.8);
+    -webkit-text-fill-color: rgba(192, 215, 229, 0.8);
     background: none;
     filter: none;
 }

@@ -75,6 +75,16 @@ cover, and batched `compileAsync` before its render loop starts.
 
 ## Consequences
 
+**2026-10-01 opening redesign:** the production boot transition now uses the analytic
+transparent aurora accent in `src/ui/boot-aurora-scene.js` (one draw, no compute buffers). It still
+compiles asynchronously, primes behind the opaque ident, and drains the GPU queue.
+The ident uses the custom stacked wordmark, aurora drift, and loading lights
+with transform/opacity motion; its static/paused warm-up gates remain. Its wordmark grows
+into the live title during one 3.2 s reveal. Intro compute compilation is unchanged.
+The existing BootWarp lifecycle, flags, telemetry, and optional compute protocol remain
+compatible. Visual evidence and choreography are recorded in
+[`reports/boot-aurora/README.md`](../../reports/boot-aurora/README.md).
+
 - Cold boot after this change (same machine, quiet runs): default theme ~10-14 s on screen,
   ~1.0-1.8 s visibly frozen (mostly the page-load stall before the game starts and the exempt
   set), 5 sync / 35 async pipelines, 0 freezes in the warp window. neon-district: 2.9 s visibly

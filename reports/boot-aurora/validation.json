@@ -1,0 +1,270 @@
+{
+  "date": "2026-10-01",
+  "branch": "feature/cinematic-boot-redesign",
+  "base": "16ea2e64a6a18c5cbeb891feb1f23f0d7504f6a5",
+  "design": "Original stacked wordmark with a separated block completing the O; spectrum color, smaller responsive sizing, continuous title handoff.",
+  "commands": {
+    "npx vitest run --maxWorkers=4": {
+      "status": "passed",
+      "files": 395,
+      "tests": 4318,
+      "scope": "Rerun on final identity, sizing and dotted-tagline revision before merge"
+    },
+    "npm run build": {
+      "status": "passed",
+      "entryClosureKB": 12,
+      "mainClosureKB": 826
+    },
+    "npm run typecheck": {
+      "status": "passed"
+    },
+    "npm run lint:ci": {
+      "status": "passed",
+      "errors": 1336,
+      "baselineErrors": 1336,
+      "fatalErrors": 0
+    },
+    "node scripts/ts-ratchet-check.mjs": {
+      "status": "passed",
+      "annotatedFiles": 59
+    },
+    "node scripts/architecture-fitness-check.mjs": {
+      "status": "passed",
+      "mainLines": 5718,
+      "mainLineCeiling": 5752
+    },
+    "npm run check:boundaries": {
+      "status": "passed",
+      "modules": 950,
+      "dependencies": 2942
+    },
+    "npm run audit:theme-lifecycle": {
+      "status": "passed"
+    },
+    "npm run perf:budgets:gate": {
+      "status": "passed",
+      "scope": "Gate self-test and committed baseline checks, not new Odyssey measurements"
+    },
+    "npm run check:release-gates": {
+      "status": "passed"
+    },
+    "npm run check:ip-strings": {
+      "status": "passed"
+    },
+    "npm run check:pages-artifact": {
+      "status": "passed"
+    },
+    "git diff --check": {
+      "status": "passed"
+    },
+    "npm audit --omit=dev --audit-level=high": {
+      "status": "passed",
+      "vulnerabilities": 0
+    }
+  },
+  "visual": {
+    "tool": "Playwright MCP; chrome-devtools MCP unavailable",
+    "isolatedPlayground": {
+      "effect": "aurora-opening",
+      "timeSeconds": 1.44,
+      "ready": true,
+      "gpuValidationErrors": 0,
+      "screenshot": "continuous-light-prototype.png"
+    },
+    "desktop": {
+      "viewport": [
+        1440,
+        900
+      ],
+      "logo": "wordmark-logo-desktop.png",
+      "title": "wordmark-title-desktop.png",
+      "gpuValidationErrors": 0
+    },
+    "mobile": {
+      "viewport": [
+        390,
+        844
+      ],
+      "logo": "wordmark-logo-mobile.png",
+      "title": "wordmark-title-mobile.png",
+      "horizontalOverflow": false,
+      "tapOpensMenu": true
+    },
+    "landscape": {
+      "viewport": [
+        844,
+        390
+      ],
+      "logoOverlapsLoading": false,
+      "screenshot": "flow-logo-landscape.png"
+    },
+    "resizeDuringHandoff": {
+      "from": [
+        390,
+        844
+      ],
+      "to": [
+        412,
+        915
+      ],
+      "passed": true,
+      "screenshot": "flow-resize-mobile.png"
+    },
+    "idle": {
+      "elapsedMs": 48002,
+      "promptEnabled": true,
+      "menuVisible": false,
+      "watchdogFired": false,
+      "keyboardOpensMenu": true,
+      "screenshot": "flow-idle-title.png"
+    },
+    "webglFallback": {
+      "query": "?introV2=0&noBootWarp=1",
+      "ready": true,
+      "screenshot": "flow-css-fallback.png"
+    },
+    "reducedMotion": {
+      "menuVisible": true,
+      "introCanvasPresent": false,
+      "transitionCanvasPresent": false,
+      "screenshot": "wordmark-reduced-motion.png"
+    },
+    "knownConsoleMessages": [
+      "Windows powerPreference ignored",
+      "Legacy THREE.Clock deprecation",
+      "Music autoplay can be rejected before a user gesture",
+      "WebGL fallback precision warnings"
+    ]
+  },
+  "coldElectron": {
+    "source": "flow-electron-cold.json",
+    "electron": "38.8.6",
+    "chromium": "140.0.7339.249",
+    "freshProfile": true,
+    "visibleWindow": true,
+    "prewarmMs": 86.8,
+    "coverHandoffAtMs": 6675.1,
+    "handoffCompleteAtMs": 9950.7,
+    "handoffDurationMs": 3275.6,
+    "transitionFreezeCount": 0,
+    "loadingVisibleFrozenMs": 1303,
+    "loadingWorstVisibleGapMs": 732,
+    "limitation": "Initial intro/theme warm-up still causes loading hitches before the connected handoff. One Windows device capture; not a hardware-wide performance guarantee."
+  },
+  "logoRefinement": {
+    "scope": "SVG, DOM and CSS identity and responsive sizing; no GPU shader changes",
+    "assets": [
+      "public/assets/branding/serenity-blocks-logo.svg",
+      "public/assets/branding/serenity-blocks-logo-mono.svg",
+      "public/assets/branding/serenity-blocks-symbol.svg"
+    ],
+    "desktopPreview": "wordmark-logo-desktop.png",
+    "mobilePreview": "wordmark-logo-mobile.png",
+    "brandProof": "wordmark-brand-proof.png",
+    "sizing": "wordmark-sizing.json",
+    "maximumWidthsPx": {
+      "loading": 380,
+      "intro": 520,
+      "menuArtwork": 180
+    },
+    "monochromeChecked": true,
+    "symbolSizesPx": [
+      24,
+      32,
+      48,
+      80
+    ],
+    "wordmarkSizesPx": [
+      140,
+      200
+    ],
+    "focusedTests": {
+      "files": 4,
+      "tests": 101,
+      "status": "passed"
+    },
+    "lint": {
+      "status": "passed",
+      "errors": 1336,
+      "baseline": 1336,
+      "fatal": 0
+    },
+    "desktopHandoffAlignmentErrorPx": 0,
+    "desktopKeyboardOpensMenu": true,
+    "mobileTapOpensMenu": true,
+    "reducedMotion": {
+      "tileAnimation": "none",
+      "tileOpacity": 1,
+      "menuReady": true,
+      "introCanvasPresent": false
+    },
+    "validationScope": "The full 4318-test suite and local CI gates were rerun before merge. The cold Electron performance capture preceded this identity revision. Browser visual checks, build, boot closure and artifact checks cover the current identity.",
+    "buildAndBootClosure": "passed",
+    "pagesArtifact": "passed",
+    "svgXmlAndReferences": "passed",
+    "diffCheck": "passed",
+    "staticFallback": "wordmark-css-fallback.png",
+    "profileClearancePx": {
+      "phone": 26,
+      "landscape": 16
+    },
+    "supportingCopyClearBeforeWordmarkOverlap": true
+  },
+  "taglineRefinement": {
+    "text": "Stack · Breath · Ascend",
+    "surfaces": [
+      "loading",
+      "live intro",
+      "live desktop menu",
+      "static compact/Electron menu",
+      "Serenity hub"
+    ],
+    "focusedTests": 42,
+    "visualChecks": {
+      "desktop": [
+        1440,
+        900
+      ],
+      "phones": [
+        [
+          390,
+          844
+        ],
+        [
+          320,
+          568
+        ]
+      ],
+      "shortViewport": [
+        480,
+        240
+      ],
+      "noHorizontalOverflow": true,
+      "minimumPromptClearancePx": 5.78,
+      "desktopMenuCardClearancePx": 29.77,
+      "hubComputedContentVerified": true
+    },
+    "consoleErrors": 0,
+    "dotRefinement": {
+      "spacing": "0.24em tracking, 0.12em word spacing, optical centering",
+      "loading": "tagline-loading-mobile.png",
+      "intro": "tagline-dots-title.png",
+      "menu": "tagline-dots-menu-mobile.png",
+      "layoutPath": "Shared intro and menu DOM/CSS checked using WebGL/CSS fallback",
+      "initialDefaultAttempt": "Intro skipped with startup-pipeline-aborted; fallback capture completed with no console errors",
+      "hubComputedContentVerified": true,
+      "mobileHorizontalOverflow": false
+    }
+  },
+  "artifactPolicy": {
+    "committedScreenshots": [
+      "continuous-light-prototype.png",
+      "wordmark-brand-proof.png",
+      "tagline-loading-mobile.png",
+      "tagline-dots-title.png",
+      "tagline-dots-menu-desktop.png",
+      "tagline-dots-menu-mobile.png"
+    ],
+    "note": "Other capture names in this record refer to local inspection artifacts and are not committed. Runtime image assets and existing tracked evidence remain versioned."
+  }
+}

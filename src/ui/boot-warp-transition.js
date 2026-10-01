@@ -1,32 +1,13 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
- * Boot Warp Transition — the studio-ident → intro reveal renderer.
- *
- * A self-contained, PRE-WARMED WebGPU renderer that plays the game-ident diamond ->
- * restrained warp flight -> nebula-arrival transition on its own full-screen canvas
- * (opaque near-black, z between the intro canvas and the game-ident shell). The heavy
- * TSL→WGSL compile is done up-front in `prewarm()` while the ident still covers the
- * screen, so `play()` is pure GPU work with no first-frame hitch.
- *
- * Boot handoff (src/main.js):
- *   1. ident held ≥4s
- *   2. `await warp.prewarm()`            (pipelines created async, masked by the ident)
- *   3. `introAnimation.show()`           (intro warms behind the opaque warp canvas)
- *   4. `await warp.play()`, held at BOOT_WARP_HOLD_PROGRESS until the shell is dismissed. The
- *      ident first settles onto what the warp's first frames replicate (.sb-warp-arming); at the
- *      reveal a match-cut switches the replicated layers off and only the wordmark and arcs
- *      dissolve (an image logo cross-dissolves instead) → the dive (intro rendering behind)
- *   6. `await warp.fadeOut()`            → crossfades to the live intro
- *   7. `warp.dispose()`
- *
- * Requires a real WebGPU backend (compute). `BootWarpTransition.isSupported()`
- * gates it; callers fall back to the CSS reveal when unsupported / reduced-motion.
- *
- * The particle scene itself lives in the shared builder (boot-warp-transition-scene.js)
- * so it stays pixel-identical to the playground iteration harness.
+ * Aurora opening renderer, hosted by the established boot handoff controller.
+ * A precompiled transparent TSL accent follows the ident's connected title reveal.
+ * The production scene needs one draw and no compute dispatch.
+ * Lifecycle, frame cadence, device-loss and shared-device disposal safeguards
+ * remain here; the BootWarp names are retained for existing flags and telemetry.
  */
 import * as THREE from 'three/webgpu';
-import { createWarpParticles, DEFAULT_MARK_OFFSET_Y_PX, warpFovAt } from './boot-warp-transition-scene.js';
+import { createBootAurora, AURORA_LOGO_OFFSET_Y, auroraFovAt } from './boot-aurora-scene.js';
 import { markStartup } from './startup-debug.js';
 import { gpuResilience } from '../utils/gpu-context-resilience.js';
 import { compileComputeAsync, isAsyncComputeCapable } from '../rendering/webgpu-compute-pipeline-async.js';
@@ -43,11 +24,7 @@ import {
 } from './boot-warp-startup.js';
 
 const CANVAS_ID = 'boot-warp-canvas';
-// Progress values primed during prewarm. The compute pass is ANALYTIC (position is a pure
-// function of uProgress/uTime — it never integrates stored state), so priming mid-flight
-// values is free of side effects and leaves nothing to undo. Covering the ignition, the
-// streak-stretched tunnel and the nebula arrival exercises every branch of the shader plus
-// the heavy additive-fill path, so nothing compiles for the first time during play().
+// Prime the transparent endpoints and passing light behind the ident.
 const PRIME_PROGRESS_STEPS = [0, 0.45, 0.95];
 // Wall-clock ceiling on the play loop, expressed relative to the animation duration. The
 // clock is frame-driven, so a machine that never produces frames would otherwise never
@@ -71,8 +48,7 @@ function elapsedSince(startedAt) {
 }
 
 /**
- * Centre of the CSS studio-ident mark in CSS px, so the warp's match frame lands exactly on it
- * (the logo group centres mark + name, which puts the mark ~31 px above the viewport centre).
+ * Centre of the CSS ident mark in CSS pixels, including responsive/custom logo layout.
  * @returns {{x: number, y: number}|null}
  */
 function readIdentMarkCenter() {
@@ -90,7 +66,7 @@ function readIdentMarkCenter() {
 }
 
 /**
- * Whether the WebGPU particle reveal can run here.
+ * Whether the WebGPU aurora reveal can run here.
  * @param {URLSearchParams} [params]
  * @returns {boolean}
  */
@@ -112,13 +88,13 @@ export function isBootWarpSupported(params) {
 export class BootWarpTransition {
     /**
      * @param {object} [opts]
-     * @param {number} [opts.count]   particle count (default 48000)
+     * @param {number} [opts.count]   optional legacy particle count (default 0)
      * @param {number} [opts.zIndex]  canvas stacking (default 15000 — between intro & shell)
      */
     constructor(opts = {}) {
         this.debugId = nextTransitionId;
         nextTransitionId += 1;
-        this.count = opts.count || 48000;
+        this.count = opts.count || 0;
         this.zIndex = opts.zIndex ?? 15000;
         // Optional shared GPUDevice (the intro's). When set, the warp reuses it instead of
         // creating its OWN WebGPU device — so with a warmed heavy theme it's theme-device +
@@ -234,7 +210,7 @@ export class BootWarpTransition {
         this.warp.setViewport(w, h);
         const markCenter = readIdentMarkCenter();
         if (markCenter) this.warp.setGemCenterPx(markCenter.x, markCenter.y);
-        else this.warp.setGemCenterPx(w / 2, h / 2 + DEFAULT_MARK_OFFSET_Y_PX);
+        else this.warp.setGemCenterPx(w / 2, h / 2 + AURORA_LOGO_OFFSET_Y);
         this.camera.aspect = w / h;
         this.warp.setAspect(w / h);
         return true;
@@ -248,7 +224,7 @@ export class BootWarpTransition {
 
         const rendererParams = {
             antialias: false,
-            alpha: false,
+            alpha: true,
             powerPreference: 'high-performance',
         };
         if (this.sharedDevice) {
@@ -342,7 +318,7 @@ export class BootWarpTransition {
         try {
             renderer.setPixelRatio(Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 1.5));
             renderer.setSize(w, h, false);
-            renderer.setClearColor(0x02040b, 1);
+            renderer.setClearColor(0x02040b, 0);
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             renderer.toneMappingExposure = 0.9;
             renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -350,7 +326,7 @@ export class BootWarpTransition {
             const canvas = renderer.domElement;
             canvas.id = CANVAS_ID;
             canvas.style.cssText = `position:fixed;inset:0;width:100%;height:100%;z-index:${this.zIndex};`
-                + 'pointer-events:none;background:#02040b;opacity:1;';
+                + 'pointer-events:none;background:transparent;opacity:1;';
             if (typeof document !== 'undefined') document.body.appendChild(canvas);
             this.canvas = canvas;
             markStartup('boot-warp:canvas-appended', {
@@ -368,7 +344,7 @@ export class BootWarpTransition {
             this.scene = scene;
             this.camera = camera;
 
-            const warp = createWarpParticles({
+            const warp = createBootAurora({
                 count: this.count,
                 aspect,
                 viewportWidth: w,
@@ -386,13 +362,6 @@ export class BootWarpTransition {
                 x: markCenter ? Math.round(markCenter.x * 10) / 10 : null,
                 y: markCenter ? Math.round(markCenter.y * 10) / 10 : null,
             });
-            if (!warp.computeNode) { // WebGL2 fallback slipped through — no compute, bail
-                this.lastPrewarmStatus = 'compute-unavailable';
-                markStartup('boot-warp:compute-unavailable', { id: this.debugId }, { level: 'warn' });
-                warp.dispose();
-                this.dispose();
-                return false;
-            }
             warp.setAspect(aspect);
             warp.setViewProj(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
             scene.add(warp.mesh);
@@ -403,28 +372,20 @@ export class BootWarpTransition {
                 hasComputeNode: Boolean(warp.computeNode),
             });
 
-            // Prime the pipelines while the ident still covers the screen, and WAIT for the GPU
-            // to finish, so no compile lands inside play() (a cold compile there starved rAF
-            // for ~3s and the ident dissolved onto a warp already at progress ~0.48).
-            //
-            // The particle render pipeline goes through compileAsync
-            // (createRenderPipelineAsync): Dawn compiles it off the GPU process main thread,
-            // which also draws the compositor, so the ident keeps animating meanwhile. A
-            // synchronous render() compile froze every frame on screen (measured 2.9 s for one
-            // heavy pipeline, vs a 61 ms worst frame through compileAsync). compileAsync
-            // resolves the same frame-buffer target as render() (r185 Renderer.js:908-910),
-            // so play() reuses exactly this pipeline.
-            //
-            // The compute pipeline uses r186's native compileComputeAsync. It is started BEFORE
-            // compileAsync so both can progress together; the helper guards dispatches while
-            // native node building yields or GPU compilation is pending. The small ACES/sRGB
-            // output quad stays synchronous because compileAsync never builds it. ?themeWarmAsync=0 skips the
-            // async prime (the synchronous prime frames below then compile it, as before).
+            // Compile before priming while the opaque ident covers the screen (ADR-0020).
+            // The aurora only needs compileAsync. Optional compute graphs retain native
+            // async compilation so the controller can safely host either scene protocol.
+            // The small canvas output quad stays synchronous: compileAsync does not build it.
+            // ?themeWarmAsync=0 retains the legacy synchronous render-pipeline prime.
             const primeStartedAt = nowMs();
-            markStartup('boot-warp:prime-compute-start', { id: this.debugId, steps: PRIME_PROGRESS_STEPS.length });
+            markStartup('boot-warp:prime-compute-start', {
+                id: this.debugId,
+                steps: PRIME_PROGRESS_STEPS.length,
+                hasComputeNode: Boolean(warp.computeNode),
+            });
             warp.setProgress(0);
             warp.setTime(0);
-            const computeCompile = isAsyncComputeCapable(renderer)
+            const computeCompile = warp.computeNode && isAsyncComputeCapable(renderer)
                 ? compileComputeAsync(renderer, warp.computeNode, { timeoutMs: PRIME_GPU_IDLE_TIMEOUT_MS })
                     .catch((error) => ({ status: 'error', message: error?.message || String(error) }))
                 : null;
@@ -469,7 +430,7 @@ export class BootWarpTransition {
             for (const primeProgress of PRIME_PROGRESS_STEPS) {
                 warp.setProgress(primeProgress);
                 warp.setTime(primeProgress * 4);
-                renderer.compute(warp.computeNode);
+                if (warp.computeNode) renderer.compute(warp.computeNode);
                 renderer.render(scene, camera);
             }
             markStartup('boot-warp:prime-render-complete', {
@@ -487,10 +448,10 @@ export class BootWarpTransition {
                 return false;
             }
             // Leave the buffers holding the resting state so play()'s first frame is the
-            // closed diamond, not the last primed step.
+            // transparent opening, not the last primed step.
             warp.setProgress(0);
             warp.setTime(0);
-            renderer.compute(warp.computeNode);
+            if (warp.computeNode) renderer.compute(warp.computeNode);
             renderer.render(scene, camera);
         } catch (err) {
             this.lastPrewarmStatus = 'setup-failed';
@@ -695,7 +656,7 @@ export class BootWarpTransition {
                 }
                 try {
                     const resized = this._syncViewport();
-                    const nextFov = warpFovAt(p);
+                    const nextFov = auroraFovAt(p);
                     if ((resized || nextFov !== fov) && this.camera) {
                         fov = nextFov;
                         this.camera.fov = fov;
@@ -707,7 +668,7 @@ export class BootWarpTransition {
                     }
                     this.warp.setProgress(p);
                     this.warp.setTime(elapsed / 1000);
-                    this.renderer.compute(this.warp.computeNode);
+                    if (this.warp.computeNode) this.renderer.compute(this.warp.computeNode);
                     this.renderer.render(this.scene, this.camera);
                     if (!firstFrameRendered) {
                         firstFrameRendered = true;

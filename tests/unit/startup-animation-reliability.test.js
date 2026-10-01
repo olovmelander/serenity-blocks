@@ -136,8 +136,8 @@ vi.mock('three/webgpu', () => {
     };
 });
 
-vi.mock('../../src/ui/boot-warp-transition-scene.js', () => ({
-    createWarpParticles: () => ({
+vi.mock('../../src/ui/boot-aurora-scene.js', () => ({
+    createBootAurora: () => ({
         computeNode: { id: 'compute-node' },
         mesh: { id: 'mesh' },
         setAspect() {},
@@ -148,8 +148,8 @@ vi.mock('../../src/ui/boot-warp-transition-scene.js', () => ({
         setGemCenterPx() {},
         dispose: rendererMocks.warpDispose,
     }),
-    DEFAULT_MARK_OFFSET_Y_PX: -31,
-    warpFovAt: () => 45,
+    AURORA_LOGO_OFFSET_Y: -31,
+    auroraFovAt: () => 45,
 }));
 
 function createClassList(element) {
@@ -361,6 +361,35 @@ afterEach(() => {
 });
 
 describe('intro startup reliability', () => {
+    it('resolves the title while keeping begin-input locked until the opening clears', async () => {
+        installDom();
+        const { IntroAnimation } = await import('../../src/ui/intro-animation.js');
+        const intro = new IntroAnimation();
+        intro.titleDeferred = true;
+        intro.titleRevealed = false;
+        intro.interactionEnabled = false;
+        intro.isActive = true;
+        intro.dismissText = vi.fn();
+        intro.initRenderer = vi.fn().mockResolvedValue('failed');
+        intro.revealTitle('aurora-sweep', { deferInteraction: true });
+        await intro.createIntroHTML();
+        const prompt = intro.container.querySelector('.intro-prompt');
+        expect(intro.titleRevealed).toBe(true);
+        expect(intro.interactionEnabled).toBe(false);
+        expect(prompt.disabled).toBe(true);
+        intro.handleInteraction();
+        expect(intro.dismissText).not.toHaveBeenCalled();
+        intro.revealTitle('post-transition');
+        expect(intro.interactionEnabled).toBe(true);
+        expect(prompt.disabled).toBe(false);
+        expect(prompt.classList.contains('intro-prompt-hold')).toBe(false);
+        // A late post-transition callback must not re-enable a title already dismissed.
+        intro.isActive = false;
+        intro.interactionEnabled = false;
+        intro.revealTitle('late-post-transition');
+        expect(intro.interactionEnabled).toBe(false);
+    });
+
     it('creates title and prompt visible when reveal happens before DOM creation', async () => {
         installDom();
         const { IntroAnimation } = await import('../../src/ui/intro-animation.js');
@@ -462,6 +491,43 @@ describe('intro startup reliability', () => {
 });
 
 describe('startup pipeline state machine', () => {
+    it.each([true, false])('waits indefinitely for input only once both surfaces are ready (menu first=%s)', async (menuFirst) => {
+        vi.useFakeTimers();
+        const { createStartupPipelineStateMachine } = await import('../../src/ui/startup-pipeline-state-machine.js');
+        const pipeline = createStartupPipelineStateMachine({ watchdogMs: 100 });
+        pipeline.start();
+        pipeline.markAppReady();
+        pipeline.markIntroRunning();
+        if (menuFirst) pipeline.markMenuReady();
+        pipeline.markIntroInteractive();
+        if (!menuFirst) pipeline.markMenuReady();
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(pipeline.snapshot()).toMatchObject({
+            introStatus: 'running', introInteractive: true, menuVisible: false, watchdogFired: false,
+        });
+        pipeline.markIntroDismissing();
+        expect(pipeline.snapshot().introInteractive).toBe(false);
+        await vi.advanceTimersByTimeAsync(100);
+        expect(pipeline.snapshot()).toMatchObject({
+            introStatus: 'skipped', menuVisible: true, watchdogFired: true,
+        });
+        pipeline.dispose();
+    });
+
+    it('keeps the loading watchdog armed when the title is interactive but the menu is not ready', async () => {
+        vi.useFakeTimers();
+        const { createStartupPipelineStateMachine } = await import('../../src/ui/startup-pipeline-state-machine.js');
+        const pipeline = createStartupPipelineStateMachine({ watchdogMs: 100 });
+        pipeline.start();
+        pipeline.markIntroRunning();
+        pipeline.markIntroInteractive();
+        await vi.advanceTimersByTimeAsync(100);
+        expect(pipeline.snapshot()).toMatchObject({
+            menuReady: false, menuVisible: true, degraded: true, watchdogFired: true,
+        });
+        pipeline.dispose();
+    });
+
     it('separates menu readiness from intro duration and exposes the menu only after both', async () => {
         const {
             STARTUP_IDENT_MIN_VISIBLE_MS,
@@ -639,7 +705,7 @@ describe('startup pipeline state machine', () => {
 });
 
 describe('boot warp startup decision', () => {
-    it('defaults boot warp timing to 6500ms and clamps short URL overrides', async () => {
+    it('defaults the aurora opening to 3200ms and clamps short URL overrides', async () => {
         const {
             BOOT_WARP_DEFAULT_DURATION_MS,
             BOOT_WARP_FADE_PROGRESS,
@@ -650,16 +716,16 @@ describe('boot warp startup decision', () => {
         } = await import('../../src/ui/boot-warp-startup.js');
 
         const defaultTiming = resolveBootWarpTiming(new URLSearchParams());
-        expect(BOOT_WARP_DEFAULT_DURATION_MS).toBe(6500);
-        expect(BOOT_WARP_MIN_VISIBLE_MS).toBe(5000);
+        expect(BOOT_WARP_DEFAULT_DURATION_MS).toBe(3200);
+        expect(BOOT_WARP_MIN_VISIBLE_MS).toBe(2000);
         expect(defaultTiming.durationMs).toBe(BOOT_WARP_DEFAULT_DURATION_MS);
         expect(defaultTiming.minVisibleMs).toBe(BOOT_WARP_MIN_VISIBLE_MS);
 
         const shortTiming = resolveBootWarpTiming(new URLSearchParams('warpDur=100'));
         const visibleWindowMs = shortTiming.durationMs * (BOOT_WARP_FADE_PROGRESS - BOOT_WARP_REVEAL_PROGRESS);
         expect(shortTiming.requestedDurationMs).toBe(100);
-        // ceil(5000 / (0.9 - 0.02)): a change to any of those constants must update this on purpose.
-        expect(shortTiming.durationMs).toBe(5682);
+        // ceil(2000 / (0.94 - 0.02)): preserve time for the logo to settle before the sweep.
+        expect(shortTiming.durationMs).toBe(2174);
         expect(shortTiming.durationMs).toBeGreaterThanOrEqual(shortTiming.minDurationMs);
         expect(visibleWindowMs).toBeGreaterThanOrEqual(BOOT_WARP_MIN_VISIBLE_MS);
         expect(BOOT_WARP_TITLE_PROGRESS).toBeLessThan(BOOT_WARP_FADE_PROGRESS);
@@ -814,7 +880,7 @@ describe('boot warp startup decision', () => {
         expect(BOOT_WARP_MAX_PREWARM_ATTEMPTS).toBeLessThanOrEqual(5);
     });
 
-    it('keeps the warp visible for the minimum before fade or title reveal', async () => {
+    it('starts the wordmark with the cover and preserves the minimum before fading', async () => {
         const clock = mockPerformanceNow(100);
         const {
             BOOT_WARP_FADE_PROGRESS,
@@ -871,9 +937,9 @@ describe('boot warp startup decision', () => {
         expect(result.visibleMs).toBeGreaterThanOrEqual(BOOT_WARP_MIN_VISIBLE_MS);
         expect(events).toEqual([
             'play:100',
+            'title:warp-progress:100',
             'dismiss:warp-handoff:100',
             `fade:${100 + BOOT_WARP_MIN_VISIBLE_MS}`,
-            `title:warp-progress:${100 + BOOT_WARP_MIN_VISIBLE_MS}`,
         ]);
         // The contract is paid for by the FLIGHT, never by holding a dead final frame.
         expect(events.some((event) => event.startsWith('wait:'))).toBe(false);
@@ -1040,10 +1106,10 @@ describe('boot warp startup decision', () => {
         expect(dismissStartupShell).not.toHaveBeenCalled();
     });
 
-    it('does not reveal the title after an active handoff is aborted', async () => {
+    it('does not unlock or restart the connected title after an active handoff is aborted', async () => {
         const { playBootWarpHandoff } = await import('../../src/ui/boot-warp-startup.js');
         const controller = new AbortController();
-        const introAnimation = { revealTitle: vi.fn() };
+        const introAnimation = { revealTitle: vi.fn(), enableInteraction: vi.fn() };
         const warpTransition = {
             play: vi.fn(async ({ onProgress }) => {
                 onProgress(0.1, { firstFrameRendered: true });
@@ -1071,7 +1137,11 @@ describe('boot warp startup decision', () => {
             titleRevealed: false,
         });
         expect(warpTransition.fadeOut).not.toHaveBeenCalled();
-        expect(introAnimation.revealTitle).not.toHaveBeenCalled();
+        expect(introAnimation.revealTitle).toHaveBeenCalledExactlyOnceWith('warp-progress', {
+            deferInteraction: true,
+            connectDurationMs: 3200,
+        });
+        expect(introAnimation.enableInteraction).not.toHaveBeenCalled();
     });
 
     it('routes a disabled warp through the orchestrator CSS fallback', async () => {
