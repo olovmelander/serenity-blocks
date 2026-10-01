@@ -27,16 +27,22 @@ import * as THREE from 'three/webgpu';
 import {
     cameraPosition,
     cross,
+    modelWorldMatrixInverse,
     normalize,
     positionLocal,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 
 /**
  * World-space position of the current quad corner, billboarded (camera-facing)
  * around `center` and scaled by `size` (world units). The base quad must be a
  * PlaneGeometry(1,1) so its corners are in [-0.5, 0.5].
+ *
+ * ⚠️ Correct ONLY when the mesh's parent chain is the identity (see `billboardLocal`): the
+ * returned position is consumed as LOCAL space while the camera is read in WORLD space.
+ * Anything under an anchored chapter group should use `billboardLocal`.
  * @param {*} center vec3 node — the particle's world-space center
  * @param {*} size float node — world-space half-extent multiplier
  * @returns {*} vec3 node
@@ -44,6 +50,34 @@ import {
 export function billboardWorld(center, size) {
     const toCam = normalize(cameraPosition.sub(center));
     // Guard against the degenerate up==toCam case with a stable reference up.
+    const right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
+    const up = cross(toCam, right);
+    const corner = positionLocal.xy; // quad corner in [-0.5, 0.5]
+    return center
+        .add(right.mul(corner.x.mul(size)))
+        .add(up.mul(corner.y.mul(size)));
+}
+
+/**
+ * Camera-facing quad corner around a centre given in the MESH'S OWN LOCAL FRAME.
+ *
+ * WHY THIS EXISTS (masterpiece pass, 2026-10). `positionNode` is a LOCAL-space position —
+ * three applies the model matrix to whatever it returns — but `billboardWorld` aims the quad
+ * with the WORLD `cameraPosition`. The two only agree when the mesh's whole parent chain is
+ * the identity. Odyssey's chapter groups are anchored at their path centre (ch6 sits ~1200 u
+ * up and ~1100 u out; ch7 likewise), so every billboard in them faced the world ORIGIN, not
+ * the camera: sprites rendered foreshortened or edge-on (stars dropped to slivers or
+ * vanished). Here the camera is first brought into the mesh's local frame, so the quad
+ * faces the eye under any parent offset, rotation or uniform scale.
+ *
+ * `size` is in local units (a uniformly scaled parent scales the sprite with it).
+ * @param {*} center vec3 node — the particle's centre in the mesh's local frame
+ * @param {*} size float node — half-extent multiplier, local units
+ * @returns {*} vec3 node (local)
+ */
+export function billboardLocal(center, size) {
+    const cameraLocal = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1.0)).xyz;
+    const toCam = normalize(cameraLocal.sub(center));
     const right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
     const up = cross(toCam, right);
     const corner = positionLocal.xy; // quad corner in [-0.5, 0.5]
