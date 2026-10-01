@@ -32,6 +32,11 @@ import {
     SEAM_45_COLOUR_HALF_WIDTH as SEAM_45_SKY_COLOUR_HALF_WIDTH,
     SEAM_56_COLOUR_HALF_WIDTH as SEAM_56_AURORA_COLOUR_HALF_WIDTH,
 } from '../chapter-environments/shared/seam-bridges.js';
+import {
+    urbanIgnition,
+    urbanLocalProgress,
+    urbanResolve,
+} from './odyssey-stage-frame.js';
 
 const ENERGY_ATTACK_RATE = 9.0; // toward a higher audio energy (fast)
 const ENERGY_RELEASE_RATE = 2.5; // back down (slow, so it "breathes")
@@ -139,6 +144,12 @@ export class OdysseyDirector {
             },
             path: { headGlow: 0.6, flowSpeed: 0.8, beatPulse: 0 },
             node: { focalPulse: 0 },
+            // Chapter 8 FINALE CLOCK (odyssey-stage-frame.js): chapter-local progress, the
+            // eased ignition (spire / city / camera crane / post swell all read this) and the
+            // resolve. null until chapter positions are known (post falls back then).
+            urbanLocal: null,
+            urbanReveal: null,
+            urbanResolve: null,
         };
     }
 
@@ -400,6 +411,17 @@ export class OdysseyDirector {
         path.beatPulse = beatPulse;
 
         this.state.node.focalPulse = beatPulse;
+
+        // ── Chapter 8 finale clock — ONE in-chapter clock for env, camera and post ──
+        // (The post ignition swell used to derive its own GLOBAL (p-0.82)/0.18 ramp that
+        // started back in chapter 6; it prefers this published value.)
+        const urbanStart = this.chapterPositions?.[7];
+        if (Number.isFinite(urbanStart)) {
+            const urbanLocal = urbanLocalProgress(ascentProgress, urbanStart, this.chapterPositions[8] ?? 1);
+            this.state.urbanLocal = urbanLocal;
+            this.state.urbanReveal = urbanIgnition(urbanLocal);
+            this.state.urbanResolve = urbanResolve(urbanLocal);
+        }
 
         // ── Publish scalar state ──
         this.state.ascentProgress = ascentProgress;

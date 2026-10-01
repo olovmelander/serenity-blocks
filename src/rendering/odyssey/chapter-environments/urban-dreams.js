@@ -40,6 +40,7 @@ import {
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import {
+    getActiveOdysseyChapterPositions,
     getChapterPathRange,
     getOdysseyPathCurve,
 } from '../path-utils.js';
@@ -47,6 +48,9 @@ import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-
 import {
     computeStageBasis,
     stageBasisToQuaternion,
+    urbanIgnition,
+    urbanLocalProgress,
+    urbanResolve,
 } from '../composition/odyssey-stage-frame.js';
 import {
     createSkyGradientTSL,
@@ -114,6 +118,7 @@ function createSynthwaveSun(uniforms) {
 function createCityBlocks(uniforms) {
     const { group } = createCityBlocksTSL(uniforms.uTime, uniforms.uEnergy, {
         uCityLight: uniforms.uCityLight,
+        uIgniteRadius: uniforms.uIgniteRadius,
         uDim: uniforms.uDim,
     });
     group.name = 'city-blocks';
@@ -392,6 +397,9 @@ export function createUrbanDreamsEnvironment() {
         uEnergy: uniform(0.45),
         // City light level (0..1.2): how many floors are lit (finale ignition raises it).
         uCityLight: uniform(1),
+        // Finale ignition wave: radius (corridor units) of the ring of light expanding from
+        // the spire — buildings inside it switch to their ignited floor count.
+        uIgniteRadius: uniform(0),
         // Resolve: 0 = every building alive, 1 = every building guttered out.
         uDim: uniform(0),
     };
@@ -648,22 +656,39 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
     // aBase array and NO needsUpdate re-upload here anymore (Batch5). uTime was already
     // ticked above, which is all the rain animation needs.
 
-    // FINALE REVEAL: as path progress approaches 100% the megastructure ignites — the
-    // closing payoff staged behind the final node. The reveal ramps over the last stretch
-    // of the journey (0 below ~82% → 1 at the end); when progress is unknown (pilot/
-    // standalone) it idles at a lit baseline so the spire is never dead.
-    const reveal = cameraProgress === null
-        ? 0.6
-        : THREE.MathUtils.clamp((cameraProgress - 0.82) / 0.18, 0, 1);
-    // Ease the ignition (smootherstep) for a graceful crescendo.
-    const easedReveal = reveal * reveal * (3 - 2 * reveal);
+    // FINALE CLOCK (2026-10): ONE in-chapter clock shared with the camera crane and the post
+    // ignition swell (composition/odyssey-stage-frame.js). The old ramp used GLOBAL progress
+    // (p-0.82)/0.18, which started back in chapter 6 — the player arrived to a spire already
+    // ~88 % ignited, and the crane fired after the ignition was over. Now: a dark arrival,
+    // ignition across chapter-local 0.35→0.9 (camera crane + bloom swell together), then a
+    // settle. Unknown progress (pilot/standalone) idles at a lit baseline.
+    const positions = getActiveOdysseyChapterPositions();
+    const local = Number.isFinite(cameraProgress)
+        ? urbanLocalProgress(cameraProgress, positions[7], positions[8] ?? 1)
+        : null;
+    const easedReveal = local === null ? 0.6 : urbanIgnition(local);
+    const resolve = local === null ? 0 : urbanResolve(local);
 
     // Publish the ignition state at the group level for the deferred serial batches:
     // B7 reads `reveal`/`progress` to drive the camera crane (camUp 1.5→6, lookUp 2.5→7
     // over the last 18%); B4 reads them for the ch8 exposure/bloom swell. `uReveal` mirrors
     // the eased value so a TSL consumer can bind it directly.
     group.userData.reveal = easedReveal;
+    group.userData.resolve = resolve;
     group.userData.progress = cameraProgress ?? 0;
+
+    // CITY IGNITION: the arrival city is dim (fewer lit floors); as the spire fires, a ring
+    // of light expands from its base across the city (buildings inside the ring switch to
+    // their ignited floor count), reaching past the camera by the end of the ignition.
+    if (uniforms?.uCityLight) {
+        uniforms.uCityLight.value = 0.62;
+        uniforms.uIgniteRadius.value = easedReveal * 820;
+        // RESOLVE: a third of the buildings gutter out one by one over the last tenth; the
+        // spire, hero trims and the Retrosun stay lit for the held final frame.
+        uniforms.uDim.value = resolve * 0.34;
+        // The rain thins out with the resolve.
+        if (uniforms.uRainDensity) uniforms.uRainDensity.value = 1 - resolve * 0.7;
+    }
     if (group.userData.uReveal) {
         group.userData.uReveal.value = easedReveal;
     }
@@ -678,13 +703,12 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             + easedReveal * (1 - CH8_RETROSUN_STAGE.revealFloor);
     }
 
-    // EXIT DIMMING (creative plan Transition Out): across the journey's very end the
-    // city gutters out — windows and signs dim through the shared energy uniform while
-    // the reveal-driven sun stays the LAST THING LIT, its ember sinking as the encore
-    // resolves (the hint of descent back toward the core).
-    if (uniforms?.uEnergy && Number.isFinite(cameraProgress)) {
-        const dimT = THREE.MathUtils.smoothstep(cameraProgress, 0.965, 1.0);
-        uniforms.uEnergy.value *= (1 - dimT * 0.85);
+    // EXIT DIMMING (creative plan Transition Out): over the resolve (chapter-local 0.9→1,
+    // the same finale clock) windows and signs dim through the shared energy uniform while
+    // the reveal-driven sun stays the LAST THING LIT. (Was keyed to global p 0.965, i.e.
+    // it dimmed the city 85 % from 14 % into the chapter — during the ignition.)
+    if (uniforms?.uEnergy && local !== null) {
+        uniforms.uEnergy.value *= (1 - resolve * 0.6);
     }
 
     const { spire } = group.userData;
@@ -698,24 +722,20 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             spire.userData.beacon.intensity = 0.7
                 + Math.sin(time * 3.0) * 0.3
                 + energy * 0.4
-                + reveal * 2.3; // beacon flares to ~3.0 as the reveal completes
+                + easedReveal * 2.3; // beacon flares to ~3.0 as the reveal completes
         }
         // EXPANDING SHOCK RING from the crown — scales outward (eased) and fades as the
         // reveal completes, a triumphant additive pulse. Idle (reveal≈0) keeps it tiny and
         // transparent; on ignition it sweeps out across the canyon then fades.
         const { shockRing } = spire.userData;
         if (shockRing) {
-            // A travelling pulse: phase loops once reveal is high so the ring keeps pulsing.
-            const pulse = (easedReveal * 0.7 + (Math.sin(time * 1.1) * 0.5 + 0.5) * 0.3);
-            const ringScale = 1 + pulse * 34; // expands up to ~34× its base radius
-            shockRing.scale.setScalar(ringScale);
-            // Brightest mid-expansion, fading as it grows — gated by reveal so it's silent
-            // before ignition. Capped well below 1.0 (soft additive, bloom gilds it).
-            shockRing.material.opacity = THREE.MathUtils.clamp(
-                easedReveal * (1 - pulse) * 0.85,
-                0,
-                0.7,
-            );
+            // The ignited beacon's HEARTBEAT: a thin ring launches from the crown every ~4.2 s,
+            // expands across the skyline and fades — silent before ignition (one motion
+            // accent for the finale shot). Radius in world units (unit-radius torus).
+            const phase = (time / 4.2) % 1;
+            shockRing.scale.setScalar(24 + phase * 520);
+            const fade = (1 - phase) * (1 - phase);
+            shockRing.material.opacity = THREE.MathUtils.clamp(easedReveal * fade * 0.62, 0, 0.62);
         }
     }
 
