@@ -141,7 +141,10 @@ const GROUND_WIND_LIFT = 0.055;
  * (0.2126/0.7152/0.0722 weights sum to 0.997) so it shifts hue only and cannot claim a second
  * share of the value drop that `value` owns.
  */
-const GROUND_SNOW_SHADE = Object.freeze([0.87, 1.01, 1.24]);
+// Bluer than the shipped [0.87, 1.01, 1.24] (item 5) and still luma-neutral (0.97): with the
+// ambient now owning a LUMINOUS shade (ODYSSEY_GROUND_SHADE.snow), the hue shift is what says
+// "snow in shadow" rather than "grey".
+const GROUND_SNOW_SHADE = Object.freeze([0.80, 0.99, 1.32]);
 /**
  * How hard convex ground strips its own snow. Wind scours ribs and fills hollows, so a peak's
  * structure shows as stone on the crests — the one cue that separates a snowy MOUNTAIN from a
@@ -1466,8 +1469,14 @@ export function createOdysseyWorld({
         const albLuma = dot(albedo, vec3(...ODYSSEY_GROUND_LUMA)).toVar();
         const mineralW = clamp(kRock.add(kSnow), 0, 1).toVar();
         const shadeChroma = mix(albedo, vec3(albLuma), mineralW.mul(float(ODYSSEY_GROUND_SHADE.mineral.desat)));
-        const shadeIce = mix(shadeChroma, albLuma.mul(vec3(...GROUND_SNOW_SHADE)), kSnow.mul(0.8));
-        const shadeCol = shadeIce.mul(mix(vec3(...ODYSSEY_GROUND_SHADE.deepTint), vec3(1), lightAmt));
+        const shadeIce = mix(shadeChroma, albLuma.mul(vec3(...GROUND_SNOW_SHADE)), kSnow.mul(0.9));
+        // The warm, red-enriched deep tint is the SOIL and ROCK law; snow is exempt (item 5) —
+        // warming a blue snow shadow is exactly how it turned beige.
+        const shadeCol = shadeIce.mul(mix(
+            mix(vec3(...ODYSSEY_GROUND_SHADE.deepTint), vec3(1), kSnow),
+            vec3(1),
+            lightAmt,
+        ));
         const surface = mix(shadeCol, albedo, lightAmt);
 
         // Cavity occlusion: the baked plate's AO already knows what the landform shadows, but it
@@ -1480,13 +1489,13 @@ export function createOdysseyWorld({
         // the sky cannot see in, which is how a hollow in shadow reaches the measured deep band
         // without a second darkening term fighting the first.
         const openness = smoothstep(float(GROUND_AO_FLOOR), float(1), wideAo);
+        // THREE families now, weighted by the explicit material weights: snow split out of
+        // `mineralW` (item 5), because snow in shade is lit by the sky it faces and stays bright.
         const ambient = mix(
-            float(ODYSSEY_GROUND_SHADE.deepAmbient),
-            mix(
-                float(ODYSSEY_GROUND_SHADE.vegetation.ambient),
-                float(ODYSSEY_GROUND_SHADE.mineral.ambient),
-                mineralW,
-            ),
+            mix(float(ODYSSEY_GROUND_SHADE.deepAmbient), float(ODYSSEY_GROUND_SHADE.snow.deep), kSnow),
+            float(ODYSSEY_GROUND_SHADE.vegetation.ambient).mul(clamp(float(1).sub(kRock).sub(kSnow), 0, 1))
+                .add(float(ODYSSEY_GROUND_SHADE.mineral.ambient).mul(kRock))
+                .add(float(ODYSSEY_GROUND_SHADE.snow.ambient).mul(kSnow)),
             openness,
         ).toVar();
         const value = ambient.add(float(1).sub(ambient).mul(lightAmt)).mul(float(GROUND_LIT_GAIN));
@@ -1495,7 +1504,11 @@ export function createOdysseyWorld({
         // cool fill light is precisely what the measurement refutes for vegetation shade.
         const ambientHue = uShadowTint.div(max(dot(uShadowTint, vec3(...ODYSSEY_GROUND_LUMA)), 0.001));
         const lightCol = mix(
-            mix(vec3(1), ambientHue, float(GROUND_AMBIENT_CHROMA)),
+            mix(vec3(1), ambientHue, mix(
+                float(GROUND_AMBIENT_CHROMA),
+                float(ODYSSEY_GROUND_SHADE.snow.skyChroma),
+                kSnow,
+            )),
             uSunColour,
             lightAmt,
         );
