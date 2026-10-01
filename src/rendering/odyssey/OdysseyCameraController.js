@@ -12,6 +12,7 @@ import {
     getChapterProfile,
 } from './chapter-environments/shared/chapter-profile.js';
 import {
+    URBAN_STAGE_HERO,
     computeStageBasis,
     urbanIgnition,
 } from './composition/odyssey-stage-frame.js';
@@ -208,6 +209,22 @@ const STAGE_FRAME_CHAPTERS = Object.freeze([8]);
 // setCurrentPosition() jumps larger than this (path progress) are teleports: the smoothed
 // camera state snaps on the next update (see setCurrentPosition).
 const TELEPORT_SNAP_THRESHOLD = 5e-4;
+
+// ── ARRIVAL SHOT (journey end) ──────────────────────────────────────────────────────
+// Reaching p=1 used to simply stop the camera. Once the camera has ARRIVED (progress
+// >= start) and the player is idle, a slow held move takes over: the eye orbits the final
+// node by up to `orbitDeg` around the stage up while easing in, and the aim settles onto
+// the spire placed on the right third (the Retrosun behind it). Any input releases it.
+export const ARRIVAL_SHOT = Object.freeze({
+    start: 0.997, // path progress
+    idleSeconds: 1.2, // no scroll input for this long before the shot begins
+    blendInSeconds: 3.5,
+    orbitSeconds: 26, // time to complete the orbit (eased), then it holds
+    orbitDeg: 24,
+    pushIn: 0.1, // fraction of the eye->node distance closed over the orbit
+    heroYawDeg: -21, // aim this far LEFT of the spire = spire on the right third
+    heroPitchDeg: -6, // keeps the final node in the lower frame while the crown rides high
+});
 
 function resolveChapterFraming(chapterId) {
     return {
@@ -482,6 +499,26 @@ export class OdysseyCameraController {
         this.freeCameraAnchor = new THREE.Vector3();
         this.followCameraUp = new THREE.Vector3(0, 1, 0);
         this.positionSeamBeat = null;
+        // Arrival shot state (see ARRIVAL_SHOT).
+        this._arrivalTime = 0;
+        this._arrivalWeight = 0;
+        this._arrivalPivot = new THREE.Vector3();
+        this._arrivalHero = new THREE.Vector3();
+        this._arrivalScratch = new THREE.Vector3();
+        this._arrivalQuat = new THREE.Quaternion();
+        // Dev/capture preview: ?odysseyArrivalPreview=<seconds> pre-ages the arrival shot; a
+        // bare flag (=1, what the capture harness's --url-flag passes) jumps to its settled end.
+        this._arrivalPreview = (() => {
+            if (typeof window === 'undefined') return 0;
+            try {
+                const raw = new URLSearchParams(window.location?.search || '').get('odysseyArrivalPreview');
+                const v = Number(raw);
+                if (!Number.isFinite(v) || v <= 0) return 0;
+                return v <= 1 ? ARRIVAL_SHOT.orbitSeconds + 2 : v;
+            } catch {
+                return 0;
+            }
+        })();
 
         // Animation state
         this.isAnimating = false;
@@ -595,26 +632,35 @@ export class OdysseyCameraController {
         // Cinematic Camera Breathing Settings
         // ═══════════════════════════════════════════════════════════════════
         this.cinematicConfig = {
-            // Subtle sway (horizontal drift)
+            // BREATHING (2026-10). The old sway/bob added `amp * dt * 2` to WORLD x/y every
+            // frame, BEFORE the 7.2/s follow lerp pulled the eye back — about 0.05 u of
+            // motion survived: invisible. Breathing is now a camera-relative offset applied
+            // AFTER the follow (and removed again before the next follow step, so it never
+            // accumulates), scaled to the follow distance and built from incommensurate
+            // sines so it never visibly loops. Amplitudes are fractions of followDistance
+            // (36 u in the finale -> ~0.4 u sway, ~0.3 u bob: felt, never seasick).
             swayEnabled: true,
-            swayAmplitude: 0.15, // World units of horizontal movement
-            swayFrequency: 0.3, // Cycles per second (slow, dreamlike)
+            swayAmplitude: 0.011, // x followDistance, camera-right
+            swayFrequency: 0.071, // Hz of the dominant term (slow, dreamlike)
 
-            // Gentle bob (vertical float)
             bobEnabled: true,
-            bobAmplitude: 0.08, // World units of vertical movement
-            bobFrequency: 0.4, // Slightly faster than sway
+            bobAmplitude: 0.008, // x followDistance, camera-up
+            bobFrequency: 0.093,
+
+            surgeAmplitude: 0.006, // x followDistance, along the view (a slow breath in/out)
 
             // Camera roll breathing (very subtle tilt)
             rollEnabled: true,
             rollAmplitude: 0.003, // Radians (~0.17 degrees)
             rollFrequency: 0.25, // Very slow
 
-            // FOV pulse for chapter transitions
+            // FOV pulse for chapter transitions — ONE hump (fast attack, long release) that
+            // starts from the CURRENT fov, so a restart never snaps.
             fovPulseEnabled: true,
             baseFov: 60,
-            fovPulseAmount: 8, // Degrees to expand/contract
-            fovPulseDuration: 1.5, // Seconds for full pulse cycle
+            fovPulseAmount: 6, // Degrees at the peak of the hump
+            fovPulseDuration: 1.5, // Seconds for the whole pulse
+            fovPulseAttack: 0.32, // fraction of the duration spent widening
 
             // Look-ahead bias (anticipate path direction)
             lookAheadEnabled: true,
@@ -631,6 +677,12 @@ export class OdysseyCameraController {
 
         // Breathing animation state
         this.breatheTime = 0;
+        this._breathOffset = new THREE.Vector3();
+        this._breathApplied = false;
+        this._breathForward = new THREE.Vector3();
+        this._breathRight = new THREE.Vector3();
+        this._breathUp = new THREE.Vector3();
+        this.fovPulseStartFov = camera?.fov ?? 60;
         this.fovPulseActive = false;
         this.fovPulseStartTime = 0;
         this.fovPulseType = 'expand'; // 'expand' | 'contract'
@@ -1181,6 +1233,12 @@ export class OdysseyCameraController {
     update(deltaTime) {
         // Update breathing time
         this.breatheTime += deltaTime;
+        // Take last frame's breathing offset back out so the follow/animation maths always
+        // starts from the un-breathed pose (the offset is re-applied after the follow).
+        if (this._breathApplied) {
+            this.camera.position.sub(this._breathOffset);
+            this._breathApplied = false;
+        }
         // Desired view-axis roll for this frame, applied AFTER lookAt() (which would otherwise
         // rebuild the quaternion and discard any camera.rotation.z written before it). Set by
         // applyBreathingMotion() and updatePortalApproach(); 0 = no roll. (masterplan §2 #6)
@@ -1194,6 +1252,8 @@ export class OdysseyCameraController {
         }
         this.updateDirectorCamera(deltaTime);
         this.updateChapterFraming(deltaTime);
+
+        this.updateArrivalShot(deltaTime);
 
         if (this.pathTravel?.active) {
             this.updatePathTravel();
@@ -1240,10 +1300,9 @@ export class OdysseyCameraController {
     }
 
     /**
-     * Apply subtle breathing motion (sway, bob, roll)
-     * @param {number} deltaTime
+     * Apply subtle breathing motion (sway, bob, surge, roll) as a camera-relative offset.
      */
-    applyBreathingMotion(deltaTime) {
+    applyBreathingMotion() {
         const cc = this.cinematicConfig;
         const t = this.breatheTime;
         const seamWeight = this.getSeamBeatStrength();
@@ -1255,16 +1314,38 @@ export class OdysseyCameraController {
         // Don't apply during rapid animations (focus/zoom)
         if (this.mode === 'free' || this.portalApproach?.active || (this.isAnimating && this.mode === 'focus')) return;
 
-        // Horizontal sway (dreamlike drift)
-        if (cc.swayEnabled) {
-            const sway = Math.sin(t * Math.PI * 2 * cc.swayFrequency) * cc.swayAmplitude * swayScale;
-            this.camera.position.x += sway * deltaTime * 2; // Smooth application
-        }
-
-        // Vertical bob (gentle float)
-        if (cc.bobEnabled) {
-            const bob = Math.sin(t * Math.PI * 2 * cc.bobFrequency + Math.PI * 0.5) * cc.bobAmplitude * bobScale;
-            this.camera.position.y += bob * deltaTime * 2;
+        // Camera-relative basis from the current pose (forward to the look target).
+        const forward = this._breathForward.copy(this.lookAtTarget).sub(this.camera.position);
+        if (forward.lengthSq() > 1e-8 && (cc.swayEnabled || cc.bobEnabled)) {
+            forward.normalize();
+            const right = this._breathRight.crossVectors(forward, this.followCameraUp || FREE_CAMERA_WORLD_UP);
+            if (right.lengthSq() > 1e-8) {
+                right.normalize();
+                const up = this._breathUp.crossVectors(right, forward).normalize();
+                const reach = Math.max(4, this.directorCamera.followDistance || 0);
+                const calm = (1 - seamWeight * 0.6) * (1 - vistaWeight * 0.4);
+                const tau = Math.PI * 2;
+                const fs = cc.swayFrequency;
+                const fb = cc.bobFrequency;
+                // Three incommensurate sines per axis: a slow dominant drift, a lighter
+                // counter-drift and a faint quick shimmer.
+                const swayWave = Math.sin(t * tau * fs) * 0.6
+                    + Math.sin(t * tau * fs * 1.93 + 1.3) * 0.3
+                    + Math.sin(t * tau * fs * 4.41 + 2.1) * 0.1;
+                const bobWave = Math.sin(t * tau * fb + 0.7) * 0.6
+                    + Math.sin(t * tau * fb * 2.17 + 2.4) * 0.3
+                    + Math.sin(t * tau * fb * 3.71 + 0.2) * 0.1;
+                const surgeWave = Math.sin(t * tau * fs * 0.61 + 4.0);
+                const sway = cc.swayEnabled ? swayWave * cc.swayAmplitude * reach * swayScale * calm : 0;
+                const bob = cc.bobEnabled ? bobWave * cc.bobAmplitude * reach * bobScale * calm : 0;
+                const surge = surgeWave * (cc.surgeAmplitude ?? 0) * reach * driftScale * calm;
+                this._breathOffset.set(0, 0, 0)
+                    .addScaledVector(right, sway)
+                    .addScaledVector(up, bob)
+                    .addScaledVector(forward, surge);
+                this.camera.position.add(this._breathOffset);
+                this._breathApplied = true;
+            }
         }
 
         // Camera roll (very subtle tilt)
@@ -1375,6 +1456,12 @@ export class OdysseyCameraController {
         const tStart = this.chapterPositions[chapterId - 1];
         const tEnd = this.chapterPositions[chapterId] ?? 1;
         this._stageFrame = computeStageBasis(this.pathCurve, tStart, tEnd) || null;
+        if (this._stageFrame) {
+            // The set piece is anchored at the chapter's path-range centre (env convention).
+            const a = this.getPathDataAt(tStart).position;
+            const b = this.getPathDataAt(tEnd).position;
+            this._stageFrame.center = a.add(b).multiplyScalar(0.5);
+        }
         return this._stageFrame;
     }
 
@@ -1386,6 +1473,88 @@ export class OdysseyCameraController {
         const base = this.directorCamera.fovBase;
         const offset = this._activeFraming?.fovOffset ?? 0;
         return Number.isFinite(offset) ? base + offset : base;
+    }
+
+    /**
+     * Arrival-shot clock (see ARRIVAL_SHOT): accumulates while the camera rests at the
+     * journey's end in follow mode with no recent input; any travel/input releases it.
+     * @param {number} deltaTime
+     */
+    updateArrivalShot(deltaTime) {
+        const dt = Math.max(0, deltaTime || 0);
+        const lastInput = this.travelModel.lastInputAt || 0;
+        const idleFor = lastInput > 0 ? (performance.now() - lastInput) / 1000 : Infinity;
+        const resting = this.mode === 'follow'
+            && !this.isAnimating
+            && !this.pathTravel?.active
+            && this.currentPosition >= ARRIVAL_SHOT.start
+            && this.targetPosition >= ARRIVAL_SHOT.start;
+        if (resting && idleFor >= ARRIVAL_SHOT.idleSeconds) {
+            this._arrivalTime = Math.max(this._arrivalTime + dt, this._arrivalPreview);
+        } else if (!resting) {
+            this._arrivalTime = 0;
+        }
+        const target = this._arrivalTime > 0
+            ? THREE.MathUtils.smoothstep(this._arrivalTime, 0, ARRIVAL_SHOT.blendInSeconds)
+            : 0;
+        // Release quickly when the player moves again, ease in slowly.
+        const rate = target > this._arrivalWeight ? 1.2 : 3.0;
+        this._arrivalWeight = this._arrivalPreview > 0
+            ? target
+            : THREE.MathUtils.lerp(this._arrivalWeight, target, 1 - Math.exp(-dt * rate));
+    }
+
+    /**
+     * Apply the arrival orbit/push-in/hero aim to a resolved follow frame (in place).
+     * @private
+     */
+    _applyArrivalShot(camPos, lookTarget, cameraUp) {
+        const weight = this._arrivalWeight;
+        if (!(weight > 1e-4)) return;
+        const stage = this._getStageFrame();
+        const throwaway = this._frameThrow;
+        const pivot = this.getPathDataAt(1, this._arrivalPivot, throwaway, throwaway, throwaway).position;
+        const orbitT = THREE.MathUtils.clamp(this._arrivalTime / ARRIVAL_SHOT.orbitSeconds, 0, 1);
+        const orbitEase = orbitT * orbitT * orbitT * (orbitT * (orbitT * 6 - 15) + 10);
+        const axis = stage?.up || cameraUp;
+
+        // Orbit the eye around the final node + push in.
+        const offset = this._arrivalScratch.copy(camPos).sub(pivot);
+        this._arrivalQuat.setFromAxisAngle(axis, THREE.MathUtils.degToRad(ARRIVAL_SHOT.orbitDeg) * orbitEase * weight);
+        offset.applyQuaternion(this._arrivalQuat).multiplyScalar(1 - ARRIVAL_SHOT.pushIn * orbitEase * weight);
+        camPos.copy(pivot).add(offset);
+
+        // Hero aim: the spire on the right third, a touch above it.
+        if (!stage) return;
+        const hero = this._resolveArrivalHero(stage);
+        if (!hero) return;
+        const aim = this._frameAim.copy(hero).sub(camPos);
+        const distance = Math.max(1, lookTarget.distanceTo(camPos));
+        aim.normalize();
+        this._arrivalQuat.setFromAxisAngle(axis, -THREE.MathUtils.degToRad(ARRIVAL_SHOT.heroYawDeg));
+        aim.applyQuaternion(this._arrivalQuat);
+        const pitchAxis = this._frameAxis.crossVectors(aim, axis);
+        if (pitchAxis.lengthSq() > 1e-8) {
+            pitchAxis.normalize();
+            this._arrivalQuat.setFromAxisAngle(pitchAxis, THREE.MathUtils.degToRad(ARRIVAL_SHOT.heroPitchDeg));
+            aim.applyQuaternion(this._arrivalQuat);
+        }
+        const current = this._arrivalScratch.copy(lookTarget).sub(camPos).normalize();
+        current.lerp(aim, weight).normalize();
+        lookTarget.copy(camPos).addScaledVector(current, distance);
+    }
+
+    /**
+     * World position of the urban hero (spire) from the stage basis + chapter centre.
+     * @private
+     */
+    _resolveArrivalHero(stage) {
+        if (!stage?.center) return null;
+        const [lx, ly, lz] = URBAN_STAGE_HERO;
+        return this._arrivalHero.copy(stage.center)
+            .addScaledVector(stage.right, lx)
+            .addScaledVector(stage.up, ly)
+            .addScaledVector(stage.forward, -lz);
     }
 
     applyBaseFov(deltaTime, snap = false) {
@@ -1416,27 +1585,27 @@ export class OdysseyCameraController {
 
         const elapsed = (performance.now() - this.fovPulseStartTime) / 1000;
         const t = Math.min(elapsed / this.fovPulseDuration, 1);
+        const base = this._resolveBaseFov();
 
-        // Smooth ease-out curve
-        const eased = 1 - (1 - t) ** 3;
-
-        if (this.fovPulseType === 'expand') {
-            // Expand then contract
-            const pulseT = t < 0.4 ? t / 0.4 : 1 - (t - 0.4) / 0.6;
-            const smoothPulse = Math.sin(pulseT * Math.PI) * this.fovPulseAmount;
-            this.camera.fov = cc.baseFov + smoothPulse;
-        } else {
-            // Just contract (tunnel effect)
-            const smoothPulse = (1 - eased) * this.fovPulseAmount;
-            this.camera.fov = cc.baseFov - smoothPulse * 0.5;
-        }
-
+        // ONE hump: a quick smooth widen, then a long smooth release. (The old curve hit
+        // sin(pi * t / 0.4) — a full hump by t=0.4 — then a SECOND hump on the way down,
+        // and it started from the base FOV, so a re-trigger snapped.) The pulse rides on
+        // a carrier that eases from the FOV it started at to the live base, so restarts
+        // and base changes are continuous.
+        const attack = THREE.MathUtils.clamp(cc.fovPulseAttack ?? 0.32, 0.05, 0.95);
+        const smooth = (x) => x * x * (3 - 2 * x);
+        const envelope = t < attack
+            ? smooth(t / attack)
+            : 1 - smooth((t - attack) / (1 - attack));
+        const carrier = THREE.MathUtils.lerp(this.fovPulseStartFov, base, smooth(Math.min(1, t / 0.6)));
+        const direction = this.fovPulseType === 'expand' ? 1 : -0.5;
+        this.camera.fov = carrier + envelope * this.fovPulseAmount * direction;
         this.camera.updateProjectionMatrix();
 
-        // End pulse
+        // End pulse (envelope and carrier have both landed on the base: no snap)
         if (t >= 1) {
             this.fovPulseActive = false;
-            this.camera.fov = cc.baseFov;
+            this.camera.fov = base;
             this.camera.updateProjectionMatrix();
         }
     }
@@ -1450,6 +1619,7 @@ export class OdysseyCameraController {
 
         this.fovPulseActive = true;
         this.fovPulseStartTime = performance.now();
+        this.fovPulseStartFov = Number.isFinite(this.camera?.fov) ? this.camera.fov : this._resolveBaseFov();
         this.fovPulseType = type;
         this.fovPulseAmount = options.amount ?? this.cinematicConfig.fovPulseAmount;
         this.fovPulseDuration = options.duration ?? this.cinematicConfig.fovPulseDuration;
@@ -1461,7 +1631,14 @@ export class OdysseyCameraController {
      */
     onChapterChange(chapterId) {
         if (chapterId !== this.lastChapterId) {
-            this.triggerFovPulse('expand');
+            // The seam beat (triggerChapterSeam) already fires the pulse on the way INTO the
+            // seam; firing again at the boundary restarted it mid-hump (two pulses, a snap).
+            // Only pulse here when no seam beat covered this crossing (e.g. a direct jump).
+            const seamCovered = this.fovPulseActive
+                || (this.seamBeat && (performance.now() - this.seamBeat.startTime) < 2500);
+            if (!seamCovered) {
+                this.triggerFovPulse('expand');
+            }
             this.lastChapterId = chapterId;
         }
     }
@@ -1944,6 +2121,11 @@ export class OdysseyCameraController {
                 }
                 lookTarget.copy(camPos).addScaledVector(aim, distance);
             }
+        }
+
+        // ARRIVAL SHOT (journey end, idle): orbit + push-in + hero aim, weighted.
+        if (this._arrivalWeight > 1e-4) {
+            this._applyArrivalShot(camPos, lookTarget, cameraUp);
         }
 
         // The floor TRANSLATES the eye; it must not re-aim it. Lifting the eye against a
