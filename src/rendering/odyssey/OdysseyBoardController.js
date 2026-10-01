@@ -34,6 +34,8 @@ import {
     steamQuenchSeamT,
 } from './composition/odyssey-steam-quench.js';
 import { createCloudBank } from './composition/odyssey-cloud-bank.js';
+import { createWhalePass } from './composition/odyssey-whale-pass.js';
+import { sampleColourScript } from './odyssey-colour-script.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import { OdysseyTslPipeline } from './odyssey-post/odyssey-tsl-pipeline.js';
@@ -441,6 +443,7 @@ export class OdysseyBoardController {
         this._oneWorldVisible = undefined;
         this.steamQuench = null;
         this._steamBoundary = NaN;
+        this.whalePass = null;
         this.cloudBank = null;
         this._cloudBankBoundary = NaN;
         // WAVE -1 (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §5): GPU-time profiling on its own
@@ -2109,6 +2112,52 @@ export class OdysseyBoardController {
         });
     }
 
+    /**
+     * The whale pass's lifecycle, one step per frame: fetch (no GPU), then — only while the
+     * board is idle and the live loop runs — compile through the live-loop path, then draw.
+     * Any failure leaves it hidden for the session; the ocean is exactly as it was without it.
+     */
+    _tickWhalePass(delta, cameraProgress) {
+        const wp = this.whalePass;
+        if (!wp || this._whaleFailed) return;
+        if (!wp.isLoaded && !this._whaleLoading && this.isActive) {
+            this._whaleLoading = true;
+            wp.load()
+                .then((ok) => {
+                    if (!ok) return;
+                    this._whaleLoadedAt = performance.now();
+                    console.log('[OdysseyBoard] whale pass loaded');
+                })
+                .catch((error) => {
+                    this._whaleFailed = true;
+                    console.warn('[OdysseyBoard] whale pass load failed (non-fatal):', error);
+                })
+                .finally(() => { this._whaleLoading = false; });
+        }
+        // Idle-gated like the chapter drain, with the same kind of starvation escape: one small
+        // async compile must not wait forever behind a camera that never reads as settled.
+        const waitedMs = performance.now() - (this._whaleLoadedAt ?? performance.now());
+        if (wp.isLoaded && !wp.isReady && !this._whaleCompiling && this.liveCompileEnabled
+            && this._renderLoopActive() && (this._canRunBackgroundTask() || waitedMs > 4000)) {
+            this._whaleCompiling = true;
+            this._compileGroupThroughPost(wp.group, { live: true })
+                .then((compiled) => {
+                    if (compiled) {
+                        wp.markReady();
+                        console.log('[OdysseyBoard] whale pass ready (live-loop compiled)');
+                    } else this._whaleFailed = true;
+                })
+                .catch((error) => {
+                    this._whaleFailed = true;
+                    console.warn('[OdysseyBoard] whale pass compile failed (non-fatal):', error);
+                })
+                .finally(() => { this._whaleCompiling = false; });
+        }
+        const [c1, c2] = this._whaleRange || [0, 0];
+        const inChapter = cameraProgress > c1 && cameraProgress < c2 + 0.01;
+        wp.update(this.time, delta, this.camera, this.oneWorld?.state?.submerged ?? 0, inChapter);
+    }
+
     async _prewarmChapterEnvironment(chapterId) {
         if (!this.environmentManager || !this.renderer || !this.scene || !this.camera) return;
 
@@ -2586,6 +2635,30 @@ export class OdysseyBoardController {
                 } catch (error) {
                     console.warn('[OdysseyBoard] steam quench unavailable (non-fatal):', error);
                     this.steamQuench = null;
+                }
+                // THE WHALE PASS — a mother and calf circling over the ocean ascent (see
+                // composition/odyssey-whale-pass.js). Created HIDDEN and GPU-free; it is fetched,
+                // live-compiled and only then shown by _tickWhalePass, so it can never create a
+                // pipeline on a live frame. BISECT LEVER: ?odysseyNoWhales=1.
+                try {
+                    const c1 = this.presentationLayout?.chapterPositions?.[1];
+                    const c2 = this.presentationLayout?.chapterPositions?.[2];
+                    const noWhales = typeof window !== 'undefined'
+                        && new URLSearchParams(window.location?.search || '').get('odysseyNoWhales') === '1';
+                    if (this.oneWorldEnabled && !noWhales && Number.isFinite(c1) && Number.isFinite(c2)) {
+                        const mid = getOdysseyPathPointAt((c1 + c2) / 2);
+                        this.whalePass = createWhalePass({
+                            axis: { x: mid.x, z: mid.z },
+                            seaLevel: ODYSSEY_SEA_LEVEL,
+                            shallowColour: new THREE.Color(...sampleColourScript(0.12).skyHorizon),
+                            deepColour: new THREE.Color(...sampleColourScript(0.0).skyHorizon),
+                        });
+                        this.scene.add(this.whalePass.group);
+                        this._whaleRange = [c1, c2];
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] whale pass unavailable (non-fatal):', error);
+                    this.whalePass = null;
                 }
                 // THE CLOUD BANK — the ch5 -> ch6 occlusion moment (summit into cosmos), the
                 // quench's sibling at the other act edge. Its colour ramp runs THROUGH the
@@ -3495,6 +3568,7 @@ export class OdysseyBoardController {
 
         // Steam quench: time-driven (it billows) so it runs every frame, not on the throttled
         // position gate. Hidden outside its window so it costs nothing for 94% of the journey.
+        if (this.whalePass) this._tickWhalePass(delta, cameraProgress);
         if (this.steamQuench && Number.isFinite(this._steamBoundary)) {
             const lo = this._steamBoundary - STEAM_QUENCH_APPROACH_HALF_WIDTH;
             const hi = this._steamBoundary + STEAM_QUENCH_EXIT_HALF_WIDTH;
@@ -4435,6 +4509,10 @@ export class OdysseyBoardController {
             this.scene.remove(this.cloudBank.mesh);
             this.cloudBank.dispose();
             this.cloudBank = null;
+        }
+        if (this.whalePass) {
+            this.whalePass.dispose();
+            this.whalePass = null;
         }
         this.corridorField = null;
         this.thresholdDirector?.dispose?.();
