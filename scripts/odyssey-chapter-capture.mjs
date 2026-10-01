@@ -42,6 +42,15 @@ const FRAME_COUNT = Math.max(2, Number.parseInt(args.frames || process.env.ODYSS
 const WIDTH = Math.max(320, Number.parseInt(args.width || process.env.ODYSSEY_CAPTURE_WIDTH || '1280', 10));
 const HEIGHT = Math.max(240, Number.parseInt(args.height || process.env.ODYSSEY_CAPTURE_HEIGHT || '720', 10));
 const SHOW_WINDOW = args.show || process.env.ODYSSEY_CAPTURE_SHOW === '1';
+// Per-station settle. A station whose frame brings new materials into view (the Act II forest
+// LODs, flowers) can present a STALE frame while their pipelines compile; a longer settle
+// lets the compositor catch up. `--settle=2500`.
+const STATION_SETTLE_MS = Math.max(0, Number.parseInt(args.settle || process.env.ODYSSEY_CAPTURE_SETTLE || '350', 10));
+// DIAGNOSTIC LAYER BISECT: `--hide=magma-horizon,molten-haze,ember*` pins every scene object
+// whose name matches (exact, or prefix with a trailing `*`) invisible for the whole run — the
+// `visible` property is redefined so neither the chapter's own update nor the environment
+// manager can re-enable it. For finding which layer owns a look; never for shipped captures.
+const HIDE_NAMES = String(args.hide || '').split(',').map((s) => s.trim()).filter(Boolean);
 const KEEP_EXISTING = args.keep || process.env.ODYSSEY_CAPTURE_KEEP === '1';
 const FORCE_WEBGL = args.forceWebgl || args['force-webgl'] || process.env.ODYSSEY_CAPTURE_FORCE_WEBGL === '1';
 // PHASE LOCK. Without it this harness is not comparable run to run: every animated uniform
@@ -442,6 +451,17 @@ async function settleAtPosition(win, position, options = {}) {
             bc.thresholdDirector?.update?.(1 / 60, bc.camera, directorState);
             // Freeze the animation clock BEFORE the render so every uniform driven off
             // bc.time resolves to the same phase on every run; delta 0 keeps it frozen.
+            const hideNames = ${JSON.stringify(HIDE_NAMES)};
+            if (hideNames.length) {
+                const matches = (name) => hideNames.some((h) => (h.endsWith('*')
+                    ? String(name || '').startsWith(h.slice(0, -1))
+                    : name === h));
+                bc.scene?.traverse?.((o) => {
+                    if (!matches(o.name) || o.userData.__captureHidden) return;
+                    o.userData.__captureHidden = true;
+                    Object.defineProperty(o, 'visible', { get: () => false, set: () => {}, configurable: true });
+                });
+            }
             const fixedTime = ${FIXED_TIME === null ? 'null' : FIXED_TIME};
             if (fixedTime !== null) {
                 bc.time = fixedTime;
@@ -719,7 +739,7 @@ async function captureChapter(win, boot) {
     for (let index = 0; index < samples.length; index += 1) {
         const localProgress = samples[index];
         const position = range.start + ((range.end - range.start) * localProgress);
-        await settleAtPosition(win, position);
+        await settleAtPosition(win, position, { settleMs: STATION_SETTLE_MS });
         const metrics = await collectMetrics(win, {
             mode: 'chapter',
             chapter: CHAPTER,
