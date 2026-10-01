@@ -2853,15 +2853,30 @@ export function createOdysseyWorld({
         cloudWhite,
         smoothstep(float(0.55), float(0.95), cfCrown).mul(cfBand).mul(FIELD_CROWN_WHITE),
     ).toVar('fieldLit');
-    // Mie: peaks when the view looks into the sun; attenuated by an N.L thickness proxy
-    // (the cloud is optically thinner where it faces edge-on), then QUANTISED into the
-    // grammar so it reads as a painted rim rather than a bloom.
-    const cfMie = clamp(dot(cfV, uSunDir).add(0.9).mul(-10), 0, 1).pow(4)
-        .mul(clamp(float(1.25).sub(abs(dot(cfN, uSunDir))), 0, 1));
+    // ── LIGHT THAT WORKS WITH A SUN BEHIND THE CAMERA (item 9) ─────────────────────────
+    // The old Mie gate fired only when the view looked INTO the sun (dot < -0.9), and Act II's
+    // sun sits behind the rail for the whole act, so it never fired: the clouds had no light
+    // character at all. Three terms replace it, none of which moves the sun:
+    //  · SUNLIT CROWN — the tops that face the sun take a warm, quantised kiss (a hue shift at
+    //    near-constant luma, so it gilds rather than clips), the front-lit read of a cumulus.
+    //  · HENYEY-GREENSTEIN silver lining (g = 0.6), normalised to 1 at its forward peak and
+    //    weighted to the optically thin rim, for masses that DO sit toward the sun — behind
+    //    the rail, or once the camera turns. Gain stays inside FIELD_MIE_GAIN.
+    //  · The painted edge darkens only on the SHADE side; a lit rim keeps its light.
     const cfRim = float(1).sub(abs(dot(cfN, cfV)));
     const cfEdge = smoothstep(float(0.55), float(0.88), cfRim);
-    const fieldCol = mix(cfLit, mix(cloudShade, uSkyHorizon, float(0.30)), cfEdge.mul(0.55))
-        .add(uSunColour.mul(smoothstep(float(0.15), float(0.55), cfMie)).mul(FIELD_MIE_GAIN));
+    const FIELD_HG_G = 0.6;
+    const cfCosSun = dot(cfV.negate(), uSunDir);
+    const cfHgDen = float(1 + (FIELD_HG_G * FIELD_HG_G)).sub(cfCosSun.mul(2 * FIELD_HG_G));
+    const cfHg = float(((1 - FIELD_HG_G) ** 3)).div(cfHgDen.mul(sqrt(max(cfHgDen, float(1e-4)))));
+    const cfSilver = smoothstep(float(0.30), float(0.60), cfHg.mul(cfRim.mul(0.6).add(0.4)));
+    const cfCrownSun = smoothstep(float(0.48), float(0.66), cfWrap.mul(cfWrap).mul(cfCrown));
+    const cfWarm = mix(cfLit, cfLit.mul(vec3(1.05, 0.985, 0.90)), cfCrownSun.mul(cfBand));
+    const fieldCol = mix(
+        cfWarm,
+        mix(cloudShade, uSkyHorizon, float(0.30)),
+        cfEdge.mul(0.55).mul(float(1).sub(cfBand.mul(0.85))),
+    ).add(uSunColour.mul(cfSilver).mul(FIELD_MIE_GAIN));
     // ATMOSPHERIC THINNING (Wave 3 / F3): the paint half. As `uWorldThin` rises the whole
     // Witness band structure (lit/shade/underside/Mie) collapses toward one flat, low-sat
     // haze family — contrast and saturation leave together, which is what altitude does to
