@@ -16,19 +16,26 @@ import {
     abs,
     attribute,
     cameraPosition,
+    cameraProjectionMatrix,
     clamp,
+    dot,
     exp,
     float,
     length,
     max,
+    mix,
+    modelViewMatrix,
     positionLocal,
     pow,
+    screenSize,
     sin,
     smoothstep,
     step,
     uv,
+    varying,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { SCROLL_SPEED, GRID_SPACING } from './synthwave-sunset-tsl.js';
 import { FLOOR_FOG_DENSITY } from './synthwave-sunset-floor.js';
@@ -108,22 +115,42 @@ function createSparks(u, count) {
     const spawn = attribute('iSpawn', 'vec4'); // x, y, z, t0
     const vel = attribute('iVel', 'vec4'); // vx, vy, vz, life
     const look = attribute('iLook', 'vec4'); // r, g, b, size px
+    const motion = attribute('iMotion', 'vec4'); // drag, gravity, streak gain, 0
     const age = u.time.sub(spawn.w);
     const life = max(vel.w, 1e-3);
     const alive = step(0.0, age).mul(step(age, life));
     const lifeT = clamp(age.div(life), 0.0, 1.0);
 
-    // Decelerating burst (drag) with gravity proportional to the burst speed, so near and far
-    // bursts read alike on screen.
-    const drag = float(1.4);
-    const travel = float(1.0).sub(exp(age.mul(drag).negate())).div(drag);
-    const g = length(vel.xyz).mul(0.3);
-    material.positionNode = spawn.xyz.add(vel.xyz.mul(travel)).add(vec3(0.0, g.mul(age).mul(age).mul(-0.5), 0.0));
-    material.sizeNode = look.w.mul(pow(float(1.0).sub(lifeT), 0.5)).mul(alive);
+    // Decelerating flight (exponential drag) under a gentle world-down gravity; both per spark.
+    const drag = max(motion.x, 1e-3);
+    const decay = exp(age.mul(drag).negate());
+    const travel = float(1.0).sub(decay).div(drag);
+    const gravity = motion.y;
+    const pos = spawn.xyz.add(vel.xyz.mul(travel)).add(vec3(0.0, gravity.mul(age).mul(age).mul(-0.5), 0.0));
+    const velNow = vel.xyz.mul(decay).sub(vec3(0.0, gravity.mul(age), 0.0));
+
+    // Screen-space velocity (px/s): sparks stretch into streaks along their on-screen motion.
+    // The quad is square (PointsNodeMaterial rotates BEFORE its non-uniform size, which would
+    // shear a rotated streak), sized to the streak length; the fragment draws the streak in it.
+    const dt = 0.02;
+    const clip0 = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(pos, 1.0)));
+    const clip1 = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(pos.add(velNow.mul(dt)), 1.0)));
+    const pxVel = clip1.xy.div(clip1.w).sub(clip0.xy.div(clip0.w)).mul(screenSize.mul(0.5)).div(dt);
+    const speedPx = length(pxVel);
+    const stretch = float(1.0).add(clamp(speedPx.mul(motion.z).mul(0.011), 0.0, 5.0));
+    const vDir = varying(pxVel.div(max(speedPx, 1e-3)), 'vSparkDir');
+    const vStretch = varying(stretch, 'vSparkStretch');
+
+    material.positionNode = pos;
+    material.sizeNode = look.w.mul(stretch).mul(pow(float(1.0).sub(lifeT), 0.3)).mul(alive);
     material.colorNode = Fn(() => {
-        const d = length(uv().sub(0.5)).mul(2.0);
-        const core = exp(d.mul(d).mul(-5.0));
-        return look.xyz.mul(core.mul(pow(float(1.0).sub(lifeT), 1.2)).mul(2.4));
+        // Streak frame: `along` runs with the motion (head at +1), `across` in streak widths.
+        const local = uv().sub(0.5).mul(2.0);
+        const along = dot(local, vDir);
+        const across = dot(local, vec2(vDir.y.negate(), vDir.x)).mul(vStretch);
+        const shape = exp(across.mul(across).mul(-3.2)).mul(exp(along.mul(along).mul(-2.2)))
+            .mul(mix(float(0.3), float(1.0), smoothstep(-1.0, 0.5, along)));
+        return look.xyz.mul(shape.mul(pow(float(1.0).sub(lifeT), 0.85)).mul(2.6));
     })();
     material.opacityNode = float(1.0);
 
@@ -133,16 +160,18 @@ function createSparks(u, count) {
     const iSpawn = instanced(count, 4);
     const iVel = instanced(count, 4);
     const iLook = instanced(count, 4);
+    const iMotion = instanced(count, 4);
     // Park every slot as already dead.
     for (let i = 0; i < count; i += 1) iSpawn.array[i * 4 + 3] = -1e6;
     sprite.geometry.setAttribute('iSpawn', iSpawn);
     sprite.geometry.setAttribute('iVel', iVel);
     sprite.geometry.setAttribute('iLook', iLook);
+    sprite.geometry.setAttribute('iMotion', iMotion);
     sprite.count = count;
     sprite.frustumCulled = false;
     sprite.renderOrder = 3;
     return {
-        sprite, iSpawn, iVel, iLook,
+        sprite, iSpawn, iVel, iLook, iMotion,
     };
 }
 
@@ -249,17 +278,32 @@ export class SynthwaveFx {
         touch(iCellCol, slot);
     }
 
-    /** Emit one spark (world position/velocity, life s, THREE.Color, size px). */
-    spawnSpark(t0, px, py, pz, vx, vy, vz, life, color, sizePx) {
-        const { iSpawn, iVel, iLook } = this.sparks;
+    /**
+     * Emit one spark: world position/velocity, life (s), THREE.Color, size (px), and its motion
+     * (`drag` 1/s, `gravity` units/s², `streak` gain on the motion stretch; defaults: the classic
+     * burst — drag 1.4 and a gravity that scales with the speed, so near and far bursts arc alike).
+     */
+    spawnSpark(t0, px, py, pz, vx, vy, vz, life, color, sizePx, motion = {}) {
+        const {
+            iSpawn, iVel, iLook, iMotion,
+        } = this.sparks;
         const i = this.sparkCursor;
         this.sparkCursor = (i + 1) % (iSpawn.count);
+        const drag = motion.drag ?? 1.4;
+        const gravity = motion.gravity ?? Math.hypot(vx, vy, vz) * 0.3;
         iSpawn.array.set([px, py, pz, t0], i * 4);
         iVel.array.set([vx, vy, vz, life], i * 4);
         iLook.array.set([color.r, color.g, color.b, sizePx], i * 4);
+        iMotion.array.set([drag, gravity, motion.streak ?? 1, 0], i * 4);
         touch(iSpawn, i);
         touch(iVel, i);
         touch(iLook, i);
+        touch(iMotion, i);
+    }
+
+    /** Spark pool size (callers scale bursts to it). */
+    get sparkCapacity() {
+        return this.sparks.iSpawn.count;
     }
 
     /** Drop every live cell and spark (seek / restart). */

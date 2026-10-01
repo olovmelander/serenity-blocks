@@ -221,6 +221,56 @@ describe('synthwave-sunset world', () => {
         world.dispose();
     });
 
+    it('sprays the combo burst from the sun across the whole screen', () => {
+        const world = new SynthwaveWorld({ scene: new THREE.Scene(), random }).build();
+        const board = {
+            x0: (960 - 162) / 1920, y0: 0.21, x1: (960 + 162) / 1920, y1: 0.79,
+        };
+        world.setLayout(16 / 9, board, { immediate: true });
+        world.update({ time: 12, delta: 0 });
+        const camera = new THREE.PerspectiveCamera(world.lens.vfov, world.lens.aspect, 0.5, 8000);
+        world.updateCamera(camera, { time: 0, delta: 0 });
+        camera.updateProjectionMatrix();
+        const sun = new THREE.Vector2();
+        world.getSunScreen(camera, sun);
+
+        world.onCombo(4);
+        const { iSpawn, iVel, iMotion } = world.fx.sparks;
+        const start = new THREE.Vector3();
+        const end = new THREE.Vector3();
+        const ends = [];
+        for (let i = 0; i < iSpawn.count; i += 1) {
+            if (iSpawn.array[i * 4 + 3] < 0) continue; // parked slot
+            const drag = iMotion.array[i * 4];
+            start.fromArray(iSpawn.array, i * 4).project(camera);
+            // Every spark starts on the sun's disc (screen UV, y down)...
+            expect(Math.abs(start.x * 0.5 + 0.5 - sun.x)).toBeLessThan(0.12);
+            expect(Math.abs(0.5 - start.y * 0.5 - sun.y)).toBeLessThan(0.2);
+            // ...and its drag-limited flight ends somewhere on (or just past) the screen.
+            end.fromArray(iSpawn.array, i * 4).addScaledVector(
+                new THREE.Vector3().fromArray(iVel.array, i * 4),
+                1 / drag,
+            ).project(camera);
+            ends.push([end.x, end.y]);
+        }
+        expect(ends.length).toBeGreaterThan(100);
+        const xs = ends.map((e) => e[0]);
+        const ys = ends.map((e) => e[1]);
+        // The spray reaches both screen edges and the top and bottom, not just the sun's zone.
+        expect(Math.min(...xs)).toBeLessThan(-0.85);
+        expect(Math.max(...xs)).toBeGreaterThan(0.85);
+        expect(Math.min(...ys)).toBeLessThan(-0.6);
+        expect(Math.max(...ys)).toBeGreaterThan(0.85);
+        // ...and covers the screen: sparks land in (nearly) every cell of a 4 × 3 grid.
+        const cells = new Set();
+        for (const [x, y] of ends) {
+            if (Math.abs(x) > 1 || Math.abs(y) > 1) continue;
+            cells.add(`${Math.min(3, Math.floor((x + 1) * 2))},${Math.min(2, Math.floor((y + 1) * 1.5))}`);
+        }
+        expect(cells.size).toBeGreaterThanOrEqual(11);
+        world.dispose();
+    });
+
     it('treats board rects within half a percent as the same layout', () => {
         const a = {
             x0: 0.4, y0: 0.2, x1: 0.6, y1: 0.8,
