@@ -179,9 +179,11 @@ export function bakeCosmicBackdropTexture(options = {}) {
             const tealMacro = sstep(0.50, 0.76, tealGate);
             const tealField = fbm3(dx * 2.0 + 23, dirY * 2.0, dz * 2.0 + 11, 3, iSeed ^ 0x2545);
             const teal = sstep(0.50, 0.80, tealField) * tealMacro;
-            r += 0.10 * rose + 0.020 * teal;
-            g += 0.035 * rose + 0.075 * teal;
-            b += 0.085 * rose + 0.110 * teal;
+            // Kept faint: magnified on screen and desaturated by the dome material, brighter
+            // values read as grey out-of-focus smudges behind the gas.
+            r += 0.055 * rose + 0.010 * teal;
+            g += 0.018 * rose + 0.040 * teal;
+            b += 0.048 * rose + 0.062 * teal;
 
             const o = (iy * width + ix) * 4;
             data[o] = Math.min(255, Math.round(r * 255));
