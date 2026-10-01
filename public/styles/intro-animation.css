@@ -176,7 +176,19 @@
     transform-origin: center;
 }
 
-.intro-wordmark { display: block; width: 100%; height: auto; }
+.intro-wordmark {
+    display: block;
+    width: 100%;
+    height: auto;
+    transform-origin: center;
+    /* The artwork pulses independently of the title's reveal and menu positioning. */
+    animation: sb-wordmark-pulse var(--sb-logo-pulse-duration) ease-in-out infinite;
+}
+.intro-title-hold .intro-wordmark { animation-play-state: paused; }
+.intro-title-connected .intro-wordmark {
+    /* Match the arriving cover until it clears, then breathe from that exact pose. */
+    animation-delay: var(--sb-opening-duration, 3200ms);
+}
 
 /* Pulsing glow behind title */
 .intro-title-container::before {
@@ -565,6 +577,7 @@
 @media (prefers-reduced-motion: reduce) {
 
     .intro-title,
+    .intro-wordmark,
     .intro-shimmer,
     .intro-chromatic,
     .intro-warp-overlay,
