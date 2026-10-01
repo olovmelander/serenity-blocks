@@ -410,6 +410,29 @@ describe('setIdentArming', () => {
         expect(logo.animate).not.toHaveBeenCalled();
     });
 
+    it('settles the wordmark pulse without retaining a transform over the title handoff', () => {
+        const { shell } = createArmableShell();
+        const cancel = vi.fn();
+        const wordmark = {
+            animate: vi.fn(() => ({ cancel })),
+            style: { opacity: '0.96', transform: 'matrix(1.018, 0, 0, 1.018, 0, 0)' },
+        };
+        const originalQuery = shell.querySelector.getMockImplementation();
+        shell.querySelector.mockImplementation((selector) => (
+            selector === '.startup-logo__name-text' ? wordmark : originalQuery(selector)
+        ));
+        installShellDocument(shell);
+
+        setIdentArming(true);
+        expect(wordmark.animate).toHaveBeenCalledWith([
+            { opacity: '0.96', transform: 'matrix(1.018, 0, 0, 1.018, 0, 0)' },
+            { opacity: '1', transform: 'scale(1)' },
+        ], { duration: 110, easing: 'linear', fill: 'none' });
+
+        setIdentArming(false);
+        expect(cancel).toHaveBeenCalledTimes(1);
+    });
+
     it('disarming cancels the eases and removes the class', () => {
         const { shell, glow } = createArmableShell();
         installShellDocument(shell);
