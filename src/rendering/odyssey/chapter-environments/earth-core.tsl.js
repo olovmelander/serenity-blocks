@@ -442,11 +442,18 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // far EDGE and the cavern a size. Driven off the centred radial: a thin bright
     // band near the rim, fading to charred just outside it. `uDescent` lifts it as the
     // camera nears the lake (the far shore opens up on the descent reveal).
-    const rimBand = smoothstep(0.34, 0.42, radial)
-        .mul(oneMinus(smoothstep(0.42, 0.5, radial)));
+    // SOFTENED 2026-10-01: at 1.65x over a 0.08-wide band, the ring compressed at grazing
+    // angle into one hard, perfectly straight orange line across the opening frame — a laser
+    // level, not a shore. Wider, dimmer, and broken along its length by the crust it meets, it
+    // reads as the hot margin where the lake laps the far walls.
+    const rimBand = smoothstep(0.30, 0.42, radial)
+        .mul(oneMinus(smoothstep(0.42, 0.53, radial)));
     const rimPulse = sin(uTime.mul(0.8).add(radial.mul(40.0))).mul(0.12).add(0.88);
-    const rimGlow = rimBand.mul(rimPulse).mul(uDescent.mul(0.5).add(0.6));
-    color = color.add(uColorHot.mul(rimGlow).mul(1.65)); // brightened from 0.85 to 1.65
+    const rimBreak = smoothstep(0.25, 0.75, sin(uvCentered.x.mul(37.0).add(uvCentered.y.mul(29.0)).add(uTime.mul(0.3)))
+        .mul(0.5)
+        .add(0.5));
+    const rimGlow = rimBand.mul(rimPulse).mul(rimBreak.mul(0.7).add(0.3)).mul(uDescent.mul(0.5).add(0.6));
+    color = color.add(uColorHot.mul(rimGlow).mul(0.6));
     // Beyond the rim the lake falls to near-black charred shore (the dark vault meets).
     const beyondRim = smoothstep(0.5, 0.62, radial);
     color = mix(color, uColorCool, beyondRim.mul(0.85));
