@@ -1194,6 +1194,13 @@ export function createOdysseyWorld({
         const slope = clamp(float(1).sub(baseNormal.y), 0, 1);
         const detailGate = float(1).sub(smoothstep(float(1.2), float(9), footprint))
             .mul(float(1).sub(smoothstep(float(2), float(6), vSpacing)));
+        // THE LANDFORM GATE (item 6), for the two terms that describe FORM rather than grain:
+        // crest rock and gully cavity. Both rode `detailGate`, whose vSpacing half is 0 past the
+        // 6.4 u ring — and the massif is only ever seen from 1-2 km, on the 12.8-51 u rings — so
+        // the ribs and couloirs that separate a mountain from a smooth cone were switched off on
+        // every frame that shows the mountain. Curvature is read PER FRAGMENT from the relief
+        // bake, so it does not need fine geometry to be true; footprint alone bounds it.
+        const formGate = float(1).sub(smoothstep(float(6), float(48), footprint));
 
         /**
          * THE ATLAS (Wave 2) — one fetch, four material mesostructures, mean-transparent.
@@ -1257,13 +1264,24 @@ export function createOdysseyWorld({
          * hollows. `crest` is exactly that convexity and is already computed for the cavity
          * term, so this costs one multiply and turns a blank cone into a ribbed one.
          */
+        // Slope gate retuned 0.42/0.70 -> 0.62/0.76 (item 6): at the old gate the summit cone
+        // (slope ~0.45-0.65) shed its snow wholesale and showed the beige rock pole — the "dune"
+        // read. Now snow holds the cone and only true cliffs go bare, while the crest strip below
+        // carves the ribs out of it.
+        // ...and both edges are DRAWN, not ramped: a wide slope window and a linear crest
+        // strip left whole flanks half-snow-half-rock, which averages to beige and reads as
+        // melted wax. Narrow windows give white snow and grey rock with a painted boundary.
         const wSnow = smoothstep(float(620), float(730), snowHeight)
-            .mul(float(1).sub(smoothstep(float(0.42), float(0.70), slope)))
-            .mul(float(1).sub(crest.mul(float(GROUND_SNOW_CREST_STRIP))));
+            .mul(float(1).sub(smoothstep(float(0.62), float(0.76), slope)))
+            .mul(float(1).sub(smoothstep(float(0.18), float(0.40), crest).mul(float(GROUND_SNOW_CREST_STRIP))));
         const wRock = clamp(max(
             smoothstep(float(0.17), float(0.40), slope.add(edgeBreak.mul(0.035))),
-            smoothstep(float(470), float(640), snowHeight).mul(0.75),
-        ).add(crest.mul(uRidgeRock).mul(detailGate)), 0, 1);
+            // ...reaching FULL rock above the treeline (item 6). Capped at 0.75 it left a quarter
+            // of every summit fragment to `kGrass`, whose dry pole is gold — 25 % gold over grey
+            // stone is the khaki that made the snowless parts of the cone read as a dune.
+            smoothstep(float(470), float(640), snowHeight).mul(0.75)
+                .add(smoothstep(float(600), float(720), snowHeight).mul(0.25)),
+        ).add(crest.mul(uRidgeRock).mul(formGate)), 0, 1);
 
         /**
          * The four weights, made EXPLICIT. Algebraically identical to the sequential `mix`
@@ -1482,7 +1500,7 @@ export function createOdysseyWorld({
         // Cavity occlusion: the baked plate's AO already knows what the landform shadows, but it
         // is baked at a radius that cannot see a gully. This is the small-scale half of the same
         // term, and the split is by RADIUS so neither owns the other's job.
-        const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(detailGate)), 0.62, 1.0);
+        const cavity = clamp(float(1).sub(gully.mul(uCavity).mul(formGate)), 0.62, 1.0);
         // THE AMBIENT owns the floor — the one thing Lambert cannot supply and the one thing the
         // shipped graph had wrong (0.06 against the references' 0.27-0.32). It is per-material
         // (rock takes less sky than a meadow does) and deepens where the baked occlusion says
@@ -1524,11 +1542,19 @@ export function createOdysseyWorld({
         // measured 0.27-0.32 band, and dimmed sunlit hollows that the sun plainly reaches.
         groundColour = surface.mul(lightCol).mul(value).mul(cavity)
             .add(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5))
-            // ALPENGLOW: high snow that faces the sun takes a warm kiss, riding the same kSnow
-            // the albedo uses so it can never bleed onto rock or meadow, and multiplied by the
-            // baked sun visibility so a shadowed crown stays cold.
-            .add(uSunColour.mul(vec3(1.0, 0.72, 0.52))
-                .mul(kSnow.mul(ndl.pow(1.6)).mul(sunVis).mul(0.30)))
+            // ALPENGLOW: high snow takes a warm kiss, riding the same kSnow the albedo uses so it
+            // can never bleed onto rock or meadow, and multiplied by the baked sun visibility so
+            // a shadowed crown stays cold. ⚠️ ON THE TURN OF THE FORM ONLY (item 6): it rode
+            // ndl^1.6, i.e. it peaked on FACE-ON snow — and Act II flies with the sun behind the
+            // camera, so every face it shows is face-on and the whole summit took a 30 % peach
+            // cast that the grade rendered as beige sand. Real alpenglow is light raking across
+            // a slope; a band over the terminator half of the Lambert range keeps the warm kiss
+            // on the turning flanks and leaves face-on snow white.
+            .add(uSunColour.mul(vec3(1.0, 0.70, 0.55))
+                .mul(kSnow.mul(sunVis)
+                    .mul(smoothstep(float(0.04), float(0.30), ndl))
+                    .mul(float(1).sub(smoothstep(float(0.45), float(0.80), ndl)))
+                    .mul(0.26)))
             .add(vec3(0.72, 0.82, 0.95).mul(rim))
             // The backwash sheen: wet sand mirrors a little sky (see `wetGlisten`).
             .add(mix(uSkyHorizon, uSkyZenith, float(0.35)).mul(wetGlisten).mul(0.12));
