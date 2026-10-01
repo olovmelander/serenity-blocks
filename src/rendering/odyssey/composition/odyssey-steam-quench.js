@@ -159,6 +159,9 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // holds its value BY REFERENCE — lerping the shared constant would compound frame over
     // frame until the approach side was submerged-blue too.
     const uCool = uniform(STEAM_COOL.clone());
+    // 0 until the crossing, -> 1 as the exit runs: the vapour stops being weather and becomes
+    // TURBIDITY settling out of the water (see the exit note in the colour chain).
+    const uExit = uniform(0);
 
     // Billowing, in LOCAL space so the volume churns with itself rather than with the camera.
     // Two octave-sets at different rates: the slow one is the body, the fast one the edge boil.
@@ -197,7 +200,9 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // the one thing an occlusion moment has to do. So the billow shapes alpha only while the
     // volume is thin (approach and exit, where wisps are correct); as density rises the alpha
     // lerps to fully opaque, and all the interior structure moves into the COLOUR term below.
-    const alphaShape = mix(veil, float(1.0), d);
+    // On the way OUT the veil must not keep its billow-shaped holes: thin wisps over open water
+    // read as cumulus — a sky under the sea (captured at p 0.075). Exiting, it fades as a whole.
+    const alphaShape = mix(mix(veil, float(1.0), d), float(1.0), uExit);
     const opacity = clamp(alphaShape.mul(d).mul(1.25), 0.0, 1.0);
 
     // COLOUR: warm -> BRIGHT WHITE -> cool, never warm -> grey -> cool.
@@ -249,9 +254,13 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
         // shadowed vapour. Without it the peak was an even field of white.
         .mul(mix(float(0.52), float(1.0), smoothstep(0.25, 0.95, viewUp)))
         .min(vec3(0.96, 0.96, 0.96));
+    // EXIT: the same volume becomes murk in the water's own colour, brightest toward the surface
+    // light above, with only a soft breath of the billow left — water clearing, not cloud lifting.
+    const murk = uCool.mul(float(0.82).add(billow.mul(0.22))).mul(float(0.75).add(aperture.mul(0.45)));
+    const exitColour = mix(colour, murk, uExit);
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = colour;
+    material.colorNode = exitColour;
     material.opacityNode = opacity;
     material.transparent = true;
     material.depthWrite = false;
@@ -289,6 +298,7 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
             uDensity.value = steamQuenchDensity(t);
             // Warm while the cavern is still behind you, cold once the water owns the frame.
             uWarmth.value = 1 - t;
+            uExit.value = Math.max(0, Math.min(1, (t - 0.5) / 0.12));
             // Exit only (t>0.5, i.e. under water): converge the cool constant onto the water
             // column's colour. ^1.5 keeps the first stretch past the boundary near-white so
             // the quench's white-out beat survives; by the window's end the veil is fully in
