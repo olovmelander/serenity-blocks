@@ -238,6 +238,11 @@ body.start-modal-open .main-menu-logo {
     animation: cs-logo-reveal 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+body.start-modal-open .main-menu-logo img {
+    transform-origin: center;
+    animation: sb-wordmark-pulse var(--sb-logo-pulse-duration) ease-in-out infinite;
+}
+
 body.start-modal-open .main-menu-logo::after {
     content: 'STACK · BREATH · ASCEND';
     display: block;
@@ -782,6 +787,7 @@ body.start-modal-open .main-menu-player-card .mmpc-avatar-container {
     body.start-modal-open .game-mode-card.steam-disabled,
     body.start-modal-open .game-mode-cards-container,
     body.start-modal-open .main-menu-logo,
+    body.start-modal-open .main-menu-logo img,
     body.start-modal-open .main-menu-logo::after,
     body.start-modal-open .game-mode-card.gamepad-focused,
     body.start-modal-open .game-mode-card:focus-visible {
