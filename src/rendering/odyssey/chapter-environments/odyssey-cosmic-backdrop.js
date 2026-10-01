@@ -147,40 +147,41 @@ export function bakeCosmicBackdropTexture(options = {}) {
             let g = floorBottom[1] + (floorTop[1] - floorBottom[1]) * hCurve;
             let b = floorBottom[2] + (floorTop[2] - floorBottom[2]) * hCurve;
 
-            // WARM pockets: indigo body + magenta core, gated by a low-frequency
-            // macro so whole regions switch off (the incumbent's true-black-gaps
-            // pocketing, kept — now with flat posterized band interiors).
-            const warm = fbm3(dx * 2.6, dirY * 2.6, dz * 2.6, 3, iSeed);
-            const warmGate = sstep(0.58, 0.74, valueNoise3(dx * 1.15 + 7, dirY * 1.15 + 2, dz * 1.15, iSeed ^ 0x5bd1));
-            const warmBody = sstep(0.575, 0.635, warm) * warmGate;
-            const warmCore = sstep(0.66, 0.71, warm) * warmGate;
-            r += 0.20 * warmBody + 0.42 * warmCore;
-            g += 0.055 * warmBody + 0.09 * warmCore;
-            b += 0.40 * warmBody + 0.31 * warmCore;
-
-            // COOL body: cobalt + teal core on a different seed/scale — cool and
-            // warm coexist with gaps between (declared-collision discipline).
-            const cool = fbm3(dx * 2.2 + 23, dirY * 2.2, dz * 2.2 + 11, 3, iSeed ^ 0x2545);
-            const coolGate = sstep(0.58, 0.74, valueNoise3(dx * 0.92 + 31, dirY * 0.92 + 17, dz * 0.92, iSeed ^ 0x9e37));
-            const coolBody = sstep(0.57, 0.63, cool) * coolGate;
-            const coolCore = sstep(0.65, 0.70, cool) * coolGate;
-            r += 0.045 * coolBody + 0.09 * coolCore;
-            g += 0.16 * coolBody + 0.26 * coolCore;
-            b += 0.40 * coolBody + 0.40 * coolCore;
-
-            // Galactic lane: rust filaments + hot strand cores concentrated in the
-            // tilted dust plane (ridged crests for strand character).
-            // Higher-frequency ridged crests so the lane reads as STRANDS, not a wash
-            // (the 1024px review bake showed scale 2.0 producing solid salmon columns);
-            // the core rides lane² so incandescence stays in the lane's spine.
+            // ── MASTERPIECE PASS (2026-10): a SOFT sky, one value band below the gas ──────
+            // The Wave 2 bake posterized three saturated families (magenta pockets, cobalt
+            // bodies, rust lane filaments) with 0.03-0.05-wide thresholds. Magnified 4-6x
+            // on screen those read in-game as hard-edged purple blobs and a flat red smear
+            // full of black holes — the loudest thing in every ch6 frame, louder than the
+            // nebulae it was meant to sit behind. The sky is now what a deep-space sky is:
+            // near-black, one soft galactic band with star clouds and dark dust rifts, and a
+            // faint, low-chroma nebulosity — all wide ramps, nothing posterized.
             const bandDot = dx * bx + dirY * by + dz * bz;
-            const lane = Math.exp(-24 * bandDot * bandDot);
-            const fil = ridged3(dx * 4.2 + 13, dirY * 4.2, dz * 4.2, 2, iSeed ^ 0x27d4);
-            const filBand = sstep(0.66, 0.71, fil) * lane;
-            const filCore = sstep(0.76, 0.79, fil) * lane * lane;
-            r += 0.20 * filBand + 0.38 * filCore;
-            g += 0.05 * filBand + 0.20 * filCore;
-            b += 0.07 * filBand + 0.16 * filCore;
+            const lat2 = bandDot * bandDot;
+            const bandWide = Math.exp(-14 * lat2);
+            const bandCore = Math.exp(-70 * lat2);
+            // Star clouds: lumpy brightness ALONG the band.
+            const clump = sstep(0.38, 0.78, fbm3(dx * 3.4 + 5, dirY * 3.4, dz * 3.4, 3, iSeed ^ 0x2545));
+            // Dark rifts: ridged crests, strongest in the band's spine (the Great Rift idea).
+            const rift = sstep(0.50, 0.80, ridged3(dx * 4.6 + 13, dirY * 4.6, dz * 4.6, 2, iSeed ^ 0x27d4));
+            const riftCut = 1 - 0.82 * rift * Math.min(1, bandWide * 1.3);
+            const band = (bandWide * 0.10 + bandCore * (0.14 + 0.32 * clump)) * riftCut;
+            // Warm cream spine, cool blue wings — chroma stays LOW (the masses own colour).
+            const warmT = Math.min(1, bandCore * 1.2);
+            r += band * (0.50 + 0.38 * warmT);
+            g += band * (0.52 + 0.26 * warmT);
+            b += band * (0.78 - 0.10 * warmT);
+
+            // Faint nebulosity off the band: two soft families on separate seeds, gated by a
+            // low-frequency macro so whole regions of the sky stay empty.
+            const macro = sstep(0.48, 0.74, valueNoise3(dx * 1.1 + 7, dirY * 1.1 + 2, dz * 1.1, iSeed ^ 0x5bd1));
+            const rose = sstep(0.50, 0.80, fbm3(dx * 2.2, dirY * 2.2, dz * 2.2, 3, iSeed)) * macro;
+            const tealGate = valueNoise3(dx * 0.9 + 31, dirY * 0.9 + 17, dz * 0.9, iSeed ^ 0x9e37);
+            const tealMacro = sstep(0.50, 0.76, tealGate);
+            const tealField = fbm3(dx * 2.0 + 23, dirY * 2.0, dz * 2.0 + 11, 3, iSeed ^ 0x2545);
+            const teal = sstep(0.50, 0.80, tealField) * tealMacro;
+            r += 0.10 * rose + 0.020 * teal;
+            g += 0.035 * rose + 0.075 * teal;
+            b += 0.085 * rose + 0.110 * teal;
 
             const o = (iy * width + ix) * 4;
             data[o] = Math.min(255, Math.round(r * 255));

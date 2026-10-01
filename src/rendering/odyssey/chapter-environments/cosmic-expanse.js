@@ -487,11 +487,8 @@ export function resolveCosmicCorridorFrame(chapterRange) {
 //   ?odysseyCh6NoDust=1    — dust tiers + suction debris + streak motes
 //   ?odysseyCh6NoStars=1   — both instanced starfield tiers
 //   ?odysseyCh6NoAurora=1  — the hero's auroral crown, BOTH halves (Wave 5)
-//   ?odysseyCh6LegacyKeyFrame=1 — ADD-BACK polarity: restores the Wave 6 lighting slip,
-//                            i.e. the masses' corridor-local key dotted against world
-//                            normals raw (55.8-95.5 deg off the accretion key). The
-//                            SHIPPED default now applies that key in the frame it was
-//                            authored in (25.7-57.1 deg). Owner flipped it 2026-08-16.
+//   (`?odysseyCh6LegacyKeyFrame=1` is RETIRED, 2026-10: the nebula masses are emissive gas
+//    now and have no key light whose frame could slip.)
 // Polarity: every flag REMOVES its tier, so `baseline` is the shipped chapter and each
 // differential is that tier's own cost (draws + fill + vertex + pipeline — the tier is
 // never built, the `no-water` lever shape). The asteroid garland (12 opaque instances)
@@ -515,7 +512,6 @@ function resolveCh6BisectLevers() {
         dust: !readCh6UrlFlag('odysseyCh6NoDust'),
         stars: !readCh6UrlFlag('odysseyCh6NoStars'),
         aurora: !readCh6UrlFlag('odysseyCh6NoAurora'),
-        authoredKeyFrame: !readCh6UrlFlag('odysseyCh6LegacyKeyFrame'),
     };
 }
 
@@ -672,8 +668,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // `ch6-nebula-sprites`, so the differential IS the swap's price in one window.
     const nebulaSprites = readCh6UrlFlag('odysseyCh6NebulaSprites');
     const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL({
-        authoredFrame: bisect.authoredKeyFrame,
-        corridorQuaternion: corridorFrame.quaternion,
+        uTime: uniforms.uTime,
     }) : null;
     if (nebulaField) {
         corridor.add(nebulaField.mesh);
@@ -1566,9 +1561,13 @@ export function createAuroraFilamentBridge(uniforms) {
         BRIDGE_CHROMA,
     ).mul(BRIDGE_LEVEL);
     const vertical = smoothstep(0.0, 0.3, vUv.y).mul(smoothstep(1.0, 0.2, vUv.y));
-    // Linger as a visible aurora across most of the crossing, then dissolve into nebula filaments
-    // (was smoothstep(0.22,0.44) → gone by ~18% local progress, too brief to read as the hero aurora).
-    const alive = oneMinus(smoothstep(0.5, 0.85, uApproach));
+    // GONE BY A QUARTER OF THE CHAPTER (masterpiece pass, 2026-10). It used to linger to
+    // approach 0.85, and once recoloured the three curtains overhead read in-game as one huge
+    // flat crimson smear filling the right third of every ch6 frame (bisected 2026-10-01: with
+    // the nebula hidden the smear was these planes over the dome's posterized rust lane — the
+    // lane is re-baked soft in odyssey-cosmic-backdrop.js). The greeting is a 5→6 beat; the
+    // deep-space frame belongs to the nebulae.
+    const alive = oneMinus(smoothstep(0.06, 0.24, uApproach));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = graded.mul(strands.add(0.4));
