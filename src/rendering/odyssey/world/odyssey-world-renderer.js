@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn, If,
     abs, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, length,
-    max, min, mix, sqrt,
+    max, min, mix, reflect, sqrt,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
     screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition,
 } from 'three/tsl';
@@ -293,6 +293,12 @@ const LAKE_TINT_VARIANTS = {
     },
 };
 const LAKE_TINT_DEFAULT = 'alpine';
+/**
+ * The jade a thin wave crest transmits, seen from ABOVE (the topside twin of `uWaterGlow`'s
+ * underside SSS). Authored greener and brighter than the pixel it should land on: the world
+ * hands the grade a 0.72-saturation image and the grade puts the chroma back.
+ */
+const WATER_JADE = Object.freeze([0.20, 0.72, 0.60]);
 /**
  * ATMOSPHERIC THINNING (Wave 3 / F3): how much of each mass's body the full thin removes,
  * as a fraction of its distance to the mass centre. 0.30 at the schedule's 0.85 cap means
@@ -1768,8 +1774,14 @@ export function createOdysseyWorld({
     // just honestly interpolated, with no `floor()` downstream of the interpolator. It is also
     // already resident (`wFragDist`/`wFrag` below use it), and dropping these reads takes the
     // morph chain out of the fragment shader entirely.
-    const rippleA = texture(detailTex, positionWorld.xz.mul(0.021).add(vec2(uTime.mul(0.010), uTime.mul(-0.014)))).rg;
-    const rippleB = texture(detailTex, positionWorld.xz.mul(0.047).add(vec2(uTime.mul(-0.018), uTime.mul(0.008)))).rg;
+    // The whole texel is kept, not just `.rg`: `.b` (the scalar value noise the derivatives were
+    // taken from) is the free break-up field for the topside glitter and the shore foam — same
+    // fetch, no new sampler. First built at the Fn root through the `wN` pin, so a branch that
+    // reads `.b` reuses the root's sample rather than starving (the root-pin note below).
+    const rippleTexA = texture(detailTex, positionWorld.xz.mul(0.021).add(vec2(uTime.mul(0.010), uTime.mul(-0.014))));
+    const rippleTexB = texture(detailTex, positionWorld.xz.mul(0.047).add(vec2(uTime.mul(-0.018), uTime.mul(0.008))));
+    const rippleA = rippleTexA.rg;
+    const rippleB = rippleTexB.rg;
     const ripple = rippleA.mul(0.9).add(rippleB.mul(0.5)).toVar();
     // The wave field again, per fragment, from the true world position — at FULL amplitude.
     // The envelopes above are for DISPLACEMENT only: a lattice tears when asked to sample a
@@ -1850,10 +1862,46 @@ export function createOdysseyWorld({
             // FRESNEL TWO-TONE, then the sun glint over the baked sun visibility. Ghibli
             // water is not a mirror: the sky arrives as a colour wash, never an image.
             const fb = float(1).sub(max(dot(wN, viewDir), 0));
-            const fres = fb.mul(fb).mul(fb).mul(fb).mul(0.62);
+            const fres = fb.mul(fb).mul(fb).mul(fb).mul(0.62)
+                .add(0.05);
             const wVis = texture(sunVisTex, wUv).r;
-            const wl = mix(body, skyColourFor(float(0.22)), fres)
-                .add(vec3(1, 0.96, 0.88).mul(spec).mul(wVis))
+            // THE SKY IN THE REFLECTED DIRECTION, not one constant (`skyColourFor(0.22)` was
+            // the whole sea's sky for the life of this graph). Near water reflects high sky
+            // (deeper blue), far water reflects the horizon (pale) — the gradient a flat
+            // constant could never paint. QUANTISED on the sky's own sqrt curve into four
+            // plates with an anti-aliased riser, so the ripple normal bends each plate edge
+            // into the wobbling bands of painted water instead of a smooth airbrush ramp.
+            // ALU only: the sky is analytic.
+            const reflDir = reflect(viewDir.negate(), wN).toVar();
+            const reflT = sqrt(clamp(reflDir.y, 0, 1)).mul(4).toVar();
+            const reflQ = floor(reflT).add(smoothstep(float(0.40), float(0.60), fract(reflT))).div(4).toVar();
+            const skyRefl = skyColourFor(reflQ.mul(reflQ));
+            // JADE WAVE BACKS — the topside twin of the underside's crest SSS. Thin crests
+            // transmit light and go jade; troughs sink a step deeper. Driven by the displaced
+            // height the triangle actually carries (vSwell), so the colour rides the moving
+            // geometry and the sea gains value structure that travels.
+            const crestGlow = smoothstep(float(0.10), float(1.50), vSwell).mul(vSwellFade);
+            const troughDeep = smoothstep(float(-0.20), float(-1.50), vSwell).mul(vSwellFade);
+            const bodyLive = mix(
+                mix(body, body.mul(vec3(0.78, 0.87, 0.94)), troughDeep.mul(0.70)),
+                vec3(...WATER_JADE),
+                crestGlow.mul(0.40),
+            );
+            // SUN ROAD: a broad lobe on the reflected ray (the hairline `spec` stays for the
+            // tight core). Act II mostly flies away from the sun, so this is quiet there and
+            // lights only when a camera turns toward it.
+            const road = smoothstep(float(0.90), float(0.995), clamp(dot(reflDir, uSunDir), 0, 1)).mul(0.45);
+            // GLITTER: two scrolled value fields that only coincide in small, short-lived
+            // patches, so the sparks TWINKLE as the layers slide past each other. Weighted to
+            // grazing water (where real glints live) and faded with range before they can
+            // alias into shimmer.
+            const sparkle = smoothstep(float(0.70), float(0.80), rippleTexB.b)
+                .mul(smoothstep(float(0.62), float(0.74), rippleTexA.b))
+                .mul(fb)
+                .mul(clamp(float(1).sub(wFragDist.div(420)), 0, 1))
+                .mul(0.34);
+            const wl = mix(bodyLive, skyRefl, fres)
+                .add(vec3(1, 0.96, 0.88).mul(spec.add(road).add(sparkle)).mul(wVis))
                 .mul(wVis.mul(0.18).add(0.82))
                 .toVar();
             // WHITECAPS — The Witness reference: opaque flat white with a drawn edge, so
