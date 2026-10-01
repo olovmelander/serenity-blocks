@@ -145,6 +145,32 @@ export const swLineAA = /* @__PURE__ */ Fn(([d, hw, fw]) => {
     inputs: [{ name: 'd', type: 'float' }, { name: 'hw', type: 'float' }, { name: 'fw', type: 'float' }],
 });
 
+/**
+ * A box-filtered pulse train: the fraction of the pixel footprint [x − w/2, x + w/2] (w =
+ * footprint in cells, e.g. 1.25·fwidth(x)) that falls inside the [a, b] part of each unit cell.
+ * Exact coverage instead of a thresholded edge, so a window one or two pixels wide keeps a stable
+ * brightness while the camera drifts instead of popping on and off, and many cells per pixel
+ * converge to the true average (b − a) with no moiré.
+ */
+export const swFilteredPulse = /* @__PURE__ */ Fn(([x, w, a, b]) => {
+    const hw = max(w, 1e-4).mul(0.5);
+    const width = b.sub(a);
+    const hi = x.add(hw);
+    const lo = x.sub(hw);
+    const integralHi = floor(hi).mul(width).add(min(max(fract(hi).sub(a), 0.0), width));
+    const integralLo = floor(lo).mul(width).add(min(max(fract(lo).sub(a), 0.0), width));
+    return integralHi.sub(integralLo).div(hw.mul(2.0));
+}).setLayout({
+    name: 'sw_filteredPulse',
+    type: 'float',
+    inputs: [
+        { name: 'x', type: 'float' },
+        { name: 'w', type: 'float' },
+        { name: 'a', type: 'float' },
+        { name: 'b', type: 'float' },
+    ],
+});
+
 // ── Atmosphere: one horizon colour shared by sky, floor fog, city and mountains ─
 
 /**

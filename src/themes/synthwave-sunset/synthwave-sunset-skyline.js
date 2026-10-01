@@ -40,7 +40,9 @@ import {
     RIG,
     rgb,
     swApplyHaze,
+    swFilteredPulse,
     swHash21,
+    swLineAA,
     swSunAlign,
 } from './synthwave-sunset-tsl.js';
 import { FLOOR_FOG_DENSITY } from './synthwave-sunset-floor.js';
@@ -319,16 +321,15 @@ export function createCity(u, { rand, density = 1, windowGlow = 1 }) {
         const faceId = n.x.mul(2.0).add(n.z.mul(3.0));
 
         // ── Windows: floor-by-floor occupancy, per-window colour ──
+        // Coverage is box-filtered over the pixel footprint (swFilteredPulse), so windows only a
+        // pixel or two wide hold a steady brightness while the camera drifts instead of popping.
         const cellU = ul.add(halfW).div(1.5);
         const cellV = p.y.div(2.3);
         const cell = floor(vec2(cellU, cellV));
-        const fc = fract(vec2(cellU, cellV));
         const fwU = max(fwidth(cellU), 1e-4);
         const fwV = max(fwidth(cellV), 1e-4);
-        const winU = smoothstep(float(0.28).sub(fwU), float(0.28).add(fwU), fc.x)
-            .mul(float(1.0).sub(smoothstep(float(0.72).sub(fwU), float(0.72).add(fwU), fc.x)));
-        const winV = smoothstep(float(0.32).sub(fwV), float(0.32).add(fwV), fc.y)
-            .mul(float(1.0).sub(smoothstep(float(0.72).sub(fwV), float(0.72).add(fwV), fc.y)));
+        const winU = swFilteredPulse(cellU, fwU.mul(1.25), float(0.28), float(0.72));
+        const winV = swFilteredPulse(cellV, fwV.mul(1.25), float(0.32), float(0.72));
         const rowOcc = swHash21(vec2(cell.y, seed.mul(97.0).add(faceId)));
         const winH = swHash21(cell.add(vec2(seed.mul(13.7).add(faceId.mul(5.1)), seed.mul(3.3))));
         const lit = step(float(0.95).sub(rowOcc.mul(0.5)), winH);
@@ -339,12 +340,19 @@ export function createCity(u, { rand, density = 1, windowGlow = 1 }) {
             select(pick.lessThan(0.95), rgb(0x8fd8ff), rgb(0xff5fd0)),
         );
         const bright = float(0.4).add(swHash21(cell.add(vec2(7.7, seed))).mul(0.75));
-        const near = winCol.mul(winU.mul(winV).mul(lit).mul(bright));
-        const coverage = smoothstep(0.25, 0.7, max(fwU, fwV));
-        const avg = rgb(0xffa060).mul(0.03);
+        // Once a pixel spans a good part of a cell its footprint straddles neighbours, so the
+        // per-cell random choices (lit, colour, brightness) blend to their expected value instead
+        // of flickering between cells. Across a floor (faces seen edge-on) that is the FLOOR's own
+        // occupancy — P(lit) = 0.05 + 0.5·rowOcc, E[bright] = 0.775 — so floors keep their
+        // variety; only when a pixel spans several floors does it become the global 0.3 × 0.775.
+        const amber = rgb(0xffa64e);
+        const farU = smoothstep(0.3, 0.8, fwU);
+        const farV = smoothstep(0.3, 0.8, fwV);
+        const rowExpected = amber.mul(float(0.05).add(rowOcc.mul(0.5)).mul(0.775));
+        const lightCol = mix(mix(winCol.mul(lit.mul(bright)), rowExpected, farU), amber.mul(0.23), farV);
         const inBody = step(1.2, p.y).mul(step(p.y, boxTop.sub(0.8))).mul(float(1.0).sub(isSpire));
         const occupied = step(0.12, seed);
-        const windows = mix(near, avg, coverage).mul(side).mul(inBody).mul(occupied)
+        const windows = lightCol.mul(winU.mul(winV)).mul(side).mul(inBody).mul(occupied)
             .mul(float(windowGlow))
             .mul(float(1.0).add(u.cityPulse.mul(1.6)));
 
@@ -365,11 +373,11 @@ export function createCity(u, { rand, density = 1, windowGlow = 1 }) {
             rgb(0x2ae4ff),
             select(neonPick.lessThan(0.85), rgb(0xff2bd1), rgb(0x9b5cff)),
         );
-        const bandA = smoothstep(boxTop.sub(1.7), boxTop.sub(1.7).add(fwY), p.y)
-            .mul(float(1.0).sub(smoothstep(boxTop.sub(1.2), boxTop.sub(1.2).add(fwY), p.y)));
-        const bandB = smoothstep(boxTop.sub(4.2), boxTop.sub(4.2).add(fwY), p.y)
-            .mul(float(1.0).sub(smoothstep(boxTop.sub(3.6), boxTop.sub(3.6).add(fwY), p.y)));
-        const strip = float(1.0).sub(smoothstep(0.4, float(0.4).add(fwE), halfW.sub(abs(ul))))
+        // Bands and strips are energy-conserving AA lines (swLineAA): thinner than a pixel they
+        // dim instead of breaking up into dashes as the camera moves.
+        const bandA = swLineAA(p.y.sub(boxTop.sub(1.45)), float(0.25), fwY);
+        const bandB = swLineAA(p.y.sub(boxTop.sub(3.9)), float(0.3), fwY);
+        const strip = swLineAA(abs(ul).sub(halfW.sub(0.25)), float(0.25), fwE)
             .mul(smoothstep(0.0, 18.0, p.y));
         const neonMask = select(
             neonKind.lessThan(0.5),
