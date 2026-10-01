@@ -886,6 +886,23 @@ export function createOdysseyWorld({
     const uWaterDeep = uniform(new THREE.Color(0.020, 0.105, 0.165));
     /** The dawn-gold kiss the crest SSS transmits — kept OUT of the air palette on purpose. */
     const uWaterGlow = uniform(new THREE.Color(0.88, 0.75, 0.50));
+    /**
+     * THE SWASH — one run-up clock shared by the WATER (whose shoreline vertices rise with it
+     * and whose foam front rides it) and the GROUND (whose wet-sand sheen is phase-locked to
+     * it), so the waterline and the wet line can never disagree. A skewed cycle — a quick
+     * run-up over the first third, a long backwash — because a symmetric sine reads as the sea
+     * breathing, not lapping. The phase walks along the shore so the beach laps in a travelling
+     * rhythm rather than in unison. Returns the run-up HEIGHT above sea level, world units.
+     */
+    const SWASH_RUN = 0.62;
+    const SWASH_BASE = -0.14;
+    const swashRise = (xz) => {
+        const f = fract(uTime.mul(0.085).add(xz.x.mul(0.0021)).add(xz.y.mul(0.0013)));
+        return smoothstep(float(0.0), float(0.32), f)
+            .mul(float(1).sub(smoothstep(float(0.32), float(1.0), f)))
+            .mul(SWASH_RUN)
+            .add(SWASH_BASE);
+    };
 
     // THE SKY ABOVE 28 DEGREES — where this function used to return a constant.
     //
@@ -1301,6 +1318,23 @@ export function createOdysseyWorld({
         albedo = albedo.mul(mix(vec3(1), vec3(...GROUND_EDGE_TINT), contact.mul(GROUND_EDGE_AMT).mul(detailGate)));
 
         /**
+         * THE SWASH-WET STRIP. Sand the run-up reaches is darker and cooler than the dry beach
+         * above it (ref3's waterline sand measures 0.7x the hill), and the strip just above the
+         * LIVE waterline glistens — the sheen the backwash leaves — riding the same `swashRise`
+         * clock the water's shoreline vertices and foam front ride, so the wet line and the
+         * water edge cannot drift apart. Sand only, and only within a metre of the sea, so it
+         * can never read as a fog band across the island.
+         */
+        const swashHere = float(ODYSSEY_SEA_LEVEL).add(swashRise(positionWorld.xz));
+        const wetReach = float(ODYSSEY_SEA_LEVEL + SWASH_BASE + SWASH_RUN + 0.22);
+        const wetSand = smoothstep(wetReach.add(0.30), wetReach, height).mul(kSand);
+        albedo = albedo.mul(mix(vec3(1), vec3(0.70, 0.66, 0.66), wetSand.mul(0.85)));
+        const wetGlisten = smoothstep(swashHere.add(0.55), swashHere.add(0.04), height)
+            .mul(smoothstep(swashHere.sub(0.10), swashHere.add(0.04), height))
+            .mul(kSand)
+            .toVar();
+
+        /**
          * WIND, at no cost. The Ghibli meadow signature is lighter stroke bands sweeping across
          * a slope; the forest's travelling gust line proved the mechanism here — a static field
          * plus a time-varying PHASE, so motion is a sine and not a second texture.
@@ -1448,7 +1482,9 @@ export function createOdysseyWorld({
             // baked sun visibility so a shadowed crown stays cold.
             .add(uSunColour.mul(vec3(1.0, 0.72, 0.52))
                 .mul(kSnow.mul(ndl.pow(1.6)).mul(sunVis).mul(0.30)))
-            .add(vec3(0.72, 0.82, 0.95).mul(rim));
+            .add(vec3(0.72, 0.82, 0.95).mul(rim))
+            // The backwash sheen: wet sand mirrors a little sky (see `wetGlisten`).
+            .add(mix(uSkyHorizon, uSkyZenith, float(0.35)).mul(wetGlisten).mul(0.12));
     }
     // ── THE DEPARTURE FADE (Act II -> Space, Wave 1B) ────────────────────────────
     // The One World used to LEAVE BY BOOLEAN. `isWorldVisibleAtProgress` writes `.visible`
@@ -1712,7 +1748,15 @@ export function createOdysseyWorld({
     const wVertDist = length(w.worldXZ.sub(cameraPosition.xz)).toVar();
     const swellVert = waveField(w.worldXZ, (wv) => waveEnvelope(wv, wVertDist));
     const swell = swellVert.h.mul(wSwellFade).toVar();
-    waterMat.positionNode = vec3(w.worldXZ.x, float(ODYSSEY_SEA_LEVEL).add(swell), w.worldXZ.y);
+    // THE SWASH, AS GEOMETRY. The shoreline vertices rise and fall on the shared run-up clock,
+    // so the depth test against the beach draws a waterline that LAPS — the sea's edge was a
+    // fixed contour for the life of this plate. Gated to the last few metres of bed (the full
+    // relief, not the macro alone: the beach is relief detail), and vertical only, like the
+    // swell — horizontal motion would tear the clipmap's morph seams.
+    const wVertBedFull = wVertBed.r.add(texture(heightTex, wVertUv).level(0).r.mul(wVertBed.g));
+    const wShoreGateV = float(1).sub(smoothstep(float(1.0), float(6.0), float(ODYSSEY_SEA_LEVEL).sub(wVertBedFull)));
+    const swashVert = swashRise(w.worldXZ).mul(wShoreGateV);
+    waterMat.positionNode = vec3(w.worldXZ.x, float(ODYSSEY_SEA_LEVEL).add(swell).add(swashVert), w.worldXZ.y);
     const wUv = varying(w.worldXZ.div(float(RELIEF_EXTENT)).add(0.5), 'vWUv');
     // The other two clipmap-derived quantities the fragment stage needs, carried ACROSS the
     // stage boundary explicitly rather than recomputed (same reason as `wUv` above and the
@@ -1732,6 +1776,11 @@ export function createOdysseyWorld({
     const bedTex = texture(macroTex, wUv);
     const depth = float(ODYSSEY_SEA_LEVEL)
         .sub(bedTex.r.add(texture(heightTex, wUv).r.mul(bedTex.g))).toVar();
+    // The water column under the LIVE surface: `depth` plus the swash run-up the vertex stage
+    // applied (same clock, same gate), so the foam front sits exactly on the drawn waterline.
+    const depthLive = depth
+        .add(swashRise(positionWorld.xz).mul(float(1).sub(smoothstep(float(1.0), float(6.0), depth))))
+        .toVar();
     // ── THE PAINTED SEA (Ghibli-water Wave 1) ────────────────────────────────────────
     // Was: two smooth mixes over hardcoded vec3s with band edges at 0-18 m and 18-103 m.
     // MEASURED problem: the median visible bed depth is 49.6 m at the shoreline station and
@@ -1805,6 +1854,36 @@ export function createOdysseyWorld({
     // sliver of the surface lights as a thin bright line — the crossing cue that makes the
     // breach one event instead of a fade. Rides `grazing`, so it IS the waterline.
     const meniscus = smoothstep(float(0.93), float(0.995), grazing).mul(uBreachNear).mul(0.9);
+    // ── THE SHORE (item 2): foam rings that travel in, a swash front that laps ──────────
+    // Was a STATIC brightening band at the waterline: a beach that never moved. Now:
+    //  · RINGS — iso-depth foam lines out to ~10 m of water (waves refract onto the depth
+    //    contours, so iso-depth IS where a real shore's foam lines sit), marching shoreward at
+    //    a constant rate and broken into lace by the ripple fetch's own scalar channel. The
+    //    band is deliberately wider than a physical surf zone: this island's beach shelves at
+    //    ~0.6, so the 0.1-3.5 m zone is 2-6 px tall from every rail camera and its lines
+    //    collapsed into their own anti-aliasing mean — measured from the first capture.
+    //    Anti-aliased by their own footprint: where a ring spacing shrinks under ~1.5 px the
+    //    lines collapse to a faint mean instead of shimmering — kept FAINT, because a band at
+    //    range that brightens uniformly is exactly the "shore band reads as fog" failure.
+    //  · FRONT — a thin foam lip riding the live waterline (`depthLive` ~ 0), so the edge the
+    //    swash vertices draw is always a foam edge.
+    // Built at the Fn root (pinned below) because `opacityNode` reads it too: foam is opaque
+    // where the water film under it is not.
+    const ringCoord = depthLive.div(3.2).add(uTime.mul(0.26));
+    const ringF = fract(ringCoord);
+    const ringLine = smoothstep(float(0.0), float(0.06), ringF)
+        .mul(float(1).sub(smoothstep(float(0.06), float(0.30), ringF)));
+    const ringAA = clamp(float(1).sub(abs(dFdx(ringCoord)).add(abs(dFdy(ringCoord))).mul(0.9)), 0, 1);
+    const ringBand = smoothstep(float(0.05), float(0.45), depthLive)
+        .mul(float(1).sub(smoothstep(float(6.0), float(10.0), depthLive)));
+    const ringBreak = smoothstep(float(0.28), float(0.52), rippleTexA.b.add(ringF.mul(0.12)));
+    const rings = mix(float(0.08), ringLine.mul(ringBreak), ringAA)
+        .mul(ringBand)
+        .mul(float(1).sub(clamp(depthLive.div(10), 0, 1)).mul(0.55).add(0.45));
+    const swashFront = smoothstep(float(-0.03), float(0.10), depthLive)
+        .mul(float(1).sub(smoothstep(float(0.18), float(0.75), depthLive)))
+        .mul(mix(float(0.6), float(1), smoothstep(float(0.30), float(0.60), rippleTexB.b)));
+    const shoreFoam = clamp(rings.mul(0.80).add(swashFront.mul(0.90)), 0, 1).toVar();
     // ── THE REGIME BRANCH (MEASURED, and it pays for the whole Ghibli package) ────────
     // The cold-machine sweep priced waves 1+2 at +2.36 ms on the deep station — OVER its
     // 14.2 max — and the tell is that both hot stations are UNDERWATER frames: every
@@ -1829,6 +1908,8 @@ export function createOdysseyWorld({
         // always-true-conditions probe: identical formulas, branches forced on, and the
         // ceiling came back — the regime If was starving the untaken branch's inputs.
         depth.toVar('wRootDepth');
+        depthLive.toVar('wRootDepthLive');
+        shoreFoam.toVar('wRootShoreFoam');
         wN.toVar('wRootN');
         spec.toVar('wRootSpec');
         grazing.toVar('wRootGrazing');
@@ -1875,7 +1956,12 @@ export function createOdysseyWorld({
             const reflDir = reflect(viewDir.negate(), wN).toVar();
             const reflT = sqrt(clamp(reflDir.y, 0, 1)).mul(4).toVar();
             const reflQ = floor(reflT).add(smoothstep(float(0.40), float(0.60), fract(reflT))).div(4).toVar();
-            const skyRefl = skyColourFor(reflQ.mul(reflQ));
+            // Lifted a quarter up the curve: the bottom plate is grazing horizon, which is the
+            // palest colour in the palette, and unlifted it bleached the whole mid-distance
+            // sea to milk in the first capture. Painted seas hold their blue to the haze line;
+            // the horizon dissolve below still owns the far convergence.
+            const reflSky = reflQ.mul(0.75).add(0.25);
+            const skyRefl = skyColourFor(reflSky.mul(reflSky));
             // JADE WAVE BACKS — the topside twin of the underside's crest SSS. Thin crests
             // transmit light and go jade; troughs sink a step deeper. Driven by the displaced
             // height the triangle actually carries (vSwell), so the colour rides the moving
@@ -1885,7 +1971,7 @@ export function createOdysseyWorld({
             const bodyLive = mix(
                 mix(body, body.mul(vec3(0.78, 0.87, 0.94)), troughDeep.mul(0.70)),
                 vec3(...WATER_JADE),
-                crestGlow.mul(0.40),
+                crestGlow.mul(0.50),
             );
             // SUN ROAD: a broad lobe on the reflected ray (the hairline `spec` stays for the
             // tight core). Act II mostly flies away from the sun, so this is quiet there and
@@ -1911,22 +1997,29 @@ export function createOdysseyWorld({
             // says; high-frequency noise breaks the crest lines into separate caps without
             // out-voting them.
             const crestNorm = clamp(waveH.div(WAVE_AMP_SUM), -1, 1);
-            // Same world coordinate as before, taken from the fragment's own interpolated
-            // position rather than the clipmap fold (see the `rippleA` block): identical cap
-            // phase, minus the morph-band staircase.
-            const capNoise = snoise3(vec3(
-                positionWorld.x.mul(0.14),
-                positionWorld.z.mul(0.14),
-                uTime.mul(0.35),
-            ));
-            const capDrive = crestNorm.add(capNoise.mul(0.30));
-            const cap = smoothstep(float(0.50), float(0.56), capDrive)
-                .mul(smoothstep(float(0.4), float(2.5), depth));
-            wl.assign(mix(wl, vec3(0.97, 0.99, 1.0), cap.mul(0.9)));
+            // LACE, NOT PAPER (item 2). The caps were one opaque flat white over a 0.06 band of
+            // `crest + simplex`: broad sine tops cut into big smooth blobs with no inside, which
+            // read as paper cut-outs laid on the sea. Now the break-up is the two ripple fetches'
+            // scalar channels (free: already sampled, and ~100 ALU of simplex gone), the drive
+            // threshold sits higher so caps live only where the three waves stack, the body is
+            // translucent and holed by the finer field, and the brightest white is a drawn lip
+            // just inside the cap's edge — the painted-foam profile.
+            const capBreak = rippleTexA.b.sub(0.5).mul(0.40).add(rippleTexB.b.sub(0.5).mul(0.20));
+            const capBody = smoothstep(float(0.56), float(0.70), crestNorm.add(capBreak))
+                .mul(smoothstep(float(0.4), float(2.5), depth))
+                .toVar();
+            const capLace = smoothstep(float(0.30), float(0.54), rippleTexB.b);
+            const capLip = capBody.mul(float(1).sub(capBody)).mul(4);
+            const cap = capBody.mul(mix(float(0.30), float(0.78), capLace)).add(capLip.mul(0.22));
+            wl.assign(mix(wl, vec3(0.94, 0.98, 1.0), clamp(cap, 0, 0.88)));
+            // THE SHORE FOAM (rings + swash front, built at the root — see `shoreFoam`),
+            // before the horizon dissolve so far foam melts into the sky with the sea.
+            wl.assign(mix(wl, vec3(0.95, 0.99, 1.0), shoreFoam.mul(0.92)));
             // HORIZON DISSOLVE — far water converges on the sky (80% by 1.2 km, capped
             // below 1 so the boundary never becomes a hard line of its own), applied AFTER
-            // the caps so far foam melts into sky instead of shimmering; then the static
-            // shore brightening band (proven live by the Wave 0 GPU probe).
+            // the caps so far foam melts into sky instead of shimmering; then a faint static
+            // shore brightening band (proven live by the Wave 0 GPU probe) — faint now that
+            // the moving foam owns the waterline, kept so the shore still reads at range.
             const wHorizon = clamp(
                 length(positionWorld.sub(cameraPosition)).mul(1 / 1200),
                 0,
@@ -1935,7 +2028,7 @@ export function createOdysseyWorld({
             wl.assign(mix(wl, skyColourFor(float(0.16)), wHorizon));
             wl.assign(wl.add(vec3(0.92, 0.97, 0.99).mul(
                 smoothstep(float(2.6), float(0.15), depth)
-                    .mul(smoothstep(float(-0.4), float(0.5), depth)).mul(0.55),
+                    .mul(smoothstep(float(-0.4), float(0.5), depth)).mul(0.24),
             )));
             col.assign(wl);
         });
@@ -1957,7 +2050,12 @@ export function createOdysseyWorld({
         return col.add(vec3(0.95, 0.99, 1.0).mul(meniscus));
     })();
     waterMat.colorNode = toOutput(applyAerial(waterShaded, positionWorld));
-    waterMat.opacityNode = clamp(smoothstep(float(-0.6), float(2.2), depth), 0, 1);
+    // The film thins toward the LIVE waterline (the swash), and foam is opaque where the
+    // film under it is not — otherwise the lapping front would be drawn at ~20 % alpha.
+    waterMat.opacityNode = clamp(max(
+        smoothstep(float(-0.45), float(2.0), depthLive),
+        shoreFoam.mul(0.92),
+    ), 0, 1);
     waterMat.transparent = true;
     waterMat.depthWrite = false;
     waterMat.alphaTest = 0.004;
