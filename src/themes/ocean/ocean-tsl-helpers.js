@@ -1,9 +1,3 @@
-/* eslint-disable import/no-unresolved */
-/**
- * Ocean Theme — Shared TSL Helpers
- * Common TSL node functions used across ocean materials and post-processing.
- */
-
 import {
     clamp,
     cos,
@@ -11,15 +5,19 @@ import {
     float,
     floor,
     fract,
-    max,
     mix,
-    pow,
     sin,
     smoothstep,
     sqrt,
     vec2,
     vec3,
 } from 'three/tsl';
+import { reefCaustics } from './ocean-caustics.js';
+/* eslint-disable import/no-unresolved */
+/**
+ * Ocean Theme — Shared TSL Helpers
+ * Common TSL node functions used across ocean materials and post-processing.
+ */
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hash & Noise
@@ -109,31 +107,16 @@ export function tslGerstnerSum(posXZ, time) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 2-layer domain-warped caustic pattern projected from world XZ.
+ * Two drifting samples of the shared refractive field, projected from world XZ.
  * Returns a float (0→1+) representing caustic brightness.
  * @param {vec2} worldXZ - positionWorld.xz
  * @param {float} time   - uTime
  * @param {float} scale  - spatial frequency multiplier (default 0.15)
  */
 export function tslCausticProjection(worldXZ, time, scale = 0.15) {
-    const uv1 = worldXZ.mul(scale);
-    const uv2 = worldXZ.mul(scale * 1.4);
-
-    // Domain warp for organic shape
-    const warp = tslNoise(uv1.add(time.mul(0.2)));
-    const warpedUv1 = uv1.add(warp.mul(0.6)).add(time.mul(0.2));
-    const warpedUv2 = uv2.sub(time.mul(0.15)).add(warp.mul(0.3));
-
-    const c1 = tslNoise(warpedUv1);
-    const c2 = tslNoise(warpedUv2);
-    const c3 = tslNoise(worldXZ.mul(scale * 0.8).add(time.mul(0.25)));
-
-    const combined = c1.add(c2).add(c3.mul(0.35)).mul(0.42).add(0.34);
-    // Sharp pinches for bright caustic lines
-    const caustic = pow(max(combined, float(0.0)), float(5.0));
-
-    // Warm gold tint factor
-    return caustic;
+    // The shared filtered light field follows the same current on rocks,
+    // coral and fish; two texture reads replace sixteen procedural hashes.
+    return reefCaustics(worldXZ, time, scale * 0.12);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,16 +211,16 @@ export function tslAbzuGrade(color, strength, blackLift = 0.04) {
     );
     graded = clamp(graded, float(0.0), float(1.0));
     graded = graded.add(
-        vec3(0.22, 0.58, 1.0).mul(blackLift).mul(shadowMask).mul(strength),
+        vec3(0.18, 0.65, 0.62).mul(blackLift).mul(shadowMask).mul(strength),
     );
     graded = mix(
         graded,
-        graded.mul(vec3(0.9, 1.0, 1.055)),
+        graded.mul(vec3(0.93, 1.035, 0.99)),
         shadowMask.mul(0.32).mul(strength),
     );
     graded = mix(
         graded,
-        graded.mul(vec3(0.955, 1.012, 1.04)),
+        graded.mul(vec3(0.99, 1.035, 0.98)),
         midMask.mul(0.24).mul(strength),
     );
 

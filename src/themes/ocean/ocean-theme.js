@@ -30,8 +30,14 @@ import {
 import { OceanGameplayEffects, QUALITY_EFFECT_LIMITS } from './ocean-gameplay-effects.js';
 import { OceanPost, OceanPostProcessingLegacy } from './ocean-post.js';
 import { OceanCamera } from './ocean-camera.js';
+import { getReefSeabedHeight } from './ocean-composition.js';
+import { createOceanPlanktonBillboards, createOceanBubbleBillboards } from './ocean-particles.js';
+import {
+    createOceanJellyfishModels, disposeOceanJellyfishModels, updateOceanJellyfishModels,
+} from './ocean-jellyfish-model.js';
+import { OCEAN_JELLYFISH_MODEL_URL } from './ocean-blender-assets.js';
 import { OCEAN_LIGHTING_RIG } from './ocean-lighting-rig.js';
-import { createOceanFogNode } from './ocean-fog-profile.js';
+import { createOceanFogNode, OCEAN_WATER_COLOR } from './ocean-fog-profile.js';
 import {
     createWaterSurfaceNodeMaterial,
     createSeabedNodeMaterial,
@@ -40,18 +46,30 @@ import {
     createModularCoralNodeMaterial,
     createCoralOvergrowthNodeMaterial,
     createJellyfishNodeMaterial,
-    createPlanktonNodeMaterial,
-    createBubbleNodeMaterial,
 } from './ocean-materials.js';
 import {
     createCoralBatch,
     createCoralModuleLibrary,
     createCoralPlacementPlan,
 } from './ocean-coral-modules.js';
-import { disposeOceanGltfCache } from './ocean-asset-loader.js';
+import { disposeOceanGltfCache, loadGltfCached } from './ocean-asset-loader.js';
+import { disposeReefCausticTexture } from './ocean-caustics.js';
 
 function randRangeLocal(min, max) {
     return min + Math.random() * (max - min);
+}
+
+// loadGltfCached returns owned geometry/material clones, but texture references
+// remain cache-owned. The jellyfish factory makes its own normalized geometry.
+function disposeJellyfishSource(root) {
+    const resources = new Set();
+    root?.traverse((child) => {
+        if (child.geometry) resources.add(child.geometry);
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.filter(Boolean).forEach((material) => resources.add(material));
+    });
+    resources.forEach((resource) => resource.dispose());
+    root?.clear();
 }
 
 function readOceanBooleanParam(key) {
@@ -118,6 +136,7 @@ const OCEAN_DEBUG_FLAGS = [
     ['noGrade', 'oceanNoGrade'],
     ['noVignette', 'oceanNoVignette'],
     // Control flags
+    ['legacyModels', 'oceanLegacyModels'],
     ['noStriding', 'oceanNoStriding'],
     ['logStartup', 'oceanLogStartup'],
     ['help', 'oceanHelp'],
@@ -134,12 +153,22 @@ function roundMetric(value, decimals = 2) {
 }
 
 const OCEAN_ART_DIRECTION = {
-    mode: 'showcase-reef-canyon',
-    assetStrategy: 'poly-pizza-hero-reef-procedural-volume',
-    heroAssetSourcePolicy: 'CC0-preferred-CC-BY-with-attribution',
-    palette: 'cyan-water-violet-coral-orange-sponge',
-    tonalBalance: 'bright-shallow-canyon-saturated-midground',
+    mode: 'immersive-kelp-forest',
+    assetStrategy: 'original-blender-models-and-procedural-habitat',
+    heroAssetSourcePolicy: 'original-project-authored-blender-models',
+    heroAssetLicense: 'MIT-project-local',
+    supplementalAssetSourcePolicy: 'project-local-CC0-and-attributed-CC-BY-4.0',
+    supplementalAssetAttribution: 'src/themes/ocean/assets/ATTRIBUTION.md',
+    palette: 'green-canopy-amber-growths-blue-green-depths',
+    tonalBalance: 'shaded-forest-with-filtered-surface-light',
     proprietaryAssets: false,
+};
+
+const OCEAN_LEGACY_ART_DIRECTION = {
+    ...OCEAN_ART_DIRECTION,
+    assetStrategy: 'legacy-project-assets-poly-pizza-and-procedural-habitat',
+    heroAssetSourcePolicy: 'project-authored-CC0-and-attributed-CC-BY-4.0',
+    heroAssetLicense: 'per-asset-MIT-project-local-CC0-or-CC-BY-4.0',
 };
 
 const OCEAN_READABILITY_ZONE = {
@@ -210,6 +239,7 @@ function sampleKelpGrovePoint() {
 export default class OceanTheme extends BaseTheme {
     static disposeSharedResources() {
         disposeOceanGltfCache();
+        disposeReefCausticTexture();
     }
 
     constructor() {
@@ -684,6 +714,50 @@ export default class OceanTheme extends BaseTheme {
             },
         };
 
+        // Reinvest the large jellyfish canopy in rooted vegetation. The denser
+        // forest submits fewer triangles and translucent creatures than the reef.
+        const forestLife = {
+            Minimal: {
+                jellyfishCount: 2, fishCount: 60, planktonCount: 80, bubbleCount: 60,
+            },
+            Low: {
+                jellyfishCount: 3, fishCount: 100, planktonCount: 160, bubbleCount: 90,
+            },
+            Medium: {
+                jellyfishCount: 5, fishCount: 180, planktonCount: 280, bubbleCount: 140,
+            },
+            High: {
+                jellyfishCount: 7, fishCount: 240, planktonCount: 360, bubbleCount: 180,
+            },
+            Ultra: {
+                jellyfishCount: 9, fishCount: 360, planktonCount: 460, bubbleCount: 200,
+            },
+            Extreme: {
+                jellyfishCount: 10, fishCount: 420, planktonCount: 540, bubbleCount: 220,
+            },
+        };
+        const forestKelp = {
+            Minimal: 2, Low: 4, Medium: 6, High: 9, Ultra: 10, Extreme: 12,
+        };
+        const forestRocks = {
+            Minimal: 0, Low: 2, Medium: 3, High: 4, Ultra: 5, Extreme: 6,
+        };
+        this.qualityPresets = Object.fromEntries(Object.entries(this.qualityPresets).map(([tier, preset]) => [
+            tier,
+            {
+                ...preset,
+                ...forestLife[tier],
+                atmosphere: {
+                    ...preset.atmosphere,
+                    heroKelpCount: forestKelp[tier],
+                    foregroundRockCount: forestRocks[tier],
+                    blenderAssets: !this.flags.legacyModels,
+                    biodiversityAssets: !this.flags.legacyModels,
+                    heroCoralCount: tier === 'High' && !this.flags.legacyModels
+                        ? 4 : preset.atmosphere.heroCoralCount,
+                },
+            },
+        ]));
         this.activePreset = this.qualityPresets.High;
         this.qualityChangeHandler = null;
         this.resetHabitatMetrics();
@@ -722,9 +796,10 @@ export default class OceanTheme extends BaseTheme {
     }
 
     resetHabitatMetrics() {
+        const artDirection = this.flags?.legacyModels ? OCEAN_LEGACY_ART_DIRECTION : OCEAN_ART_DIRECTION;
         this.habitatMetrics = {
-            artDirection: OCEAN_ART_DIRECTION.mode,
-            assetStrategy: OCEAN_ART_DIRECTION.assetStrategy,
+            artDirection: artDirection.mode,
+            assetStrategy: artDirection.assetStrategy,
             readabilityZone: { ...OCEAN_READABILITY_ZONE },
             seabed: {
                 rippleBands: true,
@@ -738,7 +813,7 @@ export default class OceanTheme extends BaseTheme {
                 instances: 0,
                 readabilityAvoidance: true,
                 kelpCurtainBias: true,
-                heroKelpSourcePolicy: OCEAN_ART_DIRECTION.heroAssetSourcePolicy,
+                heroKelpSourcePolicy: artDirection.heroAssetSourcePolicy,
                 variants: {
                     shortGrass: 0,
                     ribbonKelp: 0,
@@ -747,7 +822,7 @@ export default class OceanTheme extends BaseTheme {
             },
             coral: {
                 colonies: 0,
-                heroSourcePolicy: OCEAN_ART_DIRECTION.heroAssetSourcePolicy,
+                heroSourcePolicy: artDirection.heroAssetSourcePolicy,
                 showcaseTerraces: 0,
                 reefGardenClusters: OCEAN_REEF_GARDENS.length,
                 brain: 0,
@@ -767,7 +842,7 @@ export default class OceanTheme extends BaseTheme {
                 rareFaunaDistantCameos: true,
             },
             atmosphere: {
-                tonalBalance: OCEAN_ART_DIRECTION.tonalBalance,
+                tonalBalance: artDirection.tonalBalance,
                 showcaseReefCanyon: true,
                 blenderReefAnchors: true,
                 coralCarpetPatches: true,
@@ -850,6 +925,7 @@ export default class OceanTheme extends BaseTheme {
     }
 
     collectSignoffSnapshot() {
+        const artDirection = this.flags?.legacyModels ? OCEAN_LEGACY_ART_DIRECTION : OCEAN_ART_DIRECTION;
         const preset = this.activePreset || {};
         const atmosphere = preset.atmosphere || {};
         const post = this.oceanPost || null;
@@ -886,7 +962,7 @@ export default class OceanTheme extends BaseTheme {
             active: this.isActive === true,
             backend: this.getBackendLabel(),
             isWebGPU: this.isWebGPU === true,
-            artDirection: OCEAN_ART_DIRECTION,
+            artDirection,
             flags: {
                 forceWebGL: this.flags?.forceWebGL === true,
             },
@@ -922,8 +998,8 @@ export default class OceanTheme extends BaseTheme {
             compute: {
                 requested: preset.useGPUCompute === true,
                 fish: 'cpu-deferred',
-                plankton: 'cpu',
-                bubbles: 'cpu',
+                plankton: this.isWebGPU ? 'vertex-shader-billboards' : 'vertex-shader-points',
+                bubbles: this.isWebGPU ? 'vertex-shader-billboards' : 'vertex-shader-points',
                 storageBufferFish: false,
             },
             visuals: {
@@ -1057,6 +1133,10 @@ export default class OceanTheme extends BaseTheme {
         });
         toRemove.forEach((obj) => {
             this.scene.remove(obj);
+            if (obj.userData?.isOceanJellyfishModel) {
+                disposeOceanJellyfishModels(obj);
+                return;
+            }
             // BatchedMesh owns matrix/indirect/color textures in addition to
             // its merged geometry. Its dispose() releases the complete GPU
             // allocation; disposing geometry alone leaks those textures.
@@ -1069,10 +1149,12 @@ export default class OceanTheme extends BaseTheme {
         });
         this.uniformsToUpdate = [];
         this._tslUniforms = null;
+        this._lastUniformBroadcast = null;
         this.coralPlacements = [];
         this.deferredMaterialLoadInProgress = false;
         this.deferredMaterialLoadComplete = true;
         this.jellyfishData = null;
+        this.jellyfishMesh = null;
         this.planktonData = null;
         this.bubbleBillboardData = null;
         this.bubbleData = null;
@@ -1174,7 +1256,7 @@ export default class OceanTheme extends BaseTheme {
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         // Tropical-cyan clear, slightly deeper than the fog so the horizon
         // dome reads as bright water rather than featureless overcast.
-        this.renderer.setClearColor(0x075a74);
+        this.renderer.setClearColor(OCEAN_WATER_COLOR);
 
         if (!this.isWebGPU) {
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1205,7 +1287,7 @@ export default class OceanTheme extends BaseTheme {
         this.isCreatingScene = true;
         try {
             themeContainer.innerHTML = '';
-            themeContainer.style.background = '#07546e';
+            themeContainer.style.background = '#06474b';
 
             this.applyQualityPreset(this.getGraphicsQuality());
             this.setupQualityListener();
@@ -1215,6 +1297,10 @@ export default class OceanTheme extends BaseTheme {
             if (!rendererReady) return;
 
             this.scene = new THREE.Scene();
+            // Nested post-processing RTTs reset the renderer clear color to black.
+            // Keep the water background on the scene so Ultra/Extreme retain the
+            // same horizon color as the far fog during those off-screen renders.
+            this.scene.background = new THREE.Color(OCEAN_WATER_COLOR);
             // Tropical-cyan fog tuned between dark mood and washed-out — slightly
             // deeper hue + a touch more density so the distance has visible
             // atmospheric falloff instead of reading as a uniform pale dome.
@@ -1223,7 +1309,7 @@ export default class OceanTheme extends BaseTheme {
             // density zones. Lower tiers compile fewer ellipsoid masks.
                 this.scene.fogNode = createOceanFogNode(this.currentQuality);
             } else {
-                this.scene.fog = new THREE.FogExp2(0x0b526b, 0.0046);
+                this.scene.fog = new THREE.FogExp2(OCEAN_WATER_COLOR, 0.0052);
             }
 
             // Camera
@@ -1315,9 +1401,10 @@ export default class OceanTheme extends BaseTheme {
         const atmosphereBuildSteps = this.flags.noAtmosphere
             ? []
             : (this.atmosphereSystem?.prepareDeferredBuildSteps?.() || []);
+        let jellyfishUpgrade = null;
         const steps = [
             () => { if (!this.flags.noFish) this.createFishSchools(); },
-            () => { if (!this.flags.noJellyfish) this.createJellyfish(); },
+            () => { if (!this.flags.noJellyfish) jellyfishUpgrade = this.createJellyfish(); },
             () => { if (!this.flags.noBubbles) this.createBubbles(); },
             () => { if (!this.flags.noPlankton) this.createPlankton(); },
             ...atmosphereBuildSteps.map(({ run }) => run),
@@ -1366,6 +1453,11 @@ export default class OceanTheme extends BaseTheme {
             if (deferredFinished) return;
             deferredFinished = true;
             try {
+                // The scheduler stays synchronous; await the owned replacement
+                // before compiling the completed scene's material pipelines.
+                if (token === this._sceneBuildToken) {
+                    await Promise.all([jellyfishUpgrade, this.fishSystem?.schoolModelLoadPromise]);
+                }
                 if (
                     token === this._sceneBuildToken
                     && this.scene
@@ -2053,42 +2145,7 @@ export default class OceanTheme extends BaseTheme {
     }
 
     getSeabedHeight(x, z) {
-        // Current-aligned flow vector (skewed slightly for dynamic visuals)
-        const currentX = 0.22;
-        const currentZ = 0.97;
-        const perturbX = Math.sin(z * 0.08) * 2.5;
-        const perturbZ = Math.cos(x * 0.07) * 2.5;
-        const px = x + perturbX;
-        const pz = z + perturbZ;
-
-        // Giant sand waves (dunes) - asymmetric stoss/lee profiles aligned to current direction
-        const phaseGiant = (px * currentX + pz * currentZ) * 0.08; // Wavelength ~78 units
-        const waveGiant = Math.sin(phaseGiant - 0.4 * Math.sin(phaseGiant));
-
-        // Medium sand waves (ridges) - aligned and skewed
-        const phaseMedium = (px * currentX + pz * currentZ) * 0.22; // Wavelength ~28 units
-        const waveMedium = Math.sin(phaseMedium - 0.45 * Math.sin(phaseMedium));
-
-        const rollers = Math.cos(x * 0.004) * Math.sin(z * 0.004) * 25.0;
-        const dunes = waveGiant * 12.0 + waveMedium * 3.5 + rollers;
-
-        // Center flattening / valley reef factor matching reference: keep the play zone flat,
-        // but let the dunes rise quickly on the sides and background.
-        const distFromCenter = Math.sqrt(x * x + z * z);
-        const flattenFactor = THREE.MathUtils.smoothstep(distFromCenter, 15, 65);
-        const baseHeight = dunes * flattenFactor - (1.0 - flattenFactor) * 12.0;
-
-        // Gameplay adjustments: side shelf lift and foreground sand channel
-        const sideShelfLift = Math.max(0, Math.abs(x) - OCEAN_READABILITY_ZONE.halfWidth) * 0.45;
-        const foregroundSandChannel = -Math.exp(
-            -((x * x) / (2 * 46 * 46) + ((z - 48) * (z - 48)) / (2 * 70 * 70)),
-        ) * 4.0;
-
-        // Micro-ripples - aligned and skewed
-        const phaseRipple = (px * currentX + pz * currentZ) * 0.72; // Wavelength ~8.7 units
-        const rippleRelief = Math.sin(phaseRipple - 0.4 * Math.sin(phaseRipple)) * 0.75;
-
-        return baseHeight + sideShelfLift + foregroundSandChannel + rippleRelief - 14;
+        return getReefSeabedHeight(x, z);
     }
 
     /**
@@ -3190,6 +3247,7 @@ export default class OceanTheme extends BaseTheme {
         this.rareFaunaSystem = new OceanRareFaunaSystem({
             scene: this.scene,
             camera: this.camera,
+            isWebGPU: this.isWebGPU,
             preset: this.activePreset,
             quality: this.currentQuality,
             getSeabedHeight: this.getSeabedHeight.bind(this),
@@ -3238,7 +3296,7 @@ export default class OceanTheme extends BaseTheme {
             if (Math.random() < 0.62) sideBias = Math.random() < 0.5 ? -1 : 1;
             positions[i * 3] = sideBias === 0 ? randRangeLocal(-95, 95) : sideBias * randRangeLocal(36, 128);
             positions[i * 3 + 1] = 18 + Math.random() * 42;
-            positions[i * 3 + 2] = randRangeLocal(-120, 54);
+            positions[i * 3 + 2] = randRangeLocal(-120, 10);
 
             const c = jellyColors[Math.floor(Math.random() * jellyColors.length)];
             colors[i * 3] = c.r;
@@ -3246,7 +3304,7 @@ export default class OceanTheme extends BaseTheme {
             colors[i * 3 + 2] = c.b;
 
             phases[i] = Math.random() * 6.28;
-            sizes[i] = 8 + Math.random() * 13;
+            sizes[i] = 6 + Math.random() * 7;
         }
 
         const geometry = new THREE.BufferGeometry();
@@ -3254,6 +3312,10 @@ export default class OceanTheme extends BaseTheme {
         geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        this.jellyfishData = {
+            positions, phases, sizes, count,
+        };
 
         if (this.isWebGPU) {
             geometry.dispose();
@@ -3272,13 +3334,10 @@ export default class OceanTheme extends BaseTheme {
             );
             this.jellyfishMesh.frustumCulled = true;
             this.jellyfishMesh.userData.primitive = 'billboard-quad';
-            this.jellyfishData = {
-                positions, phases, sizes, count,
-            };
             this._tslUniforms = this._tslUniforms || [];
             this._tslUniforms.push(material.userData);
             this.scene.add(this.jellyfishMesh);
-            return;
+            return this.upgradeJellyfishModel();
         }
 
         const material = new THREE.ShaderMaterial({
@@ -3332,6 +3391,38 @@ export default class OceanTheme extends BaseTheme {
         this.jellyfishMesh = new THREE.Points(geometry, material);
         this.uniformsToUpdate.push(material.uniforms);
         this.scene.add(this.jellyfishMesh);
+        return this.upgradeJellyfishModel();
+    }
+
+    async upgradeJellyfishModel() {
+        if (this.flags.legacyModels || this.flags.noJellyfish || !this.jellyfishData?.count) return;
+        const { scene } = this;
+        const token = this._sceneBuildToken;
+        const fallback = this.jellyfishMesh;
+        const population = this.jellyfishData;
+        const ownsScene = () => this.scene === scene && this._sceneBuildToken === token
+            && this.jellyfishMesh === fallback;
+        let gltf;
+        try {
+            gltf = await loadGltfCached(OCEAN_JELLYFISH_MODEL_URL);
+            if (!ownsScene()) return;
+            const mesh = createOceanJellyfishModels(gltf, population, { isWebGPU: this.isWebGPU });
+            updateOceanJellyfishModels(mesh, this.clock?.elapsedTime ?? 0, this.glowIntensity);
+            fallback.removeFromParent();
+            this.uniformsToUpdate = this.uniformsToUpdate.filter((entry) => entry !== fallback.material.uniforms);
+            this._tslUniforms = this._tslUniforms?.filter((entry) => entry !== fallback.material.userData) || [];
+            fallback.dispose?.();
+            fallback.geometry.dispose();
+            fallback.material.dispose();
+            this.jellyfishMesh = mesh;
+            scene.add(mesh);
+            if (this.isWebGPU) this._tslUniforms.push(mesh.material.userData);
+            this._lastUniformBroadcast = null;
+        } catch (error) {
+            if (ownsScene()) console.warn('[Ocean] Blender jellyfish unavailable; keeping fallback:', error);
+        } finally {
+            disposeJellyfishSource(gltf?.scene);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -3370,22 +3461,13 @@ export default class OceanTheme extends BaseTheme {
 
         if (this.isWebGPU) {
             geometry.dispose();
-            const billboardGeometry = new THREE.PlaneGeometry(1, 1, 1, 1);
-            billboardGeometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
-            billboardGeometry.setAttribute('aSize', new THREE.InstancedBufferAttribute(sizes, 1));
-            const material = createPlanktonNodeMaterial({ glowIntensity: 0.66 });
-            this.planktonMesh = new THREE.InstancedMesh(billboardGeometry, material, count);
-            this.planktonMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-            // WS 1.2: plankton spans ±160 X / -155..85 Z, height up to 75.
-            billboardGeometry.boundingSphere = new THREE.Sphere(
-                new THREE.Vector3(0, 40, -35),
-                250,
-            );
-            this.planktonMesh.frustumCulled = true;
-            this.planktonMesh.userData.primitive = 'billboard-quad';
             this.planktonData = {
                 positions, phases, sizes, count,
             };
+            this.planktonMesh = createOceanPlanktonBillboards(this.planktonData);
+            const { material } = this.planktonMesh;
+            material.userData.uCurrentStrength.value = this.currentStrength;
+            material.userData.uGlowIntensity.value = this.glowIntensity;
             this._tslUniforms = this._tslUniforms || [];
             this._tslUniforms.push(material.userData);
             this.scene.add(this.planktonMesh);
@@ -3512,34 +3594,6 @@ export default class OceanTheme extends BaseTheme {
 
         if (this.isWebGPU) {
             geometry.dispose();
-            // ── WebGPU vertex-buffer packing ──
-            // WebGPU limits pipelines to 8 vertex buffers. PlaneGeometry provides
-            // position + normal + uv (3), plus instanceMatrix (1) = 4 base slots.
-            // Packing the 6 per-instance floats into 2 buffers (vec4 + vec2) keeps
-            // the total at 4 + 2 = 6, well within the limit.
-            const pack1 = new Float32Array(count * 4); // speed, phase, size, lifeOffset
-            const pack2 = new Float32Array(count * 2); // columnSpread, micro
-            for (let i = 0; i < count; i++) {
-                pack1[i * 4] = speeds[i];
-                pack1[i * 4 + 1] = phases[i];
-                pack1[i * 4 + 2] = sizes[i];
-                pack1[i * 4 + 3] = lifeOffsets[i];
-                pack2[i * 2] = columnSpread[i];
-                pack2[i * 2 + 1] = micro[i];
-            }
-            const billboardGeometry = new THREE.PlaneGeometry(1, 1, 1, 1);
-            billboardGeometry.setAttribute('aBubblePack1', new THREE.InstancedBufferAttribute(pack1, 4));
-            billboardGeometry.setAttribute('aBubblePack2', new THREE.InstancedBufferAttribute(pack2, 2));
-            const material = createBubbleNodeMaterial();
-            this.bubbleMesh = new THREE.InstancedMesh(billboardGeometry, material, count);
-            this.bubbleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-            // WS 1.2: bubbles rise from columns ±105 X / -120..70 Z up to ~70m.
-            billboardGeometry.boundingSphere = new THREE.Sphere(
-                new THREE.Vector3(0, 35, -25),
-                200,
-            );
-            this.bubbleMesh.frustumCulled = true;
-            this.bubbleMesh.userData.primitive = 'billboard-quad';
             this.bubbleBillboardData = {
                 positions,
                 speeds,
@@ -3547,8 +3601,12 @@ export default class OceanTheme extends BaseTheme {
                 sizes,
                 lifeOffsets,
                 columnSpread,
+                micro,
                 count,
             };
+            this.bubbleMesh = createOceanBubbleBillboards(this.bubbleBillboardData);
+            const { material } = this.bubbleMesh;
+            material.userData.uCurrentStrength.value = this.currentStrength;
             this._tslUniforms = this._tslUniforms || [];
             this._tslUniforms.push(material.userData);
             this.scene.add(this.bubbleMesh);
@@ -3646,10 +3704,10 @@ export default class OceanTheme extends BaseTheme {
         // Ambient softer (so sand floor doesn't blow out), directional sun
         // moderate (so corals cast definition), hemisphere modest. The
         // overall scene still reads bright/tropical but with depth.
-        const ambient = new THREE.AmbientLight(0x4b849b, 0.36);
+        const ambient = new THREE.AmbientLight(0x527d60, 0.28);
         this.scene.add(ambient);
 
-        const directional = new THREE.DirectionalLight(0xffe5c2, 1.82);
+        const directional = new THREE.DirectionalLight(0xf3e6a6, 1.62);
         directional.position.set(
             OCEAN_LIGHTING_RIG.sunCenter.x,
             OCEAN_LIGHTING_RIG.surfaceY + 52,
@@ -3660,7 +3718,7 @@ export default class OceanTheme extends BaseTheme {
 
         // Cool water-column fill above, warm sand bounce below. This gives PBR
         // fish and corals dimensional faces without adding per-object lights.
-        const hemisphere = new THREE.HemisphereLight(0xc1f1f4, 0x91605a, 0.76);
+        const hemisphere = new THREE.HemisphereLight(0xc4e6ae, 0x394530, 0.64);
         this.scene.add(hemisphere);
 
         const staticLights = [ambient, directional, directional.target, hemisphere];
@@ -3776,7 +3834,7 @@ export default class OceanTheme extends BaseTheme {
                     bloomScale: post.bloomScale ?? 0.6,
                     sceneScale: post.sceneScale ?? 1.0,
                     gradeStrength: post.grade ? (post.gradeStrength ?? 0.92) : 0.0,
-                    blackLift: post.blackLift ?? 0.04,
+                    blackLift: Math.min(post.blackLift ?? 0.04, 0.025),
                     // Tighter vignette + moodier exposure + denser atmospheric fog
                     // push the scene toward the reference photo's deeper-saturated,
                     // stronger-god-ray-contrast underwater look.
@@ -3983,22 +4041,33 @@ export default class OceanTheme extends BaseTheme {
     }
 
     updateOceanBillboards(time, phase = -1) {
+        const jellyfishPhase = (phase === -1 || phase === 0) && !this.flags?.noJellyfish;
+        const modeledJellyfish = this.jellyfishMesh?.userData.isOceanJellyfishModel === true;
+        if (jellyfishPhase && modeledJellyfish) {
+            updateOceanJellyfishModels(this.jellyfishMesh, time, this.glowIntensity);
+        }
         if (!this.isWebGPU || !this.camera) return;
-        this.camera.updateMatrixWorld();
-
-        // The camera-facing rotation is identical for every billboard in a
-        // population, so build it once per call instead of recomposing it from
-        // the quaternion for each of the hundreds of instances.
-        if (!this._billboardRot) this._billboardRot = new THREE.Matrix4();
-        this._billboardRot.makeRotationFromQuaternion(this.camera.quaternion);
-        const rot = this._billboardRot.elements;
 
         // Debug skip flags fully suppress the per-population update path even
         // when the mesh still exists in the scene — lets us measure pure CPU
         // cost vs. draw-call cost separately.
-        const doJellyfish = (phase === -1 || phase === 0) && !this.flags?.noJellyfish;
-        const doPlankton = (phase === -1 || phase === 1) && !this.flags?.noPlankton;
-        const doBubbles = (phase === -1 || phase === 2) && !this.flags?.noBubbles;
+        const doJellyfish = jellyfishPhase && !modeledJellyfish;
+        const doPlankton = (phase === -1 || phase === 1) && !this.flags?.noPlankton
+            && !this.planktonMesh?.userData.gpuAnimatedBillboard;
+        const doBubbles = (phase === -1 || phase === 2) && !this.flags?.noBubbles
+            && !this.bubbleMesh?.userData.gpuAnimatedBillboard;
+        if (
+            !(doJellyfish && this.jellyfishMesh && this.jellyfishData)
+            && !(doPlankton && this.planktonMesh && this.planktonData)
+            && !(doBubbles && this.bubbleMesh && this.bubbleBillboardData)
+        ) return;
+
+        this.camera.updateMatrixWorld();
+        // Only populations still using CPU billboards need the camera basis.
+        // Plankton and bubbles now follow camera/current/time in their vertices.
+        if (!this._billboardRot) this._billboardRot = new THREE.Matrix4();
+        this._billboardRot.makeRotationFromQuaternion(this.camera.quaternion);
+        const rot = this._billboardRot.elements;
 
         if (doJellyfish && this.jellyfishMesh && this.jellyfishData) {
             const {
@@ -4215,8 +4284,18 @@ export default class OceanTheme extends BaseTheme {
                 currentStrength: Number.NaN,
                 glowIntensity: Number.NaN,
             });
-            const strengthChanged = Math.abs(this.currentStrength - lastBroadcast.currentStrength) > 1e-4;
-            const glowChanged = Math.abs(this.glowIntensity - lastBroadcast.glowIntensity) > 1e-4;
+            // Deferred scene steps can register materials after the sources
+            // settle. Initialize those uniforms even when their values are steady.
+            const legacyUniformCount = this.uniformsToUpdate.length;
+            const tslUniformCount = this._tslUniforms?.length ?? 0;
+            const registryChanged = legacyUniformCount !== lastBroadcast.legacyUniformCount
+                || tslUniformCount !== lastBroadcast.tslUniformCount;
+            lastBroadcast.legacyUniformCount = legacyUniformCount;
+            lastBroadcast.tslUniformCount = tslUniformCount;
+            const strengthChanged = registryChanged || !Number.isFinite(lastBroadcast.currentStrength)
+                || Math.abs(this.currentStrength - lastBroadcast.currentStrength) > 1e-4;
+            const glowChanged = registryChanged || !Number.isFinite(lastBroadcast.glowIntensity)
+                || Math.abs(this.glowIntensity - lastBroadcast.glowIntensity) > 1e-4;
             if (strengthChanged) lastBroadcast.currentStrength = this.currentStrength;
             if (glowChanged) lastBroadcast.glowIntensity = this.glowIntensity;
             const waveIntensity = strengthChanged ? 1.0 + this.currentStrength * 0.3 : 0;

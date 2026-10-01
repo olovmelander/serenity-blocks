@@ -1,0 +1,63 @@
+{
+  "capturedAt": "2026-10-01T12:35:29.610Z",
+  "description": "Immutable production artifact of the completed Wolfhour visual overhaul, before the depth and motion audit. This is the previous updated pass, not the pre-overhaul git HEAD.",
+  "sourceNote": "Source snapshot retained as a readable companion; compiled asset hashes identify the authoritative A/B artifact.",
+  "url": "http://127.0.0.1:4180/reports/wolfhour-overhaul/prototype.html?shipping=1&t=8&quality=High",
+  "assets": [
+    {
+      "path": "baseline-build/assets/prototype-DLmjhz9E.js",
+      "bytes": 1518307,
+      "sha256": "bc507d9aec85fab10b0ad391ec14c6f8c0599dc679c6eb46d741151eccdee3f7"
+    }
+  ],
+  "source": [
+    {
+      "path": "baseline-source/wolfhour-composition.js",
+      "sha256": "5883a096ed261199416735cdfe074f41496c51abbf08714cf4799596de3d6aed"
+    },
+    {
+      "path": "baseline-source/wolfhour-compute.js",
+      "sha256": "2875754b103657fae890a032d8ec08b0874da5ab515f6e3f15a4eb250da1d804"
+    },
+    {
+      "path": "baseline-source/wolfhour-fallback-materials.js",
+      "sha256": "5a536831b5164b729268f3dcd86c3ad83dce8ed7bb94ce3038d3831bbd7d24d5"
+    },
+    {
+      "path": "baseline-source/wolfhour-grade.js",
+      "sha256": "5fbb7407a7dcd989c88c5b4846668ec25b408630d09945fc32f599f3383627ef"
+    },
+    {
+      "path": "baseline-source/wolfhour-landscape.js",
+      "sha256": "7f5c2578585fb03df440f2e03d85bd81034d1c1bc10d61e4209c3778158e8fd4"
+    },
+    {
+      "path": "baseline-source/wolfhour-materials.js",
+      "sha256": "840c433bc0072048526209b847f56f15402407b88d19918b03f9ec519b0974b4"
+    },
+    {
+      "path": "baseline-source/wolfhour-meteor.js",
+      "sha256": "9a69d565113ff7a20aa2028d341e4ceccc2f238da495291815384c2aea1ae01a"
+    },
+    {
+      "path": "baseline-source/wolfhour-post.js",
+      "sha256": "a4185115011a3795c068ac59fe1fa258c7e37bd4d5161c284040d863c2de340b"
+    },
+    {
+      "path": "baseline-source/wolfhour-shaders.js",
+      "sha256": "0a675ecc4676e8db001f7a2edc2ceb86fc59b40b7f28e3e7884e5a42bffb8d56"
+    },
+    {
+      "path": "baseline-source/wolfhour-sky.js",
+      "sha256": "93e0de3061d474b667e01646e94c177f8eb105787f5f0bde68e459a1b4df120d"
+    },
+    {
+      "path": "baseline-source/wolfhour-tetrominos.js",
+      "sha256": "593f8c9a1cd668481960645d5b201c47f397e5acae3de9c58391b60a93e19721"
+    },
+    {
+      "path": "baseline-source/wolfhour-theme.js",
+      "sha256": "9a30067731557d1bb605e87329c63d2e28e1c7d9d1d0b8be720311c0c343745e"
+    }
+  ]
+}

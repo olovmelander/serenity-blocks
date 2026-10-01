@@ -1,0 +1,277 @@
+{
+  "direction": "User-selected dense green kelp forest, inspired by Subnautica biome composition.",
+  "references": [
+    "https://unknownworlds.com/en/news/subnautica-concept-art-kelp-forest",
+    "https://unknownworlds.com/en/news/subnautica-concept-art-coral-reef-3"
+  ],
+  "changes": [
+    "Blender-authored flowing olive kelp with pinned holdfasts and sparse amber nodules.",
+    "Tall layered canopy surrounds an open central channel; smaller coral pockets and grounded mossy formations.",
+    "Green water grading, canopy shadow baked into an existing texture channel, restrained caustics, fewer jellyfish and suspended particles.",
+    "Shared WebGPU and WebGL kelp tissue shading preserves native morph animation."
+  ],
+  "blender": {
+    "transport": "Blender MCP execute_code on localhost:9876",
+    "editableScene": "reports/ocean-kelp-forest/ocean-kelp-forest.blend",
+    "source": "scripts/blender/ocean_living_assets.py",
+    "kelpTriangles": 1496,
+    "kelpVertices": 1048,
+    "kelpBytes": 101260,
+    "kelpMorphTargets": 2,
+    "clipSeconds": 4,
+    "packModels": 22,
+    "packTriangles": 20396,
+    "packVertices": 11373,
+    "packBytes": 870820,
+    "animatedModels": 13,
+    "originalScenePreserved": true
+  },
+  "checks": {
+    "oceanUnitTests": {
+      "passed": 108,
+      "files": 14,
+      "log": "reports/ocean-kelp-forest/unit-tests.log"
+    },
+    "eslint": {
+      "errors": 0,
+      "warnings": 29,
+      "warningRule": "max-len",
+      "log": "reports/ocean-kelp-forest/lint.log"
+    },
+    "manifest": "passed",
+    "blenderPythonCompilation": "passed",
+    "diffWhitespaceStagedAndUnstaged": "passed",
+    "productionBuild": {
+      "status": "passed",
+      "exitCode": 0,
+      "bootClosure": "passed",
+      "log": "reports/ocean-kelp-forest/build.log"
+    },
+    "captureRetry": "Initial High/combo browser module request failed with ERR_NO_BUFFER_SPACE while the production build was running. A retry after build completion passed with no errors."
+  },
+  "captures": [
+    {
+      "name": "study-final",
+      "screenshot": "reports/ocean-kelp-forest/study-final/capture.png",
+      "result": "reports/ocean-kelp-forest/study-final/result.json",
+      "url": "http://127.0.0.1:5185/playground.html?effect=ocean-reef-light&models=blender&life=1&t=8&quality=Extreme&width=1600&height=732&profile=1&trackTimestamp=1",
+      "backend": "WebGPU \u00b7 nvidia ampere",
+      "errors": [],
+      "measurementSummary": null,
+      "note": "Single Ocean surface; gameplay board is a placement proxy, not a full game capture."
+    },
+    {
+      "name": "production-extreme",
+      "screenshot": "reports/ocean-kelp-forest/production-extreme/capture.png",
+      "result": "reports/ocean-kelp-forest/production-extreme/result.json",
+      "url": "http://127.0.0.1:5185/ocean-capture.html?t=8&quality=Extreme&width=1600&height=732&oceanTrackTimestamp=1",
+      "backend": "WebGPU",
+      "errors": [],
+      "measurementSummary": {
+        "wall": {
+          "samples": 1039,
+          "p50": 6.099999999998545,
+          "p95": 6.200000000000728
+        },
+        "cpu": {
+          "samples": 1040,
+          "p50": 9.800000000745058,
+          "p95": 12.599999997764826
+        },
+        "gpu": {
+          "samples": 438,
+          "p50": 1.020928,
+          "p95": 1.542144
+        },
+        "calls": {
+          "samples": 1040,
+          "p50": 201,
+          "p95": 201
+        },
+        "tris": {
+          "samples": 1040,
+          "p50": 888221,
+          "p95": 888221
+        }
+      },
+      "note": "Single Ocean surface; gameplay board is a placement proxy, not a full game capture."
+    },
+    {
+      "name": "production-low",
+      "screenshot": "reports/ocean-kelp-forest/production-low/capture.png",
+      "result": "reports/ocean-kelp-forest/production-low/result.json",
+      "url": "http://127.0.0.1:5185/ocean-capture.html?t=10&quality=Low&width=1600&height=732",
+      "backend": "WebGPU",
+      "errors": [],
+      "measurementSummary": {
+        "wall": {
+          "samples": 1039,
+          "p50": 6.099999999998545,
+          "p95": 6.200000000000728
+        },
+        "cpu": {
+          "samples": 1040,
+          "p50": 3.399999998509884,
+          "p95": 4.600000001490116
+        },
+        "gpu": {
+          "samples": 539,
+          "p50": 0.549888,
+          "p95": 0.616448
+        },
+        "calls": {
+          "samples": 1040,
+          "p50": 64,
+          "p95": 64
+        },
+        "tris": {
+          "samples": 1040,
+          "p50": 171335,
+          "p95": 171335
+        }
+      },
+      "note": "Single Ocean surface; gameplay board is a placement proxy, not a full game capture."
+    },
+    {
+      "name": "production-webgl",
+      "screenshot": "reports/ocean-kelp-forest/production-webgl/capture.png",
+      "result": "reports/ocean-kelp-forest/production-webgl/result.json",
+      "url": "http://127.0.0.1:5185/ocean-capture.html?t=9&quality=Medium&forceWebGL=1&width=1600&height=732",
+      "backend": "WebGL2",
+      "errors": [],
+      "measurementSummary": {
+        "wall": {
+          "samples": 909,
+          "p50": 6.100000000000364,
+          "p95": 18.100000000002183
+        },
+        "cpu": {
+          "samples": 910,
+          "p50": 1.699999999254942,
+          "p95": 14.599999997764826
+        },
+        "gpu": {
+          "samples": 0,
+          "p50": null,
+          "p95": null
+        },
+        "calls": {
+          "samples": 910,
+          "p50": 1,
+          "p95": 1
+        },
+        "tris": {
+          "samples": 910,
+          "p50": 1,
+          "p95": 1
+        }
+      },
+      "note": "Single Ocean surface; gameplay board is a placement proxy, not a full game capture."
+    },
+    {
+      "name": "production-high-combo",
+      "screenshot": "reports/ocean-kelp-forest/production-high-combo/capture.png",
+      "result": "reports/ocean-kelp-forest/production-high-combo/result.json",
+      "url": "http://127.0.0.1:5185/ocean-capture.html?t=8&quality=High&width=1600&height=732&oceanTrackTimestamp=1&combo=8&board=1",
+      "backend": "WebGPU",
+      "errors": [],
+      "measurementSummary": {
+        "wall": {
+          "samples": 821,
+          "p50": 7.600000000002183,
+          "p95": 15.400000000001455
+        },
+        "cpu": {
+          "samples": 822,
+          "p50": 7.100000001490116,
+          "p95": 24.400000002235174
+        },
+        "gpu": {
+          "samples": 348,
+          "p50": 0.8888320000000001,
+          "p95": 2.2528
+        },
+        "calls": {
+          "samples": 822,
+          "p50": 139,
+          "p95": 151
+        },
+        "tris": {
+          "samples": 822,
+          "p50": 487663,
+          "p95": 488143
+        }
+      },
+      "note": "Combo 8 with a board placement proxy; scene readability proof, not a full game capture or baseline performance comparison."
+    }
+  ],
+  "performance": {
+    "comparison": "Same isolated actual Ocean theme, Extreme, 1600x732, t=8, Nvidia Ampere adapter. Short local captures, not a full-game or cross-hardware guarantee.",
+    "baselineResult": "reports/ocean-startup/extreme-final/result.json",
+    "currentResult": "reports/ocean-kelp-forest/production-extreme/result.json",
+    "baseline": {
+      "wall": {
+        "samples": 1035,
+        "p50": 6.099999999998545,
+        "p95": 6.199999999998909
+      },
+      "cpu": {
+        "samples": 1036,
+        "p50": 6.600000005215406,
+        "p95": 10.00000000372529
+      },
+      "gpu": {
+        "samples": 508,
+        "p50": 0.8191999999999997,
+        "p95": 1.399808
+      },
+      "calls": {
+        "samples": 1036,
+        "p50": 203,
+        "p95": 203
+      },
+      "tris": {
+        "samples": 1036,
+        "p50": 964538,
+        "p95": 964538
+      }
+    },
+    "current": {
+      "wall": {
+        "samples": 1039,
+        "p50": 6.099999999998545,
+        "p95": 6.200000000000728
+      },
+      "cpu": {
+        "samples": 1040,
+        "p50": 9.800000000745058,
+        "p95": 12.599999997764826
+      },
+      "gpu": {
+        "samples": 438,
+        "p50": 1.020928,
+        "p95": 1.542144
+      },
+      "calls": {
+        "samples": 1040,
+        "p50": 201,
+        "p95": 201
+      },
+      "tris": {
+        "samples": 1040,
+        "p50": 888221,
+        "p95": 888221
+      }
+    },
+    "submittedTriangleReductionPercent": 7.91,
+    "limitations": [
+      "The independent browser rAF median interval was unchanged; this is observed callback cadence, not a presented-FPS guarantee. GPU timestamps increased in this pair; no GPU-time speedup is claimed.",
+      "WebGL postprocessing counters describe the final post draw, not total scene cost.",
+      "Only a single Ocean surface was captured to avoid a full-journey GPU stress test.",
+      "CPU instrumentation counts nested renderer.render calls inclusively, so the CPU aggregate double-counts postprocessing work and must not be interpreted as total frame CPU time.",
+      "The isolated page lacks the production settingsManager used by the theme frame pacer; captures run uncapped despite the harness targetFps field.",
+      "Resolved GPU timing is sparse render-pass timing, not full GPU-frame or presentation time.",
+      "The phase-locked isolated capture does not establish unchanged end-to-end gameplay FPS."
+    ]
+  }
+}

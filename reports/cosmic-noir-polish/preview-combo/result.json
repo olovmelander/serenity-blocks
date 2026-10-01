@@ -1,0 +1,126 @@
+{
+  "ok": true,
+  "url": "http://127.0.0.1:5177/playground.html?effect=cosmic-noir&t=12&quality=High&seed=12345&event=combo&combo=3&eventAge=.5",
+  "width": 1280,
+  "height": 800,
+  "backend": "WebGPU · nvidia ampere",
+  "diagnostics": {
+    "loaded": true,
+    "quality": "High",
+    "time": 12,
+    "hero": [
+      -752.5350668714864,
+      257.0023139983204,
+      0
+    ],
+    "camera": [
+      420.20243787200775,
+      281.1015667666083,
+      1205.575121927123
+    ],
+    "waves": 4,
+    "gasParticles": 3550,
+    "sparks": 5064,
+    "flashScale": [
+      756,
+      756,
+      1
+    ],
+    "chromaticStrength": 0.002536,
+    "bloomScale": 0.325
+  },
+  "profile": {
+    "enabled": false,
+    "backend": "WebGPU · nvidia ampere",
+    "effect": "cosmic-noir",
+    "seed": 12345,
+    "fixedTime": 12,
+    "captureMeta": null,
+    "internalResolution": {
+      "width": 1280,
+      "height": 800,
+      "cssWidth": 1280,
+      "cssHeight": 800,
+      "pixelRatio": 1
+    },
+    "cpuMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "frameMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "gpuMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "computeMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "droppedFrames": {
+      "budgetMs": 16.666666666666668,
+      "dropped": 0,
+      "total": 0,
+      "ratio": 0
+    },
+    "memory": {
+      "supported": true,
+      "startBytes": 142763878,
+      "currentBytes": 136623469,
+      "peakBytes": 142763878,
+      "growthBytes": -6140409,
+      "growthMB": -5.855950355529785
+    },
+    "activeParticles": null,
+    "gpuTimestamp": {
+      "requested": false,
+      "renderStatus": "unavailable",
+      "computeStatus": "unavailable",
+      "error": null,
+      "computeError": null
+    },
+    "renderer": null,
+    "gpuMemory": {
+      "totalMB": 44.788917541503906,
+      "texturesMB": 40.667141914367676,
+      "attributesMB": 3.880970001220703,
+      "indexAttributesMB": 0.15776824951171875,
+      "storageAttributesMB": 0,
+      "uniformBuffersMB": 0.0074462890625,
+      "programsMB": 0.0755910873413086,
+      "renderTargets": 13,
+      "textures": 19,
+      "geometries": 20
+    }
+  },
+  "messages": [
+    {
+      "level": "warning",
+      "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+    },
+    {
+      "level": "warning",
+      "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+    }
+  ],
+  "shutdown": {
+    "stopped": true,
+    "rendererPresent": true,
+    "gpuDrained": true
+  },
+  "error": null
+}

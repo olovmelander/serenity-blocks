@@ -20,6 +20,12 @@ const PAUSED_CLASS = 'sb-lit--paused';
 // What the warp's GPU replica draws (boot-warp-transition-scene.js GLOW_OPACITY / GLOW_SCALE).
 const REPLICA_GLOW = { opacity: '0.87', transform: 'scale(1.04)' };
 
+/** @typedef {Navigator & { gpu?: { requestAdapter?: () => Promise<unknown> } }} WebGPUNavigator */
+
+function browserGPU() {
+    return typeof navigator !== 'undefined' ? /** @type {WebGPUNavigator} */ (navigator).gpu : null;
+}
+
 let adapterAvailable = null; // null = not probed
 let adapterProbe = null;
 let armingAnimations = [];
@@ -39,7 +45,7 @@ function shellElement() {
  */
 export function probeWebGPUAdapter() {
     if (!adapterProbe) {
-        const gpu = typeof navigator !== 'undefined' ? navigator.gpu : null;
+        const gpu = browserGPU();
         adapterProbe = Promise.resolve()
             .then(() => (gpu?.requestAdapter ? gpu.requestAdapter() : null))
             .then((adapter) => Boolean(adapter))
@@ -57,7 +63,7 @@ export function probeWebGPUAdapter() {
  * @returns {boolean}
  */
 export function identHoldIsStatic(themeManager) {
-    const hasWebGPU = typeof navigator !== 'undefined' && Boolean(navigator.gpu) && adapterAvailable !== false;
+    const hasWebGPU = Boolean(browserGPU()) && adapterAvailable !== false;
     return !hasWebGPU || themeManager?.canUseAsyncLoadingSurface?.() !== true;
 }
 

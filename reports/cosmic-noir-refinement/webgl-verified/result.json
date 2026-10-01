@@ -1,0 +1,1984 @@
+{
+  "config": {
+    "baseUrl": "http://127.0.0.1:4176",
+    "out": "C:\\Users\\olov_\\repos\\serenity-blocks\\reports\\cosmic-noir-refinement\\webgl-verified",
+    "quality": "Low",
+    "width": 600,
+    "height": 800,
+    "phase": 12,
+    "perf": false,
+    "forceWebGL": true,
+    "idleOnly": false,
+    "durationMs": 6000,
+    "targetFps": 60,
+    "pixelRatio": 1,
+    "renderScale": 0.92,
+    "seed": 12345
+  },
+  "startedAt": "2026-10-01T13:57:20.061Z",
+  "shots": {
+    "idle": {
+      "method": "screenshot-only fixed 1/60 simulation; normal theme animate/render code",
+      "phase": 12,
+      "camera": [
+        393.8334051878811,
+        310.9069113482876,
+        1205.575121927123
+      ],
+      "cue": null,
+      "advancedSeconds": 0.016666666666666666,
+      "computeEnabled": false,
+      "render": {
+        "frame": 200,
+        "calls": 11,
+        "triangles": 4634,
+        "points": 8000,
+        "lines": 0
+      }
+    },
+    "lock": {
+      "method": "screenshot-only fixed 1/60 simulation; normal theme animate/render code",
+      "phase": 12.150000000000007,
+      "camera": [
+        395.20861415504584,
+        309.2250983499616,
+        1208.1770319793832
+      ],
+      "cue": "lock",
+      "advancedSeconds": 0.15,
+      "computeEnabled": false,
+      "render": {
+        "frame": 209,
+        "calls": 12,
+        "triangles": 5402,
+        "points": 8000,
+        "lines": 0
+      }
+    },
+    "combo": {
+      "method": "screenshot-only fixed 1/60 simulation; normal theme animate/render code",
+      "phase": 12.650000000000032,
+      "camera": [
+        400.1932976641701,
+        303.42266695436655,
+        1216.814814038494
+      ],
+      "cue": "combo",
+      "advancedSeconds": 0.5,
+      "computeEnabled": false,
+      "render": {
+        "frame": 239,
+        "calls": 18,
+        "triangles": 8474,
+        "points": 13781,
+        "lines": 0
+      }
+    },
+    "combo-linger": {
+      "method": "screenshot-only fixed 1/60 simulation; normal theme animate/render code",
+      "phase": 14.650000000000132,
+      "camera": [
+        427.29197761462217,
+        277.93642047624047,
+        1250.7903433412882
+      ],
+      "cue": null,
+      "advancedSeconds": 2,
+      "computeEnabled": false,
+      "render": {
+        "frame": 359,
+        "calls": 13,
+        "triangles": 4634,
+        "points": 13781,
+        "lines": 0
+      }
+    }
+  },
+  "performance": [],
+  "url": "http://127.0.0.1:4176/?skipIntro=1&noThemeWarm=1&cosmicNoirBaseline=1&cosmicNoirSeed=12345&cosmicNoirFixedPixelRatio=1&cosmicNoirRenderScale=0.92&cosmicNoirNoAdaptiveScale=1&cosmicNoirMsaa=0&forceWebGL=1",
+  "boot": {
+    "backend": "WebGL2",
+    "mode": "single",
+    "boardPaused": true,
+    "startupSettled": {
+      "overlayRemoved": true,
+      "loadingSurfaceCovering": 0,
+      "initialTheme": "forest",
+      "initialThemeReady": true
+    }
+  },
+  "runtime": {
+    "checks": {
+      "visible": true,
+      "startupOverlayRemoved": true,
+      "backend": true,
+      "quality": true,
+      "seed": true,
+      "pixelRatio": true,
+      "drawingBuffer": true,
+      "adaptiveDisabled": true,
+      "liveClock": true,
+      "sceneScale": true,
+      "sceneDimensions": true,
+      "device": true
+    },
+    "valid": true,
+    "backend": "WebGL2",
+    "quality": "Low",
+    "phase": 3.0444000000022338,
+    "camera": [
+      245.74452162481168,
+      344.81996790288844,
+      1043.412514355824
+    ],
+    "viewport": {
+      "width": 600,
+      "height": 800,
+      "dpr": 1
+    },
+    "visibility": {
+      "state": "visible",
+      "hidden": false
+    },
+    "drawingBuffer": {
+      "width": 600,
+      "height": 800
+    },
+    "sceneTarget": null,
+    "flags": {
+      "forceWebGL": true,
+      "noCompute": false,
+      "noMRT": false,
+      "noPost": false,
+      "noAdaptiveScale": true,
+      "mrtAudit": false,
+      "baseline": true,
+      "perf": false,
+      "preserveDrawingBuffer": false,
+      "webgpuMsaa": false,
+      "seed": 12345,
+      "fixedDeltaMs": null,
+      "fixedPixelRatio": 1,
+      "atmoShells": null,
+      "renderScale": 0.92,
+      "usePost": false,
+      "useMRT": false,
+      "useCompute": false
+    },
+    "compile": {
+      "status": "skipped",
+      "durationMs": 0,
+      "message": "compileAsync unavailable or non-WebGPU path"
+    },
+    "timestamp": {
+      "enabled": false,
+      "supported": false,
+      "features": []
+    }
+  },
+  "ok": true,
+  "shutdown": {
+    "stopped": true,
+    "stages": [
+      {
+        "label": "pending timestamps",
+        "ok": true
+      },
+      {
+        "label": "submitted GPU work",
+        "ok": true
+      },
+      {
+        "label": "theme stop",
+        "ok": true
+      },
+      {
+        "label": "renderer disposal",
+        "ok": true
+      }
+    ]
+  },
+  "shaderFailures": [],
+  "consoleErrors": [],
+  "console": [
+    {
+      "level": "warning",
+      "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+      "line": 2,
+      "sourceId": "node:electron/js2c/sandbox_bundle",
+      "timestamp": "2026-10-01T13:57:20.503Z"
+    },
+    {
+      "level": "info",
+      "message": "[ObjectPool] Initialized with 100 objects (max: 500)",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.538Z"
+    },
+    {
+      "level": "info",
+      "message": "[ObjectPool] Initialized with 50 objects (max: 200)",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.538Z"
+    },
+    {
+      "level": "info",
+      "message": "[ObjectPool] Initialized with 40 objects (max: 160)",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.538Z"
+    },
+    {
+      "level": "info",
+      "message": "💡 Object pools available:",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "  window.objectPools.status() - View pool statistics",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "  window.objectPools.clear()  - Clear all pools",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "[PerformanceMonitor] Initialized",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "💡 Performance monitor available:",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "  window.perfMonitor.start()  - Start monitoring with overlay",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "  window.perfMonitor.stop()   - Stop monitoring",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "  window.perfMonitor.toggle() - Toggle overlay (or press F3)",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "  window.perfMonitor.setQuality(mode) - Set quality mode display",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "  window.perfMonitor.report() - Generate detailed report",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "  window.perfMonitor.export() - Export metrics to JSON",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.551Z"
+    },
+    {
+      "level": "info",
+      "message": "💡 Asset manager available: window.assetManager.logStatus()",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.552Z"
+    },
+    {
+      "level": "info",
+      "message": "🚀 Bootstrapping Serenity Blocks...",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.555Z"
+    },
+    {
+      "level": "info",
+      "message": "🎮 Initializing Serenity Blocks...",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.717Z"
+    },
+    {
+      "level": "info",
+      "message": "Canvas initialized: Phaser container ready, block size: 40px",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.717Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] Constructor - canvas element: [object HTMLCanvasElement]",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:20.717Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] WebGL context created successfully",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.102Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] Canvas resized to: 600 x 800 (Auto)",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.121Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] Resize handler throttled to 100ms",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.121Z"
+    },
+    {
+      "level": "info",
+      "message": "[TextureManager] Initialized (max: 20 textures)",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.121Z"
+    },
+    {
+      "level": "info",
+      "message": "[BufferManager] Initialized",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.121Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] GPU resource managers initialized",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.121Z"
+    },
+    {
+      "level": "info",
+      "message": "%c[GPU] Active Renderer: color: #00ff00; font-weight: bold; Google Inc. (NVIDIA) - ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.122Z"
+    },
+    {
+      "level": "info",
+      "message": "⏭️ Skipping intro animation (URL flag or reduced motion)...",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.122Z"
+    },
+    {
+      "level": "info",
+      "message": "✅ Loaded 36 songs from songs.json",
+      "line": 846,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.127Z"
+    },
+    {
+      "level": "info",
+      "message": "[Phaser 4 Init] Starting initialization... [object Object]",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.534Z"
+    },
+    {
+      "level": "info",
+      "message": "[BackgroundScene] Creating new Phaser 4 scene class",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.534Z"
+    },
+    {
+      "level": "info",
+      "message": "[BoardScene] Creating scene class for Phaser 4",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.534Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseBoardScene] Creating new Phaser 4 scene class",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.535Z"
+    },
+    {
+      "level": "info",
+      "message": "[MultiplayerBoardScene] Creating scene class for Phaser 4",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.535Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseBoardScene] Returning cached class",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.535Z"
+    },
+    {
+      "level": "info",
+      "message": "[Phaser 4 Init] Creating game with config: [object Object]",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.535Z"
+    },
+    {
+      "level": "info",
+      "message": "%cPhaser v4.1.0 (WebGL | Web Audio)%c https://phaser.io/v401 color: #ffffff; background-image: url(\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAOCAYAAAAmL5yKAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAARBJREFUeNpi/P//P0OHsPB/BiCoePuWkYFEwALSXJElzMBgLwE2CNkQxgWr/yMr/p8QimlBu5DQ//+8vBBco/ofzAe6imH+qv/53/6jYJAYSA4ZoxoANYTPKhiuCQZwGcJU+e4dqpMmvsDq14krV2MPAxDha2CMKvoXoiE/PBQUDgQD8j82UFae9B9bOIC8B9UD9gIjjIMN7Ns6lWHn4XMoYu62RgxO3tkMjIyMII2MYAOAtmFVhA+ADHf2ycGMRhANjUq8YO+WKWCvgAORIV8CkpDCrzIwsLIymC1qAtuAD4Bsh3sBmqAY3qcGwL2AC4DCpKtzHlgzOLWihwEuzTCN0GhDJHeYC4gByBphACDAAH2dDIxdjr+VAAAAAElFTkSuQmCC\"), linear-gradient(to bottom, #000814, #001d3d, #003566); background-repeat: no-repeat; background-position: 4px center, 0 0; padding: 2px 6px 2px 24px; background: transparent",
+      "line": 478,
+      "sourceId": "http://127.0.0.1:4176/assets/phaser-CEFuxQjU.js",
+      "timestamp": "2026-10-01T13:57:21.563Z"
+    },
+    {
+      "level": "info",
+      "message": "[Phaser 4 Init] Game instance created successfully",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.563Z"
+    },
+    {
+      "level": "info",
+      "message": "[DisplayManager] Initialized [object Object]",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.563Z"
+    },
+    {
+      "level": "info",
+      "message": "[Display] Applying display settings: [object Object]",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.563Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Global render scale set to: 1",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.563Z"
+    },
+    {
+      "level": "info",
+      "message": "[Display] Render scale set to: 1 (effective DPR: 1)",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.563Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Global antialiasing set to: true",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[Display] Antialiasing set to: true",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] Setting internal resolution: 1600x852 (auto)",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] Canvas resized to: 600 x 800 (Auto)",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[DisplayManager] Setting display mode: windowed [object Object]",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[FPS] Performance monitor hidden",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[Display] Display settings applied successfully",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[FrameRate] VSync enabled",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[FrameRate] Target FPS set to 60",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[FrameRate] Updated Phaser FPS target to 60",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[Settings] Frame rate settings applied: [object Object]",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Initialized with asset and audio managers",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.564Z"
+    },
+    {
+      "level": "info",
+      "message": "[InputController] Initialized High-Precision DAS",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.565Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Controller manager initialized",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.565Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Gamepad support initialized",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.566Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Updated custom bindings",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.566Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Updated deadzone to 0.25",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.566Z"
+    },
+    {
+      "level": "info",
+      "message": "✅ All managers initialized",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.567Z"
+    },
+    {
+      "level": "info",
+      "message": "[Main] Initializing GameModeManager...",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.568Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Registered lazy mode: single (Single Player)",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.568Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Registered lazy mode: local-multiplayer (Local Multiplayer)",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.568Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Registered lazy mode: online-multiplayer (Online Multiplayer)",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.568Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Registered lazy mode: serenity (Serenity)",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.568Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Registered lazy mode: infinity (Infinity)",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.568Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Registered lazy mode: odyssey (Odyssey)",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.568Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Initialized with modes: single,local-multiplayer,online-multiplayer,serenity,infinity,odyssey",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.568Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.568Z"
+    },
+    {
+      "level": "info",
+      "message": "[RichPresenceManager] Initialized with GameModeManager",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.568Z"
+    },
+    {
+      "level": "info",
+      "message": "✅ GameModeManager initialized",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.569Z"
+    },
+    {
+      "level": "info",
+      "message": "[Keyboard] Setting up keyboard controls",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.574Z"
+    },
+    {
+      "level": "info",
+      "message": "[Keyboard] Keyboard controls initialized",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.574Z"
+    },
+    {
+      "level": "info",
+      "message": "[Main] Skipping legacy Player 2 keyboard controls (handled by InputController)",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.574Z"
+    },
+    {
+      "level": "info",
+      "message": "[Visibility] Background tab throttling initialized: reduce",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.574Z"
+    },
+    {
+      "level": "info",
+      "message": "✅ Serenity Blocks initialized successfully!",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.574Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Theme suspended, renderer preserved for quick resume",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.575Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Menu navigation enabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.575Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Cleared previous button states",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.575Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Tetromino style: Default colors",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.618Z"
+    },
+    {
+      "level": "info",
+      "message": "[BoardScene] Preload complete",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.622Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseBoardScene] Graphics layers created successfully",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.623Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseBoardScene] Scene created: BoardScene",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.623Z"
+    },
+    {
+      "level": "info",
+      "message": "[BoardScene] Creating scene...",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.623Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseBoardScene] ✅ MULTIPLAYER OPTIMIZATION ACTIVE: Graphics cleared once per frame in update()",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.624Z"
+    },
+    {
+      "level": "info",
+      "message": "[BoardScene] Scene created successfully",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.624Z"
+    },
+    {
+      "level": "info",
+      "message": "[Phaser 4 Init] Post-boot callback started",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.624Z"
+    },
+    {
+      "level": "info",
+      "message": "✅ Phaser 4 game initialized successfully",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.624Z"
+    },
+    {
+      "level": "info",
+      "message": "  ├─ Canvas dimensions: 400 x 800",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.624Z"
+    },
+    {
+      "level": "info",
+      "message": "  ├─ Logical size: 400 x 800",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.624Z"
+    },
+    {
+      "level": "info",
+      "message": "  ├─ Device pixel ratio: 1",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.624Z"
+    },
+    {
+      "level": "info",
+      "message": "  ├─ Board config: ROWS: 20 HIDDEN_ROWS: 4",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.624Z"
+    },
+    {
+      "level": "info",
+      "message": "  └─ Scenes loaded: BoardScene, BackgroundScene",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.624Z"
+    },
+    {
+      "level": "info",
+      "message": "[Startup] Menu ready in 1019ms; intro skipped in 0ms",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.627Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Game mode selection enabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.627Z"
+    },
+    {
+      "level": "info",
+      "message": "💡 Steam service available: window.steamService.getStatus()",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.627Z"
+    },
+    {
+      "level": "info",
+      "message": "🧪 Test functions available:",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.628Z"
+    },
+    {
+      "level": "info",
+      "message": "  - window.testMultiplayer(numPlayers) - Create test lobby with dummy players",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.628Z"
+    },
+    {
+      "level": "info",
+      "message": "    Example: testMultiplayer(5)",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.628Z"
+    },
+    {
+      "level": "info",
+      "message": "  - window.testLobby(numPlayers) - Create ready lobby without auto-start",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.628Z"
+    },
+    {
+      "level": "info",
+      "message": "    Example: testLobby(8)",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.628Z"
+    },
+    {
+      "level": "info",
+      "message": "  - window.testPostMatch(numPlayers) - Show match results modal",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.628Z"
+    },
+    {
+      "level": "info",
+      "message": "    Example: testPostMatch(9)",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.628Z"
+    },
+    {
+      "level": "info",
+      "message": "  - LOCAL 2P (no Steam): open ?localMp=host and ?localMp=join in two windows",
+      "line": 923,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.628Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Focused first element: [object SVGUseElement]",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.698Z"
+    },
+    {
+      "level": "info",
+      "message": "[FrameRate] VSync enabled",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.739Z"
+    },
+    {
+      "level": "info",
+      "message": "[FrameRate] Target FPS set to 60",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.739Z"
+    },
+    {
+      "level": "info",
+      "message": "[FrameRate] Updated Phaser FPS target to 60",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.739Z"
+    },
+    {
+      "level": "info",
+      "message": "[Settings] Frame rate settings applied: [object Object]",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.739Z"
+    },
+    {
+      "level": "info",
+      "message": "[FrameRate] VSync enabled",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.739Z"
+    },
+    {
+      "level": "info",
+      "message": "[FrameRate] Target FPS set to 60",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.739Z"
+    },
+    {
+      "level": "info",
+      "message": "[Main] Starting game with mode from card selection: single",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.739Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Game mode selection disabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.739Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Menu navigation disabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.992Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Cleared previous button states",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.992Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Menu navigation disabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.992Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Cleared previous button states",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.992Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Menu navigation disabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.992Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Cleared previous button states",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.992Z"
+    },
+    {
+      "level": "info",
+      "message": "[BackgroundScene] Initialized [object Object]",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.992Z"
+    },
+    {
+      "level": "info",
+      "message": "[BackgroundScene] Created successfully, WebGL renderer active",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:21.992Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Loaded mode: single (Single Player)",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.005Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Activating mode: single",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.005Z"
+    },
+    {
+      "level": "info",
+      "message": "[single] Mode activated",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-BaseGameMode-RscLKzXt.js",
+      "timestamp": "2026-10-01T13:57:22.005Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Activating single player mode...",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.005Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Found stage element: true",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.005Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Stage current display: none",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.005Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Stage computed display: none",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.014Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Stage display after set: flex",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.014Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Stage computed after set: flex",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Found container element: true",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Found stats bar: true",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Hooking input functions with mode-specific callbacks",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] window.hardDrop exists? true",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] window.move exists? true",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] window.rotate exists? true",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[BoardJuice] Initialized on element: DIV",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/simulation-tick-DwWHdqf7.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Input functions hooked successfully",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Mode activated, ready to start",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[Main] Mode activated: single",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Mode single activated successfully",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Starting mode: single [object Object]",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.016Z"
+    },
+    {
+      "level": "info",
+      "message": "[single] Starting game...",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-BaseGameMode-RscLKzXt.js",
+      "timestamp": "2026-10-01T13:57:22.017Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] ========== ONSTART CALLED ==========",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.017Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Starting game... [object Object]",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.017Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Settings autoRecordDemos: undefined",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.017Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Auto-recording enabled",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.017Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] BoardScene already active, restarting...",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.017Z"
+    },
+    {
+      "level": "info",
+      "message": "[BoardScene] Board cleared",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.017Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Tetromino style: Default colors",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.018Z"
+    },
+    {
+      "level": "info",
+      "message": "[DemoRecorder] Started recording v2.0",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/fixed-hit-stop-policy-zSra1b-8.js",
+      "timestamp": "2026-10-01T13:57:22.038Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Recording started with seed: 3232736325 isRecording: true",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.038Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Using standard RAF loop",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.073Z"
+    },
+    {
+      "level": "info",
+      "message": "[SinglePlayer] Game started!",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-SinglePlayerMode-xSa5uutT.js",
+      "timestamp": "2026-10-01T13:57:22.073Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Loading a fresh theme identity for resume: forest",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.074Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Loading theme \"forest\" from disk",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.074Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Theme \"forest\" loaded. Cache: 1/2",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.079Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Resuming themes - themeName: forest isActive: false pendingTheme: true",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.079Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Theme was never started, performing full activation",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.079Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Activating theme: forest isActive: false",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.079Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Starting theme: forest",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.079Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] start() called, state: initialized theme: forest",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.080Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Starting theme: forest",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.080Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Shared renderer: su",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.080Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Has loadTheme? function",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.080Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Activating theme container: forest",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.080Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Calling loadTheme for: forest",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.080Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] loadTheme called: forest",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.080Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] Clearing theme-owned renderer resources",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.080Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Theme start complete: forest",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.081Z"
+    },
+    {
+      "level": "info",
+      "message": "Theme changed to: forest",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.081Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Theme changed, refreshing tetromino style",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.081Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Tetromino style: Default colors",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.081Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Tetromino style: Default colors",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.081Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Theme changed, refreshing tetromino style",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.097Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Tetromino style: Default colors",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.098Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Theme activation complete: forest",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.098Z"
+    },
+    {
+      "level": "info",
+      "message": "[Main] Mode started: single",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.098Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Mode single started successfully",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.098Z"
+    },
+    {
+      "level": "info",
+      "message": "[Main] Theme ready: true",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.098Z"
+    },
+    {
+      "level": "info",
+      "message": "[BoardScene] Preload complete",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.111Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseBoardScene] Graphics layers created successfully",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.111Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseBoardScene] Scene created: BoardScene",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.111Z"
+    },
+    {
+      "level": "info",
+      "message": "[BoardScene] Creating scene...",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.111Z"
+    },
+    {
+      "level": "info",
+      "message": "[BoardScene] Scene created successfully",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.111Z"
+    },
+    {
+      "level": "info",
+      "message": "✨ [Cosmic Cursor] Mounted",
+      "line": 795,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:22.914Z"
+    },
+    {
+      "level": "info",
+      "message": "[FrameRate] Detected monitor refresh rate: 132Hz (measured: 132)",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:23.030Z"
+    },
+    {
+      "level": "info",
+      "message": "[Main] Initializing global Serenity Hub...",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:23.177Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Serenity Mode enabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:23.196Z"
+    },
+    {
+      "level": "info",
+      "message": "[SerenityHub] Gamepad callbacks registered",
+      "line": 608,
+      "sourceId": "http://127.0.0.1:4176/assets/SerenityHub-LPNPhhql.js",
+      "timestamp": "2026-10-01T13:57:23.196Z"
+    },
+    {
+      "level": "info",
+      "message": "✨ Serenity Hub initialized with gamepad support",
+      "line": 516,
+      "sourceId": "http://127.0.0.1:4176/assets/SerenityHub-LPNPhhql.js",
+      "timestamp": "2026-10-01T13:57:23.196Z"
+    },
+    {
+      "level": "info",
+      "message": "✅ Global Serenity Hub initialized",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:23.196Z"
+    },
+    {
+      "level": "info",
+      "message": "[EnhancedBreathingIndicator] Elements created with stunning design",
+      "line": 862,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:23.635Z"
+    },
+    {
+      "level": "info",
+      "message": "[MainMenuPlayerCard] Initialized",
+      "line": 418,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:23.964Z"
+    },
+    {
+      "level": "info",
+      "message": "[GameModeManager] Pausing mode: single [object Object]",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[single] Game paused",
+      "line": 1,
+      "sourceId": "http://127.0.0.1:4176/assets/mode-BaseGameMode-RscLKzXt.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Game mode selection disabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Menu navigation disabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Cleared previous button states",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Menu navigation disabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Cleared previous button states",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Menu navigation disabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Cleared previous button states",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Menu navigation disabled",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[Gamepad] Cleared previous button states",
+      "line": 804,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] switchTheme called: cosmic-noir",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.687Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] switchTheme called: cosmic-noir",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.688Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Disposing current theme before switch: forest",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.688Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Cleaning up theme: forest",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.688Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] stop() called for theme: forest state: stopping",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.688Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Stopping theme: forest",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.688Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Removing 0 DOM containers",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.688Z"
+    },
+    {
+      "level": "info",
+      "message": "✅ [BaseTheme] Cleanup complete for theme: forest",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.688Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Clearing renderer theme resources",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.688Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Loading theme: cosmic-noir",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.688Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Loading theme \"cosmic-noir\" from disk",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.688Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Hybrid WebGPU/WebGL theme constructed",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.700Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Theme \"cosmic-noir\" loaded. Cache: 1/2",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.700Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Theme loaded: cosmic-noir",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.700Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Activating theme: cosmic-noir isActive: false",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.700Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Starting theme: cosmic-noir",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.700Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] start() called, state: initialized theme: cosmic-noir",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.700Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Starting theme: cosmic-noir",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.700Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Shared renderer: su",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.700Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Has loadTheme? function",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.700Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Activating theme container: cosmic-noir",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.700Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Calling loadTheme for: cosmic-noir",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.701Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] loadTheme called: cosmic-noir",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.701Z"
+    },
+    {
+      "level": "info",
+      "message": "[WebGLRenderer] Clearing theme-owned renderer resources",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:24.701Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Creating stunning 3D cosmic noir scene...",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.701Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Renderer initialized (WebGL2)",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.729Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Starfield depth layers created with 8000 total stars",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.736Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Nebula clouds created with high-def textures",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.737Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] 3D Black Planet created with texture and accretion disk",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.741Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Atmosphere shell(s) created: 1",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.742Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Unified void spark fallback created with 12000 particles in one draw call",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.747Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Gas swirl particle system created with 24000 shader-driven particles",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.752Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Post-processing disabled for quality level",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.753Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoirBaseline] Helpers: window.cosmicNoirBaseline.capture(label), report(), downloadReport(label), reset(), getSamples()",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.753Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoirPerf] Performance capture enabled [object Object]",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:24.753Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Runtime capabilities [object Object]",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:25.026Z"
+    },
+    {
+      "level": "info",
+      "message": "[CosmicNoir] Scene created successfully",
+      "line": 638,
+      "sourceId": "http://127.0.0.1:4176/assets/theme-cosmic-noir-DhGN1ZIm.js",
+      "timestamp": "2026-10-01T13:57:25.026Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Theme start complete: cosmic-noir",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:25.026Z"
+    },
+    {
+      "level": "info",
+      "message": "Theme changed to: cosmic-noir",
+      "line": 905,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:25.026Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Theme changed, refreshing tetromino style",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:25.026Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Tetromino style: Theme-based cosmic-noir",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:25.026Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Tetromino style: Theme-based cosmic-noir",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:25.026Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Theme changed, refreshing tetromino style",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:25.038Z"
+    },
+    {
+      "level": "info",
+      "message": "🎨 Tetromino style: Theme-based cosmic-noir",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:25.039Z"
+    },
+    {
+      "level": "info",
+      "message": "[ThemeManager] Theme activation complete: cosmic-noir",
+      "line": 489,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:25.039Z"
+    },
+    {
+      "level": "info",
+      "message": "[SteamService] No IPC available - running in offline mode",
+      "line": 128,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:25.295Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] stop() called for theme: cosmic-noir state: running",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:29.886Z"
+    },
+    {
+      "level": "info",
+      "message": "[BaseTheme] Stopping theme: cosmic-noir",
+      "line": 435,
+      "sourceId": "http://127.0.0.1:4176/assets/main-BOHLCFSs.js",
+      "timestamp": "2026-10-01T13:57:29.886Z"
+    }
+  ],
+  "finishedAt": "2026-10-01T13:57:30.041Z"
+}

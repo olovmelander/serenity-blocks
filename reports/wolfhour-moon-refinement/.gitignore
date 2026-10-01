@@ -1,0 +1,24 @@
+chrome-tools.json
+*.log
+
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/checks.json
+!/moon-idle-t32.json
+!/moon-idle-t32.png
+!/moon-idle-t8.json
+!/moon-idle-t8.png
+!/moon-late-corona.json
+!/moon-late-corona.png
+!/moon-motion.json
+!/moon-portrait.json
+!/moon-portrait.png
+!/playground-moon-t8.json
+!/playground-moon-t8.png
+!/verification.json
+
+# Explicitly cited validation logs; other process output remains local.
+!/scoped-eslint.log
+!/typecheck.log
+!/unit-tests.log

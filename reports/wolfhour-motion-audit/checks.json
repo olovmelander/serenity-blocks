@@ -1,0 +1,22 @@
+[
+  {
+    "command": "npm run typecheck",
+    "exitCode": 0,
+    "summary": "Passed: tsc --noEmit. No stderr warnings."
+  },
+  {
+    "command": "npm run build",
+    "exitCode": 0,
+    "summary": "Production build and boot-closure check passed. Vite reported mixed static/dynamic import warnings for core/constants.js, utils/performance-monitor.js, and themes/base-theme.js. No build failure from concurrent Blood Moon work."
+  },
+  {
+    "command": "npm run lint:ci",
+    "exitCode": 0,
+    "summary": "Lint ratchet passed: 1334 errors versus allowed baseline 1336; 997 warnings; 0 fatal errors. This is a baseline-comparison pass, not a warning-free lint result. Baseline was not changed."
+  },
+  {
+    "command": "npm run audit:theme-lifecycle",
+    "exitCode": 0,
+    "summary": "Theme lifecycle audit passed with no obvious issues."
+  }
+]

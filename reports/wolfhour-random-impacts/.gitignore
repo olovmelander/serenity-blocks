@@ -1,0 +1,26 @@
+chrome-tools.json
+*.log
+
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/checks.json
+!/playground-target-0.json
+!/playground-target-0.png
+!/portrait-sequence-left-1.png
+!/portrait-sequence-left-2.png
+!/portrait-sequence-right-1.png
+!/portrait-sequence-right-2.png
+!/portrait-sequence.json
+!/shipping-sequence-left-1.png
+!/shipping-sequence-left-2.png
+!/shipping-sequence-right-1.png
+!/shipping-sequence-right-2.png
+!/shipping-sequence.json
+!/verification.json
+
+# Explicitly cited validation logs; other process output remains local.
+!/integration-final.log
+!/scoped-eslint.log
+!/typecheck.log
+!/unit-tests.log

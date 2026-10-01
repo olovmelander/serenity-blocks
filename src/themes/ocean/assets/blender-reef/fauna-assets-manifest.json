@@ -1,0 +1,275 @@
+{
+  "author": "Serenity Blocks original Blender fauna sculpture",
+  "collection": "Serenity_Ocean_Original_Fauna.002",
+  "blenderVersion": "4.5.9 LTS",
+  "glTFUpAxis": "Y",
+  "forwardAxis": "+X",
+  "textureCount": 0,
+  "loopSeconds": 4,
+  "assets": [
+    {
+      "file": "fish-prism-tang.glb",
+      "bytes": 15464,
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "vertexCount": 124,
+      "triangleCount": 174,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "morphTargetCount": 2,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "animations": [
+        {
+          "name": "fish_prism_tang_Swim_Loop",
+          "channels": [
+            "weights"
+          ]
+        }
+      ],
+      "loopSeconds": 4.0,
+      "bounds": {
+        "min": [
+          -0.8299999833106995,
+          -0.3488999903202057,
+          -0.3100000023841858
+        ],
+        "max": [
+          0.6700000166893005,
+          0.43392303586006165,
+          0.3100000023841858
+        ]
+      },
+      "blenderObject": "fish-prism-tang.002",
+      "clipTrack": "fish_prism_tang_Swim_Loop",
+      "sourceVertices": 124,
+      "sourceTriangles": 174,
+      "triangleBudget": 260,
+      "forwardAxis": "+X",
+      "paint": "original opaque vertex paint; no image textures"
+    },
+    {
+      "file": "fish-sun-banner.glb",
+      "bytes": 15468,
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "vertexCount": 124,
+      "triangleCount": 174,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "morphTargetCount": 2,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "animations": [
+        {
+          "name": "fish_sun_banner_Swim_Loop",
+          "channels": [
+            "weights"
+          ]
+        }
+      ],
+      "loopSeconds": 4.0,
+      "bounds": {
+        "min": [
+          -0.8299999833106995,
+          -0.40389999747276306,
+          -0.29499998688697815
+        ],
+        "max": [
+          0.6700000166893005,
+          1.0099999904632568,
+          0.29499998688697815
+        ]
+      },
+      "blenderObject": "fish-sun-banner.002",
+      "clipTrack": "fish_sun_banner_Swim_Loop",
+      "sourceVertices": 124,
+      "sourceTriangles": 174,
+      "triangleBudget": 260,
+      "forwardAxis": "+X",
+      "paint": "original opaque vertex paint; no image textures"
+    },
+    {
+      "file": "fish-ember-anthias.glb",
+      "bytes": 15480,
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "vertexCount": 124,
+      "triangleCount": 174,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "morphTargetCount": 2,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "animations": [
+        {
+          "name": "fish_ember_anthias_Swim_Loop",
+          "channels": [
+            "weights"
+          ]
+        }
+      ],
+      "loopSeconds": 4.0,
+      "bounds": {
+        "min": [
+          -0.8299999833106995,
+          -0.2750000059604645,
+          -0.2750000059604645
+        ],
+        "max": [
+          0.6700000166893005,
+          0.3409000039100647,
+          0.2750000059604645
+        ]
+      },
+      "blenderObject": "fish-ember-anthias.002",
+      "clipTrack": "fish_ember_anthias_Swim_Loop",
+      "sourceVertices": 124,
+      "sourceTriangles": 174,
+      "triangleBudget": 260,
+      "forwardAxis": "+X",
+      "paint": "original opaque vertex paint; no image textures"
+    },
+    {
+      "file": "fish-moon-sardine.glb",
+      "bytes": 15476,
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "vertexCount": 124,
+      "triangleCount": 174,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "morphTargetCount": 2,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "animations": [
+        {
+          "name": "fish_moon_sardine_Swim_Loop",
+          "channels": [
+            "weights"
+          ]
+        }
+      ],
+      "loopSeconds": 4.0,
+      "bounds": {
+        "min": [
+          -0.8299999833106995,
+          -0.17045000195503235,
+          -0.24500000476837158
+        ],
+        "max": [
+          0.6700000166893005,
+          0.163100004196167,
+          0.24500000476837158
+        ]
+      },
+      "blenderObject": "fish-moon-sardine.002",
+      "clipTrack": "fish_moon_sardine_Swim_Loop",
+      "sourceVertices": 124,
+      "sourceTriangles": 174,
+      "triangleBudget": 260,
+      "forwardAxis": "+X",
+      "paint": "original opaque vertex paint; no image textures"
+    },
+    {
+      "file": "creature-manta.glb",
+      "bytes": 43480,
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "vertexCount": 416,
+      "triangleCount": 750,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "morphTargetCount": 2,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "animations": [
+        {
+          "name": "creature_manta_Swim_Loop",
+          "channels": [
+            "weights"
+          ]
+        }
+      ],
+      "loopSeconds": 4.0,
+      "bounds": {
+        "min": [
+          -2.9106273651123047,
+          -0.18472187221050262,
+          -2.799999952316284
+        ],
+        "max": [
+          1.2063573598861694,
+          0.23723243176937103,
+          2.799999952316284
+        ]
+      },
+      "blenderObject": "creature-manta.002",
+      "clipTrack": "creature_manta_Swim_Loop",
+      "sourceVertices": 416,
+      "sourceTriangles": 750,
+      "triangleBudget": 1000,
+      "forwardAxis": "+X",
+      "paint": "original opaque vertex paint; no image textures"
+    },
+    {
+      "file": "creature-cuttlefish.glb",
+      "bytes": 45440,
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "vertexCount": 476,
+      "triangleCount": 818,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "morphTargetCount": 2,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "animations": [
+        {
+          "name": "creature_cuttlefish_Swim_Loop",
+          "channels": [
+            "weights"
+          ]
+        }
+      ],
+      "loopSeconds": 4.0,
+      "bounds": {
+        "min": [
+          -1.659999966621399,
+          -0.39331701397895813,
+          -0.8152499794960022
+        ],
+        "max": [
+          2.11568546295166,
+          0.36800000071525574,
+          0.8152499794960022
+        ]
+      },
+      "blenderObject": "creature-cuttlefish.002",
+      "clipTrack": "creature_cuttlefish_Swim_Loop",
+      "sourceVertices": 476,
+      "sourceTriangles": 818,
+      "triangleBudget": 1000,
+      "forwardAxis": "+X",
+      "paint": "original opaque vertex paint; no image textures"
+    }
+  ]
+}

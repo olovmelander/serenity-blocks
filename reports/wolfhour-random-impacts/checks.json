@@ -1,0 +1,42 @@
+[
+  {
+    "command": "npx vitest run tests/unit/wolfhour-ambient-integration.test.js tests/unit/wolfhour-landscape.test.js tests/unit/wolfhour-meteor.test.js tests/unit/wolfhour-sky.test.js tests/unit/wolfhour-effect-accumulation.test.js",
+    "exitCode": 0,
+    "summary": "5 passed (5); 63 passed (63)",
+    "startedAt": "2026-10-01T14:08:21.565Z",
+    "completedAt": "2026-10-01T14:08:40.010Z",
+    "signal": null,
+    "error": null,
+    "log": "unit-tests.log"
+  },
+  {
+    "command": "npm run typecheck",
+    "exitCode": 0,
+    "summary": "tsc --noEmit passed.",
+    "startedAt": "2026-10-01T14:08:40.013Z",
+    "completedAt": "2026-10-01T14:08:55.906Z",
+    "signal": null,
+    "error": null,
+    "log": "typecheck.log"
+  },
+  {
+    "command": "npx eslint src/themes/wolfhour/wolfhour-landscape.js src/playground/effects/wolfhour.effect.js",
+    "exitCode": 0,
+    "summary": "Scoped ESLint passed with no diagnostics.",
+    "startedAt": "2026-10-01T14:08:55.907Z",
+    "completedAt": "2026-10-01T14:09:09.353Z",
+    "signal": null,
+    "error": null,
+    "log": "scoped-eslint.log"
+  },
+  {
+    "command": "npx vitest run tests/unit/wolfhour-ambient-integration.test.js",
+    "exitCode": 0,
+    "summary": "Final fallback follow-up: 1 passed (1); 20 passed (20)",
+    "startedAt": "2026-10-01T14:16:42.557Z",
+    "completedAt": "2026-10-01T14:17:52.088Z",
+    "signal": null,
+    "error": null,
+    "log": "integration-final.log"
+  }
+]

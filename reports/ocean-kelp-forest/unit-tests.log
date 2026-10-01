@@ -1,0 +1,110 @@
+
+ RUN  v3.2.7 C:/Users/olov_/repos/serenity-blocks
+
+ ✓ tests/unit/ocean-composition.test.js (5 tests) 2133ms
+   ✓ Ocean reef composition > keeps the entire rendered floor submerged and the far edge below the near reef shelves  939ms
+   ✓ Ocean reef composition > seats all authored reef and rock footprints without changing geometry or drifting on later frames  1136ms
+ ✓ tests/unit/ocean-caustic-cache.test.js (1 test) 7434ms
+   ✓ Ocean baked texture cache lifetime > shares live textures, disposes once, and recreates deterministic data after eviction  7432ms
+ ✓ tests/unit/ocean-blender-atmosphere.test.js (3 tests) 1061ms
+   ✓ Ocean authored reef integration > retains a failed colony while loading and reporting the other real models  509ms
+   ✓ Ocean authored reef integration > animates authored fan and kelp weights and releases instanced morph resources  495ms
+ ✓ tests/unit/ocean-forest-materials.test.js (3 tests) 643ms
+   ✓ Ocean forest kelp surfaces > preserves Blender paint and morph animation on backend true  512ms
+ ✓ tests/unit/ocean-school-models.test.js (13 tests) 523ms
+stderr | tests/unit/ocean-jellyfish-lifecycle.test.js > Ocean authored jellyfish scene lifecycle > replaces the true backend fallback without duplicating the population
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-jellyfish-lifecycle.test.js > Ocean authored jellyfish scene lifecycle > replaces the false backend fallback without duplicating the population
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-jellyfish-lifecycle.test.js > Ocean authored jellyfish scene lifecycle > rejects a late asset after teardown and disposes its owned clones
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-jellyfish-lifecycle.test.js > Ocean authored jellyfish scene lifecycle > does not let an old load replace a newer rebuilt population
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-jellyfish-lifecycle.test.js > Ocean authored jellyfish scene lifecycle > keeps the immediate fallback when the authored asset cannot load
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-jellyfish-lifecycle.test.js > Ocean authored jellyfish scene lifecycle > animates and disposes native morph storage on backend true
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-jellyfish-lifecycle.test.js > Ocean authored jellyfish scene lifecycle > animates and disposes native morph storage on backend false
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-jellyfish-lifecycle.test.js > Ocean authored jellyfish scene lifecycle > waits for the replacement before warming deferred scene materials
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stdout | tests/unit/ocean-jellyfish-lifecycle.test.js > Ocean authored jellyfish scene lifecycle > defaults every quality tier to authored assets and retains a complete legacy comparison
+[Ocean] Debug flags active: legacyModels
+
+stderr | tests/unit/ocean-jellyfish-lifecycle.test.js > Ocean authored jellyfish scene lifecycle > defaults every quality tier to authored assets and retains a complete legacy comparison
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+ ✓ tests/unit/ocean-jellyfish-lifecycle.test.js (9 tests) 740ms
+ ✓ tests/unit/ocean-blender-assets.test.js (37 tests) 225ms
+ ✓ tests/unit/ocean-garden-models.test.js (8 tests) 209ms
+ ✓ tests/unit/ocean-fauna-backend.test.js (7 tests) 109ms
+ ✓ tests/unit/ocean-kelp-forest.test.js (2 tests) 63ms
+ ✓ tests/unit/ocean-jellyfish-model.test.js (8 tests) 68ms
+ ✓ tests/unit/ocean-reef-particles.test.js (2 tests) 55ms
+stderr | tests/unit/ocean-uniform-response.test.js > Ocean material response to current and glow > initializes both shader paths, skips steady writes, and broadcasts a gameplay surge
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-uniform-response.test.js > Ocean material response to current and glow > wires sampled GPU particles into the theme and keeps CPU updates only for jellyfish
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-uniform-response.test.js > Ocean material response to current and glow > initializes replacement uniforms after a scene rebuild at steady current and glow
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-uniform-response.test.js > Ocean material response to current and glow > initializes deferred legacy materials while their sources remain steady
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-uniform-response.test.js > Ocean material response to current and glow > initializes deferred tsl materials while their sources remain steady
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stderr | tests/unit/ocean-uniform-response.test.js > Ocean material response to current and glow > preserves the classic WebGL point-particle branches
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+ ✓ tests/unit/ocean-uniform-response.test.js (6 tests) 44ms
+stdout | tests/unit/ocean-scene-environment.test.js > Ocean production scene environment > preserves High water through a nested post reset
+🌊 [OceanTheme] Applied High quality preset
+
+stderr | tests/unit/ocean-scene-environment.test.js > Ocean production scene environment > preserves High water through a nested post reset
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stdout | tests/unit/ocean-scene-environment.test.js > Ocean production scene environment > preserves Ultra water through a nested post reset
+🌊 [OceanTheme] Applied Ultra quality preset
+
+stderr | tests/unit/ocean-scene-environment.test.js > Ocean production scene environment > preserves Ultra water through a nested post reset
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stdout | tests/unit/ocean-scene-environment.test.js > Ocean production scene environment > preserves Extreme water through a nested post reset
+🌊 [OceanTheme] Applied Extreme quality preset
+
+stderr | tests/unit/ocean-scene-environment.test.js > Ocean production scene environment > preserves Extreme water through a nested post reset
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stdout | tests/unit/ocean-scene-environment.test.js > Ocean production scene environment > retains its scene-owned background across quality rebuilds
+🌊 [OceanTheme] Applied Extreme quality preset
+
+stderr | tests/unit/ocean-scene-environment.test.js > Ocean production scene environment > retains its scene-owned background across quality rebuilds
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+
+stdout | tests/unit/ocean-scene-environment.test.js > Ocean production scene environment > retains its scene-owned background across quality rebuilds
+🌊 [OceanTheme] Applied High quality preset
+🌊 [OceanTheme] Applied Ultra quality preset
+🌊 [OceanTheme] Applied Low quality preset
+
+ ✓ tests/unit/ocean-scene-environment.test.js (4 tests) 49ms
+
+ Test Files  14 passed (14)
+      Tests  108 passed (108)
+   Start at  17:06:29
+   Duration  35.79s (transform 5.36s, setup 0ms, collect 22.98s, tests 13.36s, environment 4ms, prepare 8.79s)

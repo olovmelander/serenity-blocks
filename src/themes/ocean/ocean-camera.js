@@ -3,9 +3,9 @@
  *
  * Three moods with smooth 2.5s lerp:
  *   - Drift    : fov 54, reef-forward pitch sway, focalZ 42. Default.
- *   - Cathedral: fov 50, high pitch sway 0.13 (tilts up to shafts), focalZ 78.
+ *   - Cathedral: fov 52, gentle upward pitch (tilts up to shafts), focalZ 78.
  *                Triggered probabilistically when god rays visible upper half.
- *   - Trail    : fov 63, large dolly amp, focalZ 28.
+ *   - Trail    : fov 57, slightly wider dolly, focalZ 28.
  *                Triggered when a hero fish enters frame.
  *
  * Switches every 14–22s. Updates uFocalDepth each frame for DOF.
@@ -20,21 +20,21 @@ const MOODS = {
 const MOOD_PARAMS = {
     [MOODS.DRIFT]: {
         fov: 54,
-        pitchSway: 0.065,
+        pitchSway: 0.036,
         focalZ: 42,
-        dollyAmp: 4.2,
+        dollyAmp: 3.0,
     },
     [MOODS.CATHEDRAL]: {
-        fov: 50,
-        pitchSway: 0.13,
+        fov: 52,
+        pitchSway: 0.072,
         focalZ: 78,
         dollyAmp: 2.6,
     },
     [MOODS.TRAIL]: {
-        fov: 63,
-        pitchSway: 0.04,
+        fov: 57,
+        pitchSway: 0.028,
         focalZ: 28,
-        dollyAmp: 7,
+        dollyAmp: 4.5,
     },
 };
 
@@ -203,12 +203,12 @@ export class OceanCamera {
         // Combine pointer parallax
         // Preserve the authored sun/monument frame while retaining a gentle
         // sense of underwater parallax at the pointer extremes.
-        const parallaxX = this.currentPointerX * 14.0;
-        const parallaxY = this.currentPointerY * 7.0;
+        const parallaxX = this.currentPointerX * 8.0;
+        const parallaxY = this.currentPointerY * 4.0;
 
         // Smooth continuous camera drift (underwater floating feel)
-        const drift1 = Math.sin(time * 0.045) * 9;
-        const drift2 = Math.sin(time * 0.072 + 1.5) * 5;
+        const drift1 = Math.sin(time * 0.045) * 5;
+        const drift2 = Math.sin(time * 0.072 + 1.5) * 3;
         const drift3 = Math.cos(time * 0.028) * 7;
 
         // Shake impulse: high-frequency noise scaled by exponentially-decaying
@@ -225,12 +225,12 @@ export class OceanCamera {
 
         this.camera.position.x = parallaxX
             + drift1
-            + Math.sin(time * 0.12) * 2.4
+            + Math.sin(time * 0.12) * 1.2
             + shakeNoiseX * shakeMag;
         this.camera.position.y = 24
             + parallaxY
-            + Math.sin(time * 0.07) * 4
-            + Math.sin(time * 0.15) * 1.5
+            + Math.sin(time * 0.07) * 2.4
+            + Math.sin(time * 0.15) * 0.8
             + shakeNoiseY * shakeMag * 0.7;
         this.camera.position.z = 82
             + drift3 * 0.5
@@ -238,20 +238,20 @@ export class OceanCamera {
             + shakeNoiseZ * shakeMag * 0.4;
 
         // Look-at target that drifts gently — Cathedral adds upward pitch
-        const lookX = this.currentPointerX * 16.0
+        const lookX = this.currentPointerX * 9.0
             + drift2 * 0.4
-            + Math.sin(time * 0.04) * 3
+            + Math.sin(time * 0.04) * 1.7
             + shakeNoiseY * shakeMag * 0.6;
         const pitchOffset = Math.sin(time * 0.06) * p.pitchSway * 50;
-        const lookY = this.currentPointerY * 8.0 + 8
-            + Math.sin(time * 0.055) * 3.4
+        const lookY = this.currentPointerY * 4.5 + 14
+            + Math.sin(time * 0.055) * 2.0
             + pitchOffset
             + shakeNoiseX * shakeMag * 0.5;
         const lookZ = -34 + Math.cos(time * 0.045) * 7 + shakeNoiseZ * shakeMag * 0.3;
         this.camera.lookAt(lookX, lookY, lookZ);
 
         // Subtle camera roll for extra underwater feel
-        this.camera.rotation.z = Math.sin(time * 0.04) * 0.015 + shakeNoiseZ * shakeMag * 0.012;
+        this.camera.rotation.z = Math.sin(time * 0.04) * 0.007 + shakeNoiseZ * shakeMag * 0.012;
 
         // Update normalized focal depth for the post pass.
         this.focalDepth = normalizeFocalDepth(p.focalZ, this.camera);

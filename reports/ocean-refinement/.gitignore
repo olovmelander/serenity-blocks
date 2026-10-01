@@ -1,0 +1,26 @@
+# Exact baseline source is recoverable from commit 14b576a.
+baseline-source/
+
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/contact-study/capture.png
+!/contact-study/result.json
+!/final-combo/capture.png
+!/final-combo/result.json
+!/final-high-repeat/capture.png
+!/final-high-repeat/result.json
+!/final-high/capture.png
+!/final-high/result.json
+!/final-low/capture.png
+!/final-low/result.json
+!/final-webgl/capture.png
+!/final-webgl/result.json
+!/jellyfish-study/capture.png
+!/jellyfish-study/result.json
+!/original-isolated-repeat/capture.png
+!/original-isolated-repeat/result.json
+!/original-isolated/capture.png
+!/original-isolated/result.json
+!/original-isolated/source-manifest.json
+!/verification-summary.json

@@ -1,0 +1,196 @@
+{
+  "date": "2026-10-01",
+  "issue": "Production Chrome shows black distant water with jagged surface/seabed boundaries on Ultra/Extreme, unlike the previously checked High path.",
+  "reproduction": {
+    "host": "127.0.0.1:5185",
+    "viewport": [
+      1600,
+      732
+    ],
+    "quality": "Extreme",
+    "screenshotMatchedUserReport": true,
+    "browser": "isolated Chrome WebGPU, NVIDIA Ampere"
+  },
+  "cause": "Ocean left Scene.background null. The Ultra/Extreme chromatic-aberration RTT calls r186 resetRendererState, which changes renderer clear color to black before the nested scene pass. The scene inherited that transient clear state.",
+  "fixes": [
+    "Scene owns the 0x075a74 water background, matching the existing far-fog color and remaining stable during nested passes and quality rebuilds.",
+    "Normalize radial shaft weights, select bright highlights from the composite color source, and reduce their gain so sample count does not multiply scene-color contributions.",
+    "Expose Ultra/Extreme post features and the original renderer-clear-only reproduction switch in the isolated Ocean study."
+  ],
+  "verification": {
+    "unitTests": 103,
+    "testFiles": 12,
+    "newRegressionTests": 4,
+    "build": "passed including boot-closure check",
+    "lintErrors": 0,
+    "existingMaxLengthWarnings": 11,
+    "screenshotsReviewed": [
+      "extreme-playground-background",
+      "extreme-playground-final",
+      "extreme-final",
+      "ultra-final"
+    ],
+    "noValidationOrConsoleErrors": true
+  },
+  "performance": {
+    "medianFrameMsBefore": 6.1,
+    "medianFrameMsAfter": 6.1,
+    "extremeDrawCallsBefore": 203,
+    "extremeDrawCallsAfter": 203,
+    "extraRenderPasses": 0,
+    "note": "Short isolated local captures; GPU/CPU timestamp variation does not establish an all-hardware performance guarantee."
+  },
+  "captures": {
+    "extreme-before": {
+      "url": "http://127.0.0.1:5185/ocean-capture.html?t=8&quality=Extreme&width=1600&height=732&oceanTrackTimestamp=1",
+      "backend": "WebGPU",
+      "screenshot": "reports/ocean-startup/extreme-before/capture.png",
+      "measurementSummary": {
+        "wall": {
+          "samples": 1026,
+          "p50": 6.099999999998545,
+          "p95": 6.200000000000728
+        },
+        "cpu": {
+          "samples": 1027,
+          "p50": 7.399999994784594,
+          "p95": 11.199999999254942
+        },
+        "gpu": {
+          "samples": 493,
+          "p50": 0.7413759999999999,
+          "p95": 1.3690879999999996
+        },
+        "calls": {
+          "samples": 1027,
+          "p50": 203,
+          "p95": 203
+        },
+        "tris": {
+          "samples": 1027,
+          "p50": 964538,
+          "p95": 964538
+        }
+      },
+      "errors": [],
+      "warnings": [
+        {
+          "type": "warning",
+          "text": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+          "count": 2
+        },
+        {
+          "type": "warning",
+          "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+          "count": 1
+        }
+      ]
+    },
+    "extreme-playground-background": {
+      "url": "http://127.0.0.1:5185/playground.html?effect=ocean-reef-light&models=blender&life=1&t=8&quality=Extreme&width=1600&height=732&profile=1&trackTimestamp=1",
+      "backend": "WebGPU \u00c2\u00b7 nvidia ampere",
+      "screenshot": "reports/ocean-startup/extreme-playground-background/capture.png",
+      "measurementSummary": null,
+      "errors": [],
+      "warnings": []
+    },
+    "extreme-playground-final": {
+      "url": "http://127.0.0.1:5185/playground.html?effect=ocean-reef-light&models=blender&life=1&t=8&quality=Extreme&width=1600&height=732&profile=1&trackTimestamp=1",
+      "backend": "WebGPU \u00c2\u00b7 nvidia ampere",
+      "screenshot": "reports/ocean-startup/extreme-playground-final/capture.png",
+      "measurementSummary": null,
+      "errors": [],
+      "warnings": []
+    },
+    "extreme-final": {
+      "url": "http://127.0.0.1:5185/ocean-capture.html?t=8&quality=Extreme&width=1600&height=732&oceanTrackTimestamp=1",
+      "backend": "WebGPU",
+      "screenshot": "reports/ocean-startup/extreme-final/capture.png",
+      "measurementSummary": {
+        "wall": {
+          "samples": 1035,
+          "p50": 6.099999999998545,
+          "p95": 6.199999999998909
+        },
+        "cpu": {
+          "samples": 1036,
+          "p50": 6.600000005215406,
+          "p95": 10.00000000372529
+        },
+        "gpu": {
+          "samples": 508,
+          "p50": 0.8191999999999997,
+          "p95": 1.399808
+        },
+        "calls": {
+          "samples": 1036,
+          "p50": 203,
+          "p95": 203
+        },
+        "tris": {
+          "samples": 1036,
+          "p50": 964538,
+          "p95": 964538
+        }
+      },
+      "errors": [],
+      "warnings": [
+        {
+          "type": "warning",
+          "text": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+          "count": 2
+        },
+        {
+          "type": "warning",
+          "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+          "count": 1
+        }
+      ]
+    },
+    "ultra-final": {
+      "url": "http://127.0.0.1:5185/ocean-capture.html?t=8&quality=Ultra&width=1600&height=732&oceanTrackTimestamp=1",
+      "backend": "WebGPU",
+      "screenshot": "reports/ocean-startup/ultra-final/capture.png",
+      "measurementSummary": {
+        "wall": {
+          "samples": 1026,
+          "p50": 6.099999999998545,
+          "p95": 6.199999999998909
+        },
+        "cpu": {
+          "samples": 1027,
+          "p50": 4.699999999254942,
+          "p95": 5.900000002235174
+        },
+        "gpu": {
+          "samples": 515,
+          "p50": 0.917504,
+          "p95": 0.9707520000000001
+        },
+        "calls": {
+          "samples": 1027,
+          "p50": 173,
+          "p95": 173
+        },
+        "tris": {
+          "samples": 1027,
+          "p50": 801668,
+          "p95": 801668
+        }
+      },
+      "errors": [],
+      "warnings": [
+        {
+          "type": "warning",
+          "text": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+          "count": 2
+        },
+        {
+          "type": "warning",
+          "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+          "count": 1
+        }
+      ]
+    }
+  }
+}

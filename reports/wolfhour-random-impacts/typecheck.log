@@ -1,0 +1,18 @@
+{
+  "command": "npm run typecheck",
+  "exitCode": 0,
+  "summary": "tsc --noEmit passed.",
+  "startedAt": "2026-10-01T14:08:40.013Z",
+  "completedAt": "2026-10-01T14:08:55.906Z",
+  "signal": null,
+  "error": null,
+  "log": "typecheck.log"
+}
+
+STDOUT
+
+> serenity-blocks@1.0.0 typecheck
+> tsc --noEmit
+
+
+STDERR

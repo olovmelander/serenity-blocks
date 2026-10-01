@@ -149,7 +149,7 @@ export function create({
     camera.position.set(0, 95, 980);
     camera.lookAt(0, 0, 0);
 
-    const requestedScale = Number(params.get('scale'));
+    const requestedScale = params.has('scale') ? Number(params.get('scale')) : NaN;
     const resolutionScale = Number.isFinite(requestedScale)
         ? THREE.MathUtils.clamp(requestedScale, 0.5, 1)
         : 0.92;

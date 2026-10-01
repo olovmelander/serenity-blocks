@@ -1,0 +1,177 @@
+/* Mode loading uses the opening's wordmark, aurora and compositor-only motion. */
+.cinematic-loading {
+    --cinematic-title-pulse-duration: 2.2s;
+    position: fixed;
+    inset: 0;
+    z-index: 10002;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    isolation: isolate;
+    color: #e9eee9;
+    pointer-events: auto;
+    user-select: none;
+}
+.cinematic-loading__backdrop {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse at 30% 30%, #166675 0%, transparent 58%),
+        radial-gradient(ellipse at 78% 38%, #533b91 0%, transparent 56%),
+        radial-gradient(ellipse at 50% 82%, #183866 0%, transparent 62%),
+        #0a1433;
+}
+.cinematic-loading__aurora {
+    position: absolute;
+    width: 120%;
+    height: 75%;
+    left: -10%;
+    top: -10%;
+    object-fit: fill;
+    transform-origin: 50% 20%;
+    animation: sb-aurora-drift 18s ease-in-out infinite alternate;
+    will-change: transform, opacity;
+}
+.cinematic-loading__nebula {
+    position: absolute;
+    inset: -15%;
+    background:
+        radial-gradient(ellipse at 36% 50%, #36eac336, transparent 32%),
+        radial-gradient(ellipse at 64% 56%, #bf68ed38, transparent 35%);
+    animation: sb-nebula-breathe 12s ease-in-out infinite alternate;
+    will-change: transform, opacity;
+}
+.cinematic-loading__sky { position: absolute; inset: 0; pointer-events: none; }
+.cinematic-loading__stars {
+    opacity: 0.9;
+}
+.cinematic-loading__vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 42%, transparent 36%, #04091b77 100%);
+    pointer-events: none;
+}
+.cinematic-loading__content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: min(92vw, 620px);
+    transform: translateY(-14px);
+    text-align: center;
+}
+.cinematic-loading__glow {
+    position: absolute;
+    inset: -110px -50px;
+    background: radial-gradient(ellipse at center, #a4c8f026, transparent 66%);
+    animation: sb-logo-breathe var(--cinematic-title-pulse-duration) ease-in-out infinite;
+    will-change: transform, opacity;
+    pointer-events: none;
+}
+.cinematic-loading__wordmark {
+    display: block;
+    width: 100%;
+    height: auto;
+    animation: cinematic-title-pulse var(--cinematic-title-pulse-duration) ease-in-out infinite;
+    transform-origin: center;
+    will-change: transform, opacity;
+}
+.cinematic-loading__tagline {
+    margin: 32px 0 0;
+    color: #c8d6e6;
+    font: 9px 'Space Mono', monospace;
+    letter-spacing: 0.24em;
+    word-spacing: 0.12em;
+    text-indent: 0.24em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.cinematic-loading__title {
+    margin: 0;
+    width: min(360px, 74vw, 70svh);
+    max-width: 100%;
+    color: #a8dfeb;
+    font: 900 clamp(28px, 5vw, 60px)/1.15 'Orbitron', sans-serif;
+    overflow-wrap: anywhere;
+    text-transform: uppercase;
+}
+.cinematic-loading__title--wide { width: min(520px, 82vw, 108svh); }
+.cinematic-loading__eyebrow,
+.cinematic-loading__variant {
+    color: #d0e4ef;
+    font: 10px 'Space Mono', monospace;
+    letter-spacing: 0.3em;
+    text-indent: 0.3em;
+    text-transform: uppercase;
+}
+.cinematic-loading__eyebrow { margin: 0 0 22px; }
+.cinematic-loading__variant { margin: 22px 0 0; }
+.cinematic-loading__variant + .cinematic-loading__tagline { margin-top: 16px; color: #aabbd0; }
+.cinematic-loading__footer {
+    position: absolute;
+    bottom: max(8%, env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    z-index: 2;
+}
+.cinematic-loading__dots { display: flex; align-items: center; gap: 13px; height: 12px; }
+.cinematic-loading__dot {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: #b8a4ff;
+    box-shadow: 0 0 13px #a6b6e63d;
+    animation: cinematic-loading-wave 1.2s ease-in-out infinite;
+    animation-delay: -0.96s;
+    will-change: transform, opacity;
+}
+.cinematic-loading__dot:nth-child(2) { animation-delay: -0.72s; background: #aac7f6; }
+.cinematic-loading__dot:nth-child(3) { animation-delay: -0.48s; background: #9ee8ed; }
+.cinematic-loading__dot:nth-child(4) { animation-delay: -0.24s; background: #c5f1cf; }
+.cinematic-loading__dot:nth-child(5) { animation-delay: 0s; background: #ffac88; }
+/* Transform/opacity loops stay on the compositor during main-thread loading.
+   Evenly spaced phases keep the lights moving from their first visible frame. */
+@keyframes cinematic-title-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(0.95); opacity: 0.82; }
+}
+@keyframes cinematic-loading-wave {
+    0%, 100% { transform: translateY(0) scale(0.85); opacity: 0.35; }
+    50% { transform: translateY(-5px) scale(1.12); opacity: 1; }
+}
+.cinematic-loading__caption {
+    color: #b2cdde;
+    font: 9px 'Space Mono', monospace;
+    letter-spacing: 0.22em;
+    text-indent: 0.22em;
+    text-transform: uppercase;
+}
+.cinematic-loading[data-phase='countdown'] .cinematic-loading__footer {
+    opacity: 0;
+    transition: opacity 220ms ease-out;
+}
+@media (max-width: 480px) {
+    .cinematic-loading__aurora { width: 190%; left: -45%; height: 65%; }
+}
+@media (max-height: 540px) {
+    .cinematic-loading__title { width: min(280px, 60vw, 50svh); }
+    .cinematic-loading__title--wide { width: min(420px, 82vw, 100svh); }
+    .cinematic-loading__content { transform: translateY(-22px); }
+    .cinematic-loading__tagline { margin-top: 12px; font-size: 8px; }
+    .cinematic-loading__eyebrow { margin-bottom: 10px; font-size: 8px; }
+    .cinematic-loading__variant { margin-top: 10px; font-size: 8px; }
+    .cinematic-loading__variant + .cinematic-loading__tagline { margin-top: 10px; }
+    .cinematic-loading__footer { bottom: 5%; gap: 9px; }
+    .cinematic-loading__caption { font-size: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .cinematic-loading *, .cinematic-loading *::before {
+        animation: none !important;
+        transition: none !important;
+    }
+    .cinematic-loading__dot { opacity: 0.65; }
+}

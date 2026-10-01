@@ -1,0 +1,35 @@
+# Reproducible local fixture and source snapshots.
+baseline-build/
+baseline-source/
+chrome-tools.json
+*-v1.json
+*-v1.png
+
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/baseline-manifest.json
+!/baseline-motion.json
+!/checks.json
+!/revised-board.json
+!/revised-board.png
+!/revised-combo.json
+!/revised-combo.png
+!/revised-descent.json
+!/revised-descent.png
+!/revised-idle.json
+!/revised-idle.png
+!/revised-impact.json
+!/revised-impact.png
+!/revised-left.json
+!/revised-left.png
+!/revised-motion-first.json
+!/revised-motion.json
+!/revised-portrait.json
+!/revised-portrait.png
+!/revised-right.json
+!/revised-right.png
+!/revised-wide.json
+!/revised-wide.png
+!/validation-status.json
+!/verification.json

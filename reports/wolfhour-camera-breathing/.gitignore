@@ -1,0 +1,20 @@
+chrome-tools.json
+*.log
+
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/breathing-combo.json
+!/breathing-combo.png
+!/breathing-exhale.json
+!/breathing-exhale.png
+!/breathing-inhale.json
+!/breathing-inhale.png
+!/breathing-motion.json
+!/breathing-portrait.json
+!/breathing-portrait.png
+!/checks.json
+
+# Explicitly cited validation logs; other process output remains local.
+!/scoped-eslint-final.log
+!/unit-tests-final.log
