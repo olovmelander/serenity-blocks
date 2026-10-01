@@ -29,26 +29,43 @@ import * as THREE from 'three/webgpu';
 import {
     attribute,
     clamp,
+    dot,
     float,
     fract,
+    max,
+    mix,
+    normalize,
+    normalView,
     oneMinus,
+    positionViewDirection,
+    pow,
     sin,
     smoothstep,
+    step,
     uniform,
     uv,
+    vec2,
     vec3,
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
+import { getChapterProfile } from './shared/chapter-profile.js';
 import {
+    getActiveOdysseyChapterPositions,
     getChapterPathRange,
     getOdysseyPathCurve,
 } from '../path-utils.js';
-import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import {
+    computeStageBasis,
+    stageBasisToQuaternion,
+    urbanIgnition,
+    urbanLocalProgress,
+    urbanResolve,
+} from '../composition/odyssey-stage-frame.js';
 import {
     createSkyGradientTSL,
     createSynthwaveSunTSL,
     createCityBlocksTSL,
-    createCurtainWallTSL,
     createNeonCitySpireTSL,
     createHologramSignsTSL,
     createWetReflectionPlaneTSL,
@@ -56,6 +73,7 @@ import {
     createNeonHazeStackTSL,
     createSkylineSilhouetteTSL,
     createHorizonHazeTSL,
+    billboardStageVertical,
 } from './urban-dreams.tsl.js';
 
 export const URBAN_DREAMS_CONFIG = {
@@ -77,10 +95,14 @@ export const URBAN_DREAMS_CONFIG = {
 
 export const CH8_RETROSUN_STAGE = Object.freeze({
     revealFloor: 0.62,
-    sun: [0, 28, -700],
+    // Raised 28 → 110 with the disc shrink: the sun now sits ON the skyline (its lower third
+    // behind the far rooftops) instead of below the canyon's sightline.
+    sun: [0, 110, -700],
     skylineNear: [0, -42, -650],
     skylineFar: [40, -54, -675],
-    horizonHaze: [0, -12, -688],
+    // Behind the sun (was -688, IN FRONT of it: once the disc shrank to a readable size the
+    // haze band covered it entirely).
+    horizonHaze: [0, -12, -730],
 });
 
 const CYAN = 0x00f2ff;
@@ -105,14 +127,12 @@ function createSynthwaveSun(uniforms) {
 }
 
 function createCityBlocks(uniforms) {
-    const { group } = createCityBlocksTSL(uniforms.uTime, uniforms.uEnergy);
+    const { group } = createCityBlocksTSL(uniforms.uTime, uniforms.uEnergy, {
+        uCityLight: uniforms.uCityLight,
+        uIgniteRadius: uniforms.uIgniteRadius,
+        uDim: uniforms.uDim,
+    });
     group.name = 'city-blocks';
-    return group;
-}
-
-function createCurtainWall(uniforms) {
-    const { group } = createCurtainWallTSL(uniforms.uTime, uniforms.uEnergy);
-    group.name = 'curtain-wall-backdrop';
     return group;
 }
 
@@ -157,75 +177,81 @@ function createNeonRails() {
     return group;
 }
 
-// Rain wrap geometry: streaks spawn across this Y span and fall (world -Y), respawning at
-// the top once they pass the bottom. These constants mirror the former CPU loop's bounds
-// (spawn ~[-120, 240], floor -150) so the look is unchanged — the fall is now a uTime-driven
-// sawtooth in the shader instead of a per-frame JS rewrite of the aBase array (Batch5).
-const RAIN_SPAN_TOP = 240; // respawn height
-const RAIN_SPAN_BOTTOM = -150; // floor before wrap
-const RAIN_SPAN = RAIN_SPAN_TOP - RAIN_SPAN_BOTTOM; // 390
-const RAIN_FALL_SPEED = 96; // world units/sec (≈ 1.6/frame × 60fps, matches old loop)
+// Rain wrap geometry (CORRIDOR space, 2026-10): streaks spawn across this local-Y span and
+// fall along the city's -Y (its gravity), respawning at the top. The fall is a uTime-driven
+// sawtooth in the shader (Batch5), no CPU loop.
+const RAIN_SPAN_TOP = 150; // respawn height (above the eye line)
+const RAIN_SPAN_BOTTOM = -60; // the street datum
+const RAIN_SPAN = RAIN_SPAN_TOP - RAIN_SPAN_BOTTOM;
+const RAIN_FALL_SPEED = 120; // corridor units/sec
+const RAIN_COUNT = 900;
 
 function createRainCurtain(uniforms) {
     const uTime = uniforms?.uTime ?? uniform(0);
-    const count = 340;
+    const uRainDensity = uniforms?.uRainDensity ?? uniform(1);
+    const count = RAIN_COUNT;
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
-    // Per-streak phase + speed jitter so the curtain doesn't fall in lockstep (replaces the
-    // former `(index % 5) * 0.08` per-streak speed variance from the CPU loop).
     const phases = new Float32Array(count);
     const speeds = new Float32Array(count);
+    const seeds = new Float32Array(count);
 
     for (let index = 0; index < count; index += 1) {
         const stride = index * 3;
-        // WORLD-space spread around the near-vertical climb the camera makes through this
-        // chapter. The rain mesh lives on the UNROTATED group, so X/Z are lateral and Y is
-        // the climb axis (and gravity). A wide X/Z box blankets the canyon; a tall Y range
-        // keeps streaks present from below the camera up past the finale spire ahead.
-        positions[stride] = (Math.random() - 0.5) * 280;
-        positions[stride + 1] = Math.random() * 360 - 120; // initial Y (also the phase seed)
-        positions[stride + 2] = (Math.random() - 0.5) * 280;
-        sizes[index] = 2.5 + Math.random() * 3.5;
-        phases[index] = Math.random(); // 0..1 fall-cycle offset
-        speeds[index] = 0.86 + (index % 5) * 0.05; // mild per-streak speed variance
+        // A volume around the camera's actual travel (corridor z +120 → -60) and out over
+        // the boulevard; denser near the lane where it reads against the dark towers.
+        const lateral = (Math.random() - 0.5) * (Math.random() < 0.6 ? 90 : 260);
+        positions[stride] = lateral;
+        positions[stride + 1] = 0; // Y comes from the shader sawtooth
+        positions[stride + 2] = 140 - Math.random() * 260;
+        sizes[index] = 2.2 + Math.random() * 3.2;
+        phases[index] = Math.random();
+        speeds[index] = 0.82 + Math.random() * 0.36;
+        seeds[index] = Math.random();
     }
 
-    // Instanced billboard quads (THREE.Points renders as 1px on WebGPU). The fall animation
-    // is now driven entirely in the shader from `uTime` + per-instance phase/speed — no
-    // per-frame CPU loop over the aBase array and no needsUpdate re-upload (Batch5). aBase
-    // holds the static spawn X/Z and the streak's seed Y; the shader computes the falling Y.
     const geometry = makeQuadInstancedGeometry(count, {
         aBase: { array: positions, itemSize: 3 },
         aSize: { array: sizes, itemSize: 1 },
         aRainPhase: { array: phases, itemSize: 1 },
         aRainSpeed: { array: speeds, itemSize: 1 },
+        aRainSeed: { array: seeds, itemSize: 1 },
     });
 
     const aBase = attribute('aBase', 'vec3');
     const aSize = attribute('aSize', 'float');
     const aRainPhase = attribute('aRainPhase', 'float');
     const aRainSpeed = attribute('aRainSpeed', 'float');
+    const aRainSeed = attribute('aRainSeed', 'float');
 
-    // uTime-driven falling Y: a per-streak sawtooth wrapping over [BOTTOM, TOP]. fract()
-    // gives the 0..1 cycle position; map it down from TOP so 0 = just respawned at the top
-    // and 1 = at the floor. Phase + speed are per-instance so streaks fall out of lockstep.
     const cycle = fract(
         aRainPhase.add(uTime.mul(RAIN_FALL_SPEED / RAIN_SPAN).mul(aRainSpeed)),
     );
     const fallY = float(RAIN_SPAN_TOP).sub(cycle.mul(RAIN_SPAN));
     const center = vec3(aBase.x, fallY, aBase.z);
 
-    // World-space billboard half-extent (pixel gl_PointSize → small world size).
-    const positionNode = billboardWorld(center, aSize.mul(0.55));
+    // Thin, tall streak standing on the CITY's up (yaw-only facing in stage space), so it
+    // falls straight down the frame now that the camera shares the corridor frame (in world
+    // space it used to fall along the view axis, toward the lens).
+    const positionNode = billboardStageVertical(center, vec2(aSize.mul(0.045), aSize.mul(1.1)));
 
-    // Narrow in x, tall in y -> a falling streak inside each sprite quad.
     const c = uv().sub(0.5);
-    const streak = smoothstep(0.5, 0.0, c.x.abs().mul(7.0)).mul(smoothstep(0.5, 0.0, c.y.abs()));
+    const streak = smoothstep(0.5, 0.05, c.x.abs()).mul(smoothstep(0.5, 0.0, c.y.abs()));
+    // Rain CATCHES THE NEON: most drops are cool white-blue, a share glints magenta / cyan.
+    const tint = mix(
+        vec3(0.62, 0.74, 1.0),
+        mix(vec3(1.0, 0.3, 0.78), vec3(0.2, 0.9, 1.0), step(0.6, fract(aRainSeed.mul(17.0)))),
+        step(0.62, aRainSeed),
+    );
+    // Thins out over the finale resolve (drops above the density cut are dropped).
+    const alive = step(aRainSeed, uRainDensity);
+    const uOpacity = uniform(1); // 7→8 crossfade bridge (rain used to POP in at the seam)
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = vec3(0.72, 0.95, 1.0);
-    material.opacityNode = clamp(streak.mul(0.5), 0.0, 1.0);
+    material.colorNode = tint;
+    material.opacityNode = clamp(streak.mul(0.42), 0.0, 1.0).mul(alive).mul(uOpacity);
+    material.uniforms = { uOpacity };
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -272,35 +298,47 @@ function createSkyTraffic() {
     // trails — the per-trail MeshBasicMaterials collapse to 2 pipelines. Trails stay individual
     // meshes so update() slides each along the canyon (transform, not material). One shared opacity
     // (0.55) for trails + heroes; the 0.05 the heroes lose is imperceptible under additive blend.
-    const trailMaterial = (color) => new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-    });
+    // TRON light ribbons (2026-10): a WHITE-HOT core where the tube faces the camera,
+    // falling off to the saturated hue at the silhouette (view-facing ramp on the tube
+    // normal), soft-edged. Two shared node materials; uOpacity bridges the crossfade.
+    const trailMaterial = (hex) => {
+        const hue = new THREE.Color(hex);
+        const facing = max(0.0, dot(normalize(normalView), positionViewDirection));
+        const core = pow(facing, 6.0);
+        const uOpacity = uniform(1);
+        const material = new THREE.MeshBasicNodeMaterial();
+        material.colorNode = mix(vec3(hue.r, hue.g, hue.b), vec3(1.0, 0.96, 1.0), core.mul(0.85))
+            .mul(core.mul(0.45).add(0.55));
+        material.opacityNode = pow(facing, 0.8).mul(0.75).mul(uOpacity);
+        material.uniforms = { uOpacity };
+        material.transparent = true;
+        material.blending = THREE.AdditiveBlending;
+        material.depthWrite = false;
+        material.userData.emitsBloom = true;
+        return material;
+    };
     const cyanTrail = trailMaterial(CYAN);
     const magentaTrail = trailMaterial(MAGENTA);
     const matFor = (color) => (color === CYAN ? cyanTrail : magentaTrail);
 
-    // ~16 trails streaking FORWARD down the canyon at varied heights and depths across the
-    // full nearZ→farZ span (not clustered at the finale). Brighter + thicker so they READ
-    // as flying traffic instead of invisible threads; an advancing head / fading tail are
-    // animated in update() by sliding each trail along its forward axis.
+    // Sky-lane traffic re-staged onto the 2026-10 city: lanes above the boulevard and over
+    // the rooftops (y 18–70, above most roofs, above and below the eye line), streaking
+    // toward the spire, spread over the camera's travel and the mid-distance.
     const TRAIL_COUNT = 16;
+    const LANES = [-150, -95, -46, -18, 18, 46, 95, 150];
     for (let index = 0; index < TRAIL_COUNT; index += 1) {
         const t = index / (TRAIL_COUNT - 1);
-        const baseZ = 20 + (-1080 - 20) * t; // near → far down the corridor
-        const lane = ((index % 4) - 1.5) * 70; // weave laterally across the lane
-        const h = -20 + ((index * 37) % 160); // varied heights between street and skyline
+        const baseZ = 90 + (-620 - 90) * t; // near → far down the corridor
+        const lane = LANES[(index * 3) % LANES.length];
+        const h = 18 + ((index * 23) % 52);
         // Each trail runs forward (toward the finale, -Z) so it streaks down the canyon.
         const curve = new THREE.CatmullRomCurve3([
-            new THREE.Vector3(lane - 26, h + 8, baseZ + 60),
+            new THREE.Vector3(lane - 6, h + 3, baseZ + 60),
             new THREE.Vector3(lane, h, baseZ),
-            new THREE.Vector3(lane + 24, h - 6, baseZ - 70),
+            new THREE.Vector3(lane + 6, h - 2, baseZ - 70),
         ]);
         const trail = new THREE.Mesh(
-            new THREE.TubeGeometry(curve, 36, 0.7, 7, false),
+            new THREE.TubeGeometry(curve, 36, 0.55, 7, false),
             matFor(colors[index % colors.length]),
         );
         trail.userData.speed = 80 + index * 9; // world units/sec streaking forward
@@ -310,10 +348,11 @@ function createSkyTraffic() {
 
     // 1–2 bright HERO trails sweeping near the finale spire for a final flourish.
     [-1, 1].forEach((side, i) => {
+        // Swing around the spire's upper shaft (crown ~ y 372, base on the street).
         const curve = new THREE.CatmullRomCurve3([
-            new THREE.Vector3(side * 120, 70 + i * 30, -460),
-            new THREE.Vector3(side * 30, 120 + i * 20, -540),
-            new THREE.Vector3(-side * 90, 60 + i * 30, -640),
+            new THREE.Vector3(side * 140, 140 + i * 50, -470),
+            new THREE.Vector3(side * 40, 210 + i * 40, -530),
+            new THREE.Vector3(-side * 110, 160 + i * 50, -640),
         ]);
         const hero = new THREE.Mesh(
             new THREE.TubeGeometry(curve, 40, 1.0, 8, false),
@@ -366,32 +405,14 @@ function computeCorridorOrientation() {
     const tEnd = findT(range.end.y);
 
     // Average the tangent across the chapter for a stable corridor axis (the path wobbles
-    // in z but climbs steadily in y near the finale).
-    const forward = new THREE.Vector3();
-    const SAMPLES = 16;
-    const sample = new THREE.Vector3();
-    for (let i = 0; i <= SAMPLES; i += 1) {
-        const t = tStart + (tEnd - tStart) * (i / SAMPLES);
-        curve.getTangentAt(t, sample).normalize();
-        forward.add(sample);
-    }
-    if (forward.lengthSq() < 1e-6) {
+    // in z but climbs steadily in y near the finale). The basis maths lives in the shared
+    // stage-frame module so the CAMERA rides exactly this frame (stage framing key) — the
+    // city's up is the camera's up, so the towers stand upright on screen.
+    const basis = computeStageBasis(curve, tStart, tEnd);
+    if (!basis) {
         return quaternion;
     }
-    forward.normalize();
-
-    // Build a basis whose local +Z = -forward (so local -Z = camera forward). Near-vertical
-    // tangents make world-up degenerate, so fall back to world +Z as the reference up.
-    const worldUp = new THREE.Vector3(0, 1, 0);
-    const refUp = Math.abs(forward.dot(worldUp)) > 0.9
-        ? new THREE.Vector3(0, 0, 1)
-        : worldUp;
-    const zAxis = forward.clone().multiplyScalar(-1);
-    const xAxis = new THREE.Vector3().crossVectors(refUp, zAxis).normalize();
-    const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
-    const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
-    quaternion.setFromRotationMatrix(basis);
-    return quaternion;
+    return stageBasisToQuaternion(basis, quaternion);
 }
 
 export function createUrbanDreamsEnvironment() {
@@ -404,6 +425,15 @@ export function createUrbanDreamsEnvironment() {
     const uniforms = {
         uTime: uniform(0),
         uEnergy: uniform(0.45),
+        // City light level (0..1.2): how many floors are lit (finale ignition raises it).
+        uCityLight: uniform(1),
+        // Finale ignition wave: radius (corridor units) of the ring of light expanding from
+        // the spire — buildings inside it switch to their ignited floor count.
+        uIgniteRadius: uniform(0),
+        // Resolve: 0 = every building alive, 1 = every building guttered out.
+        uDim: uniform(0),
+        // Rain density (0..1): thins out over the finale resolve.
+        uRainDensity: uniform(1),
     };
     group.userData.uniforms = uniforms;
 
@@ -416,11 +446,8 @@ export function createUrbanDreamsEnvironment() {
     group.userData.yStart = chapterRange?.start.y ?? URBAN_DREAMS_CONFIG.yStart;
     group.userData.yEnd = chapterRange?.end.y ?? URBAN_DREAMS_CONFIG.yEnd;
 
-    // Sky dome + ambient are directionless backdrops — they stay on the (unrotated)
-    // environment group so the dome wraps the whole scene normally.
     const sky = createSkyGradient(uniforms);
     sky.renderOrder = -100;
-    group.add(sky);
 
     // PATH-ALIGNED CORRIDOR: every directional set piece (city banks, ring gates, rain,
     // spire, signs, wet street, sky traffic) lives in this container, rotated so its local
@@ -433,11 +460,16 @@ export function createUrbanDreamsEnvironment() {
     group.add(corridor);
     group.userData.corridor = corridor;
 
-    // Continuous dark curtain-wall backdrop per side FIRST (behind everything) so the void
-    // between canyon towers always shows a dim lit wall, never raw black.
-    const curtainWall = createCurtainWall(uniforms);
-    corridor.add(curtainWall);
-    group.userData.curtainWall = curtainWall;
+    // The sky dome lives IN the corridor (2026-10): its gradient keys off the dome's local
+    // +Y, and on the unrotated group that is world up — which in this chapter is nearly the
+    // camera's FORWARD axis, so the zenith sat dead ahead and the light-pollution horizon
+    // ring wrapped the view axis. Rotated with the city, the horizon glow sits behind the
+    // skyline where it silhouettes the towers.
+    corridor.add(sky);
+
+    // (The 420-u curtain-wall backdrop is retired from the live chapter: with the 2026-10
+    // city re-stage six tower banks fill the frame to the horizon and the walls would read as
+    // two featureless slabs above the rooftops. The builder stays for the pilot harness.)
 
     // SYNTHWAVE SUN hero backdrop: a colossal glowing disc DEAD AHEAD on the corridor
     // centerline, low on the horizon and far down the canyon (beyond the finale spire at
@@ -467,7 +499,7 @@ export function createUrbanDreamsEnvironment() {
     group.userData.skyline = [skylineNear.mesh, skylineFar.mesh];
     const horizonHaze = createHorizonHazeTSL(uniforms.uTime);
     horizonHaze.mesh.position.set(...CH8_RETROSUN_STAGE.horizonHaze);
-    horizonHaze.mesh.renderOrder = -90;
+    horizonHaze.mesh.renderOrder = -98; // after the dome, BEFORE the sun (-95)
     corridor.add(horizonHaze.mesh);
     group.userData.horizonHaze = horizonHaze.mesh;
 
@@ -477,13 +509,14 @@ export function createUrbanDreamsEnvironment() {
     // oversized magenta holo-billboard hangs from the deck.
     const gateBridge = new THREE.Group();
     gateBridge.name = 'gate-bridge';
-    const bridgeMaterial = new THREE.MeshBasicMaterial({ color: 0x07060f });
+    const bridgeMaterial = new THREE.MeshBasicMaterial({ color: 0x0b0a1c });
     const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(190, 9, 16), bridgeMaterial);
     bridgeDeck.position.y = 42;
     gateBridge.add(bridgeDeck);
     [-88, 88].forEach((pylonX) => {
         const pylon = new THREE.Mesh(new THREE.BoxGeometry(10, 110, 12), bridgeMaterial);
         pylon.position.set(pylonX, -8, 0);
+        pylon.userData.isPylon = true;
         gateBridge.add(pylon);
     });
     const holoMaterial = new THREE.MeshBasicNodeMaterial();
@@ -497,7 +530,11 @@ export function createUrbanDreamsEnvironment() {
         .mul(oneMinus(smoothstep(0.94, 1.0, holoUv.x)))
         .mul(smoothstep(0.0, 0.1, holoUv.y))
         .mul(oneMinus(smoothstep(0.9, 1.0, holoUv.y)));
-    holoMaterial.opacityNode = holoEdge.mul(0.75);
+    // uOpacity bridge: with an opacityNode, material.opacity is a dead write (r181+), so the
+    // billboard ignored the 7→8 crossfade and POPPED in at the seam.
+    const holoOpacity = uniform(1);
+    holoMaterial.opacityNode = holoEdge.mul(0.42).mul(holoOpacity);
+    holoMaterial.uniforms = { uOpacity: holoOpacity };
     holoMaterial.transparent = true;
     holoMaterial.depthWrite = false;
     holoMaterial.side = THREE.DoubleSide;
@@ -506,7 +543,32 @@ export function createUrbanDreamsEnvironment() {
     const holoBillboard = new THREE.Mesh(new THREE.PlaneGeometry(64, 22), holoMaterial);
     holoBillboard.position.y = 24;
     gateBridge.add(holoBillboard);
-    gateBridge.position.set(0, 0, -300);
+    // Re-staged 2026-10: at z -300 with the deck 30 u above the eye the bridge only ever
+    // read as a black bar slicing the sun, and the camera (which travels corridor z +90 → -10)
+    // never passed under it. It is now a LOW skybridge seen from above, spanning the
+    // boulevard below the eye line: its magenta billboard glows over the wet street, below
+    // the sun/spire sightline, as one more layer of the city rather than a bar across it.
+    const BRIDGE_DECK_Y = -38;
+    bridgeDeck.position.y = BRIDGE_DECK_Y;
+    gateBridge.children.forEach((child) => {
+        if (!child.userData.isPylon) return;
+        const pylonHeight = BRIDGE_DECK_Y - (-60); // street datum → deck
+        child.scale.y = pylonHeight / 110;
+        child.position.y = -60 + pylonHeight * 0.5;
+    });
+    // The sign stands ON the deck facing the approach; the camera flies over the bridge
+    // (corridor z +12) around local 0.75 — compression under the sign, release to the spire.
+    holoBillboard.scale.y = 0.6;
+    holoBillboard.position.y = BRIDGE_DECK_Y + 4.5 + 11 * 0.6 + 0.5;
+    gateBridge.position.set(0, 0, 12);
+    gateBridge.scale.set(0.62, 1, 1); // span the boulevard (inner banks), not the whole city
+    // A slim deck with a neon edge strip (same holo material: +1 draw, no new pipeline)
+    // instead of a 9-u black slab across the lower frame.
+    bridgeDeck.scale.y = 0.45;
+    const deckStrip = new THREE.Mesh(new THREE.PlaneGeometry(190, 1.6), holoMaterial);
+    deckStrip.position.z = 8.05;
+    deckStrip.scale.y = 1 / 0.45;
+    bridgeDeck.add(deckStrip);
     gateBridge.traverse((child) => { child.frustumCulled = false; });
     corridor.add(gateBridge);
     group.userData.gateBridge = gateBridge;
@@ -527,13 +589,11 @@ export function createUrbanDreamsEnvironment() {
     corridor.add(hazeStack);
     group.userData.hazeStack = hazeStack;
 
-    // Rain stays on the UNROTATED group (like every other shared billboard, which only
-    // tolerates a pure-translation model matrix — a rotated parent would tilt the
-    // camera-facing quads). It is spread in WORLD space around the climbing path and falls
-    // in world -Y, which reads as near-vertical streaks down the frame. The fall is driven
-    // in-shader from the shared uTime (Batch5) — no per-frame aBase rewrite.
+    // Rain lives IN the corridor (2026-10) and falls along the CITY's down: in world space
+    // the climb is nearly vertical, so the old world -Y fall streamed along the view axis
+    // into the lens. The stage-space billboard keeps each streak upright on the city's up.
     const rain = createRainCurtain(uniforms);
-    group.add(rain);
+    corridor.add(rain);
     group.userData.rain = rain;
 
     const spire = createNeonCitySpire(uniforms);
@@ -563,9 +623,15 @@ export function createUrbanDreamsEnvironment() {
     corridor.add(traffic);
     group.userData.traffic = traffic;
 
-    // Subtle cool ambient so the facades cohere as one city against true black instead
-    // of scattered bright blocks; the cyan-leaning tint ties the lit windows together.
-    group.add(acquireChapterLight(8, 'AmbientLight', { color: 0x101a2a, intensity: 0.45 }));
+    // Ambient from the chapter profile (one source of truth with the director's blended
+    // atmosphere; was a hardcoded cyan-leaning 0x101a2a/0.45 that disagreed with the
+    // profile's violet 0x2a1a3a/0.4). Only the lit materials here (the level-node rings)
+    // read it — the city itself is unlit node materials — so it now tints them violet.
+    const { atmosphere } = getChapterProfile(8);
+    group.add(acquireChapterLight(8, 'AmbientLight', {
+        color: atmosphere.ambientLight,
+        intensity: atmosphere.ambientIntensity,
+    }));
 
     // Anchor to the path's FULL centre (x/y/z), not just Y, so the city corridor, ring
     // gates and spire stay aligned to the route and the path never clips chapter geometry.
@@ -627,22 +693,39 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
     // aBase array and NO needsUpdate re-upload here anymore (Batch5). uTime was already
     // ticked above, which is all the rain animation needs.
 
-    // FINALE REVEAL: as path progress approaches 100% the megastructure ignites — the
-    // closing payoff staged behind the final node. The reveal ramps over the last stretch
-    // of the journey (0 below ~82% → 1 at the end); when progress is unknown (pilot/
-    // standalone) it idles at a lit baseline so the spire is never dead.
-    const reveal = cameraProgress === null
-        ? 0.6
-        : THREE.MathUtils.clamp((cameraProgress - 0.82) / 0.18, 0, 1);
-    // Ease the ignition (smootherstep) for a graceful crescendo.
-    const easedReveal = reveal * reveal * (3 - 2 * reveal);
+    // FINALE CLOCK (2026-10): ONE in-chapter clock shared with the camera crane and the post
+    // ignition swell (composition/odyssey-stage-frame.js). The old ramp used GLOBAL progress
+    // (p-0.82)/0.18, which started back in chapter 6 — the player arrived to a spire already
+    // ~88 % ignited, and the crane fired after the ignition was over. Now: a dark arrival,
+    // ignition across chapter-local 0.35→0.9 (camera crane + bloom swell together), then a
+    // settle. Unknown progress (pilot/standalone) idles at a lit baseline.
+    const positions = getActiveOdysseyChapterPositions();
+    const local = Number.isFinite(cameraProgress)
+        ? urbanLocalProgress(cameraProgress, positions[7], positions[8] ?? 1)
+        : null;
+    const easedReveal = local === null ? 0.6 : urbanIgnition(local);
+    const resolve = local === null ? 0 : urbanResolve(local);
 
     // Publish the ignition state at the group level for the deferred serial batches:
     // B7 reads `reveal`/`progress` to drive the camera crane (camUp 1.5→6, lookUp 2.5→7
     // over the last 18%); B4 reads them for the ch8 exposure/bloom swell. `uReveal` mirrors
     // the eased value so a TSL consumer can bind it directly.
     group.userData.reveal = easedReveal;
+    group.userData.resolve = resolve;
     group.userData.progress = cameraProgress ?? 0;
+
+    // CITY IGNITION: the arrival city is dim (fewer lit floors); as the spire fires, a ring
+    // of light expands from its base across the city (buildings inside the ring switch to
+    // their ignited floor count), reaching past the camera by the end of the ignition.
+    if (uniforms?.uCityLight) {
+        uniforms.uCityLight.value = 0.62;
+        uniforms.uIgniteRadius.value = easedReveal * 820;
+        // RESOLVE: a third of the buildings gutter out one by one over the last tenth; the
+        // spire, hero trims and the Retrosun stay lit for the held final frame.
+        uniforms.uDim.value = resolve * 0.34;
+        // The rain thins out with the resolve.
+        if (uniforms.uRainDensity) uniforms.uRainDensity.value = 1 - resolve * 0.7;
+    }
     if (group.userData.uReveal) {
         group.userData.uReveal.value = easedReveal;
     }
@@ -657,13 +740,12 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             + easedReveal * (1 - CH8_RETROSUN_STAGE.revealFloor);
     }
 
-    // EXIT DIMMING (creative plan Transition Out): across the journey's very end the
-    // city gutters out — windows and signs dim through the shared energy uniform while
-    // the reveal-driven sun stays the LAST THING LIT, its ember sinking as the encore
-    // resolves (the hint of descent back toward the core).
-    if (uniforms?.uEnergy && Number.isFinite(cameraProgress)) {
-        const dimT = THREE.MathUtils.smoothstep(cameraProgress, 0.965, 1.0);
-        uniforms.uEnergy.value *= (1 - dimT * 0.85);
+    // EXIT DIMMING (creative plan Transition Out): over the resolve (chapter-local 0.9→1,
+    // the same finale clock) windows and signs dim through the shared energy uniform while
+    // the reveal-driven sun stays the LAST THING LIT. (Was keyed to global p 0.965, i.e.
+    // it dimmed the city 85 % from 14 % into the chapter — during the ignition.)
+    if (uniforms?.uEnergy && local !== null) {
+        uniforms.uEnergy.value *= (1 - resolve * 0.6);
     }
 
     const { spire } = group.userData;
@@ -677,24 +759,20 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             spire.userData.beacon.intensity = 0.7
                 + Math.sin(time * 3.0) * 0.3
                 + energy * 0.4
-                + reveal * 2.3; // beacon flares to ~3.0 as the reveal completes
+                + easedReveal * 2.3; // beacon flares to ~3.0 as the reveal completes
         }
         // EXPANDING SHOCK RING from the crown — scales outward (eased) and fades as the
         // reveal completes, a triumphant additive pulse. Idle (reveal≈0) keeps it tiny and
         // transparent; on ignition it sweeps out across the canyon then fades.
         const { shockRing } = spire.userData;
         if (shockRing) {
-            // A travelling pulse: phase loops once reveal is high so the ring keeps pulsing.
-            const pulse = (easedReveal * 0.7 + (Math.sin(time * 1.1) * 0.5 + 0.5) * 0.3);
-            const ringScale = 1 + pulse * 34; // expands up to ~34× its base radius
-            shockRing.scale.setScalar(ringScale);
-            // Brightest mid-expansion, fading as it grows — gated by reveal so it's silent
-            // before ignition. Capped well below 1.0 (soft additive, bloom gilds it).
-            shockRing.material.opacity = THREE.MathUtils.clamp(
-                easedReveal * (1 - pulse) * 0.85,
-                0,
-                0.7,
-            );
+            // The ignited beacon's HEARTBEAT: a thin ring launches from the crown every ~4.2 s,
+            // expands across the skyline and fades — silent before ignition (one motion
+            // accent for the finale shot). Radius in world units (unit-radius torus).
+            const phase = (time / 4.2) % 1;
+            shockRing.scale.setScalar(24 + phase * 520);
+            const fade = (1 - phase) * (1 - phase);
+            shockRing.material.opacity = THREE.MathUtils.clamp(easedReveal * fade * 0.62, 0, 0.62);
         }
     }
 
@@ -709,14 +787,14 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             // Streak each trail FORWARD down the canyon (advancing head); wrap back to the
             // near end when it passes the far end so the traffic flows continuously.
             const baseZ = trail.userData.baseZ ?? 0;
-            const span = 1100;
+            const span = 760;
             const travelled = (time * (trail.userData.speed ?? 80)) % span;
             trail.position.z = -travelled; // advance toward the finale (-Z)
             // Respawn wrap keeps the trail within the corridor (baseZ is the curve anchor).
-            if (baseZ - travelled < -1120) {
+            if (baseZ - travelled < -680) {
                 trail.position.z = -travelled + span;
             }
-            trail.position.x = Math.sin(time * 0.6 + index) * 8; // slight lateral drift
+            trail.position.x = Math.sin(time * 0.6 + index) * 3; // slight lateral drift
         });
     }
 }
