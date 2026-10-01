@@ -348,6 +348,8 @@ const DEPART_AIRGLOW = Object.freeze([0.20, 0.78, 0.46]);
  * 1.0 at the act edge, through the same departure the fade opens on (actT ~0.82).
  */
 const SCRIPT_RUNOUT_FROM = 0.82;
+/** Peak opacity of the valley mist (item 7) — a veil, never a fog bank. */
+const VALLEY_MIST_GAIN = 0.20;
 /**
  * ATMOSPHERIC THINNING (Wave 3 / F3): how much of each mass's body the full thin removes,
  * as a fraction of its distance to the mass centre. 0.30 at the schedule's 0.85 cap means
@@ -1043,15 +1045,33 @@ export function createOdysseyWorld({
      * trades some haze for colour and must not trade all of it.
      */
     const AERIAL_RATE_LAND = 0.62;
-    const applyAerial = (lit, wp, ceil = AERIAL_CEIL_WATER, rate = 1) => {
+    const applyAerial = (lit, wp, ceil = AERIAL_CEIL_WATER, rate = 1, valleyMist = false) => {
         const to = wp.sub(cameraPosition);
         const d = length(to);
         const dirY = to.div(max(d, float(0.001))).y;
-        const air = mix(
+        const airBase = mix(
             lit,
             skyColourFor(dirY),
             clamp(float(1).sub(exp(d.mul(uAerialK.negate()))).mul(float(rate)), 0, ceil),
         );
+        // VALLEY MIST (item 7) — height haze for LAND seen from the climb. Aerial perspective
+        // here is a function of range only, so from 600 u up the forest at the massif's feet
+        // and the meadow beside the rail hazed identically and the slopes stacked flat. Mist
+        // pools LOW: a fragment near the valley floor takes a pale horizon-white veil that
+        // thins with its own height and grows with range, so the massif rises out of a misty
+        // floor — the depth layering every reference mountain has. Gated on the EYE being
+        // above 350 u, so ch3 (eye 300-360, at the shore) is untouched by construction; JS
+        // flag, so water and sky never build the term.
+        const air = valleyMist
+            ? mix(
+                airBase,
+                mix(uSkyHorizon, vec3(0.96, 0.97, 1.0), float(0.35)),
+                float(1).sub(smoothstep(float(ODYSSEY_SEA_LEVEL + 30), float(ODYSSEY_SEA_LEVEL + 300), wp.y))
+                    .mul(smoothstep(float(260), float(1500), d))
+                    .mul(smoothstep(float(350), float(470), cameraPosition.y))
+                    .mul(VALLEY_MIST_GAIN),
+            )
+            : airBase;
         // PER-CHANNEL BEER-LAMBERT, so red dies first and distance reads as WATER rather than
         // as blue fog: one scalar became a vec3 whose red extinguishes ~3.5x faster than blue,
         // the one cue that separates "underwater" from "tinted air". The old 0.97 clamp is gone
@@ -1633,7 +1653,7 @@ export function createOdysseyWorld({
         return mix(graded, uWorldFadeColour, fadeAmt);
     };
     const toOutput = (c) => toOutputFaded(c, uWorldFade);
-    groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND));
+    groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND, true));
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
     groundMesh.frustumCulled = false;
@@ -3769,7 +3789,9 @@ export function createOdysseyWorld({
     const fvRim = float(1).sub(abs(dot(normalWorld, fvView)));
     const forestV2Col = fvBody.mul(fvLight)
         .add(uSunColour.mul(fvBack.mul(fvRim).mul(fvCol.y).mul(FOREST_BACKLIT_GAIN)));
-    forestV2Mat.colorNode = toOutput(applyAerial(forestV2Col, positionWorld));
+    // The trees stand IN the valley mist with the ground under them (item 7), or every crown
+    // would pop out of the veil its own roots sit in.
+    forestV2Mat.colorNode = toOutput(applyAerial(forestV2Col, positionWorld, AERIAL_CEIL_WATER, 1, true));
 
     // `forest &&`, not `forestV2` alone: the measurement lever must switch off the WHOLE
     // forest whichever one is mounted, or `?odysseyWorldNoForest=1` prices a half-empty world
