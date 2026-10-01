@@ -25,7 +25,7 @@ const DUAL_STATE_ALLOWLIST = [
     'astral-weave', 'chiral-gold',
     'cosmic-noir', 'fluid-dreams', 'ice-temple', 'lunara',
     'neon-district', 'neon-dusk', 'ocean', 'stellar-drift',
-    'stellar-velocity', 'golden-forest', 'synthwave-sunset', 'winter', 'wolfhour',
+    'stellar-velocity', 'golden-forest', 'winter', 'wolfhour',
 ];
 
 const WEBGPU_RE = /new\s+[\w$.]*WebGPURenderer\s*\(/;

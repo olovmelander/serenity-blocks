@@ -1643,6 +1643,10 @@ async function writeArtifacts(config, {
  * copies of the built-in prototypes, so a `GPUDevice.prototype` patch there is invisible to the page.
  */
 async function installThemePerfInstrument(win) {
+    // Electron 38: CDP `Page.enable` on a webContents that has never navigated never resolves
+    // (the lane hung silently until the worker timeout, every theme, 2026-09-30). Commit a blank
+    // document first; addScriptToEvaluateOnNewDocument still applies to the real navigation.
+    if (!win.webContents.getURL()) await win.loadURL('about:blank');
     const dbg = win.webContents.debugger;
     if (!dbg.isAttached()) dbg.attach('1.3');
     await dbg.sendCommand('Page.enable');
