@@ -27,19 +27,29 @@
 
 import * as THREE from 'three/webgpu';
 import {
+    abs,
     atan,
     attribute,
+    cameraPosition,
     clamp,
+    cross,
     dot,
+    exp,
     float,
+    floor,
     fract,
+    fwidth,
     length,
     max,
+    min,
     mix,
+    modelWorldMatrixInverse,
+    normalGeometry,
     normalize,
     normalView,
     oneMinus,
     positionLocal,
+    positionView,
     positionViewDirection,
     pow,
     sin,
@@ -49,17 +59,54 @@ import {
     uv,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import { fbm2, hash21 } from './shared/odyssey-tsl-noise.js';
-import {
-    billboardVerticalWorld,
-    billboardWorld,
-    makeQuadInstancedGeometry,
-} from './shared/odyssey-tsl-billboard.js';
+import { makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
 const CYAN = 0x00f2ff;
 const MAGENTA = 0xff3fb4;
+
+// ── STAGE-SPACE billboards ─────────────────────────────────────────────────────────
+// The shared billboardWorld()/billboardVerticalWorld() take `center` in WORLD space, but
+// every urban billboard lives in the ROTATED corridor (or the translated chapter group), so
+// their camera vector mixed spaces: the quads faced the WORLD ORIGIN, and inside the
+// corridor rotation the Retrosun disc turned nearly edge-on (it read as a dark smudge).
+// These variants bring the camera into the mesh's LOCAL space first, so a quad faces the
+// camera from any parent transform, with the stage's local +Y as its up (scanlines and
+// haze columns stay level with the city horizon).
+
+/**
+ * Camera-facing quad corner in LOCAL space (any parent transform), up = local +Y.
+ * @param {*} center vec3 local-space centre
+ * @param {*} size float half-extent (local units)
+ * @returns {*} vec3 local position
+ */
+export function billboardStage(center, size) {
+    const camLocal = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1.0)).xyz;
+    const toCam = normalize(camLocal.sub(center));
+    const right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
+    const up = cross(toCam, right);
+    const corner = positionLocal.xy;
+    return center.add(right.mul(corner.x.mul(size))).add(up.mul(corner.y.mul(size)));
+}
+
+/**
+ * Yaw-only camera-facing quad in LOCAL space (stands upright on local +Y).
+ * @param {*} center vec3 local-space centre
+ * @param {*} sizeXY vec2 (half-width, half-height)
+ * @returns {*} vec3 local position
+ */
+export function billboardStageVertical(center, sizeXY) {
+    const camLocal = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1.0)).xyz;
+    const toCam = camLocal.sub(center);
+    const flat = normalize(vec3(toCam.x, 0.0, toCam.z));
+    const right = normalize(cross(vec3(0.0, 1.0, 0.0), flat));
+    const corner = positionLocal.xy;
+    const size = vec2(sizeXY);
+    return center.add(right.mul(corner.x.mul(size.x))).add(vec3(0.0, 1.0, 0.0).mul(corner.y.mul(size.y)));
+}
 
 // ── Night-sky gradient dome (-100 backstop; must NOT bloom) ───────────────────────
 
@@ -152,8 +199,12 @@ export function createSkyGradientTSL(uTime, uEnergy) {
 // ── Synthwave sun hero backdrop (additive disc + scanlines + halo; bloom-eligible) ─
 
 export const CH8_RETROSUN_SHADER_SETTINGS = Object.freeze({
-    sunRadius: 320,
-    haloRadius: 500,
+    // 2026-10: 320 → 150. At the -700 station the old disc subtended ~45 deg (70 % of frame
+    // height) and only ever showed as a bright slot between towers; ~22 deg reads as a
+    // colossal sun sitting on the skyline, as the creative plan intended (25–30 % of frame).
+    // NB these are billboard QUAD SIZES (half-extent = size / 2): disc radius 130 u.
+    sunRadius: 260,
+    haloRadius: 600,
     discAlpha: 0.92,
     haloAlpha: 0.16,
     alphaCap: 0.96,
@@ -211,7 +262,7 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
     const breathe = sin(uTimeNode.mul(0.45)).mul(0.04).add(1.0);
     const revealHeat = uRevealNode.mul(0.16).add(1.0); // disc swells ~16% on ignition
     const size = aSize.mul(breathe).mul(revealHeat);
-    const positionNode = billboardWorld(aBase, size);
+    const positionNode = billboardStage(aBase, size);
 
     // Sprite coords: cx,cy in [-0.5,0.5]; vTop in [0,1] (0 bottom → 1 top) for the gradient.
     const cuv = uv();
@@ -379,80 +430,157 @@ export function createHorizonHazeTSL(uTime = uniform(0)) {
     };
 }
 
-// ── Procedural lit-window facade (additive-read interior glow; bloom-eligible) ────
+// ── Procedural night-tower facade (dark glass mass + sparse clustered lit floors) ────
 
 export const CH8_FACADE_VALUE_SETTINGS = Object.freeze({
-    darkCutoff: 0.35,
-    midCutoff: 0.88,
-    brightCutoff: 0.975,
-    dimGain: 0.12,
-    midGain: 0.34,
-    brightGain: 0.78,
-    colorGain: 0.52,
-    edgeSheen: 0.1,
+    // Window module in world units (one floor ~3.4 u, one bay ~2.6 u) — towers read as
+    // dozens of storeys, not a handful of giant tiles.
+    floorHeight: 3.0,
+    bayWidth: 1.9,
+    // Fraction of a lit floor's windows that are on (runs of 4 bays switch together).
+    floorFill: 0.68,
+    // Scattered single lit windows on dark floors, as a fraction of occupancy.
+    scatter: 0.1,
+    // Emission gains (kept < 1 so bloom gilds the brightest windows, never clips).
+    warmGain: 0.62,
+    coolGain: 0.5,
+    neonGain: 0.72,
+    trimGain: 0.85,
+    // Dark-glass body + sky reflection.
+    glassReflect: 0.2,
+    edgeSheen: 0.035,
+    // Atmospheric depth (light-pollution haze) — near towers darkest, far towers lift
+    // toward the horizon haze so the ranks separate into silhouette layers.
+    hazeNear: 140,
+    hazeFar: 1000,
+    hazeMax: 0.86,
 });
 
 /**
- * ONE shared facade NodeMaterial for the whole instanced tower canyon (QW8). The former
- * per-tower `uSeed`/`uGrid` UNIFORMS are now read as PER-INSTANCE attributes off the
- * InstancedMesh geometry, so all ~240 towers share this single material/program instead
- * of compiling ~240 unique ones. The look is byte-for-byte the same as the per-tower
- * material: identical window grid, hash seed, flicker, palette and fresnel sheen — only
- * the source of `seed`/`cols`/`rows` moved from a uniform to `attribute('aFacade')`.
+ * ONE shared facade NodeMaterial for the whole instanced tower canyon (QW8). Per-instance
+ * attributes carry the variation:
+ *   aFacade = vec4(seed, occupancy, warmBias, hero)   hero 0 none / 1 cyan / 2 magenta
+ *   aDims   = vec3(width, height, depth)              world size (= instance scale)
  *
- *   aFacade = vec3(seed, cols, rows)  // per-instance, set in createCityBlocksTSL
+ * The 2026-10 rewrite replaces the even "mosaic" (every 4-u tile a coloured square) with a
+ * night skyscraper: a near-black glass mass with vertical mullion structure and a faint
+ * sky reflection; WHOLE FLOORS light in clustered runs (most floors dark), each floor warm
+ * (amber residential) or cool (white-cyan office) with rare neon floors; roofs dark; hero
+ * towers carry vertical neon edge trim + a crown band; a street-neon bounce warms each
+ * tower's base; distance haze separates the ranks. `uCityLight` (0..1.2) switches floors on
+ * (the finale ignition), `uDim` gutters whole buildings out one by one (the resolve).
  */
-function createFacadeMaterial(uTime, uEnergy) {
-    const uColorA = uniform(new THREE.Color(CYAN));
-    const uColorB = uniform(new THREE.Color(MAGENTA));
+function createFacadeMaterial(uTime, uEnergy, { uCityLight, uDim } = {}) {
+    const S = CH8_FACADE_VALUE_SETTINGS;
+    const cityLight = uCityLight ?? uniform(1);
+    const dim = uDim ?? uniform(0);
 
-    // Per-instance facade params (seed, cols, rows) — replaces the old per-material uniforms.
-    const aFacade = attribute('aFacade', 'vec3');
+    const aFacade = attribute('aFacade', 'vec4');
+    const aDims = attribute('aDims', 'vec3');
     const seed = aFacade.x;
-    const grid = vec2(aFacade.y, aFacade.z);
+    const occupancy = aFacade.y;
+    const warmBias = aFacade.z;
+    const hero = aFacade.w;
+
+    const n = normalGeometry;
+    const isRoof = step(0.5, abs(n.y));
+    const isSide = oneMinus(isRoof);
+    // ±X faces span the tower's depth, ±Z faces its width.
+    const faceW = mix(aDims.x, aDims.z, step(0.5, abs(n.x)));
+    const towerH = aDims.y;
 
     const vUv = uv();
-    const g = vUv.mul(grid);
-    const cell = g.floor();
+    const fx = vUv.x.mul(faceW);
+    const fy = vUv.y.mul(towerH);
+    const g = vec2(fx.div(S.bayWidth), fy.div(S.floorHeight));
+    const cell = floor(g);
     const f = fract(g);
+    // Per-face seed so the four faces of one tower don't repeat; floors use the TOWER seed
+    // so a lit floor wraps the whole building.
+    const faceSeed = seed.add(n.x.mul(3.17)).add(n.z.mul(7.31));
 
-    // Window pane within mullions.
-    const pane = step(0.14, f.x)
-        .mul(step(f.x, 0.86))
-        .mul(step(0.12, f.y))
-        .mul(step(f.y, 0.9));
+    // Antialiased window pane; fades to its mean coverage once a bay is sub-pixel.
+    const fw = fwidth(g).max(vec2(1e-4, 1e-4));
+    const paneX = smoothstep(0.14, fw.x.add(0.14), f.x).mul(oneMinus(smoothstep(fw.x.negate().add(0.86), 0.86, f.x)));
+    const paneY = smoothstep(0.2, fw.y.add(0.2), f.y).mul(oneMinus(smoothstep(fw.y.negate().add(0.88), 0.88, f.y)));
+    const lod = smoothstep(0.22, 0.7, max(fw.x, fw.y));
+    const pane = mix(paneX.mul(paneY), 0.5, lod);
 
-    const r = hash21(cell.add(seed));
-    // WINDOW VALUE TIERS (creative plan ch8 item 3 — the bi-modal salt-and-pepper fix):
-    // ~25% dark, ~55% DIM AMBIENT at a quarter intensity (under the bloom threshold),
-    // ~15% mid, and only ~5% full-bright accent rows. The facades become the dark mass
-    // the Retrosun needs behind them — light as punctuation, not confetti.
-    const lit = step(CH8_FACADE_VALUE_SETTINGS.darkCutoff, r);
-    const dimBand = oneMinus(step(CH8_FACADE_VALUE_SETTINGS.midCutoff, r));
-    const midBand = step(CH8_FACADE_VALUE_SETTINGS.midCutoff, r)
-        .mul(oneMinus(step(CH8_FACADE_VALUE_SETTINGS.brightCutoff, r)));
-    const brightBand = step(CH8_FACADE_VALUE_SETTINGS.brightCutoff, r);
-    const on = lit.mul(dimBand.mul(CH8_FACADE_VALUE_SETTINGS.dimGain)
-        .add(midBand.mul(CH8_FACADE_VALUE_SETTINGS.midGain))
-        .add(brightBand.mul(CH8_FACADE_VALUE_SETTINGS.brightGain)));
-    const flick = sin(uTime.mul(r.mul(3.0).add(0.6)).add(r.mul(40.0))).mul(0.28).add(0.72);
+    // ── WHICH windows are lit ─────────────────────────────────────────────────────
+    // A floor is "occupied" with probability occupancy × cityLight; inside an occupied
+    // floor, runs of four bays switch together (a tenant), most runs on. Dark floors keep
+    // a sprinkle of single windows. Ground floor (lobby) excluded — the street bounce owns it.
+    const floorRnd = hash21(vec2(cell.y, seed.mul(0.731)));
+    const floorOn = step(oneMinus(occupancy.mul(cityLight)), floorRnd);
+    const runRnd = hash21(vec2(floor(cell.x.div(4.0)), cell.y.add(faceSeed.mul(11.0))));
+    const winRnd = hash21(cell.add(vec2(faceSeed.mul(5.3), faceSeed.mul(1.9))));
+    const inFloor = floorOn.mul(step(1.0 - S.floorFill, runRnd)).mul(step(0.1, winRnd));
+    const single = step(oneMinus(occupancy.mul(S.scatter).mul(cityLight)), winRnd);
+    const aboveLobby = step(1.0, cell.y);
+    // The resolve: whole buildings gutter out as uDim rises (per-building threshold).
+    const buildingAlive = step(dim, hash21(vec2(seed, 91.7)).mul(0.98).add(0.01));
+    const lit = max(inFloor, single).mul(aboveLobby).mul(buildingAlive).mul(isSide);
 
-    // Window colour: cyan/magenta; the warm-cream interior demoted to ≤5% (plan).
-    let wcolor = mix(uColorA, uColorB, step(0.5, fract(r.mul(7.31))));
-    wcolor = mix(wcolor, vec3(1.0, 0.82, 0.5), step(0.95, r));
+    // ── WHAT colour ───────────────────────────────────────────────────────────────
+    const warmRnd = hash21(vec2(cell.y, seed.add(41.0)));
+    const isWarm = step(warmRnd, warmBias);
+    const neonFloor = step(0.965, hash21(vec2(cell.y, seed.add(7.0))));
+    const warm = vec3(1.0, 0.56, 0.24).mul(S.warmGain);
+    const cool = vec3(0.52, 0.8, 1.0).mul(S.coolGain);
+    const neonTint = mix(vec3(1.0, 0.18, 0.66), vec3(0.0, 0.85, 1.0), step(0.5, fract(seed.mul(3.7))));
+    let wcolor = mix(cool, warm, isWarm);
+    wcolor = mix(wcolor, neonTint.mul(S.neonGain), neonFloor);
+    // Per-window brightness spread (blinds, lamps) + a rare slow flicker.
+    const winGain = fract(winRnd.mul(13.7)).mul(0.5).add(0.5)
+        // interior falloff: lamps light the lower pane, ceilings fall darker; ~1/6 of
+        // windows carry drawn-blind stripes (texture inside the light, not flat tiles).
+        .mul(mix(1.08, 0.72, f.y))
+        .mul(mix(1.0, step(0.45, fract(f.y.mul(7.0))).mul(0.6).add(0.4), step(0.83, fract(winRnd.mul(7.9)))));
+    const flick = sin(uTime.mul(winRnd.mul(2.0).add(0.4)).add(winRnd.mul(40.0))).mul(0.5).add(0.5);
+    const flicker = mix(1.0, flick.mul(0.6).add(0.4), step(0.985, fract(winRnd.mul(31.1))));
+    const energyGain = uEnergy.mul(0.25).add(0.82);
+    const windows = wcolor.mul(lit).mul(pane).mul(winGain).mul(flicker)
+        .mul(energyGain);
 
-    const base = vec3(0.018, 0.022, 0.045);
-    // Fresnel edge sheen — view-space normal vs. direction to camera.
+    // ── Dark glass body ───────────────────────────────────────────────────────────
+    // Near-black glass; mullion frame a touch lighter; vertical piers every other bay give
+    // the tall faces a vertical grain; glass reflects the violet light-pollution sky,
+    // stronger toward the top of the tower and at grazing angles.
+    const glass = vec3(0.003, 0.004, 0.011);
+    const frameCol = vec3(0.009, 0.008, 0.018);
+    const pier = step(0.94, fract(g.x.mul(0.5).add(0.03)));
+    const body = mix(frameCol, glass, pane.mul(oneMinus(pier)));
     const fres = pow(oneMinus(max(0.0, dot(normalize(normalView), positionViewDirection))), 3.0);
+    const skyReflect = vec3(0.075, 0.03, 0.11)
+        .mul(pow(vUv.y, 1.6).mul(S.glassReflect).add(fres.mul(S.edgeSheen * 6.0)))
+        .mul(isSide);
+    // Street-neon bounce up the lower floors (signage light off the wet street).
+    const streetTint = mix(vec3(0.9, 0.12, 0.55), vec3(0.0, 0.62, 0.85), step(0.5, fract(seed.mul(1.37))));
+    const streetBounce = streetTint.mul(exp(fy.negate().div(9.0))).mul(0.22).mul(isSide);
+    // Dark roofs with a faint sky sheen.
+    const roof = vec3(0.012, 0.01, 0.024).add(vec3(0.03, 0.012, 0.045).mul(fres));
 
-    let color = base;
-    color = color.add(wcolor.mul(pane).mul(on)
-        .mul(flick.mul(0.45).add(0.45))
-        .mul(uEnergy.mul(0.32).add(0.72))
-        .mul(CH8_FACADE_VALUE_SETTINGS.colorGain));
-    color = color.add(mix(uColorA, uColorB, 0.5)
-        .mul(fres)
-        .mul(CH8_FACADE_VALUE_SETTINGS.edgeSheen));
+    // ── Hero towers: vertical neon edge trim + crown band ─────────────────────────
+    const isHero = step(0.5, hero);
+    const heroCol = mix(vec3(0.0, 0.9, 1.0), vec3(1.0, 0.2, 0.7), step(1.5, hero));
+    const edgeDist = min(vUv.x, oneMinus(vUv.x)).mul(faceW);
+    const edgeTrim = oneMinus(smoothstep(0.18, 0.75, edgeDist));
+    const crownDist = oneMinus(vUv.y).mul(towerH);
+    const crownBand = oneMinus(smoothstep(0.4, 1.2, crownDist))
+        .add(smoothstep(5.0, 5.6, crownDist).mul(oneMinus(smoothstep(6.4, 7.0, crownDist))).mul(0.6));
+    const chase = sin(fy.mul(0.09).sub(uTime.mul(1.6)).add(seed)).mul(0.25).add(0.75);
+    const trim = heroCol.mul(edgeTrim.mul(chase).add(crownBand))
+        .mul(isHero).mul(isSide).mul(S.trimGain)
+        .mul(buildingAlive);
+
+    // ── Atmospheric depth ─────────────────────────────────────────────────────────
+    const viewDepth = positionView.z.negate();
+    const haze = smoothstep(S.hazeNear, S.hazeFar, viewDepth).mul(S.hazeMax);
+    const hazeCol = vec3(0.085, 0.03, 0.13);
+
+    const structure = mix(body.add(skyReflect).add(streetBounce), roof, isRoof);
+    const lights = windows.add(trim).mul(oneMinus(haze.mul(0.55)));
+    const color = mix(structure, hazeCol, haze).add(lights);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -465,7 +593,57 @@ function createFacadeMaterial(uTime, uEnergy) {
 // city reads as GROUNDED skyscrapers rising off one road, not floating confetti.
 const STREET_Y = -60;
 
-export function createCityBlocksTSL(uTime, uEnergy) {
+// Deterministic PRNG so the city is the same skyline every session (and every capture).
+function mulberry32(seedValue) {
+    let a = seedValue >>> 0;
+    return () => {
+        a = (a + 0x6D2B79F5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+// Corridor-space city plan (local -Z = the camera's travel; the camera eye rides at
+// y ~ 0..18, i.e. ~60-80 u above the street, and only travels z ~ +90 -> -10).
+export const CH8_CITY_LAYOUT = Object.freeze({
+    ranks: 30,
+    nearZ: 130,
+    farZ: -640, // the skyline cards (z -650/-675) carry the city beyond this
+    // lateral: centre offset from the lane; jitter; zStag; height range [min,max] above the
+    // street near -> far (lerped by rank); tallChance: odds of a tower breaking the skyline.
+    banks: [
+        {
+            lateral: 36, latJit: 8, zStag: 0, zJit: 8, near: [55, 105], far: [40, 85], tallChance: 0.1,
+        },
+        {
+            lateral: 62, latJit: 10, zStag: 13, zJit: 10, near: [40, 95], far: [30, 75], tallChance: 0.12,
+        },
+        {
+            lateral: 96, latJit: 14, zStag: -7, zJit: 14, near: [30, 80], far: [25, 70], tallChance: 0.14,
+        },
+        {
+            lateral: 140, latJit: 18, zStag: 6, zJit: 18, near: [26, 70], far: [22, 62], tallChance: 0.12,
+        },
+        {
+            lateral: 200, latJit: 26, zStag: -12, zJit: 22, near: [22, 60], far: [20, 55], tallChance: 0.1,
+        },
+        {
+            lateral: 275, latJit: 34, zStag: 4, zJit: 26, near: [20, 55], far: [18, 50], tallChance: 0.08,
+        },
+    ],
+    tallRange: [120, 175],
+    // Hero towers: fixed [rank, side, bank, hue] slots — tall, neon-trimmed (1 cyan, 2 magenta).
+    heroes: [
+        [3, 1, 1, 1], [6, -1, 0, 2], [10, 1, 0, 2], [13, -1, 1, 1],
+        [17, 1, 2, 1], [21, -1, 2, 2], [25, 1, 1, 2], [27, -1, 3, 1],
+    ],
+    heroHeight: [150, 205],
+    seed: 0x0c8d2e,
+});
+
+export function createCityBlocksTSL(uTime, uEnergy, { uCityLight, uDim } = {}) {
     const uTimeNode = uTime ?? uniform(0);
     const uEnergyNode = uEnergy ?? uniform(0.45);
 
@@ -474,117 +652,78 @@ export function createCityBlocksTSL(uTime, uEnergy) {
     const geometries = [];
     const materials = [];
 
-    // A TRUE NEON CANYON the camera flies DOWN. This group is parented into the
-    // path-aligned corridor container in urban-dreams.js, so local -Z is the camera's
-    // forward travel (up the spline) and local ±X / ±Y are screen right / up. Lit-window
-    // facades march down BOTH sides of the corridor from just behind the camera (z≈+50)
-    // out to the finale (z≈-1100), HUGGING the centerline so the canyon walls flank the
-    // path the camera actually sees instead of a distant off-axis cluster on black.
+    // A NIGHT CITY the camera flies over and through. This group is parented into the
+    // path-aligned corridor container (urban-dreams.js) and the camera rides that same
+    // stage frame, so local -Z is the camera's travel and local +Y is screen-up.
     //
-    // FOUR lateral banks per side: an INNER wall that tightly lines the lane (fills the
-    // sides of frame), a MID wall for body, an OUTER staggered skyline for depth, and a
-    // CURTAIN bank behind the inner wall so screen-space gaps between towers are backed by
-    // more lit facade rather than raw black. The ranks are dense and z-staggered tightly so
-    // adjacent towers OVERLAP in screen space (no holes). Every tower is upright (no tilt)
-    // and snapped to the common STREET_Y datum so the canyon reads as grounded skyscrapers.
-    const RANKS = 30;
-    const nearZ = 50; // just behind/beside the camera entry
-    const farZ = -1100; // out past the finale spire
-    // bank: lateral spread, jitter, z-stagger, height scale; baseDrop is derived from STREET_Y.
-    const BANKS = [
-        // inner wall — hugs the lane and fills the sides of frame
-        {
-            lateral: 32, latJit: 8, zStag: 6, zJit: 10, hScale: 1.0,
-        },
-        // curtain bank — sits just behind the inner wall to plug screen-space gaps
-        {
-            lateral: 50, latJit: 6, zStag: 16, zJit: 8, hScale: 1.6,
-        },
-        // mid wall — body of the canyon
-        {
-            lateral: 70, latJit: 12, zStag: -10, zJit: 14, hScale: 1.22,
-        },
-        // outer skyline — staggered depth silhouette
-        {
-            lateral: 112, latJit: 18, zStag: -26, zJit: 22, hScale: 1.45,
-        },
-    ];
-    // A few wider "landmark" towers break the rhythm — placed at fixed ranks so they read
-    // as architecture, not noise. Keyed by rank → side.
-    const LANDMARKS = { 6: -1, 14: 1, 23: -1 };
-
-    // QW8: ONE InstancedMesh + ONE shared facade material for the whole canyon (~240
-    // towers → ~1 draw + ~1 program, down from ~240 + ~240). Per-tower variation that was
-    // baked into unique BoxGeometries + unique facade materials is now carried by:
-    //   • the per-instance transform (scale = the tower's width/height/depth) and
-    //   • the per-instance `aFacade` attribute (seed, cols, rows).
-    // The canyon layout (banks/ranks/curtain, lateral spread, z-stagger, landmark widths,
-    // STREET_Y snap) is byte-for-byte the same as the per-mesh version — only the draw path
-    // changed. A unit BoxGeometry is shared and scaled per instance; because the box is
-    // centred, scaling preserves the old centre-at-(STREET_Y + height/2) placement.
-    const TOWER_COUNT = RANKS * 2 * BANKS.length;
+    // 2026-10 re-stage: the old canyon stacked ever-TALLER walls toward the horizon, so the
+    // camera saw a sky slot and never the sun, skyline or city. Now the mid/far city sits
+    // mostly BELOW the eye (seen from above: rooftops, glowing street canyons), the lane is
+    // flanked by a near wall the camera threads "within", a handful of tall towers break the
+    // skyline, and eight hero towers carry neon edge trim. Six lateral banks fill the wide
+    // frame out to the horizon; the skyline cards carry the city beyond farZ.
+    const L = CH8_CITY_LAYOUT;
+    const rand = mulberry32(L.seed);
+    const heroSlots = new Map(L.heroes.map(([rank, side, bank, hue]) => [`${rank}:${side}:${bank}`, hue]));
+    const TOWER_COUNT = L.ranks * 2 * L.banks.length;
     const sharedBox = new THREE.BoxGeometry(1, 1, 1);
-    const facadeMaterial = createFacadeMaterial(uTimeNode, uEnergyNode);
+    const facadeMaterial = createFacadeMaterial(uTimeNode, uEnergyNode, { uCityLight, uDim });
     const towers = new THREE.InstancedMesh(sharedBox, facadeMaterial, TOWER_COUNT);
     towers.name = 'city-tower-instances-tsl';
-    // Static layout — never re-uploaded after build (drift lives in the shader via uTime).
     towers.instanceMatrix.setUsage(THREE.StaticDrawUsage);
 
-    const facadeArray = new Float32Array(TOWER_COUNT * 3); // (seed, cols, rows) per instance
+    const facadeArray = new Float32Array(TOWER_COUNT * 4); // seed, occupancy, warmBias, hero
+    const dimsArray = new Float32Array(TOWER_COUNT * 3); // width, height, depth
     const scratchMatrix = new THREE.Matrix4();
     const scratchPos = new THREE.Vector3();
-    const scratchQuat = new THREE.Quaternion(); // identity — towers are upright (no tilt)
+    const scratchQuat = new THREE.Quaternion();
     const scratchScale = new THREE.Vector3();
+    const { lerp } = THREE.MathUtils;
 
     let instance = 0;
-    for (let rank = 0; rank < RANKS; rank += 1) {
-        const t = rank / (RANKS - 1); // 0 near → 1 far
-        const z = nearZ + (farZ - nearZ) * t;
-        // Taller towers toward the far end so the canyon walls keep filling the frame as
-        // they recede toward the finale spire.
-        const heightBias = 46 + t * 96;
-        const landmarkSide = LANDMARKS[rank];
-
-        // Plain for-loops (not forEach) so nothing closes over the mutable `instance`
-        // counter — keeps the per-instance layout identical to the former per-mesh nesting.
+    for (let rank = 0; rank < L.ranks; rank += 1) {
+        const t = rank / (L.ranks - 1);
+        const z = L.nearZ + (L.farZ - L.nearZ) * t;
         for (let s = 0; s < 2; s += 1) {
             const side = s === 0 ? -1 : 1;
-            for (let tier = 0; tier < BANKS.length; tier += 1) {
-                const bank = BANKS[tier];
-                const isLandmark = landmarkSide === side && tier <= 1;
-                // Wider towers (18–34, landmarks wider still) so neighbours overlap in
-                // screen space and the wall reads continuous, not as scattered slats.
-                const width = (isLandmark ? 34 + Math.random() * 18 : 18 + Math.random() * 16);
-                const height = (heightBias + Math.random() * (40 + tier * 34))
-                    * bank.hScale * (isLandmark ? 1.35 : 1.0);
-                const depth = 12 + Math.random() * 18;
-                const rows = Math.max(6, Math.round(height / 4));
-                const cols = Math.max(3, Math.round(width / 4));
-
-                const lateral = bank.lateral + Math.random() * bank.latJit;
-                const zJitter = bank.zStag + (Math.random() - 0.5) * bank.zJit;
-                // Snap the base to the wet-street datum so the tower stands ON the road and
-                // its glow lines up with the street reflection; height carries it up past
-                // the path overhead. (base at STREET_Y → centre at STREET_Y + height/2.)
-                scratchPos.set(
-                    side * lateral,
-                    STREET_Y + height * 0.5,
-                    z + zJitter,
-                );
+            for (let b = 0; b < L.banks.length; b += 1) {
+                const bank = L.banks[b];
+                const heroHue = heroSlots.get(`${rank}:${side}:${b}`) ?? 0;
+                const minH = lerp(bank.near[0], bank.far[0], t);
+                const maxH = lerp(bank.near[1], bank.far[1], t);
+                let height = minH + rand() * (maxH - minH);
+                if (rand() < bank.tallChance) {
+                    height = L.tallRange[0] + rand() * (L.tallRange[1] - L.tallRange[0]);
+                }
+                let width = 16 + rand() * 14 + b * 2.5;
+                const depth = 14 + rand() * 14 + b * 2;
+                if (heroHue > 0) {
+                    height = L.heroHeight[0] + rand() * (L.heroHeight[1] - L.heroHeight[0]);
+                    width = 24 + rand() * 8;
+                }
+                const lateral = bank.lateral + rand() * bank.latJit + width * 0.5 - 8;
+                const zJitter = bank.zStag + (rand() - 0.5) * bank.zJit;
+                scratchPos.set(side * lateral, STREET_Y + height * 0.5, z + zJitter);
                 scratchScale.set(width, height, depth);
                 scratchMatrix.compose(scratchPos, scratchQuat, scratchScale);
                 towers.setMatrixAt(instance, scratchMatrix);
 
-                facadeArray[instance * 3] = Math.random() * 100; // seed
-                facadeArray[instance * 3 + 1] = cols;
-                facadeArray[instance * 3 + 2] = rows;
-
+                const warmy = rand() < 0.5;
+                facadeArray[instance * 4] = rand() * 100; // seed
+                facadeArray[instance * 4 + 1] = 0.07 + rand() * 0.26 + (heroHue > 0 ? 0.08 : 0); // occupancy
+                facadeArray[instance * 4 + 2] = warmy ? 0.72 + rand() * 0.2 : 0.08 + rand() * 0.2; // warm bias
+                facadeArray[instance * 4 + 3] = heroHue;
+                dimsArray[instance * 3] = width;
+                dimsArray[instance * 3 + 1] = height;
+                dimsArray[instance * 3 + 2] = depth;
                 instance += 1;
             }
         }
     }
     towers.instanceMatrix.needsUpdate = true;
-    sharedBox.setAttribute('aFacade', new THREE.InstancedBufferAttribute(facadeArray, 3));
+    sharedBox.setAttribute('aFacade', new THREE.InstancedBufferAttribute(facadeArray, 4));
+    sharedBox.setAttribute('aDims', new THREE.InstancedBufferAttribute(dimsArray, 3));
+    towers.computeBoundingSphere();
 
     group.add(towers);
     geometries.push(sharedBox);
@@ -658,7 +797,7 @@ export function createCurtainWallTSL(uTime, uEnergy) {
     };
 }
 
-// ── Energy-conduit core for the spire (additive; bloom-eligible) ──────────────────
+// ── Megastructure shell: dark silhouette + energy seams that ignite (bloom-eligible) ──
 
 function createConduitMaterial(uTime, uEnergy, { colorA, colorB, uReveal } = {}) {
     const uColorA = uniform(new THREE.Color(colorA ?? CYAN));
@@ -670,10 +809,16 @@ function createConduitMaterial(uTime, uEnergy, { colorA, colorB, uReveal } = {})
 
     const vUv = uv();
 
+    // 2026-10: the spire was four ADDITIVE glow boxes — a pastel column with no silhouette.
+    // It is now a near-black megastructure (the tallest SHAPE in the skyline, crossing the
+    // Retrosun) whose energy lives in thin seams + ribs; dormant it is a dark mass with faint
+    // lines, ignition floods the seams and fires the surge up the shaft.
     // Vertical energy pulses travelling up the structure.
     const pulseRaw = sin(vUv.y.mul(26.0).sub(uTime.mul(3.0))).mul(0.5).add(0.5);
     const pulse = pow(pulseRaw, 3.0);
-    const seams = step(0.92, fract(vUv.x.mul(8.0)));
+    const seamX = fract(vUv.x.mul(5.0));
+    const seams = smoothstep(0.86, 0.9, seamX).mul(oneMinus(smoothstep(0.94, 0.98, seamX)));
+    const ribs = step(0.94, fract(vUv.y.mul(14.0))).mul(0.55);
     const fres = pow(oneMinus(max(0.0, dot(normalize(normalView), positionViewDirection))), 2.0);
 
     // REVEAL ENERGY SURGE: a fast, bright wavefront rushing UP the conduit, gated by the
@@ -684,24 +829,26 @@ function createConduitMaterial(uTime, uEnergy, { colorA, colorB, uReveal } = {})
     const surge = surgeBand.mul(uRevealNode); // only present while igniting
 
     const color = mix(uColorA, uColorB, vUv.y);
-    // Reveal lifts the conduit from a dim baseline (0.45) to full (1.0) glow.
-    const revealGain = uRevealNode.mul(0.55).add(0.45);
-    const glow = pulse.mul(0.7).add(seams.mul(0.5)).add(fres.mul(0.8))
-        .mul(uEnergy.mul(0.8).add(0.7))
+    // Dormant seams glow at ~18 %; ignition lifts them to full.
+    const revealGain = uRevealNode.mul(0.82).add(0.18);
+    const lines = max(seams, ribs);
+    const glow = lines.mul(pulse.mul(0.55).add(0.45))
+        .mul(uEnergy.mul(0.5).add(0.75))
         .mul(revealGain);
     // Add the surge as a white-hot core lift on top of the tinted glow.
     const coreColor = mix(color, vec3(1.0, 1.0, 1.0), surge.mul(0.8));
-    const litGlow = glow.add(surge.mul(0.9));
+    const litGlow = clamp(glow.add(surge.mul(lines.mul(0.6).add(0.35))), 0.0, 1.0);
+    // Near-black body with a violet sky sheen at grazing angles (reads against the haze).
+    const body = vec3(0.01, 0.008, 0.022).add(vec3(0.05, 0.02, 0.08).mul(fres));
 
     const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = coreColor.mul(litGlow);
-    // Cap below 1.0 (soft-feathered, ACES + threshold bloom downstream) — no white blowout.
-    material.opacityNode = clamp(litGlow, 0.0, 0.92).mul(uOpacity);
+    material.colorNode = body.add(coreColor.mul(litGlow).mul(0.92));
+    material.opacityNode = uOpacity;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = true;
-    material.blending = THREE.AdditiveBlending;
+    material.blending = THREE.NormalBlending;
     material.userData.emitsBloom = true;
     return material;
 }
@@ -725,7 +872,8 @@ export function createNeonCitySpireTSL(uTime, uEnergy) {
     // camera's forward axis). Lowered to y=-40 so the base sits on the wet-street datum and
     // the spire towers from BELOW the street past the top of frame; z=-560 pulls it nearer
     // so the colossal silhouette dominates the centerline as the journey's final hero image.
-    group.position.set(0, -40, -560);
+    // 2026-10: base now stands ON the street (group y = STREET_Y; tiers authored from 0).
+    group.position.set(0, STREET_Y, -560);
 
     const geometries = [];
     const materials = [];
@@ -734,10 +882,10 @@ export function createNeonCitySpireTSL(uTime, uEnergy) {
     // narrow crown well above the top of frame (~+260 with the group's -40 offset). Each
     // tier's conduit core takes the shared reveal uniform so the whole spire ignites at once.
     const tiers = [
-        { height: 260, width: 22, y: 200 },
-        { height: 210, width: 38, y: 70 },
-        { height: 150, width: 64, y: -40 },
-        { height: 96, width: 96, y: -120 },
+        { height: 100, width: 18, y: 350 }, // needle 300..400
+        { height: 140, width: 34, y: 230 }, // 160..300
+        { height: 110, width: 56, y: 105 }, // 50..160
+        { height: 50, width: 86, y: 25 }, // podium 0..50
     ];
 
     // CONSOLIDATION (remake plan #2): the 4 tiers alternate between just TWO conduit configs
@@ -778,8 +926,8 @@ export function createNeonCitySpireTSL(uTime, uEnergy) {
         geometries.push(frameGeo);
     });
 
-    // Crown height — top of the tallest tier (y 200, height 260 → top ≈ 330).
-    const CROWN_Y = 332;
+    // Crown height — top of the needle (y 350, height 100 → top 400) + half the cone.
+    const CROWN_Y = 432;
 
     // Cone crown — MeshBasic, left as-is.
     const crownGeo = new THREE.ConeGeometry(26, 76, 6);
@@ -1102,7 +1250,7 @@ export function createNeonHazeStackTSL(uTime, uEnergy) {
     const aSize = attribute('aSize', 'vec2');
     const aSeed = attribute('aSeed', 'float');
 
-    const positionNode = billboardVerticalWorld(aBase, aSize.mul(0.5));
+    const positionNode = billboardStageVertical(aBase, aSize.mul(0.5));
 
     const vUv = uv();
     const c = vUv.sub(0.5);
