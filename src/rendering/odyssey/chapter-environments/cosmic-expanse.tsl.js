@@ -59,6 +59,11 @@ import {
     vec4,
 } from 'three/tsl';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
+import {
+    createAccretionDiskTSL as createGargantuaDiskTSL,
+    createGargantuaPhotonRingTSL,
+    createLensedFoldMaterialTSL,
+} from './black-hole-transcendence.tsl.js';
 import { ODYSSEY_WORLD_SUN } from './shared/chapter-profile.js';
 import { auroraSurfaceTerm, createPlanetAuroraCrown } from './odyssey-planet-aurora.js';
 
@@ -281,91 +286,108 @@ export function createLensShellTSL(uTime) {
     return { mesh, material, geometry };
 }
 
-// ── Black-hole anchor — assembles the converted disk + lens shell with the plain ──
-//    MeshBasic decorations (horizon / photon ring / glow rings) faithfully reproduced.
+// ── Black-hole OMEN — chapter 7's Gargantua, foreshadowed ────────────────────────────
+//
+// MASTERPIECE PASS (2026-10). The omen used to be its own vocabulary (a purple Keplerian
+// disk on a fixed -1.12 tilt, two pink glow rings, a fresnel "lensing" shell that drew a thin
+// blue hoop) — a Saturn — and at the 6->7 seam it sat beside ch7's hero as a SECOND, different
+// black hole. It is now built from ch7's own builders (black shadow, razor photon ring,
+// lensed fold arcs on a FACE pivot the chapter turns to the eye every frame, and the thin
+// white-hot band on a DISK pivot tilted near edge-on), so the omen the player chases all
+// chapter IS the black hole they fall into. Ratios match CH7_GARGANTUA / CH7_FOLD_ARC_SETTINGS.
+
+/** The omen's shadow radius (group-local; the chapter scales the group 1.2 -> 3.4). */
+export const OMEN_SHADOW_RADIUS = 24;
 
 export function createBlackHoleTSL(uTime, uEnergy) {
+    const S = OMEN_SHADOW_RADIUS;
+    const time = uTime ?? uniform(0);
+    const energy = uEnergy ?? uniform(0.3);
     const group = new THREE.Group();
     group.name = 'volumetric-black-hole-anchor';
 
-    // Event horizon — a perfectly dark, slightly oblate sphere (plain MeshBasic).
+    // FACE pivot — the chapter turns it square to the eye each frame (orientBlackHoleOmen).
+    const face = new THREE.Group();
+    face.name = 'omen-face-pivot';
+    group.add(face);
     const horizon = new THREE.Mesh(
-        new THREE.SphereGeometry(24, 48, 32),
+        new THREE.SphereGeometry(S, 48, 32),
         new THREE.MeshBasicNodeMaterial({ color: 0x000000 }),
     );
-    horizon.scale.set(1.0, 1.0, 0.9);
-    group.add(horizon);
-
-    // Shader accretion disk (the dominant feature) — converted to TSL.
-    const disk = createAccretionDiskTSL(uTime, uEnergy);
-    group.add(disk.mesh);
-
-    // Photon ring — thin bright ring hugging the horizon, in the disk plane. Radially
-    // feathered across the ring quad (uv.y spans inner→outer) so alpha reaches 0 before
-    // both edges: a soft incandescent lip, not a hard-edged hoop.
-    const photonMat = new THREE.MeshBasicNodeMaterial();
-    const photonV = uv().y;
-    const photonFeather = smoothstep(0.0, 0.42, photonV).mul(oneMinus(smoothstep(0.58, 1.0, photonV)));
-    photonMat.colorNode = vec3(1.0, 0.94, 0.75).mul(photonFeather);
-    photonMat.opacityNode = photonFeather.mul(0.85);
-    photonMat.transparent = true;
-    photonMat.depthWrite = false;
-    photonMat.blending = THREE.AdditiveBlending;
-    photonMat.side = THREE.DoubleSide;
-    photonMat.userData.emitsBloom = true;
-    const photonRing = new THREE.Mesh(new THREE.RingGeometry(25.5, 28.5, 160, 1), photonMat);
-    group.add(photonRing);
-
-    // Two coplanar additive glow rings to feed bloom and add depth. Each is now a soft
-    // radial-feathered halo (alpha→0 before both ring edges) so the hero seats into the
-    // void haze with no concentric hard ring lines floating on black.
-    const glowColors = [new THREE.Color(0xff7b3a), new THREE.Color(0x7f3cff)];
-    const glowOpacity = [0.12, 0.08];
-    // CONSOLIDATION (remake plan): ONE shared glow material for both halo rings — same feather
-    // graph, only colour + opacity differ, moved onto a per-mesh aGlowColor (vec4 = rgb + a).
-    const gv = uv().y;
-    const gFeather = pow(smoothstep(0.0, 0.5, gv).mul(oneMinus(smoothstep(0.5, 1.0, gv))).mul(4.0), 1.1);
-    const aGlowColor = attribute('aGlowColor', 'vec4');
-    const glowMat = new THREE.MeshBasicNodeMaterial();
-    glowMat.colorNode = aGlowColor.xyz.mul(gFeather);
-    glowMat.opacityNode = clamp(gFeather, 0.0, 1.0).mul(aGlowColor.w);
-    glowMat.transparent = true;
-    glowMat.depthWrite = false;
-    glowMat.blending = THREE.AdditiveBlending;
-    glowMat.side = THREE.DoubleSide;
-    glowMat.userData.emitsBloom = true;
-    [0, 1].forEach((index) => {
-        const gc = glowColors[index];
-        const geometry = new THREE.RingGeometry(40 + index * 22, 70 + index * 30, 96, 1);
-        const n = geometry.attributes.position.count;
-        const arr = new Float32Array(n * 4);
-        for (let i = 0; i < n; i += 1) {
-            arr[i * 4] = gc.r; arr[i * 4 + 1] = gc.g; arr[i * 4 + 2] = gc.b; arr[i * 4 + 3] = glowOpacity[index];
-        }
-        geometry.setAttribute('aGlowColor', new THREE.BufferAttribute(arr, 4));
-        const ring = new THREE.Mesh(geometry, glowMat);
-        group.add(ring);
+    horizon.name = 'omen-shadow';
+    face.add(horizon);
+    const photon = createGargantuaPhotonRingTSL(time, {
+        shadowRadius: S, innerRadius: S, outerRadius: S * 1.075,
     });
+    photon.mesh.name = 'omen-photon-ring';
+    face.add(photon.mesh);
+    const foldMaterial = createLensedFoldMaterialTSL(time, { shadowRadius: S, opacity: 0.85 });
+    const sweep = Math.PI * 0.96;
+    const foldGeometry = new THREE.TorusGeometry(S * 1.22, S * 0.235, 10, 72, sweep);
+    const topFold = new THREE.Mesh(foldGeometry, foldMaterial);
+    topFold.rotation.z = Math.PI / 2 - sweep / 2;
+    topFold.name = 'omen-fold-top';
+    face.add(topFold);
+    const bottomFold = new THREE.Mesh(foldGeometry, foldMaterial);
+    bottomFold.rotation.z = -Math.PI / 2 - sweep / 2;
+    bottomFold.name = 'omen-fold-bottom';
+    face.add(bottomFold);
 
-    // Gravitational-lensing fresnel shell — converted to TSL.
-    const lens = createLensShellTSL(uTime);
-    group.add(lens.mesh);
+    // DISK pivot — tilted ~6° out of edge-on, a slight roll (ch7's pose).
+    const diskPivot = new THREE.Group();
+    diskPivot.name = 'omen-disk-pivot';
+    diskPivot.rotation.order = 'ZYX';
+    diskPivot.rotation.set(-(Math.PI / 2 - 0.10), 0, -0.10);
+    face.add(diskPivot);
+    const disk = createGargantuaDiskTSL(time, energy, { innerRadius: S * 1.34, outerRadius: S * 4.8 });
+    disk.mesh.name = 'accretion-disk';
+    diskPivot.add(disk.mesh);
 
+    group.userData.face = face;
+    group.userData.diskPivot = diskPivot;
     return {
         group,
         disk,
-        lens,
         dispose() {
-            [horizon, photonRing].forEach((m) => {
+            [horizon, photon.mesh, disk.mesh].forEach((m) => {
                 m.geometry?.dispose?.();
                 m.material?.dispose?.();
             });
-            disk.geometry?.dispose?.();
-            disk.material?.dispose?.();
-            lens.geometry?.dispose?.();
-            lens.material?.dispose?.();
+            foldGeometry.dispose();
+            foldMaterial.dispose();
         },
     };
+}
+
+const _omenFwd = new THREE.Vector3();
+const _omenUp = new THREE.Vector3();
+const _omenRight = new THREE.Vector3();
+const _omenBack = new THREE.Vector3();
+const _omenWorld = new THREE.Vector3();
+const _omenBasis = new THREE.Matrix4();
+const _omenParent = new THREE.Quaternion();
+
+/**
+ * Turn the omen's face pivot square to the eye on the CAMERA'S basis (screen-up stays up, so
+ * the disk band always reads across the frame), compensating the parent's world rotation.
+ */
+export function orientBlackHoleOmen(omenGroup, camera) {
+    const face = omenGroup?.userData?.face;
+    if (!face || !camera?.position) return false;
+    omenGroup.updateWorldMatrix(true, false);
+    camera.getWorldDirection(_omenFwd);
+    _omenUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    omenGroup.getWorldPosition(_omenWorld);
+    _omenBack.copy(camera.position).sub(_omenWorld).normalize();
+    _omenRight.crossVectors(_omenUp, _omenBack);
+    if (_omenRight.lengthSq() < 1e-8) _omenRight.set(1, 0, 0);
+    _omenRight.normalize();
+    _omenUp.crossVectors(_omenBack, _omenRight).normalize();
+    _omenBasis.makeBasis(_omenRight, _omenUp, _omenBack);
+    face.quaternion.setFromRotationMatrix(_omenBasis);
+    omenGroup.getWorldQuaternion(_omenParent).invert();
+    face.quaternion.premultiply(_omenParent);
+    return true;
 }
 
 // ── Gas-giant hero planet — latitudinal storm bands + day/night + atmosphere rim ──
