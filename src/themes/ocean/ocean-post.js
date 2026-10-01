@@ -285,10 +285,8 @@ export class OceanPost {
             : focusPick;
 
         // ── God rays (TSL Loop) ──
-        // WS 2.1: per-pixel hash dither on the start offset hides banding when
-        // sample count is reduced (Extreme 10→8). The bloom-source feed is
-        // soft, so randomizing positions becomes high-freq noise the eye
-        // tonemaps as additional shimmer rather than visible bands.
+        // Dither sample locations, then normalize their weights so raising the
+        // quality tier increases sampling rather than doubling the light energy.
         const shaftsEnabled = (params.shaftStrength ?? 0) > 0 && (params.shaftSamples ?? 0) > 0;
         const shafts = (() => {
             if (!shaftsEnabled) return vec3(0.0);
@@ -313,12 +311,17 @@ export class OceanPost {
                     const sample = bloomSource.sample(sampleUv).rgb;
                     const luma = dot(sample, vec3(0.2126, 0.7152, 0.0722));
                     const weight = float(1.0).sub(t.div(float(this.uShaftSamples)));
-                    sum.addAssign(
-                        sample.mul(weight).mul(smoothstep(float(0.05), float(0.3), luma)),
-                    );
+                    // Composite-color bloom includes the seabed and reef. Only
+                    // bright light should scatter; ordinary silhouettes must not
+                    // become displaced cyan copies across the water column.
+                    const lightMask = this.useMRT
+                        ? smoothstep(float(0.05), float(0.3), luma)
+                        : smoothstep(float(0.45), float(0.9), luma);
+                    sum.addAssign(sample.mul(weight).mul(lightMask));
                 },
             );
-            return sum;
+            const totalWeight = float(this.uShaftSamples).add(1).mul(0.5).sub(dither);
+            return sum.div(totalWeight).mul(this.useMRT ? 1.0 : 0.12);
         })();
         // Creamy surface light separates from the cool water column without
         // turning the aperture and fish highlights mustard-yellow.
@@ -570,6 +573,10 @@ const OCEAN_GRADE_SHADER = {
 
             color = mix(color, graded, uGradeStrength);
             gl_FragColor = vec4(max(color, vec3(0.0)), texel.a);
+            // The composer holds linear HDR color. Convert only at this final
+            // screen pass, preserving painted fauna without another full-screen draw.
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
         }
     `,
 };

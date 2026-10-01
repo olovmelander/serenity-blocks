@@ -24,6 +24,7 @@ import {
     max,
     sin,
     Fn,
+    If,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
@@ -55,10 +56,9 @@ export class CosmicNoirPost {
         const bloomThreshold = params.bloomThreshold ?? 0.0;
         this.bloomNode = bloom(bloomSource, bloomStrength, bloomRadius, bloomThreshold);
 
-        const originalBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
-        this.bloomNode.setSize = (width, height) => {
-            originalBloomSetSize(width * this.bloomDownsample, height * this.bloomDownsample);
-        };
+        // r186 exposes the scale directly. Preserve the previous half-resolution
+        // bloom footprint without overriding the node's resize method each frame.
+        this.bloomNode.setResolutionScale(this.bloomDownsample * 0.5);
 
         this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.8);
         this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.2);
@@ -118,10 +118,18 @@ export class CosmicNoirPost {
         const redUV = caCenter.add(caOffset.mul(redScale)).add(caOffset.mul(aberration).mul(0.01));
         const blueUV = caCenter.add(caOffset.mul(blueScale)).add(caOffset.mul(aberration).mul(-0.01));
 
-        const centerSample = sampleVignettedScene(uv); // green + alpha (greenUV == uv)
-        const redSample = sampleVignettedScene(redUV);
-        const blueSample = sampleVignettedScene(blueUV);
-        const chroma = vec4(redSample.r, centerSample.g, blueSample.b, centerSample.a);
+        const chroma = Fn(() => {
+            const centerSample = sampleVignettedScene(uv).toVar();
+            const result = centerSample.toVar();
+            // The adaptive budget switches chromatic aberration off under load.
+            // Skip its two extra scene reads instead of sampling identical UVs.
+            If(this.uChromaticStrength.greaterThan(0.0), () => {
+                const redSample = sampleVignettedScene(redUV);
+                const blueSample = sampleVignettedScene(blueUV);
+                result.assign(vec4(redSample.r, centerSample.g, blueSample.b, centerSample.a));
+            });
+            return result;
+        })();
         const combined = chroma.add(this.bloomNode);
 
         const exposed = combined.mul(this.uExposure);
@@ -226,6 +234,7 @@ export class CosmicNoirPost {
         if (params.bloomDownsample !== undefined) {
             if (Math.abs(this.bloomDownsample - params.bloomDownsample) > 0.005) {
                 this.bloomDownsample = params.bloomDownsample;
+                this.bloomNode.setResolutionScale(this.bloomDownsample * 0.5);
             }
         }
         if (params.resolutionScale !== undefined) {

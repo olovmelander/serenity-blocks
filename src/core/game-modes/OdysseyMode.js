@@ -3182,7 +3182,7 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _showCinematicLoadingOverlay() {
-        const result = showCinematicLoadingOverlay('ODYSSEY');
+        const result = showCinematicLoadingOverlay('ODYSSEY', { themeManager: this.deps?.themeManager });
         this._overlayShownAt = result.shownAt;
     }
 

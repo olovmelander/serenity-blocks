@@ -1,0 +1,505 @@
+{
+  "scope": "One isolated Ocean theme; no full-game journey capture.",
+  "baselineCommit": "14b576a1a9f2e7003bc63eaa4d89c66d0767ab92",
+  "baselineSourceArchive": "baseline-source/",
+  "baselineSourceManifest": "original-isolated/source-manifest.json",
+  "visualProof": [
+    "contact-study/capture.png",
+    "jellyfish-study/capture.png"
+  ],
+  "validation": {
+    "build": "PASS: npm run build, including boot closure",
+    "tests": "PASS: 21 tests across 5 Ocean unit test files",
+    "lint": "PASS: 0 errors; 17 max-len warnings across scoped files",
+    "diffCheck": "PASS: git diff --check"
+  },
+  "performance": {
+    "comparison": "High, 1280x800, fixed camera/water time 8s, seeded random, 6-second samples after warmup; NVIDIA Ampere WebGPU.",
+    "medianFrameMsBeforeAfter": [
+      6.1,
+      6.1
+    ],
+    "drawCallsBeforeAfter": [
+      191,
+      184
+    ],
+    "submittedTrianglesBeforeAfter": [
+      536749,
+      522059
+    ],
+    "limitations": [
+      "Isolated theme results do not establish full-game or other-device FPS.",
+      "One new High run had p95 frame time 12.2ms; its repeat and both original runs were 6.2ms. CPU/GPU timing fluctuates across short runs.",
+      "Classic WebGL draw counters reflect its final post pass and are not compared to WebGPU totals.",
+      "CPU render-entry samples may include nested render calls; no CPU speedup claim is made from those values."
+    ]
+  },
+  "excludedAttempts": {
+    "before": "Initial Electron capture timed out.",
+    "baseline": "Early development screenshot predates complete harness instrumentation.",
+    "baseline-production": "Route glob missed the module URL and loaded the application title screen.",
+    "baseline-repeat": "Route glob missed the module URL and loaded the application title screen.",
+    "baseline-repeat-2": "Route glob missed the module URL and loaded the application title screen.",
+    "low-board": "Initial harness did not pin effectQuality; rendered High rather than Low.",
+    "webgl-diagnostic": "Expected diagnostic failure before imported-fauna backend fix.",
+    "final-production": "Bundled theme imports app bootstrap code that requires full application DOM; standalone fixture reported unrelated missing-canvas initialization errors.",
+    "original-isolated/failed-capture.png": "Earlier route-glob failure; use capture.png and result.json for the valid completed run."
+  },
+  "captures": {
+    "original-isolated": {
+      "url": "http://localhost:5173/ocean-capture.html?quality=High&t=8&noDrs=1&module=/src/themes/ocean-baseline-verification/ocean-theme.js",
+      "backend": "WebGPU",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "quality": {
+        "current": "High",
+        "requested": "High",
+        "fallbackClamp": {
+          "clamped": false,
+          "from": null,
+          "to": null
+        }
+      },
+      "post": {
+        "enabled": true,
+        "className": "OceanPost",
+        "dofEnabled": false,
+        "dofStrength": 0,
+        "dofMaxRadius": 0,
+        "dofDeadZone": 1,
+        "focalDepth": 0.1187,
+        "chromaticStrength": 0,
+        "refractionStrength": 0.34,
+        "gameplayPulse": 0,
+        "comboSurge": 0,
+        "causticSweepStrength": 0,
+        "bloomStrength": 0.085,
+        "bloomScale": 0.55,
+        "sceneScale": 0.9
+      },
+      "measurements": {
+        "wall": {
+          "samples": 1028,
+          "p50": 6.099999999998545,
+          "p95": 6.199999999998909
+        },
+        "cpu": {
+          "samples": 1029,
+          "p50": 4.599999997764826,
+          "p95": 8.400000002235174
+        },
+        "gpu": {
+          "samples": 498,
+          "p50": 0.869376,
+          "p95": 0.90624
+        },
+        "calls": {
+          "samples": 1029,
+          "p50": 191,
+          "p95": 191
+        },
+        "tris": {
+          "samples": 1029,
+          "p50": 536749,
+          "p95": 536749
+        }
+      },
+      "errors": [],
+      "screenshot": "original-isolated/capture.png"
+    },
+    "original-isolated-repeat": {
+      "url": "http://localhost:5173/ocean-capture.html?quality=High&t=8&noDrs=1&module=/src/themes/ocean-baseline-verification/ocean-theme.js",
+      "backend": "WebGPU",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "quality": {
+        "current": "High",
+        "requested": "High",
+        "fallbackClamp": {
+          "clamped": false,
+          "from": null,
+          "to": null
+        }
+      },
+      "post": {
+        "enabled": true,
+        "className": "OceanPost",
+        "dofEnabled": false,
+        "dofStrength": 0,
+        "dofMaxRadius": 0,
+        "dofDeadZone": 1,
+        "focalDepth": 0.1187,
+        "chromaticStrength": 0,
+        "refractionStrength": 0.34,
+        "gameplayPulse": 0,
+        "comboSurge": 0,
+        "causticSweepStrength": 0,
+        "bloomStrength": 0.085,
+        "bloomScale": 0.55,
+        "sceneScale": 0.9
+      },
+      "measurements": {
+        "wall": {
+          "samples": 1031,
+          "p50": 6.099999999998545,
+          "p95": 6.199999999998909
+        },
+        "cpu": {
+          "samples": 1032,
+          "p50": 4.300000000745058,
+          "p95": 5.199999999254942
+        },
+        "gpu": {
+          "samples": 517,
+          "p50": 0.8888320000000001,
+          "p95": 0.919552
+        },
+        "calls": {
+          "samples": 1032,
+          "p50": 191,
+          "p95": 191
+        },
+        "tris": {
+          "samples": 1032,
+          "p50": 536749,
+          "p95": 536749
+        }
+      },
+      "errors": [],
+      "screenshot": "original-isolated-repeat/capture.png"
+    },
+    "final-high": {
+      "url": "http://localhost:5173/ocean-capture.html?quality=High&t=8&noDrs=1",
+      "backend": "WebGPU",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "quality": {
+        "current": "High",
+        "requested": "High",
+        "fallbackClamp": {
+          "clamped": false,
+          "from": null,
+          "to": null
+        }
+      },
+      "post": {
+        "enabled": true,
+        "className": "OceanPost",
+        "dofEnabled": false,
+        "dofStrength": 0,
+        "dofMaxRadius": 0,
+        "dofDeadZone": 1,
+        "focalDepth": 0.1187,
+        "chromaticStrength": 0,
+        "refractionStrength": 0.34,
+        "gameplayPulse": 0,
+        "comboSurge": 0,
+        "causticSweepStrength": 0,
+        "bloomStrength": 0.085,
+        "bloomScale": 0.55,
+        "sceneScale": 0.9
+      },
+      "measurements": {
+        "wall": {
+          "samples": 909,
+          "p50": 6.100000000000364,
+          "p95": 12.200000000000728
+        },
+        "cpu": {
+          "samples": 910,
+          "p50": 6.199999999254942,
+          "p95": 16.599999997764826
+        },
+        "gpu": {
+          "samples": 379,
+          "p50": 0.83968,
+          "p95": 1.5011839999999999
+        },
+        "calls": {
+          "samples": 910,
+          "p50": 184,
+          "p95": 184
+        },
+        "tris": {
+          "samples": 910,
+          "p50": 522059,
+          "p95": 522059
+        }
+      },
+      "errors": [],
+      "screenshot": "final-high/capture.png"
+    },
+    "final-high-repeat": {
+      "url": "http://localhost:5173/ocean-capture.html?quality=High&t=8&noDrs=1",
+      "backend": "WebGPU",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "quality": {
+        "current": "High",
+        "requested": "High",
+        "fallbackClamp": {
+          "clamped": false,
+          "from": null,
+          "to": null
+        }
+      },
+      "post": {
+        "enabled": true,
+        "className": "OceanPost",
+        "dofEnabled": false,
+        "dofStrength": 0,
+        "dofMaxRadius": 0,
+        "dofDeadZone": 1,
+        "focalDepth": 0.1187,
+        "chromaticStrength": 0,
+        "refractionStrength": 0.34,
+        "gameplayPulse": 0,
+        "comboSurge": 0,
+        "causticSweepStrength": 0,
+        "bloomStrength": 0.085,
+        "bloomScale": 0.55,
+        "sceneScale": 0.9
+      },
+      "measurements": {
+        "wall": {
+          "samples": 1038,
+          "p50": 6.099999999998545,
+          "p95": 6.199999999998909
+        },
+        "cpu": {
+          "samples": 1039,
+          "p50": 6.5,
+          "p95": 8
+        },
+        "gpu": {
+          "samples": 515,
+          "p50": 0.512,
+          "p95": 1.15712
+        },
+        "calls": {
+          "samples": 1039,
+          "p50": 184,
+          "p95": 184
+        },
+        "tris": {
+          "samples": 1039,
+          "p50": 522059,
+          "p95": 522059
+        }
+      },
+      "errors": [],
+      "screenshot": "final-high-repeat/capture.png"
+    },
+    "final-combo": {
+      "url": "http://localhost:5173/ocean-capture.html?quality=High&t=24&noDrs=1&combo=8&board=1&pointerX=1&pointerY=-0.5&mood=trail",
+      "backend": "WebGPU",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "quality": {
+        "current": "High",
+        "requested": "High",
+        "fallbackClamp": {
+          "clamped": false,
+          "from": null,
+          "to": null
+        }
+      },
+      "post": {
+        "enabled": true,
+        "className": "OceanPost",
+        "dofEnabled": false,
+        "dofStrength": 0,
+        "dofMaxRadius": 0,
+        "dofDeadZone": 1,
+        "focalDepth": 0.0787,
+        "chromaticStrength": 0,
+        "refractionStrength": 0.34,
+        "gameplayPulse": 0,
+        "comboSurge": 0.4543,
+        "causticSweepStrength": 0,
+        "bloomStrength": 0.085,
+        "bloomScale": 0.55,
+        "sceneScale": 0.9
+      },
+      "measurements": {
+        "wall": {
+          "samples": 1051,
+          "p50": 6.099999999998545,
+          "p95": 6.200000000000728
+        },
+        "cpu": {
+          "samples": 1052,
+          "p50": 4.49999999627471,
+          "p95": 6.5
+        },
+        "gpu": {
+          "samples": 529,
+          "p50": 0.8304639999999999,
+          "p95": 0.867328
+        },
+        "calls": {
+          "samples": 1052,
+          "p50": 186,
+          "p95": 192
+        },
+        "tris": {
+          "samples": 1052,
+          "p50": 528459,
+          "p95": 528555
+        }
+      },
+      "errors": [],
+      "screenshot": "final-combo/capture.png"
+    },
+    "final-low": {
+      "url": "http://localhost:5173/ocean-capture.html?quality=Low&t=24&noDrs=1&width=1440&height=900&pointerX=-1&pointerY=0.5",
+      "backend": "WebGPU",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "quality": {
+        "current": "Low",
+        "requested": "Low",
+        "fallbackClamp": {
+          "clamped": false,
+          "from": null,
+          "to": null
+        }
+      },
+      "post": {
+        "enabled": true,
+        "className": "OceanPost",
+        "dofEnabled": false,
+        "dofStrength": 0,
+        "dofMaxRadius": 0,
+        "dofDeadZone": 1,
+        "focalDepth": 0.1187,
+        "chromaticStrength": 0.0004,
+        "refractionStrength": 0,
+        "gameplayPulse": 0,
+        "comboSurge": 0,
+        "causticSweepStrength": 0,
+        "bloomStrength": 0,
+        "bloomScale": 0.6,
+        "sceneScale": 1
+      },
+      "measurements": {
+        "wall": {
+          "samples": 1026,
+          "p50": 6.099999999998545,
+          "p95": 6.199999999998909
+        },
+        "cpu": {
+          "samples": 1027,
+          "p50": 1.699999999254942,
+          "p95": 2.599999997764826
+        },
+        "gpu": {
+          "samples": 924,
+          "p50": 0.62464,
+          "p95": 0.638976
+        },
+        "calls": {
+          "samples": 1027,
+          "p50": 59,
+          "p95": 59
+        },
+        "tris": {
+          "samples": 1027,
+          "p50": 153943,
+          "p95": 153943
+        }
+      },
+      "errors": [],
+      "screenshot": "final-low/capture.png"
+    },
+    "final-webgl": {
+      "url": "http://localhost:5173/ocean-capture.html?quality=High&t=8&forceWebGL=1&noDrs=1",
+      "backend": "WebGL2",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "quality": {
+        "current": "Medium",
+        "requested": "High",
+        "fallbackClamp": {
+          "clamped": true,
+          "from": "High",
+          "to": "Medium"
+        }
+      },
+      "post": {
+        "enabled": true,
+        "className": "OceanPostProcessingLegacy",
+        "dofEnabled": false,
+        "dofStrength": 0,
+        "dofMaxRadius": 0,
+        "dofDeadZone": 0,
+        "focalDepth": null,
+        "chromaticStrength": 0,
+        "refractionStrength": 0,
+        "gameplayPulse": 0,
+        "comboSurge": 0,
+        "causticSweepStrength": 0,
+        "bloomStrength": 0.075,
+        "bloomScale": 0,
+        "sceneScale": 1
+      },
+      "measurements": {
+        "wall": {
+          "samples": 933,
+          "p50": 6.099999999999454,
+          "p95": 12.100000000000364
+        },
+        "cpu": {
+          "samples": 934,
+          "p50": 3.199999999254942,
+          "p95": 9.600000001490116
+        },
+        "gpu": {
+          "samples": 0,
+          "p50": null,
+          "p95": null
+        },
+        "calls": {
+          "samples": 934,
+          "p50": 1,
+          "p95": 1
+        },
+        "tris": {
+          "samples": 934,
+          "p50": 1,
+          "p95": 1
+        }
+      },
+      "errors": [],
+      "screenshot": "final-webgl/capture.png"
+    }
+  }
+}

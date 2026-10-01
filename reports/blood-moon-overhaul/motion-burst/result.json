@@ -1,0 +1,159 @@
+{
+  "url": "http://localhost:5173/playground.html?effect=blood-moon&t=8&quality=High&seed=431&event=tetris&eventAge=0.8",
+  "width": 1280,
+  "height": 800,
+  "backend": "WebGPU · nvidia ampere",
+  "diagnostics": {
+    "quality": "High",
+    "loaded": true,
+    "time": 8,
+    "layout": {
+      "x": 0.235,
+      "y": 0.62,
+      "radius": 0.23
+    },
+    "moon": {
+      "x": 0.25986136342225036,
+      "y": 0.6594309152291663,
+      "radius": 0.22958417622391722,
+      "rotation": 0.0224
+    },
+    "camera": [
+      0.876799384376888,
+      0.4743223249838362,
+      12.605825405878697
+    ],
+    "stars": 2200,
+    "motes": 100,
+    "sparks": 500,
+    "activeWave": true,
+    "activeEjecta": true,
+    "bursts": {
+      "activeSlots": 1,
+      "activeParticles": 500,
+      "particlesPerSlot": 500,
+      "capacity": 3,
+      "lifetime": 5.2,
+      "pendingStrength": 0,
+      "slots": [
+        {
+          "age": 0.8,
+          "strength": 0.85,
+          "serial": 0,
+          "origin": {
+            "x": 0.25891430163156665,
+            "y": 0.6603551547639861
+          }
+        },
+        {
+          "age": 5.2,
+          "strength": 0,
+          "serial": -1,
+          "origin": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "age": 5.2,
+          "strength": 0,
+          "serial": -1,
+          "origin": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    }
+  },
+  "profile": {
+    "enabled": false,
+    "backend": "WebGPU · nvidia ampere",
+    "effect": "blood-moon",
+    "seed": 431,
+    "fixedTime": 8,
+    "captureMeta": {
+      "quality": "High",
+      "seed": 431
+    },
+    "internalResolution": {
+      "width": 1280,
+      "height": 800,
+      "cssWidth": 1280,
+      "cssHeight": 800,
+      "pixelRatio": 1
+    },
+    "cpuMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "frameMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "gpuMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "computeMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "droppedFrames": {
+      "budgetMs": 16.666666666666668,
+      "dropped": 0,
+      "total": 0,
+      "ratio": 0
+    },
+    "memory": {
+      "supported": true,
+      "startBytes": 129339771,
+      "currentBytes": 128021268,
+      "peakBytes": 129339771,
+      "growthBytes": -1318503,
+      "growthMB": -1.2574224472045898
+    },
+    "activeParticles": 2800,
+    "gpuTimestamp": {
+      "requested": false,
+      "renderStatus": "unavailable",
+      "computeStatus": "unavailable",
+      "error": null,
+      "computeError": null
+    },
+    "renderer": {
+      "drawCalls": 8,
+      "triangles": 14631
+    },
+    "gpuMemory": {
+      "totalMB": 22.744609832763672,
+      "texturesMB": 22.382750511169434,
+      "attributesMB": 0.22946548461914062,
+      "indexAttributesMB": 0.1034088134765625,
+      "storageAttributesMB": 0,
+      "uniformBuffersMB": 0.00067138671875,
+      "programsMB": 0.028313636779785156,
+      "renderTargets": 1,
+      "textures": 5,
+      "geometries": 8
+    }
+  },
+  "messages": [
+    {
+      "level": "warning",
+      "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+    }
+  ]
+}

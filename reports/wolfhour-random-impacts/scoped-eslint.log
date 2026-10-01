@@ -1,0 +1,14 @@
+{
+  "command": "npx eslint src/themes/wolfhour/wolfhour-landscape.js src/playground/effects/wolfhour.effect.js",
+  "exitCode": 0,
+  "summary": "Scoped ESLint passed with no diagnostics.",
+  "startedAt": "2026-10-01T14:08:55.907Z",
+  "completedAt": "2026-10-01T14:09:09.353Z",
+  "signal": null,
+  "error": null,
+  "log": "scoped-eslint.log"
+}
+
+STDOUT
+
+STDERR

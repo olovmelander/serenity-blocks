@@ -24,6 +24,7 @@ import {
     dot,
     float,
     fract,
+    fwidth,
     length,
     max,
     mix,
@@ -44,6 +45,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
+import { reefCaustics, getReefFloorTexture } from './ocean-caustics.js';
 
 import {
     tslNoise,
@@ -123,10 +125,10 @@ export function createWaterSurfaceNodeMaterial(params = {}) {
     // Colors — saturated tropical-blue palette matching the reference reef photo.
     // Lifted from teal/cyan into a brighter, more vibrant blue so the water column
     // reads as a sunlit shallow reef rather than a moody mid-depth.
-    const deepColor = vec3(0.04, 0.32, 0.52);
-    const midColor = vec3(0.12, 0.56, 0.72);
-    const surfaceColor = vec3(0.32, 0.78, 0.86);
-    const crestColor = vec3(0.47, 0.87, 0.82);
+    const deepColor = vec3(0.007, 0.065, 0.072);
+    const midColor = vec3(0.035, 0.22, 0.16);
+    const surfaceColor = vec3(0.20, 0.46, 0.28);
+    const crestColor = vec3(0.58, 0.75, 0.42);
 
     const heightFactor = clamp(displacement.mul(1.5).add(0.5), float(0.0), float(1.0));
 
@@ -148,23 +150,13 @@ export function createWaterSurfaceNodeMaterial(params = {}) {
     // Two animated texture taps form the surface shimmer. This replaces three
     // broad procedural caustic graphs while retaining a subtle chromatic split.
     const refractOffset = vec2(wave.x, wave.z).mul(uSurfaceShimmerStrength.mul(0.35));
-    const surfaceNoiseTex = getSharedSeabedNoiseTexture();
-    const surfaceUv = positionWorld.xz.mul(0.0175);
-    const shimmerA = texture(
-        surfaceNoiseTex,
-        surfaceUv.add(refractOffset.mul(0.018)).add(vec2(uTime.mul(0.006), uTime.mul(-0.004))),
-    ).r;
-    const shimmerB = texture(
-        surfaceNoiseTex,
-        surfaceUv.mul(1.37).sub(refractOffset.mul(0.014)).add(vec2(uTime.mul(-0.0045), uTime.mul(0.0055))),
-    ).g;
-    const causticBase = pow(abs(shimmerA.sub(shimmerB)), float(2.35));
+    const causticBase = reefCaustics(positionWorld.xz.add(refractOffset), uTime, 0.008);
     const causticChroma = vec3(
         causticBase.mul(1.08),
         causticBase,
         causticBase.mul(0.94),
     );
-    color = color.add(crestColor.mul(causticBase.mul(0.22)));
+    color = color.add(crestColor.mul(causticBase.mul(0.20)));
     color = color.add(causticChroma.mul(uSurfaceShimmerStrength.mul(0.075)));
 
     // Near-white surface opening: integrated into the existing water draw so
@@ -185,21 +177,20 @@ export function createWaterSurfaceNodeMaterial(params = {}) {
     // Foam at crests
     const foam = smoothstep(float(0.35), float(0.65), displacement);
     const foamColor = vec3(0.78, 0.96, 0.9);
-    color = mix(color, foamColor, foam.mul(0.18));
+    color = mix(color, foamColor, foam.mul(0.055));
 
     // Edge fade — slight contraction with refraction strength so refraction
     // doesn't artifact at the plane border.
     const distFromCenter = length(uv().sub(0.5)).mul(2.0);
     const edgeFade = float(1.0).sub(smoothstep(float(0.75), float(1.0), distFromCenter));
-    const alpha = edgeFade.mul(float(0.3).add(sunBody.mul(uSunApertureStrength).mul(0.34)));
+    const alpha = edgeFade.mul(float(0.48).add(sunBody.mul(uSunApertureStrength).mul(0.34)));
 
     material.colorNode = color;
     material.positionNode = displacedPosition;
     material.opacityNode = alpha;
     // Keep foam restrained; reserve most HDR energy for the surface aperture.
-    // Ocean uses color-source bloom (not selective MRT), so adding the same
-    // aperture to emissive doubles its energy before bloom. Keep the HDR crown
-    // in colorNode and let the composite pass extract it once.
+    // Ocean's color-source bloom reads the HDR aperture from colorNode;
+    // the water does not need a separate emissive attachment contribution.
     material.emissiveNode = vec3(0.0);
 
     material.userData = {
@@ -231,10 +222,10 @@ export function createSeabedNodeMaterial(params = {}) {
     // photo's warm sun-baked sand. Previous (0.34, 0.40, 0.46) shadow read as
     // cool grey/snow under the god-ray bloom; warming the shadows toward a
     // peach undertone fixes the "icy beach" look.
-    const sandShadow = vec3(0.30, 0.17, 0.12);
-    const sandMid = vec3(0.68, 0.42, 0.27);
-    const sandLit = vec3(0.94, 0.68, 0.44); // Warm shell highlight on ripple crests
-    const reefShelf = vec3(0.08, 0.21, 0.27);
+    const sandShadow = vec3(0.032, 0.055, 0.039);
+    const sandMid = vec3(0.19, 0.20, 0.095);
+    const sandLit = vec3(0.43, 0.42, 0.24);
+    const reefShelf = vec3(0.046, 0.105, 0.067);
 
     const height = positionWorld.y;
     const hf = smoothstep(float(-25.0), float(10.0), height);
@@ -357,11 +348,9 @@ export function createSeabedNodeMaterial(params = {}) {
     color = color.add(reefShelf.mul(reefShelfMask.mul(0.10)));
 
     // 1. Procedural silt & sediment channels (organic brown/grey patches)
-    const siltColor = vec3(0.31, 0.25, 0.21);
-    const siltNoise = texture(
-        seabedNoiseTex,
-        positionWorld.xz.mul(float(0.012).mul(noiseTexelScale)),
-    ).b;
+    const siltColor = vec3(0.085, 0.11, 0.05);
+    const floorSample = texture(getReefFloorTexture(), positionWorld.xz.mul(1 / 400).add(0.5));
+    const siltNoise = floorSample.g;
     let siltWeight = smoothstep(float(0.38), float(0.7), siltNoise).mul(0.24);
 
     // Stoss / Lee shading adjustments based on alignment with dominant current direction
@@ -392,24 +381,10 @@ export function createSeabedNodeMaterial(params = {}) {
     color = color.mul(float(0.985).add(microGrit.mul(float(0.025).mul(microFalloff))));
 
     // Ripple crest warmth & stoss exposure highlights
-    color = mix(color, sandLit, ridgeWarmth.mul(0.46).add(stossWeight.mul(0.28)));
+    color = mix(color, sandLit, ridgeWarmth.mul(0.26).add(stossWeight.mul(0.18)));
 
     // Caustics: focused on the stoss slopes and crests, and faded in the troughs
-    const causticUv = positionWorld.xz.mul(float(0.13 / 256.0));
-    const causticA = texture(
-        seabedNoiseTex,
-        causticUv.add(vec2(uTime.mul(0.018), uTime.mul(0.011))),
-    ).a;
-    let caustic = abs(causticA.sub(0.5)).mul(2.0);
-    if (!lowDetail) {
-        const causticB = texture(
-            seabedNoiseTex,
-            causticUv.mul(1.37).add(vec2(uTime.mul(-0.014), uTime.mul(0.019))),
-        ).b;
-        caustic = abs(causticA.sub(causticB)).mul(1.65).clamp(0.0, 1.0);
-    }
-    caustic = pow(caustic, float(3.2));
-    const sharpCaustic = pow(caustic, float(1.4));
+    const sharpCaustic = reefCaustics(positionWorld.xz, uTime, 0.032, lowDetail);
     const causticHeightMod = mix(float(0.45), float(1.0), h0Clamped);
     const causticSlopeMod = mix(float(0.6), float(1.0), smoothstep(float(-0.25), float(0.25), stossAlign));
     const causticIntensity = sharpCaustic.mul(causticHeightMod).mul(causticSlopeMod);
@@ -418,7 +393,7 @@ export function createSeabedNodeMaterial(params = {}) {
     const causticColor = vec3(0.52, 0.76, 0.66)
         .mul(causticIntensity)
         .mul(causticGain)
-        .mul(0.24);
+        .mul(0.14);
 
     // Specular lighting on wet/crystalline sand
     const viewDir = normalize(cameraPosition.sub(positionWorld));
@@ -467,12 +442,15 @@ export function createSeabedNodeMaterial(params = {}) {
 
     // Light transport contributions belong after diffuse/occlusion so caustic
     // lines and wet-sand glints stay readable instead of being darkened twice.
-    color = color.add(causticColor).add(specularColor).add(sparkleColor);
+    const canopyLight = mix(float(1.0), float(0.36), floorSample.b);
+    color = color.add(causticColor).add(specularColor).add(sparkleColor)
+        .mul(floorSample.r)
+        .mul(canopyLight);
 
     color = tslDepthGradedFog(color, height, viewDist, float(1.0));
 
     material.colorNode = color;
-    material.emissiveNode = vec3(0.0); // No bloom contribution
+    material.emissiveNode = vec3(0.0); // No separate emissive contribution
 
     material.userData = { uTime, uRippleStrength, uCausticStrength };
     return material;
@@ -514,9 +492,9 @@ export function createSeaweedNodeMaterial(params = {}) {
     const swayZ = primarySway.mul(0.976).add(crossFlutter.mul(0.22));
 
     // Colors
-    const base = vec3(0.06, 0.28, 0.20);
-    const mid = vec3(0.24, 0.55, 0.22);
-    const tip = vec3(0.68, 0.82, 0.24);
+    const base = vec3(0.035, 0.16, 0.11);
+    const mid = vec3(0.10, 0.32, 0.14);
+    const tip = vec3(0.39, 0.56, 0.18);
 
     let color = mix(base, mid, smoothstep(float(0.0), float(0.5), aHeight));
     color = mix(color, tip, smoothstep(float(0.5), float(1.0), aHeight));
@@ -574,9 +552,9 @@ export function createSeagrassMeadowNodeMaterial(params = {}) {
     const swayZ = primarySway.mul(0.976).add(crossFlutter.mul(0.22));
 
     // Reference organic olive green to light gold-green palette.
-    const base = vec3(0.18, 0.42, 0.20);
-    const mid = vec3(0.35, 0.65, 0.28);
-    const tip = vec3(0.72, 0.88, 0.35);
+    const base = vec3(0.08, 0.21, 0.10);
+    const mid = vec3(0.16, 0.38, 0.14);
+    const tip = vec3(0.45, 0.64, 0.24);
 
     let color = mix(base, mid, smoothstep(float(0.0), float(0.5), aHeight));
     color = mix(color, tip, smoothstep(float(0.5), float(1.0), aHeight));
@@ -632,7 +610,7 @@ export function createCoralNodeMaterial(baseColor) {
 
     // Base AO — bottom 35% of the coral's local Y darkens toward a deep sand-shadow
     // tint so colonies appear anchored to the seabed instead of floating.
-    const aoMask = float(1.0).sub(smoothstep(float(0.0), float(0.35), positionLocal.y));
+    const aoMask = float(1.0).sub(smoothstep(float(0.0), float(0.35), positionGeometry.y));
     const aoColor = vec3(0.035, 0.09, 0.12);
     color = mix(color, aoColor, aoMask.mul(0.44));
 
@@ -690,7 +668,7 @@ export function createCoralOvergrowthNodeMaterial() {
     );
     let color = aInstanceColor.mul(float(0.98).add(pattern.mul(0.18)));
 
-    const aoMask = float(1.0).sub(smoothstep(float(0.0), float(0.35), positionLocal.y));
+    const aoMask = float(1.0).sub(smoothstep(float(0.0), float(0.35), positionGeometry.y));
     const aoColor = vec3(0.035, 0.09, 0.12);
     color = mix(color, aoColor, aoMask.mul(0.44));
 
@@ -794,31 +772,63 @@ export function createJellyfishNodeMaterial() {
         depthWrite: false,
         blending: AdditiveBlending,
         side: DoubleSide,
+        forceSinglePass: true,
     });
-
     const uTime = uniform(0);
     const uGlowIntensity = uniform(0.8);
+    const aColor = attribute('aColor', 'vec3');
+    const phase = attribute('aPhase');
+    const p = uv();
+    const x = p.x.sub(0.5);
+    const breath = sin(uTime.mul(1.8).add(phase));
+    const antialias = max(max(fwidth(p.x), fwidth(p.y)).mul(0.7), float(0.001));
+    const halfWidth = float(0.285).add(breath.mul(0.013));
+    const bellHeight = float(0.215).sub(breath.mul(0.011));
+    const bellRadius = length(vec2(x.div(halfWidth), p.y.sub(0.535).div(bellHeight)));
+    const bellEdge = float(1).sub(smoothstep(float(0.94), float(1.02), bellRadius));
+    const bellBase = smoothstep(float(0.51), float(0.535), p.y);
+    const bellBody = bellEdge.mul(bellBase);
+    const rim = smoothstep(float(0.8), float(0.96), bellRadius).mul(bellBody);
 
-    const aColor = attribute('aColor');
-    const aPhase = attribute('aPhase');
+    // A shallow scalloped lip connects the umbrella to its hanging arms.
+    const lipHeight = float(0.53).add(sin(x.mul(30).add(phase.mul(0.2))).mul(0.008));
+    const lipLine = float(1).sub(smoothstep(float(0.004), antialias.add(0.011), abs(p.y.sub(lipHeight))));
+    const lipSpan = float(1).sub(smoothstep(halfWidth.mul(0.82), halfWidth, abs(x)));
+    const lip = lipLine.mul(lipSpan);
 
-    // Bell pulse
-    const pulse = sin(uTime.mul(1.8).add(aPhase))
-        .mul(0.25)
-        .add(float(0.72).add(uGlowIntensity.mul(0.04)));
-    // Dome shape
-    const radial = safeBillboardRadialFalloff();
-    const alpha = pow(radial, float(1.8)).mul(pulse);
-    let color = aColor.mul(float(0.6).add(pulse.mul(0.5)));
+    let tendrils = float(0);
+    const hanging = clamp(float(0.525).sub(p.y), float(0), float(0.5));
+    const strandOffsets = [-0.145, -0.052, 0.052, 0.145];
+    const strandEnds = [0.18, 0.065, 0.095, 0.145];
+    for (let i = 0; i < strandOffsets.length; i += 1) {
+        const sway = sin(uTime.mul(0.8).add(phase).add(hanging.mul(11)).add(i * 1.7))
+            .mul(hanging.mul(0.095));
+        const secondary = sin(hanging.mul(24).sub(uTime.mul(0.55)).add(i * 2.2).add(phase))
+            .mul(hanging.mul(0.024));
+        const strandX = float(strandOffsets[i]).add(sway).add(secondary);
+        const width = float(i === 1 || i === 2 ? 0.0042 : 0.0032);
+        const line = float(1).sub(smoothstep(width, width.add(antialias), abs(x.sub(strandX))));
+        const envelope = smoothstep(float(strandEnds[i]), float(strandEnds[i] + 0.065), p.y)
+            .mul(float(1).sub(smoothstep(float(0.50), float(0.535), p.y)));
+        tendrils = tendrils.add(line.mul(envelope));
+    }
+    tendrils = clamp(tendrils, float(0), float(1));
 
-    // Bright glowing center
-    color = color.add(vec3(0.82, 1.0, 0.92).mul(pow(radial, float(5.0)).mul(0.34)));
-
+    // Soft radial folds inside the bell; the empty water stays fully transparent.
+    const ribs = sin(x.div(halfWidth).mul(10).add(p.y.mul(5)))
+        .mul(0.5).add(0.5).mul(bellBody)
+        .mul(0.055);
+    const pulse = float(0.88).add(breath.mul(0.08)).add(uGlowIntensity.mul(0.06));
+    const tint = mix(vec3(0.24, 0.58, 0.74), aColor, float(0.55));
+    const edgeLight = rim.mul(0.4).add(lip.mul(0.45)).add(tendrils.mul(0.14));
+    const color = tint.mul(float(0.65).add(edgeLight)).add(vec3(0.18, 0.26, 0.35).mul(rim));
+    const opacity = bellBody.mul(0.065).add(ribs).add(rim.mul(0.21))
+        .add(lip.mul(0.2))
+        .add(tendrils.mul(0.23))
+        .mul(pulse);
     material.colorNode = color;
-    material.opacityNode = alpha.mul(float(0.44).add(uGlowIntensity.mul(0.055)));
-    // Emissive for bloom
-    material.emissiveNode = color.mul(alpha.mul(float(0.48).add(uGlowIntensity.mul(0.08))));
-
+    material.opacityNode = clamp(opacity, float(0), float(0.5));
+    material.emissiveNode = tint.mul(opacity).mul(0.32);
     material.userData = { uTime, uGlowIntensity };
     return material;
 }
@@ -1130,11 +1140,11 @@ export function createVolumetricShaftNodeMaterial(params = {}) {
     const distanceFade = float(1.0).sub(smoothstep(float(90.0), float(280.0), viewDist));
     const currentPulse = float(0.86).add(uCurrentStrength.mul(0.08));
 
-    const shaftColor = vec3(0.43, 0.91, 0.92);
-    const warmColor = vec3(1.0, 0.86, 0.54);
+    const shaftColor = vec3(0.44, 0.74, 0.53);
+    const warmColor = vec3(0.92, 0.90, 0.54);
     const colorBase = mix(shaftColor, warmColor, pow(u.y, float(2.8)).mul(0.46));
     const colorOut = colorBase.mul(float(0.82).add(uGlowIntensity.mul(0.1)));
-    const alpha = ray.mul(distanceFade).mul(uRayStrength).mul(currentPulse).mul(0.54);
+    const alpha = ray.mul(distanceFade).mul(uRayStrength).mul(currentPulse).mul(0.24);
 
     material.colorNode = colorOut;
     material.opacityNode = alpha;
@@ -1184,16 +1194,16 @@ export function createHazeLayerNodeMaterial(params = {}) {
     const alpha = body.mul(edge).mul(sideFade).mul(distFade).mul(uHazeStrength)
         .mul(0.034);
 
-    const fogColor = vec3(0.05, 0.32, 0.54);
+    const fogColor = vec3(0.018, 0.13, 0.095);
     const colorBase = mix(
         fogColor,
-        vec3(0.08, 0.46, 0.65),
+        vec3(0.06, 0.24, 0.16),
         float(0.38).add(uGlowIntensity.mul(0.045)),
     );
 
     material.colorNode = colorBase;
     material.opacityNode = alpha;
-    material.emissiveNode = vec3(0.0); // Haze should NOT bloom
+    material.emissiveNode = vec3(0.0); // No separate emissive contribution
 
     material.userData = {
         uTime,
@@ -1215,8 +1225,8 @@ export function createReefSilhouetteNodeMaterial() {
     // Warm-stone reef-shelf palette — base stays cool blue-grey (rocks in
     // shadow), tops shift toward warm sandstone to match the reference photo
     // where direct god rays warm the upper surfaces of every shelf.
-    const uLowColor = uniform(vec3(0.20, 0.18, 0.28));
-    const uHighColor = uniform(vec3(0.70, 0.62, 0.48));
+    const uLowColor = uniform(vec3(0.035, 0.052, 0.039));
+    const uHighColor = uniform(vec3(0.22, 0.24, 0.12));
 
     const heightMix = smoothstep(float(-34.0), float(18.0), positionWorld.y);
     let color = mix(uLowColor, uHighColor, heightMix);
@@ -1230,7 +1240,7 @@ export function createReefSilhouetteNodeMaterial() {
     color = color.mul(float(0.86).add(striation.mul(0.10)));
     // Algae patches — FBM on upward-facing surfaces shifts toward warm moss green.
     const moss = tslFbm(positionWorld.xz.mul(0.18), 2).mul(pow(max(normalWorld.y, float(0.0)), float(1.6)));
-    color = color.add(vec3(0.16, 0.36, 0.22).mul(moss.mul(0.32)));
+    color = color.add(vec3(0.085, 0.19, 0.045).mul(moss.mul(0.42)));
     // Caustic shimmer only on upward-facing surfaces, kept dim so it doesn't bleach.
     const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.115)
         .mul(pow(max(normalWorld.y, float(0.0)), float(1.2)));
@@ -1275,8 +1285,8 @@ export function createBeamDustNodeMaterial() {
     const driftZ = cos(uTime.mul(0.08).add(aPhase.mul(1.3))).mul(0.65);
     const drift = vec3(driftX, driftY, driftZ);
 
-    // Instance matrices own billboard size. Scaling positionLocal here would
-    // also scale the instance translation in r181 and fling dust out of view.
+    // Instance matrices own billboard size. Scaling post-instance positionLocal
+    // here would also scale the world center and fling dust out of view.
     material.positionNode = positionLocal.add(drift);
 
     const radial = safeBillboardRadialFalloff();
@@ -1307,8 +1317,8 @@ export function createBiomeSilhouetteNodeMaterial(params = {}) {
     });
 
     const uTime = uniform(0);
-    const uFogColor = uniform(vec3(0.018, 0.20, 0.32));
-    const uSilhouetteColor = uniform(params.silhouetteColor ?? vec3(0.025, 0.13, 0.21));
+    const uFogColor = uniform(vec3(0.012, 0.085, 0.068));
+    const uSilhouetteColor = uniform(params.silhouetteColor ?? vec3(0.012, 0.055, 0.032));
 
     const u = uv();
     // FBM-driven silhouette mask: irregular cliff/kelp shape that's organic
@@ -1328,7 +1338,7 @@ export function createBiomeSilhouetteNodeMaterial(params = {}) {
     color = color.add(vec3(0.0, 0.02, 0.04).mul(mask));
 
     material.colorNode = color;
-    material.opacityNode = mask.mul(0.55);
+    material.opacityNode = mask.mul(0.55).mul(smoothstep(float(0.0), float(0.2), u.y));
     material.emissiveNode = vec3(0.0);
 
     material.userData = { uTime };

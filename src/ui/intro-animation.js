@@ -9,6 +9,7 @@ import { performanceMonitor } from '../utils/performance-monitor.js';
 import { readFlag } from '../core/flags.js';
 import { markStartup } from './startup-debug.js';
 import { connectStartupWordmark } from './startup-wordmark-handoff.js';
+import { beginIntroMenuWordmarkHandoff } from './intro-menu-wordmark-handoff.js';
 import {
     beginAsyncRenderPipelines,
     preloadAsyncRenderPipelines,
@@ -412,7 +413,8 @@ export class IntroAnimation {
 
         const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
         const viewportHeight = Math.max(window.innerHeight || 0, document.documentElement?.clientHeight || 0);
-        const firstCardTop = firstCard.getBoundingClientRect().top;
+        // Card entrance/hover transforms must not move the logo's destination.
+        const firstCardTop = cardsContainer.getBoundingClientRect().top + firstCard.offsetTop;
 
         const sidePadding = Math.max(16, Math.round(viewportWidth * 0.02));
         const topPadding = Math.max(6, Math.min(18, viewportHeight * 0.018));
@@ -487,7 +489,8 @@ export class IntroAnimation {
         // smoothly during the fast shrink-to-logo move (a coarse throttle made the glow lag).
         if (timeMs - this.lastTitleBoundsSync < 16) return;
 
-        const titleContainer = this.container.querySelector('.intro-title-container');
+        const titleContainer = this.menuWordmarkFlight?.element
+            || this.container.querySelector('.intro-title-container');
         if (!titleContainer) return;
         const rect = titleContainer.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return;
@@ -837,6 +840,7 @@ export class IntroAnimation {
         this.threeCanvas.style.height = '100%';
         this.threeCanvas.style.zIndex = '0'; // Behind CSS overlays
         this.container.appendChild(this.threeCanvas);
+        this.createStarfield();
 
         // Initialize renderer: try WebGPU first, fall back to WebGL. This must never
         // prevent the DOM/CSS title + prompt from being created.
@@ -922,6 +926,13 @@ export class IntroAnimation {
         this.setupMenuLogoLayoutTracking();
         this.syncTitleBounds(performance.now());
         this.installTetrominoPointerListener();
+    }
+
+    createStarfield() {
+        const stars = document.createElement('div');
+        stars.className = 'intro-starfield sb-starfield';
+        stars.ariaHidden = 'true';
+        this.container.appendChild(stars);
     }
 
     /**
@@ -1093,8 +1104,6 @@ export class IntroAnimation {
             this.loadingIndicator = null;
         }
 
-        this.threeRenderer?.startWarpDismiss?.(1.2);
-        this.setRendererPhase(INTRO_PHASES.DISMISS);
         this.setLoadingState(false);
         this.dismissText();
     }
@@ -1213,6 +1222,15 @@ export class IntroAnimation {
 
         // Transition title to top as logo
         if (titleContainer) {
+            this.menuWordmarkFlight = beginIntroMenuWordmarkHandoff(titleContainer, {
+                getTarget: () => {
+                    if (!document.body.classList.contains('start-modal-open')) return null;
+                    this.updateMenuLogoLayout();
+                    const desktop = titleContainer.querySelector('.intro-wordmark');
+                    return desktop?.offsetWidth ? desktop : document.querySelector('.main-menu-logo img');
+                },
+                onGeometryChange: () => { this._titleBoundsSettled = false; this._titleStableCount = 0; },
+            });
             titleContainer.classList.add('shrink-to-logo');
             this.scheduleMenuLogoLayoutUpdate();
         }
@@ -1227,29 +1245,12 @@ export class IntroAnimation {
 
         this.threeRenderer?.setBackgroundMode?.(true);
         this.installTetrominoPointerListener();
-        this.setRendererPhase(INTRO_PHASES.DISMISS);
-
-        // Signal completion near the midpoint of the warp to mask theme loading hitch.
-        if (this.onComplete) {
-            const handoverPromise = new Promise((resolve) => {
-                setTimeout(resolve, 380);
-            });
-            handoverPromise.then(() => {
-                if (this.onComplete) {
-                    this.onComplete();
-                    this.onComplete = null;
-                }
-            });
-        }
-
-        // After the warp transition reaches a stable point, switch to MENU_BG loop.
-        setTimeout(async () => {
-            if (prompt) prompt.style.display = 'none';
-            if (chromatic) chromatic.style.display = 'none';
-
-            await this.waitForLoadingPromise();
-            this.setRendererPhase(INTRO_PHASES.MENU_BG);
-        }, 850);
+        // Let the menu establish its real layout while the visible wordmark stays
+        // in the handoff layer. Its flight owns the full move, including the landing.
+        this.setRendererPhase(INTRO_PHASES.MENU_BG);
+        if (chromatic) chromatic.style.display = 'none';
+        this.onComplete?.();
+        this.onComplete = null;
     }
 
     /**
@@ -1257,6 +1258,7 @@ export class IntroAnimation {
      */
     dismiss() {
         this.stopWordmarkHandoff?.();
+        this.menuWordmarkFlight?.cancel();
         if (this.dismissPromise) {
             return this.dismissPromise;
         }
@@ -1330,6 +1332,7 @@ export class IntroAnimation {
      */
     skip() {
         this.stopWordmarkHandoff?.();
+        this.menuWordmarkFlight?.cancel();
         this.clearPhaseTimers();
         this.clearTitleRevealSafety();
         this.removeTetrominoPointerListener();
@@ -1370,6 +1373,7 @@ export class IntroAnimation {
      * Reset the intro animation (for replay)
      */
     reset() {
+        this.menuWordmarkFlight?.cancel();
         this.clearPhaseTimers();
         this.clearTitleRevealSafety();
         this.removeTetrominoPointerListener();
@@ -1503,6 +1507,7 @@ export class IntroAnimation {
         this.threeCanvas.style.height = '100%';
         this.threeCanvas.style.zIndex = '0'; // Behind everything
         this.container.appendChild(this.threeCanvas);
+        this.createStarfield();
 
         // Initialize renderer (WebGPU with WebGL fallback)
         await this.initRenderer(this.threeCanvas);

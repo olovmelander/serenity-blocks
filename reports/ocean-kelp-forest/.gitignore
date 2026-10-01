@@ -1,0 +1,15 @@
+# Raw authoring protocol responses; retain authored scene, script and proofs.
+mcp-*.json
+
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/kelp-studio.png
+!/study-first/capture.png
+!/study-first/result.json
+
+# Successful lighting and final forest captures; failed diagnostics remain local.
+!/study-lit/capture.png
+!/study-lit/result.json
+!/study-final/capture.png
+!/study-final/result.json

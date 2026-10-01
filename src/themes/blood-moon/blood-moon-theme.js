@@ -1,1188 +1,415 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════════
- *  🌑 BLOOD MOON 🌑
- *  A Stunning 3D Blood Moon Theme for Serenity Blocks
- * ═══════════════════════════════════════════════════════════════════════════════
- *
- * Features:
- * - Deep 3D Starfield with twinkling white and red stars
- * - 3D Blood Moon sphere with procedural craters and pulsing crimson glow
- * - Multiple glow layers around the moon for intense atmosphere
- * - Drifting nebula clouds at varying depths
- * - Floating crimson particles throughout 3D space
- * - Gameplay effects: blood waves, crimson lightning, soul orbs
- * - Post-processing: Bloom + Vignette for atmospheric depth
- */
-
-import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-
+/** Blood Moon's verified playground scene, with game lifecycle and event ownership. */
+import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { ThemeCameraRig } from '../shared/camera-rig.js';
+import { getViewport } from '../../utils/viewport.js';
 import { normalizeQuality } from '../../utils/quality.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { create as createBloodMoon } from '../../playground/effects/blood-moon.effect.js';
 import { BLOOD_MOON_TETROMINOS } from './blood-moon-tetrominos.js';
-import {
-    moonVertexShader,
-    moonFragmentShader,
-    waveVertexShader,
-    waveFragmentShader,
-    particleVertexShader,
-    particleFragmentShader,
-    starVertexShader,
-    starFragmentShader,
-    bloodSparkVertexShader,
-    bloodSparkFragmentShader,
-    nebulaVertexShader,
-    nebulaFragmentShader,
-} from './blood-moon-shaders.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Quality Presets
-// ─────────────────────────────────────────────────────────────────────────────
-const QUALITY_PRESETS = {
-    Extreme: {
-        starCount: 60000,
-        nebulaCount: 30,
-        ambientParticles: 600,
-        bloodSparks: 10000,
-        bloomStrength: 0.85,
-        bloomRadius: 0.75,
-        enablePostProcessing: true,
-        moonDetail: 64,
-        glowLayers: 8,
-    },
-    Ultra: {
-        starCount: 45000,
-        nebulaCount: 25,
-        ambientParticles: 450,
-        bloodSparks: 8000,
-        bloomStrength: 0.8,
-        bloomRadius: 0.65,
-        enablePostProcessing: true,
-        moonDetail: 56,
-        glowLayers: 7,
-    },
-    High: {
-        starCount: 35000,
-        nebulaCount: 20,
-        ambientParticles: 300,
-        bloodSparks: 6400,
-        bloomStrength: 0.7,
-        bloomRadius: 0.55,
-        enablePostProcessing: true,
-        moonDetail: 48,
-        glowLayers: 6,
-    },
-    Medium: {
-        starCount: 22000,
-        nebulaCount: 12,
-        ambientParticles: 180,
-        bloodSparks: 4800,
-        bloomStrength: 0.55,
-        bloomRadius: 0.45,
-        enablePostProcessing: true,
-        moonDetail: 36,
-        glowLayers: 5,
-    },
-    Low: {
-        starCount: 12000,
-        nebulaCount: 8,
-        ambientParticles: 100,
-        bloodSparks: 3200,
-        bloomStrength: 0.3,
-        bloomRadius: 0.3,
-        enablePostProcessing: false,
-        moonDetail: 24,
-        glowLayers: 4,
-    },
-    Minimal: {
-        starCount: 5000,
-        nebulaCount: 4,
-        ambientParticles: 30,
-        bloodSparks: 600,
-        bloomStrength: 0.25,
-        bloomRadius: 0.25,
-        enablePostProcessing: false,
-        moonDetail: 16,
-        glowLayers: 3,
-    },
-};
+const SETTINGS = ['effectQuality', 'graphicsQuality', 'enableAntialiasing', 'renderScale',
+    'backgroundComboEffects', 'pieceLockRipple', 'reducedMotion'];
+const BOARD_SELECTORS = '.single-player-card, #phaser-game-container canvas, #main-game-canvas, '
+    + '#single-player-game-canvas, #p1-phaser-container canvas, #p2-phaser-container canvas, '
+    + '#p3-phaser-container canvas, #p4-phaser-container canvas';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Vignette Shader
-// ─────────────────────────────────────────────────────────────────────────────
-const VignetteShader = {
-    uniforms: {
-        tDiffuse: { value: null },
-        darkness: { value: 0.7 },
-        offset: { value: 1.3 },
-    },
-    vertexShader: `
-        varying vec2 vUv;
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+function bool(value, fallback = true) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') return !['false', '0', 'off', 'no'].includes(value.toLowerCase());
+    return value === true;
+}
+
+function settingUpdates(payload) {
+    const detail = payload?.detail ?? payload ?? {};
+    const updates = {};
+    for (const key of SETTINGS) {
+        if (detail.type === key) updates[key] = detail.value;
+        else {
+            for (const source of [detail, detail.changed, detail.settings]) {
+                if (source && Object.prototype.hasOwnProperty.call(source, key)) {
+                    updates[key] = source[key];
+                    break;
+                }
+            }
         }
-    `,
-    fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float darkness;
-        uniform float offset;
-        varying vec2 vUv;
-        
-        void main() {
-            vec4 texel = texture2D(tDiffuse, vUv);
-            vec2 uv = (vUv - 0.5) * 2.0;
-            float dist = length(uv);
-            float vig = smoothstep(offset, offset - 0.7, dist);
-            texel.rgb = mix(texel.rgb * (1.0 - darkness), texel.rgb, vig);
-            gl_FragColor = texel;
-        }
-    `,
-};
+    }
+    return updates;
+}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Theme Class
-// ─────────────────────────────────────────────────────────────────────────────
 export default class BloodMoonTheme extends BaseTheme {
     constructor() {
         super('blood-moon');
-
+        this.resourceProfile = 'heavy-gpu';
         this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.composer = null;
-
-        // Scene elements
-        this.moon = null;
-        this.moonGroup = null;
-        this.starfield = null;
-        this.nebulaClouds = [];
-        this.ambientParticles = null;
-        this.moonGlowLayers = [];
-        this.bloodWaves = [];
-        this.soulOrbs = [];
-        this.bloodSparks = []; // Array of particle systems for overlapping bursts
-        this.bloodSparkIndex = 0; // Cycle through available systems
-
-        // Effect states
-        this.moonPulseIntensity = 0;
-        this.moonGlowIntensity = 1.0;
-        this.comboMultiplier = 1.0;
-
-        // Moon drift animation
-        this.moonPhaseX = Math.random() * Math.PI * 2;
-        this.moonPhaseY = Math.random() * Math.PI * 2;
-        this.moonPhaseX2 = Math.random() * Math.PI * 2;
-        this.moonPhaseY2 = Math.random() * Math.PI * 2;
-
-        // Animation
-        this.clock = new THREE.Clock();
-        this.time = 0;
-
-        // State
+        this.runtime = null;
+        this.runtimeGeneration = 0;
+        this.runtimeEntry = null;
         this.eventUnsubscribers = [];
-        this.boundResizeHandler = this.onWindowResize.bind(this);
-
-        // Pointer tracking for parallax camera
-        this.pointerX = 0;
-        this.pointerY = 0;
-        this.smoothedPointerX = 0;
-        this.smoothedPointerY = 0;
-
-        // Impact shake. The theme owns its own sway/parallax, so the rig contributes
-        // only the shake; `cameraBase` is the scratch this frame's sway is written into
-        // (and what the nebula layer follows, so it does not cancel the shake).
-        this.cameraRig = null;
-        this.cameraBase = { x: 0, y: 0, z: 1200 };
-
-        this.effectTimeouts = new Set();
-        this.qualityPreset = QUALITY_PRESETS.High;
-        this.pendingComboCount = 0;
-
-        console.log('[BloodMoon] Theme constructed');
+        this.animationLoopStarted = false;
+        this.animationDriver = null;
+        this.lastFrameTime = null;
+        this.time = 0;
+        this.fixedTime = null;
+        this.quality = 'High';
+        this.settings = {};
+        this.pendingSettings = null;
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        this.resizeQueued = false;
+        this.layoutClock = 0;
+        this.layoutDue = new Float64Array(3).fill(Infinity);
+        this.modeManager = null;
+        this.reducedMotionQuery = null;
+        this.gpuSurfaceUnregister = null;
+        this.isWebGPU = false;
+        this.forceWebGL = false;
+        this.recoveryAttempted = false;
     }
 
-    scheduleEffectTimeout(callback, delayMs = 0) {
-        const timeoutId = window.setTimeout(() => {
-            this.effectTimeouts.delete(timeoutId);
-            callback();
-        }, delayMs);
-        this.effectTimeouts.add(timeoutId);
-        return timeoutId;
-    }
-
-    clearEffectTimeouts() {
-        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
-        this.effectTimeouts.clear();
-    }
-
-    getTetrominoConfig() {
-        return BLOOD_MOON_TETROMINOS;
-    }
-
-    getCurrentQualityLevel() {
-        if (typeof window !== 'undefined' && window.settings?.graphicsQuality) {
-            return normalizeQuality(window.settings.graphicsQuality);
-        }
-        return 'High';
-    }
-
-    applyQualityPreset(quality) {
-        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
-    }
-
-    async createScene() {
-        console.log('[BloodMoon] Creating stunning 3D blood moon scene...');
-
-        const quality = this.getCurrentQualityLevel();
-        this.applyQualityPreset(quality);
-
-        const container = document.getElementById('blood-moon-theme');
-        if (!container) {
-            console.error('[BloodMoon] Container not found');
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const container = document.getElementById(`${this.name}-theme`);
+        if (!container) throw new Error('Blood Moon theme container not found.');
+        this.disposeRuntime();
+        const generation = this.runtimeGeneration;
+        const current = () => generation === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        this.settings = { ...window.settings, ...this.pendingSettings };
+        this.pendingSettings = null;
+        this.quality = normalizeQuality(this.settings.effectQuality ?? this.settings.graphicsQuality);
+        const antialias = bool(this.settings.enableAntialiasing, this.getAntialiasEnabled());
+        const params = new URLSearchParams(window.location?.search || '');
+        const renderer = await this.createRenderer(ownerGeneration, antialias, params, current);
+        if (!renderer) return;
+        if (!current()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
             return;
         }
 
-        // Clear any existing content (old canvas)
-        container.innerHTML = '';
-
-        this.initRenderer(container);
-        this.createStarfield();
-        this.createNebulaClouds();
-        this.createMoon();
-        this.createAmbientParticles();
-        this.createBloodSparks();
-        this.setupPostProcessing();
-        this.setupEventListeners();
-        this.startAnimation();
-
-        console.log('[BloodMoon] Scene created successfully');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Renderer & Camera
-    // ─────────────────────────────────────────────────────────────────────────
-
-    initRenderer(container) {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        this.renderer = new THREE.WebGLRenderer({ antialias: this.getAntialiasEnabled(), alpha: false });
-        this.renderer.setClearColor(0x050005, 1); // Deep crimson-black
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setSize(width, height);
-        this.renderer.sortObjects = true;
-        this.renderer.autoClear = false;
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.2;
-
-        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
-        container.appendChild(this.renderer.domElement);
-        this.registerContainer(container);
-
-        this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x0a0208, 0.0008); // Crimson fog
-
-        // Camera positioned for depth
-        this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 50000);
-        this.camera.position.set(0, 0, 1200);
-        this.camera.lookAt(0, 0, 0);
-        this.cameraRig = new ThemeCameraRig(this.camera, {
-            focus: { x: 0, y: 0, z: 0 },
-            // The theme's own orbit has a ~105 s period, so over a few seconds it barely
-            // reads as motion. The rig adds a faster 18/27 s float on top so the frame
-            // feels alive at a glance, without flattening that slow cinematic drift.
-            breathe: true,
-            pointer: false, // the theme already applies its own mouse parallax
-        });
-
-        // Crimson lighting from moon
-        const moonLight = new THREE.PointLight(0xcc1a2e, 2, 3000);
-        moonLight.position.set(0, 0, 0);
-        this.scene.add(moonLight);
-
-        // Subtle ambient
-        const ambientLight = new THREE.AmbientLight(0x150508, 0.4);
-        this.scene.add(ambientLight);
-
-        // Resize handler
-        window.addEventListener('resize', this.boundResizeHandler);
-
-        console.log('[BloodMoon] Renderer initialized');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Starfield - Deep 3D stars with white and red tinting
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createStarfield() {
-        const { starCount } = this.qualityPreset;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(starCount * 3);
-        const colors = new Float32Array(starCount * 3);
-        const sizes = new Float32Array(starCount);
-        const twinkleData = new Float32Array(starCount * 2); // vec2: phase, speed
-        const brightness = new Float32Array(starCount);
-
-        // Blood moon red-tinted star colors
-        const starColors = [
-            new THREE.Color(0xffffff), // Pure white
-            new THREE.Color(0xffeedd), // Warm white
-            new THREE.Color(0xffcccc), // Light pink
-            new THREE.Color(0xff9999), // Pink
-            new THREE.Color(0xff6666), // Red tint
-            new THREE.Color(0xcc3333), // Deep red
-        ];
-
-        for (let i = 0; i < starCount; i++) {
-            const i3 = i * 3;
-            const i2 = i * 2;
-
-            // Spherical distribution to ensure coverage at all angles
-            // Radius: min 2500 (beyond camera), max 14000
-            const radius = 2500 + Math.random() * 11500;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-
-            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-            positions[i3 + 2] = radius * Math.cos(phi);
-
-            // Color - mostly red-tinted stars for blood moon atmosphere
-            const colorIndex = Math.random() > 0.15
-                ? Math.floor(2 + Math.random() * 4) // Red tints (85%)
-                : Math.floor(Math.random() * 2); // White (15%)
-            const color = starColors[colorIndex];
-            colors[i3] = color.r;
-            colors[i3 + 1] = color.g;
-            colors[i3 + 2] = color.b;
-
-            // Scaled up sizes for potentially greater distances in spherical volume
-            sizes[i] = 30 + Math.random() * 60;
-
-            // Twinkle: phase offset, varied speed (0.8 to 2.5 Hz)
-            twinkleData[i2] = Math.random() * Math.PI * 2; // phase
-            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7; // speed
-
-            brightness[i] = 0.3 + Math.random() * 0.7;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
-        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() },
-                uEventBoost: { value: 0 },
-            },
-            vertexShader: starVertexShader,
-            fragmentShader: starFragmentShader,
-            transparent: true,
-            vertexColors: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        this.starfield = new THREE.Points(geometry, material);
-        this.scene.add(this.starfield);
-        console.log('[BloodMoon] Starfield created with', starCount, 'atmospheric stars in 3 depth layers');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Nebula Clouds - Crimson/burgundy clouds at varying depths
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createNebulaClouds() {
-        const textureLoader = new THREE.TextureLoader();
-        const texturePath = './textures/blood-moon/';
-
-        const textures = [
-            textureLoader.load(`${texturePath}nebula-red-1.png`),
-            textureLoader.load(`${texturePath}nebula-red-2.png`),
-            textureLoader.load(`${texturePath}nebula-red-3.png`),
-        ];
-
-        textures.forEach((t) => {
-            t.wrapS = THREE.ClampToEdgeWrapping;
-            t.wrapT = THREE.ClampToEdgeWrapping;
-        });
-
-        // Large planes to fill the background
-        const nebulaConfigs = [
-            // Deep background layer (Parallax factor 0.1)
-            {
-                texture: textures[0], size: 6000, z: -4500, opacity: 0.3, speed: 0.0001,
-            },
-            {
-                texture: textures[1], size: 7000, z: -4000, opacity: 0.25, speed: 0.00015,
-            },
-            // Mid layer (Parallax factor 0.3)
-            {
-                texture: textures[2], size: 5000, z: -3000, opacity: 0.2, speed: 0.0002,
-            },
-            {
-                texture: textures[0], size: 5500, z: -2500, opacity: 0.15, speed: 0.00025,
-            },
-        ];
-
-        this.nebulaClouds = [];
-
-        nebulaConfigs.forEach((config) => {
-            const geometry = new THREE.PlaneGeometry(config.size, config.size);
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    tDiffuse: { value: config.texture },
-                    uOpacity: { value: config.opacity },
-                    uPulse: { value: 0 },
-                    uTime: { value: 0 },
-                },
-                vertexShader: nebulaVertexShader,
-                fragmentShader: nebulaFragmentShader,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            });
-
-            const mesh = new THREE.Mesh(geometry, material);
-            // Random position spread
-            mesh.position.x = (Math.random() - 0.5) * 2000;
-            mesh.position.y = (Math.random() - 0.5) * 1000;
-            mesh.position.z = config.z;
-            mesh.rotation.z = Math.random() * Math.PI * 2;
-
-            mesh.userData = {
-                driftSpeed: config.speed,
-                baseOpacity: config.opacity,
-                pulsePhase: Math.random() * Math.PI * 2,
-            };
-
-            this.nebulaClouds.push(mesh);
-            this.scene.add(mesh);
-        });
-
-        console.log('[BloodMoon] Nebula clouds created with textures');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Blood Moon - 3D Sphere with craters and intense glow
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createMoon() {
-        const moonSize = 280;
-
-        // Create moon group for drifting
-        this.moonGroup = new THREE.Group();
-        this.scene.add(this.moonGroup);
-
-        // Moon sphere with shader material
-        const geometry = new THREE.SphereGeometry(moonSize, this.qualityPreset.moonDetail, this.qualityPreset.moonDetail);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPulseIntensity: { value: 0 },
-                uGlowIntensity: { value: 1.0 },
-            },
-            vertexShader: moonVertexShader,
-            fragmentShader: moonFragmentShader,
-        });
-
-        this.moon = new THREE.Mesh(geometry, material);
-        this.moon.renderOrder = 100;
-        this.moonGroup.add(this.moon);
-
-        // Create glow layers around the moon
-        this.createMoonGlowLayers(moonSize);
-
-        console.log('[BloodMoon] 3D Blood Moon created');
-    }
-
-    createMoonGlowLayers(moonSize) {
-        const glowConfigs = [];
-        const layerCount = this.qualityPreset.glowLayers;
-
-        for (let i = 0; i < layerCount; i++) {
-            const sizeMult = 1.3 + i * 0.25;
-            const opacity = 0.35 - i * 0.04;
-            glowConfigs.push({
-                size: moonSize * sizeMult,
-                color: i < 3 ? 0xcc1a2e : (i < 5 ? 0x8a0f1e : 0x500a12),
-                opacity: Math.max(0.05, opacity),
-                z: -5 * (i + 1),
-            });
-        }
-
-        for (const config of glowConfigs) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 256;
-            canvas.height = 256;
-            const ctx = canvas.getContext('2d');
-
-            const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-            gradient.addColorStop(0.15, 'rgba(255, 200, 200, 0.8)');
-            gradient.addColorStop(0.4, 'rgba(255, 100, 100, 0.4)');
-            gradient.addColorStop(0.7, 'rgba(255, 50, 50, 0.15)');
-            gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 256, 256);
-
-            const texture = new THREE.CanvasTexture(canvas);
-            const geometry = new THREE.PlaneGeometry(config.size, config.size);
-            const material = new THREE.MeshBasicMaterial({
-                map: texture,
-                color: config.color,
-                transparent: true,
-                opacity: config.opacity,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            });
-
-            const glow = new THREE.Mesh(geometry, material);
-            glow.position.set(0, 0, config.z);
-            glow.renderOrder = 50;
-            glow.userData.baseOpacity = config.opacity;
-            this.moonGlowLayers.push(glow);
-            this.moonGroup.add(glow);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Ambient Particles - Floating crimson particles
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createAmbientParticles() {
-        const particleCount = this.qualityPreset.ambientParticles;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        const randoms = new Float32Array(particleCount);
-        const sizes = new Float32Array(particleCount);
-
-        for (let i = 0; i < particleCount; i++) {
-            const i3 = i * 3;
-            // Orbit around moon area
-            const angle = Math.random() * Math.PI * 2;
-            const radius = 200 + Math.random() * 600;
-
-            positions[i3] = Math.cos(angle) * radius;
-            positions[i3 + 1] = (Math.random() - 0.5) * 400;
-            positions[i3 + 2] = Math.sin(angle) * radius - 100;
-
-            randoms[i] = Math.random();
-            sizes[i] = 8.0 + Math.random() * 10.0;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-            },
-            vertexShader: particleVertexShader,
-            fragmentShader: particleFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.ambientParticles = new THREE.Points(geometry, material);
-        this.moonGroup.add(this.ambientParticles);
-
-        console.log('[BloodMoon] Ambient particles created');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Blood Sparks - Explosive burst from moon surface outward
-    // Creates a pool of particle systems to allow overlapping bursts
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createBloodSparks() {
-        const poolSize = 16; // Number of overlapping bursts allowed
-        const countPerSystem = Math.floor(this.qualityPreset.bloodSparks / 4); // Use more particles per system in the pool
-
-        const moonRadius = 180; // Start at moon surface
-
-        // Color palette for blood sparks - deep reds
-        const colorOptions = [
-            new THREE.Color(0xff2020), // Bright pure red
-            new THREE.Color(0xcc1a1a), // Deep crimson red
-            new THREE.Color(0xff3030), // Vivid red
-            new THREE.Color(0xdd2222), // Blood red
-        ];
-
-        for (let p = 0; p < poolSize; p++) {
-            const geometry = new THREE.BufferGeometry();
-
-            const thetas = new Float32Array(countPerSystem);
-            const phis = new Float32Array(countPerSystem);
-            const radii = new Float32Array(countPerSystem);
-            const randoms = new Float32Array(countPerSystem);
-            const colors = new Float32Array(countPerSystem * 3);
-            const positions = new Float32Array(countPerSystem * 3);
-
-            for (let i = 0; i < countPerSystem; i++) {
-                // Distribute particles evenly on moon surface
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(2 * Math.random() - 1);
-
-                thetas[i] = theta;
-                phis[i] = phi;
-                radii[i] = moonRadius;
-                randoms[i] = Math.random();
-
-                // Color selection - weighted toward hot colors
-                const colorType = Math.random();
-                let c;
-                if (colorType > 0.6) c = colorOptions[0];
-                else if (colorType > 0.3) c = colorOptions[1];
-                else if (colorType > 0.1) c = colorOptions[2];
-                else c = colorOptions[3];
-
-                colors[i * 3] = c.r;
-                colors[i * 3 + 1] = c.g;
-                colors[i * 3 + 2] = c.b;
-
-                positions[i * 3] = 0;
-                positions[i * 3 + 1] = 0;
-                positions[i * 3 + 2] = 0;
+        const entry = {
+            renderer, runtime: null, preparing: null, retired: false, ready: false,
+        };
+        this.runtimeEntry = entry;
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        this.appliedAntialiasing = antialias;
+        try {
+            renderer.setClearColor(0x010208, 1);
+            renderer.toneMapping = THREE.NoToneMapping;
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            renderer.domElement.id = 'blood-moon-renderer';
+            renderer.domElement.setAttribute('aria-hidden', 'true');
+            renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+            container.appendChild(renderer.domElement);
+            this.scene = new THREE.Scene();
+            this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+            this.camera.position.set(0, 0, 12);
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            const time = Number(params.get('bloodMoonTime'));
+            this.fixedTime = params.has('bloodMoonTime') && Number.isFinite(time) ? Math.max(0, time) : null;
+            this.time = this.fixedTime ?? 0;
+            ['board', 'event', 'eventAge', 'lines', 'combo', 't'].forEach((key) => params.delete(key));
+            params.set('quality', this.quality);
+            if (params.has('bloodMoonSeed') && Number.isFinite(Number(params.get('bloodMoonSeed')))) {
+                params.set('seed', params.get('bloodMoonSeed'));
             }
-
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('aTheta', new THREE.BufferAttribute(thetas, 1));
-            geometry.setAttribute('aPhi', new THREE.BufferAttribute(phis, 1));
-            geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
-            geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-            geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: { value: 0 },
-                    uPulseTimer: { value: -100.0 },
-                },
-                vertexShader: bloodSparkVertexShader,
-                fragmentShader: bloodSparkFragmentShader,
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
+            entry.runtime = createBloodMoon({
+                THREE,
+                scene: this.scene,
+                camera: this.camera,
+                renderer,
+                sizes: { width: this.width, height: this.height },
+                params,
             });
-
-            const sparks = new THREE.Points(geometry, material);
-            sparks.frustumCulled = false;
-            this.moonGroup.add(sparks);
-            this.bloodSparks.push(sparks);
+            this.runtime = entry.runtime;
+            this.runtime.camera?.(this.time, this.camera);
+            this.runtime.seek(this.time);
+            this.setupListeners();
+            this.syncLayout();
+            this.setupGpuResilience();
+            entry.preparing = Promise.resolve().then(() => (entry.retired ? undefined : entry.runtime.prepare()));
+            await entry.preparing;
+            if (!current()) {
+                this.retireEntry(entry);
+                return;
+            }
+            entry.ready = true;
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+                return;
+            }
+            this.scheduleLayout();
+            this.animate();
+        } catch (error) {
+            if (current()) {
+                this.disposeRuntime();
+                throw error;
+            }
+            this.retireEntry(entry);
         }
-
-        console.log('[BloodMoon] Blood sparks pool created with', poolSize, 'systems,', countPerSystem, 'particles each');
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Post Processing
-    // ─────────────────────────────────────────────────────────────────────────
-
-    setupPostProcessing() {
-        if (!this.qualityPreset.enablePostProcessing) {
-            console.log('[BloodMoon] Post-processing disabled for quality level');
-            return;
+    async createRenderer(ownerGeneration, antialias, params, current) {
+        const forced = this.forceWebGL || ['forceWebGL', 'bloodMoonForceWebGL']
+            .some((key) => params.has(key) && bool(params.get(key)));
+        const attempt = (forceWebGL) => this.initializeRendererCandidate(new THREE.WebGPURenderer({
+            antialias, alpha: false, forceWebGL, powerPreference: 'high-performance',
+        }), { ownerGeneration, timeoutMs: 5500, label: 'Blood Moon renderer initialization' });
+        if (!forced && typeof navigator !== 'undefined' && navigator.gpu) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!current()) return null;
+                console.warn('[BloodMoon] WebGPU initialization failed; trying WebGL2.', error);
+            }
         }
+        if (!current()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!current()) return null;
+            throw error;
+        }
+    }
 
-        this.composer = new EffectComposer(this.renderer);
+    setupGpuResilience() {
+        this.setupRendererResilience(this.renderer, {
+            webgpuDevice: this.isWebGPU ? this.renderer.backend?.device : null,
+        });
+        if (this.isWebGPU) {
+            this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+                recover: async () => {
+                    if (this.recoveryAttempted) throw new Error('Blood Moon GPU recovery already attempted.');
+                    this.recoveryAttempted = true;
+                    this.forceWebGL = true;
+                    if (this.isActive) await this.createScene();
+                },
+            });
+        }
+    }
 
-        const renderPass = new RenderPass(this.scene, this.camera);
-        this.composer.addPass(renderPass);
-
-        this.bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            this.qualityPreset.bloomStrength,
-            this.qualityPreset.bloomRadius,
-            0.2,
+    setupListeners() {
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+        this.modeManager = null;
+        this.reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+        this.applyEffectSettings();
+        const cue = (kind, payload) => {
+            if (!this.isActive || this.isPaused || !this.effectsEnabled) return;
+            if (kind === 'lock' && !this.lockEnabled) return;
+            this.runtime?.cue(kind, payload);
+        };
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.PIECE_LOCK, (data) => cue('lock', data)),
+            eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+                cue((data?.lineCount ?? data?.lines) >= 4 ? 'tetris' : 'clear', data);
+            }),
+            eventBus.on(EVENTS.COMBO, (data) => cue('combo', data)),
+            eventBus.on(EVENTS.TSPIN, (data) => cue('tspin', data)),
+            eventBus.on(EVENTS.PERFECT_CLEAR, (data) => cue('perfectClear', data)),
+            eventBus.on(EVENTS.LEVEL_UP, (data) => cue('levelUp', data)),
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (data) => this.handleSettings(data)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
         );
-        this.composer.addPass(this.bloomPass);
-
-        const vignettePass = new ShaderPass(VignetteShader);
-        this.composer.addPass(vignettePass);
-
-        console.log('[BloodMoon] Post-processing configured');
+        this.registerEventListener(window, 'settingsChanged', (event) => this.handleSettings(event));
+        this.registerEventListener(window, 'gameOver', () => this.runtime?.seek(this.time));
+        if (this.reducedMotionQuery?.addEventListener) {
+            this.registerEventListener(this.reducedMotionQuery, 'change', () => this.applyEffectSettings());
+        }
+        this.ensureModeListeners();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Animation
-    // ─────────────────────────────────────────────────────────────────────────
+    ensureModeListeners() {
+        const manager = window.serenityBlocks?.gameModeManager;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', () => this.scheduleLayout()),
+            manager.on('modeActivated', () => this.scheduleLayout()),
+            manager.on('modeStopped', () => { this.runtime?.seek(this.time); this.scheduleLayout(); }),
+        );
+    }
 
-    startAnimation() {
-        this.animate();
+    applyEffectSettings() {
+        this.effectsEnabled = bool(this.settings.backgroundComboEffects);
+        this.lockEnabled = bool(this.settings.pieceLockRipple);
+        this.reducedMotion = bool(this.settings.reducedMotion, false) || this.reducedMotionQuery?.matches === true;
+        this.runtime?.setEffectsEnabled(this.effectsEnabled);
+        this.runtime?.setReducedMotion(this.reducedMotion);
+    }
+
+    handleSettings(payload) {
+        const updates = settingUpdates(payload);
+        Object.assign(this.settings, updates);
+        this.applyEffectSettings();
+        const quality = normalizeQuality(this.settings.effectQuality ?? this.settings.graphicsQuality);
+        const antialias = bool(this.settings.enableAntialiasing, this.getAntialiasEnabled());
+        if (quality !== this.quality || antialias !== this.appliedAntialiasing) {
+            this.pendingSettings = { ...this.settings };
+            this.queueRebuild();
+        } else if (Object.prototype.hasOwnProperty.call(updates, 'renderScale') && !this.resizeQueued) {
+            this.resizeQueued = true;
+            const generation = this.runtimeGeneration;
+            queueMicrotask(() => {
+                this.resizeQueued = false;
+                if (this.isActive && generation === this.runtimeGeneration) this.resize();
+            });
+        }
+    }
+
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const generation = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || generation !== this.runtimeGeneration) return;
+            if (this.isPaused || !this.runtimeEntry?.ready) {
+                this.rebuildPending = true;
+                return;
+            }
+            this.createScene().catch((error) => {
+                console.error('[BloodMoon] Settings rebuild failed.', error);
+                this.onRuntimeFailure?.(error);
+            });
+        });
+    }
+
+    resize(width, height) {
+        if (!this.renderer) return;
+        const view = getViewport();
+        this.width = Math.max(1, Number.isFinite(width) ? width : view.width || 1);
+        this.height = Math.max(1, Number.isFinite(height) ? height : view.height || 1);
+        // Preserve the previous theme's pixel-ratio policy; savings come from the scene itself.
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
+        this.renderer.setSize(this.width, this.height);
+        this.runtime?.resize(this.width, this.height);
+        this.scheduleLayout();
+    }
+
+    scheduleLayout() {
+        this.layoutDue[0] = this.layoutClock;
+        this.layoutDue[1] = this.layoutClock + 0.5;
+        this.layoutDue[2] = this.layoutClock + 1.5;
+    }
+
+    syncLayout() {
+        if (!this.runtime) return;
+        this.ensureModeListeners();
+        const rects = [];
+        if (this.modeManager?.getCurrentModeId?.() !== 'serenity') {
+            for (const node of document.querySelectorAll(BOARD_SELECTORS)) {
+                if (node.checkVisibility?.({ checkOpacity: true, checkVisibilityCSS: true }) === false) continue;
+                const rect = node.getBoundingClientRect();
+                if (rect.width < 32 || rect.height < 64 || rect.right <= 0 || rect.bottom <= 0
+                    || rect.left >= this.width || rect.top >= this.height) continue;
+                rects.push({
+                    left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+                });
+            }
+        }
+        this.runtime.setLayout(rects);
     }
 
     animate() {
-        if (!this.isActive) return;
-
-        const animId = requestAnimationFrame(() => this.animate());
-        this.registerAnimation(animId);
-
-        const delta = this.clock.getDelta();
-        this.time += delta;
-
-        // Update shader uniforms
-        if (this.moon && this.moon.material.uniforms) {
-            this.moon.material.uniforms.uTime.value = this.time;
-            this.moon.material.uniforms.uPulseIntensity.value = this.moonPulseIntensity;
-            this.moon.material.uniforms.uGlowIntensity.value = this.moonGlowIntensity;
-        }
-
-        if (this.starfield && this.starfield.material.uniforms) {
-            this.starfield.material.uniforms.uTime.value = this.time;
-            // Decay event boost smoothly
-            if (this.starfield.material.uniforms.uEventBoost.value > 0) {
-                this.starfield.material.uniforms.uEventBoost.value *= 0.95;
-                if (this.starfield.material.uniforms.uEventBoost.value < 0.01) {
-                    this.starfield.material.uniforms.uEventBoost.value = 0;
-                }
-            }
-        }
-
-        if (this.ambientParticles && this.ambientParticles.material.uniforms) {
-            this.ambientParticles.material.uniforms.uTime.value = this.time;
-        }
-
-        // Update all blood spark systems in the pool
-        for (const sparks of this.bloodSparks) {
-            if (sparks && sparks.material.uniforms) {
-                sparks.material.uniforms.time.value = this.time;
-
-                // Update pulse wave
-                if (sparks.material.uniforms.uPulseTimer.value > -50.0) {
-                    // Move wave outwards at 10 units/sec for longer-lasting, sweeping explosion
-                    sparks.material.uniforms.uPulseTimer.value += delta * 10.0;
-
-                    // Turn off when wave completes (maxLife 320 + stagger 1.5 + buffer)
-                    if (sparks.material.uniforms.uPulseTimer.value > 330.0) {
-                        sparks.material.uniforms.uPulseTimer.value = -100.0;
-                    }
-                }
-            }
-        }
-
-        // Slow drift moon across entire screen, including coming closer to the camera
-        if (this.moonGroup) {
-            const driftX = Math.sin(this.time * 0.03 + this.moonPhaseX) * 550
-                + Math.cos(this.time * 0.02 + this.moonPhaseX2) * 250;
-            const driftY = Math.cos(this.time * 0.025 + this.moonPhaseY) * 350
-                + Math.sin(this.time * 0.015 + this.moonPhaseY2) * 150;
-            const driftZ = Math.sin(this.time * 0.015 + this.moonPhaseX) * 350 + Math.cos(this.time * 0.02 + this.moonPhaseY2) * 150 + 200;
-
-            this.moonGroup.position.x = driftX;
-            this.moonGroup.position.y = driftY;
-            this.moonGroup.position.z = driftZ;
-
-            // Gentle rotation
-            this.moonGroup.rotation.z = Math.sin(this.time * 0.01) * 0.05;
-        }
-
-        // Rotate moon around its own axis
-        if (this.moon) {
-            this.moon.rotation.y += delta * 0.03; // Very slow rotation
-        }
-
-        // Slow camera orbit for parallax depth (independent of moon)
-        if (this.camera) {
-            const cameraTime = this.time * 0.06; // Slow but noticeable orbit
-            const orbitRadiusX = 400; // Wide horizontal sway
-            const orbitRadiusY = 300; // Vertical sway range
-            const orbitRadiusZ = 200; // Depth breathing
-
-            // Smooth pointer tracking (frame-rate independent damping)
-            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
-            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
-
-            const parallaxX = this.smoothedPointerX * 120.0;
-            const parallaxY = -this.smoothedPointerY * 60.0;
-
-            // Orbital sway + mouse parallax - creates parallax with starfield/nebula
-            this.cameraBase.x = Math.sin(cameraTime) * orbitRadiusX
-                + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4
-                + parallaxX;
-            this.cameraBase.y = Math.cos(cameraTime * 0.8) * orbitRadiusY
-                + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3
-                + parallaxY;
-            this.cameraBase.z = 1200 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
-
-            // LookAt drift for dynamic framing (also nudged by mouse at 0.4x)
-            const lookOffsetX = Math.sin(cameraTime * 0.4) * 150 + parallaxX * 0.4;
-            const lookOffsetY = Math.cos(cameraTime * 0.5) * 100 + parallaxY * 0.4;
-
-            // The rig writes the final position and does the lookAt, layering impact
-            // shake on top of the sway above. Aiming at the drifting target (rather than
-            // a fixed point) is what turns a shake offset into visible view rotation.
-            this.cameraRig.setFocus(lookOffsetX, lookOffsetY, 0);
-            this.cameraRig.apply(delta, this.cameraBase);
-        }
-
-        // Pulse glow layers with moon pulse intensity
-        const glowPulse = Math.sin(this.time * 2.0) * 0.15 + 1.0;
-        for (const glow of this.moonGlowLayers) {
-            const pulse = (1 + this.moonPulseIntensity * 0.5) * glowPulse;
-            glow.material.opacity = glow.userData.baseOpacity * pulse;
-        }
-
-        // Nebula drift and pulse (synced with camera for seamless coverage)
-        for (const cloud of this.nebulaClouds) {
-            // Move nebulas with camera so they always cover the view
-            // Plus gentle drift for atmosphere
-            cloud.userData.driftOffset = (cloud.userData.driftOffset || 0) + cloud.userData.driftSpeed * 50;
-            if (cloud.userData.driftOffset > 6000) cloud.userData.driftOffset = -6000;
-
-            // Sync base position with the camera's PRE-SHAKE sway, not its final
-            // position: following the shake too would cancel most of it on this layer.
-            cloud.position.x = this.cameraBase.x * 0.3 + cloud.userData.driftOffset;
-            cloud.position.y = this.cameraBase.y * 0.2;
-
-            cloud.userData.pulsePhase += 0.005;
-            // Pulse: -1 to 1 for subtle breathing
-            const pulse = Math.sin(cloud.userData.pulsePhase);
-
-            if (cloud.material.uniforms) {
-                cloud.material.uniforms.uPulse.value = pulse + (this.moonPulseIntensity * 2.0); // React to gameplay
-                cloud.material.uniforms.uTime.value = this.time;
-            }
-        }
-
-        // Slowly rotate starfield
-        if (this.starfield) {
-            this.starfield.rotation.y = this.time * 0.005;
-            this.starfield.rotation.z = this.time * 0.002;
-        }
-
-        // Decay pulse intensity
-        if (this.moonPulseIntensity > 0) {
-            this.moonPulseIntensity *= 0.95;
-            if (this.moonPulseIntensity < 0.01) this.moonPulseIntensity = 0;
-        }
-
-        // Update blood waves
-        this.updateBloodWaves(delta);
-
-        // Update soul orbs
-        this.updateSoulOrbs(delta);
-
-        // Render
-        this.renderer.clear();
-        if (this.composer && this.qualityPreset.enablePostProcessing) {
-            this.composer.render();
-        } else {
-            this.renderer.render(this.scene, this.camera);
-        }
+        if (this.animationLoopStarted || !this.isActive || this.isPaused || !this.runtimeEntry?.ready) return;
+        this.animationLoopStarted = true;
+        this.lastFrameTime = null;
+        this.animationDriver = this.safeAnimate((timestamp) => this.stepFrame(timestamp));
+        this.registerAnimation(requestAnimationFrame(this.animationDriver));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Blood Waves - Expanding crimson torus rings
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createBloodWave(intensity) {
-        const geometry = new THREE.SphereGeometry(30, 64, 64);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: this.time },
-                uOpacity: { value: 1.0 },
-                uColor: { value: new THREE.Color(0xcc1a2e) },
-            },
-            vertexShader: waveVertexShader,
-            fragmentShader: waveFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-        });
-
-        const wave = new THREE.Mesh(geometry, material);
-        wave.frustumCulled = false;
-        wave.rotation.x = Math.random() * Math.PI * 0.3;
-        wave.rotation.y = Math.random() * Math.PI * 2;
-
-        wave.userData = {
-            speed: 80 + intensity * 20,
-            life: 1.0,
-            maxLife: 1.0,
-        };
-
-        this.moonGroup.add(wave);
-        this.bloodWaves.push(wave);
-    }
-
-    updateBloodWaves(delta) {
-        for (let i = this.bloodWaves.length - 1; i >= 0; i--) {
-            const wave = this.bloodWaves[i];
-            wave.scale.addScalar(wave.userData.speed * delta * 0.1);
-            wave.userData.life -= delta * 0.8;
-
-            if (wave.material.uniforms) {
-                wave.material.uniforms.uOpacity.value = wave.userData.life;
-                wave.material.uniforms.uTime.value = this.time;
-            }
-
-            if (wave.userData.life <= 0) {
-                this.moonGroup.remove(wave);
-                wave.geometry.dispose();
-                wave.material.dispose();
-                this.bloodWaves.splice(i, 1);
+    stepFrame(timestamp) {
+        if (!this.runtime || this.isPaused) return;
+        const now = Number.isFinite(timestamp) ? timestamp : performance.now();
+        const dt = this.lastFrameTime === null
+            ? 1 / 60 : Math.max(0, Math.min(0.05, (now - this.lastFrameTime) / 1000));
+        this.lastFrameTime = now;
+        this.layoutClock += dt;
+        let layoutChanged = false;
+        for (let i = 0; i < this.layoutDue.length; i++) {
+            if (this.layoutClock >= this.layoutDue[i]) {
+                this.layoutDue[i] = Infinity;
+                layoutChanged = true;
             }
         }
+        if (layoutChanged) this.syncLayout();
+        this.time = this.fixedTime ?? this.time + dt;
+        this.runtime.update(this.time, this.fixedTime === null ? dt : 0);
+        this.runtime.render();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Soul Orbs - Glowing particles rising upward
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createSoulOrb() {
-        const geometry = new THREE.SphereGeometry(4 + Math.random() * 4, 8, 8);
-        const material = new THREE.MeshBasicMaterial({
-            color: 0xff4060,
-            transparent: true,
-            opacity: 0.8,
-            blending: THREE.AdditiveBlending,
-        });
-
-        const orb = new THREE.Mesh(geometry, material);
-        orb.frustumCulled = false;
-        orb.position.x = (Math.random() - 0.5) * 300;
-        orb.position.y = -200;
-        orb.position.z = (Math.random() - 0.5) * 200;
-
-        orb.userData = {
-            velocityY: 60 + Math.random() * 80,
-            velocityX: (Math.random() - 0.5) * 20,
-            velocityZ: (Math.random() - 0.5) * 15,
-            life: 1.0,
-            pulsePhase: Math.random() * Math.PI * 2,
-        };
-
-        this.moonGroup.add(orb);
-        this.soulOrbs.push(orb);
-    }
-
-    updateSoulOrbs(delta) {
-        for (let i = this.soulOrbs.length - 1; i >= 0; i--) {
-            const orb = this.soulOrbs[i];
-            orb.position.y += orb.userData.velocityY * delta;
-            orb.position.x += orb.userData.velocityX * delta;
-            orb.position.z += (orb.userData.velocityZ || 0) * delta;
-            orb.userData.life -= delta * 0.12; // much slower decay — lasts ~8 seconds
-
-            // Pulse
-            orb.userData.pulsePhase += delta * 5;
-            const pulse = Math.sin(orb.userData.pulsePhase) * 0.3 + 0.7;
-            orb.material.opacity = orb.userData.life * pulse;
-
-            if (orb.userData.life <= 0 || orb.position.y > 800) {
-                this.moonGroup.remove(orb);
-                orb.geometry.dispose();
-                orb.material.dispose();
-                this.soulOrbs.splice(i, 1);
-            }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Event Handlers
-    // ─────────────────────────────────────────────────────────────────────────
-
-    setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handleLineClear(data);
-            }
-        });
-
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handleCombo(data);
-            }
-        });
-
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handlePieceLock();
-            }
-        });
-
-        // Pointer tracking for parallax camera
-        const onPointerMove = (e) => {
-            if (!this.isActive) return;
-            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
-        };
-        window.addEventListener('pointermove', onPointerMove);
-        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
-    }
-
-    handlePieceLock() {
-        this.moonPulseIntensity = Math.min(this.moonPulseIntensity + 0.15, 0.5);
-        this.cameraRig?.shakeLock();
-        // Star twinkle boost on piece lock
-        if (this.starfield && this.starfield.material.uniforms) {
-            this.starfield.material.uniforms.uEventBoost.value = Math.min(this.starfield.material.uniforms.uEventBoost.value + 0.8, 2.0);
-        }
-    }
-
-    handleCombo(eventPayload) {
-        const detail = eventPayload?.detail || eventPayload || {};
-        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
-
-        if (comboCount > 0) {
-            this.pendingComboCount = comboCount;
-            // Shake on the combo itself in case it arrives without a clear; the clear
-            // below fires a fuller one and the larger of the two wins.
-            this.cameraRig?.shakeClear(1, comboCount);
-        }
-    }
-
-    handleLineClear(eventPayload) {
-        const detail = eventPayload?.detail || eventPayload || {};
-        const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
-        let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
-
-        if (!comboCount && this.pendingComboCount > 0) {
-            comboCount = this.pendingComboCount;
-            this.pendingComboCount = 0;
-        }
-
-        this.onLineClear(lineCount, comboCount);
-    }
-
-    onLineClear(lineCount, comboCount) {
-        this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
-        this.moonPulseIntensity = Math.min(0.6 + comboCount * 0.2, 1.5);
-        // Both counts resolved here, so this is the accurate hit of the resolution.
-        this.cameraRig?.shakeClear(lineCount, comboCount);
-
-        // Star twinkle boost scales with combo
-        if (this.starfield && this.starfield.material.uniforms) {
-            const boost = Math.min(0.3 + comboCount * 0.15 + lineCount * 0.1, 1.0);
-            this.starfield.material.uniforms.uEventBoost.value = boost;
-        }
-
-        // Trigger blood spark burst on combos - only use idle systems so active particles accumulate
-        if (comboCount >= 2 && this.bloodSparks.length > 0) {
-            const systemsToTrigger = Math.min(1 + Math.floor(comboCount / 3), 4);
-            let triggered = 0;
-
-            // Scan the entire pool for idle systems instead of blindly cycling
-            for (let scan = 0; scan < this.bloodSparks.length && triggered < systemsToTrigger; scan++) {
-                const index = (this.bloodSparkIndex + scan) % this.bloodSparks.length;
-                const sparks = this.bloodSparks[index];
-                if (sparks && sparks.material.uniforms) {
-                    // Only fire into systems that have finished their lifecycle
-                    const timer = sparks.material.uniforms.uPulseTimer.value;
-                    if (timer < -50.0 || timer > 320.0) {
-                        sparks.material.uniforms.uPulseTimer.value = 0.0;
-                        triggered++;
-                    }
-                }
-            }
-
-            // Advance index past what we scanned
-            this.bloodSparkIndex = (this.bloodSparkIndex + triggered) % this.bloodSparks.length;
-        }
-
-        // Create blood waves
-        const waveCount = Math.min(lineCount + Math.floor(comboCount / 2), 4);
-        for (let i = 0; i < waveCount; i++) {
-            this.scheduleEffectTimeout(() => this.createBloodWave(comboCount), i * 100);
-        }
-
-        // Create soul orbs for combos
-        if (comboCount >= 2) {
-            const orbCount = Math.min(comboCount * 2, 10);
-            for (let i = 0; i < orbCount; i++) {
-                this.scheduleEffectTimeout(() => this.createSoulOrb(), i * 50);
-            }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Resize
-    // ─────────────────────────────────────────────────────────────────────────
-
-    onWindowResize() {
-        if (!this.camera || !this.renderer) return;
-
-        this.camera.aspect = window.innerWidth / window.innerHeight;
-        this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-
-        if (this.composer) {
-            this.composer.setSize(window.innerWidth, window.innerHeight);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Cleanup
-    // ─────────────────────────────────────────────────────────────────────────
-
-    stop() {
-        this.clearEffectTimeouts();
-        window.removeEventListener('resize', this.boundResizeHandler);
-
-        // Unsubscribe events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        this.eventUnsubscribers = [];
-
-        // Cleanup Three.js
-        this.bloomPass?.dispose?.();
-        if (this.composer) {
-            this.disposeComposer(this.composer);
-        }
-        if (this.renderer) {
-            this.disposeRenderer(this.renderer, { nullInstance: false });
-            const container = document.getElementById('blood-moon-theme');
-            if (container && container.contains(this.renderer.domElement)) {
-                container.removeChild(this.renderer.domElement);
-            }
-        }
-
-        // Dispose scene objects
-        if (this.scene) {
-            this.scene.traverse((object) => {
-                if (object.geometry) object.geometry.dispose();
-                if (object.material) {
-                    if (Array.isArray(object.material)) {
-                        object.material.forEach((m) => m.dispose());
-                    } else {
-                        object.material.dispose();
-                    }
-                }
+    retireEntry(entry) {
+        if (!entry || entry.retired) return;
+        entry.retired = true;
+        entry.renderer.domElement?.remove?.();
+        try { entry.runtime?.dispose(); } catch (error) { console.warn('[BloodMoon] Runtime disposal failed.', error); }
+        const release = () => this.disposeRenderer(entry.renderer, { nullInstance: false });
+        // compileAsync may still own the device. Detach immediately, release GPU after it settles.
+        if (entry.preparing && !entry.ready) {
+            entry.preparing.then(release, release).catch((error) => {
+                console.warn('[BloodMoon] Deferred renderer disposal failed.', error);
             });
-        }
+        } else release();
+    }
 
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+        this.removeRendererResilience();
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        const entry = this.runtimeEntry;
+        this.runtimeEntry = null;
+        this.runtime = null;
+        this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.renderer = null;
-        this.composer = null;
-        this.bloomPass = null;
-        this.moon = null;
-        this.moonGroup = null;
-        this.starfield = null;
-        this.nebulaClouds = [];
-        this.moonGlowLayers = [];
-        this.bloodWaves = [];
-        this.soulOrbs = [];
-        this.ambientParticles = null;
-        this.bloodSparks = [];
-        this.bloodSparkIndex = 0;
+        this.retireEntry(entry);
+        this.modeManager = null;
+        this.reducedMotionQuery = null;
+        this.animationLoopStarted = false;
+        this.animationDriver = null;
+        this.lastFrameTime = null;
+        this.layoutClock = 0;
+        this.layoutDue.fill(Infinity);
+        this.isWebGPU = false;
+    }
 
-        super.stop();
+    pause() {
+        const paused = super.pause();
+        if (paused) this.lastFrameTime = null;
+        return paused;
+    }
+
+    resume() {
+        if (!this.runtimeEntry?.ready) return false;
+        const resumed = super.resume();
+        if (resumed) {
+            this.lastFrameTime = null;
+            this.resize();
+            if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }
+        }
+        return resumed;
+    }
+
+    stop() { super.stop(); this.disposeRuntime(); }
+
+    async whenCriticalReady() { return this.runtimeEntry?.ready === true; }
+
+    getTetrominoConfig() { return BLOOD_MOON_TETROMINOS; }
+
+    getDiagnostics() {
+        return {
+            ...this.runtime?.getDiagnostics(),
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.quality,
+        };
     }
 }

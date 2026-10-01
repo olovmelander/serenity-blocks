@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 538 104" role="img" aria-labelledby="title">
+  <title id="title">Infinity</title>
+  <!-- Original lettering; regenerate with scripts/generate-mode-wordmarks.mjs. -->
+  <defs>
+    <linearGradient id="spectrum" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="538" y2="100">
+      <stop stop-color="#b8a4ff"/>
+      <stop offset=".48" stop-color="#9ee8ed"/>
+      <stop offset="1" stop-color="#c5f1cf"/>
+    </linearGradient>
+  </defs>
+  <g fill-rule="evenodd">
+    <g transform="translate(0 4) scale(1)" fill="url(#spectrum)">
+      <path d="M0 0H22V100H0Z M32 100V0H56L92 60V0H114V100H90L54 40V100Z M124 100V10Q124 0 134 0H200V22H146V42H189V64H146V100Z M210 0H232V100H210Z M242 100V0H266L302 60V0H324V100H300L264 40V100Z M334 0H356V100H334Z M366 0H444V22H416V100H394V22H366Z M454 0H479L496 34L513 0H538L507 59V100H485V59Z"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 652 104" role="img" aria-labelledby="title">
+  <title id="title">Serenity</title>
+  <!-- Original lettering; regenerate with scripts/generate-mode-wordmarks.mjs. -->
+  <defs>
+    <linearGradient id="spectrum" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="652" y2="100">
+      <stop stop-color="#b8a4ff"/>
+      <stop offset=".48" stop-color="#9ee8ed"/>
+      <stop offset="1" stop-color="#c5f1cf"/>
+    </linearGradient>
+  </defs>
+  <g fill-rule="evenodd">
+    <g transform="translate(0 4) scale(1)" fill="url(#spectrum)">
+      <path d="M78 0H26Q0 0 0 26V36Q0 61 26 61H52Q58 61 58 67V72Q58 78 52 78H2V100H54Q80 100 80 74V64Q80 39 54 39H28Q22 39 22 33V28Q22 22 28 22H78Z M166 0H100Q90 0 90 10V90Q90 100 100 100H166V78H112V61H155V39H112V22H166Z M176 100V0H226Q256 0 256 29V34Q256 54 238 61L260 100H233L211 63H198V100ZM198 22V43H225Q234 43 234 34V31Q234 22 225 22Z M346 0H280Q270 0 270 10V90Q270 100 280 100H346V78H292V61H335V39H292V22H346Z M356 100V0H380L416 60V0H438V100H414L378 40V100Z M448 0H470V100H448Z M480 0H558V22H530V100H508V22H480Z M568 0H593L610 34L627 0H652L621 59V100H599V59Z"/>
+    </g>
+  </g>
+</svg>

@@ -1,14 +1,16 @@
 /**
- * @fileoverview Reusable cinematic loading overlay with animated star field,
- * decorative rings, and bouncing dots. Used for game mode transitions.
+ * @fileoverview Reusable branded loading overlay with compositor-driven aurora,
+ * wordmark and loading lights. Used for game mode transitions.
  */
 
+import { createCinematicLoadingSurface } from './cinematic-loading-surface.js';
+import { getModeLoadingWordmark } from './mode-loading-wordmarks.js';
+
 const OVERLAY_ID = 'cinematic-loading-overlay';
-const KEYFRAMES_ID = 'cinematic-loading-keyframes';
+const loadingSurfaces = new WeakMap();
 const GLOBAL_MIN_VISIBLE_MS = 2000;
 const ROLE_BACKDROP = 'backdrop';
 const ROLE_STARS = 'stars';
-const ROLE_RING = 'ring';
 const ROLE_CONTENT = 'content';
 const ROLE_TITLE = 'title';
 const ROLE_DOTS = 'dots';
@@ -19,72 +21,83 @@ const ROLE_COUNTDOWN_TEXT = 'countdown-text';
 /**
  * Show a cinematic loading overlay with the given title text.
  * @param {string} title - Text to display (e.g. "SINGLE PLAYER", "INFINITY", "ODYSSEY")
+ * @param {{ themeManager?: object }} [options] Optional owner for async theme loading.
  * @returns {{ shownAt: number }} Metadata for minimum display time tracking
  */
-export function showCinematicLoadingOverlay(title) {
+export function showCinematicLoadingOverlay(title, { themeManager } = {}) {
     const existing = document.getElementById(OVERLAY_ID);
-    if (existing) existing.remove();
+    if (existing) {
+        _releaseLoadingSurface(existing, false);
+        existing.remove();
+    }
 
     const overlay = _createOverlayElement(title);
+    if (themeManager) loadingSurfaces.set(overlay, createCinematicLoadingSurface(themeManager));
 
     document.body.appendChild(overlay);
 
     const shownAt = Date.now();
     overlay.dataset.shownAt = String(shownAt);
 
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            overlay.style.opacity = '1';
-        });
-    });
-
     return { shownAt };
 }
 
 /**
- * Resolves once the loading overlay has actually been painted at least once and
- * its compositor keyframe animations (drifting stars / bouncing dots / pulsing
- * rings) have been committed to the compositor thread.
- *
- * Call this AFTER {@link showCinematicLoadingOverlay} and BEFORE kicking off heavy,
- * main-thread-blocking / GPU-saturating work (e.g. a cold WebGPU board/theme build).
- * Without it, the overlay is only appended (opacity 0, fade-in scheduled via rAF) and
- * the caller's synchronous build runs in the *same* task — so the browser never paints
- * the overlay until the build finishes, and its transform/opacity animations are never
- * promoted. The user then sees a frozen menu (or a frozen overlay) instead of a live
- * loading animation. Yielding a real paint here gets the overlay on-screen and its
- * animations running on the compositor before the build steals the main thread.
- *
+ * Decode the mode artwork, then commit the cover and its animations before heavy work.
+ * Also waits (bounded) for an owned theme loading surface's async backend preload.
+ * A timeout keeps backgrounded windows and unavailable backends from blocking entry.
  * @returns {Promise<void>}
  */
-export function waitForCinematicLoadingOverlayPresented() {
-    return new Promise((resolve) => {
+export async function waitForCinematicLoadingOverlayPresented() {
+    const overlay = document.getElementById(OVERLAY_ID);
+    if (!overlay) return;
+    await Promise.all([
+        _waitForLoadingArtwork(overlay),
+        loadingSurfaces.get(overlay)?.ready,
+    ]);
+    if (!overlay.isConnected) return;
+    await new Promise((resolve) => {
         let settled = false;
+        let timer;
         const done = () => {
             if (settled) return;
             settled = true;
+            clearTimeout(timer);
             resolve();
         };
-        // Headless/test environments (jsdom) have no rAF — resolve on a plain
-        // macrotask so this never blocks a build that has no compositor anyway.
+        // A backgrounded window must not prevent loading from completing.
+        timer = setTimeout(done, 250);
         if (typeof requestAnimationFrame !== 'function') {
             setTimeout(done, 0);
             return;
         }
-        // rAF#1 + rAF#2: show()'s own double-rAF sets opacity=1 on frame 2; rAF#3
-        // lets that style commit + the compositor promote/start the keyframes. The
-        // trailing macrotask hop guarantees at least one full present cycle.
+        // Commit an opaque cover and promote its animated children before the
+        // next task can start synchronous scene/board creation.
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    setTimeout(done, 0);
-                });
+                requestAnimationFrame(() => setTimeout(done, 0));
             });
         });
-        // Safety net: never let overlay presentation gate the build indefinitely if
-        // rAF is starved (e.g. the tab is backgrounded during load).
-        setTimeout(done, 250);
     });
+}
+
+function _waitForLoadingArtwork(overlay) {
+    const images = [...overlay.querySelectorAll('img')];
+    return new Promise((resolve) => {
+        // A missing/slow asset must not trap the player on the loading screen.
+        const timer = setTimeout(resolve, 750);
+        Promise.all(images.map((artwork) => Promise.resolve()
+            .then(() => artwork.decode?.())
+            .catch(() => {})))
+            .finally(() => { clearTimeout(timer); resolve(); });
+    });
+}
+
+function _releaseLoadingSurface(overlay, retain = true) {
+    const surface = loadingSurfaces.get(overlay);
+    loadingSurfaces.delete(overlay);
+    if (retain) surface?.uncover();
+    else surface?.cancel();
 }
 
 /**
@@ -119,9 +132,12 @@ export function transitionCinematicLoadingOverlayToCountdown(options = {}) {
         document.body.appendChild(overlay);
     }
 
+    overlay.dataset.phase = 'countdown';
+    overlay.ariaBusy = 'false';
+    _releaseLoadingSurface(overlay);
+
     const backdrop = overlay.querySelector(`[data-cinematic-role="${ROLE_BACKDROP}"]`);
     const stars = overlay.querySelector(`[data-cinematic-role="${ROLE_STARS}"]`);
-    const rings = Array.from(overlay.querySelectorAll(`[data-cinematic-role="${ROLE_RING}"]`));
     const content = overlay.querySelector(`[data-cinematic-role="${ROLE_CONTENT}"]`);
     const { layer, plate, text } = _ensureCountdownLayer(overlay);
 
@@ -146,7 +162,6 @@ export function transitionCinematicLoadingOverlayToCountdown(options = {}) {
             visuals,
             backdrop,
             stars,
-            rings,
             plate,
             text,
         });
@@ -164,7 +179,6 @@ export function transitionCinematicLoadingOverlayToCountdown(options = {}) {
             visuals,
             backdrop,
             stars,
-            rings,
             plate,
             text,
         });
@@ -193,6 +207,10 @@ export function transitionCinematicLoadingOverlayToCountdown(options = {}) {
         };
 
         const continueCountdown = () => {
+            if (!overlay.isConnected) {
+                resolve();
+                return;
+            }
             currentCount -= 1;
 
             if (currentCount > 0) {
@@ -218,20 +236,23 @@ export function transitionCinematicLoadingOverlayToCountdown(options = {}) {
             stars.style.transition = 'opacity 260ms ease-out';
             stars.style.opacity = '0.48';
         }
-        rings.forEach((ring) => {
-            ring.style.transition = 'opacity 260ms ease-out, transform 260ms ease-out';
-            ring.style.opacity = '0.34';
-            ring.style.transform = 'translate(-50%, -50%) scale(0.98)';
-        });
 
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
+                if (!overlay.isConnected) {
+                    resolve();
+                    return;
+                }
                 layer.style.opacity = '1';
                 layer.style.transform = 'scale(1)';
                 renderCount(currentCount);
 
                 requestAnimationFrame(() => {
                     requestAnimationFrame(() => {
+                        if (!overlay.isConnected) {
+                            resolve();
+                            return;
+                        }
                         notifyFirstCountVisible();
                         setTimeout(continueCountdown, countIntervalMs);
                     });
@@ -269,6 +290,7 @@ export function dismissCinematicLoadingOverlay(options = 800) {
                 return;
             }
 
+            _releaseLoadingSurface(overlay);
             _playRevealTransition(overlay, fadeOutMs);
 
             setTimeout(() => {
@@ -287,113 +309,28 @@ export function dismissCinematicLoadingOverlay(options = 800) {
     });
 }
 
-/**
- * Cinematic "warp into the theme" reveal: the backdrop + starfield accelerate toward
- * the viewer (scale up) and fade, the rings bloom outward, and the title recedes —
- * uncovering the live, already-resuming theme behind. Reads as flying INTO the scene
- * rather than a flat cross-fade. Purely compositor-driven (transform/opacity).
- * @param {HTMLElement} overlay
- * @param {number} durationMs
- */
+/** Fade the prepared scene in beneath the same gently drifting loading surface. */
 function _playRevealTransition(overlay, durationMs) {
-    const ease = 'cubic-bezier(0.33, 0, 0.2, 1)';
-    const q = (role) => overlay.querySelector(`[data-cinematic-role="${role}"]`);
-
-    const backdrop = q(ROLE_BACKDROP);
-    const stars = q(ROLE_STARS);
-    const content = q(ROLE_CONTENT);
-    const rings = Array.from(overlay.querySelectorAll(`[data-cinematic-role="${ROLE_RING}"]`));
-
-    // Starfield rushes toward the viewer + fades (warp), backdrop zooms in behind it.
-    if (stars) {
-        stars.style.transformOrigin = '50% 50%';
-        stars.style.transition = `transform ${durationMs}ms ${ease}, opacity ${Math.round(durationMs * 0.85)}ms ease-out`;
-        stars.style.transform = 'scale(2.6)';
-        stars.style.opacity = '0';
-    }
-    if (backdrop) {
-        backdrop.style.transformOrigin = '50% 55%';
-        backdrop.style.transition = `transform ${durationMs}ms ${ease}, opacity ${durationMs}ms ease-out`;
-        backdrop.style.transform = 'scale(1.2)';
-        backdrop.style.opacity = '0';
-    }
-    rings.forEach((ring) => {
-        ring.style.transition = `transform ${durationMs}ms ${ease}, opacity ${Math.round(durationMs * 0.7)}ms ease-out`;
-        ring.style.transform = 'translate(-50%, -50%) scale(2.8)';
-        ring.style.opacity = '0';
-    });
+    overlay.dataset.phase = 'dismissing';
+    overlay.ariaBusy = 'false';
+    const content = overlay.querySelector(`[data-cinematic-role="${ROLE_CONTENT}"]`);
     if (content) {
-        // Title/dots recede + dissolve slightly ahead of the backdrop.
-        content.style.transition = `transform ${Math.round(durationMs * 0.9)}ms ${ease}, opacity ${Math.round(durationMs * 0.55)}ms ease-out`;
-        content.style.transform = 'translateY(-14px) scale(1.08)';
+        content.style.transition = `opacity ${Math.round(durationMs * 0.65)}ms ease-out`;
         content.style.opacity = '0';
     }
-
-    // The overlay wrapper itself fades a touch later so the zoom reads before it's gone.
     overlay.style.transition = `opacity ${durationMs}ms ease-out`;
     overlay.style.opacity = '0';
 }
 
 /**
- * Toggle the overlay's "building" phase. A cold WebGPU theme build saturates the
- * GPU (and blocks the main thread) for ~1s, which would otherwise freeze the
- * overlay's drifting stars / bouncing dots / pulsing rings mid-motion (reads as a
- * broken, hung loading screen). During the build we instead hide those motion
- * elements and freeze the title glow, so the overlay holds a clean, deliberately
- * calm state — there is no animation to visibly stutter. On exit the motion
- * elements fade back in and resume, giving a smooth reveal once the GPU is free.
- *
- * @param {boolean} building - true while the heavy theme build runs
+ * Keep cold-build feedback visible. These animations use only compositor-owned
+ * transform/opacity; hiding them made healthy loads look stalled. Async loading
+ * surfaces protect theme render compilation; synchronous GPU bakes can still stall.
+ * @param {boolean} building
  */
 export function setCinematicLoadingOverlayBuilding(building) {
     const overlay = document.getElementById(OVERLAY_ID);
-    if (!overlay) return;
-
-    overlay.dataset.building = building ? 'true' : 'false';
-
-    const motionRoles = [ROLE_STARS, ROLE_RING, ROLE_DOTS];
-    overlay.querySelectorAll('[data-cinematic-role]').forEach((el) => {
-        const role = el.dataset.cinematicRole;
-        if (motionRoles.includes(role)) {
-            if (building) {
-                // Hide instantly (no transition) so the fade itself can't stutter
-                // when the build starts blocking a frame later.
-                el.style.transition = 'none';
-                el.style.opacity = '0';
-            } else {
-                el.style.transition = 'opacity 420ms ease-out';
-                el.style.removeProperty('opacity');
-            }
-        }
-    });
-
-    const title = overlay.querySelector(`[data-cinematic-role="${ROLE_TITLE}"]`);
-    if (title) {
-        // Keep the title visible with its static glow, but stop the opacity pulse
-        // so a mid-pulse freeze isn't visible during the build.
-        title.style.animationPlayState = building ? 'paused' : 'running';
-    }
-}
-
-function _createRing(size, opacity, duration, delay) {
-    const ring = document.createElement('div');
-    ring.dataset.cinematicRole = ROLE_RING;
-    Object.assign(ring.style, {
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: `${size}px`,
-        height: `${size}px`,
-        border: `1px solid rgba(100, 140, 255, ${opacity})`,
-        borderRadius: '50%',
-        animation: `cinematic-ring-pulse ${duration}s ease-in-out ${delay}s infinite`,
-        // Promote to a compositor layer so the pulse survives main-thread loading work.
-        willChange: 'transform, opacity',
-        pointerEvents: 'none',
-        zIndex: '1',
-    });
-    return ring;
+    if (overlay) overlay.dataset.building = building ? 'true' : 'false';
 }
 
 function _getCountdownVisualState(value) {
@@ -417,7 +354,6 @@ function _getCountdownVisualState(value) {
             ].join(', '),
             backdropOpacity: '0.78',
             starsOpacity: '0.56',
-            ringOpacity: '0.4',
         };
     }
 
@@ -441,7 +377,6 @@ function _getCountdownVisualState(value) {
             ].join(', '),
             backdropOpacity: '0.84',
             starsOpacity: '0.48',
-            ringOpacity: '0.34',
         };
     }
 
@@ -465,7 +400,6 @@ function _getCountdownVisualState(value) {
             ].join(', '),
             backdropOpacity: '0.82',
             starsOpacity: '0.5',
-            ringOpacity: '0.36',
         };
     }
 
@@ -488,7 +422,6 @@ function _getCountdownVisualState(value) {
         ].join(', '),
         backdropOpacity: '0.8',
         starsOpacity: '0.54',
-        ringOpacity: '0.38',
     };
 }
 
@@ -496,7 +429,6 @@ function _applyCountdownVisualState({
     visuals,
     backdrop,
     stars,
-    rings,
     plate,
     text,
 }) {
@@ -506,9 +438,6 @@ function _applyCountdownVisualState({
     if (stars) {
         stars.style.opacity = visuals.starsOpacity;
     }
-    rings.forEach((ring) => {
-        ring.style.opacity = visuals.ringOpacity;
-    });
 
     plate.style.background = visuals.plateBackground;
     plate.style.border = visuals.plateBorder;
@@ -521,133 +450,82 @@ function _applyCountdownVisualState({
 }
 
 function _createOverlayElement(title) {
-    _injectKeyframes();
-
-    const overlay = document.createElement('div');
+    const element = (tag, className, role) => {
+        const node = document.createElement(tag);
+        node.className = className;
+        if (role) node.dataset.cinematicRole = role;
+        return node;
+    };
+    const overlay = element('div', 'cinematic-loading');
     overlay.id = OVERLAY_ID;
     overlay.dataset.odysseyWheelLock = 'true';
-    Object.assign(overlay.style, {
-        position: 'fixed',
-        top: '0',
-        left: '0',
-        width: '100vw',
-        height: '100vh',
-        zIndex: '10002',
-        background: 'transparent',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: '0',
-        transition: 'opacity 0.4s ease-in',
-        overflow: 'hidden',
-        pointerEvents: 'none',
-    });
+    overlay.dataset.phase = 'loading';
+    overlay.role = 'status';
+    overlay.ariaLive = 'polite';
+    overlay.ariaBusy = 'true';
+    overlay.ariaLabel = title ? `Loading ${title}` : 'Loading Serenity Blocks';
+    // Cover immediately; only the decorative children animate. A fade-in would
+    // expose the menu while its renderer is busy preparing the selected mode.
+    overlay.style.opacity = '1';
 
-    const backdrop = document.createElement('div');
-    backdrop.dataset.cinematicRole = ROLE_BACKDROP;
-    Object.assign(backdrop.style, {
-        position: 'absolute',
-        inset: '0',
-        background: 'radial-gradient(ellipse at 50% 60%, #0a0a2e 0%, #050510 50%, #020208 100%)',
-        zIndex: '0',
-    });
+    const backdrop = element('div', 'cinematic-loading__backdrop', ROLE_BACKDROP);
+    backdrop.ariaHidden = 'true';
+    const aurora = element('img', 'cinematic-loading__aurora');
+    aurora.src = './assets/branding/serenity-aurora.svg';
+    aurora.alt = '';
+    backdrop.appendChild(aurora);
+    backdrop.appendChild(element('div', 'cinematic-loading__nebula'));
     overlay.appendChild(backdrop);
+    const sky = element('div', 'cinematic-loading__sky', ROLE_STARS);
+    sky.ariaHidden = 'true';
+    sky.appendChild(element('div', 'cinematic-loading__stars sb-starfield'));
+    overlay.appendChild(sky);
+    overlay.appendChild(element('div', 'cinematic-loading__vignette'));
 
-    const starField = document.createElement('div');
-    starField.dataset.cinematicRole = ROLE_STARS;
-    Object.assign(starField.style, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        zIndex: '1',
-    });
-
-    for (let i = 0; i < 60; i++) {
-        const star = document.createElement('div');
-        const size = 1 + Math.random() * 2.5;
-        const hue = 200 + Math.random() * 60;
-        const brightness = 0.5 + Math.random() * 0.5;
-
-        Object.assign(star.style, {
-            position: 'absolute',
-            left: `${Math.random() * 100}%`,
-            top: `${100 + Math.random() * 20}%`,
-            width: `${size}px`,
-            height: `${size}px`,
-            borderRadius: '50%',
-            background: `hsla(${hue}, 80%, 80%, ${brightness})`,
-            boxShadow: `0 0 ${size * 3}px hsla(${hue}, 80%, 70%, 0.5)`,
-            animation: `cinematic-star-drift ${4 + Math.random() * 6}s linear ${Math.random() * 3}s infinite`,
-            willChange: 'transform, opacity',
-            pointerEvents: 'none',
-        });
-        starField.appendChild(star);
+    const content = element('div', 'cinematic-loading__content', ROLE_CONTENT);
+    const glow = element('div', 'cinematic-loading__glow');
+    glow.ariaHidden = 'true';
+    content.appendChild(glow);
+    const wordmark = getModeLoadingWordmark(title);
+    if (wordmark?.eyebrow) {
+        const eyebrow = element('p', 'cinematic-loading__eyebrow');
+        eyebrow.textContent = wordmark.eyebrow;
+        content.appendChild(eyebrow);
     }
-    overlay.appendChild(starField);
-
-    overlay.appendChild(_createRing(350, 0.1, 3, 0));
-    overlay.appendChild(_createRing(420, 0.05, 4, 0.5));
-
-    const content = document.createElement('div');
-    content.dataset.cinematicRole = ROLE_CONTENT;
-    Object.assign(content.style, {
-        position: 'relative',
-        zIndex: '2',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-    });
-
-    const titleEl = document.createElement('div');
-    titleEl.dataset.cinematicRole = ROLE_TITLE;
-    titleEl.textContent = title;
-    Object.assign(titleEl.style, {
-        fontFamily: "'Inter', 'Segoe UI', sans-serif",
-        fontSize: '3.5rem',
-        fontWeight: '200',
-        letterSpacing: '1.2em',
-        paddingLeft: '1.2em',
-        color: 'rgba(200, 220, 255, 0.95)',
-        // Static glow (the keyframe only pulses opacity — compositor-driven, so the
-        // title keeps breathing even while loading work blocks the main thread).
-        textShadow: '0 0 30px rgba(100, 140, 255, 0.4), 0 0 70px rgba(100, 140, 255, 0.15)',
-        animation: 'cinematic-title-glow 3s ease-in-out infinite',
-        willChange: 'opacity',
-        zIndex: '2',
-        userSelect: 'none',
-        position: 'relative',
-    });
+    const titleEl = element('h2', 'cinematic-loading__title', ROLE_TITLE);
+    if (wordmark) {
+        if (wordmark.wide) titleEl.className += ' cinematic-loading__title--wide';
+        const lettering = element('img', 'cinematic-loading__wordmark');
+        lettering.src = wordmark.src;
+        lettering.alt = wordmark.label;
+        lettering.width = wordmark.width;
+        lettering.height = wordmark.height;
+        titleEl.appendChild(lettering);
+    } else {
+        const lettering = element('span', 'cinematic-loading__wordmark');
+        lettering.textContent = title || 'GET READY';
+        titleEl.appendChild(lettering);
+    }
     content.appendChild(titleEl);
-
-    const dotsContainer = document.createElement('div');
-    dotsContainer.dataset.cinematicRole = ROLE_DOTS;
-    Object.assign(dotsContainer.style, {
-        display: 'flex',
-        gap: '12px',
-        marginTop: '1.5rem',
-        zIndex: '2',
-    });
-
-    for (let d = 0; d < 3; d++) {
-        const dot = document.createElement('div');
-        Object.assign(dot.style, {
-            width: '6px',
-            height: '6px',
-            borderRadius: '50%',
-            background: 'rgba(160, 190, 255, 0.7)',
-            boxShadow: '0 0 8px rgba(120, 160, 255, 0.4)',
-            animation: `cinematic-dot-bounce 1.4s ease-in-out ${d * 0.2}s infinite`,
-            willChange: 'transform, opacity',
-        });
-        dotsContainer.appendChild(dot);
+    if (wordmark?.variant) {
+        const variant = element('p', 'cinematic-loading__variant');
+        variant.textContent = wordmark.variant;
+        content.appendChild(variant);
     }
-    content.appendChild(dotsContainer);
+    const tagline = element('p', 'cinematic-loading__tagline');
+    tagline.textContent = 'Stack \u00b7 Breath \u00b7 Ascend';
+    content.appendChild(tagline);
     overlay.appendChild(content);
 
+    const footer = element('div', 'cinematic-loading__footer', ROLE_DOTS);
+    footer.ariaHidden = 'true';
+    const dots = element('div', 'cinematic-loading__dots');
+    for (let d = 0; d < 5; d++) dots.appendChild(element('i', 'cinematic-loading__dot'));
+    footer.appendChild(dots);
+    const caption = element('span', 'cinematic-loading__caption');
+    caption.textContent = 'Preparing your space';
+    footer.appendChild(caption);
+    overlay.appendChild(footer);
     return overlay;
 }
 
@@ -730,35 +608,4 @@ function _ensureCountdownLayer(overlay) {
         plate,
         text,
     };
-}
-
-function _injectKeyframes() {
-    if (document.getElementById(KEYFRAMES_ID)) return;
-
-    const style = document.createElement('style');
-    style.id = KEYFRAMES_ID;
-    style.textContent = `
-        @keyframes cinematic-star-drift {
-            0% { transform: translateY(0) translateX(0); opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { transform: translateY(-100vh) translateX(20px); opacity: 0; }
-        }
-        /* Compositor-only: text-shadow is a PAINT property (main thread), so animating it
-           froze the whole overlay whenever loading work blocked the main thread. The glow
-           is now a static shadow on the element; only opacity (compositable) pulses. */
-        @keyframes cinematic-title-glow {
-            0%, 100% { opacity: 0.82; }
-            50% { opacity: 1; }
-        }
-        @keyframes cinematic-dot-bounce {
-            0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-            40% { transform: translateY(-10px); opacity: 1; }
-        }
-        @keyframes cinematic-ring-pulse {
-            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.15; }
-            50% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.25; }
-        }
-    `;
-    document.head.appendChild(style);
 }

@@ -1,0 +1,845 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender sculpture",
+  "glTFUpAxis": "Y",
+  "textureCount": 0,
+  "boundsNote": "Bounds describe the rest POSITION accessor in glTF Y-up coordinates; morph bounds may extend farther.",
+  "animationNote": "Loop period is endSeconds - startSeconds. Blender frame 1 creates a one-frame leading hold in GLTFLoader clip.duration.",
+  "totals": {
+    "files": 22,
+    "bytes": 870820,
+    "vertices": 11373,
+    "triangles": 20396
+  },
+  "assets": [
+    {
+      "id": "anemone-lantern",
+      "file": "anemone-lantern.glb",
+      "bytes": 40812,
+      "sha256": "8fd6cf67bcc2744e58e43318c2786ac829c7379435091b9cc0ed5e0ff8eccb1c",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 386,
+      "triangleCount": 720,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "currentSway",
+        "crossSway"
+      ],
+      "animations": [
+        {
+          "name": "anemone_lantern_Current_4s",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.5772109031677246,
+          0,
+          -0.5772109031677246
+        ],
+        "max": [
+          0.5772109031677246,
+          1.086927890777588,
+          0.5772109031677246
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py"
+    },
+    {
+      "id": "coral-antler",
+      "file": "coral-antler.glb",
+      "bytes": 23828,
+      "sha256": "91f1e0056b46365899f26f126d3d8c19b1f3c71bfd9fa4771b0c225787e472cd",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 474,
+      "triangleCount": 876,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -0.9674137234687805,
+          0,
+          -0.7723048329353333
+        ],
+        "max": [
+          0.8694210052490234,
+          2.25223708152771,
+          0.6492345333099365
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py"
+    },
+    {
+      "id": "coral-fan",
+      "file": "coral-fan.glb",
+      "bytes": 121180,
+      "sha256": "5da60ba68e38cd01f5c3568f271490e0ff6c0c9156d106efd3d943a54f3a233f",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 1229,
+      "triangleCount": 2142,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "CurrentForward",
+        "CurrentReturn"
+      ],
+      "animations": [
+        {
+          "name": "OceanFan_Current_6s.001",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.03333333333333333,
+          "endSeconds": 6.033333333333333,
+          "loopSeconds": 6.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -1.9583603143692017,
+          0,
+          -0.16677914559841156
+        ],
+        "max": [
+          1.9578323364257812,
+          3.0948548316955566,
+          0.1666645109653473
+        ]
+      },
+      "source": "scripts/blender/ocean_reef_assets.py"
+    },
+    {
+      "id": "coral-foliose",
+      "file": "coral-foliose.glb",
+      "bytes": 31872,
+      "sha256": "d2be962d054c0ff6e86ae21e258a5d81bb982a4c353bbf71517767610d3f2497",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 636,
+      "triangleCount": 1244,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -1.4131572246551514,
+          0,
+          -1.271519422531128
+        ],
+        "max": [
+          1.6543999910354614,
+          1.8142954111099243,
+          1.6042423248291016
+        ]
+      },
+      "source": "scripts/blender/ocean_reef_assets.py"
+    },
+    {
+      "id": "coral-rosette",
+      "file": "coral-rosette.glb",
+      "bytes": 20160,
+      "sha256": "247f66207fdad947de873036e3672887ee09633608d20c4a695958083b573abe",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 390,
+      "triangleCount": 768,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -1.1989578008651733,
+          0,
+          -1.0269999504089355
+        ],
+        "max": [
+          1.0666711330413818,
+          1.174035668373108,
+          0.9704578518867493
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py"
+    },
+    {
+      "id": "coral-sponge",
+      "file": "coral-sponge.glb",
+      "bytes": 38300,
+      "sha256": "e20ea8c2c7ce2b52a3868ea1762ba2524b0c13c9ba6d1d764f0d4c1b608a346b",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 770,
+      "triangleCount": 1512,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -1.024988055229187,
+          0,
+          -0.8408076763153076
+        ],
+        "max": [
+          1.1011288166046143,
+          2.4982798099517822,
+          1.2408699989318848
+        ]
+      },
+      "source": "scripts/blender/ocean_reef_assets.py"
+    },
+    {
+      "id": "coral-staghorn",
+      "file": "coral-staghorn.glb",
+      "bytes": 52596,
+      "sha256": "0549fce190d12a0b1a4b8e694ee6a98a26f774bb7663ffd8ed0492b02e6f3098",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 1085,
+      "triangleCount": 2002,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -1.2602611780166626,
+          0,
+          -1.0358905792236328
+        ],
+        "max": [
+          1.0165421962738037,
+          3.091998815536499,
+          0.8171764016151428
+        ]
+      },
+      "source": "scripts/blender/ocean_reef_assets.py"
+    },
+    {
+      "id": "creature-cuttlefish",
+      "file": "creature-cuttlefish.glb",
+      "bytes": 45440,
+      "sha256": "e13ecb1328a75059bd3b7f9180f0ecbc6909585714e32abe21e85c088ff333f1",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 476,
+      "triangleCount": 818,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "animations": [
+        {
+          "name": "creature_cuttlefish_Swim_Loop",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -1.659999966621399,
+          -0.39331701397895813,
+          -0.8152499794960022
+        ],
+        "max": [
+          2.11568546295166,
+          0.36800000071525574,
+          0.8152499794960022
+        ]
+      },
+      "source": "scripts/blender/ocean_fauna_assets.py"
+    },
+    {
+      "id": "creature-manta",
+      "file": "creature-manta.glb",
+      "bytes": 43480,
+      "sha256": "3dd7eb2b39ede95d9d4445b6ab75380eab02bc0e98d6cd80dc84d21742c78791",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 416,
+      "triangleCount": 750,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "animations": [
+        {
+          "name": "creature_manta_Swim_Loop",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -2.9106273651123047,
+          -0.18472187221050262,
+          -2.799999952316284
+        ],
+        "max": [
+          1.2063573598861694,
+          0.23723243176937103,
+          2.799999952316284
+        ]
+      },
+      "source": "scripts/blender/ocean_fauna_assets.py"
+    },
+    {
+      "id": "fish-ember-anthias",
+      "file": "fish-ember-anthias.glb",
+      "bytes": 15480,
+      "sha256": "bf0536047704699beba532f1301c3e0c2f6ba77ef83952640457ebe7b5432411",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 124,
+      "triangleCount": 174,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "animations": [
+        {
+          "name": "fish_ember_anthias_Swim_Loop",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.8299999833106995,
+          -0.2750000059604645,
+          -0.2750000059604645
+        ],
+        "max": [
+          0.6700000166893005,
+          0.3409000039100647,
+          0.2750000059604645
+        ]
+      },
+      "source": "scripts/blender/ocean_fauna_assets.py"
+    },
+    {
+      "id": "fish-moon-sardine",
+      "file": "fish-moon-sardine.glb",
+      "bytes": 15476,
+      "sha256": "7edbdf6c09a4ae1283fda96103edce5d5135344c402105a721f38a2aa5b33cef",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 124,
+      "triangleCount": 174,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "animations": [
+        {
+          "name": "fish_moon_sardine_Swim_Loop",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.8299999833106995,
+          -0.17045000195503235,
+          -0.24500000476837158
+        ],
+        "max": [
+          0.6700000166893005,
+          0.163100004196167,
+          0.24500000476837158
+        ]
+      },
+      "source": "scripts/blender/ocean_fauna_assets.py"
+    },
+    {
+      "id": "fish-prism-tang",
+      "file": "fish-prism-tang.glb",
+      "bytes": 15464,
+      "sha256": "f2736f30d55d6bf1f33dc2c4f974c42ec1073f849a68be4a5d6e0e99ac9bfc5b",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 124,
+      "triangleCount": 174,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "animations": [
+        {
+          "name": "fish_prism_tang_Swim_Loop",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.8299999833106995,
+          -0.3488999903202057,
+          -0.3100000023841858
+        ],
+        "max": [
+          0.6700000166893005,
+          0.43392303586006165,
+          0.3100000023841858
+        ]
+      },
+      "source": "scripts/blender/ocean_fauna_assets.py"
+    },
+    {
+      "id": "fish-sun-banner",
+      "file": "fish-sun-banner.glb",
+      "bytes": 15468,
+      "sha256": "e658248bddb89535e14a1b0906b221575f643e6925c13cb8705b9b1653539fde",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 124,
+      "triangleCount": 174,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "swimBend",
+        "finSweep"
+      ],
+      "animations": [
+        {
+          "name": "fish_sun_banner_Swim_Loop",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.8299999833106995,
+          -0.40389999747276306,
+          -0.29499998688697815
+        ],
+        "max": [
+          0.6700000166893005,
+          1.0099999904632568,
+          0.29499998688697815
+        ]
+      },
+      "source": "scripts/blender/ocean_fauna_assets.py"
+    },
+    {
+      "id": "grass-meadow",
+      "file": "grass-meadow.glb",
+      "bytes": 38320,
+      "sha256": "4d896c5fcd2bb36a341c173fbff5eb129db4948b6d52e8ef1df8ba7d71369837",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 378,
+      "triangleCount": 432,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "currentSway",
+        "crossSway"
+      ],
+      "animations": [
+        {
+          "name": "grass_meadow_Current_4s",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.5229320526123047,
+          0,
+          -0.6183662414550781
+        ],
+        "max": [
+          1.0065981149673462,
+          1.330443024635315,
+          0.6911087036132812
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py"
+    },
+    {
+      "id": "jellyfish",
+      "file": "jellyfish.glb",
+      "bytes": 69780,
+      "sha256": "1b4c2865442c23055dbd4e36172d384de98c1406ab4c4fd9e2bbb4e736961d50",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 730,
+      "triangleCount": 1408,
+      "colorAttributeType": "VEC4",
+      "alphaMode": "BLEND",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "bellPulse",
+        "currentSway"
+      ],
+      "animations": [
+        {
+          "name": "Jellyfish_Float_Loop",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -1.1069999933242798,
+          -2.6075844764709473,
+          -1.1069999933242798
+        ],
+        "max": [
+          1.1069999933242798,
+          0.8299999833106995,
+          1.1594927310943604
+        ]
+      },
+      "source": "scripts/blender/ocean_living_assets.py"
+    },
+    {
+      "id": "kelp",
+      "file": "kelp.glb",
+      "bytes": 101260,
+      "sha256": "7e1c87ce4fce6bdac07c9fd856c36e1717dd10b0dace955e5c47fbed69cbe4bc",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 1048,
+      "triangleCount": 1496,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "currentSway",
+        "crossSway"
+      ],
+      "animations": [
+        {
+          "name": "Kelp_Current_Loop",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.8107768893241882,
+          0,
+          -1.287878394126892
+        ],
+        "max": [
+          1.1932673454284668,
+          5.355095863342285,
+          0.9017518162727356
+        ]
+      },
+      "source": "scripts/blender/ocean_living_assets.py"
+    },
+    {
+      "id": "pearl-cluster",
+      "file": "pearl-cluster.glb",
+      "bytes": 34540,
+      "sha256": "5c737299552d26df3468e250a4a087d74671e5035b0e2b7e9fb9ec91f19d86da",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 320,
+      "triangleCount": 600,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "currentSway",
+        "crossSway"
+      ],
+      "animations": [
+        {
+          "name": "pearl_cluster_Current_4s",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.6969530582427979,
+          0,
+          -0.445042222738266
+        ],
+        "max": [
+          0.7126139998435974,
+          1.4948631525039673,
+          0.48744627833366394
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py"
+    },
+    {
+      "id": "reef-arch",
+      "file": "reef-arch.glb",
+      "bytes": 18268,
+      "sha256": "e5ea1be0c2b8e4d780456dddcd781e72a3ebda5464405590ddc861b7b4ce0177",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 350,
+      "triangleCount": 696,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -3.3890371322631836,
+          0,
+          -0.7786940932273865
+        ],
+        "max": [
+          3.358508586883545,
+          3.85483980178833,
+          0.7932610511779785
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py"
+    },
+    {
+      "id": "reef-buttress",
+      "file": "reef-buttress.glb",
+      "bytes": 46420,
+      "sha256": "8b996ba417cb4a7bf3c60f257473dcdcda2eeea6f5349db601541fd0e373ef3e",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 936,
+      "triangleCount": 1868,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -3.3608288764953613,
+          0,
+          -2.133139133453369
+        ],
+        "max": [
+          3.8106393814086914,
+          7.400000095367432,
+          2.603405475616455
+        ]
+      },
+      "source": "scripts/blender/ocean_reef_assets.py"
+    },
+    {
+      "id": "reef-outcrop",
+      "file": "reef-outcrop.glb",
+      "bytes": 34604,
+      "sha256": "196c635f9457409287d16e96da64e088c07731a4f4679624fb4ec756933f0cf4",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 690,
+      "triangleCount": 1376,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -3.0999999046325684,
+          0,
+          -1.90259850025177
+        ],
+        "max": [
+          3.5129919052124023,
+          2.6500000953674316,
+          2.3231053352355957
+        ]
+      },
+      "source": "scripts/blender/ocean_reef_assets.py"
+    },
+    {
+      "id": "seaweed-spiral",
+      "file": "seaweed-spiral.glb",
+      "bytes": 35940,
+      "sha256": "ce2c21ca934b494c08cd307f0f9e16743f68ce82eb1809feb4549e7e731dc300",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 341,
+      "triangleCount": 552,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "currentSway",
+        "crossSway"
+      ],
+      "animations": [
+        {
+          "name": "seaweed_spiral_Current_4s",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.43517497181892395,
+          0,
+          -0.5714478492736816
+        ],
+        "max": [
+          0.6954497694969177,
+          2.851957321166992,
+          0.5714563131332397
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py"
+    },
+    {
+      "id": "stone-ridge",
+      "file": "stone-ridge.glb",
+      "bytes": 12132,
+      "sha256": "8b5ff193b94132fac78a8afedb2dcb2a06808e668ad1e6800a0c32a99de2230a",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 222,
+      "triangleCount": 440,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -1.3458536863327026,
+          0,
+          -0.8436384201049805
+        ],
+        "max": [
+          1.5970348119735718,
+          1.159999966621399,
+          0.7494245767593384
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py"
+    }
+  ]
+}

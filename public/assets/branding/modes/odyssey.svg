@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 628 104" role="img" aria-labelledby="title">
+  <title id="title">Odyssey</title>
+  <!-- Original lettering; regenerate with scripts/generate-mode-wordmarks.mjs. -->
+  <defs>
+    <linearGradient id="spectrum" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="628" y2="100">
+      <stop stop-color="#b8a4ff"/>
+      <stop offset=".48" stop-color="#9ee8ed"/>
+      <stop offset="1" stop-color="#c5f1cf"/>
+    </linearGradient>
+  </defs>
+  <g fill-rule="evenodd">
+    <g transform="translate(0 4) scale(1)" fill="url(#spectrum)">
+      <path d="M30 0H50V22H31Q22 22 22 32V68Q22 78 31 78H51Q60 78 60 68V32H82V70Q82 100 52 100H30Q0 100 0 70V30Q0 0 30 0Z M92 0H141Q174 0 174 32V68Q174 100 141 100H92ZM114 22V78H139Q152 78 152 65V35Q152 22 139 22Z M184 0H209L226 34L243 0H268L237 59V100H215V59Z M356 0H304Q278 0 278 26V36Q278 61 304 61H330Q336 61 336 67V72Q336 78 330 78H280V100H332Q358 100 358 74V64Q358 39 332 39H306Q300 39 300 33V28Q300 22 306 22H356Z M446 0H394Q368 0 368 26V36Q368 61 394 61H420Q426 61 426 67V72Q426 78 420 78H370V100H422Q448 100 448 74V64Q448 39 422 39H396Q390 39 390 33V28Q390 22 396 22H446Z M534 0H468Q458 0 458 10V90Q458 100 468 100H534V78H480V61H523V39H480V22H534Z M544 0H569L586 34L603 0H628L597 59V100H575V59Z"/>
+      <rect x="56" y="-4" width="26" height="26" rx="3" fill="#ffac88"/>
+    </g>
+  </g>
+</svg>

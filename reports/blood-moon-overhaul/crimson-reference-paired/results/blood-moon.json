@@ -1,0 +1,2363 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-01T12:56:38.067Z",
+  "runId": "2026-10-01T12-55-53-079Z",
+  "theme": "blood-moon",
+  "themeMeta": {
+    "displayName": "Blood Moon",
+    "module": "./blood-moon/blood-moon-theme.js",
+    "resourceProfile": "heavy-gpu",
+    "performanceClass": "heavy"
+  },
+  "anchorTheme": "forest",
+  "targetUrl": "http://127.0.0.1:4175/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-10-01T12-55-53-079Z&bloodMoonTime=12&bloodMoonSeed=431&noThemeFpsCap=1",
+  "passed": true,
+  "config": {
+    "width": 1280,
+    "height": 800,
+    "settleMs": 2000,
+    "bootstrapTimeoutMs": 180000,
+    "switchTimeoutMs": 90000,
+    "readyTimeoutMs": 30000,
+    "processIsolation": "one-theme-per-electron-process"
+  },
+  "gpuDiagnostics": {
+    "gpuInfo": {
+      "auxAttributes": {
+        "amdSwitchable": false,
+        "canSupportThreadedTextureMailbox": false,
+        "directMLFeatureLevel": "Not supported",
+        "dx12FeatureLevel": "Not supported",
+        "glImplementationParts": "(gl=none,angle=none)",
+        "glResetNotificationStrategy": 0,
+        "hardwareSupportsVulkan": false,
+        "inProcessGpu": true,
+        "initializationTime": 0,
+        "isAsan": false,
+        "isClangCoverage": false,
+        "jpegDecodeAcceleratorSupported": false,
+        "optimus": false,
+        "overlayInfo": {
+          "bgra8OverlaySupport": "NONE",
+          "directComposition": false,
+          "nv12OverlaySupport": "NONE",
+          "p010OverlaySupport": "NONE",
+          "rgb10a2OverlaySupport": "NONE",
+          "supportsOverlays": false,
+          "yuy2OverlaySupport": "NONE"
+        },
+        "passthroughCmdDecoder": false,
+        "sandboxed": false,
+        "skiaBackendType": "None",
+        "subpixelFontRendering": true,
+        "supportsD3dSharedImages": false,
+        "supportsDirectML": false,
+        "supportsDx12": false,
+        "supportsVulkan": false,
+        "targetCpuBits": 64,
+        "visibilityCallbackCallCount": 0,
+        "vulkanVersion": "Not supported"
+      },
+      "gpuDevice": [
+        {
+          "active": false,
+          "deviceId": 5688,
+          "deviceString": "AMD Radeon(TM) Graphics",
+          "driverVersion": "31.0.12044.3",
+          "gpuPreference": 2,
+          "revision": 197,
+          "subSysId": 978261930,
+          "vendorId": 4098
+        },
+        {
+          "active": false,
+          "deviceId": 9437,
+          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
+          "driverVersion": "32.0.15.7247",
+          "gpuPreference": 3,
+          "revision": 161,
+          "subSysId": 978261930,
+          "vendorId": 4318
+        },
+        {
+          "active": false,
+          "deviceId": 140,
+          "deviceString": "Microsoft Basic Render Driver",
+          "driverVersion": "10.0.26100.9278",
+          "gpuPreference": 0,
+          "revision": 0,
+          "subSysId": 0,
+          "vendorId": 5140
+        }
+      ]
+    },
+    "featureStatus": {
+      "2d_canvas": "disabled_software",
+      "direct_rendering_display_compositor": "disabled_off_ok",
+      "gpu_compositing": "disabled_software",
+      "multiple_raster_threads": "enabled_on",
+      "opengl": "disabled_off",
+      "rasterization": "disabled_software",
+      "raw_draw": "disabled_off_ok",
+      "skia_graphite": "disabled_off",
+      "trees_in_viz": "disabled_off",
+      "video_decode": "disabled_software",
+      "video_encode": "disabled_software",
+      "vulkan": "disabled_off",
+      "webgl": "disabled_off",
+      "webgl2": "disabled_off",
+      "webgpu": "disabled_off",
+      "webnn": "disabled_off"
+    }
+  },
+  "boot": {
+    "ok": true,
+    "modeId": "single",
+    "modeRunning": true,
+    "gameStateReady": true,
+    "sessionGeneration": 1,
+    "deterministicPauseApplied": true,
+    "initialTheme": "forest",
+    "hubReady": true
+  },
+  "lifecycle": {
+    "ok": true,
+    "skipped": "perf-lane",
+    "checks": [],
+    "timings": {}
+  },
+  "screenshot": {
+    "path": "reports\\blood-moon-overhaul\\crimson-reference-paired\\blood-moon.png",
+    "passed": true,
+    "width": 1264,
+    "height": 735,
+    "byteLength": 3716160,
+    "samples": 20197,
+    "luminance": {
+      "min": 0,
+      "max": 241.7208,
+      "mean": 11.826349358815422,
+      "range": 241.7208,
+      "variance": 311.4540555099477
+    }
+  },
+  "console": {
+    "ok": true,
+    "entryCount": 47,
+    "warningCount": 2,
+    "errorCount": 0,
+    "processFailureCount": 0,
+    "shaderPipelineFailureCount": 0,
+    "patternFailures": [],
+    "errorSamples": [],
+    "warningSamples": [
+      {
+        "timestamp": "2026-10-01T12:56:00.327Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:4175/assets/three-Bv-GALeT.js"
+      },
+      {
+        "timestamp": "2026-10-01T12:56:35.736Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 8,
+        "sourceId": ""
+      }
+    ],
+    "processFailures": []
+  },
+  "perf": {
+    "schemaVersion": 1,
+    "generatedAt": "2026-10-01T12:56:35.761Z",
+    "runId": "2026-10-01T12-55-53-079Z",
+    "theme": "blood-moon",
+    "anchorTheme": "forest",
+    "themeMeta": {
+      "id": "blood-moon",
+      "displayName": "Blood Moon",
+      "module": "./blood-moon/blood-moon-theme.js",
+      "group": "cosmic",
+      "icon": "./blood-moon/blood-moon-theme-icon.png",
+      "resourceProfile": "heavy-gpu",
+      "performanceClass": "heavy",
+      "startupEligible": false
+    },
+    "manifest": {
+      "electron": "38.8.6",
+      "chrome": "140.0.7339.249",
+      "node": "22.22.0",
+      "platform": "win32",
+      "windowPx": {
+        "width": 1280,
+        "height": 800
+      },
+      "windowShown": true,
+      "userDataDir": null,
+      "dawnCache": "cold-per-theme-userdata",
+      "requestedSwitches": [
+        "force_high_performance_gpu",
+        "force-device-scale-factor=1",
+        "disable-backgrounding-occluded-windows",
+        "disable-background-timer-throttling",
+        "disable-renderer-backgrounding",
+        "enable-precise-memory-info"
+      ],
+      "idleMs": 8000,
+      "quality": "High",
+      "targetFps": 60,
+      "themeFpsCapDisabled": true,
+      "forceWebGL": false,
+      "burstPaired": true,
+      "pairedWindowMs": 8000,
+      "sameScene": true,
+      "electronGpuDiagnostics": {
+        "gpuInfo": {
+          "auxAttributes": {
+            "amdSwitchable": false,
+            "canSupportThreadedTextureMailbox": false,
+            "directMLFeatureLevel": "Not supported",
+            "dx12FeatureLevel": "Not supported",
+            "glImplementationParts": "(gl=none,angle=none)",
+            "glResetNotificationStrategy": 0,
+            "hardwareSupportsVulkan": false,
+            "inProcessGpu": true,
+            "initializationTime": 0,
+            "isAsan": false,
+            "isClangCoverage": false,
+            "jpegDecodeAcceleratorSupported": false,
+            "optimus": false,
+            "overlayInfo": {
+              "bgra8OverlaySupport": "NONE",
+              "directComposition": false,
+              "nv12OverlaySupport": "NONE",
+              "p010OverlaySupport": "NONE",
+              "rgb10a2OverlaySupport": "NONE",
+              "supportsOverlays": false,
+              "yuy2OverlaySupport": "NONE"
+            },
+            "passthroughCmdDecoder": false,
+            "sandboxed": false,
+            "skiaBackendType": "None",
+            "subpixelFontRendering": true,
+            "supportsD3dSharedImages": false,
+            "supportsDirectML": false,
+            "supportsDx12": false,
+            "supportsVulkan": false,
+            "targetCpuBits": 64,
+            "visibilityCallbackCallCount": 0,
+            "vulkanVersion": "Not supported"
+          },
+          "gpuDevice": [
+            {
+              "active": false,
+              "deviceId": 5688,
+              "deviceString": "AMD Radeon(TM) Graphics",
+              "driverVersion": "31.0.12044.3",
+              "gpuPreference": 2,
+              "revision": 197,
+              "subSysId": 978261930,
+              "vendorId": 4098
+            },
+            {
+              "active": false,
+              "deviceId": 9437,
+              "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
+              "driverVersion": "32.0.15.7247",
+              "gpuPreference": 3,
+              "revision": 161,
+              "subSysId": 978261930,
+              "vendorId": 4318
+            },
+            {
+              "active": false,
+              "deviceId": 140,
+              "deviceString": "Microsoft Basic Render Driver",
+              "driverVersion": "10.0.26100.9278",
+              "gpuPreference": 0,
+              "revision": 0,
+              "subSysId": 0,
+              "vendorId": 5140
+            }
+          ]
+        },
+        "featureStatus": {
+          "2d_canvas": "disabled_software",
+          "direct_rendering_display_compositor": "disabled_off_ok",
+          "gpu_compositing": "disabled_software",
+          "multiple_raster_threads": "enabled_on",
+          "opengl": "disabled_off",
+          "rasterization": "disabled_software",
+          "raw_draw": "disabled_off_ok",
+          "skia_graphite": "disabled_off",
+          "trees_in_viz": "disabled_off",
+          "video_decode": "disabled_software",
+          "video_encode": "disabled_software",
+          "vulkan": "disabled_off",
+          "webgl": "disabled_off",
+          "webgl2": "disabled_off",
+          "webgpu": "disabled_off",
+          "webnn": "disabled_off"
+        }
+      }
+    },
+    "pins": {
+      "observedAtWindowStart": {
+        "quality": "High",
+        "targetFrameRate": 60,
+        "playerTargetFrameRate": 60,
+        "devicePixelRatio": 1,
+        "rendererPixelRatio": 1
+      },
+      "observedAtWindowEnd": {
+        "quality": "High",
+        "targetFrameRate": 60,
+        "playerTargetFrameRate": 60,
+        "devicePixelRatio": 1,
+        "rendererPixelRatio": 1
+      },
+      "pinsHeld": true,
+      "pinsBrokenReason": null
+    },
+    "renderer": {
+      "kind": "WebGPURenderer",
+      "backend": "webgpu",
+      "trackTimestampArmed": true,
+      "timestampUnavailableReason": null,
+      "canvasContexts": [
+        {
+          "kind": "webgl",
+          "atMs": 904.6
+        },
+        {
+          "kind": "webgl",
+          "atMs": 1059.9
+        },
+        {
+          "kind": "2d",
+          "atMs": 1060.2
+        },
+        {
+          "kind": "2d",
+          "atMs": 1061.5
+        },
+        {
+          "kind": "2d",
+          "atMs": 1108.8
+        },
+        {
+          "kind": "webgl",
+          "atMs": 1119.8
+        },
+        {
+          "kind": "2d",
+          "atMs": 1201.1
+        },
+        {
+          "kind": "2d",
+          "atMs": 1201.2
+        },
+        {
+          "kind": "2d",
+          "atMs": 1202.4
+        },
+        {
+          "kind": "2d",
+          "atMs": 1202.5
+        },
+        {
+          "kind": "2d",
+          "atMs": 1206.5
+        },
+        {
+          "kind": "2d",
+          "atMs": 2059.5
+        },
+        {
+          "kind": "2d",
+          "atMs": 2069.8
+        },
+        {
+          "kind": "2d",
+          "atMs": 2076.6
+        },
+        {
+          "kind": "2d",
+          "atMs": 2086.7
+        },
+        {
+          "kind": "2d",
+          "atMs": 2093.4
+        },
+        {
+          "kind": "2d",
+          "atMs": 2101.1
+        },
+        {
+          "kind": "2d",
+          "atMs": 2307.6
+        },
+        {
+          "kind": "2d",
+          "atMs": 2320.6
+        },
+        {
+          "kind": "2d",
+          "atMs": 2329.5
+        },
+        {
+          "kind": "2d",
+          "atMs": 2489.9
+        },
+        {
+          "kind": "2d",
+          "atMs": 2490
+        },
+        {
+          "kind": "2d",
+          "atMs": 7961.8
+        },
+        {
+          "kind": "2d",
+          "atMs": 7967.6
+        },
+        {
+          "kind": "2d",
+          "atMs": 7973
+        },
+        {
+          "kind": "webgpu",
+          "atMs": 7990.3
+        }
+      ],
+      "wrapped": [
+        "renderer"
+      ],
+      "usesMrtScenePass": false
+    },
+    "adapter": {
+      "plain": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "asThreeAsks": {
+        "vendor": "nvidia",
+        "architecture": "ampere",
+        "device": "",
+        "description": ""
+      },
+      "webglRendererString": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Laptop GPU (0x000024DD) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "requestedPowerPreference": "high-performance"
+    },
+    "pipelines": {
+      "count": 9,
+      "asyncCount": 7,
+      "syncCount": 2,
+      "failedCount": 0,
+      "asyncSumMs": 425.2,
+      "asyncMaxMs": 157.3,
+      "shapes": [
+        "rgba8unorm|1|",
+        "rgba16float|4|depth24plus",
+        "bgra8unorm|1|depth24plus"
+      ],
+      "rows": [
+        {
+          "label": "renderPipeline_blood-moon-nebula_19",
+          "materialId": 19,
+          "materialClass": "MeshBasicNodeMaterial",
+          "materialClassReason": null,
+          "materialName": "blood-moon-nebula",
+          "async": true,
+          "failed": false,
+          "ms": 157.3,
+          "atMs": 7425.7,
+          "targets": "rgba16float",
+          "samples": 4,
+          "depth": "depth24plus"
+        },
+        {
+          "label": "renderPipeline_blood-moon-lunar-relief_20",
+          "materialId": 20,
+          "materialClass": "MeshBasicNodeMaterial",
+          "materialClassReason": null,
+          "materialName": "blood-moon-lunar-relief",
+          "async": true,
+          "failed": false,
+          "ms": 55,
+          "atMs": 7609.4,
+          "targets": "rgba16float",
+          "samples": 4,
+          "depth": "depth24plus"
+        },
+        {
+          "label": "renderPipeline_blood-moon-ember-dust_23",
+          "materialId": 23,
+          "materialClass": "MeshBasicNodeMaterial",
+          "materialClassReason": null,
+          "materialName": "blood-moon-ember-dust",
+          "async": true,
+          "failed": false,
+          "ms": 47.3,
+          "atMs": 7793.7,
+          "targets": "rgba16float",
+          "samples": 4,
+          "depth": "depth24plus"
+        },
+        {
+          "label": "renderPipeline_blood-moon-stellar-points_22",
+          "materialId": 22,
+          "materialClass": "MeshBasicNodeMaterial",
+          "materialClassReason": null,
+          "materialName": "blood-moon-stellar-points",
+          "async": true,
+          "failed": false,
+          "ms": 47,
+          "atMs": 7735.4,
+          "targets": "rgba16float",
+          "samples": 4,
+          "depth": "depth24plus"
+        },
+        {
+          "label": "renderPipeline_blood-moon-fullscreen-burst-0_25",
+          "materialId": 25,
+          "materialClass": "MeshBasicNodeMaterial",
+          "materialClassReason": null,
+          "materialName": "blood-moon-fullscreen-burst-0",
+          "async": true,
+          "failed": false,
+          "ms": 46.9,
+          "atMs": 7894.3,
+          "targets": "rgba16float",
+          "samples": 4,
+          "depth": "depth24plus"
+        },
+        {
+          "label": "renderPipeline_blood-moon-corona_21",
+          "materialId": 21,
+          "materialClass": "MeshBasicNodeMaterial",
+          "materialClassReason": null,
+          "materialName": "blood-moon-corona",
+          "async": true,
+          "failed": false,
+          "ms": 39,
+          "atMs": 7680.3,
+          "targets": "rgba16float",
+          "samples": 4,
+          "depth": "depth24plus"
+        },
+        {
+          "label": "renderPipeline_blood-moon-eclipse-wave_24",
+          "materialId": 24,
+          "materialClass": "MeshBasicNodeMaterial",
+          "materialClassReason": null,
+          "materialName": "blood-moon-eclipse-wave",
+          "async": true,
+          "failed": false,
+          "ms": 32.7,
+          "atMs": 7852.6,
+          "targets": "rgba16float",
+          "samples": 4,
+          "depth": "depth24plus"
+        }
+      ],
+      "syncRows": [
+        {
+          "label": "mipmap-rgba8unorm-2d-array",
+          "materialId": null,
+          "materialClass": null,
+          "materialClassReason": "not-in-scene-at-collection",
+          "materialName": null,
+          "async": false,
+          "failed": false,
+          "ms": null,
+          "atMs": 7422.3,
+          "targets": "rgba8unorm",
+          "samples": 1,
+          "depth": null
+        },
+        {
+          "label": "renderPipeline_outputColorTransform_28",
+          "materialId": 28,
+          "materialClass": null,
+          "materialClassReason": "not-in-scene-at-collection",
+          "materialName": null,
+          "async": false,
+          "failed": false,
+          "ms": null,
+          "atMs": 8001.3,
+          "targets": "bgra8unorm",
+          "samples": 1,
+          "depth": "depth24plus"
+        }
+      ],
+      "pipelinesAfterFirstFrame": 0,
+      "visit2AsyncCount": null,
+      "visit2SyncCount": null,
+      "visit2CountReason": "paired idleB reuses the original pipelines"
+    },
+    "switchTimings": {
+      "switchWallMs": 1104.1,
+      "managerReportedMs": null,
+      "queueDrainMs": null,
+      "createSceneEnterMs": 6893.4,
+      "rendererCreatedMs": 7094.4,
+      "criticalReadyMs": 1104.1,
+      "firstRenderCallMs": 1108.6,
+      "firstFrameGpuCompleteMs": 3259.1,
+      "firstFrameGpuCompleteMethod": "queue.onSubmittedWorkDone",
+      "firstFrameRafMs": 3260.5,
+      "visit2SwitchWallMs": null,
+      "visit2SwitchWallReason": "paired idleB reuses the original scene; no second switch"
+    },
+    "idle": {
+      "windowMs": 8001.1,
+      "framesObserved": 1033,
+      "submittedFrameWindows": 1033,
+      "submittedRateHz": 129.11,
+      "wall": {
+        "samples": 1032,
+        "p50": 7.7,
+        "p95": 8.4,
+        "p99": 8.7,
+        "min": 7,
+        "max": 16.6,
+        "budgetMs": 16.667,
+        "overBudget": 0
+      },
+      "cpuSubmitMs": {
+        "samples": 1033,
+        "p50": 0.4,
+        "p95": 0.6,
+        "p99": 0.7,
+        "min": 0.1,
+        "max": 2
+      },
+      "gpuMs": {
+        "samples": 581,
+        "p50": 0.066,
+        "p95": 0.131,
+        "p99": 0.131,
+        "min": 0.066,
+        "max": 0.131,
+        "quantumMs": 0.065536,
+        "sampleDiscipline": "one-push-per-resolved-query",
+        "stickySamplerSuspected": false
+      },
+      "gpuNullReason": null,
+      "longTasks": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      }
+    },
+    "content": {
+      "drawCalls": {
+        "p50": 6,
+        "min": 0,
+        "max": 6
+      },
+      "triangles": {
+        "p50": 13457,
+        "min": 0,
+        "max": 13457
+      },
+      "steadyState": false,
+      "infoOwnership": "lane",
+      "geometries": 8,
+      "textures": 5,
+      "visit2": {
+        "drawCalls": 6,
+        "triangles": 13457
+      },
+      "contentMatch": true,
+      "contentMismatchReason": null,
+      "contentGuardAdmissible": true
+    },
+    "memory": {
+      "peakHeapMB": 37.44,
+      "p50HeapMB": 33.43,
+      "heapSamples": 34,
+      "heapDrops": 8,
+      "allocBytesPerFrame": null,
+      "allocVoidReason": "8 GC(s) inside the window"
+    },
+    "drift": {
+      "visitGpuP50DeltaMs": 0,
+      "visitWallP95DeltaMs": 6.7,
+      "voidReason": null
+    },
+    "console": {
+      "errorCount": 0,
+      "warningCount": 2
+    },
+    "admissible": true,
+    "inadmissibleReasons": [],
+    "notes": [
+      "firstFrameGpuCompleteMs is GPU-work completion, not scanout. A page cannot observe presentation.",
+      "pipelines.asyncSumMs is the sum of per-object awaited compiles (r185 Renderer awaits per object), not a wall-clock.",
+      "pipelines.syncRows always carry ms=null: createRenderPipeline returns at once and the GPU process blocks at first draw.",
+      "gpuMs is null for a classic THREE.WebGLRenderer: that renderer kind has no timestamp API in 0.185.1 (ADR-0019, ADR-0008).",
+      "Two configurations inside 0.065536 ms mean \"difference below resolution\", never \"zero cost\" (ADR-0016).",
+      "GPU samples are pushed once per RESOLVED query, never once per frame: Info.reset() does not clear render.timestamp."
+    ],
+    "burstPaired": {
+      "method": "idleA / stress / idleB; one scene and renderer, phase 12, seed 431, 8000ms per window",
+      "gpuSampling": "existing fresh-resolved-query instrument; epoch reset for every window",
+      "valid": true,
+      "windows": [
+        {
+          "label": "idleA",
+          "sameRuntime": true,
+          "samePhase": true,
+          "slots": {
+            "samples": 34,
+            "min": 0,
+            "max": 0,
+            "expected": 0
+          },
+          "diagnostics": {
+            "before": {
+              "quality": "High",
+              "loaded": true,
+              "time": 12,
+              "layout": {
+                "x": 0.235,
+                "y": 0.62,
+                "radius": 0.23
+              },
+              "moon": {
+                "x": 0.2448276710086528,
+                "y": 0.6435798044612264,
+                "radius": 0.22940223028961065,
+                "rotation": 0.0336
+              },
+              "camera": [
+                0.9761392010261102,
+                0.5499679461264815,
+                12.633000960070827
+              ],
+              "reaction": {
+                "pulse": 0,
+                "corona": 0,
+                "starBoost": 0,
+                "impact": 0
+              },
+              "stars": 1996,
+              "motes": 218,
+              "sparks": 1000,
+              "activeWave": false,
+              "activeEjecta": false,
+              "bursts": {
+                "activeSlots": 0,
+                "activeParticles": 0,
+                "particlesPerSlot": 1000,
+                "capacity": 3,
+                "lifetime": 5.2,
+                "pendingStrength": 0,
+                "slots": [
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0,
+                      "y": 0
+                    }
+                  },
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0,
+                      "y": 0
+                    }
+                  },
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0,
+                      "y": 0
+                    }
+                  }
+                ]
+              }
+            },
+            "after": {
+              "quality": "High",
+              "loaded": true,
+              "time": 12,
+              "layout": {
+                "x": 0.235,
+                "y": 0.62,
+                "radius": 0.23
+              },
+              "moon": {
+                "x": 0.2448276710086528,
+                "y": 0.6435798044612264,
+                "radius": 0.22940223028961065,
+                "rotation": 0.0336
+              },
+              "camera": [
+                0.9761392010261102,
+                0.5499679461264815,
+                12.633000960070827
+              ],
+              "reaction": {
+                "pulse": 0,
+                "corona": 0,
+                "starBoost": 0,
+                "impact": 0
+              },
+              "stars": 1996,
+              "motes": 218,
+              "sparks": 1000,
+              "activeWave": false,
+              "activeEjecta": false,
+              "bursts": {
+                "activeSlots": 0,
+                "activeParticles": 0,
+                "particlesPerSlot": 1000,
+                "capacity": 3,
+                "lifetime": 5.2,
+                "pendingStrength": 0,
+                "slots": [
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0,
+                      "y": 0
+                    }
+                  },
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0,
+                      "y": 0
+                    }
+                  },
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0,
+                      "y": 0
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "reduced": {
+            "theme": "blood-moon",
+            "anchorTheme": "forest",
+            "renderer": {
+              "kind": "WebGPURenderer",
+              "backend": "webgpu",
+              "trackTimestampArmed": true,
+              "timestampUnavailableReason": null,
+              "canvasContexts": [
+                {
+                  "kind": "webgl",
+                  "atMs": 904.6
+                },
+                {
+                  "kind": "webgl",
+                  "atMs": 1059.9
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1060.2
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1061.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1108.8
+                },
+                {
+                  "kind": "webgl",
+                  "atMs": 1119.8
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1201.1
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1201.2
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1202.4
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1202.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1206.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2059.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2069.8
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2076.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2086.7
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2093.4
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2101.1
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2307.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2320.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2329.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2489.9
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2490
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 7961.8
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 7967.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 7973
+                },
+                {
+                  "kind": "webgpu",
+                  "atMs": 7990.3
+                }
+              ],
+              "wrapped": [
+                "renderer"
+              ],
+              "usesMrtScenePass": false
+            },
+            "switchTimings": {
+              "switchWallMs": 1104.1,
+              "managerReportedMs": null,
+              "queueDrainMs": null,
+              "createSceneEnterMs": 6893.4,
+              "rendererCreatedMs": 7094.4,
+              "criticalReadyMs": 1104.1,
+              "firstRenderCallMs": 1108.6,
+              "firstFrameGpuCompleteMs": 3259.1,
+              "firstFrameGpuCompleteMethod": "queue.onSubmittedWorkDone",
+              "firstFrameRafMs": 3260.5
+            },
+            "pipelines": {
+              "count": 9,
+              "asyncCount": 7,
+              "syncCount": 2,
+              "failedCount": 0,
+              "asyncSumMs": 425.2,
+              "asyncMaxMs": 157.3,
+              "shapes": [
+                "rgba8unorm|1|",
+                "rgba16float|4|depth24plus",
+                "bgra8unorm|1|depth24plus"
+              ],
+              "rows": [
+                {
+                  "label": "renderPipeline_blood-moon-nebula_19",
+                  "materialId": 19,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-nebula",
+                  "async": true,
+                  "failed": false,
+                  "ms": 157.3,
+                  "atMs": 7425.7,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-lunar-relief_20",
+                  "materialId": 20,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-lunar-relief",
+                  "async": true,
+                  "failed": false,
+                  "ms": 55,
+                  "atMs": 7609.4,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-ember-dust_23",
+                  "materialId": 23,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-ember-dust",
+                  "async": true,
+                  "failed": false,
+                  "ms": 47.3,
+                  "atMs": 7793.7,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-stellar-points_22",
+                  "materialId": 22,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-stellar-points",
+                  "async": true,
+                  "failed": false,
+                  "ms": 47,
+                  "atMs": 7735.4,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-fullscreen-burst-0_25",
+                  "materialId": 25,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-fullscreen-burst-0",
+                  "async": true,
+                  "failed": false,
+                  "ms": 46.9,
+                  "atMs": 7894.3,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-corona_21",
+                  "materialId": 21,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-corona",
+                  "async": true,
+                  "failed": false,
+                  "ms": 39,
+                  "atMs": 7680.3,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-eclipse-wave_24",
+                  "materialId": 24,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-eclipse-wave",
+                  "async": true,
+                  "failed": false,
+                  "ms": 32.7,
+                  "atMs": 7852.6,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                }
+              ],
+              "syncRows": [
+                {
+                  "label": "mipmap-rgba8unorm-2d-array",
+                  "materialId": null,
+                  "materialClass": null,
+                  "materialClassReason": "not-in-scene-at-collection",
+                  "materialName": null,
+                  "async": false,
+                  "failed": false,
+                  "ms": null,
+                  "atMs": 7422.3,
+                  "targets": "rgba8unorm",
+                  "samples": 1,
+                  "depth": null
+                },
+                {
+                  "label": "renderPipeline_outputColorTransform_28",
+                  "materialId": 28,
+                  "materialClass": null,
+                  "materialClassReason": "not-in-scene-at-collection",
+                  "materialName": null,
+                  "async": false,
+                  "failed": false,
+                  "ms": null,
+                  "atMs": 8001.3,
+                  "targets": "bgra8unorm",
+                  "samples": 1,
+                  "depth": "depth24plus"
+                }
+              ],
+              "pipelinesAfterFirstFrame": 0
+            },
+            "idle": {
+              "windowMs": 8001.1,
+              "framesObserved": 1033,
+              "submittedFrameWindows": 1033,
+              "submittedRateHz": 129.11,
+              "wall": {
+                "samples": 1032,
+                "p50": 7.7,
+                "p95": 8.4,
+                "p99": 8.7,
+                "min": 7,
+                "max": 16.6,
+                "budgetMs": 16.667,
+                "overBudget": 0
+              },
+              "cpuSubmitMs": {
+                "samples": 1033,
+                "p50": 0.4,
+                "p95": 0.6,
+                "p99": 0.7,
+                "min": 0.1,
+                "max": 2
+              },
+              "gpuMs": {
+                "samples": 581,
+                "p50": 0.066,
+                "p95": 0.131,
+                "p99": 0.131,
+                "min": 0.066,
+                "max": 0.131,
+                "quantumMs": 0.065536,
+                "sampleDiscipline": "one-push-per-resolved-query",
+                "stickySamplerSuspected": false
+              },
+              "gpuNullReason": null,
+              "longTasks": {
+                "count": 0,
+                "totalMs": 0,
+                "maxMs": 0
+              }
+            },
+            "content": {
+              "drawCalls": {
+                "p50": 6,
+                "min": 0,
+                "max": 6
+              },
+              "triangles": {
+                "p50": 13457,
+                "min": 0,
+                "max": 13457
+              },
+              "steadyState": false,
+              "infoOwnership": "lane",
+              "geometries": 8,
+              "textures": 5
+            },
+            "memory": {
+              "peakHeapMB": 37.44,
+              "p50HeapMB": 33.43,
+              "heapSamples": 34,
+              "heapDrops": 8,
+              "allocBytesPerFrame": null,
+              "allocVoidReason": "8 GC(s) inside the window"
+            },
+            "pins": {
+              "atStart": {
+                "quality": "High",
+                "targetFrameRate": 60,
+                "playerTargetFrameRate": 60,
+                "devicePixelRatio": 1,
+                "rendererPixelRatio": 1
+              },
+              "atEnd": {
+                "quality": "High",
+                "targetFrameRate": 60,
+                "playerTargetFrameRate": 60,
+                "devicePixelRatio": 1,
+                "rendererPixelRatio": 1
+              }
+            }
+          }
+        },
+        {
+          "label": "stress",
+          "sameRuntime": true,
+          "samePhase": true,
+          "slots": {
+            "samples": 34,
+            "min": 3,
+            "max": 3,
+            "expected": 3
+          },
+          "diagnostics": {
+            "before": {
+              "quality": "High",
+              "loaded": true,
+              "time": 12,
+              "layout": {
+                "x": 0.235,
+                "y": 0.62,
+                "radius": 0.23
+              },
+              "moon": {
+                "x": 0.2448276710086528,
+                "y": 0.6435798044612264,
+                "radius": 0.2294025914073178,
+                "rotation": 0.0336
+              },
+              "camera": [
+                0.9761382968659876,
+                0.549964408732254,
+                12.633000960070827
+              ],
+              "reaction": {
+                "pulse": 0.07910059010970716,
+                "corona": 0.33202723032210407,
+                "starBoost": 0.1956197645341076,
+                "impact": 0.00008745379160887222
+              },
+              "stars": 1996,
+              "motes": 218,
+              "sparks": 1000,
+              "activeWave": true,
+              "activeEjecta": true,
+              "bursts": {
+                "activeSlots": 3,
+                "activeParticles": 3000,
+                "particlesPerSlot": 1000,
+                "capacity": 3,
+                "lifetime": 5.2,
+                "pendingStrength": 0,
+                "slots": [
+                  {
+                    "age": 2.677199999999253,
+                    "strength": 0.85,
+                    "serial": 0,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  },
+                  {
+                    "age": 1.7768000000007431,
+                    "strength": 0.7,
+                    "serial": 1,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  },
+                  {
+                    "age": 0.7786999999992554,
+                    "strength": 1,
+                    "serial": 2,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  }
+                ]
+              }
+            },
+            "after": {
+              "quality": "High",
+              "loaded": true,
+              "time": 12,
+              "layout": {
+                "x": 0.235,
+                "y": 0.62,
+                "radius": 0.23
+              },
+              "moon": {
+                "x": 0.2448276710086528,
+                "y": 0.6435798044612264,
+                "radius": 0.22989886197953377,
+                "rotation": 0.0336
+              },
+              "camera": [
+                0.9748957433924558,
+                0.5451031000160628,
+                12.633000960070827
+              ],
+              "reaction": {
+                "pulse": 0.42704113139580463,
+                "corona": 0.7485866668971572,
+                "starBoost": 0.5127009840673254,
+                "impact": 0.12027193199185887
+              },
+              "stars": 1996,
+              "motes": 218,
+              "sparks": 1000,
+              "activeWave": true,
+              "activeEjecta": true,
+              "bursts": {
+                "activeSlots": 3,
+                "activeParticles": 3000,
+                "particlesPerSlot": 1000,
+                "capacity": 3,
+                "lifetime": 5.2,
+                "pendingStrength": 0,
+                "slots": [
+                  {
+                    "age": 2.083699999999256,
+                    "strength": 0.85,
+                    "serial": 9,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  },
+                  {
+                    "age": 1.1803000000007446,
+                    "strength": 0.7,
+                    "serial": 10,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  },
+                  {
+                    "age": 0.1765,
+                    "strength": 1,
+                    "serial": 11,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "reduced": {
+            "theme": "blood-moon",
+            "anchorTheme": "forest",
+            "renderer": {
+              "kind": "WebGPURenderer",
+              "backend": "webgpu",
+              "trackTimestampArmed": true,
+              "timestampUnavailableReason": null,
+              "canvasContexts": [
+                {
+                  "kind": "webgl",
+                  "atMs": 904.6
+                },
+                {
+                  "kind": "webgl",
+                  "atMs": 1059.9
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1060.2
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1061.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1108.8
+                },
+                {
+                  "kind": "webgl",
+                  "atMs": 1119.8
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1201.1
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1201.2
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1202.4
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1202.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1206.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2059.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2069.8
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2076.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2086.7
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2093.4
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2101.1
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2307.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2320.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2329.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2489.9
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2490
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 7961.8
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 7967.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 7973
+                },
+                {
+                  "kind": "webgpu",
+                  "atMs": 7990.3
+                }
+              ],
+              "wrapped": [
+                "renderer"
+              ],
+              "usesMrtScenePass": false
+            },
+            "switchTimings": {
+              "switchWallMs": 1104.1,
+              "managerReportedMs": null,
+              "queueDrainMs": null,
+              "createSceneEnterMs": 6893.4,
+              "rendererCreatedMs": 7094.4,
+              "criticalReadyMs": 1104.1,
+              "firstRenderCallMs": 1108.6,
+              "firstFrameGpuCompleteMs": 3259.1,
+              "firstFrameGpuCompleteMethod": "queue.onSubmittedWorkDone",
+              "firstFrameRafMs": 3260.5
+            },
+            "pipelines": {
+              "count": 9,
+              "asyncCount": 7,
+              "syncCount": 2,
+              "failedCount": 0,
+              "asyncSumMs": 425.2,
+              "asyncMaxMs": 157.3,
+              "shapes": [
+                "rgba8unorm|1|",
+                "rgba16float|4|depth24plus",
+                "bgra8unorm|1|depth24plus"
+              ],
+              "rows": [
+                {
+                  "label": "renderPipeline_blood-moon-nebula_19",
+                  "materialId": 19,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-nebula",
+                  "async": true,
+                  "failed": false,
+                  "ms": 157.3,
+                  "atMs": 7425.7,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-lunar-relief_20",
+                  "materialId": 20,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-lunar-relief",
+                  "async": true,
+                  "failed": false,
+                  "ms": 55,
+                  "atMs": 7609.4,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-ember-dust_23",
+                  "materialId": 23,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-ember-dust",
+                  "async": true,
+                  "failed": false,
+                  "ms": 47.3,
+                  "atMs": 7793.7,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-stellar-points_22",
+                  "materialId": 22,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-stellar-points",
+                  "async": true,
+                  "failed": false,
+                  "ms": 47,
+                  "atMs": 7735.4,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-fullscreen-burst-0_25",
+                  "materialId": 25,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-fullscreen-burst-0",
+                  "async": true,
+                  "failed": false,
+                  "ms": 46.9,
+                  "atMs": 7894.3,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-corona_21",
+                  "materialId": 21,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-corona",
+                  "async": true,
+                  "failed": false,
+                  "ms": 39,
+                  "atMs": 7680.3,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-eclipse-wave_24",
+                  "materialId": 24,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-eclipse-wave",
+                  "async": true,
+                  "failed": false,
+                  "ms": 32.7,
+                  "atMs": 7852.6,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                }
+              ],
+              "syncRows": [
+                {
+                  "label": "mipmap-rgba8unorm-2d-array",
+                  "materialId": null,
+                  "materialClass": null,
+                  "materialClassReason": "not-in-scene-at-collection",
+                  "materialName": null,
+                  "async": false,
+                  "failed": false,
+                  "ms": null,
+                  "atMs": 7422.3,
+                  "targets": "rgba8unorm",
+                  "samples": 1,
+                  "depth": null
+                },
+                {
+                  "label": "renderPipeline_outputColorTransform_28",
+                  "materialId": 28,
+                  "materialClass": null,
+                  "materialClassReason": "not-in-scene-at-collection",
+                  "materialName": null,
+                  "async": false,
+                  "failed": false,
+                  "ms": null,
+                  "atMs": 8001.3,
+                  "targets": "bgra8unorm",
+                  "samples": 1,
+                  "depth": "depth24plus"
+                }
+              ],
+              "pipelinesAfterFirstFrame": 0
+            },
+            "idle": {
+              "windowMs": 8002.9,
+              "framesObserved": 1008,
+              "submittedFrameWindows": 1008,
+              "submittedRateHz": 125.95,
+              "wall": {
+                "samples": 1007,
+                "p50": 7.7,
+                "p95": 8.5,
+                "p99": 15.5,
+                "min": 7,
+                "max": 23.7,
+                "budgetMs": 16.667,
+                "overBudget": 1
+              },
+              "cpuSubmitMs": {
+                "samples": 1008,
+                "p50": 0.4,
+                "p95": 0.7,
+                "p99": 0.9,
+                "min": 0.2,
+                "max": 2.4
+              },
+              "gpuMs": {
+                "samples": 494,
+                "p50": 0.131,
+                "p95": 0.197,
+                "p99": 0.197,
+                "min": 0.066,
+                "max": 0.197,
+                "quantumMs": 0.065536,
+                "sampleDiscipline": "one-push-per-resolved-query",
+                "stickySamplerSuspected": false
+              },
+              "gpuNullReason": null,
+              "longTasks": {
+                "count": 0,
+                "totalMs": 0,
+                "maxMs": 0
+              }
+            },
+            "content": {
+              "drawCalls": {
+                "p50": 10,
+                "min": 0,
+                "max": 10
+              },
+              "triangles": {
+                "p50": 19459,
+                "min": 0,
+                "max": 19459
+              },
+              "steadyState": false,
+              "infoOwnership": "lane",
+              "geometries": 8,
+              "textures": 5
+            },
+            "memory": {
+              "peakHeapMB": 36.96,
+              "p50HeapMB": 33.25,
+              "heapSamples": 34,
+              "heapDrops": 6,
+              "allocBytesPerFrame": null,
+              "allocVoidReason": "6 GC(s) inside the window"
+            },
+            "pins": {
+              "atStart": {
+                "quality": "High",
+                "targetFrameRate": 60,
+                "playerTargetFrameRate": 60,
+                "devicePixelRatio": 1,
+                "rendererPixelRatio": 1
+              },
+              "atEnd": {
+                "quality": "High",
+                "targetFrameRate": 60,
+                "playerTargetFrameRate": 60,
+                "devicePixelRatio": 1,
+                "rendererPixelRatio": 1
+              }
+            }
+          }
+        },
+        {
+          "label": "idleB",
+          "sameRuntime": true,
+          "samePhase": true,
+          "slots": {
+            "samples": 34,
+            "min": 0,
+            "max": 0,
+            "expected": 0
+          },
+          "diagnostics": {
+            "before": {
+              "quality": "High",
+              "loaded": true,
+              "time": 12,
+              "layout": {
+                "x": 0.235,
+                "y": 0.62,
+                "radius": 0.23
+              },
+              "moon": {
+                "x": 0.2448276710086528,
+                "y": 0.6435798044612264,
+                "radius": 0.22940223028961065,
+                "rotation": 0.0336
+              },
+              "camera": [
+                0.9761392010261102,
+                0.5499679461264815,
+                12.633000960070827
+              ],
+              "reaction": {
+                "pulse": 0,
+                "corona": 0,
+                "starBoost": 0,
+                "impact": 0
+              },
+              "stars": 1996,
+              "motes": 218,
+              "sparks": 1000,
+              "activeWave": false,
+              "activeEjecta": false,
+              "bursts": {
+                "activeSlots": 0,
+                "activeParticles": 0,
+                "particlesPerSlot": 1000,
+                "capacity": 3,
+                "lifetime": 5.2,
+                "pendingStrength": 0,
+                "slots": [
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  },
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  },
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  }
+                ]
+              }
+            },
+            "after": {
+              "quality": "High",
+              "loaded": true,
+              "time": 12,
+              "layout": {
+                "x": 0.235,
+                "y": 0.62,
+                "radius": 0.23
+              },
+              "moon": {
+                "x": 0.2448276710086528,
+                "y": 0.6435798044612264,
+                "radius": 0.22940223028961065,
+                "rotation": 0.0336
+              },
+              "camera": [
+                0.9761392010261102,
+                0.5499679461264815,
+                12.633000960070827
+              ],
+              "reaction": {
+                "pulse": 0,
+                "corona": 0,
+                "starBoost": 0,
+                "impact": 0
+              },
+              "stars": 1996,
+              "motes": 218,
+              "sparks": 1000,
+              "activeWave": false,
+              "activeEjecta": false,
+              "bursts": {
+                "activeSlots": 0,
+                "activeParticles": 0,
+                "particlesPerSlot": 1000,
+                "capacity": 3,
+                "lifetime": 5.2,
+                "pendingStrength": 0,
+                "slots": [
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  },
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  },
+                  {
+                    "age": 5.2,
+                    "strength": 0,
+                    "serial": -1,
+                    "origin": {
+                      "x": 0.2448276710086528,
+                      "y": 0.6435798044612264
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "reduced": {
+            "theme": "blood-moon",
+            "anchorTheme": "forest",
+            "renderer": {
+              "kind": "WebGPURenderer",
+              "backend": "webgpu",
+              "trackTimestampArmed": true,
+              "timestampUnavailableReason": null,
+              "canvasContexts": [
+                {
+                  "kind": "webgl",
+                  "atMs": 904.6
+                },
+                {
+                  "kind": "webgl",
+                  "atMs": 1059.9
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1060.2
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1061.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1108.8
+                },
+                {
+                  "kind": "webgl",
+                  "atMs": 1119.8
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1201.1
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1201.2
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1202.4
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1202.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 1206.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2059.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2069.8
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2076.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2086.7
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2093.4
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2101.1
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2307.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2320.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2329.5
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2489.9
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 2490
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 7961.8
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 7967.6
+                },
+                {
+                  "kind": "2d",
+                  "atMs": 7973
+                },
+                {
+                  "kind": "webgpu",
+                  "atMs": 7990.3
+                }
+              ],
+              "wrapped": [
+                "renderer"
+              ],
+              "usesMrtScenePass": false
+            },
+            "switchTimings": {
+              "switchWallMs": 1104.1,
+              "managerReportedMs": null,
+              "queueDrainMs": null,
+              "createSceneEnterMs": 6893.4,
+              "rendererCreatedMs": 7094.4,
+              "criticalReadyMs": 1104.1,
+              "firstRenderCallMs": 1108.6,
+              "firstFrameGpuCompleteMs": 3259.1,
+              "firstFrameGpuCompleteMethod": "queue.onSubmittedWorkDone",
+              "firstFrameRafMs": 3260.5
+            },
+            "pipelines": {
+              "count": 9,
+              "asyncCount": 7,
+              "syncCount": 2,
+              "failedCount": 0,
+              "asyncSumMs": 425.2,
+              "asyncMaxMs": 157.3,
+              "shapes": [
+                "rgba8unorm|1|",
+                "rgba16float|4|depth24plus",
+                "bgra8unorm|1|depth24plus"
+              ],
+              "rows": [
+                {
+                  "label": "renderPipeline_blood-moon-nebula_19",
+                  "materialId": 19,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-nebula",
+                  "async": true,
+                  "failed": false,
+                  "ms": 157.3,
+                  "atMs": 7425.7,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-lunar-relief_20",
+                  "materialId": 20,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-lunar-relief",
+                  "async": true,
+                  "failed": false,
+                  "ms": 55,
+                  "atMs": 7609.4,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-ember-dust_23",
+                  "materialId": 23,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-ember-dust",
+                  "async": true,
+                  "failed": false,
+                  "ms": 47.3,
+                  "atMs": 7793.7,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-stellar-points_22",
+                  "materialId": 22,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-stellar-points",
+                  "async": true,
+                  "failed": false,
+                  "ms": 47,
+                  "atMs": 7735.4,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-fullscreen-burst-0_25",
+                  "materialId": 25,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-fullscreen-burst-0",
+                  "async": true,
+                  "failed": false,
+                  "ms": 46.9,
+                  "atMs": 7894.3,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-corona_21",
+                  "materialId": 21,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-corona",
+                  "async": true,
+                  "failed": false,
+                  "ms": 39,
+                  "atMs": 7680.3,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                },
+                {
+                  "label": "renderPipeline_blood-moon-eclipse-wave_24",
+                  "materialId": 24,
+                  "materialClass": "MeshBasicNodeMaterial",
+                  "materialClassReason": null,
+                  "materialName": "blood-moon-eclipse-wave",
+                  "async": true,
+                  "failed": false,
+                  "ms": 32.7,
+                  "atMs": 7852.6,
+                  "targets": "rgba16float",
+                  "samples": 4,
+                  "depth": "depth24plus"
+                }
+              ],
+              "syncRows": [
+                {
+                  "label": "mipmap-rgba8unorm-2d-array",
+                  "materialId": null,
+                  "materialClass": null,
+                  "materialClassReason": "not-in-scene-at-collection",
+                  "materialName": null,
+                  "async": false,
+                  "failed": false,
+                  "ms": null,
+                  "atMs": 7422.3,
+                  "targets": "rgba8unorm",
+                  "samples": 1,
+                  "depth": null
+                },
+                {
+                  "label": "renderPipeline_outputColorTransform_28",
+                  "materialId": 28,
+                  "materialClass": null,
+                  "materialClassReason": "not-in-scene-at-collection",
+                  "materialName": null,
+                  "async": false,
+                  "failed": false,
+                  "ms": null,
+                  "atMs": 8001.3,
+                  "targets": "bgra8unorm",
+                  "samples": 1,
+                  "depth": "depth24plus"
+                }
+              ],
+              "pipelinesAfterFirstFrame": 0
+            },
+            "idle": {
+              "windowMs": 8004.5,
+              "framesObserved": 971,
+              "submittedFrameWindows": 971,
+              "submittedRateHz": 121.31,
+              "wall": {
+                "samples": 970,
+                "p50": 7.7,
+                "p95": 15.1,
+                "p99": 16,
+                "min": 7,
+                "max": 27.2,
+                "budgetMs": 16.667,
+                "overBudget": 5
+              },
+              "cpuSubmitMs": {
+                "samples": 971,
+                "p50": 0.4,
+                "p95": 0.6,
+                "p99": 0.7,
+                "min": 0.2,
+                "max": 0.9
+              },
+              "gpuMs": {
+                "samples": 524,
+                "p50": 0.066,
+                "p95": 0.131,
+                "p99": 0.197,
+                "min": 0.066,
+                "max": 0.197,
+                "quantumMs": 0.065536,
+                "sampleDiscipline": "one-push-per-resolved-query",
+                "stickySamplerSuspected": false
+              },
+              "gpuNullReason": null,
+              "longTasks": {
+                "count": 0,
+                "totalMs": 0,
+                "maxMs": 0
+              }
+            },
+            "content": {
+              "drawCalls": {
+                "p50": 6,
+                "min": 0,
+                "max": 6
+              },
+              "triangles": {
+                "p50": 13457,
+                "min": 0,
+                "max": 13457
+              },
+              "steadyState": false,
+              "infoOwnership": "lane",
+              "geometries": 8,
+              "textures": 5
+            },
+            "memory": {
+              "peakHeapMB": 41.62,
+              "p50HeapMB": 35.31,
+              "heapSamples": 34,
+              "heapDrops": 4,
+              "allocBytesPerFrame": null,
+              "allocVoidReason": "4 GC(s) inside the window"
+            },
+            "pins": {
+              "atStart": {
+                "quality": "High",
+                "targetFrameRate": 60,
+                "playerTargetFrameRate": 60,
+                "devicePixelRatio": 1,
+                "rendererPixelRatio": 1
+              },
+              "atEnd": {
+                "quality": "High",
+                "targetFrameRate": 60,
+                "playerTargetFrameRate": 60,
+                "devicePixelRatio": 1,
+                "rendererPixelRatio": 1
+              }
+            }
+          }
+        }
+      ],
+      "comparison": {
+        "submittedRateHz": {
+          "idleA": 129.11,
+          "stress": 125.95,
+          "idleB": 121.31,
+          "baselineDrift": -7.800000000000011,
+          "stressMinusIdleMidpoint": 0.7399999999999949
+        },
+        "wallP50Ms": {
+          "idleA": 7.7,
+          "stress": 7.7,
+          "idleB": 7.7,
+          "baselineDrift": 0,
+          "stressMinusIdleMidpoint": 0
+        },
+        "wallP95Ms": {
+          "idleA": 8.4,
+          "stress": 8.5,
+          "idleB": 15.1,
+          "baselineDrift": 6.699999999999999,
+          "stressMinusIdleMidpoint": -3.25
+        },
+        "cpuP50Ms": {
+          "idleA": 0.4,
+          "stress": 0.4,
+          "idleB": 0.4,
+          "baselineDrift": 0,
+          "stressMinusIdleMidpoint": 0
+        },
+        "cpuP95Ms": {
+          "idleA": 0.6,
+          "stress": 0.7,
+          "idleB": 0.6,
+          "baselineDrift": 0,
+          "stressMinusIdleMidpoint": 0.09999999999999998
+        },
+        "gpuP50Ms": {
+          "idleA": 0.066,
+          "stress": 0.131,
+          "idleB": 0.066,
+          "baselineDrift": 0,
+          "stressMinusIdleMidpoint": 0.065
+        },
+        "gpuP95Ms": {
+          "idleA": 0.131,
+          "stress": 0.197,
+          "idleB": 0.131,
+          "baselineDrift": 0,
+          "stressMinusIdleMidpoint": 0.066
+        }
+      },
+      "screenshot": {
+        "path": "reports\\blood-moon-overhaul\\crimson-reference-paired\\burst-paired-stress.png",
+        "diagnostics": {
+          "quality": "High",
+          "loaded": true,
+          "time": 12,
+          "layout": {
+            "x": 0.235,
+            "y": 0.62,
+            "radius": 0.23
+          },
+          "moon": {
+            "x": 0.2448276710086528,
+            "y": 0.6435798044612264,
+            "radius": 0.22951277816458626,
+            "rotation": 0.0336
+          },
+          "camera": [
+            0.9758624132137094,
+            0.5488850542963738,
+            12.633000960070827
+          ],
+          "reaction": {
+            "pulse": 0.30076232504489353,
+            "corona": 0.6321754615156941,
+            "starBoost": 0.419629759779299,
+            "impact": 0.02677196556460894
+          },
+          "stars": 1996,
+          "motes": 218,
+          "sparks": 1000,
+          "activeWave": true,
+          "activeEjecta": true,
+          "bursts": {
+            "activeSlots": 3,
+            "activeParticles": 3000,
+            "particlesPerSlot": 1000,
+            "capacity": 3,
+            "lifetime": 5.2,
+            "pendingStrength": 0,
+            "slots": [
+              {
+                "age": 2.2088999999985113,
+                "strength": 0.85,
+                "serial": 9,
+                "origin": {
+                  "x": 0.2448276710086528,
+                  "y": 0.6435798044612264
+                }
+              },
+              {
+                "age": 1.3054999999999994,
+                "strength": 0.7,
+                "serial": 10,
+                "origin": {
+                  "x": 0.2448276710086528,
+                  "y": 0.6435798044612264
+                }
+              },
+              {
+                "age": 0.3016999999992549,
+                "strength": 1,
+                "serial": 11,
+                "origin": {
+                  "x": 0.2448276710086528,
+                  "y": 0.6435798044612264
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "fatalError": null
+}

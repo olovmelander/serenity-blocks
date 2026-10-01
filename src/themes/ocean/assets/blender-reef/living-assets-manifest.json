@@ -1,0 +1,94 @@
+{
+  "author": "Serenity Blocks original procedural Blender sculpture",
+  "collection": "Serenity_Ocean_Living_Assets.001",
+  "blenderVersion": "4.5.9 LTS",
+  "glTFUpAxis": "Y",
+  "textureCount": 0,
+  "canonicalManifest": "asset-manifest.json",
+  "assets": [
+    {
+      "file": "jellyfish.glb",
+      "bytes": 69780,
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "vertexCount": 730,
+      "triangleCount": 1408,
+      "shapeKeys": [
+        "bellPulse",
+        "currentSway"
+      ],
+      "morphTargetCount": 2,
+      "colorAttributeType": "VEC4",
+      "alphaMode": "BLEND",
+      "animations": [
+        {
+          "name": "Jellyfish_Float_Loop",
+          "channels": [
+            "weights"
+          ]
+        }
+      ],
+      "loopSeconds": 4.0,
+      "bounds": {
+        "min": [
+          -1.1069999933242798,
+          -2.6075844764709473,
+          -1.1069999933242798
+        ],
+        "max": [
+          1.1069999933242798,
+          0.8299999833106995,
+          1.1594927310943604
+        ]
+      },
+      "blenderObject": "jellyfish.001",
+      "clipTrack": "Jellyfish_Float_Loop",
+      "sourceVertices": 730,
+      "sourceTriangles": 1408,
+      "vertexColorAlpha": "bell shell translucency, denser oral arms/tentacles"
+    },
+    {
+      "file": "kelp.glb",
+      "bytes": 101260,
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "vertexCount": 1048,
+      "triangleCount": 1496,
+      "shapeKeys": [
+        "currentSway",
+        "crossSway"
+      ],
+      "morphTargetCount": 2,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "animations": [
+        {
+          "name": "Kelp_Current_Loop",
+          "channels": [
+            "weights"
+          ]
+        }
+      ],
+      "loopSeconds": 4.0,
+      "bounds": {
+        "min": [
+          -0.8107768893241882,
+          0,
+          -1.287878394126892
+        ],
+        "max": [
+          1.1932673454284668,
+          5.355095863342285,
+          0.9017518162727356
+        ]
+      },
+      "blenderObject": "kelp.002",
+      "clipTrack": "Kelp_Current_Loop",
+      "sourceVertices": 1048,
+      "sourceTriangles": 1496,
+      "vertexColorAlpha": "opaque leafy ribbons, dark holdfasts and warm amber growths"
+    }
+  ]
+}
