@@ -71,7 +71,7 @@ import {
 import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
 import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
-import { billboardLocal, billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import { pickStellarClass } from './odyssey-stellar-ramp.js';
 
 /**
@@ -1027,7 +1027,7 @@ function createNebulaVolume(uniforms, count, opts = {}) {
 
     // gl_PointSize ~4..90px → small world size; the perspective term is automatic.
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(center, aSize);
+    material.positionNode = billboardLocal(center, aSize);
 
     // ── BLOOD-MOON WISP TEXTURE (adapted to TSL) ──────────────────────────────────
     // Each wisp used to be a flat radial-feather disc — the cause of the "flat pink
@@ -1181,7 +1181,7 @@ function createSuctionParticles(uniforms, count) {
     // gl_PointSize (2 + progress*2)px → small world size; perspective is automatic.
     const size = progress.mul(0.5).add(0.5);
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(center, size);
+    material.positionNode = billboardLocal(center, size);
     // Redshift as it falls in (blue -> orange-red).
     material.colorNode = mix(vec3(0.45, 0.65, 1.0), vec3(1.0, 0.3, 0.12), oneMinus(progress));
     // glow = pow(1 - dist*2, 1.4) round-discarded at dist > 0.5; alpha = progress.
@@ -1445,7 +1445,7 @@ function createCosmicDust(uniforms, count, opts = {}) {
     const sizeWorld = aSize.mul(sparkPulse).mul(energy.mul(0.25).add(0.85));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(center, sizeWorld);
+    material.positionNode = billboardLocal(center, sizeWorld);
     // Hot-cored mote: tight core + thin halo + a small spark-only diffraction glint, all
     // feathered to 0 before the quad edge (crisp, not hazy). Sparks get a warm-white core
     // lift so they read as energetic glints; dust stays the instance tint.
@@ -1697,7 +1697,7 @@ function createStreakMotes(uniforms, count) {
     const center = vec3(aBase.x, aBase.y, travel.sub(620.0));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(center, 2.6);
+    material.positionNode = billboardLocal(center, 2.6);
     // Elongated streak mask along the travel diagonal (fixed angle in quad space).
     // THE DIVE STRETCH (Wave 5): as the BH dive begins (uApproach past bhDiveStart)
     // the streaks elongate ~2.3x and brighten — the acceleration read for the fall.
