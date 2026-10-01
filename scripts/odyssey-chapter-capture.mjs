@@ -48,6 +48,7 @@ const SHOW_WINDOW = args.show || process.env.ODYSSEY_CAPTURE_SHOW === '1';
 const STATION_SETTLE_MS = Math.max(0, Number.parseInt(args.settle || process.env.ODYSSEY_CAPTURE_SETTLE || '350', 10));
 // DIAGNOSTIC LAYER BISECT: `--hide=magma-horizon,molten-haze,ember*` pins every scene object
 // whose name matches (exact, or prefix with a trailing `*`) invisible for the whole run — the
+// `@sprite` matches every Sprite. The
 // `visible` property is redefined so neither the chapter's own update nor the environment
 // manager can re-enable it. For finding which layer owns a look; never for shipped captures.
 const HIDE_NAMES = String(args.hide || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -453,11 +454,16 @@ async function settleAtPosition(win, position, options = {}) {
             // bc.time resolves to the same phase on every run; delta 0 keeps it frozen.
             const hideNames = ${JSON.stringify(HIDE_NAMES)};
             if (hideNames.length) {
-                const matches = (name) => hideNames.some((h) => (h.endsWith('*')
-                    ? String(name || '').startsWith(h.slice(0, -1))
-                    : name === h));
+                // '@sprite' matches every Sprite (the unnamed additive glow cards).
+                const matches = (o) => hideNames.some((h) => {
+                    if (h === '@sprite') return !!o.isSprite;
+                    if (h === '@all') return !!(o.isMesh || o.isSprite || o.isPoints);
+                    if (h === '@unnamed') return !!((o.isMesh || o.isSprite || o.isPoints) && !o.name);
+                    const name = String(o.name || '');
+                    return h.endsWith('*') ? name.startsWith(h.slice(0, -1)) : name === h;
+                });
                 bc.scene?.traverse?.((o) => {
-                    if (!matches(o.name) || o.userData.__captureHidden) return;
+                    if (!matches(o) || o.userData.__captureHidden) return;
                     o.userData.__captureHidden = true;
                     Object.defineProperty(o, 'visible', { get: () => false, set: () => {}, configurable: true });
                 });
