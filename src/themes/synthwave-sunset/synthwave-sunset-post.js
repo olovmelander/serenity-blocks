@@ -1,213 +1,235 @@
 /**
- * Synthwave Sunset Theme - WebGPU Post Processing
- * Emissive-only bloom + vignette + optional scanlines (WebGPU-only)
+ * Synthwave Sunset — post stack (TSL RenderPipeline, both WebGPURenderer backends).
+ *
+ * One scene pass (no MRT), one bloom chain (Medium and up) and ONE full-screen output pass:
+ *   scene (+ radial chromatic aberration on the showcase tiers) → bloom (4-tap, max-channel
+ *   soft-knee prefilter so thin scrolling grid lines do not flicker) → anamorphic streak through
+ *   the sun → hue-preserving neutral tone map → split-tone grade (violet shadows, warm
+ *   highlights), vibrance, violet black floor → vignette → sRGB encode → grain on the darks →
+ *   triangular dither.
+ *
+ * The old stack rendered an MRT emissive target, sampled it for a disabled reflection, and ran
+ * MaterialX Perlin per pixel for grain that was switched off (a zero uniform does not remove
+ * shader cost). All of that is gone.
  */
 
 import * as THREE from 'three/webgpu';
 import {
-    pass,
-    mrt,
-    output,
-    emissive,
-    viewportUV,
-    uniform,
+    Fn,
+    abs,
+    clamp,
+    dot,
+    exp,
     float,
+    floor,
+    length,
+    max,
+    min,
+    mix,
+    neutralToneMapping,
+    pass,
+    renderOutput,
+    screenCoordinate,
+    screenUV,
+    smoothstep,
+    uniform,
+    uv,
     vec2,
     vec3,
     vec4,
-    sin,
-    fract,
-    dot,
-    mix,
-    length,
-    smoothstep,
-    abs,
-    clamp,
-    pow,
-    max,
 } from 'three/tsl';
-import { mx_noise_float } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
-import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
+import { swHash21, swMax3 } from './synthwave-sunset-tsl.js';
+
+/** Per-tier look. `bloom: false` builds no BloomNode (emitters still read through the grade). */
+export const POST_LOOK = {
+    Extreme: {
+        bloom: true, bloomStrength: 0.95, bloomResolution: 0.5, grain: true, ca: 1.0, msaa: 4,
+    },
+    Ultra: {
+        bloom: true, bloomStrength: 0.92, bloomResolution: 0.45, grain: true, ca: 0.7, msaa: 0,
+    },
+    High: {
+        bloom: true, bloomStrength: 0.9, bloomResolution: 0.4, grain: true, ca: 0, msaa: 0,
+    },
+    Medium: {
+        bloom: true, bloomStrength: 0.8, bloomResolution: 0.3, grain: false, ca: 0, msaa: 0,
+    },
+    Low: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, grain: false, ca: 0, msaa: 0,
+    },
+    Minimal: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, grain: false, ca: 0, msaa: 0,
+    },
+};
+
+export const BLOOM_THRESHOLD = 1.0;
+export const BLOOM_KNEE = 0.5;
+export const BLOOM_RADIUS = 0.55;
+
+const LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+/** A render pipeline that only encodes the scene (the no-post / fallback path). */
+export function createPassThroughPipeline(renderer, scene, camera) {
+    const pipeline = new THREE.RenderPipeline(renderer);
+    const scenePass = pass(scene, camera, { samples: 0 });
+    pipeline.outputNode = scenePass;
+    return {
+        render: () => pipeline.render(),
+        update() {},
+        setSize() {},
+        dispose() {
+            scenePass.dispose();
+            pipeline.dispose();
+        },
+    };
+}
 
 export class SynthwaveSunsetPost {
+    /**
+     * @param {THREE.WebGPURenderer} renderer
+     * @param {THREE.Scene} scene
+     * @param {THREE.Camera} camera
+     * @param {object} [params]
+     * @param {object} [params.look]     POST_LOOK entry
+     * @param {number} [params.samples]  scene-pass MSAA samples (default look.msaa)
+     * @param {boolean} [params.grain=true]  false in deterministic capture modes
+     */
     constructor(renderer, scene, camera, params = {}) {
+        const look = params.look || POST_LOOK.High;
+        this.look = look;
         this.renderer = renderer;
         this.postProcessing = new THREE.RenderPipeline(renderer);
-
-        this.uTime = uniform(0);
-        this.uScanline = uniform(params.scanlineIntensity ?? 0.0);
-        this.uGradeStrength = uniform(params.gradeStrength ?? 0.15);
-        this.uGodRaysIntensity = uniform(params.godRaysIntensity ?? 0.25);
-        this.uSunScreen = uniform(params.sunScreen ?? new THREE.Vector2(0.5, 0.6));
-        this.uReflectionIntensity = uniform(params.reflectionIntensity ?? 0.0);
-        this.uReflectionDistort = uniform(params.reflectionDistort ?? 0.015);
-        this.uReflectionSpeed = uniform(params.reflectionSpeed ?? 0.15);
-        this.uHorizon = uniform(params.horizon ?? 0.46);
-        this.uChromaticAberration = uniform(params.chromaticAberration ?? 0.0);
-        this.uFilmGrain = uniform(params.filmGrain ?? 0.0);
-
-        this.scenePass = pass(scene, camera);
-        this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
-
+        this.scenePass = pass(scene, camera, { samples: params.samples ?? look.msaa ?? 0 });
         const sceneColor = this.scenePass.getTextureNode('output');
-        const emissivePass = this.scenePass.getTextureNode('emissive');
 
-        const bloomStrength = params.bloomStrength ?? 0.85;
-        const bloomRadius = params.bloomRadius ?? 0.65;
-        const bloomThreshold = params.bloomThreshold ?? 0.22;
+        this.uAspect = uniform(16 / 9);
+        this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
+        this.uSun = uniform(new THREE.Vector2(0.25, 0.55));
+        this.uSunVis = uniform(0);
+        this.uStreak = uniform(1);
+        this.uBloomBoost = uniform(0);
+        this.uExposure = uniform(1.0);
+        this.grainEnabled = params.grain !== false && look.grain === true;
+        this.uGrain = uniform(this.grainEnabled ? 3.5 / 255 : 0);
+        this.uGrainPhase = uniform(0);
 
-        this.bloomNode = bloom(emissivePass, bloomStrength, bloomRadius, bloomThreshold);
-        this.bloomDownsample = params.bloomDownsample ?? 0.8;
-        const originalBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
-        this.bloomNode.setSize = (width, height) => {
-            originalBloomSetSize(width * this.bloomDownsample, height * this.bloomDownsample);
-        };
-        this.size = { width: 0, height: 0 };
+        // ── Bloom (Medium and up) ──
+        this.bloomNode = null;
+        if (look.bloom) {
+            this.bloomNode = bloom(sceneColor, look.bloomStrength, BLOOM_RADIUS, BLOOM_THRESHOLD);
+            this.bloomNode.threshold.value = BLOOM_THRESHOLD;
+            this.bloomNode.smoothWidth.value = BLOOM_KNEE;
+            this.bloomNode.setResolutionScale(look.bloomResolution);
+            const { uSrcTexel } = this;
+            // BloomNode's documented hook, read once at setup. Inline (no setLayout): `input`
+            // must stay the raw scene TextureNode for .sample().
+            this.bloomNode.highPassFn = Fn(({ input, threshold, smoothWidth }) => {
+                const st = uv();
+                const o = uSrcTexel.mul(1.25);
+                const tap = (dx, dy) => clamp(input.sample(st.add(vec2(o.x.mul(dx), o.y.mul(dy)))).rgb, 0.0, 8.0);
+                const c = tap(1, 1).add(tap(-1, 1)).add(tap(1, -1)).add(tap(-1, -1))
+                    .mul(0.25);
+                const br = swMax3(c);
+                const soft = clamp(br.sub(threshold).add(smoothWidth), 0.0, smoothWidth.mul(2.0));
+                const w = max(soft.mul(soft).div(smoothWidth.mul(4.0).add(1e-4)), br.sub(threshold)).div(max(br, 1e-4));
+                return vec4(c.mul(w), 1.0);
+            });
+        }
 
-        const uv = viewportUV;
-        const centered = uv.sub(0.5).mul(2.0);
-        const dist = length(centered);
+        const caAmount = look.ca ?? 0;
+        const outputFn = Fn(() => {
+            const st = screenUV;
+            const centered = st.sub(0.5).toVar();
 
-        // Radial chromatic aberration — splits RGB along the view-center axis.
-        // Intensity peaks at corners (where `centered` has length ~sqrt(2)).
-        const caOffset = centered.mul(this.uChromaticAberration.mul(0.0035));
-        const sampleR = sceneColor.sample(uv.add(caOffset));
-        const sampleG = sceneColor.sample(uv);
-        const sampleB = sceneColor.sample(uv.sub(caOffset));
-        const baseSample = vec4(sampleR.r, sampleG.g, sampleB.b, sampleG.a);
+            // ── Scene (+ radial CA on the showcase tiers) ──
+            const S = vec3(sceneColor.sample(st).rgb).toVar();
+            if (caAmount > 0) {
+                const off = centered.mul(length(centered)).mul(0.0045 * caAmount);
+                S.x.assign(sceneColor.sample(st.add(off)).r);
+                S.z.assign(sceneColor.sample(st.sub(off)).b);
+            }
 
-        const vignetteOffset = float(params.vignetteOffset ?? 1.0);
-        const vignetteDarkness = float(params.vignetteDarkness ?? 0.35);
-        const vignette = smoothstep(vignetteOffset, vignetteOffset.sub(0.5), dist);
+            // ── Bloom ──
+            const B = vec3(0.0).toVar();
+            if (this.bloomNode) {
+                const glow = vec3(this.bloomNode.getTextureNode().sample(st).rgb);
+                B.assign(glow.mul(float(1.0).add(this.uBloomBoost.mul(0.25))));
+            }
+            const H = S.add(B).toVar();
 
-        const gradeTint = vec3(1.05, 0.98, 1.08);
-        const graded = mix(baseSample, baseSample.mul(gradeTint), this.uGradeStrength);
+            // ── Anamorphic streak through the sun (80s lens), sized in 1080p pixels ──
+            const dyPx = abs(st.y.sub(this.uSun.y)).mul(1080.0);
+            const dx = abs(st.x.sub(this.uSun.x)).mul(this.uAspect);
+            const core = exp(dyPx.mul(-0.7)).mul(0.28).add(exp(dyPx.mul(-0.12)).mul(0.07));
+            const streak = core.mul(exp(dx.mul(-5.0))).mul(this.uSunVis).mul(this.uStreak);
+            H.addAssign(vec3(1.0, 0.36, 0.62).mul(streak));
 
-        const scan = sin(uv.y.mul(800.0).add(this.uTime.mul(30.0))).mul(0.5).add(0.5);
-        const scanMask = mix(float(1.0), scan.mul(0.85).add(0.15), this.uScanline);
+            // ── Tone map (hue-preserving) + grade ──
+            const T = neutralToneMapping(H.mul(this.uExposure), float(1.0)).toVar();
+            const L = dot(T, LUMA).toVar();
+            const shadow = float(1.0).sub(smoothstep(0.0, 0.32, L));
+            const high = smoothstep(0.38, 0.95, L);
+            T.mulAssign(mix(vec3(1.0), vec3(0.9, 0.86, 1.16), shadow.mul(0.55)));
+            T.mulAssign(mix(vec3(1.0), vec3(1.06, 0.98, 0.9), high.mul(0.45)));
+            // Vibrance: lift the less-saturated colours most.
+            const mx = swMax3(T);
+            const sat = mx.sub(min(T.x, min(T.y, T.z))).div(max(mx, 1e-4));
+            T.assign(mix(vec3(L), T, float(1.0).add(float(0.18).mul(float(1.0).sub(sat)))));
+            // Violet floor: pure black never reaches the screen.
+            T.addAssign(vec3(0.0022, 0.0008, 0.0055).mul(float(1.0).sub(smoothstep(0.0, 0.05, L))));
+            // Vignette: mostly the corners, gentler on bright pixels.
+            const rad = length(centered.mul(vec2(this.uAspect.div(1.778), 1.0)).mul(2.0));
+            T.mulAssign(float(1.0).sub(smoothstep(0.55, 1.35, rad).mul(float(0.38).sub(L.mul(0.15)))));
 
-        const vignetteColor = mix(
-            graded.mul(float(1.0).sub(vignetteDarkness)),
-            graded,
-            vignette,
-        );
+            // ── Encode, then finish in display space ──
+            const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
+            const px = floor(screenCoordinate);
+            const gp = this.uGrainPhase;
+            const gn = swHash21(px.add(vec2(gp.mul(113.1), gp.mul(71.7)))).sub(0.5);
+            D.addAssign(gn.mul(this.uGrain).mul(float(1.0).sub(smoothstep(0.03, 0.18, swMax3(D)))));
+            const dth = swHash21(px).add(swHash21(px.add(vec2(17.17, 17.17)))).sub(1.0);
+            D.addAssign(dth.div(255.0));
+            return vec4(clamp(D, 0.0, 1.0), 1.0);
+        });
 
-        let outColor = vignetteColor;
-
-        // God rays (screen-space)
-        const rayDir = uv.sub(this.uSunScreen);
-        const rayDist = length(rayDir);
-        const rayCore = max(float(0.0), float(1.0).sub(rayDist.mul(2.0)));
-        const rayStreak = float(1.0);
-        const rays = pow(rayCore, 2.8).mul(rayStreak).mul(this.uGodRaysIntensity);
-        const lum = dot(baseSample.rgb, vec3(0.299, 0.587, 0.114));
-        const occlusion = smoothstep(0.1, 0.8, float(1.0).sub(lum));
-        const rayColor = vec3(1.0, 0.75, 0.45).mul(rays.mul(occlusion));
-        outColor = outColor.add(vec4(rayColor, 1.0));
-
-        // Screen-space wet reflection (mirror sky into grid only)
-        const horizon = this.uHorizon;
-        const gridMask = float(1.0).sub(smoothstep(horizon.sub(0.18), horizon, uv.y));
-        const timeWave = this.uTime.mul(this.uReflectionSpeed);
-        const ripplePrimary = sin(uv.x.mul(10.0).add(timeWave.mul(0.7)))
-            .mul(sin(uv.y.mul(14.0).add(timeWave.mul(0.6))));
-        const rippleSecondary = sin(uv.x.mul(5.0).sub(timeWave.mul(0.4)))
-            .mul(sin(uv.y.mul(7.0).add(timeWave.mul(0.35))))
-            .mul(0.6);
-        const ripple = ripplePrimary.add(rippleSecondary);
-        const distort = ripple.mul(this.uReflectionDistort);
-        const reflectedUv = vec2(
-            uv.x.add(distort),
-            horizon.add(horizon.sub(uv.y)).add(distort.mul(0.5)),
-        );
-        const clampedUv = vec2(
-            clamp(reflectedUv.x, float(0.0), float(1.0)),
-            clamp(reflectedUv.y, horizon, float(1.0)),
-        );
-        const reflectionSample = emissivePass.sample(clampedUv);
-        const reflectionTint = vec3(0.7, 1.1, 1.4);
-        const baseReflection = reflectionSample.rgb.mul(reflectionTint).mul(this.uReflectionIntensity);
-        const sourceMask = smoothstep(horizon, horizon.add(0.05), clampedUv.y);
-        const reflectionColor = baseReflection.mul(gridMask).mul(sourceMask);
-        outColor = outColor.add(vec4(reflectionColor, 1.0));
-
-        // Sun reflection streak (boost to match neon dusk feel)
-        const sunSample = emissivePass.sample(this.uSunScreen).rgb;
-        const sunLuma = dot(sunSample, vec3(0.299, 0.587, 0.114));
-        const sunBoost = pow(max(sunLuma, float(0.0)), float(0.6)).mul(1.6).add(0.15);
-        const sunRefY = clamp(horizon.add(horizon.sub(this.uSunScreen.y)), float(0.0), float(1.0));
-        const sunRefUv = vec2(this.uSunScreen.x, sunRefY);
-        const sunDx = abs(uv.x.sub(sunRefUv.x));
-        const sunDy = uv.y.sub(sunRefUv.y);
-        const sunLine = smoothstep(float(0.12), float(0.0), sunDx);
-        const sunTrail = smoothstep(float(0.0), float(0.7), sunDy);
-        const sunStreak = sunLine.mul(sunTrail);
-        const sunReflection = sunSample.mul(sunStreak)
-            .mul(sunBoost)
-            .mul(this.uReflectionIntensity.mul(1.4));
-        outColor = outColor.add(vec4(sunReflection.mul(gridMask), 1.0));
-
-        // Film grain — animated luminance noise, intensity-gated by uFilmGrain.
-        const grain = mx_noise_float(vec3(uv.mul(900.0), fract(this.uTime.mul(13.0))));
-        const grainContribution = vec3(grain).mul(this.uFilmGrain).mul(0.06);
-
-        const composited = outColor.mul(scanMask).add(this.bloomNode);
-        this.postProcessing.outputNode = composited.add(vec4(grainContribution, 0.0));
+        this.postProcessing.outputColorTransform = false;
+        this.postProcessing.outputNode = outputFn();
         this.postProcessing.needsUpdate = true;
+        this.size = { width: 0, height: 0 };
     }
 
-    update(time, params = {}) {
-        this.uTime.value = time;
-        if (params.scanlineIntensity !== undefined) {
-            this.uScanline.value = params.scanlineIntensity;
-        }
-        if (params.gradeStrength !== undefined) {
-            this.uGradeStrength.value = params.gradeStrength;
-        }
-        if (params.godRaysIntensity !== undefined) {
-            this.uGodRaysIntensity.value = params.godRaysIntensity;
-        }
-        if (params.sunScreen !== undefined) {
-            this.uSunScreen.value.copy(params.sunScreen);
-        }
-        if (params.reflectionIntensity !== undefined) {
-            this.uReflectionIntensity.value = params.reflectionIntensity;
-        }
-        if (params.reflectionDistort !== undefined) {
-            this.uReflectionDistort.value = params.reflectionDistort;
-        }
-        if (params.reflectionSpeed !== undefined) {
-            this.uReflectionSpeed.value = params.reflectionSpeed;
-        }
-        if (params.horizon !== undefined) {
-            this.uHorizon.value = params.horizon;
-        }
-        if (params.chromaticAberration !== undefined) {
-            this.uChromaticAberration.value = params.chromaticAberration;
-        }
-        if (params.filmGrain !== undefined) {
-            this.uFilmGrain.value = params.filmGrain;
-        }
+    /**
+     * Per-frame uniforms (all optional).
+     * @param {{time?: number, sun?: THREE.Vector2, sunVis?: number, bloomBoost?: number}} params
+     */
+    update(params) {
+        if (params.time !== undefined) this.uGrainPhase.value = Math.floor(params.time * 24) % 256;
+        if (params.sun) this.uSun.value.copy(params.sun);
+        if (params.sunVis !== undefined) this.uSunVis.value = params.sunVis;
+        if (params.bloomBoost !== undefined) this.uBloomBoost.value = params.bloomBoost;
+    }
+
+    setGrainEnabled(enabled) {
+        this.uGrain.value = enabled && this.look.grain === true ? 3.5 / 255 : 0;
     }
 
     render() {
         this.postProcessing.render();
     }
 
-    setSize(width, height) {
+    /** The scene pass and bloom chain size themselves from the drawing buffer every frame. */
+    setSize(width, height, bufferWidth = width, bufferHeight = height) {
         this.size.width = width;
         this.size.height = height;
-        this.scenePass.setSize(width, height);
-        if (this.bloomNode?._separableBlurMaterials?.length) {
-            this.bloomNode.setSize(width, height);
-        }
+        if (width > 0 && height > 0) this.uAspect.value = width / height;
+        if (bufferWidth > 0 && bufferHeight > 0) this.uSrcTexel.value.set(1 / bufferWidth, 1 / bufferHeight);
     }
 
     dispose() {
         this.scenePass.dispose();
-        disposeBloomNodeDeep(this.bloomNode);
+        if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing.dispose();
     }
 }
