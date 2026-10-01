@@ -17,6 +17,7 @@
 
 import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
+import { resolveTargetFps } from '../theme-frame-pacer.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import { RIG } from './synthwave-sunset-tsl.js';
@@ -451,16 +452,32 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         return Math.max(0.25, Math.round(this.getEffectivePixelRatio() * scale * 100) / 100);
     }
 
+    /**
+     * The interval a healthy frame loop runs at: the player's Target Frame Rate cap (BaseTheme
+     * paces theme renders to it), never faster than 60 Hz. Judging frame time against a fixed
+     * 16.6 ms made a 30 FPS cap read as overload (the scale sank to its floor), and with a
+     * vsynced 60 Hz loop the old "faster than 14 ms" upscale test could never pass, so one hitch
+     * lowered the resolution for the rest of the session — every step visibly re-sampled the
+     * city's windows.
+     */
+    expectedFrameMs() {
+        const capFps = resolveTargetFps();
+        return Math.max(capFps > 0 ? 1000 / capFps : 0, this.dynamicResolution.targetMs);
+    }
+
     updateDynamicResolution(deltaSeconds) {
         const drs = this.dynamicResolution;
         if (!drs.enabled || !this.renderer) return;
-        drs.emaMs = drs.emaMs * 0.9 + deltaSeconds * 1000 * 0.1;
+        const ms = deltaSeconds * 1000;
+        if (!(ms > 0) || ms > 250) return; // tab switches and stalls are not load
+        drs.emaMs = drs.emaMs * 0.9 + ms * 0.1;
         drs.elapsed += deltaSeconds;
         if (drs.elapsed < drs.adjustInterval) return;
         drs.elapsed = 0;
+        const expected = this.expectedFrameMs();
         let next = drs.scale;
-        if (drs.emaMs > drs.targetMs * 1.12) next = Math.max(drs.minScale, drs.scale - 0.05);
-        else if (drs.emaMs < drs.targetMs * 0.85) next = Math.min(drs.maxScale, drs.scale + 0.05);
+        if (drs.emaMs > expected * 1.3) next = Math.max(drs.minScale, drs.scale - 0.05);
+        else if (drs.emaMs < expected * 1.1) next = Math.min(drs.maxScale, drs.scale + 0.05);
         if (Math.abs(next - drs.scale) >= 0.01) {
             drs.scale = next;
             this.resize(window.innerWidth, window.innerHeight);

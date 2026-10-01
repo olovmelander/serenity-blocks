@@ -123,6 +123,34 @@ describe('synthwave-sunset theme wiring', () => {
         }
     });
 
+    it('dynamic resolution judges load against the frame cap and recovers after a hitch', () => {
+        const theme = new SynthwaveSunsetTheme();
+        theme.renderer = {};
+        theme.resize = vi.fn();
+        const drs = theme.dynamicResolution;
+        drs.enabled = true;
+        const run = (seconds, frameMs) => {
+            for (let t = 0; t < seconds * 1000; t += frameMs) theme.updateDynamicResolution(frameMs / 1000);
+        };
+
+        // A 30 FPS Target Frame Rate paces renders to ~33 ms: that is not overload.
+        win.serenityBlocks = { settingsManager: { get: () => ({ targetFrameRate: 30 }) } };
+        run(5, 33.4);
+        expect(drs.scale).toBe(1);
+
+        // Uncapped 60 Hz vsync: a real overload lowers the scale, the steady loop restores it.
+        delete win.serenityBlocks;
+        run(2, 45);
+        expect(drs.scale).toBeLessThan(1);
+        run(6, 16.7);
+        expect(drs.scale).toBe(1);
+
+        // Tab switches / long stalls are ignored entirely.
+        const before = drs.emaMs;
+        theme.updateDynamicResolution(2.0);
+        expect(drs.emaMs).toBe(before);
+    });
+
     it('has a post look and a world tier for every quality level', () => {
         for (const quality of ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme']) {
             expect(WORLD_QUALITY[quality], quality).toBeTruthy();
