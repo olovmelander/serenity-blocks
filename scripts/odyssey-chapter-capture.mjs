@@ -925,7 +925,7 @@ async function captureSeam(win, boot) {
         .sort((left, right) => left - right);
 
     for (const stationPosition of seamStations) {
-        await settleAtPosition(win, stationPosition, { settleMs: 260 });
+        await settleAtPosition(win, stationPosition, { settleMs: Math.max(260, STATION_SETTLE_MS) });
         const metrics = await collectMetrics(win, {
             mode: 'seam',
             seam: `${SEAM.source}-${SEAM.target}`,
