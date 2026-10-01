@@ -164,10 +164,16 @@ export function bakeCosmicBackdropTexture(options = {}) {
             // Dark rifts: ridged crests, strongest in the band's spine (the Great Rift idea).
             // Thin, sparse rifts — wide, deep ones carved the band into grey "leaf" blobs.
             const rift = sstep(0.62, 0.86, ridged3(dx * 4.6 + 13, dirY * 4.6, dz * 4.6, 2, iSeed ^ 0x27d4));
-            const riftCut = 1 - 0.6 * rift * Math.min(1, bandCore * 1.5);
+            // Rifts soften the band rather than cutting HOLES in it (0.6 -> 0.3): with the grade
+            // no longer crushing faint values (566c258d), deep rifts read as dark leaf-holes in
+            // a grey cloud at the frame edge — the integrator's ch6 bisect isolated exactly this.
+            const riftCut = 1 - 0.3 * rift * Math.min(1, bandCore * 1.5);
             // Clump contrast kept LOW: magnified 4-6x on screen, strong star-cloud clumps read as
             // grey bokeh blobs; the Milky Way's grain comes from the star sprites' band share.
-            const band = (bandWide * 0.09 + bandCore * (0.15 + 0.12 * clump)) * riftCut;
+            // ~0.55x of the first masterpiece-pass values: the band is a faint glow UNDER the
+            // star sprites (45% of the far tier sits on it and gives the Milky Way its grain),
+            // never a grey smoke shape of its own once the corrected grade shows faint values.
+            const band = (bandWide * 0.05 + bandCore * (0.085 + 0.065 * clump)) * riftCut;
             // Warm cream spine, cool blue wings — chroma stays LOW (the masses own colour).
             const warmT = Math.min(1, bandCore * 1.2);
             r += band * (0.50 + 0.38 * warmT);
