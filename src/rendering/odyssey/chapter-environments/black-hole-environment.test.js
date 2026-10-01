@@ -1,10 +1,12 @@
+import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import {
     createBlackHoleTranscendenceEnvironment,
+    poseGargantua,
     CH7_FOLD_ARC_SETTINGS,
+    CH7_GARGANTUA,
 } from './black-hole-transcendence.js';
 import {
-    CH7_AMBIENT_WASH_SETTINGS,
     CH7_CORRIDOR_DUST_SETTINGS,
 } from './black-hole-transcendence.tsl.js';
 import { ODYSSEY_CHAPTER_PROFILES } from './shared/chapter-profile.js';
@@ -28,16 +30,55 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
             .toBeCloseTo(Math.PI * CH7_FOLD_ARC_SETTINGS.sweepRatio, 5);
     });
 
-    it('sheathes every infall stream so the swirls read as luminous ribbons', () => {
+    it('is ONE Gargantua: a face pivot square to the eye and a disk tilted near edge-on', () => {
+        // Masterpiece pass (2026-10): the hero's disk used to face the camera with an 18 deg
+        // tilt (a bullseye). The shadow, photon ring and fold arcs now live on a face pivot,
+        // and the disk on its own pivot whose normal is within ~10 deg of the screen plane.
         const group = createBlackHoleTranscendenceEnvironment({ particleCount: 200 });
-        const { infallStreams } = group.userData;
-
-        // 9 core tubes + 9 glow sheaths.
-        expect(infallStreams.children.length).toBe(18);
-        expect(infallStreams.userData.sharedSheathMaterials).toHaveLength(3);
-        infallStreams.userData.sharedSheathMaterials.forEach((material) => {
-            expect(material.opacity).toBeLessThan(0.3); // soft envelope, never a wall
+        const { distantHole } = group.userData;
+        const { face, diskPivot, disk } = distantHole.userData;
+        expect(face.name).toBe('dominant-event-horizon-anchor');
+        expect(group.userData.eventHorizon).toBe(face);
+        distantHole.updateMatrixWorld(true);
+        const diskNormal = new THREE.Vector3(0, 0, 1)
+            .applyQuaternion(diskPivot.getWorldQuaternion(new THREE.Quaternion()));
+        const towardEye = new THREE.Vector3(0, 0, 1)
+            .applyQuaternion(face.getWorldQuaternion(new THREE.Quaternion()));
+        const tiltOutOfEdgeOn = Math.asin(Math.abs(diskNormal.dot(towardEye)));
+        expect(tiltOutOfEdgeOn).toBeCloseTo(CH7_GARGANTUA.diskTilt, 3);
+        // The disk wraps the shadow: inner edge outside the photon ring.
+        expect(disk.geometry.parameters.innerRadius)
+            .toBeGreaterThan(CH7_GARGANTUA.shadowRadius * CH7_GARGANTUA.photonOuter);
+        // Retired: the lensing shell that sat INSIDE the opaque horizon, the off-frame halo,
+        // the entry hero, the five secondary mini-holes, the glow rings, the violet wash.
+        const names = [];
+        group.traverse((o) => names.push(o.name));
+        ['lensing-shell', 'distant-lensing-shell', 'secondary-lensing-motifs',
+            'accretion-glow-rings', 'ambient-violet-wash-tsl', 'infall-streams'].forEach((n) => {
+            expect(names, n).not.toContain(n);
         });
+    });
+
+    it('keeps the hero square to the eye even on the near-vertical climb', () => {
+        // The ch7 spline looks almost straight up at times; a world-up lookAt basis
+        // degenerates there. The pose is built on the camera's own up vector.
+        const group = createBlackHoleTranscendenceEnvironment({ particleCount: 200 });
+        const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 9000);
+        camera.position.set(267, 1358, -1146);
+        camera.lookAt(camera.position.x - 0.2, camera.position.y + 10, camera.position.z + 0.1);
+        camera.updateMatrixWorld(true);
+        expect(poseGargantua(group, camera, 3)).toBe(true);
+        const { distantHole } = group.userData;
+        group.updateMatrixWorld(true);
+        const hero = distantHole.getWorldPosition(new THREE.Vector3());
+        const toEye = camera.position.clone().sub(hero).normalize();
+        const z = new THREE.Vector3(0, 0, 1).applyQuaternion(distantHole.getWorldQuaternion(new THREE.Quaternion()));
+        expect(Number.isFinite(z.x + z.y + z.z)).toBe(true);
+        expect(z.dot(toEye)).toBeGreaterThan(0.999);
+        expect(hero.distanceTo(camera.position)).toBeGreaterThan(CH7_GARGANTUA.lockDepth * 0.99);
+        // The lens target carries the shadow radius for the post pass.
+        expect(group.userData.lensWorldPos.distanceTo(hero)).toBeLessThan(1e-3);
+        expect(group.userData.lensWorldPos.lensRadius).toBe(CH7_GARGANTUA.shadowRadius);
     });
 
     it('scales the corridor dust and ember density with the quality preset', () => {
@@ -53,8 +94,6 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
         expect(Math.max(...sizes)).toBeLessThanOrEqual(
             CH7_CORRIDOR_DUST_SETTINGS.minSize + CH7_CORRIDOR_DUST_SETTINGS.sizeSpan,
         );
-        expect(high.userData.ambientWash.userData.readability.centerFloor)
-            .toBe(CH7_AMBIENT_WASH_SETTINGS.centerFloor);
     });
 
     it('keeps the chapter 7 rail below the lensed hero read', () => {
