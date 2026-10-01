@@ -164,18 +164,26 @@ function resetPooledRendererTransientState(renderer) {
 }
 
 function terminallyDisposePooledRenderer(renderer) {
-    if (!renderer) return;
+    if (!renderer) return undefined;
     const { backend } = renderer;
     const device = backend?.isWebGPUBackend === true ? backend.device : null;
     if (device?.destroy) renderer.onDeviceLost = () => {};
     try { renderer._animation?.stop?.(); } catch (error) { /* noop */ }
     try { renderer.setAnimationLoop?.(null); } catch (error) { /* noop */ }
-    try { renderer.dispose?.(); } catch (error) { /* noop */ }
+    let disposal;
+    try { disposal = renderer.dispose?.(); } catch (error) { /* noop */ }
     detachRendererCanvas(renderer);
-    if (device?.destroy) {
-        try { device.destroy(); } catch (error) { /* noop */ }
-        if (backend.device === device) backend.device = null;
-    }
+    const finish = () => {
+        if (device?.destroy) {
+            try { device.destroy(); } catch (error) { /* noop */ }
+            if (backend.device === device) backend.device = null;
+        }
+    };
+    // r186 drains timestamp pools asynchronously; the backstop must not destroy
+    // or sever the device while its backend is still using it.
+    if (typeof disposal?.then === 'function') return Promise.resolve(disposal).then(finish, finish);
+    finish();
+    return undefined;
 }
 
 function clamp(value, minimum, maximum) {
@@ -1113,32 +1121,33 @@ export default class StillwaterTheme extends BaseTheme {
     }
 
     disposeOwnedRenderer(renderer, { nullInstance = true } = {}) {
-        if (!renderer) return;
+        if (!renderer) return undefined;
         const { backend } = renderer;
         const device = backend?.isWebGPUBackend === true
             ? backend.device
             : null;
 
-        // Three r181 keeps `device.lost.then(() => renderer.onDeviceLost())`
-        // pending, while WebGPUBackend.dispose() neither destroys nor severs
-        // its owned device. Stillwater requests a fresh device per activation,
-        // so terminal teardown must resolve that promise without reporting a
-        // deliberate disposal as a production device-loss incident.
+        // Suppress deliberate device-loss reporting and wait for r186's async
+        // backend disposal before the idempotent terminal device backstop.
         if (device?.destroy) renderer.onDeviceLost = () => {};
 
-        this.disposeRenderer(renderer, { nullInstance });
+        const disposal = this.disposeRenderer(renderer, { nullInstance });
+        const counters = this.lifecycleCounters;
 
-        if (device?.destroy) {
-            try {
-                device.destroy();
-                if (this.lifecycleCounters) {
-                    this.lifecycleCounters.terminalWebGpuDeviceDestroys += 1;
+        const finish = () => {
+            if (device?.destroy) {
+                try {
+                    device.destroy();
+                    if (counters) counters.terminalWebGpuDeviceDestroys += 1;
+                } catch (error) {
+                    console.warn('[Stillwater] Terminal WebGPU device destroy failed:', error);
                 }
-            } catch (error) {
-                console.warn('[Stillwater] Terminal WebGPU device destroy failed:', error);
+                if (backend.device === device) backend.device = null;
             }
-            if (backend.device === device) backend.device = null;
-        }
+        };
+        if (typeof disposal?.then === 'function') return Promise.resolve(disposal).then(finish, finish);
+        finish();
+        return undefined;
     }
 
     async recoverBackend(backend) {

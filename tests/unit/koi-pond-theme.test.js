@@ -18,7 +18,10 @@ const koiMocks = vi.hoisted(() => ({
     runtimeInstances: [],
 }));
 
-vi.mock('three/webgpu', () => {
+vi.mock('three/webgpu', async (importOriginal) => {
+    // r186 TSL/addons re-export and import more of the WebGPU bundle. Keep those
+    // exports real, but stub the post pipeline as well as this lifecycle renderer.
+    const actual = await importOriginal();
     class MockWebGPURenderer {
         constructor(options = {}) {
             const { forceWebGL = false } = options;
@@ -81,6 +84,11 @@ vi.mock('three/webgpu', () => {
     }
 
     return {
+        ...actual,
+        RenderPipeline: class {
+            render() {}
+            dispose() {}
+        },
         NoToneMapping: 'NoToneMapping',
         PerspectiveCamera: MockPerspectiveCamera,
         Scene: MockScene,

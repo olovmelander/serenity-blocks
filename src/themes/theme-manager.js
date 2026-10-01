@@ -363,7 +363,9 @@ export class ThemeManager {
                 } else {
                     const canvas = themeInstance.renderer?.domElement;
                     themeInstance.renderer?.setAnimationLoop?.(null);
-                    themeInstance.renderer?.dispose?.();
+                    Promise.resolve(themeInstance.renderer?.dispose?.()).catch((error) => {
+                        console.warn('[ThemeManager] Renderer disposal failed:', error);
+                    });
                     if (canvas?.parentNode) {
                         canvas.parentNode.removeChild(canvas);
                     }

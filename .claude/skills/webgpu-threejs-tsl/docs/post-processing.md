@@ -1,8 +1,8 @@
-# TSL Post-Processing (three r185)
+# TSL Post-Processing (three r186)
 
 Post-processing applies effects to the rendered image via a node graph.
 
-> **r185 API:** the class was renamed `RenderPipeline` in r183; `THREE.PostProcessing`
+> **r186 API:** the class was renamed `RenderPipeline` in r183; `THREE.PostProcessing`
 > is a fully-functional deprecated alias that logs one warnOnce per pipeline.
 > **Repo policy: construct `RenderPipeline`** — the repo-wide rename has landed, so a
 > `PostProcessing` deprecation warning now indicates a stray un-renamed site that
@@ -31,7 +31,7 @@ function animate() {
 }
 ```
 
-## Built-in Effects (import paths verified against r185)
+## Built-in Effects (import paths retained in r186)
 
 All display effects live under `three/addons/tsl/display/`. The filenames are
 inconsistent (`BloomNode.js` vs `Sepia.js` vs `boxBlur.js`) — the table is the
@@ -194,8 +194,8 @@ const emissiveTexture = scenePass.getTextureNode('emissive');
 > scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
 > ```
 >
-> Internally it does `setBlendMode('emissive', new BlendMode(MaterialBlending))` and
-> patches the upstream `merge()` blendModes bug (merged MRT nodes drop blend modes).
+> Internally it does `setBlendMode('emissive', new BlendMode(MaterialBlending))`.
+> r186 preserves blend modes in `merge()` natively; the old prototype patch is removed.
 > Use the helper — don't hand-roll the `setBlendMode` call.
 
 ### Selective Bloom with MRT

@@ -142,7 +142,9 @@ export async function playBootWarpStartupSequence(options = {}) {
                     } else {
                         const status = candidate.lastPrewarmStatus || 'prewarm-failed';
                         startupPipeline?.releaseVisual?.(candidate);
-                        candidate.dispose();
+                        // Native renderer disposal drains asynchronously on r186.
+                        // eslint-disable-next-line no-await-in-loop -- a retry must release its old renderer first
+                        await candidate.dispose();
                         if (!retryableStatuses.has(status)) {
                             recordBootWarpSkip(status, {
                                 introDecision: introWarpDecision.reason,
@@ -238,7 +240,7 @@ export async function playBootWarpStartupSequence(options = {}) {
         };
     } finally {
         startupPipeline?.releaseVisual?.(warpTransition);
-        warpTransition.dispose();
+        await warpTransition.dispose();
     }
 
     return { ...handoffResult, surfaceReadyPromise };

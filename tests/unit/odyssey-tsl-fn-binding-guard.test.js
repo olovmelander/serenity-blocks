@@ -53,7 +53,7 @@ function makeRenderer(backend) {
         outputColorSpace: 'srgb',
         toneMapping: 0,
         xr: { enabled: false },
-        debug: { checkShaderErrors: false },
+        debug: { checkShaderErrors: false, diagnostics: { keywords: true } },
         getUniformBufferLimit: () => 65536,
         hasFeature: () => false,
         isOutputTarget: false,

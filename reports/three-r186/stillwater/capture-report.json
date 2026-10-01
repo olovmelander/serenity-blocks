@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 3,
+  "generatedAt": "2026-10-01T08:48:49.358Z",
+  "startedAt": "2026-10-01T08:48:17.827Z",
+  "runId": "2026-10-01T08-48-17-827Z",
+  "baseUrl": "http://127.0.0.1:4174/",
+  "registryThemeCount": 61,
+  "selectedThemeCount": 1,
+  "completedThemeCount": 1,
+  "passed": 1,
+  "failed": 0,
+  "interrupted": false,
+  "execution": {
+    "concurrency": 1,
+    "processIsolation": "fresh-electron-process-per-theme",
+    "productionBuild": false,
+    "externalServer": false,
+    "cooldownMs": 2000,
+    "failureCooldownMs": 15000,
+    "perfLane": false,
+    "perfIdleMs": null,
+    "perfQuality": null,
+    "perfTargetFps": null
+  },
+  "selectedThemes": [
+    "stillwater"
+  ],
+  "results": [
+    {
+      "theme": "stillwater",
+      "displayName": "Stillwater",
+      "performanceClass": "heavy",
+      "passed": true,
+      "screenshot": "reports\\three-r186\\stillwater\\stillwater.png",
+      "report": "reports\\three-r186\\stillwater\\results\\stillwater.json",
+      "lifecycleFailureCount": 0,
+      "consoleErrorCount": 0,
+      "perfCell": null,
+      "perfAdmissible": null,
+      "perfInadmissibleReasons": null,
+      "processFailureCount": 0,
+      "orchestrationError": null,
+      "workerExit": {
+        "code": 0,
+        "signal": null,
+        "timedOut": false
+      }
+    }
+  ]
+}

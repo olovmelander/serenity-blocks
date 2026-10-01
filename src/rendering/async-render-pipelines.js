@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * Loading-surface async render pipelines (three 0.185.1).
+ * Loading-surface async render pipelines (three 0.186.1).
  *
  * WHY: a synchronous `device.createRenderPipeline` compiles on the GPU-process main thread, which
  * also draws the display compositor, so every animation on screen — CSS loading screens included
@@ -9,25 +9,25 @@
  *
  * WHAT: while a session is active, a renderer the session OWNS creates the render pipelines its
  * own live renders request with createRenderPipelineAsync. The descriptor is still built
- * synchronously from the LIVE render state (WebGPUPipelineUtils.js:72-261), so render target,
+ * synchronously from the LIVE render state (WebGPUPipelineUtils.js:71-260), so render target,
  * MRT, sample count, call depth and two-pass side are correct by construction — no compileAsync,
  * no target bound across a yield, no MRT-null WGSL. A pipeline still in flight only skips that
- * object's draw (Pipelines.isReady, Renderer.js:3725); the surface is hidden or masked meanwhile.
+ * object's draw (Pipelines.isReady, Renderer.js:3895); the surface is hidden or masked meanwhile.
  * Stays synchronous: PMREM / cube bakes (a skipped draw there would bake black — exempt below),
  * the final composite quad drawn to the canvas (isFinalComposite: every post effect that is not
  * its own pass is inlined into it, so a heavy grade/vignette chain is one short sync compile),
  * device-level mipmap/transfer passes, compute pipelines (a theme's live renderer.compute();
  * boot surfaces use webgpu-compute-pipeline-async.js) and shader modules.
  *
- * r185 anchors, pinned by tests/unit/async-render-pipelines-contract.test.js:
- *   Pipelines.js:160, :331-335   the live path passes promises = null
- *   Pipelines.js:380-400         pipeline cached + renderObject.pipeline set, THEN
+ * r186 anchors, pinned by tests/unit/async-render-pipelines-contract.test.js:
+ *   Pipelines.js:161, :332-336   the live path passes promises = null
+ *   Pipelines.js:382-402         pipeline cached + renderObject.pipeline set, THEN
  *                                backend.createRenderPipeline (its sole caller)
- *   WebGPUPipelineUtils.js:261   null → sync create; :292/:339 async create + push into promises
- *   WebGPUPipelineUtils.js:316   the validation scope is popped only after the compile
- *   Pipelines.js:255-266 + Renderer.js:3725  pending pipeline → draw skipped
- *   WebGPUBackend.js:1909        pipelineData.error → never drawn (see the repair in track())
- *   PMREMGenerator.js:899-916    PMREM targets: isPMREMTexture / 'PMREM.cubeUv' / CubeUV mapping
+ *   WebGPUPipelineUtils.js:260   null → sync create; :291/:338 async create + push into promises
+ *   WebGPUPipelineUtils.js:315   the validation scope is popped only after the compile
+ *   Pipelines.js:256-267 + Renderer.js:3895  pending pipeline → draw skipped
+ *   WebGPUBackend.js:2220        pipelineData.error → never drawn (see the repair in track())
+ *   PMREMGenerator.js:838-855    PMREM targets: isPMREMTexture / 'PMREM.cubeUv' / CubeUV mapping
  *
  * Rollback: ?themeWarmAsync=0 (or localStorage serenity.themeWarmAsync=0).
  */

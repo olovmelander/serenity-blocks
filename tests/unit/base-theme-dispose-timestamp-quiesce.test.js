@@ -57,6 +57,7 @@ const flush = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 describe('BaseTheme.disposeRenderer — WebGPU timestamp quiesce (r185)', () => {
     afterEach(() => {
         vi.useRealTimers();
+        vi.restoreAllMocks();
     });
 
     it('releases synchronously when no timestamp resolve is in flight', () => {
@@ -126,5 +127,42 @@ describe('BaseTheme.disposeRenderer — WebGPU timestamp quiesce (r185)', () => 
         theme.renderer = renderer;
         theme.disposeRenderer();
         expect(renderer.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('observes r186 async disposal failures while detaching the canvas immediately', async () => {
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const theme = new TestTheme();
+        const renderer = makeRenderer();
+        let rejectDisposal;
+        renderer.dispose.mockImplementation(() => new Promise((resolve, reject) => { rejectDisposal = reject; }));
+        theme.renderer = renderer;
+
+        theme.disposeRenderer();
+        expect(renderer._parent.removeChild).toHaveBeenCalledTimes(1);
+        expect(theme.renderer).toBeNull();
+        const replacement = makeRenderer();
+        theme.renderer = replacement;
+
+        const failure = new Error('backend disposal failed');
+        rejectDisposal(failure);
+        await flush();
+        expect(warning).toHaveBeenCalledWith(
+            '[BaseTheme] Failed to dispose renderer for quiesce-test-theme:', failure,
+        );
+        expect(theme.renderer).toBe(replacement);
+        expect(replacement.dispose).not.toHaveBeenCalled();
+    });
+
+    it('still observes a synchronous dispose throw and completes teardown', () => {
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const theme = new TestTheme();
+        const renderer = makeRenderer();
+        renderer.dispose.mockImplementation(() => { throw new Error('sync disposal failed'); });
+        theme.renderer = renderer;
+
+        expect(() => theme.disposeRenderer()).not.toThrow();
+        expect(warning).toHaveBeenCalledTimes(1);
+        expect(renderer._parent.removeChild).toHaveBeenCalledTimes(1);
+        expect(theme.renderer).toBeNull();
     });
 });

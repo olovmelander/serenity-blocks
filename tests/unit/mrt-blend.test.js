@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BlendMode, MaterialBlending, NoBlending } from 'three/webgpu';
 import { emissive, mrt, output } from 'three/tsl';
-import {
-    ensureMrtMergePreservesBlendModes,
-    withEmissiveMaterialBlending,
-} from '../../src/themes/shared/mrt-blend.js';
+import { withEmissiveMaterialBlending } from '../../src/themes/shared/mrt-blend.js';
 
-describe('mrt-blend (r185 MRT emissive blend restore)', () => {
+describe('mrt-blend (r186 MRT emissive accumulation)', () => {
     it('pins the r185 regression: a fresh MRT defaults every non-output attachment to NoBlending', () => {
         // three r185 MRTNode only seeds blendModes.output = MaterialBlending
         // (MRTNode.js:77-79); getBlendMode falls back to NoBlending (:113-117).
@@ -49,14 +46,11 @@ describe('mrt-blend (r185 MRT emissive blend restore)', () => {
         expect(Object.prototype.hasOwnProperty.call(merged, 'blendings')).toBe(false);
     });
 
-    it('ensureMrtMergePreservesBlendModes is idempotent (single wrap)', () => {
-        ensureMrtMergePreservesBlendModes();
-
+    it('uses the native merge without patching its prototype', () => {
         const proto = Object.getPrototypeOf(mrt({}));
-        const patchedMerge = proto.merge;
-        expect(patchedMerge.__sbPreservesBlendModes).toBe(true);
-
-        ensureMrtMergePreservesBlendModes();
-        expect(proto.merge).toBe(patchedMerge);
+        const nativeMerge = proto.merge;
+        withEmissiveMaterialBlending(mrt({ output, emissive }));
+        expect(proto.merge).toBe(nativeMerge);
+        expect(proto.merge.__sbPreservesBlendModes).toBeUndefined();
     });
 });

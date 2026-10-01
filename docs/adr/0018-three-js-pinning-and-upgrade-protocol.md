@@ -57,6 +57,6 @@ had also quietly pinned us for nine months, because on a `0.x` dependency a care
 - Contract tests reading `node_modules/three`: `bloom-dispose-contract`,
   `stillwater-webgpu-dispose-contract`, `odyssey-post-target-compile`,
   `base-theme-dispose-timestamp-quiesce`, `mrt-blend`, `async-render-pipelines-contract`,
-  `three-r185-compute-pipeline-contract` (ADR-0020).
+  `three-r186-compute-pipeline-contract` (ADR-0020).
 - `capture:themes` (61/61 required) and `perf:budgets:gate` before an upgrade is called done.
 - The plan template is the closed r185 document; its §12 phases are the checklist.

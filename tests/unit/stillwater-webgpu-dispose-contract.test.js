@@ -60,21 +60,21 @@ const waterSource = readFileSync(
 );
 
 describe('Stillwater terminal WebGPU device disposal contract', () => {
-    it('three r185 still captures its renderer in the device-loss promise', () => {
+    it('three r186 still captures its renderer in the device-loss promise', () => {
         expect(backendSource).toContain('device.lost.then( ( info ) => {');
         expect(backendSource).toContain('renderer.onDeviceLost( deviceLossInfo )');
     });
 
-    it('WebGPUBackend.dispose destroys the owned device on r185', () => {
-        const disposeStart = backendSource.lastIndexOf('\tdispose()');
+    it('WebGPUBackend.dispose awaits base disposal before destroying the owned device on r186', () => {
+        const disposeStart = backendSource.lastIndexOf('\tasync dispose()');
         const disposeEnd = backendSource.indexOf('\n\t}', disposeStart);
         expect(disposeStart).toBeGreaterThan(-1);
-        // r185 destroys self-requested devices inside dispose(). Stillwater's
-        // manual destroy in terminallyDisposePooledRenderer stays as a
-        // harmless idempotent backstop.
-        expect(backendSource.slice(disposeStart, disposeEnd)).toContain(
-            'this.device.destroy()',
-        );
+        expect(disposeEnd).toBeGreaterThan(disposeStart);
+        const body = backendSource.slice(disposeStart, disposeEnd);
+        expect(body).toMatch(/await super\.dispose\(\);[\s\S]*this\.device\.destroy\(\)/);
+        const base = readFileSync(new URL('../../node_modules/three/src/renderers/common/Backend.js', import.meta.url), 'utf8');
+        expect(base).toContain('await queryPool.dispose();');
+        expect(rendererSource).toContain('await this.backend.dispose();');
     });
 
     it('Stillwater resolves the promise during terminal owned-renderer teardown', () => {
@@ -84,7 +84,7 @@ describe('Stillwater terminal WebGPU device disposal contract', () => {
         expect(stillwaterSource).toContain('backend.device = null');
     });
 
-    it('pins the private r185 contracts used by the bounded renderer pool', () => {
+    it('pins the private r186 contracts used by the bounded renderer pool', () => {
         expect(rendererSource).toContain('this._renderLists = new RenderLists');
         expect(rendererSource).toContain('this._renderContexts = new RenderContexts');
         expect(rendererSource).toContain('this._bundles = new RenderBundles');
@@ -122,7 +122,7 @@ describe('Stillwater terminal WebGPU device disposal contract', () => {
         expect(stillwaterSource).toContain('if (drained && !record.terminal)');
     });
 
-    it('pins the private r185 request state used by lifecycle pause diagnostics', () => {
+    it('pins the private r186 request state used by lifecycle pause diagnostics', () => {
         const start = animationSource.indexOf('\tstart()');
         const stop = animationSource.indexOf('\tstop()');
         const getAnimationLoop = animationSource.indexOf('\tgetAnimationLoop()');
@@ -147,7 +147,7 @@ describe('Stillwater terminal WebGPU device disposal contract', () => {
         expect(validationSource).toContain('stillwaterNodeMaterialSamples');
     });
 
-    it('detaches reflector samplers from the immortal r185 placeholder texture', () => {
+    it('detaches reflector samplers from the immortal r186 placeholder texture', () => {
         expect(waterSource).toContain('reflectionDefaultDisposeListeners = new Set');
         expect(waterSource).toContain('rendererTextureDisposeListener');
         expect(waterSource).toContain(

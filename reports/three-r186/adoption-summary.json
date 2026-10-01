@@ -1,0 +1,69 @@
+{
+  "date": "2026-10-01",
+  "status": "dependency-adopted-broader-acceptance-open",
+  "three": "0.186.1",
+  "checks": {
+    "fullSuite": { "filesPassed": 383, "testsPassed": 4106, "failed": 0, "skipped": 0 },
+    "finalLifecycleRegressionRun": { "filesPassed": 6, "testsPassed": 116 },
+    "typecheck": "passed",
+    "build": "passed",
+    "bootClosure": { "status": "passed", "entryStaticClosureKB": 12 },
+    "lintRatchet": { "status": "passed", "errors": 1404, "baseline": 1404 },
+    "diffWhitespace": "passed"
+  },
+  "gpuSmoke": {
+    "adapter": "NVIDIA Ampere",
+    "effect": "pulse-sphere",
+    "timeSeconds": 8,
+    "webgpu": { "ready": true, "consoleErrors": 0, "consoleWarnings": 0 },
+    "webgl2": { "ready": true, "consoleErrors": 0, "consoleWarnings": 0 },
+    "nativeComputeReadback": [3, 4, 5, 6],
+    "additiveEmissiveRGBReadback": [0.5, 0.25, 0],
+    "screenshotsInspected": [
+      "pulse-sphere-adopted-webgpu.png",
+      "pulse-sphere-adopted-webgl.png",
+      "stillwater/stillwater.png",
+      "browser-single-player.png"
+    ]
+  },
+  "stillwaterElectronLifecycle": {
+    "passed": true,
+    "lifecycleFailures": 0,
+    "consoleErrors": 0,
+    "processFailures": 0,
+    "report": "stillwater/capture-report.json"
+  },
+  "browserBoot": {
+    "firstRun": "compute exceeded existing 9-second budget; fallback and startup watchdog reached menu",
+    "repeat": "native compute ready, complete warp handoff, single-player running with reused Stillwater WebGPU renderer",
+    "repeatConsoleErrors": 0,
+    "repeatWarnings": ["Windows ignores adapter powerPreference", "THREE.Clock deprecation"],
+    "stateReport": "browser-boot-state.json"
+  },
+  "electronBootProbe": {
+    "report": "boot-stillwater.json",
+    "status": "inconclusive-handoff",
+    "reason": "timed mode-entry action preceded handoff completion and aborted the warp",
+    "performanceEvidenceAccepted": false
+  },
+  "mainIntegration": {
+    "baseCommit": "5c28af7a780a50c33d3e995e2b4039f7949b1c68",
+    "filesPassed": 394,
+    "testsPassed": 4308,
+    "failed": 0,
+    "skipped": 0,
+    "additionalFix": "Parhelion WGSL test renderer diagnostics mock updated for r186",
+    "typecheck": "passed",
+    "buildAndBootClosure": "passed",
+    "lintRatchet": { "status": "passed", "errors": 1336, "baseline": 1336 },
+    "architectureAndLifecycleChecks": "passed",
+    "releaseAndArtifactChecks": "passed",
+    "productionDependencyVulnerabilities": 0
+  },
+  "pendingAcceptance": [
+    "Complete serial registry-wide Electron matrix and forced-WebGL2 game lane",
+    "Content-matched cold-start timing investigation and r185/r186 performance baseline",
+    "Targeted water, shadow, PBR, DPR, timestamp and texture-switch checks",
+    "Real Odyssey deferred warm-up checks in a bounded session"
+  ]
+}

@@ -326,12 +326,12 @@ export default class VoidEmberTheme extends BaseTheme {
 
     /**
      * Creates its own pipelines async (ADR-0020), off three's backend, so a loading surface
-     * covering this theme's build can keep its motion. Rollbacks: ?themeWarmAsync=0 and
-     * ?syncComputePipelines=1 (either makes part of the build synchronous again).
+     * covering this theme's build can keep its motion. Render rollback: ?themeWarmAsync=0.
+     * Compute pipelines always use the device's async compiler when available.
      * @returns {boolean}
      */
     get buildsPipelinesAsync() {
-        return readFlag('themeWarmAsync', true) && !readFlag('syncComputePipelines', false);
+        return readFlag('themeWarmAsync', true);
     }
 
     async initWebGPU(buildVersion) {
@@ -460,9 +460,8 @@ export default class VoidEmberTheme extends BaseTheme {
         if (!device) {
             return false;
         }
-        // Rollbacks (ADR-0020): ?syncComputePipelines=1, ?themeWarmAsync=0.
-        const asyncCompute = !readFlag('syncComputePipelines', false)
-            && typeof device.createComputePipelineAsync === 'function';
+        // Render rollback (ADR-0020): ?themeWarmAsync=0. Compute stays async.
+        const asyncCompute = typeof device.createComputePipelineAsync === 'function';
         const asyncRender = readFlag('themeWarmAsync', true)
             && typeof device.createRenderPipelineAsync === 'function';
         const computePipeline = (descriptor) => (asyncCompute

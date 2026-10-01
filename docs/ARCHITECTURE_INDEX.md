@@ -20,6 +20,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [ARCHITECTURAL_REMEDIATION_PLAN.md](ARCHITECTURAL_REMEDIATION_PLAN.md) | Active | Umbrella roadmap and phase ordering. |
 | [ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md](ONLINE_MP_CURRENT_STATE_FIX_PLAN_2026-06-23.md) | Tactical | Multiplayer stabilization pre-phase referenced by the umbrella plan. |
 | [WEBGPU_THREEJS_WORKFLOW.md](WEBGPU_THREEJS_WORKFLOW.md) | Active | Required workflow for WebGPU/TSL visual changes. |
+| [THREE_UPGRADE_R185_TO_R186_2026-10.md](THREE_UPGRADE_R185_TO_R186_2026-10.md) | Tactical | Three.js 0.186.1 adopted with native compute compilation, async disposal and upstream MRT merge. Full suite/build/typecheck pass; bounded GPU checks recorded. Broader runtime matrix and performance acceptance remain open under ADR-0018/0020. |
 | [SFX_GENERATION_WORKFLOW.md](SFX_GENERATION_WORKFLOW.md) | Active | Required workflow for local SFX generation. |
 | [adr/README.md](adr/README.md) | Active | Accepted architecture decisions and enforcement links. |
 
