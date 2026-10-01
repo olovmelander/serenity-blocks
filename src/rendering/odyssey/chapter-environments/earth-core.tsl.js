@@ -38,6 +38,8 @@ import {
     max,
     min,
     mix,
+    modelPosition,
+    modelScale,
     normalize,
     normalLocal,
     normalView,
@@ -51,6 +53,7 @@ import {
     smoothstep,
     step,
     fract,
+    floor,
     texture3D,
     transformNormalToView,
     uniform,
@@ -61,7 +64,7 @@ import {
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-    fbm3, noise3, ridged3, snoise3,
+    fbm3, hash21, noise3, ridged3, snoise3,
 } from './shared/odyssey-tsl-noise.js';
 import { billboardWorld } from './shared/odyssey-tsl-billboard.js';
 import { getLakeNoiseTexture, makeLakeNoiseSampler } from './shared/odyssey-lake-noise-bake.js';
@@ -622,6 +625,12 @@ export function createGodRayConeTSL(uTime, uPulseIntensity = uniform(0), options
     // tell): grazing the camera = transparent, far = full. No depth texture needed.
     const camDist = length(positionWorld.sub(cameraPosition));
     const nearFade = smoothstep(8.0, 28.0, camDist);
+    // INSIDE FADE: a camera inside the shaft sees both DoubleSide walls of an additive shell —
+    // a full-screen wash, not a shaft. Fade the whole cone out as the eye nears its axis
+    // (radius 26 in geometry units, scaled per mesh). The shaft is a thing you SEE, never fog
+    // you stand in.
+    const axisDist = length(cameraPosition.xz.sub(modelPosition.xz)).div(modelScale.x.max(1e-3));
+    const insideFade = smoothstep(22.0, 40.0, axisDist);
 
     const intensity = clamp(vertical.mul(shimmer), 0.0, 1.0);
     const color = uTint.mul(uPulseIntensity.mul(0.15).add(1.0));
@@ -633,7 +642,9 @@ export function createGodRayConeTSL(uTime, uPulseIntensity = uniform(0), options
     // means the shape has no visible edge at all.
     const rayView = normalize(cameraPosition.sub(positionWorld));
     const facingFade = pow(abs(dot(normalWorld, rayView)), 0.85);
-    const alpha = intensity.mul(nearFade).mul(facingFade).mul(0.06).mul(uOpacity);
+    const alpha = intensity.mul(nearFade).mul(insideFade).mul(facingFade)
+        .mul(0.06)
+        .mul(uOpacity);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = min(color, vec3(0.9, 0.82, 0.7));
@@ -660,93 +671,83 @@ export function createGodRayConeTSL(uTime, uPulseIntensity = uniform(0), options
 // Darker vault ceiling for the value hierarchy: the dome is near-black charred rock
 // with only a low warm GLOW BAND at the bottom (the lake's reflected light) so ~70%
 // of the frame is deep rock and the molten reads as figure against ground.
-export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0)) {
+export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0), options = {}) {
+    // THE VAULT, REBORN (2026-10-01) — the Act I value study's ceiling, ported at last.
+    //
+    // The camera looks straight up this shell for ~80 % of the chapter, and until now it never
+    // saw it: at the old fog density 0.014 everything past ~120 u was >94 % fog colour, so the
+    // convection belt and the folded-in canopy (24 noise octaves per pixel) shaded pixels nobody
+    // could see. With the fog re-palleted and thinned (chapter-profile.js), this shader IS the
+    // ceiling, so it carries the study's proven device (src/playground/effects/
+    // act1-earth-core.effect.js §1) instead:
+    //   - a near-black CHARRED body (indigo-charcoal, not red) that admits the lake's warm
+    //     bounce only low down, where the key actually reaches;
+    //   - DARKNESS-GATED ember veins: thin ridged filaments at crack scale, invisible where the
+    //     lake already lights the rock and blazing where it does not;
+    //   - a sparse "galaxy" of twinkling ember points in the rock (Laputa's ceiling, in fire);
+    //   - THE CRACK at the crown: the act's one cool accent, starved to a hint at the start and
+    //     widening as the traveller climbs toward it (uAscent), the light the steam opens onto.
+    // Values overshoot the study's flat-playground ones for the in-game ACES + master grade.
+    const uAscent = options.uAscent ?? uniform(0);
     const posL = positionLocal;
     const dir = normalize(posL);
-
-    // Deep charred vault gradient — near-black ceiling, faint warm floor.
-    const core = vec3(0.034, 0.009, 0.006); // warm dark red toward the lake (lower)
-    const outer = vec3(0.006, 0.004, 0.016); // near-black charred cool-purple ceiling (darker)
-    const t = dir.y.mul(0.5).add(0.5);
-    let color = mix(outer, core, t);
-
-    // Low warm glow band only at the very bottom (the lake's reflected light).
-    const lavaGlow = smoothstep(0.0, 0.45, dir.y.negate());
-    const pulse = sin(uTime.mul(0.5)).mul(0.5).add(0.5);
-    color = color.add(vec3(0.075, 0.018, 0.006).mul(lavaGlow).mul(pulse.mul(0.32).add(0.48)));
-    color = color.add(vec3(0.045, 0.012, 0.004).mul(uPulseIntensity).mul(lavaGlow));
-
-    // §Enclosure (plan item 6) — the frames-15/16 swirling treatment promoted
-    // chapter-wide: domain-warped RIDGED convection so the vault reads as dimensional
-    // red-brown churn (the missing ember-red midtone band #3a0d04→#5e0a00), never a
-    // milky banded wash and never >50% void.
-    const swirlTime = uTime.mul(0.012);
-    // BACKDROP BAKE (post-3b): the lever differential priced this dome at 15-19 ms of the
-    // chapter's ~41 ms Lane B frame — after the canopy fold it evaluates 24 analytic noise
-    // octaves per pixel, full screen, and the lane pays for ALU. Same fix the rock shipped
-    // with (?earthCoreBakeNoise, default ON): swap the noise source for a baked 3D-texture
-    // fetch. Topology, drift and thresholds unchanged; one texture read per octave.
+    // Height 0 at the lake horizon, 1 at the vault crown.
+    const vH = clamp(dir.y.mul(0.5).add(0.5), 0.0, 1.0);
     const n3Bg = EARTH_CORE_BAKE_NOISE ? _getBakedNoise01Sampler() : noise3;
-    const warpField = vec3(
-        fbm3(dir.mul(1.3).add(vec3(swirlTime, 0.0, 0.0)), 3, n3Bg),
-        fbm3(dir.mul(1.3).add(vec3(4.0, swirlTime.mul(0.8), 0.0)), 3, n3Bg),
-        fbm3(dir.mul(1.3).add(vec3(0.0, 9.0, swirlTime.mul(0.6))), 3, n3Bg),
-    ).mul(0.55);
-    const conv = clamp(
-        // ridged3 4->3 octaves (perf): full-screen backstop dome, capped below every set piece.
-        ridged3(dir.mul(2.4).add(warpField).add(vec3(0.0, swirlTime.mul(0.5), 0.0)), 3, n3Bg),
-        0.0,
-        1.0,
-    );
-    // Convection belt strongest in the lower/mid vault (the band frames 09–13 missed).
-    const beltMask = smoothstep(-0.78, -0.2, dir.y).mul(oneMinus(smoothstep(0.02, 0.5, dir.y)));
-    // WAVE 3a — THE MID-WASH LIVES HERE. Measured in-game: the shipped chapter puts 46 % of
-    // its pixels in the luma 32-96 band, and this belt is the largest single contributor —
-    // a broad ember field at linear 0.23-0.37 painted across the whole vault, which is why
-    // Phase 0 read the frame as "~90 % mid-red" while its BLACKS were fine.
-    //
-    // The fix is the Wave 1 device, not a brightness cut: the wash is DARKNESS-GATED and
-    // CONTRAST-SHAPED, so ember survives as filaments where the lake's key does not reach and
-    // vanishes where it does. `conv` is already ridged; squaring it turns a field into veins.
-    const emberWash = mix(vec3(0.227, 0.051, 0.016), vec3(0.369, 0.039, 0.012), conv);
-    const convVeins = conv.mul(conv);
-    const keyReachBackdrop = pow(clamp(oneMinus(dir.y.mul(0.5).add(0.5)), 0.0, 1.0), 3.2);
-    const darknessGate = oneMinus(keyReachBackdrop);
-    color = color.add(emberWash.mul(convVeins).mul(beltMask).mul(darknessGate).mul(0.30));
-    // Faint mottle on the ceiling so the upper vault reads as rock, not a flat void.
-    color = color.add(vec3(0.05, 0.016, 0.01).mul(conv).mul(smoothstep(0.05, 0.7, dir.y)).mul(0.45));
-    // Backdrop discipline: this is still the backstop — capped below every set piece.
-    color = min(color, vec3(0.3, 0.1, 0.06));
 
-    // WAVE 3b — THE CANOPY LIVES HERE NOW. It was a SECOND full-coverage BackSide shell
-    // composited over this one with normal blending and depthTest:false — i.e. a whole extra
-    // screen of transparent fill on the lane measured fill-bound, for a result this shader
-    // can produce in-line: compositing over the background is `mix(bg, canopy, alpha)` when
-    // the background is the only thing behind it, which is exactly what renderOrder made
-    // true. One draw, one material and a full frame of blending disappear; the pixels do not.
-    const canopyPos = dir.mul(3.0);
-    const canopyMotion = vec3(uTime.mul(0.018), uTime.mul(0.012), uTime.mul(0.009));
-    const cCloud1 = fbm3(canopyPos.add(canopyMotion), 3, n3Bg);
-    const cCloud2 = fbm3(canopyPos.mul(2.05).sub(canopyMotion.mul(0.62)), 3, n3Bg);
-    const cCloud3 = fbm3(canopyPos.mul(0.55).add(canopyMotion.mul(0.38)), 3, n3Bg);
-    const cDensityRaw = cCloud1.mul(0.52).add(cCloud2.mul(0.32)).add(cCloud3.mul(0.24));
-    const cCeiling = smoothstep(-0.32, 0.46, dir.y)
-        .mul(oneMinus(smoothstep(0.88, 1.0, dir.y).mul(0.32)));
-    const cDensity = smoothstep(-0.16, 0.48, cDensityRaw).mul(cCeiling);
-    const cGlowNoise = fbm3(canopyPos.mul(2.35).add(vec3(0.0, uTime.mul(-0.08), 0.0)), 3, n3Bg)
-        .add(0.5);
-    const cInternalGlow = smoothstep(0.42, 0.86, cGlowNoise);
-    const cUnderLight = oneMinus(smoothstep(0.12, 0.78, dir.y)).mul(cDensity);
-    const cPulse = sin(uTime.mul(0.55)).mul(0.15).add(0.85);
-    let canopyColor = vec3(0.014, 0.010, 0.026)
-        .add(vec3(0.070, 0.018, 0.012).mul(cDensity));
-    canopyColor = canopyColor.add(vec3(0.26, 0.062, 0.016).mul(cInternalGlow).mul(cUnderLight)
-        .mul(cPulse)
-        .mul(0.58));
-    canopyColor = canopyColor.add(vec3(0.09, 0.020, 0.008).mul(uPulseIntensity).mul(cUnderLight));
-    canopyColor = min(canopyColor, vec3(0.22, 0.10, 0.055));
-    const canopyAlpha = cDensity.mul(0.62).mul(smoothstep(-0.22, 0.28, dir.y).add(0.18));
-    color = mix(color, canopyColor, clamp(canopyAlpha, 0.0, 1.0));
+    // The key's reach: the lava lake lights the cavern FLOOR and dies with height.
+    const keyReach = pow(oneMinus(vH), 3.2);
+    const pulse = sin(uTime.mul(0.5)).mul(0.5).add(0.5);
+    const vaultBase = vec3(0.0060, 0.0050, 0.0095); // 0x0d0b12 charred indigo, overshot
+    // The lake's bounce on the low walls - a warm GREY, not a red (see the haze note below).
+    const vaultWarm = vec3(0.028, 0.017, 0.012);
+    let color = mix(vaultBase, vaultWarm, keyReach.mul(pulse.mul(0.25).add(0.75)));
+    color = color.add(vec3(0.030, 0.016, 0.008).mul(uPulseIntensity).mul(keyReach));
+
+    // Rock grain — LOW frequency on purpose (the study: column-scale noise reads as speckle at
+    // vault range). Value variation only; no hue.
+    const grain = fbm3(dir.mul(3.4), 3, n3Bg);
+    color = color.mul(grain.mul(0.6).add(0.7));
+
+    // DARKNESS-GATED VEINS. ridged3 -> filaments; 11.0 puts the filament width at crack scale
+    // on a 250 u shell (at 2.1 the study's first capture read as orange nebula). Squaring the
+    // gate keeps the mid-heights genuinely dark instead of a gradient of half-lit veins.
+    const veinField = ridged3(dir.mul(11.0).add(vec3(0.0, uTime.mul(0.015), 0.0)), 4, n3Bg);
+    const veinMask = smoothstep(0.70, 0.95, veinField);
+    const darknessGate = pow(oneMinus(keyReach), 2.0);
+    // Veins breathe slowly and individually (phase from the field itself), so the ceiling is
+    // alive without a global strobe.
+    const veinBreath = sin(uTime.mul(0.9).add(veinField.mul(9.0))).mul(0.25).add(0.75);
+    color = color.add(vec3(1.0, 0.30, 0.07).mul(veinMask.mul(darknessGate).mul(veinBreath).mul(0.42)));
+
+    // The galaxy: sparse ember points IN the rock, shaded inside their cell (a whole-cell fill
+    // renders as skewed squares on the sphere — the study's t=32 capture).
+    const starUv = vec2(dir.x, dir.z).mul(120.0).add(dir.y.mul(60.0));
+    const cell = floor(starUv);
+    const star = hash21(cell);
+    const inCell = length(fract(starUv).sub(vec2(0.5)));
+    const point = oneMinus(smoothstep(0.04, 0.40, inCell));
+    const twinkle = sin(uTime.mul(1.7).add(star.mul(40.0))).mul(0.5).add(0.5);
+    color = color.add(vec3(1.0, 0.42, 0.12).mul(
+        smoothstep(0.985, 1.0, star).mul(point).mul(twinkle).mul(darknessGate)
+            .mul(0.9),
+    ));
+
+    // THE CRACK — the destination. A narrow cool seam across the crown, its width and light
+    // growing with the climb. Starved at the start (the study proved an unstarved seed turns
+    // the cathedral into a cool cave with warm decorations); it only becomes a real light in
+    // the chapter's last third, where the steam takes the frame anyway.
+    const crackOpen = smoothstep(0.15, 0.9, uAscent);
+    const crackAxis = smoothstep(float(0.93).sub(crackOpen.mul(0.06)), 1.0, vH);
+    const crackAz = abs(normalize(vec2(dir.x, dir.z).add(vec2(1e-4, 0.0))).x);
+    const crackLine = smoothstep(float(0.80).sub(crackOpen.mul(0.25)), 0.99, crackAz);
+    const crackFlicker = grain.mul(0.5).add(0.5);
+    color = color.add(vec3(0.30, 0.62, 0.68).mul(crackAxis.mul(crackLine).mul(crackFlicker)
+        .mul(crackOpen.mul(0.55).add(0.10))));
+
+    // Backdrop discipline: capped below every set piece (veins and points are the exception
+    // that defines the device, so the cap is generous on red and tight on the body).
+    color = min(color, vec3(0.62, 0.62, 0.62));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -1080,20 +1081,28 @@ export function createMoltenHazeMaterialTSL(uTime, uPulseIntensity = uniform(0),
     // Darkened with the backdrop (Wave 3a): haze is the SECOND broad wash, and it sits in
     // front of everything, so its mid-band contribution is paid at full screen coverage. Warm
     // smoke should be the thing you see the cavern THROUGH, not a layer of its own.
-    const nearTint = mix(vec3(0.13, 0.032, 0.015), vec3(0.32, 0.10, 0.026), aSeed);
-    const farTint = vec3(0.19, 0.055, 0.030); // warm smoke, not full orange fog
-    const tint = mix(nearTint, farTint, depthT);
+    // SMOKE, NOT GLOW (2026-10-01). This was 112 ADDITIVE red-tinted billboards hugging the
+    // rail - a red light layer laid over the whole shaft, the second-largest share of the
+    // chapter's red wash after the corridor sheets. Smoke over a lava shaft is dark and LIT
+    // from below: normal-blended charcoal that warms only low in the shaft (group-local y, the
+    // lake at -10) lays depth over the vault and softens the fire behind it instead of adding.
+    const lowHeat = oneMinus(smoothstep(-20.0, 110.0, center.y));
+    const smokeWarmth = lowHeat.mul(0.75).mul(aSeed.mul(0.4).add(0.6));
+    // Warm GREY, not red: in linear an sRGB brown is a saturated red-orange and the master
+    // grade's saturation lift crushes it to pure red (G down to B). ~1 : 0.62 : 0.45 reads as
+    // smoke lit by fire.
+    const smoke = mix(vec3(0.020, 0.018, 0.022), vec3(0.065, 0.042, 0.031), smokeWarmth);
 
-    material.colorNode = tint.mul(flick).mul(uPulseIntensity.mul(0.15).add(1.0));
+    material.colorNode = smoke.mul(flick).mul(uPulseIntensity.mul(0.15).add(1.0));
     // Lifted 0.12→0.16: enough warm mid-depth fog to backfill the dead-red gaps the
     // screenshots showed without breaking the ~70% dark value hierarchy or blowing out.
     // Denser far (depthT) so distant assets fade into the medium; a near-fade keeps a
     // puff from hard-cutting through a near geode (§5.7 cheap soft-particle proxy).
     const nearFade = smoothstep(6.0, 22.0, camDist);
-    material.opacityNode = feather.mul(depthT.mul(0.08).add(0.095)).mul(nearFade).mul(uOpacity);
+    material.opacityNode = feather.mul(depthT.mul(0.06).add(0.10)).mul(nearFade).mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
-    material.blending = THREE.AdditiveBlending;
+    material.blending = THREE.NormalBlending;
     material.side = THREE.DoubleSide;
     material.forceSinglePass = true;
     material.userData.emitsBloom = true;
@@ -1167,87 +1176,82 @@ export function createMoltenPocketMaterialTSL(
         : Boolean(options.isColumn);
     const uOpacity = options.uOpacity ?? uniform(1);
     const uSeam = options.uSeam ?? uniform(0);
-    // SPACE BUG (user report "the bottom is not attached", 2026-08-12): every term below
-    // reads positionWorld but compared against LAVA_LAKE_Y, which is a CHAPTER-LOCAL
-    // constant (-10). The chapter group sits at world y -30, so the lake plane is at world
-    // y -40 and the comparison was off by the group's offset — the "lava licks the base"
-    // gradient landed 30 units UP the shaft, as a flat wash over the whole lower third
-    // instead of a contact gradient at the waterline. Callers pass the WORLD lake height.
+    // Callers pass the WORLD lake height: every term below reads positionWorld (the 2026-08-12
+    // "the bottom is not attached" space bug - the chapter-local -10 sat 30 u up the shaft).
     const uLakeY = options.uLakeY ?? uniform(LAVA_LAKE_Y);
-    const uRock = uniform(new THREE.Color(0x0d0604)); // darker charred obsidian
+    const uRock = uniform(new THREE.Color(0x0d0604)); // deepest crust (kept for callers/tuning)
     const uCrack = uniform(new THREE.Color(0xff5a14)); // molten crack glow
-    const uHot = uniform(new THREE.Color(isColumn ? 0xcc4400 : 0xffc066)); // dimmer/warmer for columns
+    const uHot = uniform(new THREE.Color(isColumn ? 0xcc4400 : 0xffc066)); // waterline / blob core
 
-    const posL = positionLocal;
-    const vPos = varying(posL);
+    // -- BASALT, NOT LEOPARD (2026-10-01) ------------------------------------------------
+    // This material used to sample the 21-noise moltenRockField at object-space x0.55 and then
+    // ADD a baked warm floor, an ember wash, a hemisphere fill and a fresnel wash into the
+    // ALBEDO - under the chapter's orange key that summed to saturated red rock covered in
+    // black crust blotches (the "leopard print" every capture showed). The Act I value study
+    // (playground act1-earth-core section 2) proved the opposite device, and this ports it:
+    //   - the ALBEDO is charred basalt: near-neutral charcoal in big low-frequency plates and,
+    //     on the columns, horizontal colonnade joints - value variation, no hue;
+    //   - HEAT IS EMISSIVE ONLY: thin cracks that run ALONG the columns, hot near the lake and
+    //     cooling with height; the lake's light on the faces that look DOWN at it; the
+    //     waterline splash below; a hint of the crown's cool light on the rims above.
+    // So the rock reads dark and solid, and the fire reads as fire. Cheaper too: ~6 baked
+    // fetches instead of ~21 noise bodies per fragment.
+    const n3 = EARTH_CORE_BAKE_NOISE ? _getBakedNoise01Sampler() : noise3;
     const vNormal = varying(normalize(normalLocal));
+    const vWorldPos = varying(positionWorld);
     const vWorldY = varying(positionWorld.y);
     const vLakeDist = varying(length(positionWorld.xz.sub(vec2(LAKE_CENTER_X, LAKE_CENTER_Z))));
-
-    // ── Pyrestorm lava-river field on the rock (rivers + crust chunks + veins) ──
-    // Columns/shelves are repoussoir framing, so keep them mostly charred (low heat
-    // bias) — but molten POOLS into the down-facing crevices so the pillars glow from
-    // within their cracks instead of wearing a flat crackle decal. This kills the
-    // "tiled cracked rock" look the user flagged while keeping the dark silhouette.
-    const downFace = clamp(oneMinus(vNormal.y).mul(0.5).add(0.25), 0.0, 1.0);
-    const heatBias = float(isColumn ? -0.30 : -0.04);
-    const { color: field, glow, crackHeat } = moltenRockField(
-        vPos.mul(0.55),
-        uTime,
-        uPulseIntensity,
-        heatBias, // low heat bias: mostly charred framing rock
-        downFace,
-    );
-
-    const upFace = clamp(vNormal.y.mul(0.5).add(0.5), 0.0, 1.0);
-    // Plan item 3 — light the black cones: a lake-distance falloff feeds the vein/rim
-    // energy so pillars rising from the molten read warm-lit while far strata stay
-    // charred. Zero pure-black untextured shapes (acceptance criterion).
     const lakeFalloff = oneMinus(clamp(vLakeDist.div(160.0), 0.0, 1.0));
-    let color = mix(uRock, field, float(isColumn ? 0.24 : 0.42)); // pockets read as ledges, not hero boulders
-    color = color.add(
-        uHot.mul(pow(crackHeat, 3.0))
-            .mul(isColumn ? lakeFalloff.mul(0.11).add(0.09) : float(0.16)),
-    );
-    color = color.add(vec3(0.14, 0.04, 0.01).mul(upFace).mul(isColumn ? 0.045 : 0.14));
 
-    // §4.3 View-correct fresnel rim (consistency with the geode): a warm grazing edge
-    // tinted by how molten the rim already is + a small cool shadow-side term. Carves
-    // the near-black silhouette out of the haze without a fixed +Z banding.
-    // HALVED 2026-08-13 (user report "the bright orange on the walls just disappears
-    // when we move angle"): on a wall-sized flat sheet a fresnel term IS the wall's
-    // colour, so the whole colonnade's orange came and went with the camera. The rim
-    // keeps only its edge-carving half; the other half is re-paid just below as a
-    // view-INDEPENDENT wash keyed to what the rock is, not where the camera stands.
-    const rim = viewFresnel(isColumn ? 4.0 : 3.0); // pow-4 column rim (Pyrestorm grammar)
-    const coolRim = vec3(0.039, 0.102, 0.149); // ~0x0a1a26 cool shadow-side accent
-    const shadowSide = oneMinus(upFace);
-    // Non-column (the floating node blobs): the warm rim is cut hard — an edge-glow on a
-    // small sphere draws a bright OUTLINE, which is a disc's signature, not a ball's.
-    const warmRim = uCrack.mul(glow.mul(0.4).add(0.2))
-        .mul(isColumn ? lakeFalloff.mul(0.25).add(0.32) : float(0.18));
-    color = color.add(mix(warmRim.mul(0.55), coolRim.mul(0.5), shadowSide.mul(0.45)).mul(rim));
-    // The stable half: an ember wash that follows the molten field's own glow pattern and
-    // the lake distance — spatially varying (vein-shaped, NOT a flat luma lift; this
-    // chapter has fought a mid-wash before) and identical from every camera angle.
-    color = color.add(uCrack.mul(glow.mul(0.30).add(0.10))
-        .mul(isColumn ? lakeFalloff.mul(0.20).add(0.10) : lakeFalloff.mul(0.24).add(0.12)));
+    // Plates: big charred slabs (~11 u on columns, ~6 u on the small blobs).
+    const plates = fbm3(vWorldPos.mul(isColumn ? 0.09 : 0.16), 3, n3);
+    const plateMix = smoothstep(0.32, 0.76, plates);
+    let albedo = mix(vec3(0.016, 0.014, 0.017), vec3(0.052, 0.040, 0.035), plateMix);
+    if (isColumn) {
+        // Colonnade joints: the horizontal fracture rhythm of cooled basalt (Fingal's Cave).
+        const joints = sin(vWorldY.mul(0.42).add(plates.mul(3.0))).mul(0.5).add(0.5);
+        albedo = albedo.mul(mix(float(0.78), float(1.0), smoothstep(0.12, 0.38, joints)));
+    }
 
-    // §5.1 THE SPLASH (user reports 2026-08-13, twice — first "you do not see the lava
-    // lake splashing against the pillars", then "now it feels a bit flat"). A uniform
-    // height band read as paint finding a height; liquid reads as liquid because it finds
-    // PATHS. Four coupled terms, almost all of them REUSING the moltenRockField values the
-    // fragment already paid for:
-    //   lap        — two slow per-position waves move the waterline;
-    //   surge      — one scalar sin breathes the lap's amplitude, so the lake has weight
-    //                and occasionally heaves rather than ticking like a metronome;
-    //   tongues    — the splash height is GATED BY crackHeat: gold fingers climb the
-    //                crevices that are already open, so the band's top edge is ragged
-    //                where the rock is broken and low where it is sealed;
-    //   conduction — the veins alone keep glowing several units above the contact,
-    //                fading with height: heat climbing OUT of the lake through the rock.
-    // A white-hot core sits in the first ~0.45 u so the contact itself blows toward
-    // white under the gold. Zero new draws; the only new field is one scalar sin.
+    // Cracks: ridged filaments, stretched along Y on the columns so they run with the grain.
+    const veinScale = isColumn ? vec3(0.21, 0.07, 0.21) : vec3(0.26, 0.26, 0.26);
+    const veinField = ridged3(vWorldPos.mul(veinScale).add(vec3(0.0, uTime.mul(0.02), 0.0)), 3, n3);
+    const veinMask = smoothstep(isColumn ? 0.80 : 0.66, 0.97, veinField);
+    const heightAboveLake = vWorldY.sub(uLakeY);
+    // Hot at the lake, cooling with height - never quite dead, so high rock still has a pulse.
+    const heatWithHeight = oneMinus(smoothstep(0.0, isColumn ? 75.0 : 45.0, heightAboveLake));
+    const veinBreath = sin(uTime.mul(1.4).add(veinField.mul(11.0))).mul(0.2).add(0.8);
+    const veinGate = isColumn ? heatWithHeight.mul(0.82).add(0.18) : float(1.0);
+    const veinHeat = veinMask.mul(veinGate).mul(veinBreath);
+    // `crackHeat` keeps its old role for the splash tongues: they climb the open cracks.
+    const crackHeat = veinMask;
+
+    // The lake is the key and it is BELOW: faces that look down at it catch its light.
+    const downFace = clamp(vNormal.y.negate(), 0.0, 1.0);
+    const sideFace = oneMinus(abs(vNormal.y));
+    const underLight = vec3(0.30, 0.085, 0.022)
+        .mul(pow(downFace, 1.2).mul(0.8).add(sideFace.mul(0.16)))
+        .mul(heatWithHeight.mul(0.75).add(0.25))
+        .mul(lakeFalloff.mul(0.6).add(0.4))
+        .mul(uBakedBounce);
+
+    // Rims: warm where the edge faces the fire, a cool hint of the crown's light above.
+    const rim = viewFresnel(isColumn ? 4.0 : 3.0);
+    const upFace = clamp(vNormal.y.mul(0.5).add(0.5), 0.0, 1.0);
+    const rimLight = mix(vec3(0.20, 0.06, 0.018), vec3(0.035, 0.07, 0.09), upFace)
+        .mul(rim)
+        .mul(isColumn ? 0.6 : 0.35);
+
+    let color = albedo;
+    let emissive = vec3(1.0, 0.36, 0.08).mul(veinHeat).mul(isColumn ? 0.55 : 0.9)
+        .add(underLight)
+        .add(rimLight)
+        .add(vec3(0.20, 0.05, 0.012).mul(uPulseIntensity).mul(veinMask));
+
+    // 5.1 THE SPLASH - liquid finds PATHS: the waterline laps (lap/surge), gold tongues climb
+    // the open cracks (gated by crackHeat), a white-hot core sits in the first ~0.45 u, and the
+    // veins alone keep conducting heat a few units above the contact. COLUMN-ONLY: a floating
+    // blob at the lake line wore the whole stack and washed cream (2026-08-13).
     const vWorldXZ = varying(positionWorld.xz);
     const lapPhase = vWorldXZ.x.mul(0.55).add(vWorldXZ.y.mul(0.47));
     const surge = magmaSurgeTSL(uTime);
@@ -1261,90 +1265,31 @@ export function createMoltenPocketMaterialTSL(
     const splashCore = oneMinus(smoothstep(lakeLineY, lakeLineY.add(0.45), vWorldY));
     const conduction = crackHeat
         .mul(oneMinus(clamp(vWorldY.sub(lakeLineY).div(6.0), 0.0, 1.0)));
-    // COLUMN-ONLY (user report 2026-08-13: the lake-line node blob read as a washed-out
-    // cream egg). The waterline treatment — bleed, tongues, white-hot core, conduction —
-    // belongs to rock that STANDS IN the lava. A floating blob near the surface sat
-    // entirely inside the 9 u contact band and wore the whole stack over its whole body;
-    // the blobs keep only the ambient/bounce warmth, which is what makes the high ones
-    // read well.
     if (isColumn) {
-        color = color.add(uHot.mul(baseBleed).mul(0.42))
-            .add(vec3(1.0, 0.82, 0.55).mul(splashLine).mul(0.5))
-            .add(vec3(1.05, 0.98, 0.85).mul(splashCore).mul(0.6))
-            .add(uCrack.mul(conduction).mul(0.35));
-    }
-
-    // LIMB DARKENING for the floating blobs (user report: "flat"): a sphere reads round
-    // by darkening toward its silhouette; a face that stays bright to the edge is a full
-    // moon — a disc. The rim node is already the edge-proximity signal, so reuse it.
-    if (!isColumn) {
+        color = color.add(uHot.mul(baseBleed).mul(0.20));
+        emissive = emissive
+            .add(uHot.mul(baseBleed).mul(0.30))
+            .add(vec3(1.0, 0.78, 0.45).mul(splashLine).mul(0.42))
+            .add(vec3(1.0, 0.92, 0.75).mul(splashCore).mul(0.45))
+            .add(uCrack.mul(conduction).mul(0.30));
+    } else {
+        // The floating molten blobs: a hot heart seen through the crust (strongest around the
+        // cracks), and LIMB DARKENING so they read as balls, not discs.
+        emissive = emissive.add(uHot.mul(smoothstep(0.45, 0.9, veinField)).mul(0.12));
         color = color.mul(oneMinus(rim.mul(0.45)));
+        emissive = emissive.mul(oneMinus(rim.mul(0.35)));
     }
-    color = color.mul(uPulseIntensity.mul(0.12).add(1.0));
-
-    // PERF (QW9): the 4 crater-accent PointLights + per-cluster magma-bounce
-    // PointLights were removed from the chapter (the lava key + one glow remain).
-    // Those lights almost exclusively washed warm fill onto THIS dark-rock material
-    // (the geodes/horizon/lake are unlit MeshBasic). Bake their contribution as a
-    // baked emissive warm floor here so the shelves/columns still read as warm-lit
-    // rock in a populated cavern WITHOUT per-fragment light iterations. Biased to the
-    // up-/side-facing faces (where rim/accent light pooled), capped low so the body
-    // stays ~70% near-black. `bakedBounce`=0 restores the old (lit-only) look.
-    const bake = uBakedBounce.mul(0.5).add(0.5); // hemisphere fill (sky-up bias)
-    const bakedWarm = vec3(0.16, 0.052, 0.014)
-        .mul(bake.mul(0.7).add(0.18)) // ambient bounce floor + up-face bias
-        .mul(uBakedBounce);
-    color = color.add(bakedWarm);
-
-    // AMBIENT FLOOR (user report "quite dark on the sides of the pillars and around"):
-    // Wave 3a emptied the luma 32-96 band to kill a red mid-wash, and overshot — a pillar
-    // face turned away from the lake fell to pure black, which reads as a hole, not as rock.
-    // This is deliberately NOT a brightness multiplier (that would restore the wash). It is a
-    // two-tone HEMISPHERE fill: a cool vault bounce from above, a warm magma bounce from
-    // below, so the side faces gain FORM (they change value as they turn) while the palette
-    // stays split. Kept low: the body still sits far under the fire.
-    const hemi = clamp(vNormal.y.mul(0.5).add(0.5), 0.0, 1.0);
-    const ambientFill = mix(
-        vec3(0.052, 0.019, 0.010), // magma bounce from the lake below
-        vec3(0.020, 0.017, 0.029), // cool charred vault from above
-        hemi,
-    );
-    // Lit strongest near the lake, but never zero: the far strata keep a floor so nothing in
-    // the cavern is an untextured black silhouette (the chapter's own §4 acceptance rule).
-    color = color.add(ambientFill.mul(lakeFalloff.mul(0.55).add(0.45)));
 
     const material = new THREE.MeshStandardNodeMaterial();
     material.colorNode = color;
-    let emissive = uCrack.mul(glow).mul(isColumn ? 0.10 : 0.38)
-        // Plan item 3: fbm-traced emissive veining on the columns, scaled by the
-        // baked-bounce strength and the lake-distance falloff.
-        .add(uHot.mul(pow(crackHeat, isColumn ? 2.2 : 3.0))
-            .mul(isColumn ? lakeFalloff.mul(0.17).add(0.08).mul(uBakedBounce) : float(0.14)))
-        // Baked accent/bounce emissive — a dim warm self-illumination on the
-        // up/side faces so the rock glows softly as if lit by the removed PointLights.
-        .add(uHot.mul(bake).mul(uBakedBounce).mul(isColumn ? 0.008 : 0.025));
-    // §5.1 emissive BLEED + splash — COLUMN-ONLY, same reasoning as the colour stack:
-    // the waterline glow belongs to rock standing IN the lava. On a floating blob at the
-    // lake line it bathed the whole ball and washed it cream.
-    if (isColumn) {
-        emissive = emissive
-            .add(uHot.mul(baseBleed).mul(0.30))
-            .add(vec3(1.0, 0.78, 0.45).mul(splashLine).mul(0.30))
-            .add(vec3(1.0, 0.92, 0.75).mul(splashCore).mul(0.35))
-            .add(uCrack.mul(conduction).mul(0.20));
-    }
-    material.emissiveNode = emissive;
+    material.emissiveNode = min(emissive, vec3(1.15, 1.0, 0.85));
     material.opacityNode = uOpacity.mul(isColumn ? float(1.0) : oneMinus(uSeam.mul(0.96)));
     material.transparent = true;
-    // TRUE FOR BOTH VARIANTS (user report 2026-08-13, "flat and transparent objects
-    // floating"): the pocket blobs are CLOSED spheres, and a closed sphere that does not
-    // write depth cannot occlude ITSELF — both hemispheres blend superimposed, which
-    // deletes every self-occlusion cue that makes a ball read as a ball, and lets the
-    // background bleed through. The transparency exists only for the seam fade, which the
-    // retimed sink now runs under the quench's cover where a depth-punch cannot be seen.
+    // TRUE FOR BOTH VARIANTS (2026-08-13): a closed blob that does not write depth cannot
+    // occlude itself - both hemispheres blend and it reads flat and see-through.
     material.depthWrite = true;
-    material.roughness = 0.88;
-    material.metalness = 0.08;
+    material.roughness = 0.9;
+    material.metalness = 0.05;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity };
     material.userData.uniforms = {

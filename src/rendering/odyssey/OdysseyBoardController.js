@@ -27,9 +27,11 @@ import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { warmWebGpuDevice } from '../webgpu-device-warm.js';
 import { isWorldVisibleAtProgress, worldAtmosphericThin, worldDepartureFade } from './world/odyssey-world-act-gate.js';
 import {
+    STEAM_QUENCH_APPROACH_HALF_WIDTH,
     STEAM_QUENCH_EXIT_HALF_WIDTH,
     STEAM_QUENCH_HALF_WIDTH,
     createSteamQuench,
+    steamQuenchSeamT,
 } from './composition/odyssey-steam-quench.js';
 import { createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
@@ -3494,11 +3496,11 @@ export class OdysseyBoardController {
         // Steam quench: time-driven (it billows) so it runs every frame, not on the throttled
         // position gate. Hidden outside its window so it costs nothing for 94% of the journey.
         if (this.steamQuench && Number.isFinite(this._steamBoundary)) {
-            const lo = this._steamBoundary - STEAM_QUENCH_HALF_WIDTH;
+            const lo = this._steamBoundary - STEAM_QUENCH_APPROACH_HALF_WIDTH;
             const hi = this._steamBoundary + STEAM_QUENCH_EXIT_HALF_WIDTH;
             const inWindow = cameraProgress > lo && cameraProgress < hi;
             this.steamQuench.mesh.visible = inWindow;
-            if (inWindow) this.steamQuench.update(this.time, (cameraProgress - lo) / (hi - lo));
+            if (inWindow) this.steamQuench.update(this.time, steamQuenchSeamT(cameraProgress, this._steamBoundary));
         }
         if (this.cloudBank && Number.isFinite(this._cloudBankBoundary)) {
             // ⚠️ The bank's fast exit is the single largest step left in the 5->6 transition
