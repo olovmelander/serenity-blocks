@@ -45,6 +45,8 @@
     width: 100%;
     height: 100%;
     background:
+        radial-gradient(ellipse at 24% 8%, rgba(81, 151, 133, 0.13), transparent 52%),
+        radial-gradient(ellipse at 83% 16%, rgba(105, 82, 142, 0.11), transparent 48%),
         radial-gradient(ellipse at center, transparent 42%, rgba(0, 0, 0, 0.58) 100%),
         linear-gradient(180deg, rgba(2, 8, 20, 0.28) 0%, transparent 28%, transparent 68%, rgba(0, 0, 0, 0.34) 100%);
     pointer-events: none;
@@ -162,20 +164,19 @@
     }
 }
 
-/* Main title: resolves from the warp's soft arrival field, without a second visual stunt. */
+/* The same vector artwork moves from the cover to this resting position. */
 .intro-title {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 4.75rem;
-    font-weight: 700;
-    letter-spacing: 0;
-    text-align: center;
+    --intro-logo-width: var(--sb-logo-title-width);
+    width: var(--intro-logo-width);
     position: relative;
     margin: 0;
     padding: 0;
+    line-height: 0;
     animation: titleReveal 1.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     transform-origin: center;
-    white-space: nowrap;
 }
+
+.intro-wordmark { display: block; width: 100%; height: auto; }
 
 /* Pulsing glow behind title */
 .intro-title-container::before {
@@ -210,11 +211,11 @@
     }
 }
 
-/* Hold until the warp has delivered its five visible seconds. JS releases this during
-   the arrival field, so the title is already resolving when the canvas crossfade begins. */
+/* Resolve the title behind the aurora before the sweeping curtain exposes it. */
 .intro-title-container.intro-title-hold .intro-title,
-.intro-title-container.intro-title-hold .intro-letter,
-.intro-title-container.intro-title-hold .intro-shimmer {
+.intro-title-container.intro-title-hold .intro-shimmer,
+.intro-title-container.intro-title-hold .intro-eyebrow,
+.intro-title-container.intro-title-hold .intro-subtitle {
     animation: none !important;
     opacity: 0 !important;
 }
@@ -247,139 +248,39 @@
     0% {
         opacity: 0;
         transform: translateY(16px) scale(0.965);
-        filter: blur(14px) brightness(0.72);
+
     }
 
     45% {
         opacity: 0.52;
         transform: translateY(5px) scale(0.992);
-        filter: blur(4px) brightness(0.92);
+
     }
 
     100% {
         opacity: 1;
         transform: translateY(0) scale(1);
-        filter: blur(0) brightness(1);
+
     }
 }
 
-/* Individual letters focus in as one wave; there is no bounce or 3D flip. */
-.intro-letter {
-    display: inline-block;
-    position: relative;
-    --reveal-delay: 0s;
-    opacity: 0;
-    transform: translateY(12px) scale(0.985);
-    animation:
-        letterResolve 0.9s cubic-bezier(0.16, 1, 0.3, 1) var(--reveal-delay) forwards,
-        letterGlowPulse 5.5s ease-in-out calc(var(--reveal-delay) + 1.1s) infinite;
-    text-shadow:
-        0 0 3px rgba(238, 250, 255, 0.86),
-        0 0 8px rgba(145, 220, 255, 0.46),
-        0 0 18px rgba(151, 111, 238, 0.2),
-        0 3px 18px rgba(0, 0, 0, 0.56);
-    background: linear-gradient(180deg,
-            #ffffff 0%,
-            #d7f5ff 42%,
-            #8ea6ff 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 0 6px rgba(135, 215, 255, 0.28));
+/* One wordmark travels from the loading cover into this exact resting position.
+   The GPU background is already live beneath it; there is no second title entrance. */
+.intro-title-connected .intro-title {
+    animation: connectedTitleArrive var(--sb-opening-duration, 3200ms) linear both;
 }
-
-/* Subtle glow pulse on letters */
-@keyframes letterGlowPulse {
-
-    0%,
-    100% {
-        filter: drop-shadow(0 0 6px rgba(135, 215, 255, 0.26));
-    }
-
-    50% {
-        filter: drop-shadow(0 0 10px rgba(151, 111, 238, 0.36));
-    }
+.intro-title-connected .intro-eyebrow,
+.intro-title-connected .intro-subtitle {
+    animation-delay: calc(var(--sb-opening-duration, 3200ms) * 0.65);
 }
-
-@keyframes letterResolve {
-    0% {
-        opacity: 0;
-        transform: translateY(12px) scale(0.985);
-        filter: blur(7px);
-    }
-
-    100% {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-        filter: blur(0);
-    }
+.intro-title-connected .intro-shimmer {
+    animation: shimmerReveal 1.2s ease-in-out calc(var(--sb-opening-duration, 3200ms) * 0.8) both;
 }
-
-/* Stagger the letter animations */
-.intro-letter:nth-child(1) {
-    --reveal-delay: 0.1s;
-}
-
-.intro-letter:nth-child(2) {
-    --reveal-delay: 0.15s;
-}
-
-.intro-letter:nth-child(3) {
-    --reveal-delay: 0.2s;
-}
-
-.intro-letter:nth-child(4) {
-    --reveal-delay: 0.25s;
-}
-
-.intro-letter:nth-child(5) {
-    --reveal-delay: 0.3s;
-}
-
-.intro-letter:nth-child(6) {
-    --reveal-delay: 0.35s;
-}
-
-.intro-letter:nth-child(7) {
-    --reveal-delay: 0.4s;
-}
-
-.intro-letter:nth-child(8) {
-    --reveal-delay: 0.45s;
-}
-
-.intro-letter:nth-child(9) {
-    --reveal-delay: 0.5s;
-}
-
-.intro-letter:nth-child(10) {
-    --reveal-delay: 0.55s;
-}
-
-.intro-letter:nth-child(11) {
-    --reveal-delay: 0.6s;
-}
-
-.intro-letter:nth-child(12) {
-    --reveal-delay: 0.65s;
-}
-
-.intro-letter:nth-child(13) {
-    --reveal-delay: 0.7s;
-}
-
-.intro-letter:nth-child(14) {
-    --reveal-delay: 0.75s;
-}
-
-.intro-letter:nth-child(15) {
-    --reveal-delay: 0.8s;
-}
-
-/* Space between words */
-.intro-space {
-    display: inline-block;
-    width: 0.5em;
+@keyframes connectedTitleArrive {
+    /* Resolve underneath the still-opaque cover wordmark before it fades.
+       Fading both copies together dims identical translucent layers mid-handoff. */
+    0%, 82% { opacity: 0; }
+    84%, 100% { opacity: 1; }
 }
 
 /* Chromatic aberration effect */
@@ -422,8 +323,13 @@
     text-align: center;
     opacity: 0;
     animation: promptPulse 2s ease-in-out 3s infinite;
-    text-shadow: 0 0 8px rgba(110, 190, 255, 0.32);
-    letter-spacing: 0;
+    text-shadow: 0 0 18px rgba(154, 210, 199, 0.2);
+    background: none;
+    border: 0;
+    padding: 16px;
+    cursor: pointer;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
     line-height: 1.45;
     z-index: 15;
 }
@@ -467,12 +373,10 @@
     0%,
     100% {
         opacity: 0.62;
-        transform: translateX(-50%) translateY(0);
     }
 
     50% {
         opacity: 0.88;
-        transform: translateX(-50%) translateY(-4px);
     }
 }
 
@@ -526,7 +430,7 @@
 .intro-shimmer {
     position: absolute;
     top: 0;
-    left: -120%;
+    left: -60%;
     /* Narrow, tilted bright bar → reads as a specular light streak, not a wash. */
     width: 60%;
     height: 100%;
@@ -550,7 +454,7 @@
 /* One-time bright reveal sweep */
 @keyframes shimmerReveal {
     0% {
-        left: -120%;
+        transform: translateX(-100%);
         opacity: 0;
     }
 
@@ -559,7 +463,7 @@
     }
 
     100% {
-        left: 200%;
+        transform: translateX(550%);
         opacity: 0;
     }
 }
@@ -567,7 +471,7 @@
 /* Subtle recurring glint (a quick pass, then idle for the rest of the cycle) */
 @keyframes shimmerSweep {
     0% {
-        left: -120%;
+        transform: translateX(-100%);
         opacity: 0;
     }
 
@@ -580,18 +484,65 @@
     }
 
     100% {
-        left: 200%;
+        transform: translateX(550%);
         opacity: 0;
     }
 }
 
+/* The supporting copy sits outside the wordmark bounds used by menu-logo tracking. */
+.intro-eyebrow, .intro-subtitle {
+    position: absolute;
+    width: 100%;
+    left: 0;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    animation: introCopyReveal 1.4s ease-out 0.6s forwards;
+}
+.intro-eyebrow {
+    bottom: calc(100% + 34px);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.45em;
+    color: #a1c8c0;
+}
+.intro-subtitle {
+    top: calc(100% + 28px);
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(8px, 1vw, 10px);
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0.24em;
+    word-spacing: 0.12em;
+    text-indent: 0.24em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: #c0d7e5;
+}
+.intro-prompt small {
+    display: block;
+    margin-top: 12px;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: none;
+    opacity: 0.6;
+}
+.intro-prompt:focus-visible { outline: 1px solid #9ccbc5; outline-offset: 4px; border-radius: 4px; }
+.shrink-to-logo .intro-subtitle {
+    top: calc(100% + 8px);
+    font-size: 8px;
+    font-weight: 700;
+    opacity: 0.8;
+    animation: none;
+    transform: none;
+}
+@keyframes introCopyReveal {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 0.8; transform: translateY(0); }
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
-    .intro-title {
-        font-size: 2.75rem;
-        letter-spacing: 0;
-    }
-
     .intro-prompt {
         font-size: 0.78rem;
         bottom: 5vh;
@@ -602,23 +553,24 @@
     }
 }
 
-/* Extra small screens - ensure it still fits */
-@media (max-width: 480px) {
-    .intro-title {
-        font-size: 1.7rem;
-        letter-spacing: 0;
-    }
+/* Keep copy and the continue button outside the wordmark on short viewports. */
+@media (max-height: 540px) {
+    .intro-eyebrow { bottom: calc(100% + 18px); font-size: 8px; }
+    .intro-subtitle { top: calc(100% + 16px); font-size: 9px; }
+    .intro-prompt { bottom: max(10px, env(safe-area-inset-bottom)); padding: 10px; }
+    .intro-prompt small { display: none; }
 }
 
 /* Reduce motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
 
-    .intro-letter,
     .intro-title,
     .intro-shimmer,
     .intro-chromatic,
     .intro-warp-overlay,
-    .intro-loading-indicator {
+    .intro-loading-indicator,
+    .intro-eyebrow,
+    .intro-subtitle {
         animation: none !important;
         opacity: 1 !important;
         transform: none !important;
@@ -628,6 +580,9 @@
         opacity: 0.8 !important;
         animation: none !important;
     }
+
+    .intro-title-container::before { animation: none !important; }
+    .intro-shimmer, .intro-chromatic, .intro-warp-overlay { opacity: 0 !important; }
 }
 
 /* Shrink title to top logo animation */
@@ -642,12 +597,6 @@
     z-index: 200 !important;
     transition: top 350ms cubic-bezier(0.4, 0, 0.2, 1), transform 350ms cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-out;
     will-change: transform, top, filter;
-}
-
-.shrink-to-logo .intro-letter {
-    animation: letterGlowFadeOut 1.15s ease-out forwards !important;
-    opacity: 1 !important;
-    transform: none !important;
 }
 
 .shrink-to-logo .intro-shimmer {
@@ -672,40 +621,16 @@
     }
 }
 
-@keyframes letterGlowFadeOut {
-    0% {
-        filter: drop-shadow(0 0 12px rgba(110, 210, 255, 0.48)) brightness(1);
-    }
-
-    /* Gentle glow swell as it rises — energised but smooth, not a hard flash. */
-    35% {
-        filter: drop-shadow(0 0 20px rgba(170, 235, 255, 0.82)) brightness(1.26);
-    }
-
-    100% {
-        filter: drop-shadow(0 0 3px rgba(240, 249, 255, 0.4)) brightness(1);
-    }
-}
-
 /* Main menu: keep the intro title as the logo — hide the static menu logo instead. */
 body.start-modal-open .intro-title-container.shrink-to-logo {
-    opacity: 0.92;
+    opacity: 1;
     top: var(--menu-logo-top) !important;
-    /* Render the wordmark at a real (small) font-size instead of GPU-downscaling a
-       full-size title. A transform scale on a 3D/composited layer rasterizes the
-       gradient-clipped glyphs at a pinned low raster scale and bitmap-scales them,
-       which blurs the logo (very visible at devicePixelRatio 1.5+). Translate only,
-       no scale/perspective, and drop the compositing hints so Chromium lays out and
-       rasterizes crisp vector glyphs at the target size at full device resolution. */
+    /* Size the SVG at its actual menu dimensions, without a rasterized scale. */
     transform: translate(-50%, 0) !important;
     perspective: none !important;
     transform-style: flat !important;
     will-change: auto !important;
-    /* No transform transition (the resting transform is unscaled, so transitioning it
-       would wobble). Size is now driven by font-size, so transition THAT instead: the
-       one-time correction from the 0.2 fallback to the JS-computed --menu-logo-scale
-       eases smoothly rather than popping in a single frame. */
-    transition: top 350ms cubic-bezier(0.4, 0, 0.2, 1), font-size 350ms cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-out !important;
+    transition: top 350ms cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-out !important;
     animation: none !important;
     pointer-events: none !important;
 }
@@ -723,43 +648,11 @@ body.start-modal-open .intro-title-container.shrink-to-logo::before {
 }
 
 body.start-modal-open .intro-title-container.shrink-to-logo .intro-title {
-    letter-spacing: 0;
-    /* Crisp logo: real font-size = natural × computed logo scale (see container
-       rule). --menu-logo-scale is set by updateMenuLogoLayout(); 0.2 is the
-       pre-JS fallback. The base size mirrors the natural .intro-title font-size. */
-    font-size: calc(4.75rem * var(--menu-logo-scale, 0.2)) !important;
-    /* No transform/filter animation and no 3D context. Any of those promote the
-       wordmark to a composited GPU layer, and under Electron's
-       enable-gpu-rasterization that layer's gradient-clipped glyphs get rasterized
-       into a texture that goes soft at fractional DPR (1.5) — the exact blur seen
-       in the packaged build but NOT in plain Chrome. Keeping the title un-composited
-       lets the gradient text paint directly at device resolution, crisp like the
-       menu cards. (Glow is preserved via text-shadow, which paints without a layer.) */
+    width: calc(var(--intro-logo-width) * var(--menu-logo-scale, 0.2));
     animation: none !important;
+    transform: none;
     transform-style: flat !important;
     will-change: auto;
-}
-
-body.start-modal-open .intro-title-container.shrink-to-logo .intro-letter {
-    /* SOLID fill — NOT gradient-clipped text. -webkit-background-clip:text rasterizes
-       the glyphs through a mask that Electron's ANGLE/D3D11 GPU rasterizer samples soft
-       at fractional DPR (1.5) — the menu cards use solid text and stay crisp, proving
-       this is the cause. A solid light color + the same text-shadow glow matches the
-       gradient look without the blur. (filter/animation already removed for the same
-       compositing reasons.) */
-    animation: none !important;
-    filter: none !important;
-    background: none !important;
-    background-image: none !important;
-    -webkit-background-clip: border-box !important;
-    background-clip: border-box !important;
-    color: #e8f3ff !important;
-    -webkit-text-fill-color: #e8f3ff !important;
-    text-shadow:
-        0 0 7px rgba(220, 245, 255, 0.88),
-        0 0 16px rgba(110, 210, 255, 0.58),
-        0 0 28px rgba(128, 90, 255, 0.28),
-        0 4px 14px rgba(0, 0, 0, 0.4);
 }
 
 body.start-modal-open .intro-title-container.shrink-to-logo .intro-shimmer {
@@ -851,116 +744,9 @@ body.electron-app.start-modal-open .main-menu-logo {
     display: block !important;
 }
 
-/* Responsive adjustments for logo */
-@media (max-width: 768px) {
-    body.start-modal-open .intro-title-container.shrink-to-logo .intro-title {
-        font-size: calc(2.75rem * var(--menu-logo-scale, 0.18)) !important;
-    }
-
-    @keyframes shrinkToLogo {
-        to {
-            top: 18px;
-            transform: translate(-50%, 0) perspective(1000px) scale(0.18);
-        }
-    }
-}
-
-@media (max-width: 480px) {
-    body.start-modal-open .intro-title-container.shrink-to-logo .intro-title {
-        font-size: calc(1.7rem * var(--menu-logo-scale, 0.16)) !important;
-    }
-
-    @keyframes shrinkToLogo {
-        to {
-            top: 14px;
-            transform: translate(-50%, 0) perspective(1000px) scale(0.16);
-        }
-    }
-}
-
-/* Fade out text animation (reverse of intro) */
-.fade-out-text {
-    animation: fadeOutText 1s ease-out forwards !important;
-}
-
-.fade-out-text .intro-letter {
-    animation: letterReverse 0.6s cubic-bezier(0.64, 0, 0.78, 0) forwards !important;
-}
-
-.fade-out-text .intro-letter:nth-child(1) {
-    animation-delay: 0s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(2) {
-    animation-delay: 0.03s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(3) {
-    animation-delay: 0.06s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(4) {
-    animation-delay: 0.09s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(5) {
-    animation-delay: 0.12s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(6) {
-    animation-delay: 0.15s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(7) {
-    animation-delay: 0.18s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(8) {
-    animation-delay: 0.21s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(9) {
-    animation-delay: 0.24s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(10) {
-    animation-delay: 0.27s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(11) {
-    animation-delay: 0.3s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(12) {
-    animation-delay: 0.33s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(13) {
-    animation-delay: 0.36s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(14) {
-    animation-delay: 0.39s !important;
-}
-
-.fade-out-text .intro-letter:nth-child(15) {
-    animation-delay: 0.42s !important;
-}
-
-@keyframes fadeOutText {
-    to {
-        opacity: 0;
-    }
-}
-
-@keyframes letterReverse {
-    from {
-        opacity: 1;
-        transform: translateY(0) rotateX(0deg);
-    }
-
-    to {
-        opacity: 0;
-        transform: translateY(-100px) rotateX(90deg);
-    }
+/* A compact menu scrolls as one document, including its logo. A fixed title
+   would overlap the first card when there is no free space above the list. */
+@media (max-width: 768px), (max-height: 700px) {
+    body.start-modal-open .intro-title-container.shrink-to-logo { display: none !important; }
+    body.start-modal-open .main-menu-logo { display: block !important; }
 }

@@ -8,6 +8,7 @@ import { INTRO_PHASES } from './intro-visual-config.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { readFlag } from '../core/flags.js';
 import { markStartup } from './startup-debug.js';
+import { connectStartupWordmark } from './startup-wordmark-handoff.js';
 import {
     beginAsyncRenderPipelines,
     preloadAsyncRenderPipelines,
@@ -131,9 +132,10 @@ export class IntroAnimation {
         this.isActive = true;
         this.isAnimating = true;
         // When deferred, hold the "SERENITY BLOCKS" title hidden + un-animated until
-        // revealTitle() — used so the boot warp transition plays out FIRST and the
-        // title's reveal animation plays fresh afterwards, not wasted behind the warp.
+        // revealTitle() — the opening controller starts the connected wordmark reveal
+        // only once the background is ready and rendering reliably.
         this.titleDeferred = options.deferTitle === true;
+        this.onInteractionBegin = options.onInteractionBegin || null;
         this.titleRevealed = !this.titleDeferred;
         // "Press any key / click / tap to begin" is LOCKED until the title reveals, so the
         // boot transition can't be skipped before "SERENITY BLOCKS" appears; the prompt +
@@ -185,11 +187,12 @@ export class IntroAnimation {
     /**
      * Play the deferred "SERENITY BLOCKS" title reveal now. Idempotent — safe to call
      * from any handoff branch (and a safety timer). The WebGPU path calls this once its
-     * five-second visible contract is met, letting the title resolve during the nebula
-     * arrival and continue through the canvas crossfade.
+     * background is ready, connecting the ident's wordmark to the live title.
+     * Interaction can stay locked until the opening animation has cleared.
      */
-    revealTitle(source = 'manual') {
+    revealTitle(source = 'manual', { deferInteraction = false, connectDurationMs = 0 } = {}) {
         if (this.titleRevealed) {
+            if (!deferInteraction && this.isActive) this.enableInteraction();
             return;
         }
         this.titleRevealed = true;
@@ -197,14 +200,16 @@ export class IntroAnimation {
         performanceMonitor.recordEvent('startup_intro_title_revealed', { source });
         const titleContainer = this.container?.querySelector('.intro-title-container');
         if (titleContainer) {
+            if (connectDurationMs > 0) {
+                this.stopWordmarkHandoff?.();
+                this.stopWordmarkHandoff = connectStartupWordmark(titleContainer, connectDurationMs);
+            }
             titleContainer.classList.remove('intro-title-hold');
             // Force a reflow so the (previously animation:none) reveal restarts from 0%.
             this._titleReflow = titleContainer.offsetWidth;
         }
 
-        // Reveal the "PRESS ANY KEY" prompt + unlock interaction WITH the title (the theme is
-        // warmed BEFORE the warp now, so there's nothing to gate on).
-        this.enableInteraction();
+        if (!deferInteraction) this.enableInteraction();
     }
 
     /**
@@ -247,6 +252,7 @@ export class IntroAnimation {
         this.interactionEnabled = true;
         const prompt = this.container?.querySelector('.intro-prompt.intro-prompt-hold');
         if (prompt) {
+            prompt.disabled = false;
             prompt.classList.remove('intro-prompt-hold');
             // Reflow, then run the no-delay reveal so the prompt fades in WITH the title
             // (its base rule has a 3s animation-delay that would otherwise hold it back).
@@ -389,12 +395,9 @@ export class IntroAnimation {
             return;
         }
 
-        // The resting menu logo now renders at font-size = natural × --menu-logo-scale
-        // (crisp vector glyphs, not a transform-downscaled bitmap). Neutralize that
-        // scale to 1 before measuring, or we'd measure the already-shrunk wordmark and
-        // the computed scale would drift smaller on every layout pass. Reading
-        // offsetWidth forces a synchronous reflow, so the measurement reflects the
-        // natural size; the real scale is reapplied below before the frame paints.
+        // Measure the vector wordmark at its natural width before applying the
+        // menu scale. Measuring the already-sized logo would shrink it again on
+        // every layout pass. The final width renders the SVG at device resolution.
         const prevScale = titleContainer.style.getPropertyValue('--menu-logo-scale');
         titleContainer.style.setProperty('--menu-logo-scale', '1');
         const naturalWidth = titleContainer.offsetWidth;
@@ -413,11 +416,13 @@ export class IntroAnimation {
 
         const sidePadding = Math.max(16, Math.round(viewportWidth * 0.02));
         const topPadding = Math.max(6, Math.min(18, viewportHeight * 0.018));
-        const bottomGap = Math.max(6, Math.min(12, viewportHeight * 0.012));
+        // The tagline sits below the measured artwork and needs its own clearance.
+        const bottomGap = 22 + Math.max(6, Math.min(12, viewportHeight * 0.012));
 
         const availableWidth = Math.max(120, viewportWidth - sidePadding * 2);
         const availableHeight = Math.max(24, firstCardTop - topPadding - bottomGap);
-        const maxScale = 0.42;
+        // Match the 180px menu asset cap; still shrink further if its slot is smaller.
+        const maxScale = Math.min(0.42, 180 / naturalWidth);
         const scale = Math.max(
             0.12,
             Math.min(
@@ -870,7 +875,7 @@ export class IntroAnimation {
             titleContainer.classList.add('intro-title-hold');
         }
 
-        // Create title with individual letters
+        // Keep the same vector identity from loading through the title and menu.
         const title = this.createAnimatedTitle();
         titleContainer.appendChild(title);
 
@@ -892,21 +897,23 @@ export class IntroAnimation {
         this.container.appendChild(warpOverlay);
 
         // Create prompt text
-        const prompt = document.createElement('div');
+        const prompt = document.createElement('button');
+        prompt.type = 'button';
         prompt.className = 'intro-prompt';
+        prompt.disabled = this.titleDeferred && !this.interactionEnabled;
         if (this.titleDeferred && !this.interactionEnabled) {
             // Don't invite "press to begin" until the title has appeared + interaction
             // unlocks. Same cold-boot race guard as the title above: if interaction was
             // already unlocked before this DOM existed, create the prompt visible.
             prompt.classList.add('intro-prompt-hold');
         }
-        prompt.innerHTML = 'PRESS ANY KEY / CLICK / TAP TO BEGIN';
+        prompt.innerHTML = '<span>Tap to continue</span><small>or press any key</small>';
         this.container.appendChild(prompt);
 
         // Loading mask indicator (Phase 7 loading integration)
         this.loadingIndicator = document.createElement('div');
         this.loadingIndicator.className = 'intro-loading-indicator';
-        this.loadingIndicator.textContent = 'LOADING ASSETS';
+        this.loadingIndicator.textContent = 'Preparing your space';
         this.loadingIndicator.style.display = 'none';
         this.container.appendChild(this.loadingIndicator);
 
@@ -918,28 +925,27 @@ export class IntroAnimation {
     }
 
     /**
-     * Create animated title with individual letters
+     * Create the shared vector wordmark inside an accessible heading.
      * @returns {HTMLElement}
      */
     createAnimatedTitle() {
         const title = document.createElement('h1');
         title.className = 'intro-title';
 
-        const text = 'SERENITY BLOCKS';
-        const letters = text.split('');
+        title.ariaLabel = 'SERENITY BLOCKS';
+        const wordmark = document.createElement('img');
+        wordmark.className = 'intro-wordmark';
+        wordmark.src = './assets/branding/serenity-blocks-logo.svg';
+        wordmark.alt = '';
+        wordmark.width = 650;
+        wordmark.height = 248;
+        wordmark.ariaHidden = 'true';
+        title.appendChild(wordmark);
 
-        letters.forEach((char) => {
-            if (char === ' ') {
-                const space = document.createElement('span');
-                space.className = 'intro-space';
-                title.appendChild(space);
-            } else {
-                const letter = document.createElement('span');
-                letter.className = 'intro-letter';
-                letter.textContent = char;
-                title.appendChild(letter);
-            }
-        });
+        const tagline = document.createElement('span');
+        tagline.className = 'intro-subtitle';
+        tagline.textContent = 'Stack · Breath · Ascend';
+        title.appendChild(tagline);
 
         return title;
     }
@@ -1071,6 +1077,7 @@ export class IntroAnimation {
         if (!this.interactionEnabled) return;
         // Single-shot: once "begin" fires, ignore further presses (no double sound/dismiss).
         this.interactionEnabled = false;
+        this.onInteractionBegin?.();
 
         // "Begin" confirm — dark-space start pulse, in sync with the dismiss/warp-out.
         // Honors mute/volume; best-effort so a missing/blocked file never blocks the dismiss.
@@ -1179,6 +1186,7 @@ export class IntroAnimation {
      */
     dismissText() {
         if (!this.isActive) return;
+        this.stopWordmarkHandoff?.();
 
         this.clearPhaseTimers();
         this.clearTitleRevealSafety();
@@ -1248,6 +1256,7 @@ export class IntroAnimation {
      * Dismiss the intro animation completely
      */
     dismiss() {
+        this.stopWordmarkHandoff?.();
         if (this.dismissPromise) {
             return this.dismissPromise;
         }
@@ -1320,6 +1329,7 @@ export class IntroAnimation {
      * Skip the intro animation (for development/testing)
      */
     skip() {
+        this.stopWordmarkHandoff?.();
         this.clearPhaseTimers();
         this.clearTitleRevealSafety();
         this.removeTetrominoPointerListener();

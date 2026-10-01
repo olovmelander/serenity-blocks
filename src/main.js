@@ -529,38 +529,31 @@ function dismissStartupShell(reason = 'ready', options = {}) {
         return startupShellDismissPromise;
     }
 
-    // Quick handoff: the WebGPU particle warp is taking over the reveal, so we only
-    // need a fast opacity fade of the ident to expose the warp's diamond beneath —
-    // NOT the ~2.75s CSS "Diamond Ignition → Nebula Birth" develop-out.
+    // Move the ident wordmark into the title while revealing the live background.
     if (options.quick === true) {
+        const durationMs = options.durationMs || 3200;
+        shell.style.setProperty('--sb-opening-duration', `${durationMs}ms`);
         shell.classList.add('is-warp-out');
         performanceMonitor.recordEvent('startup_shell_dismissed', { reason, quick: true });
-        // Outlast the 420ms cross-dissolve so the opaque shell covers the whole handoff
-        // (no black frame can flash between shell-gone and warp-still-brightening).
+        // Keep the moving wordmark until it has landed on the live intro title.
         startupShellDismissPromise = new Promise((resolve) => {
             setTimeout(() => {
                 shell.remove();
                 resolve();
-            }, 620);
+            }, durationMs + 80);
         });
         return startupShellDismissPromise;
     }
 
     shell.classList.add('is-hidden');
     performanceMonitor.recordEvent('startup_shell_dismissed', { reason });
-    // Drop will-change on the promoted exit layers just before removal so they don't
-    // keep taxing the compositor if the node lingers.
-    setTimeout(() => {
-        shell.querySelectorAll('.startup-logo, .startup-logo__mark, .startup-logo__glow, .startup-shell__bloom, .startup-shell__spotlight, .startup-shell__ember')
-            .forEach((el) => { el.style.willChange = 'auto'; });
-    }, 2800);
-    // Outlast the ~2.75s "Diamond Ignition → Nebula Birth" reveal so the shell (and its
-    // white-out) isn't yanked mid-develop-out — which would pop a hard cut/black.
+    // The CSS fallback is a soft fade; reduced motion only needs a brief dissolve.
+    const fadeMs = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 340 : 1280;
     startupShellDismissPromise = new Promise((resolve) => {
         setTimeout(() => {
             shell.remove();
             resolve();
-        }, 2900);
+        }, fadeMs);
     });
     return startupShellDismissPromise;
 }
@@ -5134,6 +5127,7 @@ async function bootstrap() {
             const introPromise = introAnimation.show(sharedSoundManager, {
                 deferTitle: true,
                 signal: startupPipeline.signal,
+                onInteractionBegin: () => startupPipeline.markIntroDismissing(),
             });
             let introPhaseGate = 'timeout';
             await waitForPipelineStep(Promise.race([
@@ -5163,6 +5157,7 @@ async function bootstrap() {
             if (startupPipeline.snapshot().introStatus === 'running') {
                 markStartup('intro:title-reveal-request', { source: 'post-transition' });
                 introAnimation.revealTitle?.('post-transition');
+                if (introAnimation.isActive) startupPipeline.markIntroInteractive();
                 Promise.resolve(bootWarpResult.surfaceReadyPromise)
                     .then(() => app?.allowCustomCursorMount?.())
                     .catch((error) => {

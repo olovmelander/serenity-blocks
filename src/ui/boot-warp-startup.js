@@ -9,17 +9,17 @@ export const INTRO_RENDERER_READY_TIMEOUT_MS = 8000;
 // real shader-compile time here — measured ~3s on a cold cache — instead of stalling the
 // play loop. The budget is sized for that, not for the old "queue it and hope" prime.
 export const BOOT_WARP_PREWARM_TIMEOUT_MS = 12000;
-export const BOOT_WARP_MIN_VISIBLE_MS = 5000;
-export const BOOT_WARP_DEFAULT_DURATION_MS = 6500;
-// The warp's first frames are a pixel match of the CSS ident (boot-warp-transition-scene.js),
-// so the ident can hand over almost immediately; the ignition flare is timed from here.
+export const BOOT_WARP_MIN_VISIBLE_MS = 2000;
+export const BOOT_WARP_DEFAULT_DURATION_MS = 3200;
+// The existing wordmark moves into the title as the live background opens beneath it.
+// The transparent aurora is a light accent throughout that same motion.
 export const BOOT_WARP_REVEAL_PROGRESS = 0.02;
-// Until the ident has actually been dismissed the flight holds on that match frame: a slow
-// cadence gate must never let the ignition play out unseen behind the opaque ident.
+// Hold the aurora's opening until the ident begins its dissolve. A slow cadence gate
+// must never let the reveal play out unseen behind the opaque cover.
 export const BOOT_WARP_HOLD_PROGRESS = 0.03;
-export const BOOT_WARP_FADE_PROGRESS = 0.9;
-export const BOOT_WARP_TITLE_PROGRESS = 0.84;
-export const BOOT_WARP_FADE_OUT_MS = 880;
+export const BOOT_WARP_FADE_PROGRESS = 0.94;
+export const BOOT_WARP_TITLE_PROGRESS = 0.02;
+export const BOOT_WARP_FADE_OUT_MS = 300;
 export const BOOT_WARP_THEME_IDLE_STABLE_MS = 500;
 export const BOOT_WARP_THEME_IDLE_POLL_MS = 100;
 export const BOOT_WARP_THEME_IDLE_WARN_MS = 3000;
@@ -105,8 +105,8 @@ export function resolveBootWarpTiming(params = null) {
 
 /**
  * Play the committed WebGPU warp handoff with a hard visible-duration contract.
- * The shell is only dismissed after a successful warp frame, and the intro title /
- * canvas fade cannot happen until the player has seen the warp long enough.
+ * The shell and title begin their connected motion after a successful frame.
+ * Input unlocks after the light accent clears and the visible minimum is met.
  *
  * @param {object} options
  * @returns {Promise<object>}
@@ -177,7 +177,10 @@ export async function playBootWarpHandoff(options = {}) {
         }
         titleRevealed = true;
         markStartup('intro:title-reveal-request', { source });
-        introAnimation?.revealTitle?.(source);
+        introAnimation?.revealTitle?.(source, {
+            deferInteraction: true,
+            connectDurationMs: timing.durationMs,
+        });
     };
 
     const beginFade = () => {
@@ -216,8 +219,7 @@ export async function playBootWarpHandoff(options = {}) {
         return interruptedStatus();
     }
 
-    // The match-cut lands a few frames into play(): let the ident settle onto what the GPU replica
-    // draws first (glint gone, glow at its parked value), so the cut cannot catch a loop mid-way.
+    // Settle the ident's glow before its wordmark moves into the live title.
     setIdentArming(true);
 
     let playResult;
@@ -229,7 +231,7 @@ export async function playBootWarpHandoff(options = {}) {
             onProgress: (progress, state = {}) => {
                 if (signal?.aborted) return;
                 latestProgress = progress;
-                // The handoff needs THREE proofs, not one: the gem is lit (progress), a frame
+                // The handoff needs three proofs: progress has started, a frame
                 // was drawn (firstFrameRendered), and frames are actually reaching the screen
                 // (cadenceHealthy). Without the last one the ident could cross-dissolve onto a
                 // warp that was about to freeze for seconds on a cold pipeline compile.
@@ -252,6 +254,8 @@ export async function playBootWarpHandoff(options = {}) {
                     }
                     shellDismissed = true;
                     visibleStartedAt = nowMs();
+                    // Measure the ident before its exit class starts moving the wordmark.
+                    revealTitle('warp-progress');
                     markStartup('boot-warp:visible-start', {
                         progress,
                         durationMs: timing.durationMs,
@@ -262,7 +266,7 @@ export async function playBootWarpHandoff(options = {}) {
                         soundManager?.playOneShotFile?.('assets/audio/intro/warp.ogg', { volume: 0.9 });
                     }
                     markStartup('startup-shell:dismiss-request', { reason: 'warp-handoff' });
-                    dismissStartupShell?.('warp-handoff', { quick: true });
+                    dismissStartupShell?.('warp-handoff', { quick: true, durationMs: timing.durationMs });
                 }
                 maybeRelease('warp-progress');
             },
@@ -297,7 +301,7 @@ export async function playBootWarpHandoff(options = {}) {
 
     // play() has resolved, so the flight is over and nothing is animating any more. A
     // top-up here holds a FROZEN final frame, so it is capped hard: on a correct reveal
-    // (progress ~0.02-0.03) the visible span is already ~5.7s and the top-up is zero, and if
+    // (progress ~0.02-0.03) the visible span is already ~3.1s and the top-up is zero, and if
     // the reveal was late for any reason a short beat beats a dead multi-second hold.
     const remainingVisibleMs = timing.minVisibleMs - visibleMs();
     if (remainingVisibleMs > 0) {
@@ -325,6 +329,7 @@ export async function playBootWarpHandoff(options = {}) {
     beginFade();
     revealTitle('warp-progress');
     await fadePromise;
+    if (!signal?.aborted) introAnimation?.enableInteraction?.();
 
     const elapsedVisibleMs = roundMs(visibleMs());
     performanceMonitor.recordEvent('startup_boot_warp_visible_ms', {
