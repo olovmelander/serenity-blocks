@@ -51,6 +51,7 @@ import {
     positionLocal,
     positionView,
     positionViewDirection,
+    positionWorld,
     pow,
     sin,
     smoothstep,
@@ -454,6 +455,10 @@ export const CH8_FACADE_VALUE_SETTINGS = Object.freeze({
     hazeNear: 140,
     hazeFar: 1000,
     hazeMax: 0.86,
+    // Finale ignition: corridor-plane spire position (x, z) and the lit-floor multiplier a
+    // building jumps to once the ignition ring has passed it (arrival level is uCityLight).
+    spire: [0, -560],
+    ignitedLight: 1.3,
 });
 
 /**
@@ -470,9 +475,10 @@ export const CH8_FACADE_VALUE_SETTINGS = Object.freeze({
  * tower's base; distance haze separates the ranks. `uCityLight` (0..1.2) switches floors on
  * (the finale ignition), `uDim` gutters whole buildings out one by one (the resolve).
  */
-function createFacadeMaterial(uTime, uEnergy, { uCityLight, uDim } = {}) {
+function createFacadeMaterial(uTime, uEnergy, { uCityLight, uIgniteRadius, uDim } = {}) {
     const S = CH8_FACADE_VALUE_SETTINGS;
-    const cityLight = uCityLight ?? uniform(1);
+    const arrivalLight = uCityLight ?? uniform(1);
+    const igniteRadius = uIgniteRadius ?? uniform(0);
     const dim = uDim ?? uniform(0);
 
     const aFacade = attribute('aFacade', 'vec4');
@@ -510,6 +516,14 @@ function createFacadeMaterial(uTime, uEnergy, { uCityLight, uDim } = {}) {
     // A floor is "occupied" with probability occupancy × cityLight; inside an occupied
     // floor, runs of four bays switch together (a tenant), most runs on. Dark floors keep
     // a sprinkle of single windows. Ground floor (lobby) excluded — the street bounce owns it.
+    // IGNITION WAVE: distance (corridor plane) from the spire base; inside the expanding
+    // ring a building runs at its ignited floor count, and the wavefront itself flares.
+    const local = modelWorldMatrixInverse.mul(vec4(positionWorld, 1.0)).xyz;
+    const spireDist = length(vec2(local.x.sub(S.spire[0]), local.z.sub(S.spire[1])));
+    const inWave = oneMinus(smoothstep(igniteRadius.sub(60.0), igniteRadius, spireDist));
+    const waveFront = smoothstep(igniteRadius.sub(90.0), igniteRadius.sub(30.0), spireDist)
+        .mul(inWave).mul(step(1.0, igniteRadius));
+    const cityLight = mix(arrivalLight, float(S.ignitedLight), inWave);
     const floorRnd = hash21(vec2(cell.y, seed.mul(0.731)));
     const floorOn = step(oneMinus(occupancy.mul(cityLight)), floorRnd);
     const runRnd = hash21(vec2(floor(cell.x.div(4.0)), cell.y.add(faceSeed.mul(11.0))));
@@ -538,7 +552,7 @@ function createFacadeMaterial(uTime, uEnergy, { uCityLight, uDim } = {}) {
         .mul(mix(1.0, step(0.45, fract(f.y.mul(7.0))).mul(0.6).add(0.4), step(0.83, fract(winRnd.mul(7.9)))));
     const flick = sin(uTime.mul(winRnd.mul(2.0).add(0.4)).add(winRnd.mul(40.0))).mul(0.5).add(0.5);
     const flicker = mix(1.0, flick.mul(0.6).add(0.4), step(0.985, fract(winRnd.mul(31.1))));
-    const energyGain = uEnergy.mul(0.25).add(0.82);
+    const energyGain = uEnergy.mul(0.25).add(0.82).mul(waveFront.mul(0.9).add(1.0));
     const windows = wcolor.mul(lit).mul(pane).mul(winGain).mul(flicker)
         .mul(energyGain);
 
@@ -643,7 +657,7 @@ export const CH8_CITY_LAYOUT = Object.freeze({
     seed: 0x0c8d2e,
 });
 
-export function createCityBlocksTSL(uTime, uEnergy, { uCityLight, uDim } = {}) {
+export function createCityBlocksTSL(uTime, uEnergy, { uCityLight, uIgniteRadius, uDim } = {}) {
     const uTimeNode = uTime ?? uniform(0);
     const uEnergyNode = uEnergy ?? uniform(0.45);
 
@@ -667,7 +681,7 @@ export function createCityBlocksTSL(uTime, uEnergy, { uCityLight, uDim } = {}) {
     const heroSlots = new Map(L.heroes.map(([rank, side, bank, hue]) => [`${rank}:${side}:${bank}`, hue]));
     const TOWER_COUNT = L.ranks * 2 * L.banks.length;
     const sharedBox = new THREE.BoxGeometry(1, 1, 1);
-    const facadeMaterial = createFacadeMaterial(uTimeNode, uEnergyNode, { uCityLight, uDim });
+    const facadeMaterial = createFacadeMaterial(uTimeNode, uEnergyNode, { uCityLight, uIgniteRadius, uDim });
     const towers = new THREE.InstancedMesh(sharedBox, facadeMaterial, TOWER_COUNT);
     towers.name = 'city-tower-instances-tsl';
     towers.instanceMatrix.setUsage(THREE.StaticDrawUsage);
@@ -832,7 +846,10 @@ function createConduitMaterial(uTime, uEnergy, { colorA, colorB, uReveal } = {})
     // Dormant seams glow at ~18 %; ignition lifts them to full.
     const revealGain = uRevealNode.mul(0.82).add(0.18);
     const lines = max(seams, ribs);
-    const glow = lines.mul(pulse.mul(0.55).add(0.45))
+    // Ignited, the faces between the seams take a faint inner glow too (the structure is
+    // charged, not just outlined).
+    const fill = uRevealNode.mul(uRevealNode).mul(0.12);
+    const glow = lines.mul(pulse.mul(0.55).add(0.45)).add(fill)
         .mul(uEnergy.mul(0.5).add(0.75))
         .mul(revealGain);
     // Add the surge as a white-hot core lift on top of the tinted glow.
@@ -949,7 +966,9 @@ export function createNeonCitySpireTSL(uTime, uEnergy) {
     // outward (eased) and fades, a triumphant pulse radiating from the ignited beacon. Its
     // base scale is tiny so at reveal=0 it's invisible; the chapter update() drives the
     // reveal-eased scale + opacity each frame. Soft additive, capped — bloom gilds it.
-    const shockRingGeo = new THREE.TorusGeometry(8, 1.4, 8, 64);
+    // Unit-radius, hair-thin torus scaled to the pulse RADIUS (2026-10): the old 8/1.4 torus
+    // scaled ~30x grew a 40-u tube — a fat teal donut parked over the skyline.
+    const shockRingGeo = new THREE.TorusGeometry(1, 0.011, 6, 128);
     const shockRingMat = new THREE.MeshBasicMaterial({
         color: CYAN,
         transparent: true,
