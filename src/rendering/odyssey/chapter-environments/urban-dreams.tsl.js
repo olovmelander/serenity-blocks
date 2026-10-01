@@ -999,14 +999,14 @@ export function createNeonCitySpireTSL(uTime, uEnergy) {
 
 // ── Holographic sign (scanlines + scroll + flicker; additive, bloom-eligible) ─────
 
-function createSignMaterial(uTime, uEnergy, { color } = {}) {
+function createSignMaterial(uTime, uEnergy, { color, glyphGrid = [18, 5] } = {}) {
     const uColor = uniform(new THREE.Color(color ?? CYAN));
 
     const vUv = uv();
 
     const scan = sin(vUv.y.add(uTime.mul(0.12)).mul(60.0)).mul(0.5).add(0.5);
     const scroll = step(0.5, fract(vUv.x.mul(6.0).sub(uTime.mul(0.35))));
-    const glyphs = hash21(vUv.mul(vec2(18.0, 5.0)).floor().add(uTime.mul(1.2).floor()));
+    const glyphs = hash21(vUv.mul(vec2(glyphGrid[0], glyphGrid[1])).floor().add(uTime.mul(1.2).floor()));
     const body = scan.mul(0.4).add(0.35)
         .mul(scroll.mul(0.5).add(0.5))
         .mul(glyphs.mul(0.6).add(0.6));
@@ -1038,32 +1038,39 @@ export function createHologramSignsTSL(uTime, uEnergy) {
     const geometries = [];
     const materials = [];
 
-    // Signs flank the corridor and stick to the cohesive cyan/magenta duo (the former
-    // purple and green signs fought the palette). Alternating sides frame the path.
+    // 2026-10: the four signs sat at z -560..-690 (beyond everything the camera reaches,
+    // stacked behind the spire). They now line the boulevard along the camera's whole
+    // travel and on into the distance: tall BLADE signs projecting from the facades toward
+    // the lane (vertical glyph columns, Blade Runner style) and a few wide MARQUEES at the
+    // tower bases. Four shared materials (blade/marquee x cyan/magenta), still 4 pipelines.
+    const bladeGeo = new THREE.PlaneGeometry(5, 24);
+    const marqueeGeo = new THREE.PlaneGeometry(30, 6);
+    geometries.push(bladeGeo, marqueeGeo);
+    const mats = {
+        bladeCyan: createSignMaterial(uTimeNode, uEnergyNode, { color: CYAN, glyphGrid: [2, 12] }),
+        bladeMagenta: createSignMaterial(uTimeNode, uEnergyNode, { color: MAGENTA, glyphGrid: [2, 12] }),
+        marqueeCyan: createSignMaterial(uTimeNode, uEnergyNode, { color: CYAN, glyphGrid: [16, 3] }),
+        marqueeMagenta: createSignMaterial(uTimeNode, uEnergyNode, { color: MAGENTA, glyphGrid: [16, 3] }),
+    };
+    materials.push(...Object.values(mats));
+    // [kind, side, x-offset from the lane, y, z]
     const configs = [
-        {
-            x: -96, y: 40, z: -600, w: 42, h: 14, color: CYAN,
-        },
-        {
-            x: 96, y: 24, z: -630, w: 50, h: 16, color: MAGENTA,
-        },
-        {
-            x: -70, y: -4, z: -560, w: 36, h: 12, color: MAGENTA,
-        },
-        {
-            x: 60, y: 60, z: -690, w: 58, h: 15, color: CYAN,
-        },
+        ['blade', -1, 27, 8, 92], ['blade', 1, 27, -6, 60], ['marquee', -1, 29, -40, 34],
+        ['blade', 1, 28, 14, 6], ['blade', -1, 28, -12, -36], ['marquee', 1, 30, -38, -70],
+        ['blade', -1, 30, 22, -110], ['blade', 1, 29, 4, -160], ['blade', -1, 31, -8, -230],
+        ['marquee', -1, 31, -34, -280], ['blade', 1, 31, 18, -320], ['blade', -1, 32, 30, -410],
     ];
-
-    configs.forEach((config, index) => {
-        const geometry = new THREE.PlaneGeometry(config.w, config.h);
-        const material = createSignMaterial(uTimeNode, uEnergyNode, { color: config.color });
-        const sign = new THREE.Mesh(geometry, material);
-        sign.position.set(config.x, config.y, config.z);
-        sign.rotation.y = (index % 2 === 0 ? 1 : -1) * 0.18;
+    configs.forEach(([kind, side, offset, y, z], index) => {
+        const blade = kind === 'blade';
+        const cyan = (index % 3) !== 1;
+        let material;
+        if (blade) material = cyan ? mats.bladeCyan : mats.bladeMagenta;
+        else material = cyan ? mats.marqueeCyan : mats.marqueeMagenta;
+        const sign = new THREE.Mesh(blade ? bladeGeo : marqueeGeo, material);
+        sign.position.set(side * offset, y, z);
+        // Blades face down the boulevard toward the camera; marquees angle toward the lane.
+        sign.rotation.y = blade ? 0 : side * -0.5;
         group.add(sign);
-        geometries.push(geometry);
-        materials.push(material);
     });
 
     return {
