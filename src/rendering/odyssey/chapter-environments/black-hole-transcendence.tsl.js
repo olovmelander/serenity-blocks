@@ -1,115 +1,129 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
- * @fileoverview Black Hole Transcendence (Chapter 7) — TSL/WebGPU conversion.
+ * @fileoverview Black Hole Transcendence (Chapter 7) — TSL/WebGPU materials.
  *
- * Part of the Odyssey AAA WebGPU migration (P3 — chapter conversion). See
- * docs/ODYSSEY_MODE_AAA_OVERHAUL_PLAN.md §5/§6. Faithful TSL ports of
- * black-hole-transcendence.js's five GLSL ShaderMaterials — the void nebula dome,
- * the hero event-horizon accretion disk, the gravitational-lensing Einstein-ring
- * shell, and the two twinkling point fields (transcendence shards + lensed
- * starfield) — rebuilt as NodeMaterials so they run on the WebGPURenderer and its
- * automatic WebGL2 fallback backend.
+ * MASTERPIECE PASS (2026-10): the chapter's hero is one Gargantua-style black hole (see
+ * black-hole-transcendence.js). The builders here paint it:
+ *   - createVoidDomeTSL           near-black deep space, faint magenta/indigo nebulosity
+ *   - createAccretionDiskTSL      the thin white-hot band: BOUNDED rigid rotation + a fixed
+ *                                 spiral shear (no unbounded winding), view-dependent Doppler
+ *   - createGargantuaPhotonRingTSL the razor ring at the shadow's edge
+ *   - createLensedFoldMaterialTSL the lensed far side of the disk, over/under the shadow
+ *   - createLensingStarfieldTSL   a far star shell for the ch7 post lens to bend
+ *   - corridor dust / infall embers / shards — the near-life particle layers
  *
- * The live file's `ODYSSEY_NOISE_GLSL` (od_* value noise) maps to the shared TSL
- * noise lib: fbm3 → fbm3, ridged3 → ridged3 (same lacunarity/octaves), so the look
- * carries over GLSL→TSL. The additive accretion/photon/lensing/shard/starfield
- * surfaces are tagged `userData.emitsBloom = true` for the future MRT selective-bloom
- * pass; emissiveNode is wired when the TSL post graph lands (kept off here so the
- * standalone pilot harness, which has no MRT bloom, does not double-brighten). The
- * void dome is the backstop and deliberately carries NO emitsBloom.
- *
- * This is ADDITIVE: the live black-hole-transcendence.js (raw GLSL ShaderMaterial on
- * WebGLRenderer) is untouched and keeps working.
+ * Every fading material keeps an ecotone bridge (`material.uniforms = { uOpacity }`): r181+
+ * makes `material.opacity` a dead write wherever an opacityNode is authored, so the bridge IS
+ * the chapter crossfade (tests/unit/odyssey-wave46-scope-invariants.test.js counts them).
+ * The shared noise is the Ashima/value-noise lib (never MaterialX noise), and every billboard
+ * is `billboardLocal` — the chapter group is anchored ~1.4 km from the origin.
  */
 
 import * as THREE from 'three/webgpu';
 import {
     abs,
     atan,
+    attribute,
+    cameraPosition,
     clamp,
     cos,
+    cross,
     dot,
+    float,
+    fract,
     length,
+    log,
     max,
     mix,
+    mod,
+    modelViewPosition,
+    modelWorldMatrix,
     normalize,
     oneMinus,
     positionLocal,
-    positionViewDirection,
+    positionView,
+    positionWorld,
     pow,
     sin,
     smoothstep,
-    normalView,
     uniform,
     uv,
+    varying,
     vec3,
-    attribute,
+    vec4,
 } from 'three/tsl';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
-import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
-// ── Void nebula dome (-100 backstop; must NOT bloom) ─────────────────────────────
+const TAU = Math.PI * 2;
 
 /**
- * Deep magenta/indigo nebula backstop — FBM dust + ridged filaments graded against a
- * dark vertical base. Port of domeFragmentShader.
- * @param {object} uTime shared time uniform (uniform(0))
- * @param {object} [uEnergy] shared energy uniform (uniform(0.4))
+ * Where Gargantua hangs relative to the eye (world units), shared by ch7's camera lock and
+ * ch6's omen handoff so the two land on the same spot at the 6->7 seam.
  */
-export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4)) {
+export const GARGANTUA_LOCK = Object.freeze({
+    lockDepth: 900,
+    // Screen-anchor bias: the hero rides the upper-centre third, a hair right (the rail owns
+    // the lower centre and climbs into it).
+    upBias: 150,
+    rightBias: 26,
+    shadowRadius: 132,
+});
+
+const _lockFwd = new THREE.Vector3();
+const _lockUp = new THREE.Vector3();
+const _lockRight = new THREE.Vector3();
+
+/**
+ * World position of the lock: `lockDepth` ahead of the eye on the CAMERA'S basis (its own
+ * up vector — the ch7 spline climbs near-vertically, where a world-up basis degenerates).
+ * @returns {THREE.Vector3} `out`
+ */
+export function resolveGargantuaLockPosition(camera, out) {
+    camera.getWorldDirection(_lockFwd).normalize();
+    _lockUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    _lockRight.crossVectors(_lockFwd, _lockUp);
+    if (_lockRight.lengthSq() < 1e-8) _lockRight.set(1, 0, 0);
+    _lockRight.normalize();
+    _lockUp.crossVectors(_lockRight, _lockFwd).normalize();
+    return out.copy(camera.position)
+        .addScaledVector(_lockFwd, GARGANTUA_LOCK.lockDepth)
+        .addScaledVector(_lockUp, GARGANTUA_LOCK.upBias)
+        .addScaledVector(_lockRight, GARGANTUA_LOCK.rightBias);
+}
+
+// ── Void dome — deep space (-100 backstop; must NOT bloom) ──────────────────────────
+
+/** Radius of the ch7 dome — centred on the chapter, so the camera is always inside it. */
+export const CH7_VOID_DOME_RADIUS = 3000;
+
+/**
+ * Near-black deep space with a faint magenta/indigo nebulosity and a few gold veins. It
+ * used to be a 520 u sphere hung 740 u AHEAD of the chapter centre with a raised violet
+ * floor — the camera sat outside it and saw a purple disc of noise (the "noise walls").
+ * Five noise octaves instead of twelve: it covers the whole frame.
+ * @param {object} uTime shared time uniform
+ * @param {object} [uEnergy] shared energy uniform
+ */
+export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4), options = {}) {
     const uOpacity = uniform(1);
+    const radius = options.radius ?? CH7_VOID_DOME_RADIUS;
 
     const dir = normalize(positionLocal);
     const h = dir.y.mul(0.5).add(0.5);
-    // Deep-violet ambient floor (NOT true RGB-black) so the corridor never reads as a
-    // dead black void; the top fades to a richer indigo for vertical depth. Both ends
-    // stay far below white — the lead's "raise the void-dome luminance so its FBM
-    // filaments read" without any blowout. Floors RAISED hard (B2 stop-the-crush): even a
-    // frame with no nebula pocket in view must read as structured deep-violet, never the
-    // RGB-black voids the mid-chapter capture frames show.
-    const base = mix(vec3(0.072, 0.040, 0.130), vec3(0.150, 0.070, 0.250), h);
+    // Never RGB-zero (a Ghibli frame is never dead black), but a void, not a violet room.
+    const base = mix(vec3(0.004, 0.003, 0.010), vec3(0.010, 0.006, 0.022), h);
 
-    const q = dir.mul(3.4).add(vec3(0.0, 0.0, uTime.mul(0.03)));
-    // Octaves 5->3 (perf): this is a full-screen BackSide dome (the mode's heaviest fragment,
-    // stacked under the ambient wash). Octaves 4-5 are low-amplitude detail eaten by the
-    // pocket smoothstep below + ACES downstream — same cut already verified safe on ch5/ch6.
-    const dust = fbm3(q, 3);
-    const filaments = ridged3(q.mul(0.8).add(7.0), 3);
-
-    // Nebula POCKETS: a low-frequency ridged field carved into bright/dim cells so the
-    // dome reads as clustered nebula structure (pockets) rather than a uniform haze.
-    // Widened smoothstep (0.12..0.70) so pockets cover MORE of the dome and the dimmest
-    // cells still carry visible nebula instead of going dark.
-    const pocketRaw = ridged3(dir.mul(1.15).add(vec3(0.0, 0.0, uTime.mul(0.012)).add(21.0)), 3);
-    const pockets = smoothstep(0.12, 0.70, pocketRaw);
-
-    // Hotter, more saturated magenta filaments threading the void (preserves the magenta
-    // identity). Filament/dust gains lifted ~30% (B2) and gated by the pocket mask so the
-    // bright nebula concentrates in pockets and reads clearly against the deep base, while
-    // the lifted pocket floor keeps the whole dome structured rather than sparse hotspots.
-    let nebula = vec3(0.62, 0.10, 0.56).mul(filaments).mul(pockets.mul(0.85).add(0.72));
-    nebula = nebula.add(vec3(0.14, 0.24, 0.56).mul(dust).mul(pockets.mul(0.7).add(0.78)));
-
-    // RICHER VOID COLOUR (additive, soft): thread cooler-cyan and warm-gold filaments
-    // through the magenta/indigo so the void reads multi-hued (magenta/cyan/gold/violet),
-    // not a single magenta haze. A second, higher-frequency ridged field carves the
-    // gold/cyan veins so they layer over the primary filaments rather than tracking them;
-    // gated by `pockets` so the accents stay inside the clustered nebula structure, and
-    // kept low-luminance (deep-void discipline — no blowout, ACES downstream).
-    const veins = ridged3(q.mul(1.35).add(13.0), 3);
-    const goldVein = vec3(0.30, 0.20, 0.06).mul(pow(veins, 2.0)).mul(pockets.mul(0.6).add(0.2));
-    const cyanVein = vec3(0.05, 0.22, 0.34).mul(filaments).mul(pockets.mul(0.5).add(0.18));
-    nebula = nebula.add(goldVein).add(cyanVein);
-
-    const color = base.add(nebula.mul(uEnergy.mul(0.5).add(0.85)));
-
-    // NOTE (masterplan B3, attempted + reverted 2026-07-05): folding the camera-enveloping
-    // ambient wash (createAmbientWashTSL) into this dome to save a full-screen pass REGRESSED
-    // the corridor — the wash is re-centred on the camera every frame so it always fills the
-    // frame, whereas this dome is world-anchored (fixed z), so at chapter positions where it
-    // doesn't cover the corners those pixels fell back to RGB-black (the exact crush the wash
-    // prevents). The two domes serve different roles and can't be merged without an enveloping
-    // void dome. Left separate; a real B3 needs the void dome itself to envelop the camera.
+    const q = dir.mul(2.1).add(vec3(0.0, 0.0, uTime.mul(0.004)));
+    const cloud = fbm3(q, 3);
+    const veins = ridged3(q.mul(1.7).add(7.0), 2);
+    const body = smoothstep(0.50, 0.78, cloud);
+    // Amplitudes are set against the display-space grade (2026-10-01): linear 0.07 already
+    // reads as a strong violet there, so the nebulosity stays a whisper.
+    let nebula = vec3(0.012, 0.003, 0.015).mul(body); // deep magenta-violet
+    nebula = nebula.add(vec3(0.002, 0.003, 0.008).mul(smoothstep(0.45, 0.70, cloud))); // indigo haze
+    nebula = nebula.add(vec3(0.030, 0.016, 0.006).mul(smoothstep(0.64, 0.88, veins)).mul(body)); // gold veins
+    const color = base.add(nebula.mul(uEnergy.mul(0.25).add(0.85)));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -119,127 +133,99 @@ export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4)) {
     material.transparent = true;
     material.depthWrite = false;
 
-    const geometry = new THREE.SphereGeometry(520, 48, 32);
+    const geometry = new THREE.SphereGeometry(radius, 48, 32);
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'ch7-void-dome';
     mesh.renderOrder = -100;
+    mesh.frustumCulled = false;
     return {
         mesh, material, geometry, uniforms: { uOpacity },
     };
 }
 
-// ── Hero accretion disk (additive, bloom-eligible) ───────────────────────────────
+// ── Accretion disk — the thin white-hot band (additive, bloom-eligible) ─────────────
 
 /**
- * Swirling plasma accretion disk with Doppler beaming and streak bands. Port of
- * accretionFragmentShader on a RingGeometry; vRadius/vAngle/vLocal are recomputed
- * from positionLocal.xy (the ring lies in its local XY plane).
+ * Gargantua's disk on a RingGeometry (in its local XY plane).
+ *
+ * MOTION IS BOUNDED. The old swirl added `uTime * speed(r)` to the angle: the inner orbit
+ * outran the outer by ~1.3 rad/s, so within minutes neighbouring radii were hundreds of
+ * turns apart and the noise aliased into radial static. Now each of two layers is a RIGID
+ * rotation wrapped to [0, 2π) (seamless — the noise is sampled on the circle), the spiral is
+ * a FIXED log shear, the inner layer simply turns faster than the outer and is cross-faded
+ * by radius, and time otherwise only advances the noise's z (evolution, not winding).
+ *
+ * DOPPLER FROM THE VIEW. Brightness/hue are beamed by `dot(orbital tangent, toward-eye)` in
+ * world space (the idea from the black-hole theme's disk, re-written here — theme code is
+ * never imported into Odyssey's boot closure): the approaching limb blazes white, the
+ * receding limb sinks to a deep amber, whichever way the camera looks.
  */
 export function createAccretionDiskTSL(uTime = uniform(0), uEnergy = uniform(0.4), options = {}) {
-    // Geometry inner/outer radii. The hero copy passes a larger outerRadius so the disk
-    // geometry actually extends out to the enlarged uOuter (raising uOuter alone would
-    // only re-map the falloff inside the fixed 132-unit ring). Default keeps the close
-    // hero + secondary motifs at the original 42..132 torus.
-    const innerRadius = options.innerRadius ?? 42;
-    const outerRadius = options.outerRadius ?? 132;
+    const innerRadius = options.innerRadius ?? 177;
+    const outerRadius = options.outerRadius ?? 634;
     const uInner = uniform(innerRadius);
     const uOuter = uniform(outerRadius);
-    // Enriched accretion palette: incandescent gold-white inner edge -> deep saturated
-    // magenta plasma -> rich electric-blue Doppler outer. Higher saturation across the
-    // ramp so the disk reads with more colour contrast (not a flat pink wash) while
-    // keeping the magenta-filament + black-void identity.
-    const uHot = uniform(new THREE.Color(0xfff4cf));
-    const uMid = uniform(new THREE.Color(0xff2ea8));
-    const uCool = uniform(new THREE.Color(0x3aa0ff));
+    const uHot = uniform(new THREE.Color(0xfff4e6)); // white-hot inner edge
+    const uMid = uniform(new THREE.Color(0xffa548)); // gold
+    const uCool = uniform(new THREE.Color(0xa83c16)); // deep amber outskirts
+    const uAccent = uniform(new THREE.Color(0xc8448c)); // magenta — a breath at the outer rim
 
     const local = positionLocal.xy;
-    const vRadius = length(local);
-    const vAngle = atan(local.y, local.x);
+    const r = length(local);
+    const t = clamp(r.sub(uInner).div(uOuter.sub(uInner)), 0.0, 1.0);
+    const ang = atan(local.y, local.x);
 
-    const t = clamp(vRadius.sub(uInner).div(uOuter.sub(uInner)), 0.0, 1.0);
-    const swirl = vAngle.add(uTime.mul(oneMinus(t).mul(2.0).add(0.7)));
-    const sp = vec3(cos(swirl), sin(swirl), 0.0).mul(t.mul(3.4).add(0.7));
-    const turb = fbm3(sp.mul(1.8).add(vec3(0.0, 0.0, uTime.mul(0.16))), 4);
-    const streaks = sin(swirl.mul(4.0).add(t.mul(18.0)).sub(uTime.mul(1.4))).mul(0.5).add(0.5);
-    const plasma = mix(turb, streaks, 0.45);
+    const shear = log(max(r.div(uInner), 1.0)).mul(2.6);
+    const ringA = ang.sub(mod(uTime.mul(0.40), TAU)).add(shear);
+    const ringB = ang.sub(mod(uTime.mul(0.15), TAU)).add(shear);
+    const evolve = uTime.mul(0.05);
+    const rad = t.mul(2.4).add(0.8);
+    const nA = fbm3(vec3(cos(ringA).mul(rad), sin(ringA).mul(rad), evolve).mul(1.7), 3);
+    const nB = fbm3(vec3(cos(ringB).mul(rad), sin(ringB).mul(rad), evolve.add(7.0)).mul(1.7), 3);
+    const turb = mix(nA, nB, smoothstep(0.15, 0.65, t));
+    // Fine concentric striations, wobbled by the turbulence — the dense lane structure of a
+    // thin disk seen nearly edge-on.
+    const striae = sin(t.mul(70.0).add(turb.mul(8.0))).mul(0.5).add(0.5);
+    const plasma = turb.mul(0.85).add(0.30).mul(mix(float(0.55), float(1.0), striae.mul(striae)));
 
-    // SOFT VOLUME radial ramp — feather alpha to EXACTLY 0 before BOTH ring edges so the
-    // disk reads as a plasma torus, not a flat card. innerFeather lifts off the horizon,
-    // outerFeather dissolves the rim well before the geometry edge (t→1), and body is a
-    // fat soft falloff peaking off-centre for an inner/outer parallax volume read.
-    const innerFeather = smoothstep(0.0, 0.14, t);
-    const outerFeather = oneMinus(smoothstep(0.58, 0.985, t));
-    const body = pow(oneMinus(clamp(abs(t.sub(0.2).mul(1.7)), 0.0, 1.0)), 1.6).mul(0.7).add(0.3);
-    const radial = innerFeather.mul(outerFeather).mul(body);
+    // Temperature ladder: white-hot at the inner edge → gold → deep amber; magenta only as a
+    // breath at the far rim.
+    const temp = pow(oneMinus(t), 1.7);
+    let color = mix(uCool, uMid, smoothstep(0.0, 0.5, temp));
+    color = mix(color, uHot, smoothstep(0.5, 0.92, temp));
+    color = mix(color, uAccent, smoothstep(0.70, 1.0, t).mul(0.35));
 
-    // Bright Doppler-warped INNER EDGE — a hot incandescent lip hugging the horizon,
-    // brightest where the beaming approaches. Feathered, so no hard inner ring.
-    const innerLip = pow(oneMinus(smoothstep(0.0, 0.11, t)), 1.4).mul(innerFeather);
+    const centre = modelWorldMatrix.mul(vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    const axis = normalize(modelWorldMatrix.mul(vec4(0.0, 0.0, 1.0, 0.0)).xyz);
+    const tangent = normalize(cross(axis, positionWorld.sub(centre)));
+    const toEye = normalize(cameraPosition.sub(positionWorld));
+    const doppler = dot(tangent, toEye); // +1 approaching, -1 receding
+    const beam = pow(clamp(doppler.mul(0.5).add(1.0), 0.4, 1.5), 2.0);
+    color = mix(color, vec3(0.88, 0.93, 1.0), smoothstep(0.2, 0.9, doppler).mul(temp).mul(0.35));
+    color = mix(color, color.mul(vec3(1.0, 0.55, 0.32)), smoothstep(0.2, 0.9, doppler.negate()).mul(0.55));
 
-    // Doppler asymmetry across the disk (local.x): one limb approaches (beamed hot,
-    // bright) and the opposite recedes (dim, red/blue-shifted). Kept as a SMOOTH ramp
-    // (smoothstep across the full diameter) so there is no hard edge — the iconic
-    // asymmetric accretion look comes from the gradient, not a seam. `dopplerSide` is a
-    // signed -1..+1 limb selector used both to brighten the approaching limb and to tint.
-    const dopplerSide = smoothstep(uOuter.negate(), uOuter, local.x); // 0 receding -> 1 approaching
-    const doppler = dopplerSide.mul(0.95).add(0.42); // brightness beaming (wider asymmetry)
+    const innerFeather = smoothstep(0.0, 0.035, t);
+    const outerFeather = oneMinus(smoothstep(0.5, 1.0, t));
+    const glow = temp.mul(1.55).add(0.10);
+    const intensity = glow.mul(plasma).mul(beam).mul(uEnergy.mul(0.25).add(0.9));
 
-    let intensity = radial.mul(plasma.add(0.35)).mul(doppler);
-    intensity = intensity.add(innerLip.mul(doppler).mul(0.9)); // hot Doppler inner edge
-    intensity = intensity.mul(uEnergy.mul(0.7).add(1.0));
-
-    // Base radial color ramp (gold-white core -> magenta body -> electric blue rim).
-    let color = mix(uHot, uMid, smoothstep(0.0, 0.38, t));
-    color = mix(color, uCool, smoothstep(0.38, 1.0, t));
-    // Doppler COLOR shift: push the approaching limb hot gold-white and the receding limb
-    // toward cool blue, smoothly across the diameter (no hard edge). This is the readable
-    // "hot gold-white approaching -> magenta body -> blue receding" identity the plan asks
-    // for; the mix weight is gentle so the magenta body still dominates the centre.
-    color = mix(color, uCool.mul(0.85), oneMinus(dopplerSide).mul(0.45)); // receding -> blue
-    color = mix(color, uHot, dopplerSide.mul(0.40)); // approaching -> gold-white
-    color = color.add(vec3(0.32, 0.10, 0.42).mul(doppler).mul(radial));
-
-    // RICHER COLOUR INTERPLAY (additive, soft): weave violet + cyan + gold filament
-    // accents through the plasma body so the disk reads as multi-hued banded matter
-    // (magenta/cyan/gold/violet) instead of a single magenta wash. Each accent rides an
-    // out-of-phase angular streak modulated by the existing turbulence, and is gated by
-    // `radial` so it stays inside the feathered body (no edge), and scaled low so ACES +
-    // threshold bloom never see white.
-    const filamentA = sin(swirl.mul(3.0).sub(uTime.mul(0.9))).mul(0.5).add(0.5);
-    const filamentB = sin(swirl.mul(5.0).add(t.mul(9.0)).add(uTime.mul(0.6))).mul(0.5).add(0.5);
-    const violetBand = vec3(0.46, 0.12, 0.70).mul(pow(filamentA, 2.0).mul(turb.add(0.3)));
-    const cyanBand = vec3(0.10, 0.42, 0.62).mul(pow(filamentB, 2.0).mul(streaks.add(0.2)));
-    const goldBand = vec3(0.52, 0.34, 0.10)
-        .mul(pow(oneMinus(smoothstep(0.0, 0.30, t)), 1.6).mul(filamentB));
-    color = color.add(violetBand.add(cyanBand).add(goldBand).mul(radial).mul(0.55));
-    color = color.add(uHot.mul(innerLip.mul(0.6))); // incandescent inner lip seats the core
-
-    // Subtle atmosphere/rim haze — a faint magenta-cyan glow that bleeds OUTSIDE the
-    // bright body and fades to 0 before the geometry edge, so the hero seats into the
-    // void haze rather than floating on black. Kept low (ACES is downstream; no blowout).
-    const rimGlow = smoothstep(0.42, 0.74, t).mul(oneMinus(smoothstep(0.74, 0.985, t)));
-    const atmo = uCool.mul(rimGlow.mul(0.22));
-
-    // Optional fade multiplier (default 1). The close ENTRY event horizon passes a shared
-    // uFade so the .js update() can ramp it OUT by ~25% chapter progress, handing off to
-    // the camera-locked hero with no popping.
+    // Optional within-chapter fade (default 1) + the cross-chapter ecotone bridge.
     const uFade = options.uFade ?? uniform(1);
-    // Cross-chapter ecotone crossfade (manager-driven, orthogonal to the within-chapter
-    // uFade entry→hero handoff). Without this the authored opacityNode replaces
-    // material.opacity in r181, so the manager crossfade is a no-op and the hero hard-pops
-    // at the Ch6→7 / 7→8 seams (backlog #4).
     const uOpacity = options.uOpacity ?? uniform(1);
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = color.mul(intensity).add(atmo);
-    material.opacityNode = clamp(intensity.add(rimGlow.mul(0.18)), 0.0, 1.0).mul(uFade).mul(uOpacity);
+    material.colorNode = color.mul(intensity);
+    material.opacityNode = innerFeather.mul(outerFeather).mul(uFade).mul(uOpacity);
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    // Additive + no depth write ⇒ the DoubleSide split pass buys nothing (odyssey-planet-aurora).
+    material.forceSinglePass = true;
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
 
-    const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 200, 6);
+    const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 256, 12);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'accretion-disk-tsl';
     return {
@@ -252,222 +238,95 @@ export function createAccretionDiskTSL(uTime = uniform(0), uEnergy = uniform(0.4
     };
 }
 
-// ── Gravitational-lensing Einstein-ring shell (additive, bloom-eligible) ─────────
+// Shared view-space read for the camera-facing rim pieces: where this fragment sits around
+// the shadow (radius in shadow radii, and which side — the disk's approaching limb is the
+// LEFT one for its counter-clockwise orbit seen from just above the plane).
+function rimFrame(shadowRadius) {
+    const offset = positionView.xy.sub(modelViewPosition.xy);
+    const dist = length(offset).max(1e-3);
+    return {
+        rr: dist.div(shadowRadius),
+        side: offset.x.negate().div(dist), // +1 left (approaching), -1 right
+        above: offset.y.div(dist), // +1 top, -1 bottom
+        angle: atan(offset.y, offset.x),
+    };
+}
 
-/**
- * View-space fresnel band on a sphere — reads as a lensed Einstein ring around the
- * horizon. Port of lensFragmentShader. dot(vNormal, vView) → dot(view-space normal,
- * view direction toward camera).
- */
-export function createLensingShellTSL(uTime = uniform(0), uEnergy = uniform(0.4), options = {}) {
-    // Vivid lensed Einstein ring: electric cyan grading into a hotter magenta that ties
-    // to the accretion mid-tone.
-    const uColorA = uniform(new THREE.Color(0x6ae8ff));
-    const uColorB = uniform(new THREE.Color(0xff4ec8));
-    // Optional fade multiplier (default 1) so the close ENTRY shell can ramp out with the
-    // rest of the entry horizon (see createAccretionDiskTSL uFade).
-    const uFade = options.uFade ?? uniform(1);
-    // Cross-chapter ecotone crossfade (see createAccretionDiskTSL — backlog #4).
-    const uOpacity = options.uOpacity ?? uniform(1);
+// ── Photon ring — the razor of light at the shadow's edge (additive, bloom) ─────────
 
-    const vNormal = normalView;
-    const vView = positionViewDirection;
+export function createGargantuaPhotonRingTSL(uTime = uniform(0), options = {}) {
+    const shadowRadius = options.shadowRadius ?? 132;
+    const inner = options.innerRadius ?? shadowRadius;
+    const outer = options.outerRadius ?? shadowRadius * 1.075;
+    const uOpacity = uniform(1);
 
-    const fres = pow(oneMinus(max(0.0, dot(vNormal, vView))), 2.0);
-    const band = smoothstep(0.2, 0.5, fres).mul(oneMinus(smoothstep(0.72, 1.0, fres)));
-    const shimmer = sin(uTime.mul(1.6).add(fres.mul(18.0))).mul(0.2).add(0.8);
-    // Faint wide atmosphere bleed inside the ring threshold so the Einstein ring seats
-    // into the haze with no hard inner cutoff. Additive + low, never a white edge.
-    const atmo = smoothstep(0.04, 0.3, fres).mul(oneMinus(smoothstep(0.3, 0.5, fres)));
-    const color = mix(uColorA, uColorB, fres).mul(band).mul(shimmer).add(uColorA.mul(atmo.mul(0.22)));
-    const alpha = band.mul(uEnergy.mul(0.4).add(0.55)).add(atmo.mul(0.12)).mul(uFade).mul(uOpacity);
+    const { side, angle } = rimFrame(shadowRadius);
+    const across = uv().y; // RingGeometry: 0 at the inner edge → 1 at the outer
+    // A razor: bright against the shadow, a soft fall outward.
+    const profile = smoothstep(0.0, 0.18, across).mul(oneMinus(smoothstep(0.30, 1.0, across)));
+    const beam = pow(clamp(side.mul(0.45).add(1.0), 0.45, 1.5), 2.0);
+    const flicker = sin(angle.mul(9.0).add(uTime.mul(0.9))).mul(0.06).add(0.94);
+    const color = mix(vec3(1.0, 0.74, 0.46), vec3(1.0, 0.96, 0.9), smoothstep(0.6, 1.4, beam));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = color;
-    material.opacityNode = alpha;
+    material.colorNode = color.mul(profile.mul(beam).mul(flicker).mul(1.6));
+    material.opacityNode = profile.mul(uOpacity);
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
+    material.blending = THREE.AdditiveBlending;
+    material.userData.emitsBloom = true;
+
+    const geometry = new THREE.RingGeometry(inner, outer, 256, 2);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'gargantua-photon-ring-tsl';
+    return {
+        mesh, material, geometry, uniforms: { uOpacity },
+    };
+}
+
+// ── Lensed fold arcs — the far side of the disk, bent over/under the shadow (bloom) ─
+
+/**
+ * Material for the two camera-facing fold tori — the image of the disk's FAR side, bent over
+ * (and, dimmer, under) the shadow. The torus is only coverage: the light is a RADIAL profile
+ * around the shadow, brightest hard against its edge and thinning outward like the disk seen
+ * from above, carrying the disk's own striations and temperature, Doppler-beamed by side.
+ */
+export function createLensedFoldMaterialTSL(uTime = uniform(0), options = {}) {
+    const shadowRadius = options.shadowRadius ?? 132;
+    const opacity = options.opacity ?? 0.85;
+    const uOpacity = uniform(1);
+
+    const {
+        rr, side, above, angle,
+    } = rimFrame(shadowRadius);
+    const rise = smoothstep(1.0, 1.05, rr);
+    const fall = pow(oneMinus(smoothstep(1.04, 1.42, rr)), 1.6);
+    const profile = rise.mul(fall);
+    const beam = pow(clamp(side.mul(0.5).add(1.0), 0.4, 1.5), 2.0);
+    const underside = mix(float(0.3), float(1.0), smoothstep(-0.25, 0.25, above));
+    const turb = fbm3(vec3(angle.mul(2.5), rr.mul(4.0), uTime.mul(0.05)), 2);
+    const striae = sin(rr.mul(70.0).add(turb.mul(8.0))).mul(0.5).add(0.5);
+    const texture = mix(float(0.6), float(1.0), striae.mul(striae)).mul(turb.mul(0.6).add(0.7));
+    const hot = oneMinus(smoothstep(1.03, 1.25, rr));
+    const color = mix(vec3(1.0, 0.56, 0.22), vec3(1.0, 0.94, 0.84), hot);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color.mul(profile.mul(beam).mul(underside).mul(texture).mul(1.3));
+    material.opacityNode = profile.mul(opacity).mul(uOpacity);
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.FrontSide;
     material.userData.emitsBloom = true;
-
-    const geometry = new THREE.SphereGeometry(50, 40, 24);
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'lensing-shell-tsl';
-    return {
-        mesh, material, geometry, uniforms: { uFade, uOpacity },
-    };
+    return material;
 }
 
-// ── Shared secondary-motif materials (B2 draw-call / program reduction) ───────────
-
-/**
- * B2 STRUCTURAL: the 5 secondary lensing motifs each used to build their OWN accretion
- * disk + lensing shell NodeMaterial (≈10 unique TSL programs) plus their own
- * geometries. The motifs are visually identical (all use the default 42..132 disk and
- * the 50-radius lens shell) and differ only by their parent group transform, so we can
- * share ONE disk material+geometry and ONE lens-shell material+geometry across all five.
- * This collapses the motif disk/shell programs from ~10 → 2 and reuses 2 geometries
- * instead of 10, with NO visual change (the per-motif spin/tilt/scale lives on the
- * group transform, not the material). The shared meshes still bloom (emitsBloom) exactly
- * as before. Returns factories that build fresh Mesh objects (a Mesh is per-instance —
- * only the material + geometry are shared, which is what saves the pipeline compiles).
- *
- * @param {object} uTime shared time uniform
- * @param {object} [uEnergy] shared energy uniform
- * @returns {{disk:{material,geometry}, shell:{material,geometry}, photonRing:{material,geometry},
- *           makeDiskMesh:Function, makeShellMesh:Function, makePhotonRingMesh:Function, dispose:Function}}
- */
-export function createSharedMotifMaterialsTSL(uTime = uniform(0), uEnergy = uniform(0.4)) {
-    // Build the disk + shell ONCE via the existing validated builders, then strip the
-    // single throwaway mesh — we keep only the shared material + geometry and re-mesh
-    // them per motif below.
-    const disk = createAccretionDiskTSL(uTime, uEnergy);
-    const shell = createLensingShellTSL(uTime, uEnergy);
-
-    // The motif photon ring is identical across all five (same RingGeometry + same
-    // additive gold material), so share one material + geometry for it too.
-    const photonRingGeometry = new THREE.RingGeometry(39, 44, 96, 1);
-    const photonRingMaterial = new THREE.MeshBasicMaterial({
-        color: 0xffe6b8,
-        transparent: true,
-        opacity: 0.82,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-    });
-
-    const makeDiskMesh = (name) => {
-        const mesh = new THREE.Mesh(disk.geometry, disk.material);
-        mesh.name = name ?? 'motif-accretion-disk-shared';
-        return mesh;
-    };
-    const makeShellMesh = (name) => {
-        const mesh = new THREE.Mesh(shell.geometry, shell.material);
-        mesh.name = name ?? 'motif-lensing-shell-shared';
-        return mesh;
-    };
-    const makePhotonRingMesh = (name) => {
-        const mesh = new THREE.Mesh(photonRingGeometry, photonRingMaterial);
-        mesh.name = name ?? 'motif-photon-ring-shared';
-        return mesh;
-    };
-
-    return {
-        disk: { material: disk.material, geometry: disk.geometry },
-        shell: { material: shell.material, geometry: shell.geometry },
-        photonRing: { material: photonRingMaterial, geometry: photonRingGeometry },
-        makeDiskMesh,
-        makeShellMesh,
-        makePhotonRingMesh,
-        dispose() {
-            disk.geometry.dispose();
-            disk.material.dispose();
-            shell.geometry.dispose();
-            shell.material.dispose();
-            photonRingGeometry.dispose();
-            photonRingMaterial.dispose();
-        },
-    };
-}
-
-// ── Deep-violet ambient wash (additive, camera-enveloping; must NOT blow white) ──
-
-// Post-fog-removal retune (backlog #3 follow-up): these floors/gains were "raised HARD
-// (B2 stop-the-crush)" back when the profile FogExp2 (density 0.012) was washing every
-// surface toward violet — the wash had to shout just to keep the frame off RGB-black.
-// Now that material.fog=false lets the void-dome backstop + heroes read on their own, the
-// camera-enveloping fresnel wash was the dominant OVER-bright element: a rim-bright
-// additive BackSide sphere reads as a giant white halo ringing the view and blowing the
-// frame edges out. Dialed back to its intended SUBTLE backstop role — the void dome (raised
-// violet floors) still prevents black, but the wash no longer dominates the finale.
-export const CH7_AMBIENT_WASH_SETTINGS = Object.freeze({
-    centerFloor: 0.56,
-    rimGain: 0.42,
-    opacityFloor: 0.20,
-    opacityCap: 0.44,
-    sphereRadius: 360,
-    floorColor: [0.14, 0.078, 0.26],
-});
-
-/**
- * A large additive inner-shell sphere of deep violet that the camera sits inside, so
- * the corridor between hero motifs never reads as dead RGB-black. The wash is a gentle
- * fresnel-graded glow (brighter toward the rim of view, faint dead-ahead) with a faint
- * drifting FBM mottle so it reads as nebular ambience, not a flat tint. Emissive is
- * kept deliberately low (peak ~0.12) and additive+feathered so ACES never sees a
- * white-blowing source. The .js update() re-centres this on the camera each frame.
- * @param {object} uTime shared time uniform
- * @param {object} [uEnergy] shared energy uniform
- */
-export function createAmbientWashTSL(uTime = uniform(0), uEnergy = uniform(0.4)) {
-    const uOpacity = uniform(1);
-
-    // Fresnel: brighter toward the silhouette rim of the enveloping shell (the edges of
-    // the view), faint where we look straight through it — a soft vignette of violet
-    // ambience rather than a uniform fog wall. A constant FLOOR is added so the wash
-    // also carries deep-violet ambience dead-ahead (where pure rim fresnel reads ~0),
-    // killing the "centre of frame goes RGB-black" the lead flagged.
-    const vNormal = normalView;
-    const vView = positionViewDirection;
-    const fres = pow(oneMinus(max(0.0, dot(vNormal, vView))), 1.4);
-    // Creative plan ch7 item 1 (the capture contradicts the code — AMPLIFY): centre
-    // floor lifted 0.55 → 0.68 so frames 07–14 genuinely sit at the #120A21 violet
-    // floor instead of falling back to RGB-black between motifs.
-    const view = fres.mul(CH7_AMBIENT_WASH_SETTINGS.rimGain)
-        .add(CH7_AMBIENT_WASH_SETTINGS.centerFloor);
-
-    // Drifting pocketed FBM filaments so the wash has internal structure that actually
-    // reads as nebula (bright clumps), not a flat band. The ridged term carves brighter
-    // violet filaments; the fbm term softens them into clouds.
-    const dir = normalize(positionLocal);
-    // Octaves 5->3 (perf): second full-screen BackSide dome overlapping the void dome on every
-    // background pixel; the high octaves vanish under the pocket smoothstep + low wash intensity.
-    const clouds = fbm3(dir.mul(2.2).add(vec3(0.0, 0.0, uTime.mul(0.02))), 3).mul(0.6).add(0.5);
-    const filaments = ridged3(dir.mul(1.6).add(vec3(0.0, 0.0, uTime.mul(0.015)).add(13.0)), 3);
-    const pockets = smoothstep(0.30, 0.85, filaments).mul(0.9).add(0.5);
-    const mottle = clouds.mul(pockets);
-
-    // Deep violet -> magenta-violet across the fresnel ramp; both ends low-luminance.
-    const floorColor = vec3(
-        CH7_AMBIENT_WASH_SETTINGS.floorColor[0],
-        CH7_AMBIENT_WASH_SETTINGS.floorColor[1],
-        CH7_AMBIENT_WASH_SETTINGS.floorColor[2],
-    );
-    const tint = mix(vec3(0.18, 0.075, 0.34), vec3(0.36, 0.10, 0.42), fres);
-    const intensity = view.mul(mottle).mul(uEnergy.mul(0.35).add(0.6));
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = floorColor.add(tint.mul(intensity));
-    // Hard cap the alpha so the additive wash stays a faint ambience (never a wall) —
-    // raised again 0.38 → 0.5 (creative plan amplification) so the violet floor holds
-    // in every frame; still well below a haze wall, ACES + threshold bloom downstream.
-    material.opacityNode = clamp(
-        intensity.mul(0.7).add(CH7_AMBIENT_WASH_SETTINGS.opacityFloor),
-        0.0,
-        CH7_AMBIENT_WASH_SETTINGS.opacityCap,
-    ).mul(uOpacity);
-    material.uniforms = { uOpacity }; // ecotone crossfade bridge
-    material.transparent = true;
-    material.depthWrite = false;
-    material.depthTest = false;
-    material.side = THREE.BackSide;
-    material.blending = THREE.AdditiveBlending;
-    // Intentionally NO emitsBloom: this is a backstop wash, not a bloom emitter.
-
-    const geometry = new THREE.SphereGeometry(CH7_AMBIENT_WASH_SETTINGS.sphereRadius, 32, 24);
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'ambient-violet-wash-tsl';
-    mesh.renderOrder = -95; // just in front of the void dome (-100), behind heroes
-    mesh.frustumCulled = false;
-    mesh.userData.readability = CH7_AMBIENT_WASH_SETTINGS;
-    return {
-        mesh, material, geometry, uniforms: { uOpacity },
-    };
-}
-
-// ── Drifting violet corridor dust (instanced billboards, additive feathered) ─────
+// ── Drifting corridor dust (instanced billboards, additive feathered) ────────────────
 
 export const CH7_CORRIDOR_DUST_SETTINGS = Object.freeze({
     minCount: 160,
@@ -478,24 +337,22 @@ export const CH7_CORRIDOR_DUST_SETTINGS = Object.freeze({
     depthSpan: 560,
     minSize: 5.5,
     sizeSpan: 11,
-    colorGain: 1.08,
-    glowPower: 1.7,
-    breatheBase: 0.36,
-    breatheSwing: 0.11,
-    opacityCap: 0.62,
+    // Masterpiece pass: the dust is parallax LIFE between the eye and the hero, not a
+    // coloured haze — dimmer and smaller than the violet bokeh it was.
+    colorGain: 0.7,
+    glowPower: 2.2,
+    breatheBase: 0.20,
+    breatheSwing: 0.08,
+    opacityCap: 0.4,
 });
 
 /**
- * Near/mid drifting violet dust motes that hug the corridor span the camera traverses,
- * so no frame between the singularity motifs goes empty. Instanced billboard quads
- * (THREE.Points renders 1px on WebGPU) with a radial alpha feather to 0 before the quad
- * edge. The .js create() lays the motes out across the chapter's local Y travel; the
- * .js update() re-centres the field on the camera so the camera is always inside it.
+ * Near/mid drifting dust motes that hug the corridor the camera traverses. Instanced
+ * billboard quads with a radial alpha feather to 0 before the quad edge; the .js update()
+ * re-centres the field on the camera so it is always inside it.
  * @param {object} uTime shared time uniform
  */
 export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) {
-    // Creative plan ch7 item 1: density raised toward 3× through the dead 07–23
-    // midsection (the .js scales off the quality preset); hard-capped for fill-rate.
     const count = Math.max(
         CH7_CORRIDOR_DUST_SETTINGS.minCount,
         Math.min(Math.floor(requestedCount), CH7_CORRIDOR_DUST_SETTINGS.maxCount),
@@ -505,26 +362,18 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
     const sizes = new Float32Array(count);
     const phases = new Float32Array(count);
 
-    // Drifting violet / cyan dust + ember palette (ties to the wash violet + the
-    // magenta/cyan accretion). Cyan + magenta-violet weighted heavier so the field reads
-    // as the lead's "violet/cyan dust+ember field" with clear parallax depth.
+    // Warm starlight dust with a few magenta and cold-blue motes (accents, not a palette).
     const palette = [
-        new THREE.Color(0x7a4cff),
-        new THREE.Color(0xb060ff),
-        new THREE.Color(0xff66d8),
-        new THREE.Color(0x5c6cff),
-        new THREE.Color(0x66e3ff),
-        new THREE.Color(0x9affff),
-        // Warm accents for richer colour variety (the user's "MORE colors" ask) — soft
-        // gold/amber embers threaded through the violet/cyan dust; still additive-feathered.
-        new THREE.Color(0xffcf6e),
-        new THREE.Color(0xff9a4c),
+        new THREE.Color(0xffe2b8),
+        new THREE.Color(0xffc878),
+        new THREE.Color(0xfff2e0),
+        new THREE.Color(0xd890ff),
+        new THREE.Color(0xffb070),
+        new THREE.Color(0x9ac8ff),
     ];
 
     for (let index = 0; index < count; index += 1) {
         const stride = index * 3;
-        // Spread laterally + across the full local-Y corridor travel, biased in front so
-        // the camera always has near + mid motes for parallax depth.
         positions[stride] = (Math.random() - 0.5) * CH7_CORRIDOR_DUST_SETTINGS.spreadX;
         positions[stride + 1] = (Math.random() - 0.5) * CH7_CORRIDOR_DUST_SETTINGS.spreadY;
         positions[stride + 2] = CH7_CORRIDOR_DUST_SETTINGS.depthNear
@@ -551,25 +400,18 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
     const aSize = attribute('aSize', 'float');
     const aPhase = attribute('aPhase', 'float');
 
-    // Slow drift on the soft-puff CENTER (cheap parallax body; no per-frame CPU work).
     const center = vec3(
         aBase.x.add(sin(uTime.mul(0.05).add(aPhase)).mul(7.0)),
         aBase.y.add(cos(uTime.mul(0.04).add(aPhase.mul(1.3))).mul(5.0)),
         aBase.z,
     );
-    const positionNode = billboardWorld(center, aSize);
+    const positionNode = billboardLocal(center, aSize);
 
-    // Soft round puff feathered to 0 before the quad edge (pow(1 - d*2, 2.0)) with a
-    // brighter ember core (pow 2.0 keeps a fuller body than the old 2.2 so motes read at
-    // distance) — still fully feathered to 0 at the edge, no hard ring.
     const d = length(uv().sub(0.5));
     const glow = pow(
         clamp(oneMinus(d.mul(2.0)), 0.0, 1.0),
         CH7_CORRIDOR_DUST_SETTINGS.glowPower,
     );
-    // Gentle breathing alpha — raised again (0.22 → 0.3 base, creative plan: the bokeh
-    // field needs 3–4× perceived density/brightness through the midsection) while
-    // staying capped well below a haze wall.
     const breathe = sin(uTime.mul(0.3).add(aPhase))
         .mul(CH7_CORRIDOR_DUST_SETTINGS.breatheSwing)
         .add(CH7_CORRIDOR_DUST_SETTINGS.breatheBase);
@@ -587,8 +429,8 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.blending = THREE.AdditiveBlending;
-    // Faint dust — deliberately NOT a bloom emitter (avoids feeding the bloom pass).
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'corridor-violet-dust-tsl';
@@ -599,64 +441,47 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
     };
 }
 
-// ── Infall ember / dust field around the lensed hero (instanced, capped, parallax) ─
+// ── Infall embers — matter orbiting IN the disk plane (instanced, capped) ────────────
 
 /**
- * A DENSE drifting ember/dust/infall field that swirls around the ever-present lensed
- * singularity (the user's "MORE particles" ask). Pure ADDITIVE polish — it does not
- * touch the hero, the lensing, or the corridor field. Instanced billboard quads
- * (THREE.Points renders 1px on WebGPU), radial-feathered to 0 before the quad edge,
- * with three parallax shells (near/mid/far by base radius + size) so the field reads
- * with depth as the camera dollies. The whole field is parented onto the camera-locked
- * hero by the .js update() (it shares the hero anchor + facing, like the infall streams),
- * so the embers always wreathe the on-screen black hole.
- *
- * Motion is entirely GPU-side (uTime + per-instance phase) so update() does NO per-frame
- * CPU work and the geometry is uploaded once: each ember orbits tangentially (cos/sin of
- * a slowly advancing angle) AND breathes radially inward/outward (a bounded sine) so the
- * field reads as matter spiralling toward the horizon without ever leaving its shell —
- * the same bounded-oscillation discipline as the shard drift (no unbounded integration,
- * no per-frame re-upload).
- *
+ * A dense ember field the .js parents onto Gargantua's disk pivot (orbit plane = local XZ,
+ * laid onto the disk by a +90° X rotation, scaled onto the disk's radii). Motion is GPU-side
+ * (uTime + per-instance phase): a tangential orbit and a bounded radial breath.
  * @param {object} uTime shared time uniform
- * @param {number} [count] instance count (capped); scale off options.particleCount in .js
+ * @param {number} [count] instance count (capped)
  */
 export function createInfallEmberFieldTSL(uTime = uniform(0), count = 520) {
     const safeCount = Math.max(48, Math.min(Math.floor(count), 620));
-    const bases = new Float32Array(safeCount * 3); // x=baseRadius, y=baseAngle, z=baseZ/height
+    const bases = new Float32Array(safeCount * 3); // x=baseRadius, y=baseAngle, z=height
     const colors = new Float32Array(safeCount * 3);
     const sizes = new Float32Array(safeCount);
     const phases = new Float32Array(safeCount);
-    const seeds = new Float32Array(safeCount); // per-ember orbital speed + drift sign
+    const seeds = new Float32Array(safeCount);
 
-    // Saturated magenta / cyan / gold / violet ember palette (more varied colour, the
-    // user's "MORE colors" ask) — soft, capped below white by the additive feather.
+    // The disk's own temperature ladder (white-gold → amber) with a rare magenta spark.
     const palette = [
-        new THREE.Color(0xff3ad0), // hot magenta
-        new THREE.Color(0xff7ae0), // pink
-        new THREE.Color(0x7a4cff), // violet
-        new THREE.Color(0x4ec8ff), // cyan
-        new THREE.Color(0x9affff), // ice cyan
-        new THREE.Color(0xffcf6e), // gold
-        new THREE.Color(0xff9a4c), // amber ember
-        new THREE.Color(0xb060ff), // electric violet
+        new THREE.Color(0xfff0d8),
+        new THREE.Color(0xffd08a),
+        new THREE.Color(0xffb05a),
+        new THREE.Color(0xff8a3a),
+        new THREE.Color(0xffe6c0),
+        new THREE.Color(0xff9a4c),
+        new THREE.Color(0xffc070),
+        new THREE.Color(0xe060b0),
     ];
 
-    // Three parallax shells: near (small radius, big sprite), mid, far (big radius, small
-    // sprite). The shell index biases radius + size + drift speed so depth reads as the
-    // camera dollies past the hero. Lookup arrays (avoid nested ternaries).
-    const SHELL_RADIUS = [70, 150, 260];
-    const SHELL_SIZE = [6.0, 4.2, 2.6];
-    const SHELL_SPEED = [1.0, 1.0, 0.6];
+    // Three shells: inner (just outside the shadow), mid, outer — the field thins outward.
+    const SHELL_RADIUS = [86, 150, 230];
+    const SHELL_SIZE = [3.2, 2.6, 2.0];
+    const SHELL_SPEED = [1.0, 0.7, 0.45];
 
     for (let index = 0; index < safeCount; index += 1) {
         const stride = index * 3;
         const shell = index % 3;
-        const radius = SHELL_RADIUS[shell] + (Math.random() - 0.5) * (60 + shell * 50);
+        const radius = SHELL_RADIUS[shell] + (Math.random() - 0.5) * (30 + shell * 30);
         const angle = Math.random() * Math.PI * 2;
-        // Disk-biased height (thin torus around the accretion plane) so embers wreathe the
-        // disk rather than forming a uniform sphere; far shell is a touch taller.
-        const height = (Math.random() - 0.5) * (34 + shell * 26);
+        // A thin sheet: embers hug the disk plane, thickening a little outward.
+        const height = (Math.random() - 0.5) * (4 + shell * 5);
 
         bases[stride] = radius;
         bases[stride + 1] = angle;
@@ -667,12 +492,10 @@ export function createInfallEmberFieldTSL(uTime = uniform(0), count = 520) {
         colors[stride + 1] = color.g;
         colors[stride + 2] = color.b;
 
-        // Near sprites larger; far sprites small + crisp (parallax size cue).
-        sizes[index] = SHELL_SIZE[shell] + Math.random() * 3.5;
+        sizes[index] = SHELL_SIZE[shell] + Math.random() * 2.0;
         phases[index] = Math.random() * Math.PI * 2;
-        // Orbital speed + a signed drift component; far shell drifts slower (parallax).
-        seeds[index] = (0.10 + Math.random() * 0.22) * SHELL_SPEED[shell]
-            * (index % 2 === 0 ? 1 : -1);
+        // Orbital speed — ONE direction (the disk's), inner shells faster.
+        seeds[index] = (0.10 + Math.random() * 0.12) * SHELL_SPEED[shell];
     }
 
     const geometry = makeQuadInstancedGeometry(safeCount, {
@@ -689,40 +512,34 @@ export function createInfallEmberFieldTSL(uTime = uniform(0), count = 520) {
     const aPhase = attribute('aPhase', 'float');
     const aSeed = attribute('aSeed', 'float');
 
-    // GPU-side orbital + radial-breathing motion (no per-frame CPU). The angle advances
-    // by uTime*aSeed (tangential orbit, alternating direction); the radius breathes inward
-    // by a bounded sine so embers read as matter spiralling toward the horizon then being
-    // flung out, all within the shell (bounded — same discipline as the shard drift).
-    const angle = aBase.y.add(uTime.mul(aSeed));
-    const infall = sin(uTime.mul(0.4).mul(abs(aSeed).add(0.3)).add(aPhase)).mul(0.18).add(0.86);
+    // Bounded: the angle advance is wrapped to [0, 2π) (cos/sin make the wrap seamless).
+    const angle = aBase.y.add(mod(uTime.mul(aSeed), TAU));
+    const infall = sin(uTime.mul(0.4).mul(abs(aSeed).add(0.3)).add(aPhase)).mul(0.12).add(0.9);
     const radius = aBase.x.mul(infall);
+    // Orbit sense matches the disk (counter-clockwise about the disk normal once laid onto
+    // the pivot's XY plane): local XZ with -sin on z.
     const center = vec3(
         cos(angle).mul(radius),
-        aBase.z.add(sin(uTime.mul(0.22).add(aPhase)).mul(5.0)),
-        sin(angle).mul(radius),
+        aBase.z.add(sin(uTime.mul(0.22).add(aPhase)).mul(1.5)),
+        sin(angle).mul(radius).negate(),
     );
-    const positionNode = billboardWorld(center, aSize);
+    const positionNode = billboardLocal(center, aSize);
 
-    // Soft round ember feathered to 0 before the quad edge (pow keeps a full body but no
-    // hard ring), with a gentle twinkle so the dense field shimmers rather than reading
-    // as a static cloud.
     const d = length(uv().sub(0.5));
-    const glow = pow(clamp(oneMinus(d.mul(2.0)), 0.0, 1.0), 1.9);
-    const twinkle = sin(uTime.mul(1.6).add(aPhase.mul(1.7))).mul(0.18).add(0.42);
+    const glow = pow(clamp(oneMinus(d.mul(2.0)), 0.0, 1.0), 2.2);
+    const twinkle = sin(uTime.mul(1.6).add(aPhase.mul(1.7))).mul(0.2).add(0.6);
 
     const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = aColor;
-    // Capped well below a haze wall — additive, ACES + threshold bloom downstream.
-    material.opacityNode = clamp(glow.mul(twinkle), 0.0, 0.6).mul(uOpacity);
+    material.colorNode = aColor.mul(1.2);
+    material.opacityNode = clamp(glow.mul(twinkle), 0.0, 0.8).mul(uOpacity);
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.blending = THREE.AdditiveBlending;
-    // Bloom-eligible: these are glowing embers near the hero (the disk/photon ring bloom),
-    // but the low capped alpha keeps them from over-feeding the pass.
     material.userData.emitsBloom = true;
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -733,41 +550,26 @@ export function createInfallEmberFieldTSL(uTime = uniform(0), count = 520) {
     };
 }
 
-// ── Twinkling point material (shared by shards + lensed starfield) ───────────────
+// ── Twinkling point material (shared by shards + the far starfield) ──────────────────
 
 /**
- * Build a twinkling additive billboard-quad material — the TSL twin of the twinkle*
- * shaders, reworked for WebGPU (THREE.Points renders as 1px GPU points there). The
- * per-instance `aBase`/`aColor`/`aSize`/`aTwinkle` attributes drive an instanced
- * billboard quad: positionNode billboards aBase to the camera (billboardWorld), uv()
- * replaces gl_PointCoord for the round sprite mask, and the old screen-space
- * `gl_PointSize = aSize * tw * (260 / -mv.z)` clamp becomes a WORLD-space size (the
- * 260/-viewZ perspective term is dropped — billboardWorld is world-space so
- * perspective scaling is automatic). aSize (~1.2-4.0) maps into world units so the
- * sprites stay visible against the far-z void without ballooning.
+ * Twinkling additive billboard material. Per-instance `aBase`/`aColor`/`aSize`/`aTwinkle`
+ * drive a `billboardLocal` quad; `uv()` is the sprite mask.
+ *   options.drift        bounded in-shader vertical bob (shards) fed by uCameraY
+ *   options.sizeTwinkle  false ⇒ the twinkle rides ALPHA only, at a per-star rate (stars —
+ *                        a pulsing footprint pops sub-pixel stars in and out)
  */
 function createTwinkleMaterialTSL(uTime, options = {}) {
     const aBase = attribute('aBase', 'vec3');
     const aColor = attribute('aColor', 'vec3');
     const aSize = attribute('aSize', 'float');
     const aTwinkle = attribute('aTwinkle', 'float');
+    const sizeTwinkle = options.sizeTwinkle !== false;
 
-    const tw = sin(uTime.mul(2.2).add(aTwinkle)).mul(0.5).add(0.5);
+    const rate = sizeTwinkle ? float(2.2) : fract(aTwinkle.mul(1.618)).mul(2.4).add(0.6);
+    const tw = sin(uTime.mul(rate).add(aTwinkle)).mul(0.5).add(0.5);
+    const size = sizeTwinkle ? aSize.mul(tw).mul(1.1).add(0.5) : aSize;
 
-    // World-space billboard size (replaces the pixel gl_PointSize; perspective is
-    // automatic via billboardWorld). aSize*tw scaled into world units and floored so a
-    // fully-dimmed twinkle still leaves a faint visible spark.
-    const size = aSize.mul(tw).mul(1.1).add(0.5);
-
-    // ── B5: in-shader vertical drift (replaces the per-frame CPU aBase rewrite) ──────
-    // The shards used to drift in .js update() via an element-wise loop over aBase.y +
-    // a full GPU re-upload (needsUpdate=true) every frame. That CPU loop + re-upload is
-    // now gone: when `drift` is requested we add a bounded vertical bob to the billboard
-    // center entirely on the GPU, driven by uTime + a per-shard phase (aTwinkle) + the
-    // camera-Y uniform (uCameraY, ticked by .js update()). The old loop accumulated an
-    // integral of the same sine; this bounded oscillation reads as the same gentle
-    // wander but allocates/uploads nothing per frame. Starfield does not drift, so the
-    // node is only built when options.drift is set (keeps that material identical).
     let center = aBase;
     let driftUniforms = null;
     if (options.drift) {
@@ -779,16 +581,17 @@ function createTwinkleMaterialTSL(uTime, options = {}) {
         center = vec3(aBase.x, aBase.y.add(driftY), aBase.z);
         driftUniforms = { uCameraY, uDriftAmp, uDriftSpeed };
     }
-    const positionNode = billboardWorld(center, size);
+    const positionNode = billboardLocal(center, size);
 
-    // Round sprite mask with a soft falloff (pow(1 - d*2, 1.6)). The GLSL discards at
-    // d > 0.5; here the falloff base is clamped to [0,1] so it reaches 0 at the edge
-    // (and never goes negative → no pow(neg) NaN), giving the same soft round point
-    // under additive blending without a hard discard.
     const d = length(uv().sub(0.5));
-    const glow = pow(clamp(oneMinus(d.mul(2.0)), 0.0, 1.0), 1.6);
+    const glow = sizeTwinkle
+        ? pow(clamp(oneMinus(d.mul(2.0)), 0.0, 1.0), 1.6)
+        : pow(clamp(oneMinus(d.mul(2.0)), 0.0, 1.0), 2.6);
     const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
-    const alpha = glow.mul(tw).mul(uOpacity);
+    const scint = sizeTwinkle ? tw : varying(oneMinus(tw.mul(0.3)));
+    // Stars carry a per-star magnitude (from the phase — no new attribute), skewed faint.
+    const magnitude = sizeTwinkle ? float(1.0) : pow(fract(aTwinkle.mul(1.37)), 2.5).mul(0.85).add(0.15);
+    const alpha = glow.mul(scint).mul(magnitude).mul(uOpacity);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
@@ -798,6 +601,7 @@ function createTwinkleMaterialTSL(uTime, options = {}) {
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
     if (driftUniforms) {
@@ -806,7 +610,7 @@ function createTwinkleMaterialTSL(uTime, options = {}) {
     return material;
 }
 
-// ── Transcendence shards (additive points, bloom-eligible) ───────────────────────
+// ── Transcendence shards (additive points, bloom-eligible) ───────────────────────────
 
 export function createTranscendenceShardsTSL(uTime = uniform(0)) {
     const count = 150;
@@ -816,8 +620,8 @@ export function createTranscendenceShardsTSL(uTime = uniform(0)) {
     const twinkles = new Float32Array(count);
 
     const palette = [
-        new THREE.Color(0xff66d8),
-        new THREE.Color(0x66e3ff),
+        new THREE.Color(0xff9ad8),
+        new THREE.Color(0xffe2b0),
         new THREE.Color(0xffd28a),
     ];
 
@@ -837,8 +641,6 @@ export function createTranscendenceShardsTSL(uTime = uniform(0)) {
         twinkles[index] = Math.random() * Math.PI * 2;
     }
 
-    // Instanced billboard quads (NOT THREE.Points — points are 1px on WebGPU). The old
-    // per-point 'position' becomes the per-instance 'aBase' center.
     const geometry = makeQuadInstancedGeometry(count, {
         aBase: { array: positions, itemSize: 3 },
         aColor: { array: colors, itemSize: 3 },
@@ -846,9 +648,6 @@ export function createTranscendenceShardsTSL(uTime = uniform(0)) {
         aTwinkle: { array: twinkles, itemSize: 1 },
     });
 
-    // B5: request in-shader vertical drift so the per-frame CPU aBase rewrite in .js
-    // update() can be removed. The drift uniforms (uCameraY etc.) are surfaced on the
-    // returned `uniforms` so .js can keep feeding camera.position.y each frame.
     const material = createTwinkleMaterialTSL(uTime, { drift: { amplitude: 2.4, speed: 0.6 } });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'transcendence-shards-tsl';
@@ -858,38 +657,58 @@ export function createTranscendenceShardsTSL(uTime = uniform(0)) {
     };
 }
 
-// ── Lensed starfield (additive points, bloom-eligible) ───────────────────────────
+// ── Far starfield — the stars the ch7 post lens bends round the shadow ───────────────
 
-export function createLensingStarfieldTSL(uTime = uniform(0)) {
-    const count = 760;
+export const CH7_STARFIELD = Object.freeze({
+    count: 2200,
+    radiusMin: 2350,
+    radiusSpan: 450,
+    sizeMin: 7,
+    sizeSpan: 16,
+});
+
+/**
+ * A full far shell BEHIND the hero. It used to be 760 sprites in a flattened disc around a
+ * fixed point 790-990 u down the chapter — beside, not behind, a hero that is re-posed in
+ * front of the camera every frame, so the lens had no stars behind the shadow to bend.
+ */
+export function createLensingStarfieldTSL(uTime = uniform(0), options = {}) {
+    const count = options.count ?? CH7_STARFIELD.count;
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     const twinkles = new Float32Array(count);
 
+    let state = 0x7a3f2b1d;
+    const rng = () => {
+        state = Math.imul(state ^ (state >>> 15), 0x2c1b3c6d) >>> 0;
+        state = (state + 0x6d2b79f5) >>> 0;
+        return ((state ^ (state >>> 13)) >>> 0) / 4294967296;
+    };
+
     for (let index = 0; index < count; index += 1) {
         const stride = index * 3;
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 58 + Math.random() * 190;
-        // Tangential stretch near the horizon -> stars smear into lensed arcs.
-        const bend = 1 + Math.sin(angle * 3.0) * 0.22;
-        positions[stride] = Math.cos(angle) * radius * bend;
-        positions[stride + 1] = Math.sin(angle) * radius * 0.42;
-        positions[stride + 2] = -790 - Math.random() * 200;
+        const theta = rng() * Math.PI * 2;
+        const phi = Math.acos(2 * rng() - 1);
+        const r = CH7_STARFIELD.radiusMin + rng() * CH7_STARFIELD.radiusSpan;
+        positions[stride] = r * Math.sin(phi) * Math.cos(theta);
+        positions[stride + 1] = r * Math.cos(phi);
+        positions[stride + 2] = r * Math.sin(phi) * Math.sin(theta);
 
-        const hot = index % 4 === 0;
-        colors[stride] = hot ? 1.0 : 0.6;
-        colors[stride + 1] = hot ? 0.66 : 0.8;
-        colors[stride + 2] = 1.0;
-        // MAGNITUDE VARIANCE (creative plan, DNEG discipline): power-law sizing — most
-        // stars tiny, a few bright giants — so the tangential lensing smear reads as
-        // distorted STARLIGHT of varied magnitude, never a uniform blur.
-        sizes[index] = 0.8 + Math.random() * Math.random() * 4.2;
-        twinkles[index] = Math.random() * Math.PI * 2;
+        // Mostly blue-white and white, a few warm — a sky, not confetti.
+        const k = rng();
+        let c;
+        if (k < 0.55) c = [0.86, 0.9, 1.0];
+        else if (k < 0.85) c = [1.0, 0.97, 0.93];
+        else c = [1.0, 0.82, 0.62];
+        colors[stride] = c[0];
+        colors[stride + 1] = c[1];
+        colors[stride + 2] = c[2];
+        // Power-law sizing: most stars small, a few bright anchors.
+        sizes[index] = CH7_STARFIELD.sizeMin + rng() * rng() * CH7_STARFIELD.sizeSpan;
+        twinkles[index] = rng() * Math.PI * 2;
     }
 
-    // Instanced billboard quads (NOT THREE.Points — points are 1px on WebGPU). The old
-    // per-point 'position' becomes the per-instance 'aBase' center.
     const geometry = makeQuadInstancedGeometry(count, {
         aBase: { array: positions, itemSize: 3 },
         aColor: { array: colors, itemSize: 3 },
@@ -897,104 +716,9 @@ export function createLensingStarfieldTSL(uTime = uniform(0)) {
         aTwinkle: { array: twinkles, itemSize: 1 },
     });
 
-    const material = createTwinkleMaterialTSL(uTime);
+    const material = createTwinkleMaterialTSL(uTime, { sizeTwinkle: false });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'lensing-starfield-tsl';
     mesh.frustumCulled = false;
     return { mesh, material, geometry };
 }
-
-// ── Non-shader companions (left unconverted; render on WebGPURenderer as-is) ──────
-// createEventHorizon's dark horizon (MeshBasicMaterial), photon ring
-// (MeshBasicMaterial additive), createAccretionGlowRings (MeshBasicMaterial), and
-// createInfallStreams (MeshBasicMaterial tubes) use no custom shader, so the pilot
-// assembler rebuilds them with the same NodeMaterial-compatible MeshBasicMaterial.
-
-function createHorizonCore() {
-    const geometry = new THREE.SphereGeometry(38, 64, 48);
-    const material = new THREE.MeshBasicMaterial({ color: 0x000000 });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.scale.set(1, 1, 0.9);
-    return { mesh, material, geometry };
-}
-
-function createPhotonRing() {
-    const geometry = new THREE.RingGeometry(39, 43, 192, 1);
-    // Radially feathered across the ring quad (uv.y spans inner→outer) so alpha reaches
-    // 0 before both edges: a soft incandescent lip hugging the horizon, not a hard hoop.
-    const material = new THREE.MeshBasicNodeMaterial();
-    const rv = uv().y;
-    const feather = smoothstep(0.0, 0.42, rv).mul(oneMinus(smoothstep(0.58, 1.0, rv)));
-    material.colorNode = vec3(1.0, 0.914, 0.69).mul(feather);
-    material.opacityNode = feather.mul(0.9);
-    material.transparent = true;
-    material.depthWrite = false;
-    material.blending = THREE.AdditiveBlending;
-    material.side = THREE.DoubleSide;
-    material.userData.emitsBloom = true;
-    const mesh = new THREE.Mesh(geometry, material);
-    return { mesh, material, geometry };
-}
-
-/**
- * Assemble the converted materials on their original geometries into one group + a
- * single uTime uniform (and a uEnergy uniform) the caller ticks each frame. Mirrors
- * createDeepOceanPilotTSL — used by the standalone WebGPU pilot validation page. The
- * event-horizon anchor reproduces createEventHorizon's group transform
- * (position/rotation) and child order so the lensing shell and disk sit identically.
- */
-export function createBlackHoleTranscendencePilotTSL() {
-    const uTime = uniform(0);
-    const uEnergy = uniform(0.4);
-    const group = new THREE.Group();
-    group.name = 'black-hole-transcendence-pilot-tsl';
-
-    const dome = createVoidDomeTSL(uTime, uEnergy);
-    dome.mesh.position.z = -740;
-    group.add(dome.mesh);
-
-    const wash = createAmbientWashTSL(uTime, uEnergy);
-    group.add(wash.mesh);
-
-    const dust = createCorridorDustTSL(uTime);
-    group.add(dust.mesh);
-
-    // Hero event-horizon anchor (matches createEventHorizon's transform + child order).
-    const anchor = new THREE.Group();
-    anchor.name = 'dominant-event-horizon-anchor-tsl';
-    anchor.position.set(0, 0, -780);
-    anchor.rotation.x = -1.05;
-
-    const horizon = createHorizonCore();
-    const disk = createAccretionDiskTSL(uTime, uEnergy);
-    const photonRing = createPhotonRing();
-    const lensShell = createLensingShellTSL(uTime, uEnergy);
-    // Dense infall ember field wreathing the hero (parented to the anchor so it shares the
-    // disk plane, matching the runtime placement onto the camera-locked hero).
-    const embers = createInfallEmberFieldTSL(uTime);
-    anchor.add(horizon.mesh, disk.mesh, photonRing.mesh, lensShell.mesh, embers.mesh);
-    group.add(anchor);
-
-    const shards = createTranscendenceShardsTSL(uTime);
-    group.add(shards.mesh);
-
-    const starfield = createLensingStarfieldTSL(uTime);
-    group.add(starfield.mesh);
-
-    const parts = [
-        dome, wash, dust, horizon, disk, photonRing, lensShell, embers, shards, starfield,
-    ];
-
-    return {
-        group,
-        uniforms: { uTime, uEnergy },
-        dispose() {
-            parts.forEach((part) => {
-                part.geometry?.dispose?.();
-                part.material?.dispose?.();
-            });
-        },
-    };
-}
-
-export default createBlackHoleTranscendencePilotTSL;

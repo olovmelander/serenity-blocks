@@ -28,6 +28,7 @@ import {
     ODYSSEY_CAMERA_PROFILES,
 } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 import {
+    APPROACH,
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
     SUMMIT_EARTH_REVEAL,
@@ -241,6 +242,9 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         expect(env.userData.heroPlanet.scale.x).toBeGreaterThan(2.5);
         const entryFrame = frameAt(controller, chapterPositions, 6, ch6Start);
         heroesAt(env, entryFrame.camPos, ch6Start);
-        expect(env.userData.heroPlanet.scale.x).toBeCloseTo(34 / 28, 3);
+        // (Masterpiece pass 2026-10: the approved entry scale grew x1.35 — the giant read as a
+        // small flat disc — so the assertion follows the authored keyframe, not a copy of it.)
+        expect(env.userData.heroPlanet.scale.x).toBeCloseTo(APPROACH.planetA.s, 3);
+        expect(APPROACH.planetA.s).toBeCloseTo((34 / 28) * 1.35, 6);
     });
 });

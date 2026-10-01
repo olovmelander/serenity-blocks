@@ -30,10 +30,12 @@
  * travel window — a spec edit that swallows the camera fails CI, not review.
  *
  * The spec shape is the cloud sculptor's contract verbatim ({id, role, lod, x, base,
- * z, w, h, yaw, seed}; centre y = base + 0.42h; `lod` picks icosphere detail).
- * `paint` picks the palette role in odyssey-nebula-field.js: 'warm' | 'cool'.
- * Triangle budget legible here alone: 4 near (980 faces) + 2 mid (500) ≈ 4,920 faces
- * merged into TWO draws (one per paint role).
+ * z, w, h, yaw, seed}) — the SDF clearance rule still reads it that way. Since the
+ * masterpiece pass (2026-10) the masses are drawn as luminous GAS, not sculpts: each spec
+ * becomes a primary ellipsoid + two seeded satellites (odyssey-nebula-field.js
+ * `resolveNebulaGasVolumes`), `role` sets how much gas surrounds the placement, `paint`
+ * picks the draw ('warm' | 'cool') and the id keys the per-mass palette. Triangle budget:
+ * 6 masses x 3 volumes x a 320-face proxy hull = 5,760 faces in TWO draws.
  */
 
 export const NEBULA_FIELD_CLEARANCE = Object.freeze({

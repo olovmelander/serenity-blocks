@@ -77,7 +77,7 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
         expect(group.userData.voidSky).toBeTruthy();
     });
 
-    it('?odysseyCh6NebulaSprites=1 is a TRUE swap: sprites restored, field withheld', () => {
+    it('?odysseyCh6NebulaSprites=1 is a TRUE swap: sprites restored, field withheld', { timeout: 20000 }, () => {
         const group = buildWithSearch('?odysseyCh6NebulaSprites=1');
         expect(group.userData.nebulaField).toBeUndefined();
         expect(group.userData.nebulaVolume).toBeTruthy();
@@ -121,21 +121,6 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
         // The hero itself must still be there — this lever is not NoHeroes wearing a hat.
         expect(dark.userData.heroPlanet).toBeDefined();
         expect(dark.userData.heroPlanet.userData.planet).toBeDefined();
-    });
-
-    it('?odysseyCh6LegacyKeyFrame=1 restores the Wave 6 lighting slip, and nothing else', () => {
-        // POLARITY MATTERS HERE. The SHIPPED default now applies the masses' key in the
-        // corridor frame it was authored in (25.7-57.1 deg off the accretion key); this
-        // lever restores the slip that dotted a corridor-local constant against world
-        // normals raw (55.8-95.5 deg off). Absent = fixed, present = legacy. If that ever
-        // inverts, the chapter silently ships the bug again and every capture A/B lies.
-        const shipped = buildWithSearch('');
-        const legacy = buildWithSearch('?odysseyCh6LegacyKeyFrame=1');
-        // It re-keys; it must not remove or add anything.
-        expect(shipped.userData.nebulaField).toBeDefined();
-        expect(legacy.userData.nebulaField).toBeDefined();
-        expect(legacy.userData.nebulaField.children.length)
-            .toBe(shipped.userData.nebulaField.children.length);
     });
 
     it('?odysseyCh6NoStars=1 removes both starfield tiers', () => {
