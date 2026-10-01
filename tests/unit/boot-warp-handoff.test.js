@@ -137,10 +137,10 @@ vi.mock('three/webgpu', async (importOriginal) => {
     };
 });
 
-vi.mock('../../src/ui/boot-warp-transition-scene.js', () => ({
-    createWarpParticles: sceneMocks.createWarpParticles,
-    DEFAULT_MARK_OFFSET_Y_PX: -31,
-    warpFovAt: sceneMocks.warpFovAt,
+vi.mock('../../src/ui/boot-aurora-scene.js', () => ({
+    createBootAurora: sceneMocks.createWarpParticles,
+    AURORA_LOGO_OFFSET_Y: -31,
+    auroraFovAt: sceneMocks.warpFovAt,
 }));
 
 vi.mock('../../src/rendering/webgpu-compute-pipeline-async.js', async (importOriginal) => ({
@@ -649,6 +649,31 @@ describe('BootWarpTransition.play viewport sync', () => {
 });
 
 describe('BootWarpTransition prewarm ident anchor', () => {
+    it('prewarms and plays an analytic curtain without a compute pipeline or dispatch', async () => {
+        installDom();
+        const clock = mockPerformanceNow(1000);
+        const raf = installRafQueue();
+        sceneMocks.createWarpParticles.mockImplementation(() => {
+            const curtain = createMockWarp();
+            delete curtain.computeNode;
+            return curtain;
+        });
+        computeMocks.isAsyncComputeCapable.mockReturnValue(true);
+        rendererMocks.bootCompileAsync = vi.fn().mockResolvedValue();
+        const transition = await primedTransition();
+        expect(rendererMocks.bootCompileAsync).toHaveBeenCalled();
+        expect(transition.canvas.style.cssText).toContain('background:transparent');
+        const playPromise = transition.play({ durationMs: 4800 });
+        runFrames(clock, raf, 400, 16);
+        await expect(playPromise).resolves.toMatchObject({ status: 'complete', progress: 1 });
+        expect(rendererMocks.bootRender).toHaveBeenCalled();
+        expect(computeMocks.compileComputeAsync).not.toHaveBeenCalled();
+        expect(rendererMocks.bootCompute).not.toHaveBeenCalled();
+        await transition.dispose();
+        expect(rendererMocks.warpDispose).toHaveBeenCalled();
+        clock.restore();
+    });
+
     it('sizes the viewport and anchors the gem on the measured #startup-shell mark centre', async () => {
         installViewport(1280, 720);
         const document = installDom({
@@ -900,6 +925,37 @@ describe('BootWarpTransition prewarm themeWarmAsync rollback (src/core/flags.js 
 });
 
 describe('playBootWarpHandoff hold wiring', () => {
+    it.each([false, true])('keeps interaction locked until the curtain clears (aborted=%s)', async (aborted) => {
+        installDom();
+        const clock = mockPerformanceNow(1000);
+        const { playBootWarpHandoff } = await import('../../src/ui/boot-warp-startup.js');
+        const fade = deferred();
+        const controller = new AbortController();
+        const intro = { revealTitle: vi.fn(), enableInteraction: vi.fn() };
+        const warpTransition = {
+            play: vi.fn(async ({ onProgress }) => {
+                onProgress(0.03, { firstFrameRendered: true, cadenceHealthy: true });
+                clock.advance(2400);
+                onProgress(0.5);
+                clock.advance(2400);
+                onProgress(1);
+                return { status: 'complete', firstFrameRendered: true, progress: 1 };
+            }),
+            fadeOut: vi.fn(() => fade.promise),
+        };
+        const handoff = playBootWarpHandoff({
+            warpTransition, introAnimation: intro, signal: controller.signal,
+        });
+        await settle();
+        expect(intro.revealTitle).toHaveBeenCalledWith('warp-progress', { deferInteraction: true, connectDurationMs: 3200 });
+        expect(intro.enableInteraction).not.toHaveBeenCalled();
+        if (aborted) controller.abort();
+        fade.resolve();
+        await handoff;
+        expect(intro.enableInteraction).toHaveBeenCalledTimes(aborted ? 0 : 1);
+        clock.restore();
+    });
+
     it.each(['resolve', 'reject'])('waits for renderer disposal to %s while detaching immediately', async (outcome) => {
         installDom();
         const transition = await primedTransition();
@@ -966,7 +1022,7 @@ describe('playBootWarpHandoff hold wiring', () => {
             ['after-dismiss', false],
         ]);
         expect(dismissStartupShell).toHaveBeenCalledTimes(1);
-        expect(dismissStartupShell).toHaveBeenCalledWith('warp-handoff', { quick: true });
+        expect(dismissStartupShell).toHaveBeenCalledWith('warp-handoff', { quick: true, durationMs: 3200 });
     });
 
     it('places the hold past the reveal gate so a held flight can still hand over', async () => {
@@ -979,7 +1035,7 @@ describe('playBootWarpHandoff hold wiring', () => {
         // A hold below the reveal gate would pin progress where the ident can never be
         // dismissed: the flight would sit on the match frame until the wall-clock ceiling.
         expect(BOOT_WARP_HOLD_PROGRESS).toBeGreaterThan(BOOT_WARP_REVEAL_PROGRESS);
-        expect(BOOT_WARP_HOLD_PROGRESS).toBeLessThan(BOOT_WARP_TITLE_PROGRESS);
+        expect(BOOT_WARP_TITLE_PROGRESS).toBe(BOOT_WARP_REVEAL_PROGRESS);
         expect(BOOT_WARP_HOLD_PROGRESS).toBeLessThan(BOOT_WARP_FADE_PROGRESS);
     });
 
@@ -1187,7 +1243,7 @@ describe('playBootWarpHandoff ident arming class', () => {
 
         expect(warpTransition.play).toHaveBeenCalledTimes(1);
         expect(result).toMatchObject({ status: 'complete', shellDismissed: true });
-        expect(dismissStartupShell).toHaveBeenCalledWith('warp-handoff', { quick: true });
+        expect(dismissStartupShell).toHaveBeenCalledWith('warp-handoff', { quick: true, durationMs: 3200 });
     });
 
     // play() settles without ever dismissing the shell: the ident stays up for the CSS fallback,
@@ -1286,7 +1342,7 @@ describe('playBootWarpHandoff ident arming class', () => {
         const result = await playBootWarpHandoff(handoffOptions(completingTransition(), { dismissStartupShell }));
 
         expect(result).toMatchObject({ status: 'complete', shellDismissed: true });
-        expect(dismissStartupShell).toHaveBeenCalledWith('warp-handoff', { quick: true });
+        expect(dismissStartupShell).toHaveBeenCalledWith('warp-handoff', { quick: true, durationMs: 3200 });
         // The ident is dissolving out on the match frame: its loops must not come back on.
         expect(shell.classList.remove).not.toHaveBeenCalledWith(ARMING_CLASS);
         expect(shell.classList.contains(ARMING_CLASS)).toBe(true);

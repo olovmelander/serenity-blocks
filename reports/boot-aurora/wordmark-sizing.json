@@ -1,0 +1,228 @@
+{
+  "date": "2026-10-01",
+  "scope": "Live browser intro, handoff and menu; additional isolated layout checks at 11 viewports from 480x240 to 2560x1440.",
+  "handoff": {
+    "sourceWidth": 520,
+    "targetWidth": 520,
+    "alignmentErrorPx": 0,
+    "sourceOpacity": "0.00412011",
+    "titleOpacity": "1"
+  },
+  "intro": [
+    {
+      "viewport": [
+        1440,
+        900
+      ],
+      "logoSize": [
+        520,
+        198.390625
+      ],
+      "promptClearance": 182.890625,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        390,
+        844
+      ],
+      "logoSize": [
+        273,
+        104.15625
+      ],
+      "promptClearance": 252.59375,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        320,
+        568
+      ],
+      "logoSize": [
+        224,
+        85.453125
+      ],
+      "promptClearance": 137.75,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        844,
+        390
+      ],
+      "logoSize": [
+        312,
+        119.03125
+      ],
+      "promptClearance": 84.609375,
+      "overflow": false
+    }
+  ],
+  "menu": [
+    {
+      "viewport": [
+        1440,
+        900
+      ],
+      "logoSize": [
+        180.015625,
+        68.671875
+      ],
+      "logoTop": 70,
+      "firstCardTop": 165.44024658203125,
+      "clearance": 26.76837158203125,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        2560,
+        1440
+      ],
+      "logoSize": [
+        180.015625,
+        68.671875
+      ],
+      "logoTop": 186,
+      "firstCardTop": 435.44024658203125,
+      "clearance": 180.76837158203125,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        1280,
+        720
+      ],
+      "logoSize": [
+        179.703125,
+        68.5625
+      ],
+      "logoTop": 13,
+      "firstCardTop": 90.0277328491211,
+      "clearance": 8.465232849121094,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        1024,
+        768
+      ],
+      "logoSize": [
+        180.015625,
+        68.671875
+      ],
+      "logoTop": 29,
+      "firstCardTop": 122.12773895263672,
+      "clearance": 24.45586395263672,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        768,
+        1024
+      ],
+      "logoSize": [
+        180,
+        85.625
+      ],
+      "logoTop": 19.522306442260742,
+      "firstCardTop": 120.05254364013672,
+      "clearance": 14.905237197875977,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        390,
+        844
+      ],
+      "logoSize": [
+        212.953125,
+        85.625
+      ],
+      "logoTop": 16,
+      "firstCardTop": 115.8050765991211,
+      "clearance": 14.180076599121094,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        320,
+        568
+      ],
+      "logoSize": [
+        160,
+        61.03125
+      ],
+      "logoTop": 16,
+      "firstCardTop": 82.10137176513672,
+      "clearance": 5.070121765136719,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        844,
+        390
+      ],
+      "logoSize": [
+        180,
+        68.671875
+      ],
+      "logoTop": 20,
+      "firstCardTop": 93.92461395263672,
+      "clearance": 5.252738952636719,
+      "overflow": false
+    },
+    {
+      "viewport": [
+        480,
+        240
+      ],
+      "logoSize": [
+        124.796875,
+        47.609375
+      ],
+      "logoTop": 16,
+      "firstCardTop": 68.939453125,
+      "clearance": 5.330078125,
+      "overflow": false
+    }
+  ],
+  "compactMenuWithProfile": [
+    {
+      "viewport": [
+        390,
+        844
+      ],
+      "logoTop": 82,
+      "profileClearancePx": 26,
+      "firstCardClearancePx": 26
+    },
+    {
+      "viewport": [
+        320,
+        568
+      ],
+      "logoTop": 82,
+      "profileClearancePx": 26,
+      "firstCardClearancePx": 17
+    },
+    {
+      "viewport": [
+        844,
+        390
+      ],
+      "logoTop": 82,
+      "profileClearancePx": 16,
+      "firstCardClearancePx": 17
+    },
+    {
+      "viewport": [
+        480,
+        240
+      ],
+      "logoTop": 82,
+      "profileClearancePx": 25.9,
+      "firstCardClearancePx": 17
+    }
+  ],
+  "compactMenuWithProfileNote": "Final CSS/WebGL flow; reserved header keeps the asynchronously appearing profile card above the logo. No horizontal overflow in these checks. Earlier menu array records the pre-reservation spacing."
+}
