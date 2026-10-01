@@ -42,16 +42,21 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { swHash21, swMax3 } from './synthwave-sunset-tsl.js';
 
-/** Per-tier look. `bloom: false` builds no BloomNode (emitters still read through the grade). */
+/**
+ * Per-tier look. `bloom: false` builds no BloomNode (emitters still read through the grade).
+ * `msaa` is the scene-pass sample count (WebGPU: 1 or 4). Shader detail is anti-aliased
+ * analytically, but box silhouettes, palm trunks and mountain ridges are geometry edges that only
+ * MSAA smooths — without it they stair-step and crawl as the camera drifts.
+ */
 export const POST_LOOK = {
     Extreme: {
         bloom: true, bloomStrength: 0.95, bloomResolution: 0.5, grain: true, ca: 1.0, msaa: 4,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.92, bloomResolution: 0.45, grain: true, ca: 0.7, msaa: 0,
+        bloom: true, bloomStrength: 0.92, bloomResolution: 0.45, grain: true, ca: 0.7, msaa: 4,
     },
     High: {
-        bloom: true, bloomStrength: 0.9, bloomResolution: 0.4, grain: true, ca: 0, msaa: 0,
+        bloom: true, bloomStrength: 0.9, bloomResolution: 0.4, grain: true, ca: 0, msaa: 4,
     },
     Medium: {
         bloom: true, bloomStrength: 0.8, bloomResolution: 0.3, grain: false, ca: 0, msaa: 0,
