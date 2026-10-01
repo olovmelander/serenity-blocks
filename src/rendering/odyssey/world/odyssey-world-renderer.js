@@ -945,6 +945,15 @@ export function createOdysseyWorld({
      * breathing, not lapping. The phase walks along the shore so the beach laps in a travelling
      * rhythm rather than in unison. Returns the run-up HEIGHT above sea level, world units.
      */
+    /**
+     * ONE WIND (item 11). The meadow's light sweep, the forest's sway and the canopy's light
+     * ripple each ran their own phase, frequency and direction, so a gust brightening the grass
+     * never coincided with the trees leaning. One travelling front now drives all three: the
+     * grass lightens, the crowns lean and the canopy band ripples TOGETHER as it passes.
+     * ~1.4 km wavelength, travelling along +x/+z; per-tree flutter rides on top of it.
+     */
+    const WIND_K = 0.0045;
+    const gustFront = (xz) => sin(uTime.mul(0.6).sub(xz.x.mul(WIND_K * 0.8).add(xz.y.mul(WIND_K * 0.6))));
     const SWASH_RUN = 0.62;
     const SWASH_BASE = -0.14;
     const swashRise = (xz) => {
@@ -1446,7 +1455,7 @@ export function createOdysseyWorld({
          * a slope; the forest's travelling gust line proved the mechanism here — a static field
          * plus a time-varying PHASE, so motion is a sine and not a second texture.
          */
-        const gust = sin(uTime.mul(0.32).add(positionWorld.x.mul(0.0016)).add(positionWorld.z.mul(0.0011)));
+        const gust = gustFront(positionWorld.xz);
         const sweep = smoothstep(float(0.30), float(0.92), tooth.mul(0.52).add(gust.mul(0.5).add(0.5).mul(0.48)));
         albedo = albedo.mul(sweep.mul(kGrass).mul(detailMelt).mul(GROUND_WIND_LIFT).add(1));
 
@@ -3673,12 +3682,10 @@ export function createOdysseyWorld({
     // shears — the framing-spruces rule. The two world terms make gust FRONTS cross the
     // forest rather than the whole island pulsing in lockstep ("rhythm, not a pulse").
     const fvMask = clamp(fvH01, 0, 1);
-    const fvGust = sin(
-        uTime.mul(1.05).add(fvPhase)
-            .add(positionWorld.x.mul(0.0042)).add(positionWorld.z.mul(0.0031)),
-    ).mul(0.5).add(
-        sin(uTime.mul(0.61).add(fvPhase.mul(1.7)).add(positionWorld.x.mul(0.0017))).mul(0.5),
-    ).mul(0.085)
+    // The shared gust front (item 11) plus a per-tree flutter on the tree's own constant phase.
+    const fvGust = gustFront(positionWorld.xz).mul(0.62)
+        .add(sin(uTime.mul(1.7).add(fvPhase)).mul(0.38))
+        .mul(0.085)
         .mul(fvMask.mul(fvMask));
     // positionLocal, not positionGeometry: setupPosition() applies the instance matrix into
     // positionLocal and positionNode REPLACES it (the file's own header law).
@@ -3693,7 +3700,18 @@ export function createOdysseyWorld({
     // The trunk's own shade follows the same law rather than a second authored colour.
     const fvShadeCol = mix(fvTrunk.mul(0.52), fvCrownShade, fvIsCrown);
 
-    const fvWrap = clamp(dot(normalWorld, uSunDir).add(FOREST_WRAP).div(1 + FOREST_WRAP), 0, 1);
+    // THE TERRAIN'S SHADOW REACHES THE TREES (item 11). The ground has read the baked sun
+    // plate since the overhaul, and the trees standing on it never did — so a stand inside the
+    // massif's shadow wore full sunlit bands on a shaded slope. One fetch per tree VERTEX (the
+    // vertex stage, so `.level(0)`; WGSL forbids implicit LOD there), handed across as a
+    // varying, scales the wrapped light so a shadowed crown drops into the mid/shade tones
+    // with the ground around it — still only ever the authored tones.
+    const fvSunVis = varying(
+        texture(sunVisTex, positionWorld.xz.div(float(RELIEF_EXTENT)).add(0.5)).level(0).r,
+        'vFvSunVis',
+    );
+    const fvWrap = clamp(dot(normalWorld, uSunDir).add(FOREST_WRAP).div(1 + FOREST_WRAP), 0, 1)
+        .mul(mix(float(0.45), float(1), fvSunVis));
     // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
     // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
     // of the two authored tones.
@@ -3721,9 +3739,7 @@ export function createOdysseyWorld({
     // displacement gusts, so light sweeps across the canopy the way the 80.lv Ghibli-island
     // breakdown animates its vegetation highlights. Three ALU; the amplitude is a fraction of
     // the band jitter so it can never flip a crown across a whole tone.
-    const fvWindLine = sin(
-        uTime.mul(0.8).add(positionWorld.x.mul(0.011)).add(positionWorld.z.mul(0.007)),
-    ).mul(0.045);
+    const fvWindLine = gustFront(positionWorld.xz).mul(0.045);
     // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
     // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
     // of the authored tones.
