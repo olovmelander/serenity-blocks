@@ -71,10 +71,13 @@ export const ODYSSEY_GROUND_PALETTE = Object.freeze({
         shade: 'mineral',
     }),
     // Warmed off blue-white so peaks read sunlit; the damp pole is old/compacted snow.
+    // Cooled from a cream [0.99, 0.97, 0.92] (item 5): beside the warm rock pole, cream snow
+    // and pale rock converged on one beige, and the summit read as sand. Snow is the coolest,
+    // brightest thing on the island; the alpenglow term supplies its warmth where the sun is.
     snow: Object.freeze({
-        damp: Object.freeze([0.88, 0.90, 0.93]),
-        dry: Object.freeze([0.99, 0.97, 0.92]),
-        shade: 'mineral',
+        damp: Object.freeze([0.86, 0.91, 0.97]),
+        dry: Object.freeze([0.97, 0.98, 1.0]),
+        shade: 'snow',
     }),
 });
 
@@ -128,6 +131,23 @@ export const ODYSSEY_GROUND_SHADE = Object.freeze({
          * goes properly grey rather than mauve. Split the difference of the two references.
          */
         desat: 0.56,
+    }),
+    /**
+     * SNOW IS A SKY REFLECTOR, NOT A MINERAL (item 5). It used to shade as `mineral` — ambient
+     * 0.22, desaturated, then warmed by `deepTint` — so a snowfield in shadow came out a grey-
+     * beige 0.22 of its lit self and the massif read as a dune. Snow in shade is lit by the
+     * whole blue sky dome it faces and by bounce off the lit snow around it: it stays BRIGHT
+     * and goes BLUE. Every painted mountain in the reference set does this, and it is the one
+     * cue that separates snow from pale rock when the sun is behind the camera (Act II's case).
+     *   ambient   — the floor where the sun does not reach, nearly twice rock's.
+     *   deep      — the floor in a hollow the sky cannot see; a couloir stays luminous.
+     *   skyChroma — how much of the sky's HUE the shade carries (vegetation's is 0.25: the
+     *               measured law that grass shade is not blue; snow is the documented exception).
+     */
+    snow: Object.freeze({
+        ambient: 0.45,
+        deep: 0.30,
+        skyChroma: 0.62,
     }),
     /** Ambient in a hollow the sky cannot see into. Drives the wide-AO half of the shading. */
     deepAmbient: 0.13,
