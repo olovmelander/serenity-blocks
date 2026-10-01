@@ -496,13 +496,18 @@ export class OdysseyCorridorField {
     _terrestrialRecipe(profile, accent, fog, shadow) {
         const { id } = profile;
         if (id === 1) {
-            // Earth Core: warm magma-horizon glow band + dark rock murk.
+            // Earth Core: NO backdrop sheets (2026-10-01) — they were the chapter's red wash.
+            // Sheets sit "behind the chapter centre, facing back down the tangent", which is
+            // the right place in a horizontal corridor and the WRONG one in chapter 1: the rail
+            // is a vertical shaft, the tangent is +Y, so all three planes lay HORIZONTALLY
+            // OVERHEAD and the camera, which looks up the chimney for ~80% of the act, stared
+            // into a 600 u ADDITIVE orange sheet over a 780 u opaque oxblood one. A layer
+            // bisect (`--hide`) proved it: every chapter layer hidden still left the frame
+            // saturated red; hiding every mesh made it black. The cavern now owns its own
+            // frame (vault dome, colonnade, embers) — the filler predates all of it.
+            // The ember motes stay: they are the one part of this recipe that reads as air.
             return {
-                sheets: [
-                    sheet(0xff5a18, shadow, 0.5, 1.3, 0.04, true, 0.34, 600, 0.4, -34),
-                    sheet(0x3a0e02, shadow, 0.8, 2.0, 0.0, false, 0.7, 780, 0.5, -40),
-                    sheet(fog, shadow, 0.65, 1.0, 0.015, true, 0.22, 920, 0.5),
-                ],
+                sheets: [],
                 particulate: mote(150, 0xffaa44, 6.0, 0.5, 1.6, 0.45, 85, 110, 0.5, 2.0),
             };
         }

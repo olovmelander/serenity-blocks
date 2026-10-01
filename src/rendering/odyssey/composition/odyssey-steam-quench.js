@@ -24,16 +24,22 @@
  */
 import * as THREE from 'three/webgpu';
 import {
+    cameraPosition,
     clamp,
     float,
     mix,
+    normalize,
+    oneMinus,
     positionLocal,
+    positionWorld,
     smoothstep,
     uniform,
+    vec2,
     vec3,
 } from 'three/tsl';
-import { fbm3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
+import { fbm3, noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { sampleColourScript } from '../odyssey-colour-script.js';
+import { ONE_WORLD_ACT_MARGIN } from '../world/odyssey-world-act-gate.js';
 
 /** World radius of the steam volume. Wide enough to envelop the corridor at the boundary. */
 export const STEAM_QUENCH_RADIUS = 110;
@@ -48,6 +54,22 @@ export const STEAM_QUENCH_RADIUS = 110;
  */
 export const STEAM_QUENCH_HALF_WIDTH = 0.06;
 /**
+ * THE CH1 APPROACH — rescaled 2026-10-01, and the reason the middle of Earth Core was cream.
+ *
+ * STEAM_QUENCH_HALF_WIDTH above was authored as "106 u" when the journey was 1767 u long and
+ * chapter 1 spanned p 0 -> 0.093. The layout has since grown to ~2533 u and chapter 1 now
+ * spans p 0 -> 0.0649, so the same 0.06 opened the veil at chapter-local 0.075: measured in
+ * capture, the cathedral was 21 % veiled at local 0.3 and 50 % at 0.5 — the "beige noise
+ * ceiling" the player looked at for most of the chapter. (The cloud bank at 5->6, inside a
+ * chapter four times longer, keeps 0.06.)
+ *
+ * 0.034 opens the veil at chapter-local ~0.48 — the cathedral's first half is clear — while
+ * the approach curve below still has the volume ~0.9 dense at boundary - ONE_WORLD_ACT_MARGIN,
+ * the moment the continuous world starts drawing behind it (ADR-0017: occlusion, never
+ * crossfade). Must stay wider than chapter 1's seamWidth (pinned by the quench test).
+ */
+export const STEAM_QUENCH_APPROACH_HALF_WIDTH = 0.034;
+/**
  * ...but the EXIT half-width cannot be that same number, and this is where the long-standing
  * "cloud deck renders underwater" ghost lived. The geometry: ±0.06 of progress is ±106 u
  * against a 110 u BackSide sphere — the eye never leaves the shell on the way out, so the
@@ -57,7 +79,53 @@ export const STEAM_QUENCH_HALF_WIDTH = 0.06;
  * (plateau vs three beats) — that reshapes the curve AT the crossing and is the owner's;
  * this only stops the tail veiling half an act after the crossing is over.
  */
-export const STEAM_QUENCH_EXIT_HALF_WIDTH = 0.03;
+// Scaled 0.03 -> 0.0222 with every other seam (chapter-profile.js: x0.7384 when the ascent
+// lengthened the curve); it still covers the co-presence window, which is that same 0.0222.
+export const STEAM_QUENCH_EXIT_HALF_WIDTH = 0.0222;
+
+/**
+ * Where the approach curve must be dense: the fraction of the approach half at which the
+ * world's act gate opens. Density there is ~0.93 (smoothstep at 1/1.2 of its span).
+ */
+const APPROACH_GATE_FRACTION = Math.max(0.05, 1 - (ONE_WORLD_ACT_MARGIN / STEAM_QUENCH_APPROACH_HALF_WIDTH));
+
+/**
+ * Journey progress -> the quench's seamT, BOUNDARY-TRUE: 0 at the approach edge, exactly 0.5
+ * at the 1->2 boundary, 1 at the exit edge.
+ *
+ * The board used to map progress LINEARLY across the asymmetric window, while update() assumes
+ * the boundary sits at 0.5 — with the old 0.06/0.03 widths that put peak density and the
+ * warm->cool flip 0.015 of progress BEFORE the crossing the volume exists to hide. Piecewise
+ * keeps the colour flip on the handoff whatever the two half-widths are.
+ * @param {number} progress camera progress
+ * @param {number} boundary the 1->2 chapter boundary
+ * @returns {number}
+ */
+export function steamQuenchSeamT(progress, boundary) {
+    if (!Number.isFinite(progress) || !Number.isFinite(boundary)) return 0;
+    if (progress <= boundary) {
+        const lo = boundary - STEAM_QUENCH_APPROACH_HALF_WIDTH;
+        return 0.5 * Math.max(0, Math.min(1, (progress - lo) / STEAM_QUENCH_APPROACH_HALF_WIDTH));
+    }
+    return 0.5 + (0.5 * Math.max(0, Math.min(1, (progress - boundary) / STEAM_QUENCH_EXIT_HALF_WIDTH)));
+}
+
+/**
+ * Density as a pure function of seamT, so the curve is testable without a renderer.
+ * Approach: a smoothstep that stays clear through the cathedral and closes fast — ~0.93 dense
+ * where the world's act gate opens. Exit: the old squared triangle, leaving the weather quickly.
+ * @param {number} seamT 0..1, 0.5 at the boundary
+ * @returns {number} 0..1
+ */
+export function steamQuenchDensity(seamT) {
+    const t = Math.max(0, Math.min(1, Number.isFinite(seamT) ? seamT : 0));
+    if (t <= 0.5) {
+        const x = Math.min(1, (t * 2) / (APPROACH_GATE_FRACTION * 1.2));
+        return x * x * (3 - (2 * x));
+    }
+    const tri = 1 - ((t * 2) - 1);
+    return tri * tri;
+}
 
 /** Ember-lit steam on the Chapter 1 side; the fire is still behind you. */
 const STEAM_WARM = new THREE.Color(0xffb079);
@@ -99,8 +167,12 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // as flat blur no matter what the contrast did. 0.095 gives ~10 cells across the view,
     // which is the scale at which fbm starts looking like vapour instead of a gradient.
     const p = positionLocal.mul(0.095);
-    const slow = fbm3(p.add(vec3(0.0, uTime.mul(0.035), 0.0)), 4);
-    const fast = fbm3(p.mul(3.4).add(vec3(uTime.mul(0.10), 0.0, uTime.mul(0.075))), 3);
+    // RISING VAPOUR (2026-10-01). The field used to be isotropic and drifted sideways, which
+    // read as a flat noise sheet — the "beige ceiling". Steam over a lava shaft streams UP: the
+    // slow body is stretched vertically (x0.38 on y -> columns) and its domain scrolls down so
+    // the features climb; the fast boil keeps its scale and climbs faster still.
+    const slow = fbm3(p.mul(vec3(1.0, 0.38, 1.0)).add(vec3(0.0, uTime.mul(-0.11), 0.0)), 4);
+    const fast = fbm3(p.mul(3.4).add(vec3(uTime.mul(0.10), uTime.mul(-0.32), uTime.mul(0.075))), 3);
     // Contrast the sum rather than averaging it: averaging two fbm fields regresses toward
     // 0.5 everywhere, which is what made the first capture read as uniform blur instead of
     // vapour. The smoothstep pushes the field back out to real lights and darks.
@@ -110,7 +182,9 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // Radial feather. The shell is a sphere, so `positionLocal.length()` is ~radius everywhere;
     // the feather that matters is against the BILLOW, not against geometry — a hard-edged
     // constant would read as a coloured ball rather than vapour.
-    const veil = smoothstep(0.28, 0.86, billow);
+    // Soft on purpose (2026-10-01): the old double smoothstep (billow -> veil) gave the THIN
+    // approach veil hard-edged holes, which over the dark cavern read as camouflage, not wisps.
+    const veil = smoothstep(0.08, 0.92, billowRaw);
 
     // Master opacity. Squaring the density makes the approach stay clear for longer and then
     // close quickly, which is what makes it read as passing INTO something rather than as a
@@ -137,11 +211,44 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     const w = clamp(uWarmth, 0.0, 1.0);
     const flash = float(1.0).sub(w.sub(0.5).abs().mul(2.0)); // 0 at the ends, 1 at the crossover
     const tint = mix(uCool, uWarm, w);
-    const colour = mix(tint, vec3(1.0, 0.97, 0.94), flash.mul(0.42))
-        // Interior form lives HERE now that alpha is uniform at peak. Kept below 1.0 at the
-        // top end: the first pass ran to 1.40 and clipped large areas to flat white, which
-        // loses the billow exactly where the volume fills the frame.
-        .mul(float(0.34).add(billow.mul(0.76)));
+    // LIGHT HAS A DIRECTION IN HERE (2026-10-01). The camera looks straight up the shaft for
+    // most of the act, so the frame is the volume's TOP: a uniform tint made it a flat sheet.
+    // Two directional terms from the view ray (camera-relative, so they hold wherever on the
+    // rail the eye is): the fire BELOW lights the vapour's underside while the cavern is still
+    // behind you, and the crack ABOVE is a cool-white aperture the vapour streams toward —
+    // a destination to climb into rather than a wall to hit.
+    const viewUp = normalize(positionWorld.sub(cameraPosition)).y;
+    const aperture = smoothstep(0.5, 0.97, viewUp);
+    const under = oneMinus(smoothstep(-0.65, 0.2, viewUp));
+    // VALUE STRUCTURE: the gaps between billows are SMOKE (ember-dark on the fire side,
+    // sea-dark on the water side) and the billows are LIT vapour. The old multiply-by-billow
+    // kept everything in the cream band - a low-contrast white-out with no form in it.
+    // Interior form lives HERE now that alpha is uniform at peak; kept below 1.0 (a first
+    // pass ran to 1.40 and clipped the billow to flat white where the volume fills the frame).
+    // Gaps are shadowed VAPOUR, not smoke (a hard dark/bright split read as camouflage):
+    // a cool or warm grey ~half the lit value, blended across the whole billow range.
+    const shadowVapour = mix(vec3(0.20, 0.25, 0.29), vec3(0.30, 0.22, 0.18), w);
+    // Lit vapour sits below white so the rays and the aperture are the brightest thing.
+    const litVapour = mix(tint, vec3(1.0, 0.97, 0.94), flash.mul(0.42)).mul(0.78);
+    // LIGHT SHAFTS FROM THE CRACK. Looking up the shaft, rays fan out from the zenith: noise
+    // sampled on the view azimuth (on a circle, so there is no atan seam), streaming slowly,
+    // strongest near the aperture and fading toward the edges of the view. They make the
+    // white-out a climb toward light instead of a fog.
+    const viewDir = normalize(positionWorld.sub(cameraPosition));
+    const azimuth = normalize(viewDir.xz.add(vec2(1e-4, 0.0)));
+    const rayNoise = noise2(azimuth.mul(4.2).add(vec2(uTime.mul(0.05), uTime.mul(-0.035))));
+    const rays = smoothstep(0.48, 0.86, rayNoise).mul(smoothstep(0.35, 0.92, viewUp));
+    const colour = mix(shadowVapour, litVapour, smoothstep(0.0, 1.0, billow))
+        .add(vec3(0.95, 0.93, 0.86).mul(rays).mul(float(0.10).add(d.mul(0.22))))
+        .add(uWarm.mul(under).mul(w).mul(float(0.5).add(billow.mul(0.5))).mul(0.26))
+        .add(vec3(0.80, 0.90, 1.0).mul(aperture.mul(aperture))
+            .mul(float(0.18).add(oneMinus(w).mul(0.5)))
+            .mul(float(0.55).add(fast.mul(0.45))))
+        // A LUMINOUS TUNNEL, not a white-out: the eye looks up the shaft, so the light lives
+        // at the centre of the view (the aperture, the rays) and the periphery falls into
+        // shadowed vapour. Without it the peak was an even field of white.
+        .mul(mix(float(0.52), float(1.0), smoothstep(0.25, 0.95, viewUp)))
+        .min(vec3(0.96, 0.96, 0.96));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = colour;
@@ -176,14 +283,10 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
             // into a wall rather than into weather. Squaring keeps the approach clear for
             // longer and then closes quickly — the easing lives here rather than in the
             // shader so it cannot fight the alpha/brightness split above.
-            const tri = 1 - Math.abs((t * 2) - 1);
-            // ASYMMETRIC ON PURPOSE (Wave 6 — the one open tuning note the One World closure
-            // recorded). Squaring kept the APPROACH clear so long that Act II's submerged blue
-            // read through the veil while Earth Core was still on screen (captured at p~0.068).
-            // The approach side now uses a gentler exponent so density arrives sooner and the
-            // reveal holds back; the exit keeps the square — leaving the weather quickly into
-            // open water is the feeling the breach wants.
-            uDensity.value = t < 0.5 ? tri ** 1.4 : tri * tri;
+            // ASYMMETRIC ON PURPOSE. Approach: clear through the cathedral, then closing fast
+            // so it is dense before Act II starts drawing (see steamQuenchDensity). Exit: the
+            // square — leaving the weather quickly into open water is what the breach wants.
+            uDensity.value = steamQuenchDensity(t);
             // Warm while the cavern is still behind you, cold once the water owns the frame.
             uWarmth.value = 1 - t;
             // Exit only (t>0.5, i.e. under water): converge the cool constant onto the water

@@ -134,11 +134,20 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         name: 'Earth Core',
         act: ODYSSEY_ACTS.ORIGIN,
         palette: { primary: 0xff4400, accent: 0xffaa44, shadow: 0x1a0600 },
+        // RE-PALETTED 2026-10-01 from the Act I colour script's cathedral key
+        // (odyssey-colour-script.js ODYSSEY_ACT1_COLOUR_SCRIPT), which was authored, value-
+        // gated and never wired. The old 0x1f0c00 / 0x2d1500 / 0x331100 were ZERO-BLUE
+        // browns: in linear they are near-pure red-orange, and the master grade's saturation
+        // lift crushed G down to B (captured at ~136,2,2) — the cavern read as a red room
+        // instead of a dark one lit by fire. The darks are now charred indigo-charcoal (low
+        // chroma, B >= G), so the ONLY saturated light in the frame is the lava and its veins.
+        // Fog 0.014 -> 0.0035: at 0.014 the vault dome (130-250 u out) was >94 % fog colour,
+        // i.e. the authored ceiling the camera stares at was never visible.
         atmosphere: {
-            skyColor: 0x1f0c00,
-            fogColor: 0x2d1500,
-            fogDensity: 0.014,
-            ambientLight: 0x331100,
+            skyColor: 0x0d0b12,
+            fogColor: 0x0d0a0c,
+            fogDensity: 0.0035,
+            ambientLight: 0x3a2e2c,
             ambientIntensity: 0.4,
             skyFeatures: ['magmaVault', 'embers'],
             // Low warm key leaking from below the player.
