@@ -70,7 +70,7 @@ import {
 import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
 import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
-import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { billboardLocal, billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import { pickStellarClass } from './odyssey-stellar-ramp.js';
 
 /**
@@ -315,6 +315,30 @@ const NEBULA_FAR_CAP = 90;
 // runaway the instance count. Two tiers (near brighter, far dimmer) give parallax depth.
 const DUST_NEAR_CAP = 650;
 const DUST_FAR_CAP = 800;
+
+// ── THE STARFIELD (masterpiece pass, 2026-10) ────────────────────────────────────────
+// The two shells used to sit at r 200-330 / 120-190 around the chapter centre — NEARER than
+// every hero (750-1260 u) and every nebula (z -300..-1390), so stars drew IN FRONT of the gas
+// and the planet, and with billboardWorld facing the world origin rather than the camera
+// most of them rendered as edge-on slivers. They now live on deep shells just inside the
+// 2400 u dome (behind everything), are billboarded in their own frame, and are sized for
+// that distance (a 3-8 px quad around a 1-2 px core). A share of the far tier is pulled
+// into the dome's galactic plane so the sky has a Milky Way, not an even sprinkle.
+export const CH6_STARFIELD = Object.freeze({
+    far: Object.freeze({
+        radiusMin: 1950, radiusSpan: 330, sizeBase: 6, sizeSpan: 13, perParticle: 5.5, min: 600,
+    }),
+    near: Object.freeze({
+        radiusMin: 1700, radiusSpan: 220, sizeBase: 9, sizeSpan: 22, perParticle: 1.1, min: 160,
+    }),
+    // Share of the far tier seated in the galactic band, and the band's half-thickness.
+    bandShare: 0.45,
+    bandSigma: 0.09,
+    // The dome bake's galactic lane axis (odyssey-cosmic-backdrop.js COSMIC_BACKDROP_DEFAULTS).
+    bandAxis: Object.freeze([0.4, 0.18, 1.0]),
+    // Diffraction spikes are the brightest class's signature only (coreGain ≥ this).
+    spikeCoreGain: 1.15,
+});
 
 export const COSMIC_ENTRY_CONTINUITY_SETTINGS = Object.freeze({
     starRevealStart: 0.04,
@@ -621,15 +645,17 @@ export function createCosmicExpanseEnvironment(options = {}) {
         group.userData.debris = debris;
     }
 
-    // 6. Crisp pinpoint starfield — TWO depth tiers so Space reads DEEP + CLEAR
-    // with sharp hot-white pinpoints (the opposite of Sky's haze): a sparse, far
-    // shell of small hard pinpoints + a nearer tier of brighter, fewer stars.
-    const starsFar = !bisect.stars ? null : createVoidStars(uniforms, Math.max(96, Math.floor(particleCount * 2.4)), {
-        radiusMin: 200,
-        radiusSpan: 130,
-        sizeBase: 0.7,
-        sizeSpan: 1.6,
+    // 6. Crisp pinpoint starfield — TWO depth tiers on deep shells BEHIND everything (see
+    // CH6_STARFIELD): a dense far field with a galactic band, static, and a sparser, brighter,
+    // gently twinkling near tier whose rare B stars carry the diffraction spikes.
+    const starsFar = !bisect.stars ? null : createVoidStars(uniforms, Math.max(
+        CH6_STARFIELD.far.min,
+        Math.floor(particleCount * CH6_STARFIELD.far.perParticle),
+    ), {
+        ...CH6_STARFIELD.far,
         coreExp: 2.6,
+        twinkle: false,
+        bandShare: CH6_STARFIELD.bandShare,
         name: 'void-stars-far',
     });
     if (starsFar) {
@@ -637,13 +663,13 @@ export function createCosmicExpanseEnvironment(options = {}) {
         group.userData.starsFar = starsFar;
     }
 
-    const starsNear = !bisect.stars ? null : createVoidStars(uniforms, Math.max(36, Math.floor(particleCount * 0.7)), {
-        radiusMin: 120,
-        radiusSpan: 70,
+    const starsNear = !bisect.stars ? null : createVoidStars(uniforms, Math.max(
+        CH6_STARFIELD.near.min,
+        Math.floor(particleCount * CH6_STARFIELD.near.perParticle),
+    ), {
+        ...CH6_STARFIELD.near,
         // B3b — crisper punch-through near tier so stars read OVER the brightest cloud:
         // bigger base, hotter core, a small constant emissive floor, wider diffraction.
-        sizeBase: 1.8,
-        sizeSpan: 2.8,
         coreExp: 2.0,
         coreMult: 1.45,
         spikeWidth: 11.0,
@@ -1171,15 +1197,19 @@ function createSuctionParticles(uniforms, count) {
 
 function createVoidStars(uniforms, count, opts = {}) {
     const {
-        radiusMin = 200,
-        radiusSpan = 120,
-        sizeBase = 0.8,
-        sizeSpan = 2.4,
+        radiusMin = CH6_STARFIELD.far.radiusMin,
+        radiusSpan = CH6_STARFIELD.far.radiusSpan,
+        sizeBase = CH6_STARFIELD.far.sizeBase,
+        sizeSpan = CH6_STARFIELD.far.sizeSpan,
         coreExp = 2.6,
         coreMult = 1.15,
         spikeWidth = 14.0,
         emissiveFloor = 0.0,
         brightWeight = 0.0,
+        // Far tier: static (a distant field does not visibly scintillate, and a static layer
+        // under a twinkling one is what makes the twinkle read). Near tier: per-star twinkle.
+        twinkle = true,
+        bandShare = 0,
         name = 'void-stars',
     } = opts;
 
@@ -1207,13 +1237,32 @@ function createVoidStars(uniforms, count, opts = {}) {
         return ((rngState ^ (rngState >>> 13)) >>> 0) / 4294967296;
     };
 
+    // Galactic-plane basis (n = plane normal; u, v span the plane).
+    const n = new THREE.Vector3(...CH6_STARFIELD.bandAxis).normalize();
+    const u = new THREE.Vector3(0, 1, 0).cross(n).normalize();
+    const v = n.clone().cross(u).normalize();
+    const dir = new THREE.Vector3();
+
     for (let i = 0; i < count; i++) {
-        const theta = rng() * Math.PI * 2;
-        const phi = Math.acos(2 * rng() - 1);
+        if (rng() < bandShare) {
+            // In the band: a random azimuth in the plane, a gaussian-ish latitude off it.
+            const az = rng() * Math.PI * 2;
+            const lat = ((rng() + rng() + rng()) / 3 - 0.5) * 2 * CH6_STARFIELD.bandSigma * 2.2;
+            dir.copy(u)
+                .multiplyScalar(Math.cos(az))
+                .addScaledVector(v, Math.sin(az))
+                .multiplyScalar(Math.cos(lat))
+                .addScaledVector(n, Math.sin(lat))
+                .normalize();
+        } else {
+            const theta = rng() * Math.PI * 2;
+            const phi = Math.acos(2 * rng() - 1);
+            dir.set(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta));
+        }
         const r = radiusMin + rng() * radiusSpan;
-        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        positions[i * 3 + 1] = r * Math.cos(phi);
-        positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3] = r * dir.x;
+        positions[i * 3 + 1] = r * dir.y;
+        positions[i * 3 + 2] = r * dir.z;
         twinkles[i] = rng() * Math.PI * 2;
 
         // `brightWeight` (the near tier's punch dial) now biases the DRAW toward the hot
@@ -1247,20 +1296,23 @@ function createVoidStars(uniforms, count, opts = {}) {
     const aBase = attribute('aBase', 'vec3');
     const aSize = attribute('aSize', 'float');
     const aTwinkle = attribute('aTwinkle', 'float');
-    const aColor = attribute('aColor', 'vec3');
+    const aColor = attribute('aColor', 'vec4');
 
-    // twinkle = 0.78 + 0.22 * sin(...): keep stars mostly ON (sharp + persistent),
-    // only a gentle scintillation, so the field never dims into haze. Slightly
-    // higher floor than before so the pinpoints stay crisp against the deeper black.
-    const twinkle = sin(time.mul(2.2).add(aTwinkle)).mul(0.22).add(0.78);
-    const size = aSize.mul(twinkle).mul(0.62);
+    // TWINKLE IN ALPHA ONLY, at a per-star rate. It used to scale the SIZE at one shared
+    // 2.2 rad/s, so the whole field pulsed in lockstep and sub-pixel stars popped in and out
+    // as their quads shrank under a pixel. Now each star scintillates at its own rate
+    // (0.7-3.3 rad/s, derived from its phase) and depth, and its footprint never changes.
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(aBase, size);
+    material.positionNode = billboardLocal(aBase, aSize);
     material.colorNode = aColor.xyz;
-    // Sharp HOT pinpoint: a very tight core (high exponent) for a crisp center, a
-    // faint thin halo for a glow seat, plus a subtle 4-point diffraction glint along
-    // the sprite axes so the brightest stars read as hot pinpoints. All feathered to
-    // 0 before the quad edge — crisp, not hazy.
+    let scint = float(1.0);
+    if (twinkle) {
+        const rate = fract(aTwinkle.mul(1.618)).mul(2.6).add(0.7);
+        const depth = fract(aTwinkle.mul(2.414)).mul(0.25).add(0.15);
+        scint = varying(float(1.0).sub(sin(time.mul(rate).add(aTwinkle)).mul(0.5).add(0.5).mul(depth)));
+    }
+    // Sharp HOT pinpoint: a very tight core (high exponent) for a crisp center and a faint
+    // thin halo for a glow seat, feathered to 0 before the quad edge — crisp, not hazy.
     const p = uv().sub(0.5);
     const dist = length(p);
     const fall = oneMinus(dist.mul(2.0)).max(0.0);
@@ -1268,20 +1320,25 @@ function createVoidStars(uniforms, count, opts = {}) {
     // tighter, harder pinpoint and a low gain a soft one. That is what tells a big dim
     // red giant apart from a near blue-white — size alone just makes a bigger dot.
     const core = pow(fall, aColor.w.mul(coreExp)).mul(coreMult);
-    const halo = pow(fall, 1.2).mul(0.14);
-    // Diffraction spikes: bright along x≈0 and y≈0, decaying with radius — a thin
-    // hot cross that sells the "pinpoint star" sparkle without bloating the sprite. The
-    // near tier widens these (smaller multiplier → fatter cross) for punchier glints.
+    const halo = pow(fall, 1.6).mul(0.10);
+    // Diffraction spikes ONLY on the brightest class — a thin hot cross on every star made
+    // the field read as a sprinkle of plus-signs; on the few B stars it reads as brilliance.
+    const spikeMask = smoothstep(CH6_STARFIELD.spikeCoreGain - 0.03, CH6_STARFIELD.spikeCoreGain + 0.03, aColor.w);
     const spike = pow(oneMinus(p.x.abs().mul(spikeWidth)).max(0.0), 3.0)
         .add(pow(oneMinus(p.y.abs().mul(spikeWidth)).max(0.0), 3.0))
         .mul(fall.mul(fall))
-        .mul(0.5);
-    const vAlpha = varying(twinkle);
+        .mul(0.6)
+        .mul(spikeMask);
     // A small constant emissive floor (near tier) keeps the brightest pinpoints reading
-    // OVER bright nebula cloud rather than washing out against it. Capped via core math.
+    // OVER bright nebula cloud rather than washing out against it.
     const floorTerm = fall.mul(fall).mul(emissiveFloor);
+    // MAGNITUDE: a per-star brightness drawn from its phase (no new attribute), heavily
+    // skewed faint — a real sky is a dust of faint stars with a few bright ones, not an
+    // even snowfall of identical dots.
+    const magnitude = pow(fract(aTwinkle.mul(1.37)), 2.5).mul(0.82).add(0.18);
     material.opacityNode = core.add(halo).add(spike).add(floorTerm)
-        .mul(vAlpha)
+        .mul(magnitude)
+        .mul(scint)
         .mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
