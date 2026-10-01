@@ -1,0 +1,30 @@
+# Superseded inspection scene; retain full-atelier/gardens authored source.
+/ocean-reef-atelier.blend
+
+# Capture iterations stay local; retain cited evidence and reproducible measurements.
+*.png
+*.json
+!/baseline/capture.png
+!/baseline/result.json
+!/biodiversity-composition-final/capture.png
+!/biodiversity-composition-final/result.json
+!/blender-atelier.png
+!/final-combo/capture.png
+!/final-combo/result.json
+!/final-high/capture.png
+!/final-high/result.json
+!/final-low/capture.png
+!/final-low/result.json
+!/final-webgl-color/capture.png
+!/final-webgl-color/result.json
+!/full-atelier/fauna/blender-atelier.png
+!/full-atelier/gardens/blender-atelier.png
+!/legacy-high-repeat/capture.png
+!/legacy-high-repeat/result.json
+!/research-notes.json
+!/verification-summary.json
+
+# Explicitly cited validation logs; other process output remains local.
+!/build.log
+!/lint.log
+!/unit-tests.log

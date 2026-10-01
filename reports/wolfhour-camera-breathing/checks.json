@@ -1,0 +1,30 @@
+[
+  {
+    "command": "npx vitest run tests/unit/wolfhour-ambient-integration.test.js tests/unit/wolfhour-landscape.test.js tests/unit/wolfhour-meteor.test.js tests/unit/wolfhour-sky.test.js tests/unit/wolfhour-effect-accumulation.test.js",
+    "exitCode": 0,
+    "summary": "Initial breathing implementation: 5 suites passed, 53/53 tests. Follow-up composition adjustment is rechecked below.",
+    "phase": "initial"
+  },
+  {
+    "command": "npx vitest run tests/unit/wolfhour-ambient-integration.test.js tests/unit/wolfhour-sky.test.js",
+    "exitCode": 0,
+    "summary": "2 passed (2); 19 passed (19)",
+    "phase": "final",
+    "startedAt": "2026-10-01T13:09:48.686Z",
+    "completedAt": "2026-10-01T13:09:53.677Z",
+    "signal": null,
+    "error": null,
+    "log": "unit-tests-final.log"
+  },
+  {
+    "command": "npx eslint src/themes/wolfhour/wolfhour-composition.js",
+    "exitCode": 0,
+    "summary": "Scoped composition ESLint passed with no diagnostics; initial mixed-operator errors are resolved.",
+    "phase": "final",
+    "startedAt": "2026-10-01T13:09:53.680Z",
+    "completedAt": "2026-10-01T13:09:56.582Z",
+    "signal": null,
+    "error": null,
+    "log": "scoped-eslint-final.log"
+  }
+]

@@ -1,0 +1,34 @@
+{
+  "originals": {
+    "worker": "fe82233b7812b57ba579d022d2e47bbac564968013351e81628312b5018bd17b",
+    "instrument": "b42f6de0f809d79c872252a5f3eebbceaa59c4cac19fcc1facb55e33ed7236f9",
+    "cell": "54ef6cdbf23df3743e3d8e17b44f0bb3f4c617ee8f9646f1b2b09425fa00c351"
+  },
+  "capture": {
+    "quality": "High",
+    "windowWidth": 1280,
+    "windowHeight": 800,
+    "actualCanvasWidth": 1264,
+    "actualCanvasHeight": 735,
+    "seed": 431,
+    "phaseSeconds": 12,
+    "pixelRatio": 1
+  },
+  "changes": [
+    "Recognize classic renderer without backend",
+    "Read classic .calls counter",
+    "Use original reset for lane-owned counters",
+    "Clear accumulated settle counters at measurement reset",
+    "Expose submitted render-window rate separately from independent rAF wall rate",
+    "Seed target scene, freeze legacy time/camera, pass new theme time/seed query parameters",
+    "Record GPU values only after a fresh timestamp-query frame list resolves",
+    "Observe and set the actual player settings manager target frame rate",
+    "Report-local --perf-uncapped maps to existing noThemeFpsCap diagnostic flag and is recorded in manifest",
+    "Report-local --force-webgl and --gameplay-shot provide compatibility and paused-board evidence"
+  ],
+  "limitations": [
+    "Classic WebGL has no GPU timestamp series in this renderer; wall-frame/CPU metrics only",
+    "Canvas area is reduced by native Electron window decoration",
+    "Original before and before-repeat directories are inadmissible instrument evidence and must not be used for performance claims"
+  ]
+}

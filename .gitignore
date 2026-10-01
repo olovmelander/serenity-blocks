@@ -91,3 +91,9 @@ src/rendering/odyssey/assets/_originals/
 # Python bytecode caches (never commit)
 __pycache__/
 *.pyc
+
+# Blender autosave copies and report-local tool diagnostics are generated outputs.
+*.blend[0-9]*
+/reports/**/chrome-tools.json
+/reports/**/failed-page.html
+/reports/**/failed-capture.png

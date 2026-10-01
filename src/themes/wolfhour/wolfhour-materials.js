@@ -792,13 +792,16 @@ export function createCelestialBeamNodeMaterial(params = {}) {
     const edgeFade = smoothstep(0.0, 0.15, vUv.y)
         .mul(float(1.0).sub(smoothstep(0.85, 1.0, vUv.y)));
     const shimmer = sin(vUv.y.mul(50.0).add(uTime.mul(10.0))).mul(0.08).add(0.92);
-    const volumeCoord = vec2(vUv.y.mul(4.0).add(uTime.mul(0.22)), vUv.x.mul(3.0).add(uTime.mul(0.17)));
-    const volumetricNoise = tslFbm(volumeCoord).mul(1.1);
-    const volumetricDensity = mix(
-        float(1.0),
-        volumetricNoise.mul(float(1.1).add(uVolumetricPulse.mul(0.35))),
-        uVolumetricStrength,
-    );
+    let volumetricDensity = float(1);
+    if (volumetricStrength > 0) {
+        const volumeCoord = vec2(vUv.y.mul(4).add(uTime.mul(0.22)), vUv.x.mul(3).add(uTime.mul(0.17)));
+        const volumetricNoise = tslFbm(volumeCoord).mul(1.1);
+        volumetricDensity = mix(
+            float(1),
+            volumetricNoise.mul(float(1.1).add(uVolumetricPulse.mul(0.35))),
+            uVolumetricStrength,
+        );
+    }
 
     const alpha = beamShape
         .mul(vertFade)
@@ -1200,14 +1203,17 @@ export function createDebrisNodeMaterial(params = {}) {
     const twinkle = float(0.7).add(sin(uTime.mul(8.0).add(computeSeed.mul(10.0))).mul(0.3));
     const sizeNode = computeSize.mul(computeLife).mul(twinkle);
 
-    // Fragment
-    const dist = length(uv().sub(0.5)).mul(2.0);
-    const glow = pow(max(float(1.0).sub(smoothstep(0.0, 1.0, dist)), 0.0), 1.5);
-
-    const core = vec3(1.0, 1.0, 1.0);
-    const halo = vec3(0.85, 0.88, 1.0);
-    const col = mix(halo, core, glow);
-    const alpha = glow.mul(computeLife).mul(twinkle).mul(computeActive);
+    // Angular silver fragments with a few small hot sparks, rather than large
+    // luminous circles. Smaller coverage also cuts overlap at the impact point.
+    const point = uv().sub(0.5).mul(2);
+    const spin = computeSeed.add(uTime.mul(2.3));
+    const rx = point.x.mul(cos(spin)).sub(point.y.mul(sin(spin)));
+    const ry = point.x.mul(sin(spin)).add(point.y.mul(cos(spin)));
+    const shard = float(1).sub(smoothstep(0.55, 0.72, rx.abs().mul(0.8).add(ry.abs().mul(1.4))));
+    const spark = exp(dot(point, point).mul(-18));
+    const hot = smoothstep(0.70, 0.86, fract(computeSeed.mul(0.618)));
+    const col = mix(vec3(0.14, 0.16, 0.20), vec3(0.9, 0.93, 1), hot);
+    const alpha = mix(shard, spark, hot).mul(computeLife).mul(twinkle).mul(computeActive);
 
     const material = new MeshBasicNodeMaterial({
         colorNode: vec4(0.0),
@@ -1324,8 +1330,11 @@ export function createShockwaveNodeMaterial() {
     const center = vUv.sub(0.5);
     const dist = length(center).mul(2.0);
 
-    const ringRadius = uProgress.mul(1.2);
-    const ringWidth = float(0.15).mul(float(1.0).sub(uProgress.mul(0.5)));
+    const angle = atan(center.y, center.x.add(1e-5));
+    const distortion = sin(angle.mul(5).add(uProgress.mul(2))).mul(0.012)
+        .add(sin(angle.mul(11).sub(uProgress)).mul(0.007));
+    const ringRadius = uProgress.mul(1.04).add(0.025).add(distortion);
+    const ringWidth = float(0.045).mul(float(1.0).sub(uProgress.mul(0.45)));
 
     const ring = smoothstep(ringRadius.sub(ringWidth), ringRadius.sub(ringWidth.mul(0.5)), dist)
         .mul(float(1.0).sub(
@@ -1334,7 +1343,9 @@ export function createShockwaveNodeMaterial() {
 
     const fade = float(1.0).sub(uProgress).mul(uOpacity);
     const shockColor = vec3(0.9, 0.92, 1.0);
-    const alpha = ring.mul(fade);
+    const brokenArc = smoothstep(-0.5, 0.7, sin(angle.mul(3).add(0.8))
+        .add(sin(angle.mul(7).sub(uProgress)).mul(0.45)));
+    const alpha = ring.mul(fade).mul(brokenArc.mul(0.7).add(0.3)).mul(0.38);
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -1380,7 +1391,7 @@ export function createDustCloudNodeMaterial(params = {}) {
 
     const fadeIn = smoothstep(0.0, 0.2, uTime);
     const life = float(1.0).sub(smoothstep(1.0, 4.5, uTime));
-    const vAlpha = fadeIn.mul(life).mul(0.4);
+    const vAlpha = fadeIn.mul(life).mul(0.16);
 
     const grow = float(1.0).add(uTime.mul(0.5));
     const sizeNode = aSize.mul(grow);
@@ -1388,8 +1399,10 @@ export function createDustCloudNodeMaterial(params = {}) {
     // Fragment
     const dist = length(uv().sub(0.5)).mul(2.0);
     const soft = pow(max(float(1.0).sub(smoothstep(0.0, 1.0, dist)), 0.0), 0.8);
-    const dustColor = vec3(0.4, 0.38, 0.35);
-    const alpha = soft.mul(vAlpha);
+    const billow = sin(uv().x.mul(11).add(aPhase))
+        .mul(sin(uv().y.mul(9).sub(aPhase))).mul(0.18).add(0.82);
+    const dustColor = vec3(0.10, 0.115, 0.14);
+    const alpha = soft.mul(vAlpha).mul(billow);
 
     const material = new MeshBasicNodeMaterial({
         colorNode: vec4(0.0),

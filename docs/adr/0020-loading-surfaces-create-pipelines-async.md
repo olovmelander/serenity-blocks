@@ -52,14 +52,18 @@ cover, and batched `compileAsync` before its render loop starts.
    the final full-screen quad drawn to the canvas (while pending the whole frame is black, and it
    lands last on the async queue). Every post effect that is not its own pass is inlined into that
    quad, so a heavy grade/vignette chain is one short synchronous compile (measured 60-120 ms).
-   **Mode entry keeps the overlay's calm-hold** (motion hidden) through a cold build's
-   `start()` (createScene's PMREM bakes and first compute are synchronous), then gives the motion
-   back if the theme builds async: known from earlier this session, or proven by its own armed
-   session's first async pipeline. WebGL / shared-renderer themes never engage, so they keep the
-   hold for their whole (synchronous) build. A theme that creates its own pipelines async off
+   **Mode entry keeps its loading feedback visible**, including cold `start()` calls. The shared
+   mode wordmarks, aurora and loading lights animate with transform/opacity; cold builds no longer
+   hide the lights or pause the title. Before heavy scene/board work, entry waits for the mode
+   artwork to decode (up to 750 ms), the opaque overlay to paint and the async backend preload
+   (all bounded). Main owns this session for
+   its mode entries; local multiplayer and Odyssey own theirs through
+   `src/ui/cinematic-loading-surface.js`. A theme that creates its own pipelines async off
    three's backend declares `buildsPipelinesAsync` (void-ember). The surface is only begun when
-   an overlay actually covers the screen, and is `uncover()`ed when the overlay lifts: its
-   sessions keep running, but themes started later (another mode's own reveal) are not armed.
+   an overlay covers the screen, and is `uncover()`ed when the reveal/countdown begins: its
+   sessions keep running until idle and settled, but themes started later are not armed.
+   Replacing an overlay cancels its old surface. Synchronous GPU bakes, compute and WebGL paths
+   can still stall compositor motion; keeping feedback visible is not a guarantee against them.
 3. **Boot surfaces create their compute pipelines async** through
    `src/rendering/webgpu-compute-pipeline-async.js`: the intro and the boot warp. Since r186.1,
    it delegates to native `compileComputeAsync`, verifies cached GPU pipeline readiness,
@@ -85,6 +89,14 @@ The existing BootWarp lifecycle, flags, telemetry, and optional compute protocol
 compatible. Visual evidence and choreography are recorded in
 [`reports/boot-aurora/README.md`](../../reports/boot-aurora/README.md).
 
+**2026-10-01 mode-loading redesign:** cinematic covers feature each mode's name in the opening's
+custom vector lettering, with the dotted tagline and aurora. Local multiplayer acquires async
+loading protection before board/theme
+setup and waits for pending pipelines before the countdown; Odyssey acquires the same protection
+for its existing loading cover. Small screens and reduced-motion preferences retain readable,
+visible feedback. This revises the previous cold-build calm-hold policy, at the user's request;
+the historical timings below were measured with that earlier policy, not this redesign.
+
 - Cold boot after this change (same machine, quiet runs): default theme ~10-14 s on screen,
   ~1.0-1.8 s visibly frozen (mostly the page-load stall before the game starts and the exempt
   set), 5 sync / 35 async pipelines, 0 freezes in the warp window. neon-district: 2.9 s visibly
@@ -102,11 +114,11 @@ compatible. Visual evidence and choreography are recorded in
   cold neon-district entry: overlay moving throughout (after the calm-hold through `start()`),
   reveal onto the built city ~11.5 s after the click, 315 ms visibly frozen (10 sync / 185 async
   creates) — vs 102 sync creates behind a motion-hidden overlay before.
-- Residual on an async entry: the exempt synchronous creates that arrive after motion is back —
+- Residual on an async entry: the exempt synchronous creates that arrive while motion is visible —
   the final composite and PMREM bakes of content that loads later (neon-district's HDRI after
   its network load) — still stall the overlay briefly (worst visible frame ~290-430 ms).
-  `mode_entry_pipelines_settle.calmReleasedAtMs` records when an early release happened; it is
-  null when the hold lasted through the settle (a synchronous build).
+  Earlier measurements recorded `mode_entry_pipelines_settle.calmReleasedAtMs` for the hidden
+  hold's release. Current telemetry records `coldBuild` and `calmHold: false` instead.
 - Async compiles contend for Dawn's worker pool (DXC is CPU-bound): total compile wall time can
   exceed the synchronous path's; the gain is that nothing freezes while it happens.
 - Content created after a session ends compiles synchronously as before; themes that stream
@@ -124,6 +136,9 @@ compatible. Visual evidence and choreography are recorded in
 - `tests/unit/void-ember-async-pipelines.test.js`: the raw-WebGPU theme's own async creation.
 - `tests/unit/startup-ident-hold.test.js`, `tests/unit/wait-for-theme-content-loaded.test.js`: the
   ident hold style and the mode-entry content wait.
+- `tests/unit/cinematic-loading-overlay.test.js`, `tests/unit/cinematic-loading-surface.test.js`:
+  paint gating, visible cold-build feedback, bounded preload, retained async sessions and
+  stale-overlay/countdown cancellation.
 - `scripts/boot-smoothness-probe.mjs`: the instrument — `identWindow.visibleFrozenMs` (GPU-process
   stalls, which freeze compositor CSS) vs `mainThreadOnlyMs`, sync/async pipeline counts,
   `--scenario=mode-entry` for loading overlays. Run one Electron process at a time on a quiet

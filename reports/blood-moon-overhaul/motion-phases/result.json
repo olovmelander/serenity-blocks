@@ -1,0 +1,377 @@
+{
+  "url": "http://localhost:5173/playground.html?effect=blood-moon&t=0&quality=High&board=1&seed=431",
+  "width": 1280,
+  "height": 800,
+  "backend": "WebGPU · nvidia ampere",
+  "diagnostics": {
+    "quality": "High",
+    "loaded": true,
+    "time": 0,
+    "layout": {
+      "x": 0.235,
+      "y": 0.62,
+      "radius": 0.23
+    },
+    "moon": {
+      "x": 0.23499999999999996,
+      "y": 0.62,
+      "radius": 0.22009569377990432,
+      "rotation": 0
+    },
+    "camera": [
+      0,
+      0,
+      12
+    ],
+    "stars": 2200,
+    "motes": 100,
+    "sparks": 500,
+    "activeWave": false,
+    "activeEjecta": false,
+    "bursts": {
+      "activeSlots": 0,
+      "activeParticles": 0,
+      "particlesPerSlot": 500,
+      "capacity": 3,
+      "lifetime": 5.2,
+      "pendingStrength": 0,
+      "slots": [
+        {
+          "age": 5.2,
+          "strength": 0,
+          "serial": -1,
+          "origin": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "age": 5.2,
+          "strength": 0,
+          "serial": -1,
+          "origin": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "age": 5.2,
+          "strength": 0,
+          "serial": -1,
+          "origin": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    }
+  },
+  "profile": {
+    "enabled": false,
+    "backend": "WebGPU · nvidia ampere",
+    "effect": "blood-moon",
+    "seed": 431,
+    "fixedTime": 0,
+    "captureMeta": {
+      "quality": "High",
+      "seed": 431
+    },
+    "internalResolution": {
+      "width": 1280,
+      "height": 800,
+      "cssWidth": 1280,
+      "cssHeight": 800,
+      "pixelRatio": 1
+    },
+    "cpuMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "frameMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "gpuMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "computeMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "droppedFrames": {
+      "budgetMs": 16.666666666666668,
+      "dropped": 0,
+      "total": 0,
+      "ratio": 0
+    },
+    "memory": {
+      "supported": true,
+      "startBytes": 129127351,
+      "currentBytes": 129742132,
+      "peakBytes": 129127351,
+      "growthBytes": 614781,
+      "growthMB": 0.5863008499145508
+    },
+    "activeParticles": 2300,
+    "gpuTimestamp": {
+      "requested": false,
+      "renderStatus": "unavailable",
+      "computeStatus": "unavailable",
+      "error": null,
+      "computeError": null
+    },
+    "renderer": {
+      "drawCalls": 6,
+      "triangles": 13629
+    },
+    "gpuMemory": {
+      "totalMB": 22.744609832763672,
+      "texturesMB": 22.382750511169434,
+      "attributesMB": 0.22946548461914062,
+      "indexAttributesMB": 0.1034088134765625,
+      "storageAttributesMB": 0,
+      "uniformBuffersMB": 0.00067138671875,
+      "programsMB": 0.028313636779785156,
+      "renderTargets": 1,
+      "textures": 5,
+      "geometries": 8
+    }
+  },
+  "captures": [
+    {
+      "time": 0,
+      "file": "time-0.png",
+      "url": "http://localhost:5173/playground.html?effect=blood-moon&t=0&quality=High&board=1&seed=431",
+      "diagnostics": {
+        "quality": "High",
+        "loaded": true,
+        "time": 0,
+        "layout": {
+          "x": 0.235,
+          "y": 0.62,
+          "radius": 0.23
+        },
+        "moon": {
+          "x": 0.23499999999999996,
+          "y": 0.62,
+          "radius": 0.22009569377990432,
+          "rotation": 0
+        },
+        "camera": [
+          0,
+          0,
+          12
+        ],
+        "stars": 2200,
+        "motes": 100,
+        "sparks": 500,
+        "activeWave": false,
+        "activeEjecta": false,
+        "bursts": {
+          "activeSlots": 0,
+          "activeParticles": 0,
+          "particlesPerSlot": 500,
+          "capacity": 3,
+          "lifetime": 5.2,
+          "pendingStrength": 0,
+          "slots": [
+            {
+              "age": 5.2,
+              "strength": 0,
+              "serial": -1,
+              "origin": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "age": 5.2,
+              "strength": 0,
+              "serial": -1,
+              "origin": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "age": 5.2,
+              "strength": 0,
+              "serial": -1,
+              "origin": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "time": 8,
+      "file": "time-8.png",
+      "url": "http://localhost:5173/playground.html?effect=blood-moon&t=8&quality=High&board=1&seed=431",
+      "diagnostics": {
+        "quality": "High",
+        "loaded": true,
+        "time": 8,
+        "layout": {
+          "x": 0.235,
+          "y": 0.62,
+          "radius": 0.23
+        },
+        "moon": {
+          "x": 0.24235036892195927,
+          "y": 0.6594309152291663,
+          "radius": 0.22958417622391722,
+          "rotation": 0.0224
+        },
+        "camera": [
+          0.876799384376888,
+          0.4743223249838362,
+          12.605825405878697
+        ],
+        "stars": 2200,
+        "motes": 100,
+        "sparks": 500,
+        "activeWave": false,
+        "activeEjecta": false,
+        "bursts": {
+          "activeSlots": 0,
+          "activeParticles": 0,
+          "particlesPerSlot": 500,
+          "capacity": 3,
+          "lifetime": 5.2,
+          "pendingStrength": 0,
+          "slots": [
+            {
+              "age": 5.2,
+              "strength": 0,
+              "serial": -1,
+              "origin": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "age": 5.2,
+              "strength": 0,
+              "serial": -1,
+              "origin": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "age": 5.2,
+              "strength": 0,
+              "serial": -1,
+              "origin": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "time": 16,
+      "file": "time-16.png",
+      "url": "http://localhost:5173/playground.html?effect=blood-moon&t=16&quality=High&board=1&seed=431",
+      "diagnostics": {
+        "quality": "High",
+        "loaded": true,
+        "time": 16,
+        "layout": {
+          "x": 0.235,
+          "y": 0.62,
+          "radius": 0.23
+        },
+        "moon": {
+          "x": 0.23973351898394935,
+          "y": 0.6277350914341917,
+          "radius": 0.22553667824595286,
+          "rotation": 0.0448
+        },
+        "camera": [
+          0.8561312051773788,
+          0.4802231387291341,
+          12.439051067358248
+        ],
+        "stars": 2200,
+        "motes": 100,
+        "sparks": 500,
+        "activeWave": false,
+        "activeEjecta": false,
+        "bursts": {
+          "activeSlots": 0,
+          "activeParticles": 0,
+          "particlesPerSlot": 500,
+          "capacity": 3,
+          "lifetime": 5.2,
+          "pendingStrength": 0,
+          "slots": [
+            {
+              "age": 5.2,
+              "strength": 0,
+              "serial": -1,
+              "origin": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "age": 5.2,
+              "strength": 0,
+              "serial": -1,
+              "origin": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "age": 5.2,
+              "strength": 0,
+              "serial": -1,
+              "origin": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "messages": [
+    {
+      "level": "warning",
+      "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+    },
+    {
+      "level": "warning",
+      "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+    },
+    {
+      "level": "warning",
+      "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+    },
+    {
+      "level": "warning",
+      "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+    }
+  ]
+}

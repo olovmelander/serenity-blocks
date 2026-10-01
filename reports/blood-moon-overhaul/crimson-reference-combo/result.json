@@ -1,0 +1,165 @@
+{
+  "url": "http://localhost:5173/playground.html?effect=blood-moon&t=12&quality=High&seed=431&event=combo&combo=3&eventAge=0.32",
+  "width": 1280,
+  "height": 800,
+  "backend": "WebGPU · nvidia ampere",
+  "diagnostics": {
+    "quality": "High",
+    "loaded": true,
+    "time": 12,
+    "layout": {
+      "x": 0.235,
+      "y": 0.62,
+      "radius": 0.23
+    },
+    "moon": {
+      "x": 0.25869460845730907,
+      "y": 0.6435798044612264,
+      "radius": 0.22944305632071874,
+      "rotation": 0.0336
+    },
+    "camera": [
+      0.9760369815321407,
+      0.549568027308029,
+      12.633000960070827
+    ],
+    "reaction": {
+      "pulse": 0.20940618717757442,
+      "corona": 0.5093047560094978,
+      "starBoost": 0.3254176128001272,
+      "impact": 0.009887056618741355
+    },
+    "stars": 2200,
+    "motes": 240,
+    "sparks": 1000,
+    "activeWave": true,
+    "activeEjecta": true,
+    "bursts": {
+      "activeSlots": 1,
+      "activeParticles": 1000,
+      "particlesPerSlot": 1000,
+      "capacity": 3,
+      "lifetime": 5.2,
+      "pendingStrength": 0,
+      "slots": [
+        {
+          "age": 0.32,
+          "strength": 0.8622500000000001,
+          "serial": 0,
+          "origin": {
+            "x": 0.25910372031522255,
+            "y": 0.6451792753645197
+          }
+        },
+        {
+          "age": 5.2,
+          "strength": 0,
+          "serial": -1,
+          "origin": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "age": 5.2,
+          "strength": 0,
+          "serial": -1,
+          "origin": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    }
+  },
+  "profile": {
+    "enabled": false,
+    "backend": "WebGPU · nvidia ampere",
+    "effect": "blood-moon",
+    "seed": 431,
+    "fixedTime": 12,
+    "captureMeta": {
+      "quality": "High",
+      "seed": 431
+    },
+    "internalResolution": {
+      "width": 1280,
+      "height": 800,
+      "cssWidth": 1280,
+      "cssHeight": 800,
+      "pixelRatio": 1
+    },
+    "cpuMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "frameMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "gpuMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "computeMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "droppedFrames": {
+      "budgetMs": 16.666666666666668,
+      "dropped": 0,
+      "total": 0,
+      "ratio": 0
+    },
+    "memory": {
+      "supported": true,
+      "startBytes": 130170280,
+      "currentBytes": 128633449,
+      "peakBytes": 130170280,
+      "growthBytes": -1536831,
+      "growthMB": -1.4656362533569336
+    },
+    "activeParticles": 3440,
+    "gpuTimestamp": {
+      "requested": false,
+      "renderStatus": "unavailable",
+      "computeStatus": "unavailable",
+      "error": null,
+      "computeError": null
+    },
+    "renderer": {
+      "drawCalls": 8,
+      "triangles": 15911
+    },
+    "gpuMemory": {
+      "totalMB": 22.763236045837402,
+      "texturesMB": 22.382750511169434,
+      "attributesMB": 0.24686050415039062,
+      "indexAttributesMB": 0.1034088134765625,
+      "storageAttributesMB": 0,
+      "uniformBuffersMB": 0.00067138671875,
+      "programsMB": 0.029544830322265625,
+      "renderTargets": 1,
+      "textures": 5,
+      "geometries": 8
+    }
+  },
+  "messages": [
+    {
+      "level": "warning",
+      "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+    }
+  ]
+}

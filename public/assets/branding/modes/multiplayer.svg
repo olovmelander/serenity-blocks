@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 532 264" role="img" aria-labelledby="title">
+  <title id="title">Multiplayer</title>
+  <!-- Original lettering; regenerate with scripts/generate-mode-wordmarks.mjs. -->
+  <defs>
+    <linearGradient id="spectrum" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="532" y2="100">
+      <stop stop-color="#b8a4ff"/>
+      <stop offset=".48" stop-color="#9ee8ed"/>
+      <stop offset="1" stop-color="#c5f1cf"/>
+    </linearGradient>
+  </defs>
+  <g fill-rule="evenodd">
+    <g transform="translate(0 4) scale(1.350253807106599)" fill="#fff6e9">
+      <path d="M0 100V0H25L51 43L77 0H102V100H80V39L51 83L22 39V100Z M112 0H134V68Q134 78 144 78H162Q172 78 172 68V0H194V70Q194 100 164 100H142Q112 100 112 70Z M204 0H226V78H274V100H214Q204 100 204 90Z M284 0H362V22H334V100H312V22H284Z M372 0H394V100H372Z"/>
+    </g>
+    <g transform="translate(0 163.0253807106599) scale(1)" fill="url(#spectrum)">
+      <path d="M0 100V0H50Q80 0 80 29V34Q80 63 50 63H22V100ZM22 22V43H49Q58 43 58 34V31Q58 22 49 22Z M90 0H112V78H160V100H100Q90 100 90 90Z M170 100L199 0H229L258 100H234L228 78H200L194 100ZM206 56H222L214 26Z M268 0H293L310 34L327 0H352L321 59V100H299V59Z M438 0H372Q362 0 362 10V90Q362 100 372 100H438V78H384V61H427V39H384V22H438Z M448 100V0H498Q528 0 528 29V34Q528 54 510 61L532 100H505L483 63H470V100ZM470 22V43H497Q506 43 506 34V31Q506 22 497 22Z"/>
+    </g>
+  </g>
+</svg>

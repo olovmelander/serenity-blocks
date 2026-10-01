@@ -1,0 +1,99 @@
+{
+  "url": "http://localhost:5173/playground.html?effect=ocean-reef-light&t=8&profile=1&trackTimestamp=1",
+  "adapter": {
+    "vendor": "nvidia",
+    "architecture": "ampere",
+    "device": "",
+    "description": ""
+  },
+  "backend": "WebGPU · nvidia ampere",
+  "diagnostics": {
+    "loaded": true,
+    "quality": "High",
+    "camera": [
+      2.7444010483366474,
+      26.0204781437839,
+      86.69037693618706
+    ]
+  },
+  "profile": {
+    "enabled": true,
+    "backend": "WebGPU · nvidia ampere",
+    "effect": "ocean-reef-light",
+    "seed": 1470239127,
+    "fixedTime": 8,
+    "captureMeta": null,
+    "internalResolution": {
+      "width": 1280,
+      "height": 800,
+      "cssWidth": 1280,
+      "cssHeight": 800,
+      "pixelRatio": 1
+    },
+    "cpuMs": {
+      "samples": 802,
+      "p50": 1.699999999254942,
+      "p95": 2.300000000745058,
+      "p99": 3,
+      "max": 4
+    },
+    "frameMs": {
+      "samples": 801,
+      "p50": 6.099999997764826,
+      "p95": 6.5,
+      "p99": 7.800000000745058,
+      "max": 933.3000000007451
+    },
+    "gpuMs": {
+      "samples": 26,
+      "p50": 0.5632000000000001,
+      "p95": 0.6543360000000001,
+      "p99": 5.414912,
+      "max": 5.414912
+    },
+    "computeMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "droppedFrames": {
+      "budgetMs": 16.666666666666668,
+      "dropped": 1,
+      "total": 801,
+      "ratio": 0.0012484394506866417
+    },
+    "memory": {
+      "supported": true,
+      "startBytes": 162206655,
+      "currentBytes": 153963949,
+      "peakBytes": 172601821,
+      "growthBytes": -8242706,
+      "growthMB": -7.860857009887695
+    },
+    "activeParticles": null,
+    "gpuTimestamp": {
+      "requested": true,
+      "renderStatus": "available",
+      "computeStatus": "unavailable",
+      "error": null,
+      "computeError": null
+    },
+    "renderer": null,
+    "gpuMemory": {
+      "totalMB": 39.614572525024414,
+      "texturesMB": 34.050811767578125,
+      "attributesMB": 3.4619369506835938,
+      "indexAttributesMB": 1.4437179565429688,
+      "storageAttributesMB": 0,
+      "uniformBuffersMB": 0.1370697021484375,
+      "programsMB": 0.5210361480712891,
+      "renderTargets": 13,
+      "textures": 24,
+      "geometries": 92
+    }
+  },
+  "measured": null,
+  "messages": []
+}

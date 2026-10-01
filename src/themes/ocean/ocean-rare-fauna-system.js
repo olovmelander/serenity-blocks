@@ -466,6 +466,7 @@ export class OceanRareFaunaSystem {
         getFishSystem = () => null,
         getCamera = () => null,
         getGameplayEffects = () => null,
+        isWebGPU = false,
         rng = Math.random,
     } = {}) {
         this.scene = scene;
@@ -477,6 +478,7 @@ export class OceanRareFaunaSystem {
         this.getFishSystem = getFishSystem;
         this.getCamera = getCamera;
         this.getGameplayEffects = getGameplayEffects;
+        this.isWebGPU = isWebGPU;
         this.rng = rng;
         this.settings = normalizeSettings(preset?.rareFauna);
         this.disposed = false;
@@ -642,7 +644,8 @@ export class OceanRareFaunaSystem {
 
                 const hasVertexColors = !!(child.geometry?.getAttribute?.('color'))
                     || mat.vertexColors === true;
-                const nodeMat = new MeshStandardNodeMaterial({
+                const MaterialClass = this.isWebGPU ? MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
+                const nodeMat = new MaterialClass({
                     color: mat.color || new THREE.Color(0xffffff),
                     map: mat.map ?? null,
                     normalMap: mat.normalMap ?? null,
@@ -660,46 +663,48 @@ export class OceanRareFaunaSystem {
                     toneMapped: true,
                 });
 
-                const uTime = uniform(0);
-                const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.18);
+                const uTime = this.isWebGPU ? uniform(0) : null;
+                if (this.isWebGPU) {
+                    const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.18);
 
-                // Rim light for that Abzu / Subnautica depth look
-                const viewDir = tslNormalize(cameraPosition.sub(positionWorld));
-                const rimFresnel = tslPow(
-                    float(1.0).sub(tslMax(dot(normalWorld, viewDir), float(0.0))),
-                    float(2.5),
-                );
-                const rimColor = vec3(0.1, 0.5, 0.6).mul(rimFresnel).mul(0.14);
-
-                // Add animated caustics overlay
-                const causticColor = vec3(0.4, 0.9, 0.8).mul(caustic).mul(0.1);
-
-                const isTurtle = child.name.toLowerCase().includes('turtle')
-                    || (mat.name && mat.name.toLowerCase().includes('turtle'))
-                    || (child.parent && child.parent.name.toLowerCase().includes('turtle'));
-
-                if (isTurtle) {
-                    // Procedural shell pattern (scutes)
-                    const shellPattern = abs(
-                        sin(positionLocal.x.mul(float(8.0))).add(
-                            sin(positionLocal.z.mul(float(8.0))),
-                        ),
+                    // Rim light for that Abzu / Subnautica depth look
+                    const viewDir = tslNormalize(cameraPosition.sub(positionWorld));
+                    const rimFresnel = tslPow(
+                        float(1.0).sub(tslMax(dot(normalWorld, viewDir), float(0.0))),
+                        float(2.5),
                     );
-                    const scutes = smoothstep(float(0.4), float(0.8), shellPattern);
-                    const shellColor = mix(vec3(0.05, 0.15, 0.12), vec3(0.12, 0.32, 0.28), scutes);
+                    const rimColor = vec3(0.1, 0.5, 0.6).mul(rimFresnel).mul(0.14);
 
-                    // Mix with original color but lean towards procedural pattern
-                    nodeMat.colorNode = mix(
-                        materialColor.rgb,
-                        shellColor,
-                        float(0.65),
-                    );
+                    // Add animated caustics overlay
+                    const causticColor = vec3(0.4, 0.9, 0.8).mul(caustic).mul(0.1);
 
-                    // More intense rim for turtle
-                    const turtleRim = vec3(0.2, 0.6, 0.55).mul(rimFresnel).mul(0.16);
-                    nodeMat.emissiveNode = causticColor.add(turtleRim);
-                } else {
-                    nodeMat.emissiveNode = causticColor.add(rimColor);
+                    const isTurtle = child.name.toLowerCase().includes('turtle')
+                        || (mat.name && mat.name.toLowerCase().includes('turtle'))
+                        || (child.parent && child.parent.name.toLowerCase().includes('turtle'));
+
+                    if (isTurtle) {
+                        // Procedural shell pattern (scutes)
+                        const shellPattern = abs(
+                            sin(positionLocal.x.mul(float(8.0))).add(
+                                sin(positionLocal.z.mul(float(8.0))),
+                            ),
+                        );
+                        const scutes = smoothstep(float(0.4), float(0.8), shellPattern);
+                        const shellColor = mix(vec3(0.05, 0.15, 0.12), vec3(0.12, 0.32, 0.28), scutes);
+
+                        // Mix with original color but lean towards procedural pattern
+                        nodeMat.colorNode = mix(
+                            materialColor.rgb,
+                            shellColor,
+                            float(0.65),
+                        );
+
+                        // More intense rim for turtle
+                        const turtleRim = vec3(0.2, 0.6, 0.55).mul(rimFresnel).mul(0.16);
+                        nodeMat.emissiveNode = causticColor.add(turtleRim);
+                    } else {
+                        nodeMat.emissiveNode = causticColor.add(rimColor);
+                    }
                 }
 
                 if (mat.emissiveMap) {

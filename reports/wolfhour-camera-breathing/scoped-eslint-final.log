@@ -1,0 +1,15 @@
+{
+  "command": "npx eslint src/themes/wolfhour/wolfhour-composition.js",
+  "exitCode": 0,
+  "summary": "Scoped composition ESLint passed with no diagnostics; initial mixed-operator errors are resolved.",
+  "phase": "final",
+  "startedAt": "2026-10-01T13:09:53.680Z",
+  "completedAt": "2026-10-01T13:09:56.582Z",
+  "signal": null,
+  "error": null,
+  "log": "scoped-eslint-final.log"
+}
+
+STDOUT
+
+STDERR

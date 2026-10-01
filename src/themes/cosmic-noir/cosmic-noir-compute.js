@@ -68,6 +68,7 @@ export class CosmicNoirSparkCompute {
         this.uBurstTrigger = uniform(-1000);
         this.uPlanetRadius = uniform(this.planetRadius);
         this.nextTriggerIndex = 0;
+        this.activeHighWaterMark = 0;
         // Time (seconds) past which every triggered particle has expired. Lets the
         // animate loop skip compute dispatch + draw while idle (no visible sparks).
         this.lastActiveUntil = -Infinity;
@@ -199,6 +200,12 @@ export class CosmicNoirSparkCompute {
     }
 
     triggerBurst(time, intensity = 1.0, batchScale = 1.0) {
+        // Reclaim the prefix only after every delayed birth and overlapping batch
+        // has expired. Until then a wrap retains the entire live pool.
+        if (time > this.lastActiveUntil) {
+            this.nextTriggerIndex = 0;
+            this.activeHighWaterMark = 0;
+        }
         const clampedIntensity = Math.max(0.75, Math.min(2.25, intensity));
         const clampedBatchScale = Math.max(0.45, Math.min(1.0, batchScale));
         const normalizedIntensity = (clampedIntensity - 0.75) / 1.5;
@@ -234,6 +241,13 @@ export class CosmicNoirSparkCompute {
         }
 
         this.nextTriggerIndex = (startIndex + targetBatch) % this.count;
+        this.activeHighWaterMark = Math.max(
+            this.activeHighWaterMark,
+            Math.min(this.count, startIndex + targetBatch),
+        );
+        // r186 dispatch dimensions and its bounds-check uniform follow count;
+        // changing it leaves the existing storage buffers and pipeline intact.
+        if (this.computeNode) this.computeNode.count = this.activeHighWaterMark;
         const firstCount = Math.min(targetBatch, this.count - startIndex);
         const secondCount = targetBatch - firstCount;
         this.markBufferRange(this.positionBuffer, startIndex, firstCount);

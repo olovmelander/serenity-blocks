@@ -1,0 +1,318 @@
+{
+  "author": "Serenity Blocks original Blender garden sculpture",
+  "collection": "Serenity_Ocean_Original_Garden",
+  "blenderVersion": "4.5.9 LTS",
+  "glTFUpAxis": "Y",
+  "textureCount": 0,
+  "canonicalManifest": "asset-manifest.json",
+  "assets": [
+    {
+      "id": "coral-rosette",
+      "file": "coral-rosette.glb",
+      "bytes": 20160,
+      "sha256": "247f66207fdad947de873036e3672887ee09633608d20c4a695958083b573abe",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 390,
+      "triangleCount": 768,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -1.1989578008651733,
+          0,
+          -1.0269999504089355
+        ],
+        "max": [
+          1.0666711330413818,
+          1.174035668373108,
+          0.9704578518867493
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py",
+      "triangleBudget": 1200,
+      "blenderObject": "coral-rosette"
+    },
+    {
+      "id": "coral-antler",
+      "file": "coral-antler.glb",
+      "bytes": 23828,
+      "sha256": "91f1e0056b46365899f26f126d3d8c19b1f3c71bfd9fa4771b0c225787e472cd",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 474,
+      "triangleCount": 876,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -0.9674137234687805,
+          0,
+          -0.7723048329353333
+        ],
+        "max": [
+          0.8694210052490234,
+          2.25223708152771,
+          0.6492345333099365
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py",
+      "triangleBudget": 1000,
+      "blenderObject": "coral-antler"
+    },
+    {
+      "id": "anemone-lantern",
+      "file": "anemone-lantern.glb",
+      "bytes": 40812,
+      "sha256": "8fd6cf67bcc2744e58e43318c2786ac829c7379435091b9cc0ed5e0ff8eccb1c",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 386,
+      "triangleCount": 720,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "currentSway",
+        "crossSway"
+      ],
+      "animations": [
+        {
+          "name": "anemone_lantern_Current_4s",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.5772109031677246,
+          0,
+          -0.5772109031677246
+        ],
+        "max": [
+          0.5772109031677246,
+          1.086927890777588,
+          0.5772109031677246
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py",
+      "triangleBudget": 900,
+      "blenderObject": "anemone-lantern"
+    },
+    {
+      "id": "seaweed-spiral",
+      "file": "seaweed-spiral.glb",
+      "bytes": 35940,
+      "sha256": "ce2c21ca934b494c08cd307f0f9e16743f68ce82eb1809feb4549e7e731dc300",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 341,
+      "triangleCount": 552,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "currentSway",
+        "crossSway"
+      ],
+      "animations": [
+        {
+          "name": "seaweed_spiral_Current_4s",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.43517497181892395,
+          0,
+          -0.5714478492736816
+        ],
+        "max": [
+          0.6954497694969177,
+          2.851957321166992,
+          0.5714563131332397
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py",
+      "triangleBudget": 700,
+      "blenderObject": "seaweed-spiral"
+    },
+    {
+      "id": "grass-meadow",
+      "file": "grass-meadow.glb",
+      "bytes": 38320,
+      "sha256": "4d896c5fcd2bb36a341c173fbff5eb129db4948b6d52e8ef1df8ba7d71369837",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 378,
+      "triangleCount": 432,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "currentSway",
+        "crossSway"
+      ],
+      "animations": [
+        {
+          "name": "grass_meadow_Current_4s",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.5229320526123047,
+          0,
+          -0.6183662414550781
+        ],
+        "max": [
+          1.0065981149673462,
+          1.330443024635315,
+          0.6911087036132812
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py",
+      "triangleBudget": 450,
+      "blenderObject": "grass-meadow"
+    },
+    {
+      "id": "stone-ridge",
+      "file": "stone-ridge.glb",
+      "bytes": 12132,
+      "sha256": "8b5ff193b94132fac78a8afedb2dcb2a06808e668ad1e6800a0c32a99de2230a",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 222,
+      "triangleCount": 440,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -1.3458536863327026,
+          0,
+          -0.8436384201049805
+        ],
+        "max": [
+          1.5970348119735718,
+          1.159999966621399,
+          0.7494245767593384
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py",
+      "triangleBudget": 650,
+      "blenderObject": "stone-ridge"
+    },
+    {
+      "id": "reef-arch",
+      "file": "reef-arch.glb",
+      "bytes": 18268,
+      "sha256": "e5ea1be0c2b8e4d780456dddcd781e72a3ebda5464405590ddc861b7b4ce0177",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 350,
+      "triangleCount": 696,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 0,
+      "shapeKeys": [],
+      "animations": [],
+      "bounds": {
+        "min": [
+          -3.3890371322631836,
+          0,
+          -0.7786940932273865
+        ],
+        "max": [
+          3.358508586883545,
+          3.85483980178833,
+          0.7932610511779785
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py",
+      "triangleBudget": 1400,
+      "blenderObject": "reef-arch"
+    },
+    {
+      "id": "pearl-cluster",
+      "file": "pearl-cluster.glb",
+      "bytes": 34540,
+      "sha256": "5c737299552d26df3468e250a4a087d74671e5035b0e2b7e9fb9ec91f19d86da",
+      "meshCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "textureCount": 0,
+      "vertexCount": 320,
+      "triangleCount": 600,
+      "colorAttributeType": "VEC3",
+      "alphaMode": "OPAQUE",
+      "morphTargetCount": 2,
+      "shapeKeys": [
+        "currentSway",
+        "crossSway"
+      ],
+      "animations": [
+        {
+          "name": "pearl_cluster_Current_4s",
+          "channels": [
+            "weights"
+          ],
+          "startSeconds": 0.041666666666666664,
+          "endSeconds": 4.041666666666667,
+          "loopSeconds": 4.0
+        }
+      ],
+      "bounds": {
+        "min": [
+          -0.6969530582427979,
+          0,
+          -0.445042222738266
+        ],
+        "max": [
+          0.7126139998435974,
+          1.4948631525039673,
+          0.48744627833366394
+        ]
+      },
+      "source": "scripts/blender/ocean_garden_assets.py",
+      "triangleBudget": 650,
+      "blenderObject": "pearl-cluster"
+    }
+  ]
+}

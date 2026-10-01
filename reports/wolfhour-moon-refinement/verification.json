@@ -1,0 +1,200 @@
+{
+  "createdAt": "2026-10-01T13:01:23.001Z",
+  "change": "25% larger lunar diameter at every aspect. Bounded slow libration, a gently moving light direction, subtle independent ambient brightness, and drifting corona noise. Event pulse strength remains owned by the gameplay director.",
+  "rendering": "Reuses the existing sphere, halo, moon texture and noise texture. No new draws, geometry, textures or post passes. The larger disk and halo cover more pixels.",
+  "visual": "Playground screenshot inspected before guarding the legacy theme rotation. Final shipping snapshots inspected at t8 and t32, late event halo near the top edge, and portrait Low. No browser/WebGPU errors.",
+  "checks": [
+    {
+      "command": "npx vitest run tests/unit/wolfhour-ambient-integration.test.js tests/unit/wolfhour-landscape.test.js tests/unit/wolfhour-meteor.test.js tests/unit/wolfhour-sky.test.js tests/unit/wolfhour-effect-accumulation.test.js",
+      "exitCode": 0,
+      "summary": "5 passed (5); 53 passed (53)",
+      "startedAt": "2026-10-01T13:00:11.437Z",
+      "completedAt": "2026-10-01T13:00:19.326Z",
+      "durationSeconds": 7.8864516,
+      "signal": null,
+      "error": null,
+      "log": "unit-tests.log"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "summary": "tsc --noEmit passed.",
+      "startedAt": "2026-10-01T13:00:19.328Z",
+      "completedAt": "2026-10-01T13:00:24.660Z",
+      "durationSeconds": 5.331997800000001,
+      "signal": null,
+      "error": null,
+      "log": "typecheck.log"
+    },
+    {
+      "command": "npx eslint src/themes/wolfhour/wolfhour-sky.js src/themes/wolfhour/wolfhour-composition.js",
+      "exitCode": 0,
+      "summary": "Scoped ESLint passed with no diagnostics.",
+      "startedAt": "2026-10-01T13:00:24.662Z",
+      "completedAt": "2026-10-01T13:00:27.000Z",
+      "durationSeconds": 2.3377266,
+      "signal": null,
+      "error": null,
+      "log": "scoped-eslint.log"
+    }
+  ],
+  "productionFixtureBuild": "Passed with existing mixed-import and chunk-size warnings.",
+  "motion": {
+    "before": {
+      "owner": "sky",
+      "name": "Wolfhour moon",
+      "localPosition": [
+        -226.8228992625959,
+        344.1837046542977,
+        -2600
+      ],
+      "localRotation": [
+        0.02307846351900156,
+        -0.22727227907271183,
+        -0.06659248427947201
+      ],
+      "worldPosition": [
+        -226.8228992625959,
+        344.1837046542977,
+        -2600
+      ],
+      "localScale": [
+        0.55,
+        0.55,
+        0.55
+      ]
+    },
+    "after": {
+      "owner": "sky",
+      "name": "Wolfhour moon",
+      "localPosition": [
+        -220.60395524635803,
+        345.50522961440737,
+        -2600
+      ],
+      "localRotation": [
+        0.02926090925101822,
+        -0.20232513207466324,
+        -0.0654499033899288
+      ],
+      "worldPosition": [
+        -220.60395524635803,
+        345.50522961440737,
+        -2600
+      ],
+      "localScale": [
+        0.55,
+        0.55,
+        0.55
+      ]
+    }
+  },
+  "measuredWindows": [
+    {
+      "gpuMs": {
+        "count": 180,
+        "p50": 0.196608,
+        "p95": 0.32767999999999997,
+        "min": 0.065536,
+        "max": 0.39321599999999995
+      },
+      "cpuUpdateRenderMs": {
+        "count": 180,
+        "p50": 1.6000000014901161,
+        "p95": 2.800000000745058,
+        "min": 1,
+        "max": 15.199999999254942
+      },
+      "content": [
+        {
+          "calls": 22,
+          "triangles": 119315,
+          "points": 0
+        }
+      ]
+    },
+    {
+      "gpuMs": {
+        "count": 180,
+        "p50": 0.196608,
+        "p95": 0.32767999999999997,
+        "min": 0.065536,
+        "max": 0.45875199999999994
+      },
+      "cpuUpdateRenderMs": {
+        "count": 180,
+        "p50": 1.8999999985098839,
+        "p95": 4.399999998509884,
+        "min": 0.8999999985098839,
+        "max": 12.400000002235174
+      },
+      "content": [
+        {
+          "calls": 22,
+          "triangles": 119315,
+          "points": 0
+        }
+      ]
+    }
+  ],
+  "measurementScope": "Isolated shipping WebGPU theme, 1280x720 DPR1 High on NVIDIA Ampere. Two 180-frame t8-to-t11 windows, each after45 warm frames; one sample per resolved query. GPU medians remain in the prior pass's 0.196608ms bucket with22 draws and119315 triangles. Shared workstation CPU timings vary; this is not a full-game FPS guarantee.",
+  "compiledAssets": [
+    {
+      "url": "http://127.0.0.1:4178/assets/prototype-C5TiZsx9.js",
+      "bytes": 1523805,
+      "sha256": "c2518b53713918641e911d5d73d78c07685033a6080b7dde6b4c1c3d418303b2"
+    }
+  ],
+  "sourceHashes": {
+    "src/themes/wolfhour/wolfhour-composition.js": "e8122ee5e5be91041b59db2ce38eca69dea575497abe04ea79416c371b5c957d",
+    "src/themes/wolfhour/wolfhour-sky.js": "1728070e228a0662b3d8a6136c14f4754fc23b749fa537fef318d2571378d632",
+    "src/themes/wolfhour/wolfhour-theme.js": "7c0a92f4e13b740e148589fa6341ab3462b0255255bbe6ad55d78a3b39cd2a4b"
+  },
+  "captures": {
+    "playground-moon-t8": {
+      "screenshot": "playground-moon-t8.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=0&board=1",
+      "viewport": [
+        1280,
+        720
+      ],
+      "errors": []
+    },
+    "moon-idle-t8": {
+      "screenshot": "moon-idle-t8.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=1",
+      "viewport": [
+        1280,
+        720
+      ],
+      "errors": []
+    },
+    "moon-idle-t32": {
+      "screenshot": "moon-idle-t32.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=32&quality=High&shipping=1",
+      "viewport": [
+        1280,
+        720
+      ],
+      "errors": []
+    },
+    "moon-late-corona": {
+      "screenshot": "moon-late-corona.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=24&quality=High&shipping=1&event=combo&eventAge=1.25&combo=3&pointerY=-1",
+      "viewport": [
+        1280,
+        720
+      ],
+      "errors": []
+    },
+    "moon-portrait": {
+      "screenshot": "moon-portrait.png",
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=32&quality=Low&shipping=1&pointerX=-1&pointerY=-1",
+      "viewport": [
+        540,
+        960
+      ],
+      "errors": []
+    }
+  }
+}

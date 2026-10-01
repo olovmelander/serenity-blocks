@@ -1,0 +1,26 @@
+{
+  "command": "npx vitest run tests/unit/wolfhour-ambient-integration.test.js tests/unit/wolfhour-sky.test.js",
+  "exitCode": 0,
+  "summary": "2 passed (2); 19 passed (19)",
+  "phase": "final",
+  "startedAt": "2026-10-01T13:09:48.686Z",
+  "completedAt": "2026-10-01T13:09:53.677Z",
+  "signal": null,
+  "error": null,
+  "log": "unit-tests-final.log"
+}
+
+STDOUT
+
+ RUN  v3.2.7 C:/Users/olov_/repos/serenity-blocks
+
+ ✓ tests/unit/wolfhour-sky.test.js (3 tests) 78ms
+ ✓ tests/unit/wolfhour-ambient-integration.test.js (16 tests) 1855ms
+
+ Test Files  2 passed (2)
+      Tests  19 passed (19)
+   Start at  15:09:50
+   Duration  2.96s (transform 313ms, setup 0ms, collect 836ms, tests 1.93s, environment 0ms, prepare 376ms)
+
+
+STDERR

@@ -6,9 +6,16 @@ import {
     it,
     vi,
 } from 'vitest';
-import { transitionCinematicLoadingOverlayToCountdown } from '../../src/ui/cinematic-loading-overlay.js';
+import {
+    showCinematicLoadingOverlay,
+    dismissCinematicLoadingOverlay,
+    setCinematicLoadingOverlayBuilding,
+    waitForCinematicLoadingOverlayPresented,
+    transitionCinematicLoadingOverlayToCountdown,
+} from '../../src/ui/cinematic-loading-overlay.js';
 
 function matchesSelector(element, selector) {
+    if (selector === 'img') return element.tagName === 'IMG';
     if (selector.startsWith('#')) {
         return element.id === selector.slice(1);
     }
@@ -220,6 +227,121 @@ describe('cinematic loading overlay countdown', () => {
         vi.useRealTimers();
         vi.unstubAllGlobals();
         vi.restoreAllMocks();
+    });
+
+    it('presents an opaque cover before allowing heavy mode setup to proceed', async () => {
+        showCinematicLoadingOverlay('INFINITY');
+        const overlay = document.getElementById('cinematic-loading-overlay');
+        expect(overlay.style.opacity).toBe('1');
+        expect(overlay.ariaLabel).toBe('Loading INFINITY');
+        const ready = vi.fn();
+        const presented = waitForCinematicLoadingOverlayPresented().then(ready);
+        await vi.advanceTimersByTimeAsync(0);
+        animationFrames.flush();
+        expect(ready).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        await presented;
+        expect(ready).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('decodes new mode lettering before presenting its animation and allowing mode setup', async () => {
+        showCinematicLoadingOverlay('SINGLE PLAYER');
+        const lettering = document.querySelector('[data-cinematic-role="title"]').children[0];
+        let finishDecode;
+        lettering.decode = vi.fn(() => new Promise((resolve) => { finishDecode = resolve; }));
+        const ready = vi.fn();
+        const presented = waitForCinematicLoadingOverlayPresented().then(ready);
+        await vi.advanceTimersByTimeAsync(100);
+        expect(ready).not.toHaveBeenCalled();
+        expect(animationFrames.raf).not.toHaveBeenCalled();
+        finishDecode();
+        await vi.advanceTimersByTimeAsync(0);
+        animationFrames.flush();
+        await vi.advanceTimersByTimeAsync(1);
+        await presented;
+        expect(ready).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('bounds an unavailable image decode so loading can still finish', async () => {
+        showCinematicLoadingOverlay('INFINITY');
+        const lettering = document.querySelector('[data-cinematic-role="title"]').children[0];
+        lettering.decode = vi.fn(() => new Promise(() => {}));
+        const presented = waitForCinematicLoadingOverlayPresented();
+        await vi.advanceTimersByTimeAsync(1000);
+        await expect(presented).resolves.toBeUndefined();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('still presents the cover if an artwork resource fails to decode', async () => {
+        showCinematicLoadingOverlay('INFINITY');
+        const lettering = document.querySelector('[data-cinematic-role="title"]').children[0];
+        lettering.decode = vi.fn(() => Promise.reject(new Error('missing image')));
+        const presented = waitForCinematicLoadingOverlayPresented();
+        await vi.advanceTimersByTimeAsync(0);
+        animationFrames.flush();
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(presented).resolves.toBeUndefined();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('keeps loading feedback visible and running during a cold build', () => {
+        showCinematicLoadingOverlay('SINGLE PLAYER');
+        setCinematicLoadingOverlayBuilding(true);
+        const overlay = document.getElementById('cinematic-loading-overlay');
+        const dots = overlay.querySelector('[data-cinematic-role="dots"]');
+        const title = overlay.querySelector('[data-cinematic-role="title"]');
+        expect(overlay.dataset.building).toBe('true');
+        expect(dots.style.opacity).not.toBe('0');
+        expect(title.style.animationPlayState).not.toBe('paused');
+        expect(dots.children[0].children).toHaveLength(5);
+        setCinematicLoadingOverlayBuilding(false);
+        expect(overlay.dataset.building).toBe('false');
+    });
+
+    it.each([
+        ['SINGLE PLAYER', 'single-player', 'SINGLE PLAYER'],
+        ['ONLINE MULTIPLAYER', 'multiplayer', 'MULTIPLAYER'],
+        ['FREE-FOR-ALL', 'multiplayer', 'MULTIPLAYER'],
+        ['INFINITY', 'infinity', 'INFINITY'],
+        ['ODYSSEY', 'odyssey', 'ODYSSEY'],
+        ['SERENITY', 'serenity', 'SERENITY'],
+    ])('uses the mode name as the hero wordmark for %s', (title, asset, label) => {
+        showCinematicLoadingOverlay(title);
+        const heading = document.querySelector('[data-cinematic-role="title"]');
+        expect(heading.children[0].src).toBe(`./assets/branding/modes/${asset}.svg`);
+        expect(heading.children[0].alt).toBe(label);
+    });
+
+    it('does not hang when a backgrounded page stops presenting frames', async () => {
+        showCinematicLoadingOverlay('ODYSSEY');
+        const presented = waitForCinematicLoadingOverlayPresented();
+        await vi.advanceTimersByTimeAsync(250);
+        await expect(presented).resolves.toBeUndefined();
+    });
+
+    it('does not remove a newer cover when an older dismissal finishes', async () => {
+        showCinematicLoadingOverlay('INFINITY');
+        const dismiss = dismissCinematicLoadingOverlay({ minVisibleMs: 100, fadeOutMs: 20 });
+        showCinematicLoadingOverlay('MULTIPLAYER');
+        const replacement = document.getElementById('cinematic-loading-overlay');
+        await vi.advanceTimersByTimeAsync(200);
+        await dismiss;
+        expect(document.getElementById('cinematic-loading-overlay')).toBe(replacement);
+    });
+
+    it('stops countdown callbacks when another loading screen replaces it', async () => {
+        const onGo = vi.fn();
+        const countdown = transitionCinematicLoadingOverlayToCountdown({
+            startCount: 3, countIntervalMs: 100, onGo,
+        });
+        animationFrames.flush();
+        showCinematicLoadingOverlay('SINGLE PLAYER');
+        await vi.advanceTimersByTimeAsync(400);
+        await countdown;
+        expect(onGo).not.toHaveBeenCalled();
+        expect(document.getElementById('cinematic-loading-overlay').ariaLabel).toBe('Loading SINGLE PLAYER');
     });
 
     it('creates a dedicated countdown plate and keeps the layer visible while active', async () => {

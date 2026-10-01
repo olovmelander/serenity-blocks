@@ -1,6 +1,7 @@
 /* eslint-disable import/no-unresolved */
 import {
     cameraPosition,
+    color,
     clamp,
     float,
     fog,
@@ -10,6 +11,9 @@ import {
     smoothstep,
     vec3,
 } from 'three/tsl';
+
+// Scene clear and distant material fog share one color, including nested RTTs.
+export const OCEAN_WATER_COLOR = 0x06474b;
 
 const QUALITY_VOLUME_COUNT = Object.freeze({
     Minimal: 0,
@@ -36,8 +40,8 @@ export function createOceanFogNode(quality = 'High') {
     const volumeCount = QUALITY_VOLUME_COUNT[quality] ?? QUALITY_VOLUME_COUNT.High;
     const viewDistance = length(cameraPosition.sub(positionWorld));
 
-    const silhouetteHold = smoothstep(float(34.0), float(68.0), viewDistance).mul(0.105);
-    const farDissolve = smoothstep(float(112.0), float(238.0), viewDistance).mul(0.66);
+    const silhouetteHold = smoothstep(float(38.0), float(92.0), viewDistance).mul(0.14);
+    const farDissolve = smoothstep(float(112.0), float(245.0), viewDistance);
     const lowWater = float(1.0).sub(
         smoothstep(float(-12.0), float(38.0), positionWorld.y),
     );
@@ -62,11 +66,11 @@ export function createOceanFogNode(quality = 'High') {
             .add(farDissolve)
             .add(localDensity.mul(lowWater.mul(0.7).add(0.3))),
         float(0.0),
-        float(0.82),
+        float(1.0),
     );
     const fogColor = mix(
-        vec3(0.04, 0.40, 0.54),
-        vec3(0.016, 0.19, 0.32),
+        vec3(0.023, 0.125, 0.094),
+        color(OCEAN_WATER_COLOR),
         clamp(
             farDissolve.add(canyonVolume.mul(0.32)).add(lowWater.mul(0.16)),
             float(0.0),

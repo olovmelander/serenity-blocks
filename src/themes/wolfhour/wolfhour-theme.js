@@ -60,6 +60,10 @@ import * as WolfhourMaterialFactories from './wolfhour-materials.js';
 import * as WolfhourComputeFactories from './wolfhour-compute.js';
 import * as WolfhourPostFactories from './wolfhour-post.js';
 import { createLunarHaloFallbackMaterial } from './wolfhour-fallback-materials.js';
+import { createWolfhourSky } from './wolfhour-sky.js';
+import { createWolfhourLandscape } from './wolfhour-landscape.js';
+import { createWolfhourMeteor, setWolfhourRibbon } from './wolfhour-meteor.js';
+import { updateWolfhourCamera } from './wolfhour-composition.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
@@ -462,10 +466,12 @@ export default class WolfhourTheme extends BaseTheme {
         this.camera = null;
         this.composer = null;
         this.postProcessing = null;
-        this.clock = new THREE.Clock();
+        this.clock = new THREE.Timer();
 
         // Scene elements
         this.mountains = [];
+        this.celestialSky = null;
+        this.alpineLandscape = null;
         this.mountainBaseFill = null;
         this.starfield = null;
         this.nebulaPlanes = [];
@@ -740,7 +746,9 @@ export default class WolfhourTheme extends BaseTheme {
             debris: this.qualityPreset.computeDebris ? 'compute-capable' : 'shader',
             postProfile: this.postProfile?.profile || 'off',
             cameraShakeScale: this.qualityPreset.cameraShakeScale ?? 1,
-            starCount: this.qualityPreset.starCount ?? 0,
+            starCount: this.celestialSky
+                ? this.celestialSky.starCount
+                : (this.qualityPreset.starCount ?? 0),
             ambientParticles: this.qualityPreset.ambientParticles ?? 0,
         };
     }
@@ -1344,11 +1352,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.setupComputeSystems();
         this.enforceMRTRuntimeCompatibility();
 
-        this.createStarfield();
-        this.createNebulaBackdrop();
-        this.createMoonHero();
-        this.createMountains();
-        this.createGroundFog();
+        this.createAmbientScene();
         this.setupPostProcessing();
         this.configureRendererColorPipeline();
         this.setupReactivePools();
@@ -1440,9 +1444,7 @@ export default class WolfhourTheme extends BaseTheme {
                     console.log('[Wolfhour] WebGPU backend initialized successfully');
                 } else {
                     console.log('[Wolfhour] WebGPU backend not acquired, falling back to WebGL');
-                    if (renderer.dispose) renderer.dispose();
-                    renderer.forceContextLoss?.();
-                    renderer.domElement?.remove?.();
+                    await this.disposeRenderer(renderer, { nullInstance: false });
                 }
             } catch (err) {
                 if (!ownsLifecycle()) return false;
@@ -1637,11 +1639,16 @@ export default class WolfhourTheme extends BaseTheme {
             bottom: this.camera.bottom,
         };
 
-        const heroX = THREE.MathUtils.clamp(this.camera.right * 0.43, 300, 410);
-        if (this.moon) this.moon.position.x = heroX;
-        if (this.moonHalo) {
-            this.moonHalo.position.x = heroX;
-            this.moonHalo.updateMatrix();
+        if (this.celestialSky) {
+            this.celestialSky.resize(aspect);
+            this.alpineLandscape.resize(aspect);
+        } else {
+            const heroX = THREE.MathUtils.clamp(this.camera.right * 0.43, 300, 410);
+            if (this.moon) this.moon.position.x = heroX;
+            if (this.moonHalo) {
+                this.moonHalo.position.x = heroX;
+                this.moonHalo.updateMatrix();
+            }
         }
 
         const pixelRatio = this.getEffectivePixelRatio();
@@ -1663,6 +1670,34 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
     // GPU-Driven Starfield
     // ─────────────────────────────────────────────────────────────────────────
+
+    createAmbientScene() {
+        if (!this.renderer.isWebGPURenderer) {
+            this.createStarfield();
+            this.createNebulaBackdrop();
+            this.createMoonHero();
+            this.createMountains();
+            this.createGroundFog();
+            return;
+        }
+        this.celestialSky = createWolfhourSky({
+            scene: this.scene,
+            quality: this.activeQualityLevel,
+            aspect: window.innerWidth / window.innerHeight,
+        });
+        this.alpineLandscape = createWolfhourLandscape({
+            scene: this.scene,
+            quality: this.activeQualityLevel,
+            seed: 73013,
+        });
+        this.alpineLandscape.resize(window.innerWidth / window.innerHeight);
+        // The existing bounded lunar reaction director owns the pulse state;
+        // the sky controller owns geometry, materials and texture disposal.
+        this.moon = this.celestialSky.moon;
+        this.moonHalo = this.celestialSky.halo;
+        this.moonNodeData = this.celestialSky.moonNodeData;
+        this.moonHaloNodeData = this.celestialSky.moonHaloNodeData;
+    }
 
     createStarfieldGeometry() {
         const count = this.qualityPreset.starCount;
@@ -1733,7 +1768,7 @@ export default class WolfhourTheme extends BaseTheme {
             return new THREE.Points(pointsGeometry, material);
         }
 
-        const count = pointsGeometry.attributes.position.count;
+        const { count } = pointsGeometry.attributes.position;
         const quad = new THREE.PlaneGeometry(1, 1);
         const instancedMesh = new THREE.InstancedMesh(quad, material, count);
 
@@ -2523,12 +2558,20 @@ export default class WolfhourTheme extends BaseTheme {
 
         // Pointer tracking for parallax camera
         const onPointerMove = (e) => {
-            if (!this.isActive) return;
-            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+            if (!this.isActive || e.pointerType === 'touch') return;
+            this.pointerX = THREE.MathUtils.clamp((e.clientX / window.innerWidth) * 2 - 1, -1, 1);
+            this.pointerY = THREE.MathUtils.clamp((e.clientY / window.innerHeight) * 2 - 1, -1, 1);
         };
+        const resetPointer = () => { this.pointerX = 0; this.pointerY = 0; };
+        const onPointerOut = (e) => { if (!e.relatedTarget) resetPointer(); };
         window.addEventListener('pointermove', onPointerMove);
-        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerout', onPointerOut);
+        window.addEventListener('blur', resetPointer);
+        const pointerUnsub = () => {
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerout', onPointerOut);
+            window.removeEventListener('blur', resetPointer);
+        };
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, levelUpUnsub, pointerUnsub);
     }
@@ -2860,7 +2903,7 @@ export default class WolfhourTheme extends BaseTheme {
         if (this.moonNodeData?.uniforms?.uPulse) {
             this.moonNodeData.uniforms.uPulse.value = Math.min(1.8, moonEnergy);
         }
-        if (this.moon) {
+        if (this.moon && !this.celestialSky) {
             this.moon.rotation.y = -0.34 + Math.sin(this.time * 0.05) * 0.025;
         }
     }
@@ -3349,7 +3392,7 @@ export default class WolfhourTheme extends BaseTheme {
         const positions = this.getParticlePositionArray(burst);
         const velocities = burst.geometry.attributes.aVelocity.array;
         const sizes = burst.geometry.attributes.aSize.array;
-        const particleCount = burst.userData.particleCount;
+        const { particleCount } = burst.userData;
         const origin = payload?.origin || this.lastReactiveOrigin;
         const side = this.random() > 0.5 ? 1 : -1;
         const cx = Number.isFinite(origin?.x) ? origin.x : side * (280 + this.random() * 170);
@@ -3804,7 +3847,7 @@ export default class WolfhourTheme extends BaseTheme {
 
     setScalarAttribute(attribute, value) {
         if (!attribute) return;
-        const array = attribute.array;
+        const { array } = attribute;
         for (let i = 0; i < array.length; i += 1) {
             array[i] = value;
         }
@@ -3820,6 +3863,10 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     setTrailPositions(geometry, trailSegments, headX, headY, headZ, angle, direction, trailLength) {
+        if (geometry?.userData?.wolfhourRibbon) {
+            setWolfhourRibbon(geometry, headX, headY, headZ, angle, direction, trailLength);
+            return;
+        }
         const positionAttribute = geometry?.attributes?.position;
         if (!positionAttribute) return;
         const positions = positionAttribute.array;
@@ -3840,6 +3887,10 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     setHeadPosition(head, x, y, z) {
+        if (head?.userData?.wolfhourMeteorCore) {
+            head.position.set(x, y, z);
+            return;
+        }
         if (head?.isInstancedMesh) {
             // count=1 head with permanently-identity rotation/scale (only translation changes). The
             // instanceMatrix is initialised to identity+translation in _createInstancedParticleMesh
@@ -3863,6 +3914,7 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     buildMeteorEffect() {
+        if (this.celestialSky) return createWolfhourMeteor();
         const trailSegments = this.qualityPreset.meteorTrailSegments || 40;
         const trailGeometry = this.createTrailGeometry(trailSegments);
 
@@ -3976,6 +4028,7 @@ export default class WolfhourTheme extends BaseTheme {
             this.meteorTrailBatchCompute
             && this.shouldUseCompute()
             && this.qualityPreset.computeMeteorTrails === true
+            && !data.trail.geometry.userData.wolfhourRibbon
         ) {
             const slot = this.meteorTrailBatchCompute.acquireSlot();
             if (slot >= 0) {
@@ -4124,16 +4177,21 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     buildMeteorCrashEffect() {
-        const trailSegments = this.qualityPreset.meteorTrailSegments || 50;
-        const trailGeometry = this.createTrailGeometry(trailSegments);
+        const ribbon = this.celestialSky ? createWolfhourMeteor({ impact: true }) : null;
+        const trailSegments = ribbon ? 4 : (this.qualityPreset.meteorTrailSegments || 50);
+        const trailGeometry = ribbon ? ribbon.userData.trail.geometry : this.createTrailGeometry(trailSegments);
         const debrisCount = this.qualityPreset.debrisPerCrash || 40;
-        const dustCount = 25;
+        const dustCount = this.celestialSky ? 16 : 25;
 
         let trailMaterial;
         let headMaterial;
         let trailNodeData = null;
         let headNodeData = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (ribbon) {
+            ({ trailNodeData, headNodeData } = ribbon.userData);
+            trailMaterial = trailNodeData.material;
+            headMaterial = headNodeData.material;
+        } else if (this.isWebGPU && this.materialFactories) {
             const trailResult = this.materialFactories.createCrashMeteorTrailNodeMaterial({
                 meteorTrailCompute: this.meteorTrailBatchCompute,
                 atmosphereGlow: (this.qualityPreset.meteorAtmosphereGlow || 0) + 0.1,
@@ -4174,12 +4232,15 @@ export default class WolfhourTheme extends BaseTheme {
             });
         }
 
-        const trail = new THREE.Line(trailGeometry, trailMaterial);
+        const trail = ribbon ? ribbon.userData.trail : new THREE.Line(trailGeometry, trailMaterial);
         trail.renderOrder = 510;
 
-        const headGeometry = new THREE.BufferGeometry();
-        headGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, -9999]), 3));
-        const head = this._createInstancedParticleMesh(headGeometry, headMaterial);
+        let head = ribbon?.userData.head;
+        if (!head) {
+            const headGeometry = new THREE.BufferGeometry();
+            headGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, -9999]), 3));
+            head = this._createInstancedParticleMesh(headGeometry, headMaterial);
+        }
         head.renderOrder = 511;
 
         const debrisGeometry = new THREE.BufferGeometry();
@@ -4194,7 +4255,7 @@ export default class WolfhourTheme extends BaseTheme {
             debrisVelocityArray[i3] = Math.cos(angle) * Math.sin(upAngle) * speed;
             debrisVelocityArray[i3 + 1] = Math.cos(upAngle) * speed + 50;
             debrisVelocityArray[i3 + 2] = Math.sin(angle) * Math.sin(upAngle) * speed * 0.3;
-            debrisSizeArray[i] = 12 + this.random() * 20;
+            debrisSizeArray[i] = this.celestialSky ? 6 + this.random() * 10 : 12 + this.random() * 20;
             debrisRotationArray[i] = this.random() * Math.PI * 2;
         }
         debrisGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(debrisCount * 3), 3));
@@ -4257,7 +4318,7 @@ export default class WolfhourTheme extends BaseTheme {
         const dustVelocityArray = new Float32Array(dustCount * 3);
         for (let i = 0; i < dustCount; i += 1) {
             const i3 = i * 3;
-            dustSizeArray[i] = 100 + this.random() * 120;
+            dustSizeArray[i] = this.celestialSky ? 60 + this.random() * 75 : 100 + this.random() * 120;
             dustPhaseArray[i] = this.random() * Math.PI * 2;
             dustVelocityArray[i3] = (this.random() - 0.5) * 80;
             dustVelocityArray[i3 + 1] = this.random() * 40;
@@ -4325,6 +4386,10 @@ export default class WolfhourTheme extends BaseTheme {
             shockwaveNodeData,
             dustCloud,
             dustNodeData,
+            terrainOrigin: new THREE.Vector3(),
+            terrainCurrent: new THREE.Vector3(),
+            terrainScaleX: 1,
+            followsTerrain: false,
         };
 
         shockwave.visible = false;
@@ -4334,24 +4399,40 @@ export default class WolfhourTheme extends BaseTheme {
         return crash;
     }
 
-    resetMeteorCrashEffect(crash, payload = {}) {
+    resetMeteorCrashEffect(crash) {
         const data = crash.userData;
-        // Prefer foreground/mid peaks (z >= -1000) — distant peaks make the trail too small to read.
-        const candidateMountains = this.mountains.filter((m) => m.position.z >= -1000);
-        const pool = candidateMountains.length > 0 ? candidateMountains : this.mountains;
-        const originX = payload?.origin?.x;
-        let targetMountain = pool[Math.floor(this.random() * pool.length)];
-        if (Number.isFinite(originX)) {
-            targetMountain = pool.reduce((closest, mountain) => {
-                const currentDistance = Math.abs(mountain.position.x - originX);
-                const closestDistance = Math.abs(closest.position.x - originX);
-                return currentDistance < closestDistance ? mountain : closest;
-            }, pool[0]);
+        crash.position.set(0, 0, 0);
+        data.followsTerrain = !!this.alpineLandscape;
+        if (this.alpineLandscape) {
+            this.alpineLandscape.getImpactOffset(data.terrainOrigin);
+            data.terrainScaleX = this.alpineLandscape.group.scale.x;
+            const maxAbsX = this.camera?.isOrthographicCamera
+                ? Math.max(1, Math.min(Math.abs(this.camera.left), Math.abs(this.camera.right))
+                    - Math.abs(this.camera.position.x) - 36)
+                : 760;
+            // Combo origins are board edges, not landing coordinates. Sample both
+            // visible shoulders and keep recent landings apart in terrain space.
+            const target = this.alpineLandscape.randomImpactTarget(
+                () => this.random(),
+                { maxAbsX },
+            );
+            data.targetX = target.x;
+            data.targetY = target.y;
+            data.targetZ = target.z + 15;
+        } else {
+            // Prefer foreground/mid peaks; distant peaks make the trail too small to read.
+            const candidateMountains = this.mountains.filter((m) => m.position.z >= -1000);
+            const visibleMountains = candidateMountains.filter((mountain) => !this.camera?.isOrthographicCamera
+                || (mountain.position.x > this.camera.position.x + this.camera.left + 100
+                    && mountain.position.x < this.camera.position.x + this.camera.right - 100));
+            let pool = candidateMountains.length > 0 ? candidateMountains : this.mountains;
+            if (visibleMountains.length > 0) pool = visibleMountains;
+            const targetMountain = pool[Math.floor(this.random() * pool.length)];
+            data.targetX = targetMountain.position.x + (this.random() - 0.5) * 200;
+            // Land on the visible peak ridge (mountain.position.y is the base, peaks rise ~380-520 above it).
+            data.targetY = targetMountain.position.y + 460 + this.random() * 80;
+            data.targetZ = targetMountain.position.z + 100;
         }
-        data.targetX = targetMountain.position.x + (this.random() - 0.5) * 200;
-        // Land on the visible peak ridge (mountain.position.y is the base, peaks rise ~380-520 above it).
-        data.targetY = targetMountain.position.y + 460 + this.random() * 80;
-        data.targetZ = targetMountain.position.z + 100;
 
         data.startX = data.targetX + (this.random() > 0.5 ? 1 : -1) * (500 + this.random() * 300);
         data.startY = 650 + this.random() * 150;
@@ -4377,7 +4458,8 @@ export default class WolfhourTheme extends BaseTheme {
             data.debrisSlot = -1;
         }
 
-        if (this.meteorTrailBatchCompute && this.shouldUseCompute() && this.qualityPreset.computeMeteorTrails === true) {
+        if (this.meteorTrailBatchCompute && this.shouldUseCompute()
+            && this.qualityPreset.computeMeteorTrails === true && !data.trail.geometry.userData.wolfhourRibbon) {
             const slot = this.meteorTrailBatchCompute.acquireSlot();
             if (slot >= 0) {
                 data.trailSlot = slot;
@@ -4459,6 +4541,10 @@ export default class WolfhourTheme extends BaseTheme {
         data.debris.visible = true;
         data.shockwave.visible = true;
         data.dustCloud.visible = true;
+        if (data.debrisNodeData) data.debrisNodeData.uniforms.uTime.value = 0;
+        if (data.dustNodeData) data.dustNodeData.uniforms.uTime.value = 0;
+        if (data.debris.material?.uniforms?.uTime) data.debris.material.uniforms.uTime.value = 0;
+        if (data.dustCloud.material?.uniforms?.uTime) data.dustCloud.material.uniforms.uTime.value = 0;
 
         const debrisPositions = this.getParticlePositionArray(data.debris);
         const debrisVelocities = data.debris.geometry.attributes.aVelocity.array;
@@ -4498,6 +4584,7 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         data.shockwave.position.set(targetX, targetY, targetZ + 60);
+        if (this.alpineLandscape) data.shockwave.scale.set(0.85, 0.5, 1);
         if (data.shockwaveNodeData) {
             data.shockwaveNodeData.uniforms.uProgress.value = 0;
             data.shockwaveNodeData.uniforms.uOpacity.value = 1;
@@ -4531,6 +4618,13 @@ export default class WolfhourTheme extends BaseTheme {
         for (let i = this.meteorCrashes.length - 1; i >= 0; i -= 1) {
             const crash = this.meteorCrashes[i];
             const data = crash.userData;
+            if (data.followsTerrain && this.alpineLandscape) {
+                this.alpineLandscape.getImpactOffset(data.terrainCurrent);
+                crash.position.copy(data.terrainCurrent).sub(data.terrainOrigin);
+                // Keep the landing point attached to its ridge through aspect changes.
+                crash.position.x += (data.targetX - data.terrainOrigin.x)
+                    * (this.alpineLandscape.group.scale.x / data.terrainScaleX - 1);
+            }
             const elapsed = this.time - data.startTime;
 
             if (data.phase === 'descent') {
@@ -4613,6 +4707,7 @@ export default class WolfhourTheme extends BaseTheme {
                 }
 
                 const shockwaveProgress = Math.min(explosionElapsed / 2.5, 1.0);
+                data.shockwave.visible = shockwaveProgress < 1;
                 if (data.shockwaveNodeData) {
                     data.shockwaveNodeData.uniforms.uProgress.value = shockwaveProgress;
                     data.shockwaveNodeData.uniforms.uOpacity.value = 1.0 - shockwaveProgress;
@@ -4635,6 +4730,7 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     startAnimation() {
+        this.clock.reset();
         const animate = () => {
             if (!this.isActive) return;
 
@@ -4665,6 +4761,7 @@ export default class WolfhourTheme extends BaseTheme {
                 // Clamp so a long stall (alt-tab resume, GC hitch, throttled frame) can't teleport
                 // nebulas/particles or fire a meteor-spawn storm in one giant catch-up step. Normal
                 // frames are far below this cap, so steady-state motion is identical.
+                this.clock.update(wallNowMs);
                 deltaTime = Math.min(this.clock.getDelta(), 1 / 30);
                 this.time += deltaTime;
             }
@@ -4705,6 +4802,8 @@ export default class WolfhourTheme extends BaseTheme {
 
             this.updateNebulas(deltaTime);
             this.updateEffects(deltaTime);
+            this.celestialSky?.update(this.time, this.effectState);
+            this.alpineLandscape?.update(this.time, this.effectState);
             this.processReactiveQueue();
             this.updateMeteors(deltaTime); // Shooting star system
             this.updateMeteorCrashes(); // Meteor crash system
@@ -4737,6 +4836,22 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     updateCameraAnimation(deltaTime = 0) {
+        if (this.celestialSky) {
+            const damping = 1 - Math.exp(-Math.max(0, deltaTime) * 2.8);
+            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, damping);
+            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, damping);
+            updateWolfhourCamera(
+                this.camera,
+                this.time,
+                window.innerWidth / window.innerHeight,
+                this.smoothedPointerX,
+                this.smoothedPointerY,
+                this.effectState.cameraShake,
+            );
+            this.celestialSky.applyParallax(this.camera);
+            this.alpineLandscape?.applyParallax(this.camera);
+            return;
+        }
         // More pronounced camera movements for immersive, breathing feel
         // Primary drift period: ~30 seconds, secondary: ~50 seconds
         const driftSpeed = 0.04;
@@ -5108,6 +5223,17 @@ export default class WolfhourTheme extends BaseTheme {
             this.renderer.domElement.removeEventListener('webglcontextlost', this.webglContextLostHandler);
             this.webglContextLostHandler = null;
         }
+
+        if (this.celestialSky) {
+            this.celestialSky.dispose();
+            this.celestialSky = null;
+            this.moon = null;
+            this.moonHalo = null;
+            this.moonNodeData = null;
+            this.moonHaloNodeData = null;
+        }
+        this.alpineLandscape?.dispose();
+        this.alpineLandscape = null;
 
         this.mountains.forEach((m) => {
             m.geometry.dispose();

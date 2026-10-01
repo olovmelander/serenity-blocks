@@ -25,6 +25,7 @@ import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
     showCinematicLoadingOverlay,
+    waitForCinematicLoadingOverlayPresented,
     dismissCinematicLoadingOverlay,
     transitionCinematicLoadingOverlayToCountdown,
 } from '../../ui/cinematic-loading-overlay.js';
@@ -162,11 +163,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.matchConfig = config;
         this.configuredForStart = true;
 
-        this.matchStartLoadingOverlay = showCinematicLoadingOverlay(this._getMatchStartLoadingTitle(config));
+        this.matchStartLoadingOverlay = showCinematicLoadingOverlay(
+            this._getMatchStartLoadingTitle(config),
+            { themeManager: this.deps.themeManager },
+        );
 
         try {
-            // Let the overlay fully cover the screen before heavy UI/theme work.
-            await new Promise((resolve) => { setTimeout(resolve, 500); });
+            // Commit the cover and async theme loading before preparing boards.
+            await waitForCinematicLoadingOverlayPresented();
             if (!ownsConfiguration()) return;
 
             // Now setup the UI for the configured number of players.
@@ -312,15 +316,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
     ) {
         if (!this.matchStartLoadingOverlay) return;
 
-        const shownAt = Number(this.matchStartLoadingOverlay.shownAt || Date.now());
-        const elapsedMs = Date.now() - shownAt;
+        const elapsedMs = Date.now() - Number(this.matchStartLoadingOverlay.shownAt || Date.now());
         const remainingVisibleMs = Math.max(0, minVisibleMs - elapsedMs);
-
-        if (remainingVisibleMs > 0) {
-            await new Promise((resolve) => {
-                setTimeout(resolve, remainingVisibleMs);
-            });
-        }
+        if (remainingVisibleMs > 0) await new Promise((resolve) => { setTimeout(resolve, remainingVisibleMs); });
     }
 
     /**
@@ -522,6 +520,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         this._updateMultiplayerStats(0);
 
+        await this.deps.themeManager?.whenLoadingSurfacePipelinesSettled?.(5000);
+        if (!ownsStart()) return;
         await this._waitForMatchStartLoadingOverlayMinVisible();
         if (!ownsStart()) return;
         await introDismissPromise;

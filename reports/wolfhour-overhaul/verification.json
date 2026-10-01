@@ -1,0 +1,822 @@
+{
+  "direction": "DNKL Wolfhour reference: black sky, fine stars, silver granite walls, dark central valley and layered foreground; a restrained moon and animated gameplay reactions.",
+  "scope": "Isolated Wolfhour ambient scene and actual gameplay effect methods. Classic WebGL fallback is preserved. Full game FPS and integrated GPU performance are not measured.",
+  "instrument": {
+    "browser": "Chrome DevTools MCP 1.7.0, isolated headless Chrome, native WebGPU, NVIDIA Ampere",
+    "baselineRevision": "14b576a1a9f2e7003bc63eaa4d89c66d0767ab92",
+    "comparison": "1280x720, DPR 1, High, seed 73013, t=8, MSAA, production minified fixtures, runtime single-target post, compute off in both.",
+    "method": "45 warm frames, then two 180-frame windows. One GPU sample per resolved render timestamp query. Fixed scene content within each window. Browser timestamp quantization limits precision; shared machine load can affect CPU/frame timings."
+  },
+  "comparison": {
+    "originalDrawCalls": 30,
+    "revisedDrawCalls": 22,
+    "originalTriangles": 386299,
+    "revisedTriangles": 121715,
+    "gpuMedianMs": {
+      "original": [
+        0.262144,
+        0.262144
+      ],
+      "revised": [
+        0.196608,
+        0.196608
+      ]
+    },
+    "frameMedianMs": {
+      "original": [
+        6.099999999999909,
+        6.099999999999454
+      ],
+      "revised": [
+        6.099999999999909,
+        6.099999999999909
+      ]
+    }
+  },
+  "validation": {
+    "wolfhourUnitTests": "39 passed across 4 files",
+    "themeLifecycleAudit": "passed",
+    "productionBuildAndBootClosure": "passed",
+    "typecheck": "passed",
+    "lintRatchet": "passed: 1332 errors against existing 1336-error baseline; no new-module errors",
+    "visual": "Screenshots inspected at landscape, square and portrait sizes, including combo and post-impact phases; no browser or WebGPU validation errors."
+  },
+  "reproduction": {
+    "original": [
+      "node reports/wolfhour-overhaul/freeze-original.mjs",
+      "node reports/wolfhour-overhaul/build-original.mjs",
+      "node reports/wolfhour-overhaul/serve-original.mjs"
+    ],
+    "revised": [
+      "node reports/wolfhour-overhaul/build-prototype.mjs",
+      "node reports/wolfhour-overhaul/serve-prototype.mjs"
+    ],
+    "capture": "Set WOLFHOUR_CAPTURE_URL to a recorded URL, WOLFHOUR_CAPTURE_NAME to its name, WOLFHOUR_VIEWPORT to widthxheight, then run node reports/wolfhour-overhaul/capture-original.mjs. Run GPU captures serially.",
+    "fullCaptureSet": "With both servers running, node reports/wolfhour-overhaul/capture-final-set.mjs captures all seven cases serially. Then node reports/wolfhour-overhaul/summarize-validation.mjs writes this report.",
+    "chromeMcp": "Set WOLFHOUR_MCP_BIN to chrome-devtools-mcp 1.7.0 build/src/bin/chrome-devtools-mcp.js when the local npm cache path is unavailable."
+  },
+  "captures": {
+    "original-final-high": {
+      "screenshot": "original-final-high.png",
+      "createdAt": "2026-10-01T11:47:27.229Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "url": "http://127.0.0.1:4177/reports/wolfhour-overhaul/baseline.html?wolfhourSeed=73013&t=8",
+      "quality": "High",
+      "seed": 73013,
+      "t": 8,
+      "runtimeFeatures": {
+        "usePost": true,
+        "useMRT": false,
+        "useCompute": false,
+        "qualityAllowsCompute": true,
+        "qualityAllowsPost": true,
+        "qualityAllowsMRT": true,
+        "spirits": "material",
+        "ambient": "off",
+        "starTwinkle": "material",
+        "meteorTrail": "cpu",
+        "debris": "shader",
+        "postProfile": "full",
+        "cameraShakeScale": 0.6,
+        "starCount": 26000,
+        "ambientParticles": 1000
+      },
+      "compiledAssets": [
+        {
+          "url": "http://127.0.0.1:4177/assets/baseline-ChWn08PV.js",
+          "sha256": "27f36647dfdd9c780c5432e8bb95a52bc3eab1ff5cba9a71d0352ff02e7c14e0",
+          "bytes": 1498111
+        }
+      ],
+      "repeats": [
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.262144,
+            "p95": 0.39321599999999995,
+            "min": 0.131072,
+            "max": 0.39321599999999995
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1.199999999254942,
+            "p95": 1.800000000745058,
+            "min": 0.8000000007450581,
+            "max": 3.600000001490116
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 6.200000000000273,
+            "min": 5.900000000000091,
+            "max": 12.100000000000364
+          },
+          "content": {
+            "calls": 30,
+            "triangles": 386299,
+            "points": 0
+          },
+          "memoryBytes": 58165551
+        },
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.262144,
+            "p95": 0.39321599999999995,
+            "min": 0.131072,
+            "max": 0.39321599999999995
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1,
+            "p95": 1.4000000022351742,
+            "min": 0.7999999970197678,
+            "max": 1.8999999985098839
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999454,
+            "p95": 6.100000000000364,
+            "min": 5.900000000000091,
+            "max": 6.200000000000273
+          },
+          "content": {
+            "calls": 30,
+            "triangles": 386299,
+            "points": 0
+          },
+          "memoryBytes": 58165551
+        }
+      ],
+      "errors": [],
+      "console": "## Console messages\nShowing 1-4 of 4 (Page 1 of 1).\nmsgid=1 [warn] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127 (0 args)\nmsgid=2 [warn] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead. (1 args)\nmsgid=3 [log] [Wolfhour] Theme constructed (1 args)\nmsgid=4 [log] Wolfhour isolated baseline ready [object Object] (2 args)"
+    },
+    "reference-final-high": {
+      "screenshot": "reference-final-high.png",
+      "createdAt": "2026-10-01T11:47:33.754Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=1",
+      "quality": "High",
+      "seed": 73013,
+      "t": 8,
+      "runtimeFeatures": {
+        "usePost": true,
+        "useMRT": false,
+        "useCompute": false,
+        "qualityAllowsCompute": true,
+        "qualityAllowsPost": true,
+        "qualityAllowsMRT": true,
+        "spirits": "material",
+        "ambient": "off",
+        "starTwinkle": "material",
+        "meteorTrail": "cpu",
+        "debris": "shader",
+        "postProfile": "full",
+        "cameraShakeScale": 0.6,
+        "starCount": 6000,
+        "ambientParticles": 1000
+      },
+      "compiledAssets": [
+        {
+          "url": "http://127.0.0.1:4178/assets/prototype-DLmjhz9E.js",
+          "sha256": "bc507d9aec85fab10b0ad391ec14c6f8c0599dc679c6eb46d741151eccdee3f7",
+          "bytes": 1518307
+        }
+      ],
+      "repeats": [
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.196608,
+            "p95": 0.32767999999999997,
+            "min": 0.065536,
+            "max": 0.45875199999999994
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1.1000000014901161,
+            "p95": 1.5999999977648258,
+            "min": 0.6999999992549419,
+            "max": 1.7999999970197678
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 6.199999999999818,
+            "min": 5.900000000000091,
+            "max": 12.200000000000273
+          },
+          "content": {
+            "calls": 22,
+            "triangles": 121715,
+            "points": 0
+          },
+          "memoryBytes": 43173652,
+          "activeEvents": {
+            "stars": 0,
+            "meteors": 0,
+            "crashes": 0,
+            "beams": 0,
+            "rifts": 0,
+            "waves": 0,
+            "queue": 0
+          }
+        },
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.196608,
+            "p95": 0.32767999999999997,
+            "min": 0.065536,
+            "max": 0.32767999999999997
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1,
+            "p95": 1.3999999985098839,
+            "min": 0.6999999992549419,
+            "max": 1.699999999254942
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 6.199999999999818,
+            "min": 5.400000000000091,
+            "max": 12.099999999999909
+          },
+          "content": {
+            "calls": 22,
+            "triangles": 121715,
+            "points": 0
+          },
+          "memoryBytes": 43173652,
+          "activeEvents": {
+            "stars": 0,
+            "meteors": 0,
+            "crashes": 0,
+            "beams": 0,
+            "rifts": 0,
+            "waves": 0,
+            "queue": 0
+          }
+        }
+      ],
+      "errors": [],
+      "console": "## Console messages\nShowing 1-3 of 3 (Page 1 of 1).\nmsgid=1 [warn] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127 (0 args)\nmsgid=2 [log] [Wolfhour] Theme constructed (1 args)\nmsgid=3 [log] Wolfhour isolated prototype ready [object Object] (2 args)"
+    },
+    "reference-final-square": {
+      "screenshot": "reference-final-square.png",
+      "createdAt": "2026-10-01T11:47:40.201Z",
+      "viewport": [
+        900,
+        900
+      ],
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=1",
+      "quality": "High",
+      "seed": 73013,
+      "t": 8,
+      "runtimeFeatures": {
+        "usePost": true,
+        "useMRT": false,
+        "useCompute": false,
+        "qualityAllowsCompute": true,
+        "qualityAllowsPost": true,
+        "qualityAllowsMRT": true,
+        "spirits": "material",
+        "ambient": "off",
+        "starTwinkle": "material",
+        "meteorTrail": "cpu",
+        "debris": "shader",
+        "postProfile": "full",
+        "cameraShakeScale": 0.6,
+        "starCount": 6000,
+        "ambientParticles": 1000
+      },
+      "compiledAssets": [
+        {
+          "url": "http://127.0.0.1:4178/assets/prototype-DLmjhz9E.js",
+          "sha256": "bc507d9aec85fab10b0ad391ec14c6f8c0599dc679c6eb46d741151eccdee3f7",
+          "bytes": 1518307
+        }
+      ],
+      "repeats": [
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.196608,
+            "p95": 0.262144,
+            "min": 0.065536,
+            "max": 0.39321599999999995
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1,
+            "p95": 1.4000000022351742,
+            "min": 0.6999999992549419,
+            "max": 1.699999999254942
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 6.199999999999818,
+            "min": 5.899999999999636,
+            "max": 12.099999999999909
+          },
+          "content": {
+            "calls": 22,
+            "triangles": 121715,
+            "points": 0
+          },
+          "memoryBytes": 40228300,
+          "activeEvents": {
+            "stars": 0,
+            "meteors": 0,
+            "crashes": 0,
+            "beams": 0,
+            "rifts": 0,
+            "waves": 0,
+            "queue": 0
+          }
+        },
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.131072,
+            "p95": 0.262144,
+            "min": 0.065536,
+            "max": 0.39321599999999995
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1.0999999977648258,
+            "p95": 1.4000000022351742,
+            "min": 0.6999999992549419,
+            "max": 1.5
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 6.100000000000364,
+            "min": 5.900000000000091,
+            "max": 12.199999999999818
+          },
+          "content": {
+            "calls": 22,
+            "triangles": 121715,
+            "points": 0
+          },
+          "memoryBytes": 40228300,
+          "activeEvents": {
+            "stars": 0,
+            "meteors": 0,
+            "crashes": 0,
+            "beams": 0,
+            "rifts": 0,
+            "waves": 0,
+            "queue": 0
+          }
+        }
+      ],
+      "errors": [],
+      "console": "## Console messages\nShowing 1-3 of 3 (Page 1 of 1).\nmsgid=1 [warn] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127 (0 args)\nmsgid=2 [log] [Wolfhour] Theme constructed (1 args)\nmsgid=3 [log] Wolfhour isolated prototype ready [object Object] (2 args)"
+    },
+    "reference-final-combo": {
+      "screenshot": "reference-final-combo.png",
+      "createdAt": "2026-10-01T11:47:46.501Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=1&event=combo&eventAge=0.35&combo=5",
+      "quality": "High",
+      "seed": 73013,
+      "t": 8,
+      "runtimeFeatures": {
+        "usePost": true,
+        "useMRT": false,
+        "useCompute": false,
+        "qualityAllowsCompute": true,
+        "qualityAllowsPost": true,
+        "qualityAllowsMRT": true,
+        "spirits": "material",
+        "ambient": "off",
+        "starTwinkle": "material",
+        "meteorTrail": "cpu",
+        "debris": "shader",
+        "postProfile": "full",
+        "cameraShakeScale": 0.6,
+        "starCount": 6000,
+        "ambientParticles": 1000
+      },
+      "compiledAssets": [
+        {
+          "url": "http://127.0.0.1:4178/assets/prototype-DLmjhz9E.js",
+          "sha256": "bc507d9aec85fab10b0ad391ec14c6f8c0599dc679c6eb46d741151eccdee3f7",
+          "bytes": 1518307
+        }
+      ],
+      "repeats": [
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.196608,
+            "p95": 0.32767999999999997,
+            "min": 0.065536,
+            "max": 0.32767999999999997
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1.4000000022351742,
+            "p95": 2.199999999254942,
+            "min": 0.8999999985098839,
+            "max": 3.300000000745058
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 12.099999999999909,
+            "min": 5.900000000000091,
+            "max": 12.199999999999818
+          },
+          "content": {
+            "calls": 42,
+            "triangles": 121813,
+            "points": 0
+          },
+          "memoryBytes": 43216665,
+          "activeEvents": {
+            "stars": 1,
+            "meteors": 3,
+            "crashes": 1,
+            "beams": 2,
+            "rifts": 2,
+            "waves": 1,
+            "queue": 0
+          }
+        },
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.196608,
+            "p95": 0.32767999999999997,
+            "min": 0.065536,
+            "max": 0.32767999999999997
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1.2000000029802322,
+            "p95": 1.699999999254942,
+            "min": 0.8000000007450581,
+            "max": 2.300000000745058
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999454,
+            "p95": 6.199999999999818,
+            "min": 5.899999999999636,
+            "max": 12.200000000000273
+          },
+          "content": {
+            "calls": 42,
+            "triangles": 121813,
+            "points": 0
+          },
+          "memoryBytes": 43216665,
+          "activeEvents": {
+            "stars": 1,
+            "meteors": 3,
+            "crashes": 1,
+            "beams": 2,
+            "rifts": 2,
+            "waves": 1,
+            "queue": 0
+          }
+        }
+      ],
+      "errors": [],
+      "console": "## Console messages\nShowing 1-3 of 3 (Page 1 of 1).\nmsgid=1 [warn] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127 (0 args)\nmsgid=2 [log] [Wolfhour] Theme constructed (1 args)\nmsgid=3 [log] Wolfhour isolated prototype ready [object Object] (2 args)"
+    },
+    "reference-final-crash": {
+      "screenshot": "reference-final-crash.png",
+      "createdAt": "2026-10-01T11:47:53.266Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=1&event=crash&eventAge=1.7&combo=5",
+      "quality": "High",
+      "seed": 73013,
+      "t": 8,
+      "runtimeFeatures": {
+        "usePost": true,
+        "useMRT": false,
+        "useCompute": false,
+        "qualityAllowsCompute": true,
+        "qualityAllowsPost": true,
+        "qualityAllowsMRT": true,
+        "spirits": "material",
+        "ambient": "off",
+        "starTwinkle": "material",
+        "meteorTrail": "cpu",
+        "debris": "shader",
+        "postProfile": "full",
+        "cameraShakeScale": 0.6,
+        "starCount": 6000,
+        "ambientParticles": 1000
+      },
+      "compiledAssets": [
+        {
+          "url": "http://127.0.0.1:4178/assets/prototype-DLmjhz9E.js",
+          "sha256": "bc507d9aec85fab10b0ad391ec14c6f8c0599dc679c6eb46d741151eccdee3f7",
+          "bytes": 1518307
+        }
+      ],
+      "repeats": [
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.196608,
+            "p95": 0.32767999999999997,
+            "min": 0.065536,
+            "max": 0.32767999999999997
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1.199999999254942,
+            "p95": 1.699999999254942,
+            "min": 0.8999999985098839,
+            "max": 1.9000000022351742
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 6.100000000000364,
+            "min": 5.900000000000091,
+            "max": 12.099999999999909
+          },
+          "content": {
+            "calls": 35,
+            "triangles": 121979,
+            "points": 0
+          },
+          "memoryBytes": 43220085,
+          "activeEvents": {
+            "stars": 0,
+            "meteors": 3,
+            "crashes": 1,
+            "beams": 0,
+            "rifts": 0,
+            "waves": 0,
+            "queue": 0
+          }
+        },
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.196608,
+            "p95": 0.32767999999999997,
+            "min": 0.065536,
+            "max": 0.32767999999999997
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1.0999999977648258,
+            "p95": 1.5,
+            "min": 0.8000000007450581,
+            "max": 1.7999999970197678
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999454,
+            "p95": 6.199999999999818,
+            "min": 5.899999999999636,
+            "max": 12.199999999999818
+          },
+          "content": {
+            "calls": 35,
+            "triangles": 121979,
+            "points": 0
+          },
+          "memoryBytes": 43220085,
+          "activeEvents": {
+            "stars": 0,
+            "meteors": 3,
+            "crashes": 1,
+            "beams": 0,
+            "rifts": 0,
+            "waves": 0,
+            "queue": 0
+          }
+        }
+      ],
+      "errors": [],
+      "console": "## Console messages\nShowing 1-3 of 3 (Page 1 of 1).\nmsgid=1 [warn] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127 (0 args)\nmsgid=2 [log] [Wolfhour] Theme constructed (1 args)\nmsgid=3 [log] Wolfhour isolated prototype ready [object Object] (2 args)"
+    },
+    "reference-final-portrait": {
+      "screenshot": "reference-final-portrait.png",
+      "createdAt": "2026-10-01T11:47:59.821Z",
+      "viewport": [
+        540,
+        960
+      ],
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=Low&shipping=1",
+      "quality": "Low",
+      "seed": 73013,
+      "t": 8,
+      "runtimeFeatures": {
+        "usePost": false,
+        "useMRT": false,
+        "useCompute": false,
+        "qualityAllowsCompute": false,
+        "qualityAllowsPost": false,
+        "qualityAllowsMRT": false,
+        "spirits": "material",
+        "ambient": "off",
+        "starTwinkle": "material",
+        "meteorTrail": "cpu",
+        "debris": "shader",
+        "postProfile": "off",
+        "cameraShakeScale": 0.2,
+        "starCount": 2000,
+        "ambientParticles": 0
+      },
+      "compiledAssets": [
+        {
+          "url": "http://127.0.0.1:4178/assets/prototype-DLmjhz9E.js",
+          "sha256": "bc507d9aec85fab10b0ad391ec14c6f8c0599dc679c6eb46d741151eccdee3f7",
+          "bytes": 1518307
+        }
+      ],
+      "repeats": [
+        {
+          "gpuMs": {
+            "count": 152,
+            "p50": 0.065536,
+            "p95": 0.131072,
+            "min": 0.065536,
+            "max": 0.131072
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 0.5,
+            "p95": 0.7000000029802322,
+            "min": 0.30000000074505806,
+            "max": 1
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 6.199999999999818,
+            "min": 5.899999999999864,
+            "max": 6.200000000000273
+          },
+          "content": {
+            "calls": 10,
+            "triangles": 38047,
+            "points": 0
+          },
+          "memoryBytes": 20359957,
+          "activeEvents": {
+            "stars": 0,
+            "meteors": 0,
+            "crashes": 0,
+            "beams": 0,
+            "rifts": 0,
+            "waves": 0,
+            "queue": 0
+          }
+        },
+        {
+          "gpuMs": {
+            "count": 157,
+            "p50": 0.065536,
+            "p95": 0.131072,
+            "min": 0.065536,
+            "max": 0.131072
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 0.5,
+            "p95": 0.7000000029802322,
+            "min": 0.29999999701976776,
+            "max": 0.9000000022351742
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 6.200000000000273,
+            "min": 5.5,
+            "max": 12.200000000000273
+          },
+          "content": {
+            "calls": 10,
+            "triangles": 38047,
+            "points": 0
+          },
+          "memoryBytes": 20359957,
+          "activeEvents": {
+            "stars": 0,
+            "meteors": 0,
+            "crashes": 0,
+            "beams": 0,
+            "rifts": 0,
+            "waves": 0,
+            "queue": 0
+          }
+        }
+      ],
+      "errors": [],
+      "console": "## Console messages\nShowing 1-3 of 3 (Page 1 of 1).\nmsgid=1 [warn] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127 (0 args)\nmsgid=2 [log] [Wolfhour] Theme constructed (1 args)\nmsgid=3 [log] Wolfhour isolated prototype ready [object Object] (2 args)"
+    },
+    "reference-final-playground": {
+      "screenshot": "reference-final-playground.png",
+      "createdAt": "2026-10-01T11:48:05.802Z",
+      "viewport": [
+        1280,
+        720
+      ],
+      "url": "http://127.0.0.1:4178/reports/wolfhour-overhaul/prototype.html?t=8&quality=High&shipping=0",
+      "quality": "High",
+      "seed": 73013,
+      "t": 8,
+      "runtimeFeatures": null,
+      "compiledAssets": [
+        {
+          "url": "http://127.0.0.1:4178/assets/prototype-DLmjhz9E.js",
+          "sha256": "bc507d9aec85fab10b0ad391ec14c6f8c0599dc679c6eb46d741151eccdee3f7",
+          "bytes": 1518307
+        }
+      ],
+      "repeats": [
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.196608,
+            "p95": 0.262144,
+            "min": 0.065536,
+            "max": 0.32767999999999997
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1,
+            "p95": 1.5,
+            "min": 0.6999999992549419,
+            "max": 2
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 6.200000000000273,
+            "min": 5.899999999999636,
+            "max": 12.200000000000273
+          },
+          "content": {
+            "calls": 22,
+            "triangles": 121715,
+            "points": 0
+          },
+          "memoryBytes": 43173652,
+          "activeEvents": null
+        },
+        {
+          "gpuMs": {
+            "count": 180,
+            "p50": 0.196608,
+            "p95": 0.32767999999999997,
+            "min": 0.065536,
+            "max": 0.39321599999999995
+          },
+          "cpuMs": {
+            "count": 180,
+            "p50": 1,
+            "p95": 1.3999999985098839,
+            "min": 0.6999999992549419,
+            "max": 1.8999999985098839
+          },
+          "frameMs": {
+            "count": 179,
+            "p50": 6.099999999999909,
+            "p95": 6.200000000000273,
+            "min": 5.899999999999636,
+            "max": 12.199999999999818
+          },
+          "content": {
+            "calls": 22,
+            "triangles": 121715,
+            "points": 0
+          },
+          "memoryBytes": 43173652,
+          "activeEvents": null
+        }
+      ],
+      "errors": [],
+      "console": "## Console messages\nShowing 1-2 of 2 (Page 1 of 1).\nmsgid=1 [warn] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127 (0 args)\nmsgid=2 [log] Wolfhour isolated prototype ready [object Object] (2 args)"
+    }
+  }
+}

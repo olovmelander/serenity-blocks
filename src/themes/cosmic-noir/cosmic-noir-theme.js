@@ -30,6 +30,10 @@ import { COSMIC_NOIR_TETROMINOS } from './cosmic-noir-tetrominos.js';
 import { CosmicNoirPost } from './cosmic-noir-post.js';
 import { CosmicNoirSparkCompute } from './cosmic-noir-compute.js';
 import {
+    applyNoirFlashScale, decayNoirValue, sampleNoirNebula,
+    noirSphereRadiusRatio, resolveNoirComposition, NOIR_SHOCKWAVE_SHAPES, NOIR_WAVE_LIMIT,
+} from './cosmic-noir-motion.js';
+import {
     createAmbientDustNodeMaterial,
     createAtmosphereNodeMaterial,
     createCosmicWaveNodeMaterial,
@@ -487,11 +491,16 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.planetPhaseY2 = 0;
 
         // Animation
-        this.clock = new THREE.Clock();
+        this.clock = new THREE.Timer();
         this.time = 0;
         this.tempCameraForward = new THREE.Vector3();
         this.tempScreenVector = new THREE.Vector3();
         this.tempBhScreenPos = new THREE.Vector2(0.5, 0.5);
+        this._nebulaMotion = {
+            x: 0, y: 0, rotation: 0, pulse: 0,
+        };
+        this._planetComposition = { x: 0, y: 0, radius: 0 };
+        this._compositionRay = new THREE.Vector3();
 
         // Reusable scratch objects for the per-frame hot path (avoid GC churn).
         this._adaptivePostParams = {
@@ -724,7 +733,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.lastAppliedPostResolutionScale = postResolutionScale;
         }
 
-        if (Array.isArray(this.starfieldUniforms)) {
+        if (pixelRatioChanged && Array.isArray(this.starfieldUniforms)) {
             this.starfieldUniforms.forEach((uniforms) => {
                 if (uniforms?.uPixelRatio) {
                     uniforms.uPixelRatio.value = pixelRatio;
@@ -732,7 +741,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             });
         }
 
-        if (this.ambientDustUniforms?.uPixelRatio) {
+        if (pixelRatioChanged && this.ambientDustUniforms?.uPixelRatio) {
             this.ambientDustUniforms.uPixelRatio.value = pixelRatio;
         }
 
@@ -1410,7 +1419,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             activeEffects: {
                 gasSwirlParticles: this.gasSwirlData?.activeEstimate ?? this.gasSwirlData?.activeCount ?? 0,
                 voidSparkParticles: this.unifiedSparkData?.activeEstimate
-                    ?? (this.sparkCompute?.count ?? 0),
+                    ?? (this.computeSparkPoints?.visible
+                        ? (this.computeSparkPoints.geometry.drawRange.count ?? 0) : 0),
+                voidSparkCapacity: this.sparkCompute?.count ?? this.unifiedSparkData?.count ?? 0,
                 activeCosmicWaves: this.cosmicWaves.length,
                 pooledCosmicWaves: this.cosmicWavePool.length,
                 starfieldDrawCount,
@@ -1898,7 +1909,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.initializeDeterministicState();
         this.lastMrtDowngrade = null;
         this.resetBaselineCapture();
-        this.clock = new THREE.Clock();
+        this.clock.dispose();
+        this.clock = new THREE.Timer();
 
         const quality = this.getCurrentQualityLevel();
         this.applyQualityPreset(quality);
@@ -1967,7 +1979,17 @@ export default class CosmicNoirTheme extends BaseTheme {
             });
         }
 
-        await this.precompileSceneWithTimeout();
+        // Include the first piece-lock wave in the loading-time material compile.
+        // Keep it attached and visible until compileAsync has inspected the scene.
+        const compilingPlanetGroup = this.planetGroup;
+        const lockWave = this.acquireCosmicWave({ radius: 288, tube: 1.3 });
+        try {
+            await this.precompileSceneWithTimeout();
+        } finally {
+            // A stop/rebuild may already have disposed the old scene while awaiting.
+            if (this.planetGroup === compilingPlanetGroup) this.releaseCosmicWave(lockWave);
+        }
+        if (ownerGeneration !== this.lifecycleGeneration || !this.isActive || this.cleanupComplete) return;
         this.startAnimation();
 
         console.log('[CosmicNoir] Runtime capabilities', {
@@ -2118,6 +2140,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             // frame feels alive at a glance, without flattening that slow deep-space drift.
             breathe: true,
             pointer: false, // the theme already applies its own mouse parallax
+            idlePhase: this.planetPhaseX * 0.73 + this.planetPhaseY,
         });
 
         // Key light - cinematic side lighting to reveal planet texture
@@ -2384,7 +2407,11 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             mesh.userData = {
                 driftSpeed: config.speed,
-                driftRange: config.size * 0.75,
+                baseX: mesh.position.x,
+                baseY: mesh.position.y,
+                baseRotation: mesh.rotation.z,
+                driftPhase: mesh.rotation.z,
+                driftAmplitude: 100,
                 baseOpacity: config.opacity,
                 pulsePhase: this.rand() * Math.PI * 2,
                 parallaxX: config.parallaxX ?? 0.3,
@@ -2573,6 +2600,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         mesh.frustumCulled = false;
         mesh.visible = false;
         mesh.userData.uniforms = uniforms;
+        mesh.userData.baseSize = this.isWebGPU ? size : 1;
         this.comboFlash = mesh;
         this.comboFlashUniforms = uniforms;
         this.planetGroup.add(mesh);
@@ -2628,6 +2656,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
                 side: THREE.DoubleSide,
+                forceSinglePass: true,
             });
             ({ uniforms } = material);
         }
@@ -3082,11 +3111,6 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (!this.gasSwirl || !this.gasSwirlData) return;
 
         const d = this.gasSwirlData;
-        const uniforms = this.gasSwirl.userData?.uniforms || this.gasSwirl.material?.uniforms;
-        if (uniforms?.uTime) {
-            uniforms.uTime.value = this.time;
-        }
-
         // Idle fast-path: with no live bursts, skip the per-frame filter()/reduce() allocation.
         // End state (estimate 0, invisible, draw range 0) is identical to the general path.
         if (d.activeWindows.length === 0) {
@@ -3115,6 +3139,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         d.activeEstimate = estimate;
         this.gasSwirl.visible = d.activeEstimate > 0;
         if (this.gasSwirl.visible) {
+            const uniforms = this.gasSwirl.userData?.uniforms || this.gasSwirl.material?.uniforms;
+            if (uniforms?.uTime) uniforms.uTime.value = this.time;
             this.gasSwirl.geometry.setDrawRange(0, Math.max(1, d.highWaterMark));
         } else {
             d.highWaterMark = 0;
@@ -3135,6 +3161,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
         this.voidSparks = [];
         this.voidSparkIndex = 0;
+        this.unifiedSparkData = null;
 
         const planetRadius = 180; // Start at planet surface
 
@@ -3418,11 +3445,6 @@ export default class CosmicNoirTheme extends BaseTheme {
         const sparkSystem = this.voidSparks.find((entry) => entry?.userData?.unifiedFallback);
         if (!sparkSystem) return;
 
-        const uniforms = sparkSystem.userData?.uniforms || sparkSystem.material?.uniforms;
-        if (uniforms?.time) {
-            uniforms.time.value = this.time;
-        }
-
         const d = this.unifiedSparkData;
         let writeIdx = 0;
         let activeEstimate = 0;
@@ -3438,6 +3460,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         d.activeEstimate = activeEstimate;
         sparkSystem.visible = d.activeEstimate > 0;
         if (sparkSystem.visible) {
+            const uniforms = sparkSystem.userData?.uniforms || sparkSystem.material?.uniforms;
+            if (uniforms?.time) uniforms.time.value = this.time;
             sparkSystem.geometry.setDrawRange(0, Math.max(1, d.highWaterMark));
         } else {
             d.highWaterMark = 0;
@@ -3584,7 +3608,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     startAnimation() {
         this.cancelAnimationLoop();
-        this.clock.start();
+        this.clock.reset();
         this.animate();
     }
 
@@ -3601,6 +3625,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         const frameStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        this.clock.update(frameStartMs);
         const measuredDelta = this.clock.getDelta();
         const rawDelta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : measuredDelta;
         const delta = this.fixedDeltaSeconds !== null ? rawDelta : Math.min(rawDelta, 0.05);
@@ -3610,6 +3635,24 @@ export default class CosmicNoirTheme extends BaseTheme {
         } else {
             this.time += delta;
         }
+        this.updateScene(delta);
+
+        this.renderFrame();
+
+        const frameEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const frameMs = frameEndMs - frameStartMs;
+        this.updateAdaptiveBudgetState(frameMs);
+        this.applyAdaptiveBudgetState();
+        // Record the REAL frame interval (rAF delta), not the CPU dispatch span, so the baseline
+        // report's FPS reflects actual presented frame rate. (The adaptive controller still uses the
+        // dispatch span — driving it off the vsync-capped real interval would falsely shed quality on
+        // displays whose refresh is below the target FPS.) Clamp stall spikes out of the stats.
+        const realFrameMs = Math.min(measuredDelta * 1000, 100);
+        this.recordBaselineSample(realFrameMs, frameMs);
+        this.updateGpuTimestampCapture();
+    }
+
+    updateScene(delta) {
         this.runDeterministicDeferredTimeouts();
         this.updateReactiveEnvelope(delta);
         const idlePlanetPulse = 0.2;
@@ -3728,12 +3771,12 @@ export default class CosmicNoirTheme extends BaseTheme {
             if (sparksActive) {
                 this.sparkCompute.update(delta, this.time);
                 this.renderer.compute(this.sparkCompute.computeNode);
-                if (sparkPoints && !sparkPoints.visible) {
+                if (sparkPoints) {
                     sparkPoints.visible = true;
-                    sparkPoints.geometry.setDrawRange(
-                        0,
-                        sparkPoints.userData?.sparkCount ?? this.sparkCompute.count,
-                    );
+                    const drawCount = this.sparkCompute.activeHighWaterMark;
+                    if (sparkPoints.geometry.drawRange.count !== drawCount) {
+                        sparkPoints.geometry.setDrawRange(0, drawCount);
+                    }
                 }
             } else if (sparkPoints && sparkPoints.visible) {
                 sparkPoints.visible = false;
@@ -3745,18 +3788,15 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         // Update compute-backed or legacy void spark systems.
         for (const sparks of this.voidSparks) {
+            if (
+                sparks?.userData?.computeBacked
+                || sparks?.userData?.unifiedFallback
+                || this.sparkCompute?.computeNode
+            ) continue;
             const sparkUniforms = sparks?.userData?.uniforms || sparks?.material?.uniforms;
             if (sparks && sparkUniforms) {
                 if (sparkUniforms.time) {
                     sparkUniforms.time.value = this.time;
-                }
-
-                if (
-                    sparks?.userData?.computeBacked
-                    || sparks?.userData?.unifiedFallback
-                    || this.sparkCompute?.computeNode
-                ) {
-                    continue;
                 }
 
                 // Update pulse wave
@@ -3779,21 +3819,9 @@ export default class CosmicNoirTheme extends BaseTheme {
         // Update gas shell swirl particles
         this.updateGasSwirlParticles(delta);
 
-        // Slow drift planet across entire screen (Lissajous curves for organic movement)
-        // `sinWithHalfAngle = sin(x + 0.5)` equivalent tricks aren't worth it here -
-        // each sin/cos is independent and cheap; the only win is hoisting the scaled-time constants.
+        // The core's viewport drift is resolved after the camera; retain its gentle roll.
         if (this.planetGroup) {
-            const t = this.time;
-            const driftX = Math.sin(t * 0.025 + this.planetPhaseX) * 550
-                + Math.cos(t * 0.018 + this.planetPhaseX2) * 250;
-            const driftY = Math.cos(t * 0.02 + this.planetPhaseY) * 350
-                + Math.sin(t * 0.012 + this.planetPhaseY2) * 150;
-
-            this.planetGroup.position.x = driftX;
-            this.planetGroup.position.y = driftY;
-
-            // Gentle rotation
-            this.planetGroup.rotation.z = Math.sin(t * 0.008) * 0.04;
+            this.planetGroup.rotation.z = Math.sin(this.time * 0.008) * 0.04;
         }
 
         // Slow camera orbit for parallax depth (independent of planet)
@@ -3814,32 +3842,22 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.cameraBase.y = Math.cos(ct08) * orbitRadiusY
                 + Math.sin(ct05) * orbitRadiusY * 0.3;
 
-            // Deep z-breathing: sweeping from far out to EXTREMELY close
-            // Base 800, primary ±600 -> Min theoretically 200 (inside atmosphere)
+            // Preserve the slow approach/retreat, with hero clearance applied below.
             this.cameraBase.z = 800
                 + Math.sin(ct05) * 600
                 + Math.sin(ct018 + 1.2) * 200;
 
-            // Safety clamp: Prevent clipping into planet (radius 240)
-            // Surface skim distance: ~280
-            const baseLength = Math.hypot(this.cameraBase.x, this.cameraBase.y, this.cameraBase.z);
-            if (baseLength < 280 && baseLength > 0) {
-                const lift = 280 / baseLength;
-                this.cameraBase.x *= lift;
-                this.cameraBase.y *= lift;
-                this.cameraBase.z *= lift;
-            }
-
             // Smooth pointer tracking (frame-rate independent damping)
-            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, measuredDelta * 2.2);
-            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, measuredDelta * 2.2);
+            const pointerDamping = 1 - Math.exp(-delta * 2.2);
+            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, pointerDamping);
+            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, pointerDamping);
 
             const parallaxX = this.smoothedPointerX * 120.0;
             const parallaxY = -this.smoothedPointerY * 60.0;
 
-            // Apply mouse parallax after the safety clamp so it always perturbs the camera
             this.cameraBase.x += parallaxX;
             this.cameraBase.y += parallaxY;
+            this.cameraBase.z = Math.max(this.cameraBase.z, 900);
 
             // LookAt drift for dynamic framing (also nudged by mouse at 0.4x).
             // Reuse `ct05` from the y-orbit above - same scaled time.
@@ -3853,6 +3871,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             // RNG stream mid-frame and shifted every later particle draw.
             this.cameraRig.setFocus(lookOffsetX, lookOffsetY, 0);
             this.cameraRig.apply(delta, this.cameraBase);
+            this.updatePlanetComposition();
         }
 
         if (
@@ -3893,8 +3912,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             } else if (this.comboFlash.material) {
                 this.comboFlash.material.opacity = flashOpacity;
             }
-            const flashScale = 1.0 + this.comboFlashIntensity * 0.65;
-            this.comboFlash.scale.setScalar(flashScale);
+            applyNoirFlashScale(this.comboFlash, this.comboFlashIntensity);
             this.comboFlash.lookAt(this.camera.position);
         }
 
@@ -3911,29 +3929,16 @@ export default class CosmicNoirTheme extends BaseTheme {
             }
         }
 
-        // Nebula drift and pulse
-        // Nebula drift and pulse (synced with camera for seamless coverage)
+        // Preserve each authored cloud's offset; drift stays bounded and phase-locked.
         for (const cloud of this.nebulaClouds) {
-            // Move nebulas with camera so they always cover the view
-            // Plus gentle drift for atmosphere
-            const driftRange = cloud.userData.driftRange ?? 6000;
-            cloud.userData.driftOffset = (cloud.userData.driftOffset || 0) + cloud.userData.driftSpeed * 50;
-            if (cloud.userData.driftOffset > driftRange) cloud.userData.driftOffset = -driftRange;
-
-            // Sync base position with camera, add drift offset
-            const parallaxX = cloud.userData.parallaxX ?? 0.3;
-            const parallaxY = cloud.userData.parallaxY ?? 0.2;
-            cloud.position.x = (this.camera?.position.x || 0) * parallaxX + cloud.userData.driftOffset;
-            cloud.position.y = (this.camera?.position.y || 0) * parallaxY;
-            cloud.rotation.z += (cloud.userData.rotationSpeed ?? 0) * delta;
-
-            cloud.userData.pulsePhase += 0.005;
-            // Pulse: -1 to 1 for subtle breathing
-            const pulse = Math.sin(cloud.userData.pulsePhase);
+            const motion = sampleNoirNebula(this.time, cloud.userData, this.camera.position, this._nebulaMotion);
+            cloud.position.x = motion.x;
+            cloud.position.y = motion.y;
+            cloud.rotation.z = motion.rotation;
 
             const nebulaUniforms = cloud.userData?.uniforms || cloud.material?.uniforms;
             if (nebulaUniforms?.uPulse) {
-                nebulaUniforms.uPulse.value = pulse + (this.planetPulseIntensity * 2.0); // React to gameplay
+                nebulaUniforms.uPulse.value = motion.pulse + (this.planetPulseIntensity * 2.0);
             }
             if (nebulaUniforms?.uTime) {
                 nebulaUniforms.uTime.value = this.time;
@@ -3969,22 +3974,22 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         // Decay pulse intensity
         if (this.planetPulseIntensity > 0) {
-            this.planetPulseIntensity *= 0.94;
+            this.planetPulseIntensity = decayNoirValue(this.planetPulseIntensity, 0.94, delta);
             if (this.planetPulseIntensity < 0.01) this.planetPulseIntensity = 0;
         }
 
         if (this.starEventBoost > 0) {
-            this.starEventBoost *= 0.92; // Fast decay for quick flash
+            this.starEventBoost = decayNoirValue(this.starEventBoost, 0.92, delta);
             if (this.starEventBoost < 0.01) this.starEventBoost = 0;
         }
 
         if (this.comboFlashIntensity > 0) {
-            this.comboFlashIntensity *= Math.max(0.0, 1.0 - delta * 7.0);
+            this.comboFlashIntensity = decayNoirValue(this.comboFlashIntensity, 1 - 7 / 60, delta);
             if (this.comboFlashIntensity < 0.01) this.comboFlashIntensity = 0;
         }
 
         if (this.comboLensFlareIntensity > 0) {
-            this.comboLensFlareIntensity *= Math.max(0.0, 1.0 - delta * 4.8);
+            this.comboLensFlareIntensity = decayNoirValue(this.comboLensFlareIntensity, 1 - 4.8 / 60, delta);
             if (this.comboLensFlareIntensity < 0.01) this.comboLensFlareIntensity = 0;
         }
 
@@ -3992,15 +3997,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.updateCosmicWaves(delta);
 
         if (this.isWebGPU && this.flags.usePost && this.postProcessing?.update) {
-            this.tempBhScreenPos.set(0.5, 0.5);
-            if (this.planetGroup && this.camera) {
-                this.planetGroup.getWorldPosition(this.tempScreenVector);
-                this.tempScreenVector.project(this.camera);
-                this.tempBhScreenPos.set(
-                    this.tempScreenVector.x * 0.5 + 0.5,
-                    this.tempScreenVector.y * 0.5 + 0.5,
-                );
-            }
+            if (!this.planetGroup || !this.camera) this.tempBhScreenPos.set(0.5, 0.5);
 
             const reactiveBloomBoost = Math.min(
                 this.flags.useMRT ? 0.6 : 0.28,
@@ -4041,20 +4038,35 @@ export default class CosmicNoirTheme extends BaseTheme {
                     : 0.0;
             }
         }
+    }
 
-        this.renderFrame();
-
-        const frameEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        const frameMs = frameEndMs - frameStartMs;
-        this.updateAdaptiveBudgetState(frameMs);
-        this.applyAdaptiveBudgetState();
-        // Record the REAL frame interval (rAF delta), not the CPU dispatch span, so the baseline
-        // report's FPS reflects actual presented frame rate. (The adaptive controller still uses the
-        // dispatch span — driving it off the vsync-capped real interval would falsely shed quality on
-        // displays whose refresh is below the target FPS.) Clamp stall spikes out of the stats.
-        const realFrameMs = Math.min(measuredDelta * 1000, 100);
-        this.recordBaselineSample(realFrameMs, frameMs);
-        this.updateGpuTimestampCapture();
+    updatePlanetComposition() {
+        if (!this.planetGroup || !this.camera) return;
+        const {
+            camera, time, planetPhaseX, planetPhaseY,
+        } = this;
+        // The visible core is framed independently of the oblique disk, which may
+        // sweep past the viewport. Keep the camera in front of its z=0 plane.
+        camera.updateMatrixWorld();
+        const pose = resolveNoirComposition(time, camera.aspect, planetPhaseX, planetPhaseY, this._planetComposition);
+        const ndcX = pose.x * 2 - 1;
+        const ndcY = 1 - pose.y * 2;
+        const ratio = noirSphereRadiusRatio(pose.radius, ndcX, ndcY, camera.aspect, camera.fov);
+        // Perspective spheres shift their silhouette center away from the axis.
+        // Compensate before unprojection so the visible disk centers on the pose.
+        const centerCorrection = 1 - ratio * ratio;
+        this.tempBhScreenPos.set(
+            ndcX * centerCorrection * 0.5 + 0.5,
+            ndcY * centerCorrection * 0.5 + 0.5,
+        );
+        const ray = this._compositionRay;
+        ray.set(ndcX * centerCorrection, ndcY * centerCorrection, 0.5).unproject(camera);
+        ray.sub(camera.position);
+        const distanceToPlane = -camera.position.z / ray.z;
+        this.planetGroup.position.copy(camera.position).addScaledVector(ray, distanceToPlane);
+        this.planetGroup.position.z = 0;
+        ray.copy(this.planetGroup.position).applyMatrix4(camera.matrixWorldInverse);
+        this.planetGroup.scale.setScalar((-ray.z * ratio) / 280);
     }
 
     renderFrame() {
@@ -4166,6 +4178,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 transparent: true,
                 blending: THREE.AdditiveBlending,
                 side: THREE.DoubleSide,
+                forceSinglePass: true,
                 depthWrite: false,
             });
             ({ uniforms } = material);
@@ -4193,7 +4206,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             waveUniforms.uOpacity.value = 0.0;
         }
 
-        if (this.cosmicWavePool.length >= 16) {
+        if (this.cosmicWavePool.length >= NOIR_WAVE_LIMIT) {
             wave.geometry?.dispose?.();
             wave.material?.dispose?.();
             return;
@@ -4222,6 +4235,15 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     createCosmicWave(intensity, options = {}) {
+        const isLock = options.kind === 'lock';
+        // Frequent locks cannot replace a combo's established wave choreography.
+        if (isLock && (this.cosmicWaves.length >= NOIR_WAVE_LIMIT
+            || this.cosmicWaves.filter((wave) => wave.userData.kind === 'lock').length >= 2)) return;
+        if (this.cosmicWaves.length >= NOIR_WAVE_LIMIT) {
+            let replaceIndex = this.cosmicWaves.findIndex((wave) => wave.userData.kind === 'lock');
+            if (replaceIndex < 0) replaceIndex = 0;
+            this.releaseCosmicWave(this.cosmicWaves.splice(replaceIndex, 1)[0]);
+        }
         const radius = options.radius ?? 30;
         const tube = options.tube ?? 2;
         const radialSegments = options.radialSegments ?? 8;
@@ -4234,8 +4256,8 @@ export default class CosmicNoirTheme extends BaseTheme {
             tubularSegments,
             color: waveColor,
         });
-        wave.rotation.x = this.rand() * Math.PI * 0.3;
-        wave.rotation.y = this.rand() * Math.PI * 2;
+        wave.rotation.x = isLock ? 0 : this.rand() * Math.PI * 0.3;
+        wave.rotation.y = isLock ? 0 : this.rand() * Math.PI * 2;
 
         wave.userData = {
             ...(wave.userData || {}),
@@ -4243,8 +4265,13 @@ export default class CosmicNoirTheme extends BaseTheme {
             life: 1.0,
             maxLife: 1.0,
             lifeDecay: 0.7 / (options.lifeMultiplier ?? 1.0),
+            opacity: options.opacity ?? 1,
+            kind: options.kind ?? 'clear',
             uniforms: wave.userData?.uniforms || wave.material?.uniforms || null,
         };
+        if (wave.userData.uniforms?.uOpacity) {
+            wave.userData.uniforms.uOpacity.value = wave.userData.opacity;
+        }
 
         this.cosmicWaves.push(wave);
     }
@@ -4252,12 +4279,17 @@ export default class CosmicNoirTheme extends BaseTheme {
     updateCosmicWaves(delta) {
         for (let i = this.cosmicWaves.length - 1; i >= 0; i--) {
             const wave = this.cosmicWaves[i];
+            if (wave.userData.kind === 'lock' && this.camera) {
+                // A limb response follows the core's uniform scale and faces the
+                // viewer even while the parent/disk and camera orbit independently.
+                wave.lookAt(this.camera.position);
+            }
             wave.scale.addScalar(wave.userData.speed * delta * 0.1);
             wave.userData.life -= delta * (wave.userData.lifeDecay ?? 0.7);
 
             const waveUniforms = wave.userData?.uniforms || wave.material?.uniforms;
             if (waveUniforms?.uOpacity) {
-                waveUniforms.uOpacity.value = wave.userData.life;
+                waveUniforms.uOpacity.value = wave.userData.life * wave.userData.opacity;
             }
             if (waveUniforms?.uTime) {
                 waveUniforms.uTime.value = this.time;
@@ -4344,7 +4376,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         const envelope = this.reactiveEnvelope;
         for (let i = 0; i < REACTIVE_ENVELOPE_KEYS.length; i += 1) {
             const key = REACTIVE_ENVELOPE_KEYS[i];
-            const decay = Math.max(0.0, 1.0 - delta * REACTIVE_ENVELOPE_DECAY_RATES[key]);
+            if (envelope[key] === 0) continue;
+            const decay = decayNoirValue(1, 1 - REACTIVE_ENVELOPE_DECAY_RATES[key] / 60, delta);
             const next = envelope[key] * decay;
             envelope[key] = next < 0.01 ? 0 : next;
         }
@@ -4394,6 +4427,14 @@ export default class CosmicNoirTheme extends BaseTheme {
             pulse: 0.12,
             star: 0.2,
         });
+        this.createCosmicWave(0.1, {
+            kind: 'lock',
+            radius: 288,
+            tube: 1.3,
+            opacity: 0.24,
+            speedMultiplier: 0.055,
+            lifeMultiplier: 0.5,
+        });
     }
 
     handleCombo(eventPayload) {
@@ -4422,8 +4463,8 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         if (!comboCount && this.pendingComboCount > 0) {
             comboCount = this.pendingComboCount;
-            this.pendingComboCount = 0;
         }
+        this.pendingComboCount = 0;
 
         this.onLineClear(lineCount, comboCount);
     }
@@ -4556,8 +4597,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 Math.min(1, baseExtraShockwaves),
             );
             for (let i = 0; i < extraShockwaves; i += 1) {
-                const tube = 1.2 + this.rand() * 2.2;
-                const radius = 36 + i * 12 + this.rand() * 8;
+                const { tube, radius } = NOIR_SHOCKWAVE_SHAPES[i];
                 const speedMultiplier = 1.25 + i * 0.12;
                 this.registerDeferredTimeout(() => {
                     this.createCosmicWave(comboCount, {
@@ -4795,6 +4835,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.voidSparkIndex = 0;
         this.sparkCompute = null;
         this.computeSparkPoints = null;
+        this.unifiedSparkData = null;
         this.sharedNoiseTexture = null;
         this.gasSwirl = null;
         this.gasSwirlData = null;
@@ -4866,7 +4907,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     stop() {
         this.cancelAnimationLoop();
-        this.clock.stop();
+        this.clock.dispose();
         this.clearDeferredTimeouts();
         this.clearEventSubscriptions();
         this.removeResizeListener();
