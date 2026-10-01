@@ -124,8 +124,11 @@ const PIECE_SHAPES = {
     Z: [[0, 0], [1, 0], [1, 1], [2, 1]],
 };
 
+/** Camera-space depth the solar burst flies at: past the near palms, well before the skyline. */
+const BURST_DEPTH = 55;
+
 const EMBER_COLORS = [0xff2a7a, 0xff6a3d, 0xffa04a, 0xb04dff].map((h) => new THREE.Color(h));
-const CORONA_COLORS = [0xffd24a, 0xff9a2e, 0xff5a3a, 0xff3a8a].map((h) => new THREE.Color(h));
+const CORONA_COLORS = [0xffd24a, 0xff9a2e, 0xff5a3a, 0xff3a8a, 0xff2bd1, 0xffe9b0].map((h) => new THREE.Color(h));
 
 /** Gameplay boards carry data-player; the lobby's avatar cards reuse .player-card without it. */
 export const BOARD_SELECTOR = '.player-card[data-player]';
@@ -245,6 +248,11 @@ export class SynthwaveWorld {
         this._right = new THREE.Vector3();
         this._tmp = new THREE.Vector3();
         this._target = new THREE.Vector3();
+        this._burstA = new THREE.Vector3();
+        this._burstB = new THREE.Vector3();
+        this._basisFwd = new THREE.Vector3();
+        this._basisRight = new THREE.Vector3();
+        this._basisUp = new THREE.Vector3();
     }
 
     build() {
@@ -470,7 +478,7 @@ export class SynthwaveWorld {
         if (n >= 4) {
             this.sunPulse = 1.2;
             this.spawnShootingStar(1.2);
-            this.emitCorona(90);
+            this.emitSolarBurst(this.burstCount(0.5, 260));
         }
     }
 
@@ -480,7 +488,7 @@ export class SynthwaveWorld {
         this.cityPulse = Math.min(1.5, this.cityPulse + 0.4);
         this.comboShift = Math.min(1, Math.max(this.comboShift, c * 0.15));
         this.cellTwinkle = Math.min(1.5, 0.5 + c * 0.2);
-        if (c >= 2) this.emitCorona(Math.min(120, 18 * c));
+        if (c >= 2) this.emitSolarBurst(this.burstCount(0.12 + c * 0.06, 70 + 32 * c));
         if (c >= 3 && this.rand() < Math.min(0.75, 0.3 + c * 0.1)) this.spawnShootingStar(1.0);
     }
 
@@ -489,7 +497,7 @@ export class SynthwaveWorld {
         this.sunPulse = Math.min(1.2, this.sunPulse + 0.5);
         this.triggerRing(1.0);
         this.spawnShootingStar(1.2);
-        this.emitCorona(60);
+        this.emitSolarBurst(this.burstCount(0.4, 200));
     }
 
     triggerRing(energy) {
@@ -544,36 +552,79 @@ export class SynthwaveWorld {
         }
     }
 
-    /** Sparks thrown off the sun's upper rim (combos, Tetris, level up). */
-    emitCorona(count) {
+    /** Sparks for a burst of `share` of the pool, at most `cap` (so every tier keeps headroom). */
+    burstCount(share, cap) {
+        return Math.max(24, Math.min(cap, Math.floor(this.fx.sparkCapacity * share)));
+    }
+
+    /**
+     * A solar burst that sprays over the WHOLE screen (combos, Tetris, level up). Every spark
+     * leaves the sun's disc and flies to its own target point on screen: 70 % anywhere in the view
+     * (a little past the edges), 30 % clustered around the sun, so it reads as a burst rather than
+     * a uniform spray. Sparks fly at a depth in front of the skyline and behind the near palms, so
+     * they project out of the sun yet pass behind the palm silhouettes. Velocities are solved from
+     * the drag model (final travel = v / drag) so each spark arrives in ~1.5 s, arcing under a
+     * gentle gravity; the shader streaks them along their on-screen motion.
+     */
+    emitSolarBurst(count) {
         const t = this.time;
         const r = this.rand;
-        const D = 820;
-        const rimR = D * Math.tan(SUN.radius);
-        const cx = RIG.x + this.sunDir.x * D;
-        const cy = RIG.height + this.sunDir.y * D;
-        const cz = RIG.z + this.sunDir.z * D;
+        const D = BURST_DEPTH;
+        const drag = 1.6;
+        const tanV = Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2);
+        const tanH = tanV * this.lens.aspect;
+        const { fwd, right, up } = this.viewBasis();
+        const sd = Math.max(1e-3, this.sunDir.dot(fwd));
+        const sx = this.sunDir.dot(right) / sd / tanH;
+        const sy = this.sunDir.dot(up) / sd / tanV;
+        const sunRy = Math.tan(SUN.radius) / sd / tanV;
+        const sunRx = sunRy * (tanV / tanH);
+        const p0 = this._burstA;
+        const p1 = this._burstB;
+        const at = (nx, ny, out) => out.copy(this._camRest)
+            .addScaledVector(fwd, D)
+            .addScaledVector(right, nx * tanH * D)
+            .addScaledVector(up, ny * tanV * D);
         for (let i = 0; i < count; i += 1) {
-            const a = r() * Math.PI;
-            const ox = Math.cos(a);
-            const oy = Math.sin(a);
-            const px = cx + ox * rimR * this.sunRight.x;
-            const py = cy + ox * rimR * this.sunRight.y + oy * rimR * this.sunUp.y;
-            const pz = cz + oy * rimR * this.sunUp.z;
-            const speed = D * (0.06 + r() * 0.08);
+            const a = r() * Math.PI * 2;
+            const rr = Math.sqrt(r()) * 0.85;
+            at(sx + Math.cos(a) * rr * sunRx, sy + Math.sin(a) * rr * sunRy, p0);
+            let tx;
+            let ty;
+            if (r() < 0.7) {
+                tx = -1.15 + r() * 2.3;
+                ty = -0.85 + r() * 1.95;
+            } else {
+                const b = r() * Math.PI * 2;
+                const d = 0.15 + r() * 0.45;
+                tx = sx + Math.cos(b) * d;
+                ty = sy + Math.sin(b) * d * 1.4;
+            }
+            at(tx, ty, p1);
+            const reach = (0.85 + r() * 0.4) * drag;
             this.fx.spawnSpark(
-                t + r() * 0.15,
-                px,
-                py,
-                pz,
-                ox * speed,
-                oy * speed * this.sunUp.y,
-                oy * speed * this.sunUp.z,
-                1.1 + r() * 0.9,
+                t + r() * 0.12,
+                p0.x,
+                p0.y,
+                p0.z,
+                (p1.x - p0.x) * reach,
+                (p1.y - p0.y) * reach,
+                (p1.z - p0.z) * reach,
+                2.0 + r() * 1.3,
                 CORONA_COLORS[Math.floor(r() * CORONA_COLORS.length)],
-                4 + r() * 4,
+                3.5 + r() * 4,
+                { drag, gravity: 2.5 + r() * 3.5, streak: 1 },
             );
         }
+    }
+
+    /** The current view's basis at the rest pose (eased yaw + pitch; no drift or parallax). */
+    viewBasis() {
+        const cp = Math.cos(this.pitch);
+        this._basisFwd.set(Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
+        this._basisRight.set(Math.cos(this.yaw), 0, Math.sin(this.yaw));
+        this._basisUp.crossVectors(this._basisRight, this._basisFwd).normalize();
+        return { fwd: this._basisFwd, right: this._basisRight, up: this._basisUp };
     }
 
     /** Hide everything but the named parts (sky floor mountains city palms fx) — iteration aid. */
