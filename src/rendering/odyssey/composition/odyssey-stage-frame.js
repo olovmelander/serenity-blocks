@@ -70,6 +70,11 @@ export function stageBasisToQuaternion(basis, out = new THREE.Quaternion()) {
     return out.setFromRotationMatrix(m);
 }
 
+// The Urban hero (megastructure spire) in corridor-local space: x, y (mid-upper shaft,
+// street datum is y -60), z. Shared by the env (spire placement) and the camera's arrival
+// shot (hero aim) so they can never drift apart.
+export const URBAN_STAGE_HERO = Object.freeze([0, 150, -560]);
+
 // ── Chapter 8 finale clock ─────────────────────────────────────────────────────────
 // One in-chapter clock (local progress 0 = 7->8 boundary, 1 = journey end):
 //   • dark arrival     0.00 – 0.35   city lit low, spire dormant, camera dollies the canyon
