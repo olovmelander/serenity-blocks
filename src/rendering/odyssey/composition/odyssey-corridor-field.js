@@ -34,6 +34,7 @@ import {
     getOdysseyPathPointAt,
 } from '../path-utils.js';
 import { getChapterProfile } from '../chapter-environments/shared/chapter-profile.js';
+import { computeStageBasis, stageBasisToQuaternion } from './odyssey-stage-frame.js';
 import {
     createCorridorSheetMaterial,
     createCorridorParticulateGeometry,
@@ -124,6 +125,8 @@ function sheet(inner, outer, density, scale, drift, additive, baseOpacity, size,
         pocket: extra && Number.isFinite(extra.pocket) ? extra.pocket : 0,
         coverage: extra && Number.isFinite(extra.coverage) ? extra.coverage : 0.5,
         contrast: extra && Number.isFinite(extra.contrast) ? extra.contrast : 1.0,
+        // Optional explicit placement distance AHEAD along the travel (stage chapters).
+        ahead: extra && Number.isFinite(extra.ahead) ? extra.ahead : null,
     };
 }
 
@@ -262,6 +265,16 @@ export class OdysseyCorridorField {
 
         const recipe = this._recipeFor(feel, profile);
 
+        // STAGE chapters (urban): the set is authored in a fixed stage basis that the camera
+        // shares (see odyssey-stage-frame.js). Their sheets are placed AHEAD of the travel in
+        // that basis and face the camera square-on, with the stage's up as the sheet's up —
+        // the world-up/mid-tangent frame below is ~70 deg off on this near-vertical climb, and
+        // the negative SHEET_DEPTHS put the urban sheets behind the camera's whole travel.
+        const stage = feel === 'urban'
+            ? computeStageBasis(curve, bounds.start, bounds.end)
+            : null;
+        const stageQuaternion = stage ? stageBasisToQuaternion(stage) : null;
+
         // Backdrop SHEETS at staggered depths along the tangent (parallax mid/far body).
         recipe.sheets.forEach((sheetSpec, index) => {
             const depth = SHEET_DEPTHS[Math.min(index, SHEET_DEPTHS.length - 1)];
@@ -281,13 +294,22 @@ export class OdysseyCorridorField {
             const mesh = new THREE.Mesh(geometry, built.material);
             mesh.frustumCulled = true;
 
-            // Place the sheet behind the chapter centre, facing back down the tangent.
-            this._scratchOffset.copy(tangent).multiplyScalar(depth);
-            const basePos = center.clone().add(this._scratchOffset);
-            basePos.add(this._scratchUp.copy(up).multiplyScalar(sheetSpec.yOffset || 0));
-            mesh.position.copy(basePos);
-            // Face the sheet toward the corridor (normal along -tangent).
-            mesh.lookAt(center);
+            let basePos;
+            if (stage && Number.isFinite(sheetSpec.ahead)) {
+                basePos = center.clone()
+                    .addScaledVector(stage.forward, sheetSpec.ahead)
+                    .addScaledVector(stage.up, sheetSpec.yOffset || 0);
+                mesh.position.copy(basePos);
+                mesh.quaternion.copy(stageQuaternion);
+            } else {
+                // Place the sheet behind the chapter centre, facing back down the tangent.
+                this._scratchOffset.copy(tangent).multiplyScalar(depth);
+                basePos = center.clone().add(this._scratchOffset);
+                basePos.add(this._scratchUp.copy(up).multiplyScalar(sheetSpec.yOffset || 0));
+                mesh.position.copy(basePos);
+                // Face the sheet toward the corridor (normal along -tangent).
+                mesh.lookAt(center);
+            }
 
             chapterGroup.add(mesh);
             layers.push({
@@ -468,19 +490,27 @@ export class OdysseyCorridorField {
         }
 
         if (feel === 'urban') {
-            // Urban finale: distant city-light bokeh (cyan/magenta/amber) + dim far
-            // building-silhouette sheets so the encore is never a wire on black.
+            // Urban finale (2026-10): the chapter now draws its own skyline cards, horizon
+            // haze and dark towers, so the old far-silhouette sheets (placed BEHIND the travel,
+            // never seen) are retired. Two pocketed sheets AHEAD in the stage frame instead:
+            // low rain clouds over the city lit magenta from below (the upper sky's missing
+            // mid-value band), and a light-pollution glow behind the Retrosun's horizon.
+            /* eslint-disable max-len */
             return {
                 sheets: [
-                    sheet(0x00eaff, shadow, 0.5, 2.2, 0.025, true, 0.3, 600, 0.7),
-                    // Far building silhouettes (normal blend, dark, just occupy the void).
-                    sheet(0x140a1e, 0x0a0a14, 0.75, 3.4, 0.0, false, 0.85, 820, 0.5, -30),
-                    sheet(0x1a1230, 0x0a0a14, 0.8, 4.6, 0.0, false, 0.7, 1000, 0.45, -48),
+                    sheet(0xa03aa8, shadow, 0.6, 1.5, 0.018, true, 0.5, 1500, 0.32, 230, 0.02, {
+                        pocket: 0.4, coverage: 0.65, contrast: 1.2, ahead: 520,
+                    }),
+                    sheet(0xb0287f, shadow, 0.5, 1.0, 0.008, true, 0.24, 1700, 0.24, 40, 0.01, {
+                        pocket: 0.6, coverage: 0.55, contrast: 1.3, ahead: 760,
+                    }),
                 ],
-                particulate: mote(200, 0x66f0ff, 1.5, 0.6, 1.8, 0.7, 100, 130, 0.5, 2.2, true, {
-                    count: 120, color: 0xff66c4, twinkle: 0.5, softness: 1.6, baseOpacity: 0.45,
+                // City-light bokeh motes, sparser (the chapter's rain now fills the air).
+                particulate: mote(140, 0x66f0ff, 1.5, 0.6, 1.8, 0.55, 100, 130, 0.5, 2.0, true, {
+                    count: 90, color: 0xff66c4, twinkle: 0.5, softness: 1.6, baseOpacity: 0.4,
                 }),
             };
+            /* eslint-enable max-len */
         }
 
         // TERRESTRIAL (Earth Core / Deep Ocean / Surface / Mountains): hazed midground
@@ -609,8 +639,17 @@ export class OdysseyCorridorField {
         const outCarry = SEAM_CARRY[chapterId]?.outExtra ?? 0;
         const inOverlap = SEAM_OVERLAP + inCarry;
         const outOverlap = SEAM_OVERLAP + outCarry;
-        const fadeIn = THREE.MathUtils.smoothstep(progress, start - inOverlap, start + inOverlap);
-        const fadeOut = 1 - THREE.MathUtils.smoothstep(progress, end - outOverlap, end + outOverlap);
+        // The FINAL chapter has no outgoing seam: its field used to fade out symmetrically
+        // around p=1 (and fade IN past p=1), i.e. across the whole 3.9 %-long finale, never
+        // rising above ~0.6 in ch8. It now holds full strength from mid-chapter to the end.
+        const isLastChapter = end >= 1 - 1e-6;
+        const fadeInEnd = isLastChapter
+            ? Math.min(start + inOverlap, start + (end - start) * 0.5)
+            : start + inOverlap;
+        const fadeIn = THREE.MathUtils.smoothstep(progress, start - inOverlap, fadeInEnd);
+        const fadeOut = isLastChapter
+            ? 1
+            : 1 - THREE.MathUtils.smoothstep(progress, end - outOverlap, end + outOverlap);
         return THREE.MathUtils.clamp(Math.min(fadeIn, fadeOut), 0, 1);
     }
 
