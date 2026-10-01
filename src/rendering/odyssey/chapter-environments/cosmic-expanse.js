@@ -168,8 +168,10 @@ export const APPROACH = {
     // odyssey-ch6-approach-resolve.mjs with the galaxy moved FIRST (entry 0.35), then the
     // planet against the widened band (entry 0.03, -0.14; moved 77 u, distance 1151 -> 1147
     // so apparent size holds).
+    // Masterpiece pass (2026-10): the giant is x1.35 bigger at both ends of the march (it
+    // read as a small flat-striped disc). Only `s` changed — positions are the solved fit.
     planetA: {
-        x: 880, y: 352, z: -207, s: 34 / 28,
+        x: 880, y: 352, z: -207, s: (34 / 28) * 1.35,
     },
     // planetB moved along the EXIT CAMERA'S RIGHT vector (the exit forward runs
     // nearly down local +x, so screen-lateral is mostly ±z, not ±x — the first nudge
@@ -177,7 +179,7 @@ export const APPROACH = {
     // dive took the exit axis: the giant must stay clear of the dive line
     // (separation ≥ 0.2 asserted). Distance held ~756 so apparent size is unchanged.
     planetB: {
-        x: 855, y: 60, z: -89, s: 60 / 28,
+        x: 855, y: 60, z: -89, s: (60 / 28) * 1.35,
     },
     // Wave 1C: moved right-of-centre to re-open the planet's band (see planetA note).
     // Entry ndc (0.35, 0.27), distance 1214 vs 1215 before — apparent size preserved.

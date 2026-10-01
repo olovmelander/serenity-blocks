@@ -37,19 +37,25 @@ import {
     length,
     max,
     mix,
+    modelWorldMatrix,
+    modelWorldMatrixInverse,
     normalize,
     normalView,
     normalWorld,
     oneMinus,
     positionLocal,
     positionViewDirection,
+    positionWorld,
+    cameraPosition,
     pow,
+    select,
     sin,
     smoothstep,
     uniform,
     uv,
     varying,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { ODYSSEY_WORLD_SUN } from './shared/chapter-profile.js';
@@ -369,7 +375,32 @@ export function createBlackHoleTSL(uTime, uEnergy) {
  */
 export const HERO_PLANET_RADIUS = 28;
 
-export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal } = {}) {
+/**
+ * The ring system, shared by the ring meshes AND the planet's analytic ring shadow (the two
+ * must agree or the shadow lands on empty sky). Belts in planet-local units, Cassini-style
+ * gaps between them; the plane's orientation is the ring meshes' Euler.
+ */
+export const HERO_PLANET_RINGS = Object.freeze({
+    inner: Object.freeze([36, 46, 58]),
+    outer: Object.freeze([44, 56, 64]),
+    euler: Object.freeze([Math.PI * 0.42, 0, 0.18]),
+});
+const HERO_RING_NORMAL = new THREE.Vector3(0, 0, 1)
+    .applyEuler(new THREE.Euler(...HERO_PLANET_RINGS.euler))
+    .normalize();
+
+// Belt coverage at ring radius r (planet-local units): 1 inside a belt, 0 in the gaps.
+function ringBeltMask(r) {
+    const { inner, outer } = HERO_PLANET_RINGS;
+    let mask = float(0.0);
+    inner.forEach((lo, i) => {
+        const hi = outer[i];
+        mask = mask.add(smoothstep(lo, lo + 1.5, r).mul(oneMinus(smoothstep(hi - 1.5, hi, r))));
+    });
+    return mask;
+}
+
+export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal, uSun = null } = {}) {
     const time = uTime ?? uniform(0);
     // Richer, higher-contrast gas-giant palette so the hero reads as a crisp
     // focal point against the deep void instead of a dim banded ball: warm
@@ -388,7 +419,7 @@ export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal
     // The eye-tuned best fit ([-0.279, 0.185, 0.942]) turned out to sit 24.3 degrees from
     // ODYSSEY_WORLD_SUN and 130.1 from ODYSSEY_SUN, so joining the canonical sun costs about
     // as much as the swim it removes, and buys a terminator fixed in the world.
-    const uLightDir = uniform(new THREE.Vector3(...ODYSSEY_WORLD_SUN).normalize());
+    const uLightDir = uSun ?? uniform(new THREE.Vector3(...ODYSSEY_WORLD_SUN).normalize());
 
     const n = normalize(positionLocal);
 
@@ -421,7 +452,6 @@ export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal
     // `normalWorld` is radial, hence spin-invariant: the belts rotate underneath a terminator
     // that stays put, which is what a planet actually does.
     const dTerm = dot(normalize(normalWorld), normalize(uLightDir));
-    const diffuse = max(0.0, dTerm);
     // WAVE 4 (Space overhaul §5) — the continuous diffuse ramp becomes THREE flat value
     // bands with ~8% soft thresholds, plus a thin warm terminator line (the Ghibli
     // sunset edge, authored width, not physical). Shade is a HUE statement: the night
@@ -437,15 +467,31 @@ export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal
         .mul(smoothstep(0.14, 0.02, dTerm));
     color = color.add(vec3(1.0, 0.55, 0.24).mul(termLine.mul(0.35)));
 
+    // RING SHADOW (masterpiece pass): the belts cast a shadow band across the lit disc. Trace
+    // from this surface point toward the sun (planet-local frame) to the ring plane and read
+    // the belt mask where it lands — analytic, so it tracks the sun and the planet's spin.
+    const sunLocal = normalize(modelWorldMatrixInverse.mul(vec4(normalize(uLightDir), 0.0)).xyz);
+    const ringN = vec3(HERO_RING_NORMAL.x, HERO_RING_NORMAL.y, HERO_RING_NORMAL.z);
+    const sunAcross = dot(sunLocal, ringN);
+    // Sun grazing the ring plane: keep the division finite (the shadow then misses anyway).
+    const safeAcross = sunAcross.abs().max(1e-3).mul(select(sunAcross.greaterThanEqual(0.0), float(1.0), float(-1.0)));
+    const toPlane = dot(positionLocal, ringN).negate().div(safeAcross);
+    const hit = positionLocal.add(sunLocal.mul(toPlane));
+    const ringShadow = ringBeltMask(length(hit)).mul(smoothstep(0.0, 2.0, toPlane)).mul(litBand);
+    color = color.mul(oneMinus(ringShadow.mul(0.62)));
+
     // Hot rim/limb light — a tight tangerine sunlit limb on the lit side so the
     // planet has a crisp 3D edge (the lead's "rim light"), feathered by fresnel.
     const fresEdge = max(0.0, dot(normalView, positionViewDirection));
     const limb = pow(oneMinus(fresEdge), 5.0);
-    color = color.add(vec3(1.0, 0.62, 0.28).mul(limb).mul(diffuse.mul(0.8).add(0.2)).mul(0.7)); // calmer hot limb
+    // SUN-WEIGHTED (masterpiece pass): both rims used to carry a constant night-side term
+    // (0.2 / 0.35), so the dark limb glowed as brightly blue as a lit one.
+    const sunLit = smoothstep(-0.12, 0.45, dTerm);
+    color = color.add(vec3(1.0, 0.62, 0.28).mul(limb).mul(sunLit).mul(0.7)); // calmer hot limb
 
     // Cool scattered atmosphere rim (wider, dimmer than the hot limb).
     const fresAtmo = pow(oneMinus(fresEdge), 2.4);
-    color = color.add(vec3(0.26, 0.46, 0.9).mul(fresAtmo).mul(diffuse.mul(0.55).add(0.35)));
+    color = color.add(vec3(0.26, 0.46, 0.9).mul(fresAtmo).mul(sunLit.mul(0.85).add(0.03)));
 
     // WAVE 5 — THE AURORAL OVAL, SEATED ON THE DISC. The free half of the crown (the
     // other half is the curtain mesh in createHeroPlanetTSL): zero extra draws, and it
@@ -652,7 +698,9 @@ export function createHeroPlanetTSL(uTime, { aurora = true } = {}) {
     // the sky is still daylight (owner report 2026-08-16). Starts at 0 — the safe
     // initial state — and the playground's standalone builders default to 1.
     const uAuroraReveal = uniform(0);
-    const planet = createHeroPlanetSurfaceTSL(uTime, { aurora, uAuroraReveal });
+    // ONE sun uniform for the disc, the atmosphere and the rings (the canonical world sun).
+    const uSun = uniform(new THREE.Vector3(...ODYSSEY_WORLD_SUN).normalize());
+    const planet = createHeroPlanetSurfaceTSL(uTime, { aurora, uAuroraReveal, uSun });
     group.add(planet.mesh);
     group.userData.uAuroraReveal = uAuroraReveal;
 
@@ -677,48 +725,82 @@ export function createHeroPlanetTSL(uTime, { aurora = true } = {}) {
         decor.push(crown);
     }
 
-    // Atmosphere halo — fresnel-shaped TSL glow shell so the rim reads as a soft
-    // blue scattering ring hugging the limb (not a flat additive ball). Tagged
-    // emitsBloom so the disciplined bloom pass picks up the atmosphere edge.
-    const haloFres = pow(oneMinus(max(0.0, dot(normalView, positionViewDirection))), 3.2);
+    // ATMOSPHERE (masterpiece pass). The shell used to be a BackSide fresnel whose back faces
+    // all read N·V < 0 — a CONSTANT 0.34 ring, brightest at its own outer edge, hard-edged,
+    // equally bright on the night side. It is now computed from the view ray's closest
+    // approach to the planet centre: glow peaks AT the limb and falls to zero at the shell
+    // edge, weighted by where that limb point sits against the sun — a bright day limb, a
+    // sunset-tinted terminator, a dark night limb — plus a forward-scatter brightening when the
+    // planet is backlit.
+    const shellRadius = HERO_PLANET_RADIUS * 1.125;
+    const centreW = modelWorldMatrix.mul(vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    const worldScale = length(modelWorldMatrix.mul(vec4(1.0, 0.0, 0.0, 0.0)).xyz);
+    const rayDir = normalize(positionWorld.sub(cameraPosition));
+    const along = dot(centreW.sub(cameraPosition), rayDir);
+    const closest = cameraPosition.add(rayDir.mul(along)).sub(centreW);
+    const impact = length(closest).div(worldScale.mul(HERO_PLANET_RADIUS));
+    const altitude = clamp(impact.sub(1.0).div(shellRadius / HERO_PLANET_RADIUS - 1.0), 0.0, 1.0);
+    const thickness = pow(oneMinus(altitude), 2.4).mul(oneMinus(smoothstep(0.75, 1.0, altitude)));
+    const sunN = normalize(uSun);
+    const limbSun = dot(normalize(closest), sunN);
+    const day = smoothstep(-0.18, 0.38, limbSun);
+    const sunsetBand = smoothstep(-0.3, -0.02, limbSun).mul(oneMinus(smoothstep(0.02, 0.35, limbSun)));
+    const backlight = pow(clamp(dot(rayDir, sunN), 0.0, 1.0), 6.0);
+    const skyBlue = vec3(0.36, 0.58, 1.0);
+    const sunset = vec3(1.0, 0.52, 0.26);
+    const haloColor = mix(skyBlue, sunset, sunsetBand.mul(0.8));
+    const haloStrength = thickness.mul(day.mul(0.85).add(sunsetBand.mul(0.5)).add(backlight.mul(0.9)));
     const haloMat = new THREE.MeshBasicNodeMaterial();
-    haloMat.colorNode = vec3(0.42, 0.6, 1.0);
-    haloMat.opacityNode = haloFres.mul(0.34); // dimmer blue atmosphere halo (darker earth)
+    haloMat.colorNode = haloColor.mul(haloStrength);
+    haloMat.opacityNode = clamp(haloStrength, 0.0, 1.0);
     haloMat.transparent = true;
     haloMat.depthWrite = false;
     haloMat.blending = THREE.AdditiveBlending;
     haloMat.side = THREE.BackSide;
     haloMat.userData.emitsBloom = true;
-    const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(31.5, 48, 32), haloMat);
+    const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(shellRadius, 64, 40), haloMat);
+    atmosphere.name = 'hero-planet-atmosphere';
     group.add(atmosphere);
     decor.push(atmosphere);
 
-    // Multi-band ring system — three concentric belts with a Cassini-style gap,
-    // a procedural fine-band texture (uv radial) and a subtle warm/cool tint, so
-    // the rings read as structured ice ringlets rather than one flat hoop.
-    const ringInner = [36, 46, 58];
-    const ringOuter = [44, 56, 64];
+    // Multi-band ring system — three concentric belts with Cassini-style gaps, a procedural
+    // fine-band ripple and a subtle warm/cool tint. ONE shared material (per-mesh aRingColor =
+    // rgb + opacity), now LIT: the planet's analytic shadow falls across the belts, they
+    // brighten in forward scatter when seen against the sun (ice), and their sunlit fraction
+    // follows the plane's angle to the sun.
+    const ringInner = HERO_PLANET_RINGS.inner;
+    const ringOuter = HERO_PLANET_RINGS.outer;
     const ringColor = [
         new THREE.Color(0xcdd8ff),
         new THREE.Color(0xe8d3b0),
         new THREE.Color(0x9fb6ff),
     ];
     const ringOpacity = [0.34, 0.26, 0.18];
-    // CONSOLIDATION (remake plan): ONE shared ring material across the 3 belts. The graph is
-    // identical; only colour + opacity differ, moved onto a per-mesh aRingColor (vec4 = rgb + a)
-    // attribute, so the 3 belts compile a SINGLE pipeline. Values preserved → byte-identical rings.
     const rv = uv().y;
     const ripple = sin(rv.mul(48.0)).mul(0.5).add(0.5).mul(0.5)
         .add(0.5);
     const feather = smoothstep(0.0, 0.12, rv).mul(oneMinus(smoothstep(0.85, 1.0, rv)));
     const aRingColor = attribute('aRingColor', 'vec4');
+    const ringCentre = modelWorldMatrix.mul(vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    const ringPlanetR = length(modelWorldMatrix.mul(vec4(1.0, 0.0, 0.0, 0.0)).xyz).mul(HERO_PLANET_RADIUS);
+    const oc = positionWorld.sub(ringCentre);
+    const towardSun = dot(oc, sunN);
+    const discr = towardSun.mul(towardSun).sub(dot(oc, oc).sub(ringPlanetR.mul(ringPlanetR)));
+    const planetShadow = smoothstep(0.0, ringPlanetR.mul(ringPlanetR).mul(0.06), discr)
+        .mul(smoothstep(0.0, ringPlanetR.mul(0.1), towardSun.negate()));
+    const ringNormalW = normalize(modelWorldMatrix.mul(vec4(0.0, 0.0, 1.0, 0.0)).xyz);
+    const ringLit = abs(dot(ringNormalW, sunN)).mul(0.65).add(0.35);
+    const ringForward = pow(clamp(dot(normalize(positionWorld.sub(cameraPosition)), sunN), 0.0, 1.0), 6.0);
+    const ringLight = ringLit.mul(oneMinus(planetShadow.mul(0.85))).add(ringForward.mul(1.1));
     const ringMat = new THREE.MeshBasicNodeMaterial();
-    ringMat.colorNode = aRingColor.xyz.mul(ripple);
+    ringMat.colorNode = aRingColor.xyz.mul(ripple).mul(ringLight);
     ringMat.opacityNode = feather.mul(ripple).mul(aRingColor.w);
     ringMat.transparent = true;
     ringMat.depthWrite = false;
     ringMat.blending = THREE.AdditiveBlending;
     ringMat.side = THREE.DoubleSide;
+    // Additive, no depth write: the DoubleSide back/front split pass buys nothing.
+    ringMat.forceSinglePass = true;
     ringInner.forEach((inner, bandIndex) => {
         const outer = ringOuter[bandIndex];
         const color = ringColor[bandIndex];
@@ -731,8 +813,7 @@ export function createHeroPlanetTSL(uTime, { aurora = true } = {}) {
         }
         geometry.setAttribute('aRingColor', new THREE.BufferAttribute(arr, 4));
         const ring = new THREE.Mesh(geometry, ringMat);
-        ring.rotation.x = Math.PI * 0.42;
-        ring.rotation.z = 0.18;
+        ring.rotation.set(...HERO_PLANET_RINGS.euler);
         group.add(ring);
         decor.push(ring);
     });
