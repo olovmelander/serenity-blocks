@@ -29,10 +29,16 @@ import * as THREE from 'three/webgpu';
 import {
     attribute,
     clamp,
+    dot,
     float,
     fract,
+    max,
     mix,
+    normalize,
+    normalView,
     oneMinus,
+    positionViewDirection,
+    pow,
     sin,
     smoothstep,
     step,
@@ -42,6 +48,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
+import { getChapterProfile } from './shared/chapter-profile.js';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
@@ -291,35 +298,47 @@ function createSkyTraffic() {
     // trails — the per-trail MeshBasicMaterials collapse to 2 pipelines. Trails stay individual
     // meshes so update() slides each along the canyon (transform, not material). One shared opacity
     // (0.55) for trails + heroes; the 0.05 the heroes lose is imperceptible under additive blend.
-    const trailMaterial = (color) => new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-    });
+    // TRON light ribbons (2026-10): a WHITE-HOT core where the tube faces the camera,
+    // falling off to the saturated hue at the silhouette (view-facing ramp on the tube
+    // normal), soft-edged. Two shared node materials; uOpacity bridges the crossfade.
+    const trailMaterial = (hex) => {
+        const hue = new THREE.Color(hex);
+        const facing = max(0.0, dot(normalize(normalView), positionViewDirection));
+        const core = pow(facing, 6.0);
+        const uOpacity = uniform(1);
+        const material = new THREE.MeshBasicNodeMaterial();
+        material.colorNode = mix(vec3(hue.r, hue.g, hue.b), vec3(1.0, 0.96, 1.0), core.mul(0.85))
+            .mul(core.mul(0.45).add(0.55));
+        material.opacityNode = pow(facing, 0.8).mul(0.75).mul(uOpacity);
+        material.uniforms = { uOpacity };
+        material.transparent = true;
+        material.blending = THREE.AdditiveBlending;
+        material.depthWrite = false;
+        material.userData.emitsBloom = true;
+        return material;
+    };
     const cyanTrail = trailMaterial(CYAN);
     const magentaTrail = trailMaterial(MAGENTA);
     const matFor = (color) => (color === CYAN ? cyanTrail : magentaTrail);
 
-    // ~16 trails streaking FORWARD down the canyon at varied heights and depths across the
-    // full nearZ→farZ span (not clustered at the finale). Brighter + thicker so they READ
-    // as flying traffic instead of invisible threads; an advancing head / fading tail are
-    // animated in update() by sliding each trail along its forward axis.
+    // Sky-lane traffic re-staged onto the 2026-10 city: lanes above the boulevard and over
+    // the rooftops (y 18–70, above most roofs, above and below the eye line), streaking
+    // toward the spire, spread over the camera's travel and the mid-distance.
     const TRAIL_COUNT = 16;
+    const LANES = [-150, -95, -46, -18, 18, 46, 95, 150];
     for (let index = 0; index < TRAIL_COUNT; index += 1) {
         const t = index / (TRAIL_COUNT - 1);
-        const baseZ = 20 + (-1080 - 20) * t; // near → far down the corridor
-        const lane = ((index % 4) - 1.5) * 70; // weave laterally across the lane
-        const h = -20 + ((index * 37) % 160); // varied heights between street and skyline
+        const baseZ = 90 + (-620 - 90) * t; // near → far down the corridor
+        const lane = LANES[(index * 3) % LANES.length];
+        const h = 18 + ((index * 23) % 52);
         // Each trail runs forward (toward the finale, -Z) so it streaks down the canyon.
         const curve = new THREE.CatmullRomCurve3([
-            new THREE.Vector3(lane - 26, h + 8, baseZ + 60),
+            new THREE.Vector3(lane - 6, h + 3, baseZ + 60),
             new THREE.Vector3(lane, h, baseZ),
-            new THREE.Vector3(lane + 24, h - 6, baseZ - 70),
+            new THREE.Vector3(lane + 6, h - 2, baseZ - 70),
         ]);
         const trail = new THREE.Mesh(
-            new THREE.TubeGeometry(curve, 36, 0.7, 7, false),
+            new THREE.TubeGeometry(curve, 36, 0.55, 7, false),
             matFor(colors[index % colors.length]),
         );
         trail.userData.speed = 80 + index * 9; // world units/sec streaking forward
@@ -329,10 +348,11 @@ function createSkyTraffic() {
 
     // 1–2 bright HERO trails sweeping near the finale spire for a final flourish.
     [-1, 1].forEach((side, i) => {
+        // Swing around the spire's upper shaft (crown ~ y 372, base on the street).
         const curve = new THREE.CatmullRomCurve3([
-            new THREE.Vector3(side * 120, 70 + i * 30, -460),
-            new THREE.Vector3(side * 30, 120 + i * 20, -540),
-            new THREE.Vector3(-side * 90, 60 + i * 30, -640),
+            new THREE.Vector3(side * 140, 140 + i * 50, -470),
+            new THREE.Vector3(side * 40, 210 + i * 40, -530),
+            new THREE.Vector3(-side * 110, 160 + i * 50, -640),
         ]);
         const hero = new THREE.Mesh(
             new THREE.TubeGeometry(curve, 40, 1.0, 8, false),
@@ -603,9 +623,15 @@ export function createUrbanDreamsEnvironment() {
     corridor.add(traffic);
     group.userData.traffic = traffic;
 
-    // Subtle cool ambient so the facades cohere as one city against true black instead
-    // of scattered bright blocks; the cyan-leaning tint ties the lit windows together.
-    group.add(acquireChapterLight(8, 'AmbientLight', { color: 0x101a2a, intensity: 0.45 }));
+    // Ambient from the chapter profile (one source of truth with the director's blended
+    // atmosphere; was a hardcoded cyan-leaning 0x101a2a/0.45 that disagreed with the
+    // profile's violet 0x2a1a3a/0.4). Only the lit materials here (the level-node rings)
+    // read it — the city itself is unlit node materials — so it now tints them violet.
+    const { atmosphere } = getChapterProfile(8);
+    group.add(acquireChapterLight(8, 'AmbientLight', {
+        color: atmosphere.ambientLight,
+        intensity: atmosphere.ambientIntensity,
+    }));
 
     // Anchor to the path's FULL centre (x/y/z), not just Y, so the city corridor, ring
     // gates and spire stay aligned to the route and the path never clips chapter geometry.
@@ -761,14 +787,14 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             // Streak each trail FORWARD down the canyon (advancing head); wrap back to the
             // near end when it passes the far end so the traffic flows continuously.
             const baseZ = trail.userData.baseZ ?? 0;
-            const span = 1100;
+            const span = 760;
             const travelled = (time * (trail.userData.speed ?? 80)) % span;
             trail.position.z = -travelled; // advance toward the finale (-Z)
             // Respawn wrap keeps the trail within the corridor (baseZ is the curve anchor).
-            if (baseZ - travelled < -1120) {
+            if (baseZ - travelled < -680) {
                 trail.position.z = -travelled + span;
             }
-            trail.position.x = Math.sin(time * 0.6 + index) * 8; // slight lateral drift
+            trail.position.x = Math.sin(time * 0.6 + index) * 3; // slight lateral drift
         });
     }
 }
