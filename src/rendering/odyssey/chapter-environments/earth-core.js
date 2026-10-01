@@ -414,7 +414,7 @@ function createEmberStars(uniforms, count) {
  * splash + node shelves), giving directional shafts of rising sparks. Spiraling, fading
  * additive billboards animated from uTime so the update loop is unchanged.
  */
-function createRisingEmbers(uniforms, count, staging = null) {
+function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_Y + 50 } = {}) {
     const bases = new Float32Array(count * 3);
     const randoms = new Float32Array(count);
     const sizes = new Float32Array(count);
@@ -452,6 +452,8 @@ function createRisingEmbers(uniforms, count, staging = null) {
             { x: 30, z: 3 - 40 }, { x: -30, z: 3 - 40 },
             { x: 30, z: 3 - 90 }, { x: -30, z: 3 - 90 },
         ];
+    const axisPoint = staging ? staging.sample(0.5) : { x: 0, z: 0 };
+    const shaftAxis = { x: axisPoint.x, z: axisPoint.z };
     // 0.30 -> 0.36 share on a 570 -> 640 count (user: "increase the amount a little"):
     // sparks 171 -> 230 while the chapter-wide riser storm keeps its density (~410).
     const splashCount = Math.floor(count * 0.36);
@@ -470,15 +472,27 @@ function createRisingEmbers(uniforms, count, staging = null) {
             bases[i3 + 2] = site.z + (Math.sin(theta) * radius);
             splashFlags[i] = 1;
             sizes[i] = 1.6 + (Math.random() * 2.6); // smaller and crisper than the risers
-        } else {
+        } else if (i % 2 === 0) {
             const col = columns[i % columns.length];
             const theta = Math.random() * TAU;
             const radius = Math.random() * col.spread;
             bases[i3] = col.x + Math.cos(theta) * radius;
-            bases[i3 + 1] = LAVA_LAKE_Y + (Math.random() - 0.5) * 8;
+            bases[i3 + 1] = LAVA_LAKE_Y;
             bases[i3 + 2] = col.z + Math.sin(theta) * radius;
             splashFlags[i] = 0;
             sizes[i] = 3.0 + Math.random() * 5.0;
+        } else {
+            // THE UPDRAFT (2026-10-01): half the risers ride the shaft itself, around the rail,
+            // so the air the camera climbs through is alive all the way up — they used to live
+            // only within +-25 u of the lake (half of them under its opaque surface), leaving
+            // the upper shaft, where the camera spends most of the act, empty.
+            const theta = Math.random() * TAU;
+            const radius = 6 + (Math.random() ** 0.7) * 40;
+            bases[i3] = shaftAxis.x + Math.cos(theta) * radius;
+            bases[i3 + 1] = LAVA_LAKE_Y;
+            bases[i3 + 2] = shaftAxis.z + Math.sin(theta) * radius;
+            splashFlags[i] = 0;
+            sizes[i] = 2.4 + Math.random() * 4.0;
         }
         randoms[i] = Math.random();
     }
@@ -495,17 +509,19 @@ function createRisingEmbers(uniforms, count, staging = null) {
     const aSize = attribute('aSize', 'float');
     const time = uniforms.uTime;
 
-    // Rise (mod 50, offset -25) + gentle spiral drift — matches the old vertex shader.
-    const riseSpeed = aRandom.mul(2.5).add(1.5);
-    const yOffset = mod(time.mul(riseSpeed).add(aRandom.mul(40.0)), 50.0).sub(25.0);
+    // RISE THE WHOLE SHAFT (2026-10-01): from the lake surface to the top of the corridor
+    // (was mod 50 centred ON the lake, so half the storm lived under it). An updraft carries
+    // sparks fast — 4-9 u/s — with a sinuous spiral that widens as they climb.
+    const riseSpan = Math.max(60, yTop - LAVA_LAKE_Y);
+    const riseSpeed = aRandom.mul(5.0).add(4.0);
+    const yOffset = mod(time.mul(riseSpeed).add(aRandom.mul(riseSpan * 7.3)), riseSpan);
     const angle = time.mul(0.4).add(aRandom.mul(TAU));
-    const radius = aRandom.mul(3.0).add(1.5);
+    const normalizedY = yOffset.div(riseSpan);
+    const radius = aRandom.mul(3.0).add(1.5).add(normalizedY.mul(5.0));
     const yPos = aBase.y.add(yOffset);
     const cx = aBase.x.add(sin(angle.add(yPos.mul(0.05))).mul(radius));
     const cz = aBase.z.add(cos(angle.mul(0.7).add(yPos.mul(0.04))).mul(radius).mul(0.8));
     const center = vec3(cx, yPos, cz);
-
-    const normalizedY = yOffset.add(25.0).div(50.0);
 
     // SPLASH ballistic arc, phase-locked to the lake's surge. Launch energy is sampled at
     // (now − age) — the heave this spark was BORN in — so a rogue surge visibly throws a
@@ -534,7 +550,9 @@ function createRisingEmbers(uniforms, count, staging = null) {
     const emberCenter = mix(center, splashCenter, splash);
     // ONE life scalar drives temperature, alpha and size for BOTH populations: risers age
     // by height, splash sparks by flight time — the ramp below never knows the difference.
-    const lifeNorm = mix(normalizedY, lifeFrac, splash);
+    // Risers cool as they climb but never reach ash: the top of the shaft is still lit by them.
+    // Offset 0.16 keeps the updraft in the orange-red band (white-hot reads as stars, not embers).
+    const lifeNorm = mix(normalizedY.mul(0.56).add(0.16), lifeFrac, splash);
     const worldSize = aSize.mul(oneMinus(lifeNorm.mul(0.5))).mul(0.16);
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -1000,7 +1018,7 @@ export function createEarthCoreEnvironment(options = {}) {
 
     // 6. Rising ember particles re-aimed into a few rising COLUMNS (ember-storm) rather
     //    than an even ring, clustered at the lava-fall splash + node shelves.
-    const risingEmbers = createRisingEmbers(uniforms, 640, staging);
+    const risingEmbers = createRisingEmbers(uniforms, 640, staging, { yTop: corridorHigh });
     group.add(risingEmbers);
     group.userData.risingEmbers = risingEmbers;
 
