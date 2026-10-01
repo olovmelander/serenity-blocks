@@ -70,6 +70,21 @@ test_output*.txt
 /docs/_captures/
 /docs/perf-captures/
 
+# Browser diagnostics and draft boot captures stay local. Runtime PNG assets
+# remain versioned, as do existing tracked reports and the curated proofs below.
+/.playwright-mcp/
+/reports/boot-smoothness/*.png
+/reports/boot-smoothness/*.json
+/reports/playground/*.png
+/reports/playground/*.json
+/reports/boot-aurora/*.png
+!/reports/boot-aurora/continuous-light-prototype.png
+!/reports/boot-aurora/wordmark-brand-proof.png
+!/reports/boot-aurora/tagline-loading-mobile.png
+!/reports/boot-aurora/tagline-dots-title.png
+!/reports/boot-aurora/tagline-dots-menu-desktop.png
+!/reports/boot-aurora/tagline-dots-menu-mobile.png
+
 # Odyssey GLB optimize backups (rollback source is git HEAD; never commit the uncompressed originals)
 src/rendering/odyssey/assets/_originals/
 

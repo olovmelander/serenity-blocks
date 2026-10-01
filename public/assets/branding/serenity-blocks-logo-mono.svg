@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 248" role="img" aria-labelledby="sb-mono-logo-title sb-mono-logo-desc">
+  <title id="sb-mono-logo-title">Serenity Blocks</title>
+  <desc id="sb-mono-logo-desc">Custom block lettering with a separated square completing the O.</desc>
+  <!-- Original vector lettering. The two rows share a baseline grid and optical width.
+       Keep the O's separated corner: it is the signature, including in one color. -->
+  <g id="sb-mono-wordmark-base" fill-rule="evenodd">
+    <g fill="currentColor">
+      <path d="M78 0H26Q0 0 0 26V36Q0 61 26 61H52Q58 61 58 67V72Q58 78 52 78H2V100H54Q80 100 80 74V64Q80 39 54 39H28Q22 39 22 33V28Q22 22 28 22H78Z"/>
+      <path transform="translate(90 0)" d="M76 0H10Q0 0 0 10V90Q0 100 10 100H76V78H22V61H65V39H22V22H76Z"/>
+      <path transform="translate(176 0)" d="M0 100V0H50Q80 0 80 29V34Q80 54 62 61L84 100H57L35 63H22V100ZM22 22V43H49Q58 43 58 34V31Q58 22 49 22Z"/>
+      <path transform="translate(268 0)" d="M76 0H10Q0 0 0 10V90Q0 100 10 100H76V78H22V61H65V39H22V22H76Z"/>
+      <path transform="translate(354 0)" d="M0 100V0H24L60 60V0H82V100H58L22 40V100Z"/>
+      <path transform="translate(446 0)" d="M0 0H22V100H0Z"/>
+      <path transform="translate(478 0)" d="M0 0H78V22H50V100H28V22H0Z"/>
+      <path transform="translate(566 0)" d="M0 0H25L42 34L59 0H84L53 59V100H31V59Z"/>
+    </g>
+    <g transform="translate(0 124) scale(1.235741445)" fill="currentColor">
+      <path d="M0 0H50Q79 0 79 26V29Q79 43 67 49Q82 55 82 73V74Q82 100 53 100H0ZM22 21V39H49Q57 39 57 30Q57 21 49 21ZM22 60V79H51Q60 79 60 69Q60 60 51 60Z
+        M92 0H114V78H162V100H102Q92 100 92 90Z
+        M202 0H222V22H203Q194 22 194 32V68Q194 78 203 78H223Q232 78 232 68V32H254V70Q254 100 224 100H202Q172 100 172 70V30Q172 0 202 0Z
+        M342 0V22H297Q286 22 286 34V66Q286 78 297 78H342V100H294Q264 100 264 70V30Q264 0 294 0Z
+        M354 0H376V37L407 0H435L396 47L437 100H409L379 62L376 66V100H354Z
+        M524 0H472Q446 0 446 26V36Q446 61 472 61H498Q504 61 504 67V72Q504 78 498 78H448V100H500Q526 100 526 74V64Q526 39 500 39H474Q468 39 468 33V28Q468 22 474 22H524Z"/>
+    </g>
+  </g>
+  <rect id="sb-mono-wordmark-tile" x="281.749" y="119.057" width="32.129" height="32.129" rx="3.7" fill="currentColor"/>
+</svg>

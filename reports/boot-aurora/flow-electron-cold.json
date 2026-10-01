@@ -1,0 +1,1349 @@
+{
+ "manifest": {
+  "tool": "boot-smoothness-probe",
+  "electron": "38.8.6",
+  "chrome": "140.0.7339.249",
+  "url": "http://localhost:5185/?startupDebug=1",
+  "theme": null,
+  "durationMs": 25000,
+  "viewport": [
+   1280,
+   720
+  ],
+  "profileDir": "C:\\Users\\olov_\\AppData\\Local\\Temp\\sb-boot-probe-WQj5mD",
+  "coldProfile": true
+ },
+ "summary": {
+  "shellDismissedAtMs": 6675.1,
+  "warpHandoffCompleteAtMs": 9950.7,
+  "pipelines": {
+   "sync": 5,
+   "async": 33,
+   "syncBeforeShellGone": 5
+  },
+  "identWindow": {
+   "freezes": 6,
+   "frozenMs": 2243,
+   "maxMs": 732,
+   "visibleFrozenMs": 1303,
+   "visibleMaxMs": 732,
+   "mainThreadOnlyMs": 940
+  },
+  "warpWindow": {
+   "freezes": 0,
+   "frozenMs": 0,
+   "maxMs": 0,
+   "visibleFrozenMs": 0,
+   "visibleMaxMs": 0,
+   "mainThreadOnlyMs": 0
+  },
+  "wholeCapture": {
+   "freezes": 6,
+   "frozenMs": 2243,
+   "maxMs": 732
+  },
+  "modeEntryWindow": null,
+  "mainThreadLongFrames": [
+   {
+    "at": 1514,
+    "ms": 302,
+    "blockingMs": 252,
+    "top": "run@audio/sound-manager.js"
+   },
+   {
+    "at": 5177,
+    "ms": 668,
+    "blockingMs": 551,
+    "top": "animate@ui/intro-animation.js"
+   }
+  ],
+  "syncByCaller": [
+   {
+    "caller": "(three.js internal: render loop)",
+    "n": 1,
+    "fromMs": 5402,
+    "toMs": 5402
+   },
+   {
+    "caller": "createForSession (src/rendering/async-render-pipelines.js:161:25) <- WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20)",
+    "n": 3,
+    "fromMs": 5404,
+    "toMs": 5835
+   },
+   {
+    "caller": "BootWarpTransition._prewarmInternal (src/ui/boot-warp-transition.js:434:26) <- async BootWarpTransition.prewarm (src/ui/boot-warp-transition.js:158:24)",
+    "n": 1,
+    "fromMs": 6554,
+    "toMs": 6554
+   }
+  ]
+ },
+ "data": {
+  "nowMs": 25003,
+  "frames": 2829,
+  "gpu": [
+   {
+    "kind": "shader-module",
+    "at": 5376.5,
+    "label": "vertex",
+    "codeLen": 1546
+   },
+   {
+    "kind": "shader-module",
+    "at": 5376.6,
+    "label": "fragment",
+    "codeLen": 70655
+   },
+   {
+    "kind": "render-async",
+    "at": 5377.9,
+    "label": "renderPipeline_MeshBasicNodeMaterial_18",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at _PassNode.updateBefore (node_modules/.vite/deps/chunk-WUEDFPF4.js:20265:14)",
+    "doneAt": 6451.2
+   },
+   {
+    "kind": "shader-module",
+    "at": 5389.2,
+    "label": "vertex",
+    "codeLen": 3740
+   },
+   {
+    "kind": "shader-module",
+    "at": 5389.3,
+    "label": "fragment",
+    "codeLen": 3821
+   },
+   {
+    "kind": "render-async",
+    "at": 5389.6,
+    "label": "renderPipeline_MeshBasicNodeMaterial_19",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5869.4
+   },
+   {
+    "kind": "shader-module",
+    "at": 5401.5,
+    "label": "mipmap",
+    "codeLen": 1827
+   },
+   {
+    "kind": "render-sync",
+    "at": 5401.7,
+    "label": "mipmap-rgba8unorm-2d-array",
+    "stack": "at WebGPUTexturePassUtils.getTransferPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:40665:30) | at WebGPUTexturePassUtils._mipmapCreateBundles (node_modules/.vite/deps/chunk-WUEDFPF4.js:40760:27) | at WebGPUTexturePassUtils.generateMipmaps (node_modules/.vite/deps/chunk-WUEDFPF4.js:40740:47) | at WebGPUTextureUtils._generateMipmaps (node_modules/.vite/deps/chunk-WUEDFPF4.js:41555:26) | at WebGPUTextureUtils.generateMipmaps (node_modules/.vite/deps/chunk-WUEDFPF4.js:41217:10) | at WebGPUBackend.generateMipmaps (node_modules/.vite/deps/chunk-WUEDFPF4.js:47361:23) | at Textures.updateTexture (node_modules/.vite/deps/chunk-WUEDFPF4.js:16848:21) | at Bindings._createBindings (node_modules/.vite/deps/chunk-WUEDFPF4.js:16154:27) | at Bindings.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:16058:12) | at Bindings.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:16096:31) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32694:22) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "target": "rgba8unorm"
+   },
+   {
+    "kind": "shader-module",
+    "at": 5403.9,
+    "label": "vertex_PMREM_cubemap",
+    "codeLen": 1430
+   },
+   {
+    "kind": "shader-module",
+    "at": 5404,
+    "label": "fragment_PMREM_cubemap",
+    "codeLen": 917
+   },
+   {
+    "kind": "render-sync",
+    "at": 5404.1,
+    "label": "renderPipeline_PMREM_cubemap_45",
+    "stack": "at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45086:38) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:161:25) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at PMREMGenerator._textureToCubeUV (node_modules/.vite/deps/chunk-WUEDFPF4.js:12976:14) | at PMREMGenerator._fromTexture (node_modules/.vite/deps/chunk-WUEDFPF4.js:12868:10) | at PMREMGenerator.fromCubemap (node_modules/.vite/deps/chunk-WUEDFPF4.js:12780:17)",
+    "target": "rgba16float"
+   },
+   {
+    "kind": "shader-module",
+    "at": 5419,
+    "label": "vertex_PMREM_ggx",
+    "codeLen": 1446
+   },
+   {
+    "kind": "shader-module",
+    "at": 5419,
+    "label": "fragment_PMREM_ggx",
+    "codeLen": 7881
+   },
+   {
+    "kind": "render-sync",
+    "at": 5419.2,
+    "label": "renderPipeline_PMREM_ggx_44",
+    "stack": "at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45086:38) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:161:25) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at PMREMGenerator._applyGGXFilter (node_modules/.vite/deps/chunk-WUEDFPF4.js:13021:14) | at PMREMGenerator._applyPMREM (node_modules/.vite/deps/chunk-WUEDFPF4.js:12984:12) | at PMREMGenerator._fromTexture (node_modules/.vite/deps/chunk-WUEDFPF4.js:12869:10)",
+    "target": "rgba16float"
+   },
+   {
+    "kind": "shader-module",
+    "at": 5469.3,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "shader-module",
+    "at": 5469.3,
+    "label": "fragment",
+    "codeLen": 33947
+   },
+   {
+    "kind": "render-async",
+    "at": 5469.6,
+    "label": "renderPipeline_MeshStandardNodeMaterial_20",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32635:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5998.8
+   },
+   {
+    "kind": "shader-module",
+    "at": 5490.5,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "shader-module",
+    "at": 5490.5,
+    "label": "fragment",
+    "codeLen": 33923
+   },
+   {
+    "kind": "render-async",
+    "at": 5490.8,
+    "label": "renderPipeline_MeshStandardNodeMaterial_20",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32637:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5998.9
+   },
+   {
+    "kind": "shader-module",
+    "at": 5496.1,
+    "label": "vertex",
+    "codeLen": 5965
+   },
+   {
+    "kind": "shader-module",
+    "at": 5496.2,
+    "label": "fragment",
+    "codeLen": 3564
+   },
+   {
+    "kind": "render-async",
+    "at": 5496.3,
+    "label": "renderPipeline_MeshBasicNodeMaterial_21",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5869.7
+   },
+   {
+    "kind": "shader-module",
+    "at": 5521.3,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5521.4,
+    "label": "renderPipeline_MeshStandardNodeMaterial_22",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32635:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5998.9
+   },
+   {
+    "kind": "shader-module",
+    "at": 5540.8,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5541,
+    "label": "renderPipeline_MeshStandardNodeMaterial_22",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32637:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5998.9
+   },
+   {
+    "kind": "shader-module",
+    "at": 5547.5,
+    "label": "vertex",
+    "codeLen": 5965
+   },
+   {
+    "kind": "shader-module",
+    "at": 5547.5,
+    "label": "fragment",
+    "codeLen": 3564
+   },
+   {
+    "kind": "render-async",
+    "at": 5547.7,
+    "label": "renderPipeline_MeshBasicNodeMaterial_23",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5998.9
+   },
+   {
+    "kind": "shader-module",
+    "at": 5567.1,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5567.2,
+    "label": "renderPipeline_MeshStandardNodeMaterial_24",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32635:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 6045.7
+   },
+   {
+    "kind": "shader-module",
+    "at": 5590.6,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5590.8,
+    "label": "renderPipeline_MeshStandardNodeMaterial_24",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32637:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5998.9
+   },
+   {
+    "kind": "shader-module",
+    "at": 5594.9,
+    "label": "vertex",
+    "codeLen": 5965
+   },
+   {
+    "kind": "shader-module",
+    "at": 5594.9,
+    "label": "fragment",
+    "codeLen": 3564
+   },
+   {
+    "kind": "render-async",
+    "at": 5595,
+    "label": "renderPipeline_MeshBasicNodeMaterial_25",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5998.9
+   },
+   {
+    "kind": "shader-module",
+    "at": 5612.6,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5612.7,
+    "label": "renderPipeline_MeshStandardNodeMaterial_26",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32635:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5998.9
+   },
+   {
+    "kind": "shader-module",
+    "at": 5630.7,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5630.8,
+    "label": "renderPipeline_MeshStandardNodeMaterial_26",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32637:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 6046.3
+   },
+   {
+    "kind": "shader-module",
+    "at": 5635.3,
+    "label": "vertex",
+    "codeLen": 5965
+   },
+   {
+    "kind": "shader-module",
+    "at": 5635.3,
+    "label": "fragment",
+    "codeLen": 3564
+   },
+   {
+    "kind": "render-async",
+    "at": 5635.4,
+    "label": "renderPipeline_MeshBasicNodeMaterial_27",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5999
+   },
+   {
+    "kind": "shader-module",
+    "at": 5656.1,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5656.3,
+    "label": "renderPipeline_MeshStandardNodeMaterial_28",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32635:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5999
+   },
+   {
+    "kind": "shader-module",
+    "at": 5680.8,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5681,
+    "label": "renderPipeline_MeshStandardNodeMaterial_28",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32637:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 6045.7
+   },
+   {
+    "kind": "shader-module",
+    "at": 5686.2,
+    "label": "vertex",
+    "codeLen": 5965
+   },
+   {
+    "kind": "shader-module",
+    "at": 5686.3,
+    "label": "fragment",
+    "codeLen": 3564
+   },
+   {
+    "kind": "render-async",
+    "at": 5686.4,
+    "label": "renderPipeline_MeshBasicNodeMaterial_29",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 5999
+   },
+   {
+    "kind": "shader-module",
+    "at": 5709,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5709.1,
+    "label": "renderPipeline_MeshStandardNodeMaterial_30",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32635:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 6005.7
+   },
+   {
+    "kind": "shader-module",
+    "at": 5732.7,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5732.9,
+    "label": "renderPipeline_MeshStandardNodeMaterial_30",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32637:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 6045.7
+   },
+   {
+    "kind": "shader-module",
+    "at": 5749.9,
+    "label": "vertex",
+    "codeLen": 5965
+   },
+   {
+    "kind": "shader-module",
+    "at": 5750,
+    "label": "fragment",
+    "codeLen": 3564
+   },
+   {
+    "kind": "render-async",
+    "at": 5750.1,
+    "label": "renderPipeline_MeshBasicNodeMaterial_31",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 6064.8
+   },
+   {
+    "kind": "shader-module",
+    "at": 5768.9,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5769.1,
+    "label": "renderPipeline_MeshStandardNodeMaterial_32",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32635:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 6064.8
+   },
+   {
+    "kind": "shader-module",
+    "at": 5793,
+    "label": "vertex",
+    "codeLen": 6749
+   },
+   {
+    "kind": "render-async",
+    "at": 5793.1,
+    "label": "renderPipeline_MeshStandardNodeMaterial_32",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32637:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 6064.8
+   },
+   {
+    "kind": "shader-module",
+    "at": 5799.6,
+    "label": "vertex",
+    "codeLen": 5965
+   },
+   {
+    "kind": "shader-module",
+    "at": 5799.7,
+    "label": "fragment",
+    "codeLen": 3564
+   },
+   {
+    "kind": "render-async",
+    "at": 5799.7,
+    "label": "renderPipeline_MeshBasicNodeMaterial_33",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderTransparents (node_modules/.vite/deps/chunk-WUEDFPF4.js:32444:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31416:74) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10)",
+    "doneAt": 6122.2
+   },
+   {
+    "kind": "shader-module",
+    "at": 5802.4,
+    "label": "vertex_Bloom_highPass",
+    "codeLen": 678
+   },
+   {
+    "kind": "shader-module",
+    "at": 5802.4,
+    "label": "fragment_Bloom_highPass",
+    "codeLen": 931
+   },
+   {
+    "kind": "render-async",
+    "at": 5802.4,
+    "label": "renderPipeline_Bloom_highPass_36",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at QuadMesh.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:18845:14)",
+    "doneAt": 6004.2
+   },
+   {
+    "kind": "shader-module",
+    "at": 5805.5,
+    "label": "vertex_Bloom_separable",
+    "codeLen": 678
+   },
+   {
+    "kind": "shader-module",
+    "at": 5805.5,
+    "label": "fragment_Bloom_separable",
+    "codeLen": 1749
+   },
+   {
+    "kind": "render-async",
+    "at": 5805.7,
+    "label": "renderPipeline_Bloom_separable_37",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at QuadMesh.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:18845:14)",
+    "doneAt": 6045.7
+   },
+   {
+    "kind": "shader-module",
+    "at": 5809,
+    "label": "fragment_Bloom_separable",
+    "codeLen": 1835
+   },
+   {
+    "kind": "render-async",
+    "at": 5809.1,
+    "label": "renderPipeline_Bloom_separable_38",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at QuadMesh.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:18845:14)",
+    "doneAt": 6064.9
+   },
+   {
+    "kind": "shader-module",
+    "at": 5812,
+    "label": "fragment_Bloom_separable",
+    "codeLen": 1926
+   },
+   {
+    "kind": "render-async",
+    "at": 5812.1,
+    "label": "renderPipeline_Bloom_separable_39",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at QuadMesh.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:18845:14)",
+    "doneAt": 6065
+   },
+   {
+    "kind": "shader-module",
+    "at": 5815.3,
+    "label": "fragment_Bloom_separable",
+    "codeLen": 2007
+   },
+   {
+    "kind": "render-async",
+    "at": 5815.4,
+    "label": "renderPipeline_Bloom_separable_40",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at QuadMesh.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:18845:14)",
+    "doneAt": 6122.2
+   },
+   {
+    "kind": "shader-module",
+    "at": 5818.6,
+    "label": "fragment_Bloom_separable",
+    "codeLen": 2098
+   },
+   {
+    "kind": "render-async",
+    "at": 5818.7,
+    "label": "renderPipeline_Bloom_separable_41",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at QuadMesh.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:18845:14)",
+    "doneAt": 6122.2
+   },
+   {
+    "kind": "shader-module",
+    "at": 5824.5,
+    "label": "vertex_Bloom_comp",
+    "codeLen": 678
+   },
+   {
+    "kind": "shader-module",
+    "at": 5824.5,
+    "label": "fragment_Bloom_comp",
+    "codeLen": 3139
+   },
+   {
+    "kind": "render-async",
+    "at": 5824.6,
+    "label": "renderPipeline_Bloom_comp_42",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:164:14) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at QuadMesh.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:18845:14)",
+    "doneAt": 6122.2
+   },
+   {
+    "kind": "shader-module",
+    "at": 5834,
+    "label": "vertex_RenderPipeline",
+    "codeLen": 681
+   },
+   {
+    "kind": "shader-module",
+    "at": 5834.5,
+    "label": "fragment_RenderPipeline",
+    "codeLen": 5587
+   },
+   {
+    "kind": "render-sync",
+    "at": 5834.7,
+    "label": "renderPipeline_RenderPipeline_35",
+    "stack": "at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45086:38) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at createForSession (src/rendering/async-render-pipelines.js:161:25) | at WebGPUBackend.serenityAsyncCreateRenderPipeline (src/rendering/async-render-pipelines.js:132:20) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at QuadMesh.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:18845:14) | at RenderPipeline.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:48031:20) | at ThreeJSIntroRendererWebGPU.update (src/ui/threejs-intro-renderer-webgpu.js:1519:33)",
+    "target": "bgra8unorm"
+   },
+   {
+    "kind": "shader-module",
+    "at": 5866.4,
+    "label": "compute",
+    "codeLen": 7749
+   },
+   {
+    "kind": "compute-async",
+    "at": 5867,
+    "label": "computePipeline_compute",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45191:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createComputePipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45186:23) | at WebGPUBackend.createComputePipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47459:24) | at Pipelines._getComputePipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15934:20) | at Pipelines.getForCompute (node_modules/.vite/deps/chunk-WUEDFPF4.js:15801:25) | at WebGPURenderer.compileComputeAsync (node_modules/.vite/deps/chunk-WUEDFPF4.js:30961:17) | at async src/rendering/webgpu-compute-pipeline-async.js:99:13 | at async compileComputeAsync (src/rendering/webgpu-compute-pipeline-async.js:122:21)",
+    "doneAt": 6192.6
+   },
+   {
+    "kind": "shader-module",
+    "at": 6257.8,
+    "label": "compute",
+    "codeLen": 11047
+   },
+   {
+    "kind": "compute-async",
+    "at": 6257.9,
+    "label": "computePipeline_compute",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45191:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createComputePipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45186:23) | at WebGPUBackend.createComputePipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47459:24) | at Pipelines._getComputePipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15934:20) | at Pipelines.getForCompute (node_modules/.vite/deps/chunk-WUEDFPF4.js:15801:25) | at WebGPURenderer.compileComputeAsync (node_modules/.vite/deps/chunk-WUEDFPF4.js:30961:17) | at async src/rendering/webgpu-compute-pipeline-async.js:99:13 | at async compileComputeAsync (src/rendering/webgpu-compute-pipeline-async.js:122:21)",
+    "doneAt": 6337.7
+   },
+   {
+    "kind": "shader-module",
+    "at": 6517,
+    "label": "vertex",
+    "codeLen": 581
+   },
+   {
+    "kind": "shader-module",
+    "at": 6517,
+    "label": "fragment",
+    "codeLen": 2461
+   },
+   {
+    "kind": "render-async",
+    "at": 6517.1,
+    "label": "renderPipeline_MeshBasicNodeMaterial_46",
+    "stack": "at node_modules/.vite/deps/chunk-WUEDFPF4.js:45101:38 | at new Promise (<anonymous>) | at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45096:17) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at WebGPURenderer.compileAsync (node_modules/.vite/deps/chunk-WUEDFPF4.js:30905:23) | at async BootWarpTransition._prewarmInternal (src/ui/boot-warp-transition.js:393:17) | at async BootWarpTransition.prewarm (src/ui/boot-warp-transition.js:158:24)",
+    "doneAt": 6543
+   },
+   {
+    "kind": "shader-module",
+    "at": 6554.2,
+    "label": "vertex_outputColorTransform",
+    "codeLen": 1320
+   },
+   {
+    "kind": "shader-module",
+    "at": 6554.2,
+    "label": "fragment_outputColorTransform",
+    "codeLen": 2434
+   },
+   {
+    "kind": "render-sync",
+    "at": 6554.2,
+    "label": "renderPipeline_outputColorTransform_47",
+    "stack": "at WebGPUPipelineUtils.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:45086:38) | at WebGPUBackend.createRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:47449:24) | at Pipelines._getRenderPipeline (node_modules/.vite/deps/chunk-WUEDFPF4.js:15956:20) | at Pipelines.getForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15849:25) | at Pipelines.updateForRender (node_modules/.vite/deps/chunk-WUEDFPF4.js:15915:10) | at WebGPURenderer._renderObjectDirect (node_modules/.vite/deps/chunk-WUEDFPF4.js:32700:21) | at WebGPURenderer.renderObject (node_modules/.vite/deps/chunk-WUEDFPF4.js:32640:12) | at WebGPURenderer._renderObjects (node_modules/.vite/deps/chunk-WUEDFPF4.js:32460:12) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31415:64) | at WebGPURenderer._renderOutputLayers (node_modules/.vite/deps/chunk-WUEDFPF4.js:31200:12) | at WebGPURenderer._renderOutput (node_modules/.vite/deps/chunk-WUEDFPF4.js:31475:10) | at WebGPURenderer._renderScene (node_modules/.vite/deps/chunk-WUEDFPF4.js:31426:12) | at WebGPURenderer.render (node_modules/.vite/deps/chunk-WUEDFPF4.js:31186:10) | at BootWarpTransition._prewarmInternal (src/ui/boot-warp-transition.js:434:26) | at async BootWarpTransition.prewarm (src/ui/boot-warp-transition.js:158:24)",
+    "target": "bgra8unorm"
+   }
+  ],
+  "gaps": [
+   {
+    "at": 478,
+    "gap": 66
+   },
+   {
+    "at": 551,
+    "gap": 732
+   },
+   {
+    "at": 1283,
+    "gap": 113
+   },
+   {
+    "at": 1396,
+    "gap": 99
+   },
+   {
+    "at": 1519,
+    "gap": 300
+   },
+   {
+    "at": 1819,
+    "gap": 222
+   },
+   {
+    "at": 3690,
+    "gap": 190
+   },
+   {
+    "at": 3895,
+    "gap": 116
+   },
+   {
+    "at": 5205,
+    "gap": 640
+   },
+   {
+    "at": 5845,
+    "gap": 159
+   }
+  ],
+  "loaf": [
+   {
+    "at": 405,
+    "ms": 139,
+    "blockingMs": 18,
+    "scripts": []
+   },
+   {
+    "at": 561,
+    "ms": 731,
+    "blockingMs": 0,
+    "scripts": [
+     {
+      "ms": 27,
+      "fn": "",
+      "src": "deps/three_webgpu.js",
+      "char": 0
+     },
+     {
+      "ms": 11,
+      "fn": "",
+      "src": "src/main.js",
+      "char": 0
+     }
+    ]
+   },
+   {
+    "at": 1293,
+    "ms": 204,
+    "blockingMs": 51,
+    "scripts": [
+     {
+      "ms": 98,
+      "fn": "",
+      "src": "",
+      "char": -1
+     }
+    ]
+   },
+   {
+    "at": 1514,
+    "ms": 302,
+    "blockingMs": 252,
+    "scripts": [
+     {
+      "ms": 299,
+      "fn": "run",
+      "src": "audio/sound-manager.js",
+      "char": 10524
+     }
+    ]
+   },
+   {
+    "at": 1816,
+    "ms": 123,
+    "blockingMs": 69,
+    "scripts": [
+     {
+      "ms": 63,
+      "fn": "",
+      "src": "deps/phaser.js",
+      "char": 0
+     },
+     {
+      "ms": 44,
+      "fn": "",
+      "src": "src/main.js",
+      "char": -1
+     }
+    ]
+   },
+   {
+    "at": 1940,
+    "ms": 116,
+    "blockingMs": 0,
+    "scripts": [
+     {
+      "ms": 16,
+      "fn": "",
+      "src": "deps/phaser.js",
+      "char": 4701523
+     }
+    ]
+   },
+   {
+    "at": 3694,
+    "ms": 195,
+    "blockingMs": 0,
+    "scripts": []
+   },
+   {
+    "at": 3899,
+    "ms": 121,
+    "blockingMs": 0,
+    "scripts": []
+   },
+   {
+    "at": 5177,
+    "ms": 668,
+    "blockingMs": 551,
+    "scripts": [
+     {
+      "ms": 540,
+      "fn": "animate",
+      "src": "ui/intro-animation.js",
+      "char": 11259
+     },
+     {
+      "ms": 49,
+      "fn": "",
+      "src": "deps/chunk-ISP5DND7.js",
+      "char": -1
+     }
+    ]
+   },
+   {
+    "at": 5891,
+    "ms": 154,
+    "blockingMs": 0,
+    "scripts": [
+     {
+      "ms": 19,
+      "fn": "",
+      "src": "",
+      "char": -1
+     },
+     {
+      "ms": 8,
+      "fn": "animate",
+      "src": "ui/intro-animation.js",
+      "char": 11259
+     }
+    ]
+   }
+  ],
+  "trace": [
+   {
+    "t": 1094.9,
+    "phase": "startup-pipeline:boot-started",
+    "payload": "{\"elapsedMs\":0,\"introStatus\":\"idle\",\"watchdogMs\":45000}"
+   },
+   {
+    "t": 1924.2,
+    "phase": "startup-pipeline:app-ready",
+    "payload": "{\"elapsedMs\":830,\"introStatus\":\"idle\",\"windowsProfile\":\"current\",\"safeMode\":false}"
+   },
+   {
+    "t": 1924.3,
+    "phase": "startup-pipeline:menu-ready",
+    "payload": "{\"elapsedMs\":830,\"introStatus\":\"idle\",\"modalManagerReady\":true,\"modalDomReady\":true}"
+   },
+   {
+    "t": 1924.5,
+    "phase": "startup-pipeline:intro-running",
+    "payload": "{\"elapsedMs\":830,\"introStatus\":\"running\",\"mode\":\"interactive\"}"
+   },
+   {
+    "t": 2750.9,
+    "phase": "theme-warm:start",
+    "payload": "{\"theme\":\"forest\",\"session\":true}"
+   },
+   {
+    "t": 2752.8,
+    "phase": "theme-warm:started",
+    "payload": "{\"theme\":\"forest\",\"asyncActive\":false,\"syncRenderer\":false,\"startMs\":2,\"async\":0}"
+   },
+   {
+    "t": 3330.1,
+    "phase": "theme-warm:settled",
+    "payload": "{\"theme\":\"forest\",\"asyncActive\":false,\"exitReason\":\"stable\",\"inFlight\":0}"
+   },
+   {
+    "t": 3330.3,
+    "phase": "theme-warm:end",
+    "payload": "{\"theme\":\"forest\",\"asyncActive\":false,\"exitReason\":\"stable\",\"endReason\":\"settled\"}"
+   },
+   {
+    "t": 5099.5,
+    "phase": "intro:show-start",
+    "payload": "{\"deferTitle\":true}"
+   },
+   {
+    "t": 5237.9,
+    "phase": "intro:pipelines-async-start",
+    "payload": "{}"
+   },
+   {
+    "t": 5243.3,
+    "phase": "intro:first-phase-gate",
+    "payload": "{\"result\":\"phase-changed\"}"
+   },
+   {
+    "t": 5994.6,
+    "phase": "boot-warp:support-check",
+    "payload": "{\"supported\":true}"
+   },
+   {
+    "t": 5994.9,
+    "phase": "boot-warp:title-safety-held",
+    "payload": "{\"ms\":120000}"
+   },
+   {
+    "t": 5995,
+    "phase": "boot-warp:intro-decision-start",
+    "payload": "{}"
+   },
+   {
+    "t": 5995.4,
+    "phase": "boot-warp:intro-decision-complete",
+    "payload": "{\"canAttemptWarp\":true,\"reason\":\"intro-renderer-settled\"}"
+   },
+   {
+    "t": 5995.5,
+    "phase": "boot-warp:theme-wait-start",
+    "payload": "{}"
+   },
+   {
+    "t": 5996.1,
+    "phase": "boot-warp:theme-wait-idle-start",
+    "payload": "{\"busy\":false,\"theme\":\"forest\",\"reasons\":[],\"buildingLoadInProgress\":false,\"buildingLoadComplete\":true,\"backgroundLoadInProgress\":false,\"backgroundLoadComplete\":true,\"deferredMaterialLoadInProgress\":f"
+   },
+   {
+    "t": 6453.7,
+    "phase": "intro:pipelines-async-end",
+    "payload": "{\"reason\":\"quiet\",\"ms\":1216,\"async\":30,\"syncExempt\":3,\"failed\":0,\"errorScopeRepaired\":0,\"maxInFlight\":30,\"inFlight\":0}"
+   },
+   {
+    "t": 6511.1,
+    "phase": "boot-warp:theme-wait-idle-ready",
+    "payload": "{\"busy\":false,\"theme\":\"forest\",\"reasons\":[],\"buildingLoadInProgress\":false,\"buildingLoadComplete\":true,\"backgroundLoadInProgress\":false,\"backgroundLoadComplete\":true,\"deferredMaterialLoadInProgress\":f"
+   },
+   {
+    "t": 6511.3,
+    "phase": "boot-warp:theme-ready",
+    "payload": "{\"busy\":false,\"theme\":\"forest\",\"reasons\":[],\"buildingLoadInProgress\":false,\"buildingLoadComplete\":true,\"backgroundLoadInProgress\":false,\"backgroundLoadComplete\":true,\"deferredMaterialLoadInProgress\":f"
+   },
+   {
+    "t": 6511.3,
+    "phase": "boot-warp:constructed",
+    "payload": "{\"id\":1,\"count\":0,\"sharedDevice\":true}"
+   },
+   {
+    "t": 6511.4,
+    "phase": "boot-warp:prewarm-requested",
+    "payload": "{\"attempt\":1,\"sharedDevice\":true,\"timeoutMs\":12000}"
+   },
+   {
+    "t": 6511.5,
+    "phase": "boot-warp:prewarm-start",
+    "payload": "{\"id\":1,\"timeoutMs\":12000,\"sharedDevice\":true}"
+   },
+   {
+    "t": 6511.9,
+    "phase": "boot-warp:init-start",
+    "payload": "{\"id\":1,\"width\":1280,\"height\":720,\"sharedDevice\":true}"
+   },
+   {
+    "t": 6512.5,
+    "phase": "boot-warp:init-complete",
+    "payload": "{\"id\":1,\"isWebGPUBackend\":true,\"isWebGLBackend\":false}"
+   },
+   {
+    "t": 6512.7,
+    "phase": "boot-warp:canvas-appended",
+    "payload": "{\"id\":1,\"zIndex\":15000,\"width\":1280,\"height\":720}"
+   },
+   {
+    "t": 6513.4,
+    "phase": "boot-warp:ident-anchor",
+    "payload": "{\"id\":1,\"measured\":true,\"x\":640,\"y\":307}"
+   },
+   {
+    "t": 6513.5,
+    "phase": "boot-warp:particles-created",
+    "payload": "{\"id\":1,\"count\":0,\"hasComputeNode\":false}"
+   },
+   {
+    "t": 6513.5,
+    "phase": "boot-warp:prime-compute-start",
+    "payload": "{\"id\":1,\"steps\":3,\"hasComputeNode\":false}"
+   },
+   {
+    "t": 6550,
+    "phase": "boot-warp:prime-async-compiled",
+    "payload": "{\"id\":1,\"durationMs\":36.5}"
+   },
+   {
+    "t": 6555,
+    "phase": "boot-warp:prime-render-complete",
+    "payload": "{\"id\":1,\"durationMs\":41.5}"
+   },
+   {
+    "t": 6597.8,
+    "phase": "boot-warp:prime-gpu-idle",
+    "payload": "{\"id\":1,\"status\":\"idle\",\"durationMs\":42.6,\"totalPrimeMs\":84.2}"
+   },
+   {
+    "t": 6598.1,
+    "phase": "boot-warp:ready",
+    "payload": "{\"id\":1}"
+   },
+   {
+    "t": 6598.3,
+    "phase": "boot-warp:prewarm-complete",
+    "payload": "{\"id\":1,\"ok\":true,\"status\":\"ready\",\"durationMs\":86.8}"
+   },
+   {
+    "t": 6598.3,
+    "phase": "boot-warp:prewarm-result",
+    "payload": "{\"attempt\":1,\"primed\":true,\"status\":\"ready\"}"
+   },
+   {
+    "t": 6598.4,
+    "phase": "boot-warp:committed",
+    "payload": "{\"introDecision\":\"intro-renderer-settled\",\"attempt\":1,\"timeoutMs\":12000}"
+   },
+   {
+    "t": 6598.6,
+    "phase": "boot-warp:handoff-start",
+    "payload": "{\"durationMs\":3200,\"minVisibleMs\":2000,\"requestedDurationMs\":null}"
+   },
+   {
+    "t": 6599.1,
+    "phase": "boot-warp:play-start",
+    "payload": "{\"id\":1,\"durationMs\":3200}"
+   },
+   {
+    "t": 6602.1,
+    "phase": "boot-warp:first-frame",
+    "payload": "{\"id\":1,\"progress\":0,\"elapsedMs\":0}"
+   },
+   {
+    "t": 6671.5,
+    "phase": "boot-warp:progress-reveal-shell",
+    "payload": "{\"id\":1,\"progress\":0.021687500000116416}"
+   },
+   {
+    "t": 6671.6,
+    "phase": "boot-warp:progress-title-reveal",
+    "payload": "{\"id\":1,\"progress\":0.021687500000116416}"
+   },
+   {
+    "t": 6671.6,
+    "phase": "intro:title-reveal-request",
+    "payload": "{\"source\":\"warp-progress\"}"
+   },
+   {
+    "t": 6675.1,
+    "phase": "boot-warp:visible-start",
+    "payload": "{\"progress\":0.021687500000116416,\"durationMs\":3200,\"firstFrameRendered\":true}"
+   },
+   {
+    "t": 6675.7,
+    "phase": "startup-shell:dismiss-request",
+    "payload": "{\"reason\":\"warp-handoff\"}"
+   },
+   {
+    "t": 8681.7,
+    "phase": "boot-warp:min-visible-met",
+    "payload": "{\"visibleMs\":2010,\"minVisibleMs\":2000}"
+   },
+   {
+    "t": 9615,
+    "phase": "boot-warp:progress-fade-overlap",
+    "payload": "{\"id\":1,\"progress\":0.9415625}"
+   },
+   {
+    "t": 9615.2,
+    "phase": "boot-warp:fade-out-start",
+    "payload": "{\"id\":1,\"durationMs\":300}"
+   },
+   {
+    "t": 9803.4,
+    "phase": "boot-warp:play-complete",
+    "payload": "{\"id\":1,\"wallElapsedMs\":3201}"
+   },
+   {
+    "t": 9950.3,
+    "phase": "boot-warp:fade-out-complete",
+    "payload": "{\"id\":1}"
+   },
+   {
+    "t": 9950.6,
+    "phase": "boot-warp:visible-duration",
+    "payload": "{\"visibleMs\":3279,\"minVisibleMs\":2000,\"durationMs\":3200}"
+   },
+   {
+    "t": 9950.7,
+    "phase": "boot-warp:handoff-status",
+    "payload": "{\"status\":\"complete\",\"firstFrameRendered\":true,\"durationMs\":3200,\"elapsedMs\":3201.2000000011176,\"wallElapsedMs\":3201.2000000011176,\"progress\":1,\"shellDismissed\":true,\"titleRevealed\":true,\"visibleMs\":3"
+   },
+   {
+    "t": 9950.7,
+    "phase": "boot-warp:handoff-complete",
+    "payload": "{\"status\":\"complete\",\"firstFrameRendered\":true,\"durationMs\":3200,\"elapsedMs\":3201.2000000011176,\"wallElapsedMs\":3201.2000000011176,\"progress\":1,\"shellDismissed\":true,\"titleRevealed\":true,\"visibleMs\":3"
+   },
+   {
+    "t": 9950.9,
+    "phase": "boot-warp:dispose",
+    "payload": "{\"id\":1,\"ready\":true,\"playing\":false,\"status\":\"ready\"}"
+   },
+   {
+    "t": 9952.2,
+    "phase": "intro:title-reveal-request",
+    "payload": "{\"source\":\"post-transition\"}"
+   },
+   {
+    "t": 9952.3,
+    "phase": "startup-pipeline:intro-interactive",
+    "payload": "{\"elapsedMs\":8858,\"introStatus\":\"running\"}"
+   }
+  ],
+  "adapter": null,
+  "themeWarm": null,
+  "console": [
+   {
+    "t": 1916,
+    "level": 1,
+    "text": "[BaseTheme] Global render scale set to: 1"
+   },
+   {
+    "t": 1916,
+    "level": 1,
+    "text": "[BaseTheme] Global antialiasing set to: true"
+   },
+   {
+    "t": 1917,
+    "level": 1,
+    "text": "[ThemeManager] Initialized with asset and audio managers"
+   },
+   {
+    "t": 1917,
+    "level": 1,
+    "text": "[ThemeManager] Theme suspended, renderer preserved for quick resume"
+   },
+   {
+    "t": 1919,
+    "level": 1,
+    "text": "[Main] Initializing GameModeManager..."
+   },
+   {
+    "t": 1920,
+    "level": 1,
+    "text": "[ThemeManager] Theme suspended, renderer preserved for quick resume"
+   },
+   {
+    "t": 1925,
+    "level": 1,
+    "text": "[Main] Skipping legacy Player 2 keyboard controls (handled by InputController)"
+   },
+   {
+    "t": 1926,
+    "level": 1,
+    "text": "[ThemeManager] switchTheme called: forest"
+   },
+   {
+    "t": 1926,
+    "level": 1,
+    "text": "[ThemeManager] switchTheme called: forest"
+   },
+   {
+    "t": 1926,
+    "level": 1,
+    "text": "[ThemeManager] Loading theme: forest"
+   },
+   {
+    "t": 1927,
+    "level": 1,
+    "text": "[ThemeManager] Loading theme \"forest\" from disk"
+   },
+   {
+    "t": 1962,
+    "level": 1,
+    "text": "[ThemeManager] Theme \"forest\" loaded. Cache: 1/2"
+   },
+   {
+    "t": 1962,
+    "level": 1,
+    "text": "[ThemeManager] Theme loaded: forest"
+   },
+   {
+    "t": 1962,
+    "level": 1,
+    "text": "[ThemeManager] Theme activation deferred (themes are suspended)"
+   },
+   {
+    "t": 1962,
+    "level": 1,
+    "text": "✅ Initial theme loaded: forest"
+   },
+   {
+    "t": 2751,
+    "level": 1,
+    "text": "[ThemeManager] Theme \"forest\" found in cache"
+   },
+   {
+    "t": 2751,
+    "level": 1,
+    "text": "[ThemeManager] Pre-warming theme (hidden): forest"
+   },
+   {
+    "t": 2752,
+    "level": 1,
+    "text": "[StartupTrace] theme-warm:start [object Object]"
+   },
+   {
+    "t": 2752,
+    "level": 1,
+    "text": "[BaseTheme] start() called, state: initialized theme: forest"
+   },
+   {
+    "t": 2752,
+    "level": 1,
+    "text": "[BaseTheme] Starting theme: forest"
+   },
+   {
+    "t": 2752,
+    "level": 1,
+    "text": "[BaseTheme] Shared renderer: WebGLRenderer"
+   },
+   {
+    "t": 2752,
+    "level": 1,
+    "text": "[BaseTheme] Has loadTheme? function"
+   },
+   {
+    "t": 2752,
+    "level": 1,
+    "text": "[BaseTheme] Pre-warming theme container (hidden): forest"
+   },
+   {
+    "t": 2752,
+    "level": 1,
+    "text": "[BaseTheme] Calling loadTheme for: forest"
+   },
+   {
+    "t": 2752,
+    "level": 1,
+    "text": "[WebGLRenderer] loadTheme called: forest"
+   },
+   {
+    "t": 2752,
+    "level": 1,
+    "text": "[WebGLRenderer] Clearing theme-owned renderer resources"
+   },
+   {
+    "t": 2753,
+    "level": 1,
+    "text": "[BaseTheme] Theme start complete: forest"
+   },
+   {
+    "t": 2754,
+    "level": 1,
+    "text": "[StartupTrace] theme-warm:started [object Object]"
+   },
+   {
+    "t": 3331,
+    "level": 1,
+    "text": "[StartupTrace] theme-warm:settled [object Object]"
+   },
+   {
+    "t": 3331,
+    "level": 1,
+    "text": "[StartupTrace] theme-warm:end [object Object]"
+   },
+   {
+    "t": 3331,
+    "level": 1,
+    "text": "[BaseTheme] Pausing theme: forest"
+   },
+   {
+    "t": 3331,
+    "level": 1,
+    "text": "[ThemeManager] Theme pre-warmed + parked for instant first entry: forest"
+   },
+   {
+    "t": 3331,
+    "level": 1,
+    "text": "[Main] First-entry theme warm-up complete: forest"
+   },
+   {
+    "t": 3527,
+    "level": 1,
+    "text": "[Main] Initializing global Serenity Hub..."
+   },
+   {
+    "t": 5238,
+    "level": 1,
+    "text": "[IntroWebGPU] Initialized (HIGH) with 54050 particles"
+   },
+   {
+    "t": 5996,
+    "level": 1,
+    "text": "[StartupTrace] boot-warp:theme-wait-start [object Object]"
+   },
+   {
+    "t": 5997,
+    "level": 1,
+    "text": "[StartupTrace] boot-warp:theme-wait-idle-start [object Object]"
+   },
+   {
+    "t": 6512,
+    "level": 1,
+    "text": "[StartupTrace] boot-warp:theme-wait-idle-ready [object Object]"
+   },
+   {
+    "t": 6512,
+    "level": 1,
+    "text": "[StartupTrace] boot-warp:theme-ready [object Object]"
+   }
+  ],
+  "modeEntryAt": null
+ }
+}

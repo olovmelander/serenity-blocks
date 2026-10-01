@@ -6,6 +6,8 @@ export const STARTUP_PIPELINE_EVENTS = Object.freeze({
     APP_READY: 'APP_READY',
     MENU_READY: 'MENU_READY',
     INTRO_RUNNING: 'INTRO_RUNNING',
+    INTRO_INTERACTIVE: 'INTRO_INTERACTIVE',
+    INTRO_DISMISSING: 'INTRO_DISMISSING',
     INTRO_DONE: 'INTRO_DONE',
     INTRO_SKIPPED: 'INTRO_SKIPPED',
     WATCHDOG: 'WATCHDOG',
@@ -103,6 +105,7 @@ export class StartupPipelineStateMachine {
         this.introTerminalAt = null;
         this.menuVisibleAt = null;
         this.introStatus = 'idle';
+        this.introInteractive = false;
         this.introSkipReason = null;
         this.watchdogFired = false;
         // True when the menu was forced visible in a degraded state (the watchdog
@@ -156,6 +159,7 @@ export class StartupPipelineStateMachine {
 
         this.menuReadyAt = this.nowFn();
         this.emit(STARTUP_PIPELINE_EVENTS.MENU_READY, metadata);
+        if (this.introInteractive) this.clearWatchdog();
         this.reconcileMenuVisibility();
         return this.snapshot();
     }
@@ -174,6 +178,28 @@ export class StartupPipelineStateMachine {
         this.introStatus = 'running';
         this.introStartedAt = this.nowFn();
         this.emit(STARTUP_PIPELINE_EVENTS.INTRO_RUNNING, metadata);
+        return this.snapshot();
+    }
+
+    markIntroInteractive(metadata = {}) {
+        this.assertStarted(STARTUP_PIPELINE_EVENTS.INTRO_INTERACTIVE);
+        if (this.introStatus !== 'running' || this.introInteractive) return this.snapshot();
+        this.introInteractive = true;
+        // Waiting for a player is not stalled loading. Keep guarding missing menu readiness.
+        if (this.menuReadyAt !== null) this.clearWatchdog();
+        this.emit(STARTUP_PIPELINE_EVENTS.INTRO_INTERACTIVE, metadata);
+        return this.snapshot();
+    }
+
+    markIntroDismissing(metadata = {}) {
+        this.assertStarted(STARTUP_PIPELINE_EVENTS.INTRO_DISMISSING);
+        if (this.introStatus !== 'running' || !this.introInteractive) return this.snapshot();
+        this.introInteractive = false;
+        // Once input arrives, protect the transition into the menu again.
+        if (this.watchdogId === null) {
+            this.watchdogId = this.setTimeoutFn(() => this.handleWatchdog(), this.watchdogMs);
+        }
+        this.emit(STARTUP_PIPELINE_EVENTS.INTRO_DISMISSING, metadata);
         return this.snapshot();
     }
 
@@ -240,6 +266,7 @@ export class StartupPipelineStateMachine {
             degraded: this.degraded,
             disposed: this.disposed,
             introStatus: this.introStatus,
+            introInteractive: this.introInteractive && this.introStatus === 'running',
             introSkipReason: this.introSkipReason,
             watchdogFired: this.watchdogFired,
             watchdogMs: this.watchdogMs,
@@ -279,6 +306,7 @@ export class StartupPipelineStateMachine {
     handleWatchdog() {
         this.watchdogId = null;
         if (this.disposed || this.menuVisibleAt !== null) return;
+        if (this.introInteractive && this.menuReadyAt !== null) return;
 
         this.watchdogFired = true;
         this.emit(STARTUP_PIPELINE_EVENTS.WATCHDOG, {
