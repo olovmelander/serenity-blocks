@@ -60,6 +60,7 @@ import {
     min,
     mix,
     mrt,
+    pow,
     output,
     pass,
     renderOutput,
@@ -687,7 +688,20 @@ export class OdysseyTslPipeline {
         // ── 5. MASTER GRADE (display space; ONE film stock for all 8 chapters) ──
         // Everything below operates on the [0,1] tonemapped image — it cannot reintroduce
         // HDR, so the grade can never cause a white blowout (Phase A/B discipline preserved).
-        const masterGraded = this._applyMasterGrade(toned);
+        //
+        // ⚠️ "DISPLAY SPACE" WAS NOT TRUE UNTIL 2026-10-01, and that was the journey's darkest
+        // bug. `toned` is LINEAR (the sRGB encode happens later, in renderOutput), so the grade's
+        // black crush (max(c - 0.018, 0) PER CHANNEL) and its S-curves pivoting on 0.5 ran on
+        // linear values: master contrast 1.07 zeroed every channel below linear 0.033 (sRGB ~50),
+        // Deep Ocean's 1.12 everything below 0.054 (sRGB ~65). In a dark frame that deletes the
+        // non-dominant channels — a charcoal-and-ember cavern rendered as PURE red (measured
+        // ~110,0,0 / 71,0,0 over warm greys that should have kept G), dark water as pure blue.
+        // Every chapter's palette had been tuned by eye on top of it. The grade now runs on a
+        // gamma-2.2 encoding of the tonemapped image — where "mid-grey", "black point" and
+        // "contrast" mean what the knobs and their comments say — and returns to linear before
+        // the vignette. The shoulder knee is converted so highlight roll-off is unchanged.
+        const tonedPerceptual = pow(max(toned, vec3(0.0)), vec3(1.0 / 2.2));
+        const masterGraded = this._applyMasterGrade(tonedPerceptual);
 
         // ── 5b. PER-CHAPTER signature shift (small, on top of the master curve) ──
         // (a) signature tint: multiply toward the chapter tint, then re-normalise toward
@@ -702,7 +716,8 @@ export class OdysseyTslPipeline {
         //     (Earth Core / Urban) drop below the 1.06 anchor so lava/neon do not over-
         //     saturate toward clipping; cool chapters keep the richer 1.06.
         const csLuma = dot(contrastShifted, vec3(0.2126, 0.7152, 0.0722));
-        const graded = mix(vec3(csLuma), contrastShifted, this.uChapterSat);
+        // Back to linear for everything downstream (vignette, grain, dither, renderOutput).
+        const graded = pow(clamp(mix(vec3(csLuma), contrastShifted, this.uChapterSat), 0.0, 1.0), vec3(2.2));
 
         // Legacy per-chapter tint hook (uGradeTint/uGradeStrength) kept live for API
         // compatibility — a subtle additional pull toward a director-supplied key colour.
@@ -767,7 +782,9 @@ export class OdysseyTslPipeline {
         // knee is the PER-CHAPTER shoulder-knee (smoothed) so hot chapters (Earth Core ~0.78
         // / Urban ~0.80) roll off EARLIER and lava/neon compress before they clip; reference
         // chapters sit at the master 0.86.
-        const knee = this.uShoulderKnee;
+        // The knee values (0.78-0.86) were authored against the LINEAR image; carry them into
+        // the perceptual encoding so the roll-off starts on the same scene values as before.
+        const knee = pow(this.uShoulderKnee, 1.0 / 2.2);
         const over = max(crushed.sub(vec3(knee)), vec3(0.0));
         const headroom = max(float(1.0).sub(knee), float(1e-3));
         // Smooth compressive curve: x - x²/(2*headroom), clamped into the remaining range.
