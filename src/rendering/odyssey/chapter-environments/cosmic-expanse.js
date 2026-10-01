@@ -62,6 +62,7 @@ import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-u
 import {
     createVoidSkyTSL,
     createBlackHoleTSL,
+    orientBlackHoleOmen,
     createHeroPlanetTSL,
     createDistantGalaxyTSL,
     GALAXY_INCLINATION,
@@ -612,7 +613,6 @@ export function createCosmicExpanseEnvironment(options = {}) {
     const blackHole = bisect.heroes ? createBlackHole(uniforms) : null;
     if (blackHole) {
         blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
-        blackHole.rotation.x = -1.12;
         blackHole.scale.setScalar(APPROACH.bhScaleA);
         group.add(blackHole);
         group.userData.blackHole = blackHole;
@@ -1931,13 +1931,18 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
                 THREE.MathUtils.lerp(APPROACH.bhZb, APPROACH.bhZc, t),
             );
         }
-        // Subtle precession of the whole assembly.
-        blackHole.rotation.z -= delta * 0.04;
+        // Square to the eye (ch7's Gargantua pose): the shadow faces the camera and the disk
+        // band reads across the frame wherever the corridor turns.
+        orientBlackHoleOmen(blackHole, camera);
     }
     if (debris && blackHole) {
-        // Keep the infall seated on the hole as it looms.
+        // Keep the infall seated on the hole as it looms — and IN its disk plane.
         debris.position.copy(blackHole.position);
         debris.scale.copy(blackHole.scale);
+        const { face, diskPivot } = blackHole.userData;
+        if (face && diskPivot) {
+            debris.quaternion.copy(blackHole.quaternion).multiply(face.quaternion).multiply(diskPivot.quaternion);
+        }
     }
 
     const { heroPlanet } = group.userData;
