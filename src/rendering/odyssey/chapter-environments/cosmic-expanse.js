@@ -64,6 +64,7 @@ import {
     createBlackHoleTSL,
     createHeroPlanetTSL,
     createDistantGalaxyTSL,
+    GALAXY_INCLINATION,
     createNebulaPillarTSL,
     createAsteroidRockTSL,
 } from './cosmic-expanse.tsl.js';
@@ -2012,9 +2013,16 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         );
         galaxy.position.copy(_approachVec);
         galaxy.scale.setScalar(THREE.MathUtils.lerp(APPROACH.galaxyA.s, APPROACH.galaxyB.s, ease));
-        // Slow billboard roll so the spiral arms turn (the quad stays camera-facing
-        // via billboardWorld, but its z-roll spins the sprite's uv frame).
-        galaxy.rotation.z += delta * 0.012;
+        // FACE THE EYE, THEN INCLINE (masterpiece pass): the quad was a fixed +Z plane that
+        // only rolled, seen nearly edge-on from the real camera. Turned to the eye every frame
+        // (the group is translated, never rotated, so lookAt's parent frame is world-aligned)
+        // and tilted by a fixed ~60°, the spiral reads as a real inclined disc from anywhere.
+        // The arm phase itself turns in the shader (bounded, ~0.01 rad/s).
+        if (camera?.position) {
+            galaxy.lookAt(camera.position);
+            galaxy.rotateX(GALAXY_INCLINATION);
+            galaxy.rotateZ(0.6);
+        }
     }
 
     const { diskLight } = group.userData;

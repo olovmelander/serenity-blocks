@@ -34,6 +34,7 @@ import {
     dot,
     exp,
     float,
+    log,
     length,
     max,
     mix,
@@ -560,47 +561,52 @@ export function createAsteroidRockTSL() {
     return material;
 }
 
-// ── Distant galaxy / quasar — a sharp, persistent deep-space anchor (bloom) ───────
+// ── Distant galaxy — a sharp, persistent deep-space anchor (bloom) ────────────────
 //
-// A single far-placed quad (front-facing -z toward the forward camera; DoubleSide so
-// any tilt/roll still shows) carrying a procedural spiral galaxy: a hot pinpoint
-// quasar core, two log-spiral arms, and a thin foreshortened disc, radial-feathered to
-// zero well before the quad edge (per the AAA particle contract — no square clip, no
-// haze bleed). This gives Space a fixed bright focal point that reads as DEEP + far
-// (the opposite of Sky's haze) — no fog. The caller rolls it slowly on z for life.
+// MASTERPIECE PASS (2026-10). The quad used to be a fixed +Z plane that only rolled, with
+// its foreshortening FAKED in uv (y squashed x2.1) — from the actual camera it was seen
+// nearly edge-on, a sliver. The caller (updateCosmicExpanseEnvironment) now turns it to face
+// the eye every frame and then inclines it by GALAXY_INCLINATION, so the ellipse is real and
+// constant; the paint is a proper spiral: a warm bulge, two logarithmic arms of blue-white
+// starlight with pink star-forming knots, and dark dust lanes riding the arms' inner edges.
+// Feathered to zero well inside the quad (no square clip, no haze bleed).
+
+/** Inclination of the galaxy's disc from face-on (rad) — ~60°. */
+export const GALAXY_INCLINATION = 1.05;
+
 export function createDistantGalaxyTSL(uTime) {
     const time = uTime ?? uniform(0);
-    const uCore = uniform(new THREE.Color(0xfff4d6)); // hot white-gold quasar core
-    const uArm = uniform(new THREE.Color(0x8fb4ff)); // cool blue-white spiral arms
-    const uDust = uniform(new THREE.Color(0xff8a5a)); // warm dust-lane tint
+    const uCore = uniform(new THREE.Color(0xffe8c0)); // warm bulge
+    const uArm = uniform(new THREE.Color(0x9cc0ff)); // blue-white arm starlight
+    const uKnot = uniform(new THREE.Color(0xff7ab0)); // star-forming knots (HII)
 
-    // Centered sprite coords; squash y so the disc reads as a tilted oblate galaxy.
     const p = uv().sub(0.5);
-    const pe = vec3(p.x, p.y.mul(2.1), 0.0); // elliptical (foreshortened) radius
-    const r = length(pe.xy);
-    const ang = atan(pe.y, pe.x);
+    const r = length(p).max(1e-4);
+    const ang = atan(p.y, p.x);
 
-    // Hard radial mask: feather to 0 before the quad edge (radius 0.46), so no
-    // square clipping and no haze bleeding into the corridor.
-    const disc = oneMinus(smoothstep(0.0, 0.46, r));
+    const disc = oneMinus(smoothstep(0.18, 0.47, r));
+    const bulge = exp(r.mul(r).div(0.0035).negate());
+    const glow = exp(r.div(0.10).negate());
 
-    // Hot pinpoint core — sharp, persistent quasar nucleus.
-    const core = pow(oneMinus(smoothstep(0.0, 0.09, r)), 2.4);
+    // Two logarithmic arms (pitch ~17°): phase constant along r = a·e^(bθ).
+    const pitch = Math.tan(0.30);
+    const phase = ang.mul(2.0).sub(log(r.div(0.02)).div(pitch)).add(time.mul(0.01));
+    const armWave = cos(phase);
+    const arms = pow(max(0.0, armWave), 2.5).mul(smoothstep(0.03, 0.10, r)).mul(disc);
+    // Dust lanes: a thin dark band on each arm's inner (leading) edge.
+    const lane = pow(max(0.0, cos(phase.add(0.9))), 10.0).mul(smoothstep(0.04, 0.12, r)).mul(disc);
+    // Clumpy starlight + sparse pink knots along the arms.
+    const clump = fbm3(vec3(p.mul(18.0), 3.1), 2);
+    const knots = smoothstep(0.62, 0.78, clump).mul(arms);
 
-    // Two log-spiral arms: brightness peaks where the spiral phase aligns.
-    const spiral = sin(ang.mul(2.0).sub(r.mul(26.0)).add(time.mul(0.08)));
-    const arms = pow(max(0.0, spiral), 3.0).mul(smoothstep(0.04, 0.18, r)).mul(disc);
+    let color = uCore.mul(bulge.mul(1.5));
+    color = color.add(uCore.mul(glow.mul(0.25)));
+    color = color.add(uArm.mul(arms.mul(clump.mul(0.8).add(0.5)).mul(0.75)));
+    color = color.add(uKnot.mul(knots.mul(0.9)));
+    color = color.mul(oneMinus(lane.mul(0.75)));
 
-    // Dust lanes — a counter-rotating darker/warmer modulation along the arms.
-    const dust = pow(max(0.0, sin(ang.mul(2.0).sub(r.mul(26.0)).add(Math.PI * 0.5))), 2.0);
-
-    let color = uCore.mul(core.mul(1.6));
-    color = color.add(uArm.mul(arms.mul(0.9)));
-    color = color.add(uDust.mul(arms.mul(dust).mul(0.5)));
-    // Faint inner halo so the core has a glow seat without going hazy.
-    color = color.add(uCore.mul(disc.mul(disc).mul(0.12)));
-
-    const alpha = clamp(core.add(arms.mul(0.8)).add(disc.mul(disc).mul(0.1)), 0.0, 1.0);
+    const alpha = clamp(bulge.add(glow.mul(0.3)).add(arms.mul(0.8)).mul(disc.mul(0.6).add(0.4)), 0.0, 1.0)
+        .mul(oneMinus(smoothstep(0.42, 0.49, r)));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -609,6 +615,7 @@ export function createDistantGalaxyTSL(uTime) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
 
     const geometry = new THREE.PlaneGeometry(1, 1);
