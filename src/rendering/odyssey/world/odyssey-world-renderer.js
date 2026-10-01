@@ -1656,6 +1656,8 @@ export function createOdysseyWorld({
     const uFadeZenith = uniform(0);
     const uFadeHorizon = uniform(0);
     const uLimbGlow = uniform(0);
+    // How far the departure has dissolved the cloud FIELD into the cloud sea below (item 10).
+    const uFieldGone = uniform(0);
     const toOutputFaded = (c, fadeAmt) => {
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
         const graded = mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
@@ -2964,7 +2966,10 @@ export function createOdysseyWorld({
     const cfFade = smoothstep(float(FIELD_FADE_NEAR), float(FIELD_FADE_FAR), cfEyeDist);
     const cfHash = fract(sin(dot(screenUV.mul(vec2(1927.0, 1083.0)), vec2(12.9898, 78.233)))
         .mul(43758.5453));
-    fieldMat.opacityNode = tslStep(cfHash, cfFade);
+    // ...and the same stipple sinks the masses into the cloud sea as the departure completes
+    // (item 10): faded toward the void they read as dark pebbles on the bright sea (capture,
+    // ch5 0.97), so they dissolve out instead — no blend state, the opaque path as before.
+    fieldMat.opacityNode = tslStep(cfHash, cfFade.mul(float(1).sub(uFieldGone)));
     // alphaTest WITHOUT `transparent`: r181 discards on it regardless, so the mesh stays in
     // the opaque queue and emits no blend state.
     fieldMat.alphaTest = 0.5;
@@ -4002,6 +4007,8 @@ export function createOdysseyWorld({
             // that has already gone dark overhead — at the symmetric 4f(1-f) it peaked while the
             // sky was still daylight blue and drew a glowing ring across it (capture, ch5 0.8).
             uLimbGlow.value = (f ** 3) * (1 - f) * 9.48;
+            const gone = Math.min(Math.max((f - 0.55) / (0.92 - 0.55), 0), 1);
+            uFieldGone.value = gone * gone * (3 - (2 * gone));
             if (colour) uWorldFadeColour.value.copy(colour);
         },
         /**
