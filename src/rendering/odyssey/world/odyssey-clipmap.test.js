@@ -179,7 +179,9 @@ describe('clipmap stage discipline in the water material', () => {
         // be satisfied by deleting the ripple normal outright, which is how the ceiling's
         // mottling would quietly disappear again.
         const source = codeLines.join('\n');
-        ['const rippleA = ', 'const rippleB = '].forEach((decl) => {
+        // The ripple FETCHES carry the coordinate since the topside glitter and shore foam began
+        // reading the fetch's `.b` as well as its `.rg` — `rippleA/B` are now swizzles of them.
+        ['const rippleTexA = ', 'const rippleTexB = '].forEach((decl) => {
             const line = codeLines.find((candidate) => candidate.includes(decl));
             expect(line, `${decl} not found`).toBeTruthy();
             expect(line, `${decl}must sample on positionWorld.xz`).toContain('positionWorld.xz');
