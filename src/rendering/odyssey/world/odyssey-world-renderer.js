@@ -328,6 +328,27 @@ const WATER_JADE = Object.freeze([0.20, 0.72, 0.60]);
 const UW_LUMINOUS = Object.freeze([0.10, 0.50, 0.54]);
 const UW_INDIGO = Object.freeze([0.014, 0.026, 0.090]);
 /**
+ * THE EDGE OF SPACE (item 10). The departure fade used to pull zenith, horizon, clouds and
+ * ground toward the void TOGETHER, which reads as a dimmer switch. Leaving an atmosphere is
+ * ordered: the sky goes black overhead first, the horizon holds a thin glowing limb, and the
+ * cloud tops below stay lit longest. The fade is split into a zenith pace (fade^0.55, ahead)
+ * and a horizon/cloud pace (fade^1.8, behind), and the limb glows by fade^3 (1 - fade) —
+ * present only once the sky overhead has gone dark, which is exactly when a limb is seen.
+ */
+const DEPART_ZENITH_POW = 0.55;
+const DEPART_HORIZON_POW = 1.8;
+/** The atmospheric limb (Rayleigh blue) and the thin airglow line just above it. */
+const DEPART_LIMB = Object.freeze([0.22, 0.48, 0.95]);
+const DEPART_AIRGLOW = Object.freeze([0.20, 0.78, 0.46]);
+/**
+ * Where the colour script stops walking at the old pace and runs out to its LAST keyframe.
+ * The map was `0.05 + p * 0.9`, so the script never got past 0.95 and its 'edge-of-space'
+ * keyframe (near-black zenith, deep-blue horizon) was never reached inside Act II. Below this
+ * act progress the old map is kept EXACTLY (ch2-5 unchanged); above it the script runs out to
+ * 1.0 at the act edge, through the same departure the fade opens on (actT ~0.82).
+ */
+const SCRIPT_RUNOUT_FROM = 0.82;
+/**
  * ATMOSPHERIC THINNING (Wave 3 / F3): how much of each mass's body the full thin removes,
  * as a fraction of its distance to the mass centre. 0.30 at the schedule's 0.85 cap means
  * a mass ends the climb at ~74% of its authored size — visibly losing scale, still a cloud.
@@ -1601,11 +1622,17 @@ export function createOdysseyWorld({
     // board from `worldAtmosphericThin` in odyssey-world-act-gate.js — the schedule
     // lives beside the departure fade because the two are halves of one departure.
     const uWorldThin = uniform(0);
-    const toOutput = (c) => {
+    // The two paces of the ordered departure and the limb's own envelope (item 10), all
+    // computed on the CPU in setDepartureFade — three scalar uniforms instead of a pow per pixel.
+    const uFadeZenith = uniform(0);
+    const uFadeHorizon = uniform(0);
+    const uLimbGlow = uniform(0);
+    const toOutputFaded = (c, fadeAmt) => {
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
         const graded = mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
-        return mix(graded, uWorldFadeColour, uWorldFade);
+        return mix(graded, uWorldFadeColour, fadeAmt);
     };
+    const toOutput = (c) => toOutputFaded(c, uWorldFade);
     groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND));
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
@@ -1734,7 +1761,17 @@ export function createOdysseyWorld({
         ),
         clamp(downwelling, 0, 1),
     );
-    skyMat.colorNode = toOutput(mix(skyAir, skyWater, uSubmerged));
+    // ZENITH FIRST (item 10): overhead runs ahead of the act fade, the horizon behind it, and
+    // a thin limb + airglow line glow at the horizon while the sky is half gone. With
+    // uWorldFade at 0 every term here is exactly the old sky.
+    const skyFade = mix(uFadeHorizon, uFadeZenith, smoothstep(float(-0.05), float(0.55), skyDir.y));
+    const limbBand = exp(skyDir.y.sub(0.01).div(0.045).pow(2).negate());
+    const airglowBand = exp(skyDir.y.sub(0.075).div(0.012).pow(2).negate());
+    skyMat.colorNode = toOutputFaded(mix(skyAir, skyWater, uSubmerged), skyFade)
+        .add(vec3(...DEPART_LIMB).mul(limbBand).add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45)))
+            .mul(uLimbGlow)
+            .mul(uOutputScale)
+            .mul(float(1).sub(uSubmerged)));
     skyMat.side = THREE.BackSide;
     skyMat.depthWrite = false;
     // The dome must sit INSIDE the camera's far plane. Sized off `reach` it lands at 22,000:
@@ -2883,7 +2920,9 @@ export function createOdysseyWorld({
     // cumulus. Applied BEFORE the aerial so distance still grades the thinned colour.
     const fieldThinned = mix(fieldCol, mix(cloudShade, uSkyHorizon, float(0.65)), uWorldThin);
     const fieldMat = new THREE.MeshBasicNodeMaterial();
-    fieldMat.colorNode = toOutput(heroAerial(fieldThinned, cfWorld));
+    // The cloud tops below are the last thing the departure takes (item 10): they fade at the
+    // horizon pace, so the climb leaves a lit cloud sea under a black sky — the edge of space.
+    fieldMat.colorNode = toOutputFaded(heroAerial(fieldThinned, cfWorld), uFadeHorizon);
     // Built from the plain `cfOffset` EXPRESSION, never from a shared var — see the note at
     // its definition. This line reading zero while the colour graph read the right value is
     // exactly what "the clouds do not move" looked like.
@@ -3917,7 +3956,14 @@ export function createOdysseyWorld({
          * act edge so it completes BEFORE the visibility gate fires.
          */
         setDepartureFade(t, colour = null) {
-            uWorldFade.value = Math.min(Math.max(t, 0), 1);
+            const f = Math.min(Math.max(Number.isFinite(t) ? t : 0, 0), 1);
+            uWorldFade.value = f;
+            uFadeZenith.value = f ** DEPART_ZENITH_POW;
+            uFadeHorizon.value = f ** DEPART_HORIZON_POW;
+            // f^3 (1 - f), normalised to peak 1 at f = 0.75: the limb only reads against a sky
+            // that has already gone dark overhead — at the symmetric 4f(1-f) it peaked while the
+            // sky was still daylight blue and drew a glowing ring across it (capture, ch5 0.8).
+            uLimbGlow.value = (f ** 3) * (1 - f) * 9.48;
             if (colour) uWorldFadeColour.value.copy(colour);
         },
         /**
@@ -3967,7 +4013,11 @@ export function createOdysseyWorld({
             state.lodCenter.x = railPoint.x;
             state.lodCenter.z = railPoint.z;
             state.eyeY = eyeY;
-            const scriptP = 0.05 + (Math.max(0, Math.min(1, progress)) * 0.9);
+            const actP = Math.max(0, Math.min(1, progress));
+            const runoutStart = 0.05 + (SCRIPT_RUNOUT_FROM * 0.9);
+            const scriptP = actP <= SCRIPT_RUNOUT_FROM
+                ? 0.05 + (actP * 0.9)
+                : runoutStart + (((actP - SCRIPT_RUNOUT_FROM) / (1 - SCRIPT_RUNOUT_FROM)) * (1 - runoutStart));
             const cs = sampleColourScript(scriptP);
             uSkyHorizon.value.setRGB(...cs.skyHorizon);
             uSkyZenith.value.setRGB(...cs.skyZenith);
