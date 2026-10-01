@@ -5,6 +5,7 @@ import {
     updateUrbanDreamsEnvironment,
 } from './urban-dreams.js';
 import {
+    CH8_CITY_LAYOUT,
     CH8_FACADE_VALUE_SETTINGS,
     CH8_RETROSUN_SHADER_SETTINGS,
 } from './urban-dreams.tsl.js';
@@ -45,15 +46,33 @@ describe('Urban Dreams chapter environment (creative plan ch8)', () => {
         expect(sunReveal.value).toBeCloseTo(1.0, 5);
     });
 
-    it('tracks facade value tiers so windows read as punctuation', () => {
+    it('builds dark towers whose light is sparse, clustered by floor, and never clips', () => {
         const group = createUrbanDreamsEnvironment();
         const { cityBlocks } = group.userData;
         const towers = cityBlocks.getObjectByName('city-tower-instances-tsl');
 
         expect(cityBlocks.name).toBe('city-blocks');
         expect(towers.material.userData.valueTiers).toEqual(CH8_FACADE_VALUE_SETTINGS);
-        expect(CH8_FACADE_VALUE_SETTINGS.brightCutoff).toBeGreaterThan(0.95);
-        expect(CH8_FACADE_VALUE_SETTINGS.colorGain).toBeLessThan(0.6);
+        // 2026-10 facade rewrite: the even window mosaic became whole lit FLOORS on dark
+        // glass. Every emissive gain stays under 1 so bloom gilds instead of clipping.
+        ['warmGain', 'coolGain', 'neonGain', 'trimGain'].forEach((key) => {
+            expect(CH8_FACADE_VALUE_SETTINGS[key]).toBeLessThan(1);
+        });
+        // Per-instance variation rides attributes on ONE material (one draw, one program).
+        const facade = towers.geometry.getAttribute('aFacade');
+        const dims = towers.geometry.getAttribute('aDims');
+        expect(facade.itemSize).toBe(4);
+        expect(dims.itemSize).toBe(3);
+        expect(facade.count).toBe(towers.count);
+        // MOST of the city is dark: mean floor occupancy stays well under a third.
+        let occupancy = 0;
+        let heroes = 0;
+        for (let i = 0; i < facade.count; i += 1) {
+            occupancy += facade.getY(i);
+            if (facade.getW(i) > 0) heroes += 1;
+        }
+        expect(occupancy / facade.count).toBeLessThan(0.3);
+        expect(heroes).toBe(CH8_CITY_LAYOUT.heroes.length);
     });
 
     it('caps the Urban Encore data line so it does not overpower the skyline', () => {

@@ -52,7 +52,6 @@ import {
     createSkyGradientTSL,
     createSynthwaveSunTSL,
     createCityBlocksTSL,
-    createCurtainWallTSL,
     createNeonCitySpireTSL,
     createHologramSignsTSL,
     createWetReflectionPlaneTSL,
@@ -81,10 +80,14 @@ export const URBAN_DREAMS_CONFIG = {
 
 export const CH8_RETROSUN_STAGE = Object.freeze({
     revealFloor: 0.62,
-    sun: [0, 28, -700],
+    // Raised 28 → 110 with the disc shrink: the sun now sits ON the skyline (its lower third
+    // behind the far rooftops) instead of below the canyon's sightline.
+    sun: [0, 110, -700],
     skylineNear: [0, -42, -650],
     skylineFar: [40, -54, -675],
-    horizonHaze: [0, -12, -688],
+    // Behind the sun (was -688, IN FRONT of it: once the disc shrank to a readable size the
+    // haze band covered it entirely).
+    horizonHaze: [0, -12, -730],
 });
 
 const CYAN = 0x00f2ff;
@@ -109,14 +112,11 @@ function createSynthwaveSun(uniforms) {
 }
 
 function createCityBlocks(uniforms) {
-    const { group } = createCityBlocksTSL(uniforms.uTime, uniforms.uEnergy);
+    const { group } = createCityBlocksTSL(uniforms.uTime, uniforms.uEnergy, {
+        uCityLight: uniforms.uCityLight,
+        uDim: uniforms.uDim,
+    });
     group.name = 'city-blocks';
-    return group;
-}
-
-function createCurtainWall(uniforms) {
-    const { group } = createCurtainWallTSL(uniforms.uTime, uniforms.uEnergy);
-    group.name = 'curtain-wall-backdrop';
     return group;
 }
 
@@ -390,6 +390,10 @@ export function createUrbanDreamsEnvironment() {
     const uniforms = {
         uTime: uniform(0),
         uEnergy: uniform(0.45),
+        // City light level (0..1.2): how many floors are lit (finale ignition raises it).
+        uCityLight: uniform(1),
+        // Resolve: 0 = every building alive, 1 = every building guttered out.
+        uDim: uniform(0),
     };
     group.userData.uniforms = uniforms;
 
@@ -402,11 +406,8 @@ export function createUrbanDreamsEnvironment() {
     group.userData.yStart = chapterRange?.start.y ?? URBAN_DREAMS_CONFIG.yStart;
     group.userData.yEnd = chapterRange?.end.y ?? URBAN_DREAMS_CONFIG.yEnd;
 
-    // Sky dome + ambient are directionless backdrops — they stay on the (unrotated)
-    // environment group so the dome wraps the whole scene normally.
     const sky = createSkyGradient(uniforms);
     sky.renderOrder = -100;
-    group.add(sky);
 
     // PATH-ALIGNED CORRIDOR: every directional set piece (city banks, ring gates, rain,
     // spire, signs, wet street, sky traffic) lives in this container, rotated so its local
@@ -419,11 +420,16 @@ export function createUrbanDreamsEnvironment() {
     group.add(corridor);
     group.userData.corridor = corridor;
 
-    // Continuous dark curtain-wall backdrop per side FIRST (behind everything) so the void
-    // between canyon towers always shows a dim lit wall, never raw black.
-    const curtainWall = createCurtainWall(uniforms);
-    corridor.add(curtainWall);
-    group.userData.curtainWall = curtainWall;
+    // The sky dome lives IN the corridor (2026-10): its gradient keys off the dome's local
+    // +Y, and on the unrotated group that is world up — which in this chapter is nearly the
+    // camera's FORWARD axis, so the zenith sat dead ahead and the light-pollution horizon
+    // ring wrapped the view axis. Rotated with the city, the horizon glow sits behind the
+    // skyline where it silhouettes the towers.
+    corridor.add(sky);
+
+    // (The 420-u curtain-wall backdrop is retired from the live chapter: with the 2026-10
+    // city re-stage six tower banks fill the frame to the horizon and the walls would read as
+    // two featureless slabs above the rooftops. The builder stays for the pilot harness.)
 
     // SYNTHWAVE SUN hero backdrop: a colossal glowing disc DEAD AHEAD on the corridor
     // centerline, low on the horizon and far down the canyon (beyond the finale spire at
@@ -453,7 +459,7 @@ export function createUrbanDreamsEnvironment() {
     group.userData.skyline = [skylineNear.mesh, skylineFar.mesh];
     const horizonHaze = createHorizonHazeTSL(uniforms.uTime);
     horizonHaze.mesh.position.set(...CH8_RETROSUN_STAGE.horizonHaze);
-    horizonHaze.mesh.renderOrder = -90;
+    horizonHaze.mesh.renderOrder = -98; // after the dome, BEFORE the sun (-95)
     corridor.add(horizonHaze.mesh);
     group.userData.horizonHaze = horizonHaze.mesh;
 
@@ -463,13 +469,14 @@ export function createUrbanDreamsEnvironment() {
     // oversized magenta holo-billboard hangs from the deck.
     const gateBridge = new THREE.Group();
     gateBridge.name = 'gate-bridge';
-    const bridgeMaterial = new THREE.MeshBasicMaterial({ color: 0x07060f });
+    const bridgeMaterial = new THREE.MeshBasicMaterial({ color: 0x0b0a1c });
     const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(190, 9, 16), bridgeMaterial);
     bridgeDeck.position.y = 42;
     gateBridge.add(bridgeDeck);
     [-88, 88].forEach((pylonX) => {
         const pylon = new THREE.Mesh(new THREE.BoxGeometry(10, 110, 12), bridgeMaterial);
         pylon.position.set(pylonX, -8, 0);
+        pylon.userData.isPylon = true;
         gateBridge.add(pylon);
     });
     const holoMaterial = new THREE.MeshBasicNodeMaterial();
@@ -483,7 +490,11 @@ export function createUrbanDreamsEnvironment() {
         .mul(oneMinus(smoothstep(0.94, 1.0, holoUv.x)))
         .mul(smoothstep(0.0, 0.1, holoUv.y))
         .mul(oneMinus(smoothstep(0.9, 1.0, holoUv.y)));
-    holoMaterial.opacityNode = holoEdge.mul(0.75);
+    // uOpacity bridge: with an opacityNode, material.opacity is a dead write (r181+), so the
+    // billboard ignored the 7→8 crossfade and POPPED in at the seam.
+    const holoOpacity = uniform(1);
+    holoMaterial.opacityNode = holoEdge.mul(0.55).mul(holoOpacity);
+    holoMaterial.uniforms = { uOpacity: holoOpacity };
     holoMaterial.transparent = true;
     holoMaterial.depthWrite = false;
     holoMaterial.side = THREE.DoubleSide;
@@ -492,7 +503,31 @@ export function createUrbanDreamsEnvironment() {
     const holoBillboard = new THREE.Mesh(new THREE.PlaneGeometry(64, 22), holoMaterial);
     holoBillboard.position.y = 24;
     gateBridge.add(holoBillboard);
-    gateBridge.position.set(0, 0, -300);
+    // Re-staged 2026-10: at z -300 with the deck 30 u above the eye the bridge only ever
+    // read as a black bar slicing the sun, and the camera (which travels corridor z +90 → -10)
+    // never passed under it. It is now a LOW skybridge seen from above, spanning the
+    // boulevard below the eye line: its magenta billboard glows over the wet street, below
+    // the sun/spire sightline, as one more layer of the city rather than a bar across it.
+    const BRIDGE_DECK_Y = -38;
+    bridgeDeck.position.y = BRIDGE_DECK_Y;
+    gateBridge.children.forEach((child) => {
+        if (!child.userData.isPylon) return;
+        const pylonHeight = BRIDGE_DECK_Y - (-60); // street datum → deck
+        child.scale.y = pylonHeight / 110;
+        child.position.y = -60 + pylonHeight * 0.5;
+    });
+    // The sign stands ON the deck facing the approach; the camera flies over the bridge
+    // (corridor z +12) around local 0.75 — compression under the sign, release to the spire.
+    holoBillboard.position.y = BRIDGE_DECK_Y + 4.5 + 11 + 0.5;
+    gateBridge.position.set(0, 0, 12);
+    gateBridge.scale.set(0.62, 1, 1); // span the boulevard (inner banks), not the whole city
+    // A slim deck with a neon edge strip (same holo material: +1 draw, no new pipeline)
+    // instead of a 9-u black slab across the lower frame.
+    bridgeDeck.scale.y = 0.45;
+    const deckStrip = new THREE.Mesh(new THREE.PlaneGeometry(190, 1.6), holoMaterial);
+    deckStrip.position.z = 8.05;
+    deckStrip.scale.y = 1 / 0.45;
+    bridgeDeck.add(deckStrip);
     gateBridge.traverse((child) => { child.frustumCulled = false; });
     corridor.add(gateBridge);
     group.userData.gateBridge = gateBridge;
