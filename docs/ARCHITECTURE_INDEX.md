@@ -84,6 +84,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [repository-cleanup-plan.md](repository-cleanup-plan.md) | Superseded | Cleanup decisions have been absorbed or archived. |
 | [repository-review-plan.md](repository-review-plan.md) | Superseded | Review output is superseded by the umbrella plan. |
 | [SERENITY_PERFORMANCE_AUDIT_2026-06.md](SERENITY_PERFORMANCE_AUDIT_2026-06.md) | Reference | Performance evidence. |
+| [SHIFTING_SANDS_VISUAL_OVERHAUL_2026-10.md](SHIFTING_SANDS_VISUAL_OVERHAUL_2026-10.md) | Reference | Shipped design of the rebuilt theme (twin-sun dusk composition, baked erg with per-pixel crests and coloured double shadows, the worm and its director, thumper event language, occluded shafts, tiers) with perf and screenshot evidence. |
 | [STARLIGHT_COMBO_LOCK_EFFECTS_PLAN.md](STARLIGHT_COMBO_LOCK_EFFECTS_PLAN.md) | Superseded | Historical theme/gameplay direction; consolidated by the 2026-07 review. |
 | [STARLIGHT_MASTERPIECE_REVIEW_AND_PLAN_2026-07.md](STARLIGHT_MASTERPIECE_REVIEW_AND_PLAN_2026-07.md) | Reference | Consolidated evidence, art direction, FX, and performance plan; umbrella Phase 7 governs execution. |
 | [STARLIGHT_WEBGPU_MASTERPIECE_PLAN.md](STARLIGHT_WEBGPU_MASTERPIECE_PLAN.md) | Superseded | Historical theme direction; consolidated by the 2026-07 review. |
