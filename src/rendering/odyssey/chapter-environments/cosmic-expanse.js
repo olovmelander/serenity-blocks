@@ -62,6 +62,7 @@ import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-u
 import {
     createVoidSkyTSL,
     createBlackHoleTSL,
+    OMEN_SHADOW_RADIUS,
     orientBlackHoleOmen,
     createHeroPlanetTSL,
     createDistantGalaxyTSL,
@@ -70,6 +71,7 @@ import {
     createAsteroidRockTSL,
 } from './cosmic-expanse.tsl.js';
 import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
+import { GARGANTUA_LOCK, resolveGargantuaLockPosition } from './black-hole-transcendence.tsl.js';
 import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
@@ -304,6 +306,9 @@ const BRIDGE_LEVEL = 0.65;
 const BRIDGE_CHROMA = 0.55;
 
 const _approachVec = new THREE.Vector3();
+const _omenLock = new THREE.Vector3();
+// Chapter ease at which the omen starts gliding onto ch7's lock pose (see the handoff).
+const OMEN_HANDOFF_START = 0.86;
 
 // B3 (Overdraw) — hard caps on the nebula billboard tiers. The wispy nebula is a
 // fill-rate multiplier (many large overlapping additive quads), so the COUNT is capped
@@ -1930,6 +1935,22 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
                 THREE.MathUtils.lerp(APPROACH.bhYb, APPROACH.bhYc, t),
                 THREE.MathUtils.lerp(APPROACH.bhZb, APPROACH.bhZc, t),
             );
+        }
+        // THE 6->7 HANDOFF (masterpiece pass): over the last stretch of the dive the omen
+        // glides onto ch7's camera lock — the same spot, the same size (shadow 132 u) — so as
+        // the chapters cross-fade the two black holes coincide and read as one. Needs a REAL
+        // camera (a view direction); a bare position probe keeps the authored dive pose.
+        if (camera?.isCamera) {
+            const handoff = THREE.MathUtils.smoothstep(ease, OMEN_HANDOFF_START, 1);
+            if (handoff > 0) {
+                resolveGargantuaLockPosition(camera, _omenLock).sub(group.position);
+                blackHole.position.lerp(_omenLock, handoff);
+                blackHole.scale.setScalar(THREE.MathUtils.lerp(
+                    blackHole.scale.x,
+                    GARGANTUA_LOCK.shadowRadius / OMEN_SHADOW_RADIUS,
+                    handoff,
+                ));
+            }
         }
         // Square to the eye (ch7's Gargantua pose): the shadow faces the camera and the disk
         // band reads across the frame wherever the corridor turns.

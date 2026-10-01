@@ -41,6 +41,8 @@ import {
     createCorridorDustTSL,
     createInfallEmberFieldTSL,
     CH7_CORRIDOR_DUST_SETTINGS,
+    GARGANTUA_LOCK,
+    resolveGargantuaLockPosition,
 } from './black-hole-transcendence.tsl.js';
 
 export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
@@ -65,12 +67,8 @@ export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
  * frame height at the lock depth and the disk band spans ~60% of a 16:9 frame.
  */
 export const CH7_GARGANTUA = Object.freeze({
-    lockDepth: 900,
-    // Screen-anchor bias: the hero rides the upper-centre third, a hair right (the rail owns
-    // the lower centre and climbs into it).
-    upBias: 150,
-    rightBias: 26,
-    shadowRadius: 132,
+    // lockDepth / upBias / rightBias / shadowRadius — shared with ch6's omen handoff.
+    ...GARGANTUA_LOCK,
     // Disk radii as multiples of the shadow radius.
     diskInner: 1.34,
     diskOuter: 4.8,
@@ -106,7 +104,6 @@ export const CH7_FOLD_ARC_SETTINGS = Object.freeze({
 });
 
 // Camera-lock scratch (reused every frame — no per-frame allocation).
-const _fwd = new THREE.Vector3();
 const _up = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _back = new THREE.Vector3();
@@ -311,18 +308,9 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
 export function poseGargantua(group, camera, time = 0) {
     const { distantHole } = group.userData;
     if (!distantHole || !camera?.position) return false;
-    camera.getWorldDirection(_fwd).normalize();
-    _up.set(0, 1, 0).applyQuaternion(camera.quaternion);
-    _right.crossVectors(_fwd, _up);
-    if (_right.lengthSq() < 1e-8) _right.set(1, 0, 0);
-    _right.normalize();
-    _up.crossVectors(_right, _fwd).normalize();
-
-    _heroWorld.copy(camera.position)
-        .addScaledVector(_fwd, CH7_GARGANTUA.lockDepth)
-        .addScaledVector(_up, CH7_GARGANTUA.upBias)
-        .addScaledVector(_right, CH7_GARGANTUA.rightBias);
+    resolveGargantuaLockPosition(camera, _heroWorld);
     group.userData.lensWorldPos?.copy(_heroWorld);
+    _up.set(0, 1, 0).applyQuaternion(camera.quaternion);
 
     // The group is translated but not rotated, so world → local is a subtract.
     distantHole.position.copy(_heroWorld).sub(group.position);

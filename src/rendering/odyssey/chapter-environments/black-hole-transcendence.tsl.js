@@ -57,6 +57,41 @@ import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-
 
 const TAU = Math.PI * 2;
 
+/**
+ * Where Gargantua hangs relative to the eye (world units), shared by ch7's camera lock and
+ * ch6's omen handoff so the two land on the same spot at the 6->7 seam.
+ */
+export const GARGANTUA_LOCK = Object.freeze({
+    lockDepth: 900,
+    // Screen-anchor bias: the hero rides the upper-centre third, a hair right (the rail owns
+    // the lower centre and climbs into it).
+    upBias: 150,
+    rightBias: 26,
+    shadowRadius: 132,
+});
+
+const _lockFwd = new THREE.Vector3();
+const _lockUp = new THREE.Vector3();
+const _lockRight = new THREE.Vector3();
+
+/**
+ * World position of the lock: `lockDepth` ahead of the eye on the CAMERA'S basis (its own
+ * up vector — the ch7 spline climbs near-vertically, where a world-up basis degenerates).
+ * @returns {THREE.Vector3} `out`
+ */
+export function resolveGargantuaLockPosition(camera, out) {
+    camera.getWorldDirection(_lockFwd).normalize();
+    _lockUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    _lockRight.crossVectors(_lockFwd, _lockUp);
+    if (_lockRight.lengthSq() < 1e-8) _lockRight.set(1, 0, 0);
+    _lockRight.normalize();
+    _lockUp.crossVectors(_lockRight, _lockFwd).normalize();
+    return out.copy(camera.position)
+        .addScaledVector(_lockFwd, GARGANTUA_LOCK.lockDepth)
+        .addScaledVector(_lockUp, GARGANTUA_LOCK.upBias)
+        .addScaledVector(_lockRight, GARGANTUA_LOCK.rightBias);
+}
+
 // ── Void dome — deep space (-100 backstop; must NOT bloom) ──────────────────────────
 
 /** Radius of the ch7 dome — centred on the chapter, so the camera is always inside it. */
