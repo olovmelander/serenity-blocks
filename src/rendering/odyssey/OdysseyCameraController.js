@@ -11,6 +11,10 @@ import {
     ODYSSEY_ACTS,
     getChapterProfile,
 } from './chapter-environments/shared/chapter-profile.js';
+import {
+    computeStageBasis,
+    urbanIgnition,
+} from './composition/odyssey-stage-frame.js';
 
 const DEFAULT_CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [0, 1];
 const CHAPTER_1_LOOK_DOWN = new THREE.Vector3(0, -26, 0);
@@ -77,6 +81,22 @@ const DEFAULT_CHAPTER_FRAMING = Object.freeze({
     // Ch5 sets this low/negative so the gentle aim drops to the peak+aurora horizon
     // instead of staring up the near-vertical rail. Default 1 = unchanged.
     climbScale: 1,
+    // SHOT LANGUAGE in real camera terms (2026-10). The look/cam keys above are WORLD-UNIT
+    // offsets, so at a ~85 u aim distance a lookUp of 2.5 is ~1.7 deg — effectively centred.
+    // These are applied AFTER the target is resolved, as true angular moves:
+    //   fovOffset  degrees added to the director's per-act base FOV (crane = widen)
+    //   pitchDeg   tilt of the look direction about the camera's right axis (+ = up)
+    //   yawDeg     pan of the look direction about the camera's up axis (+ = right)
+    fovOffset: 0,
+    pitchDeg: 0,
+    yawDeg: 0,
+    // STAGE FRAME (2026-10). A set-piece chapter authored in a fixed basis (the Urban
+    // corridor) needs the camera to share that basis, or the camera's own path frame rolls
+    // the set on screen. stage (0..1) blends the camera up-vector, right-vector and dolly
+    // direction toward the chapter's stage basis; stageAim (0..1) blends the look DIRECTION
+    // toward the stage forward (a one-point-perspective shot down the set). 0 = untouched.
+    stage: 0,
+    stageAim: 0,
 });
 
 const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
@@ -159,17 +179,18 @@ const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
         camRight: -1.6,
         camUp: 1.4,
     }),
-    // 8 — Urban Encore (transcendence): city spire / neon hero sits to one side;
-    // bias the aim toward it instead of the empty wet avenue ahead.
+    // 8 — Urban Encore (transcendence): the camera rides the CITY'S stage frame (the
+    // corridor basis the canyon is built in) so the towers stand upright on screen; before
+    // this the path frame rolled the city -34 deg at entry and -90 deg at the journey end.
+    // A one-point-perspective dolly straight down the canyon toward the Retrosun, tilted
+    // down over the wet street. The finale crane lives in resolveChapter8Framing().
     8: Object.freeze({
-        // Finale: the city canyon + megastructure spire are re-centred on the path
-        // (improve pass), so look forward + up the corridor toward them and pull the
-        // eye back/up for the reveal instead of biasing off to one empty side.
-        lookForward: 5.0,
-        lookRight: 1.5,
-        lookUp: 2.5,
+        stage: 1,
+        stageAim: 0.82,
+        climbScale: 0,
         camForward: -3.0,
         camUp: 1.5,
+        pitchDeg: -9,
     }),
 });
 
@@ -178,8 +199,15 @@ const FRAMING_BLEND_RATE = 2.4;
 
 const FRAMING_KEYS = Object.freeze([
     'lookForward', 'lookRight', 'lookUp', 'camRight', 'camUp', 'camForward', 'downLookScale',
-    'worldUp', 'climbScale',
+    'worldUp', 'climbScale', 'fovOffset', 'pitchDeg', 'yawDeg', 'stage', 'stageAim',
 ]);
+
+// Chapters whose set piece is authored in a fixed stage basis (see `stage` above).
+const STAGE_FRAME_CHAPTERS = Object.freeze([8]);
+
+// setCurrentPosition() jumps larger than this (path progress) are teleports: the smoothed
+// camera state snaps on the next update (see setCurrentPosition).
+const TELEPORT_SNAP_THRESHOLD = 5e-4;
 
 function resolveChapterFraming(chapterId) {
     return {
@@ -367,18 +395,25 @@ function resolveChapter5Framing(t) {
 }
 
 // ── Chapter 8 Urban — FINALE CRANE arc ────────────────────────────────────────────
-// Chapter 8's static override is the mid-act baseline. Over the LAST ~18% of the chapter
-// the camera CRANES up the igniting megastructure spire to reveal it firing past the top
-// of frame: camUp 1.5->6, lookUp 2.5->7, smoothstep-eased. The env exposes group.userData
-// .uReveal (ignition, driven by the urban env); this is the matching camera move. Returns
-// a full framing record so the lerp is total. Flows through the SAME _activeFraming path.
+// ONE clock with the env + post (composition/odyssey-stage-frame.js urbanIgnition): the
+// arrival is a dark, level dolly down the canyon; as the spire ignites (local 0.35->0.9) the
+// camera rises and TILTS UP the megastructure while the lens widens, so the ignition, the
+// crane and the bloom swell land together. Real angular moves (pitch/FOV), not the former
+// 4.5 u lift with a constant downward pitch. Returns a full framing record (total lerp).
 const CHAPTER_8_BASE = CHAPTER_FRAMING_OVERRIDES[8];
-const CHAPTER_8_CRANE_START = 0.82; // last ~18%
+export const CHAPTER_8_CRANE = Object.freeze({
+    camUp: 9.0,
+    pitchDeg: 12,
+    fovOffset: 6,
+    stageAim: 0.92,
+});
 function resolveChapter8Framing(t) {
-    const crane = THREE.MathUtils.smoothstep(t, CHAPTER_8_CRANE_START, 1.0);
+    const crane = urbanIgnition(THREE.MathUtils.clamp(t, 0, 1));
     const out = { ...DEFAULT_CHAPTER_FRAMING, ...CHAPTER_8_BASE };
-    out.camUp = THREE.MathUtils.lerp(CHAPTER_8_BASE.camUp ?? 0, 6.0, crane);
-    out.lookUp = THREE.MathUtils.lerp(CHAPTER_8_BASE.lookUp ?? 0, 7.0, crane);
+    out.camUp = THREE.MathUtils.lerp(CHAPTER_8_BASE.camUp ?? 0, CHAPTER_8_CRANE.camUp, crane);
+    out.pitchDeg = THREE.MathUtils.lerp(CHAPTER_8_BASE.pitchDeg ?? 0, CHAPTER_8_CRANE.pitchDeg, crane);
+    out.fovOffset = THREE.MathUtils.lerp(0, CHAPTER_8_CRANE.fovOffset, crane);
+    out.stageAim = THREE.MathUtils.lerp(CHAPTER_8_BASE.stageAim ?? 0, CHAPTER_8_CRANE.stageAim, crane);
     return out;
 }
 
@@ -493,6 +528,13 @@ export class OdysseyCameraController {
         // shared throwaway for all three avoids 3 fresh Vector3/frame — they're overwritten in
         // sequence and never read, so the aliasing is intentional and harmless.
         this._frameThrow = new THREE.Vector3();
+        // Stage-frame / angular-framing scratch (computeFollowFrame), never reallocated.
+        this._frameRightBlend = new THREE.Vector3();
+        this._frameDolly = new THREE.Vector3();
+        this._frameAim = new THREE.Vector3();
+        this._frameAxis = new THREE.Vector3();
+        this._frameLookTangent = new THREE.Vector3();
+        this._frameQuat = new THREE.Quaternion();
 
         // UNIT A7-CAMERA: smoothed per-chapter framing. `_activeFraming` is eased
         // toward the resolved framing of the chapter under the camera so boundary
@@ -613,6 +655,7 @@ export class OdysseyCameraController {
     }
 
     _buildPathLut() {
+        this._stageFrame = undefined; // re-derived lazily against the new curve
         const count = this.config.freeCamera.pathLutSamples;
         this.pathLut = {
             positions: new Float32Array(count * 3), // x, y, z
@@ -744,6 +787,7 @@ export class OdysseyCameraController {
 
         this.chapterBoundaryPositions = buildChapterBoundaryPositions(this.chapterPositions);
         this.chapter1EndPosition = this.chapterPositions[1] ?? this.chapter1EndPosition;
+        this._stageFrame = undefined;
         this.startPosition = Number.isFinite(options.startPosition)
             ? options.startPosition
             : (this.levelPositions[0] ?? this.chapterPositions[0] ?? 0);
@@ -1141,6 +1185,13 @@ export class OdysseyCameraController {
         // rebuild the quaternion and discard any camera.rotation.z written before it). Set by
         // applyBreathingMotion() and updatePortalApproach(); 0 = no roll. (masterplan §2 #6)
         this._pendingViewRoll = 0;
+        const teleported = this._teleportPending === true;
+        this._teleportPending = false;
+        if (teleported) {
+            Object.assign(this.directorCamera, this.directorCameraTarget);
+            this.cinematicConfig.baseFov = this.directorCamera.fovBase;
+            this._framingInitialized = false; // updateChapterFraming snaps to the target
+        }
         this.updateDirectorCamera(deltaTime);
         this.updateChapterFraming(deltaTime);
 
@@ -1151,7 +1202,11 @@ export class OdysseyCameraController {
         } else if (this.isAnimating) {
             this.updateAnimation();
         } else if (this.mode === 'follow') {
-            this.updateFollow(deltaTime);
+            if (teleported) {
+                this.updateFollowPosition({ direct: true });
+            } else {
+                this.updateFollow(deltaTime);
+            }
         }
 
         this.updateSeamBeat();
@@ -1161,7 +1216,7 @@ export class OdysseyCameraController {
         this.applyBreathingMotion(deltaTime);
 
         // Keep the baseline framing synced to the OdysseyDirector camera profile.
-        this.applyBaseFov(deltaTime);
+        this.applyBaseFov(deltaTime, teleported);
 
         // Update FOV pulse
         this.updateFovPulse(deltaTime);
@@ -1302,18 +1357,38 @@ export class OdysseyCameraController {
         }
 
         const lerp = 1 - Math.exp(-Math.max(0, deltaTime) * FRAMING_BLEND_RATE);
-        active.lookForward = THREE.MathUtils.lerp(active.lookForward, target.lookForward, lerp);
-        active.lookRight = THREE.MathUtils.lerp(active.lookRight, target.lookRight, lerp);
-        active.lookUp = THREE.MathUtils.lerp(active.lookUp, target.lookUp, lerp);
-        active.camRight = THREE.MathUtils.lerp(active.camRight, target.camRight, lerp);
-        active.camUp = THREE.MathUtils.lerp(active.camUp, target.camUp, lerp);
-        active.camForward = THREE.MathUtils.lerp(active.camForward, target.camForward, lerp);
-        active.downLookScale = THREE.MathUtils.lerp(active.downLookScale, target.downLookScale, lerp);
-        active.worldUp = THREE.MathUtils.lerp(active.worldUp ?? 0, target.worldUp ?? 0, lerp);
-        active.climbScale = THREE.MathUtils.lerp(active.climbScale ?? 1, target.climbScale ?? 1, lerp);
+        for (let i = 0; i < FRAMING_KEYS.length; i += 1) {
+            const key = FRAMING_KEYS[i];
+            const fallback = DEFAULT_CHAPTER_FRAMING[key];
+            active[key] = THREE.MathUtils.lerp(active[key] ?? fallback, target[key] ?? fallback, lerp);
+        }
     }
 
-    applyBaseFov(deltaTime) {
+    /**
+     * The fixed stage basis of the nearest stage-frame chapter (the Urban corridor), derived
+     * from the SAME function the env builds its corridor with. Cached; rebuilt on re-layout.
+     * @returns {{forward:THREE.Vector3, right:THREE.Vector3, up:THREE.Vector3}|null}
+     */
+    _getStageFrame() {
+        if (this._stageFrame !== undefined) return this._stageFrame;
+        const chapterId = STAGE_FRAME_CHAPTERS[0];
+        const tStart = this.chapterPositions[chapterId - 1];
+        const tEnd = this.chapterPositions[chapterId] ?? 1;
+        this._stageFrame = computeStageBasis(this.pathCurve, tStart, tEnd) || null;
+        return this._stageFrame;
+    }
+
+    /**
+     * Director base FOV + the active chapter's angular fovOffset (crane widening).
+     * @returns {number}
+     */
+    _resolveBaseFov() {
+        const base = this.directorCamera.fovBase;
+        const offset = this._activeFraming?.fovOffset ?? 0;
+        return Number.isFinite(offset) ? base + offset : base;
+    }
+
+    applyBaseFov(deltaTime, snap = false) {
         if (this.mode !== 'follow') {
             return;
         }
@@ -1321,10 +1396,10 @@ export class OdysseyCameraController {
             return;
         }
 
-        const targetFov = this.directorCamera.fovBase;
+        const targetFov = this._resolveBaseFov();
         if (!Number.isFinite(targetFov)) return;
 
-        const lerp = 1 - Math.exp(-Math.max(0, deltaTime) * 2.2);
+        const lerp = snap ? 1 : 1 - Math.exp(-Math.max(0, deltaTime) * 2.2);
         const nextFov = THREE.MathUtils.lerp(this.camera.fov, targetFov, lerp);
         if (Math.abs(nextFov - this.camera.fov) > 0.01) {
             this.camera.fov = nextFov;
@@ -1764,13 +1839,25 @@ export class OdysseyCameraController {
         if (worldUpBlend > 0) {
             cameraUp.lerp(PATH_FRAME_GRAVITY_UP, worldUpBlend).normalize();
         }
+        // STAGE FRAME: share the set piece's fixed basis (up / right / dolly axis). With
+        // stage 0 every vector below is the untouched path-frame value.
+        const stageWeight = THREE.MathUtils.clamp(framing.stage ?? 0, 0, 1);
+        const stageAimWeight = THREE.MathUtils.clamp(framing.stageAim ?? 0, 0, 1);
+        const stage = (stageWeight > 0 || stageAimWeight > 0) ? this._getStageFrame() : null;
+        let eyeRight = right;
+        let dolly = tangent;
+        if (stage && stageWeight > 0) {
+            cameraUp.lerp(stage.up, stageWeight).normalize();
+            eyeRight = this._frameRightBlend.copy(right).lerp(stage.right, stageWeight).normalize();
+            dolly = this._frameDolly.copy(tangent).lerp(stage.forward, stageWeight).normalize();
+        }
         const camPos = this._frameCamPos.copy(pathPoint)
-            .addScaledVector(tangent, -(this.directorCamera.followDistance + vistaPullback))
-            .addScaledVector(right, this.config.followOffset.x + framing.camRight)
+            .addScaledVector(dolly, -(this.directorCamera.followDistance + vistaPullback))
+            .addScaledVector(eyeRight, this.config.followOffset.x + framing.camRight)
             .addScaledVector(cameraUp, this.config.followOffset.y + vistaLift + framing.camUp)
-            .addScaledVector(tangent, framing.camForward);
+            .addScaledVector(dolly, framing.camForward);
         if (forwardOffset > 0) {
-            camPos.addScaledVector(tangent, forwardOffset * seamDirection);
+            camPos.addScaledVector(dolly, forwardOffset * seamDirection);
         }
 
         // Chapter 1's lava floor. Placed here, at the one point where the eye position is
@@ -1791,13 +1878,23 @@ export class OdysseyCameraController {
         const lookAheadDistance = this.cinematicConfig.lookAheadEnabled
             ? this.cinematicConfig.lookAheadDistance
             : 0.01;
-        const lookAheadT = THREE.MathUtils.clamp(
-            clampedPosition + (lookAheadDistance * (forwardOffset > 0 ? 1.4 : 1) * this.directorCamera.drift)
-                + vistaWeight * 0.018,
-            0,
-            1,
+        const rawLookAheadT = clampedPosition
+            + (lookAheadDistance * (forwardOffset > 0 ? 1.4 : 1) * this.directorCamera.drift)
+            + vistaWeight * 0.018;
+        const lookAheadT = THREE.MathUtils.clamp(rawLookAheadT, 0, 1);
+        const { position: lookTarget, tangent: lookTangent } = this.getPathDataAt(
+            lookAheadT,
+            this._frameLookTarget,
+            this._frameLookTangent,
+            this._frameThrow,
+            this._frameThrow,
         );
-        const { position: lookTarget } = this.getPathDataAt(lookAheadT, this._frameLookTarget, this._frameThrow, this._frameThrow, this._frameThrow);
+        // Past the journey's end the look-ahead used to CLAMP onto the final node, so the aim
+        // collapsed toward the camera's own feet over the last ~1.4% of the path. Continue the
+        // look target along the end tangent instead (world-equivalent distance).
+        if (rawLookAheadT > 1) {
+            lookTarget.addScaledVector(lookTangent, (rawLookAheadT - 1) * this.travelModel.pathLength);
+        }
         if (forwardOffset > 0) {
             lookTarget.addScaledVector(tangent, forwardOffset * 0.45 * seamDirection);
         }
@@ -1814,6 +1911,41 @@ export class OdysseyCameraController {
 
         lookTarget.add(this.getLookAtOffset(clampedPosition));
 
+        // STAGE AIM: blend the look DIRECTION toward the stage forward (distance preserved).
+        if (stage && stageAimWeight > 0) {
+            const aim = this._frameAim.copy(lookTarget).sub(camPos);
+            const distance = aim.length();
+            if (distance > 1e-4) {
+                aim.divideScalar(distance).lerp(stage.forward, stageAimWeight).normalize();
+                lookTarget.copy(camPos).addScaledVector(aim, distance);
+            }
+        }
+
+        // ANGULAR SHOT LANGUAGE: pan (yaw) about the camera up, then tilt (pitch) about the
+        // camera right — real degrees, independent of the aim distance.
+        const yawDeg = framing.yawDeg ?? 0;
+        const pitchDeg = THREE.MathUtils.clamp(framing.pitchDeg ?? 0, -75, 75);
+        if (yawDeg !== 0 || pitchDeg !== 0) {
+            const aim = this._frameAim.copy(lookTarget).sub(camPos);
+            const distance = aim.length();
+            if (distance > 1e-4) {
+                aim.divideScalar(distance);
+                if (yawDeg !== 0) {
+                    this._frameQuat.setFromAxisAngle(cameraUp, -THREE.MathUtils.degToRad(yawDeg));
+                    aim.applyQuaternion(this._frameQuat);
+                }
+                if (pitchDeg !== 0) {
+                    const axis = this._frameAxis.crossVectors(aim, cameraUp);
+                    if (axis.lengthSq() > 1e-8) {
+                        axis.normalize();
+                        this._frameQuat.setFromAxisAngle(axis, THREE.MathUtils.degToRad(pitchDeg));
+                        aim.applyQuaternion(this._frameQuat);
+                    }
+                }
+                lookTarget.copy(camPos).addScaledVector(aim, distance);
+            }
+        }
+
         // The floor TRANSLATES the eye; it must not re-aim it. Lifting the eye against a
         // fixed look target would rotate the view downward, and the chapter's opening look
         // is already pushed 26 units down (CHAPTER_1_LOOK_DOWN) — that combination swung the
@@ -1828,7 +1960,7 @@ export class OdysseyCameraController {
             lookTarget,
             tangent,
             normal: cameraUp,
-            right,
+            right: eyeRight,
         };
     }
 
@@ -2173,6 +2305,14 @@ export class OdysseyCameraController {
             this.config.minPosition,
             this.config.maxPosition,
         );
+        // A TELEPORT (not travel — travel never comes through here) settles every smoothed
+        // camera state on the next update instead of easing in from wherever the camera was:
+        // framing, director distance/FOV, follow pose. Measured 2026-10-01: the chapter
+        // capture harness teleports between stations and its settle advances only ~0.1–0.5 s
+        // of camera time, so every capture photographed a half-blended framing/FOV.
+        if (Math.abs(clampedPosition - this.currentPosition) > TELEPORT_SNAP_THRESHOLD) {
+            this._teleportPending = true;
+        }
         this.currentPosition = clampedPosition;
         this.targetPosition = clampedPosition;
     }
