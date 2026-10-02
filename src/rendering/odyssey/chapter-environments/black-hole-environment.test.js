@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import {
     createBlackHoleTranscendenceEnvironment,
+    updateBlackHoleTranscendenceEnvironment,
     poseGargantua,
     CH7_FOLD_ARC_SETTINGS,
     CH7_GARGANTUA,
@@ -10,6 +11,7 @@ import {
     CH7_CORRIDOR_DUST_SETTINGS,
 } from './black-hole-transcendence.tsl.js';
 import { ODYSSEY_CHAPTER_PROFILES } from './shared/chapter-profile.js';
+import { getActiveOdysseyChapterPositions } from '../path-utils.js';
 
 describe('Black Hole chapter environment (creative plan ch7)', () => {
     it('caps the locked hero shadow with the lensed fold arcs', () => {
@@ -103,5 +105,34 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
         expect(profile.atmosphere.fogColor).toBe(0x160c2a);
         expect(profile.path.emissiveColor).toBe(0x9a2d76);
         expect(profile.path.widthScale).toBeLessThanOrEqual(0.84);
+    });
+});
+
+// ── SEAMLESS PASS (2026-10) ───────────────────────────────────────────────────────────
+describe('Gargantua at the seams', () => {
+    const positions = getActiveOdysseyChapterPositions();
+    const ch7 = positions[6];
+    const ch8 = positions[7];
+    // A camera that looks roughly up the chapter-8 approach.
+    const cameraAt = () => {
+        const camera = new THREE.PerspectiveCamera(64, 16 / 9, 0.1, 9000);
+        camera.position.set(258, 1389, -1114);
+        camera.lookAt(camera.position.x - 0.05, camera.position.y + 0.72, camera.position.z - 0.69);
+        camera.updateMatrixWorld(true);
+        return camera;
+    };
+
+    it('takes the shadow over from the omen exactly where ch7 is first drawn, opaque', () => {
+        const group = createBlackHoleTranscendenceEnvironment({ particleCount: 200 });
+        const { horizon } = group.userData.distantHole.userData;
+        expect(horizon.userData.odysseyFadeExempt).toBe(true);
+        const takeover = ch7 - 0.0222;
+        updateBlackHoleTranscendenceEnvironment(group, 0.016, 1, cameraAt(), takeover + 1e-4);
+        expect(horizon.visible).toBe(true);
+        expect(horizon.material.opacity).toBe(1);
+        expect(horizon.material.transparent).toBe(false);
+        updateBlackHoleTranscendenceEnvironment(group, 0.016, 1, cameraAt(), takeover - 1e-4);
+        expect(horizon.visible).toBe(false);
+        expect(ch8).toBeGreaterThan(ch7);
     });
 });

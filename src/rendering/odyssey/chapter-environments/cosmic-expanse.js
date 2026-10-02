@@ -57,6 +57,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
+import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
 import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
 import {
     createVoidSkyTSL,
@@ -293,8 +294,29 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
 
 const _approachVec = new THREE.Vector3();
 const _omenLock = new THREE.Vector3();
-// Chapter ease at which the omen starts gliding onto ch7's lock pose (see the handoff).
+// Fallback only (no global progress, e.g. a bare chapter-local probe): the chapter ease at
+// which the omen starts gliding onto ch7's lock pose.
 const OMEN_HANDOFF_START = 0.86;
+// THE 6->7 HANDOFF, BY PROGRESS (seamless pass). It used to run on the camera's HEIGHT through
+// the chapter (ease 0.86 -> 1), which the eye only reaches after the boundary: at the 6->7
+// crossfade's first frame (p 0.8487) the omen was ~27 % of the way to Gargantua's pose, so the
+// two black holes sat apart while both were drawn. It now glides across this fraction of the
+// Space span and COMPLETES exactly where ch7 first appears (the boundary minus ch6's seam
+// half-width), so from the crossfade's first frame the two coincide.
+export const OMEN_HANDOFF_SPAN = 0.2;
+
+/**
+ * Global-progress schedule of the omen -> Gargantua handoff.
+ * @returns {{start: number, end: number}|null} null when the layout is unknown
+ */
+export function resolveOmenHandoffWindow(chapterPositions) {
+    const ch6Start = chapterPositions?.[5];
+    const ch7Start = chapterPositions?.[6];
+    if (!Number.isFinite(ch6Start) || !Number.isFinite(ch7Start) || ch7Start <= ch6Start) return null;
+    const seamWidth = getChapterTransitionForChapter(6)?.seamWidth ?? 0.0222;
+    const end = ch7Start - seamWidth;
+    return { start: end - (ch7Start - ch6Start) * OMEN_HANDOFF_SPAN, end };
+}
 
 // B3 (Overdraw) — hard caps on the nebula billboard tiers. The wispy nebula is a
 // fill-rate multiplier (many large overlapping additive quads), so the COUNT is capped
@@ -445,6 +467,9 @@ function setOpacityScale(root, scale, chapterOpacity = 1) {
     // because the ramp was never reaching a fragment.
     root.visible = opacity > 0.002;
     root.traverse((child) => {
+        // FADE-EXEMPT meshes (the omen's shadow) are opaque occluders whose visibility the
+        // chapter drives itself; flipping them transparent is what let stars through the hole.
+        if (child.userData?.odysseyFadeExempt) return;
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         materials.forEach((material) => {
             if (!material || typeof material.opacity !== 'number') return;
@@ -1857,8 +1882,15 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // glides onto ch7's camera lock — the same spot, the same size (shadow 132 u) — so as
         // the chapters cross-fade the two black holes coincide and read as one. Needs a REAL
         // camera (a view direction); a bare position probe keeps the authored dive pose.
+        let handoff = 0;
+        let omenShadowLive = true;
         if (camera?.isCamera) {
-            const handoff = THREE.MathUtils.smoothstep(ease, OMEN_HANDOFF_START, 1);
+            const handoffWindow = Number.isFinite(cameraProgress) ? resolveOmenHandoffWindow(chapterPositions) : null;
+            // Strictly past the window end is where ch7 (and its shadow) is on screen.
+            if (handoffWindow) omenShadowLive = cameraProgress <= handoffWindow.end;
+            handoff = handoffWindow
+                ? THREE.MathUtils.smoothstep(cameraProgress, handoffWindow.start, handoffWindow.end)
+                : THREE.MathUtils.smoothstep(ease, OMEN_HANDOFF_START, 1);
             if (handoff > 0) {
                 resolveGargantuaLockPosition(camera, _omenLock).sub(group.position);
                 blackHole.position.lerp(_omenLock, handoff);
@@ -1872,6 +1904,16 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // Square to the eye (ch7's Gargantua pose): the shadow faces the camera and the disk
         // band reads across the frame wherever the corridor turns.
         orientBlackHoleOmen(blackHole, camera);
+        // EXACTLY ONE OPAQUE SHADOW. The omen's shadow covers the hole until the handoff is
+        // complete — the frame ch7 appears, with Gargantua's identical shadow (same lock, same
+        // radius) taking over there (black-hole-transcendence.js). Opacity is re-asserted
+        // because, until the environment manager honours `odysseyFadeExempt`, it still writes a
+        // crossfade opacity into this material each frame.
+        const { shadow } = blackHole.userData;
+        if (shadow) {
+            shadow.visible = omenShadowLive;
+            if (shadow.material) shadow.material.opacity = 1;
+        }
     }
     if (debris && blackHole) {
         // Keep the infall seated on the hole as it looms — and IN its disk plane.
