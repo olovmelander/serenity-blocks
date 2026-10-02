@@ -218,6 +218,22 @@ const STEAM_SHADOW_WARM = new THREE.Color(0.30, 0.22, 0.18);
  */
 export function steamQuenchFogColour(seamT, out) {
     const t = Math.max(0, Math.min(1, Number.isFinite(seamT) ? seamT : 0));
+    steamQuenchMeanColour(t, out);
+    const lum = (0.2126 * out.r) + (0.7152 * out.g) + (0.0722 * out.b);
+    const cap = steamQuenchLumaCap(t);
+    if (lum > cap) out.multiplyScalar(cap / lum);
+    return out;
+}
+
+/**
+ * The vapour's mean colour at a seamT BEFORE the luminance cap (the fog colour's source, and
+ * the reference the shader exposes the whole volume by).
+ * @param {number} seamT 0..1 (0.5 at the boundary)
+ * @param {THREE.Color} out
+ * @returns {THREE.Color} `out`
+ */
+export function steamQuenchMeanColour(seamT, out) {
+    const t = Math.max(0, Math.min(1, Number.isFinite(seamT) ? seamT : 0));
     const w = 1 - t;
     const flash = 1 - Math.abs(w - 0.5) * 2;
     const submergeEase = Math.max(0, (t - 0.5) * 2) ** 1.5;
@@ -228,11 +244,26 @@ export function steamQuenchFogColour(seamT, out) {
     // Exit: the murk in the water's colour (as the shader's exit term).
     const exit = Math.max(0, Math.min(1, (t - 0.5) / 0.12));
     out.lerp(_fogWarm.multiplyScalar(0.9), exit);
-    const lum = (0.2126 * out.r) + (0.7152 * out.g) + (0.0722 * out.b);
-    const cap = steamQuenchLumaCap(t);
-    if (lum > cap) out.multiplyScalar(cap / lum);
     return out;
 }
+
+const _meanColour = new THREE.Color();
+/**
+ * Luminance of the volume's mean colour at a seamT (uncapped) — what the shader divides by to
+ * expose the WHOLE field to the luminance cap at once.
+ * @param {number} seamT
+ * @returns {number}
+ */
+export function steamQuenchMeanLuma(seamT) {
+    steamQuenchMeanColour(seamT, _meanColour);
+    return (0.2126 * _meanColour.r) + (0.7152 * _meanColour.g) + (0.0722 * _meanColour.b);
+}
+
+/**
+ * Hot spots (the aperture, the rays) may rise this far above the cap — the light the eye climbs
+ * toward has to be brighter than the vapour around it, or the volume is a flat card.
+ */
+export const STEAM_QUENCH_HIGHLIGHT_HEADROOM = 2.4;
 
 /**
  * @param {object} [opts]
@@ -255,6 +286,7 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // TURBIDITY settling out of the water (see the exit note in the colour chain).
     const uExit = uniform(0);
     const uLumaCap = uniform(STEAM_QUENCH_LUMA_CAP);
+    const uLumaRef = uniform(steamQuenchMeanLuma(0));
 
     // Billowing, in LOCAL space so the volume churns with itself rather than with the camera.
     // Two octave-sets at different rates: the slow one is the body, the fast one the edge boil.
@@ -339,8 +371,12 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     const colour = mix(shadowVapour, litVapour, smoothstep(0.0, 1.0, billow))
         .add(vec3(0.95, 0.93, 0.86).mul(rays).mul(float(0.10).add(d.mul(0.22))))
         .add(uWarm.mul(under).mul(w).mul(float(0.5).add(billow.mul(0.5))).mul(0.26))
-        .add(vec3(0.80, 0.90, 1.0).mul(aperture.mul(aperture))
-            .mul(float(0.18).add(oneMinus(w).mul(0.5)))
+        // THE LIGHT ABOVE CARRIES ACROSS THE SEAM (2026-10-02). The First Heart — the white-hot
+        // vent the climb aims at — sits dead centre above the eye, so while the cavern is behind
+        // you the aperture glows with ITS fire through the steam; as the water takes over the
+        // same aperture cools into the ocean's light from above. Fire above becomes sky above.
+        .add(mix(vec3(0.80, 0.90, 1.0), vec3(1.0, 0.64, 0.34), w.mul(w)).mul(aperture.mul(aperture))
+            .mul(float(0.34).add(oneMinus(w).mul(0.34)))
             .mul(float(0.55).add(fast.mul(0.45))))
         // A LUMINOUS TUNNEL, not a white-out: the eye looks up the shaft, so the light lives
         // at the centre of the view (the aperture, the rays) and the periphery falls into
@@ -351,10 +387,19 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // light above, with only a soft breath of the billow left — water clearing, not cloud lifting.
     const murk = uCool.mul(float(0.82).add(billow.mul(0.22))).mul(float(0.75).add(aperture.mul(0.45)));
     const exitRaw = mix(colour, murk, uExit);
-    // LUMINANCE CAP (see STEAM_QUENCH_LUMA_CAP): scale the whole colour so its luminance never
-    // exceeds the open water's — hue kept, no per-channel clip turning the ember vapour yellow.
+    // LUMINANCE CAP (see STEAM_QUENCH_LUMA_CAP), applied as EXPOSURE, not as a per-pixel clip.
+    // Capping each pixel at the cap flattened the volume wherever the cap was below the vapour's
+    // own brightness — the whole dark stretch (cap at DARK_FRACTION) rendered as one even brown,
+    // the aperture, rays and billows all clipped to the same value. Now the whole field is scaled
+    // by cap / (its mean luminance), so the frame's average still follows the cap (the seam's
+    // brightness ramp is unchanged) while the structure inside it survives; a soft ceiling at
+    // HIGHLIGHT_HEADROOM x cap keeps hot spots in hand. Hue kept throughout (no per-channel clip).
     const exitLuma = dot(exitRaw, vec3(0.2126, 0.7152, 0.0722));
-    const exitColour = exitRaw.mul(min(float(1.0), uLumaCap.div(max(exitLuma, float(1e-4)))));
+    const exposure = min(float(1.0), uLumaCap.div(max(uLumaRef, float(1e-4))));
+    const exposedLuma = exitLuma.mul(exposure);
+    const ceiling = uLumaCap.mul(STEAM_QUENCH_HIGHLIGHT_HEADROOM);
+    const exitColour = exitRaw.mul(exposure)
+        .mul(min(float(1.0), ceiling.div(max(exposedLuma, float(1e-4)))));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = exitColour;
@@ -394,6 +439,7 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
             // square — leaving the weather quickly into open water is what the breach wants.
             uDensity.value = steamQuenchDensity(t);
             uLumaCap.value = steamQuenchLumaCap(t);
+            uLumaRef.value = steamQuenchMeanLuma(t);
             // Warm while the cavern is still behind you, cold once the water owns the frame.
             uWarmth.value = 1 - t;
             uExit.value = Math.max(0, Math.min(1, (t - 0.5) / 0.12));
