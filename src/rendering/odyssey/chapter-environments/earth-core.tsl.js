@@ -28,6 +28,7 @@
 import * as THREE from 'three/webgpu';
 import {
     abs,
+    atan,
     attribute,
     cameraPosition,
     clamp,
@@ -66,6 +67,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
 import {
     fbm3, hash21, noise3, ridged3, snoise3,
 } from './shared/odyssey-tsl-noise.js';
@@ -1436,6 +1438,42 @@ export function createMoltenPocketMaterialTSL(
  * slab for callers that want a floor glow (the selenite chapel's under-pocket), and the
  * floating node blobs pass ~0.92 for a rocky ball.
  */
+const _boulderNoise = new ImprovedNoise();
+
+/**
+ * MOLTEN BOULDERS, NOT POTATOES (Genesis pass, 2026-10-02). Shapes a sphere geometry IN PLACE into
+ * a lumpy, pitted volcanic bomb: every vertex is pushed along its direction by deterministic
+ * multi-scale Perlin noise (big lumps, mid bulges, small pits), optionally flattened in Y. Seam and
+ * pole duplicates share a position, so they get the same displacement and the shell stays closed;
+ * the seam's lighting crease is then welded. UVs and the index are untouched.
+ * @param {THREE.BufferGeometry} geometry a SphereGeometry (any radius)
+ * @param {{ seed?: number, flatten?: number }} [opts]
+ * @returns {THREE.BufferGeometry} the same geometry
+ */
+export function shapeMoltenBoulder(geometry, { seed = 0, flatten = 1 } = {}) {
+    const pos = geometry.attributes.position;
+    const o = seed * 13.71;
+    for (let i = 0; i < pos.count; i += 1) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
+        const z = pos.getZ(i);
+        const r0 = Math.hypot(x, y, z) || 1;
+        const dx = x / r0;
+        const dy = y / r0;
+        const dz = z / r0;
+        const lumps = _boulderNoise.noise((dx * 1.3) + o, dy * 1.3, dz * 1.3);
+        const bulges = _boulderNoise.noise(dx * 3.1, (dy * 3.1) + o, dz * 3.1);
+        const pits = Math.abs(_boulderNoise.noise(dx * 7.3, dy * 7.3, (dz * 7.3) + o));
+        const r = r0 * (1 + (0.24 * lumps) + (0.08 * bulges) - (0.05 * pits));
+        pos.setXYZ(i, dx * r, dy * r * flatten, dz * r);
+    }
+    pos.needsUpdate = true;
+    geometry.computeVertexNormals();
+    weldCoincidentNormals(geometry);
+    geometry.computeBoundingSphere();
+    return geometry;
+}
+
 export function createMoltenPocketTSL(
     uTime,
     uPulseIntensity = uniform(0),
@@ -1453,27 +1491,14 @@ export function createMoltenPocketTSL(
         uBakedBounce,
         { ...options, isColumn: false },
     ).material;
-    const geometry = new THREE.IcosahedronGeometry(size, 2);
-    const pos = geometry.attributes.position;
-    // WORSE HERE THAN ON THE COLUMNS: IcosahedronGeometry is NON-INDEXED, so all 540 vertices
-    // are duplicates of 92 unique positions and an independent per-vertex jitter pulled EVERY
-    // shared corner apart — the shelf was 180 disconnected triangles, not a solid ledge.
-    // THE FLATTEN WAS THE FLAT (third user report, 2026-08-13). The 0.2 vertex squash
-    // lived HERE, in the geometry — so the mesh-scale rounding shipped earlier multiplied
-    // an intrinsically flattened discus (0.2 x 0.94) and changed nothing. Parameterised:
-    // callers that want the legacy floor-slab keep the 0.2 default; the floating node
-    // blobs pass ~0.92 and jitter on Y like the other axes, so they are rocky BALLS.
+    // GENESIS PASS: a shaped molten boulder (shapeMoltenBoulder) — the coarse 320-face icosahedron
+    // read as a faceted potato wherever a pocket passed near the camera on the climb. `flatten`
+    // keeps its meaning (0.2 = the chapel's legacy floor-slab, ~0.92 = the floating node blobs).
     const flattenY = options.flatten ?? 0.2;
-    const jitterAt = weldedJitter(geometry, (options.seed ?? 0) + 7, 0.92, 0.16);
-    for (let i = 0; i < pos.count; i += 1) {
-        const jitter = jitterAt(i); // tighter band: a rounded form, not spiky shards
-        pos.setX(i, pos.getX(i) * jitter);
-        pos.setY(i, pos.getY(i) * flattenY * (flattenY > 0.5 ? jitter : 1));
-        pos.setZ(i, pos.getZ(i) * jitter);
-    }
-    pos.needsUpdate = true;
-    geometry.computeVertexNormals();
-    weldCoincidentNormals(geometry);
+    const geometry = shapeMoltenBoulder(new THREE.SphereGeometry(size, 40, 28), {
+        seed: (options.seed ?? 0) + 7,
+        flatten: flattenY,
+    });
     const mesh = new THREE.Mesh(geometry, material);
     return { mesh, material, geometry };
 }
@@ -1483,42 +1508,6 @@ export function createMoltenPocketTSL(
  * the same dark-rock-with-cracks material. Vertically stretched + jittered so it
  * reads as a charred pillar/stalactite at a corridor corner.
  */
-/**
- * One jitter per UNIQUE position, applied to every copy of it.
- *
- * Both of this chapter's rock builders roughened their geometry with an independent
- * `Math.random()` per vertex, which is only safe when no two vertices share a position —
- * and both of them do. CylinderGeometry duplicates its UV seam and both cap rims (120 of
- * 188 vertices, 64%); IcosahedronGeometry is NON-INDEXED, so *every* vertex is a duplicate
- * (540 vertices for 92 unique positions). Independent jitter therefore pulled the copies
- * apart: measured on the shipped column, 86 boundary edges opened along a hull that should
- * have none, and because the material is FrontSide the tears showed the BACKGROUND through
- * the pillar. That is the user's "you can see inside them" and "the bottom is not attached".
- *
- * Keying on the quantised position (not an angle bucket — three.js lays these rings out as
- * sin/cos of theta, so every angle sits exactly on a half-segment boundary and float noise
- * tips the rounding) gives every copy the same displacement, so the shell stays closed while
- * the silhouette keeps the same irregularity. Seeded, so captures are reproducible — which
- * the old `Math.random()` denied every A/B this chapter has ever run.
- *
- * @returns {(index: number) => number} jitter lookup by vertex index
- */
-function weldedJitter(geometry, seed, lo, span) {
-    const pos = geometry.attributes.position;
-    const keyAt = (i) => `${Math.round(pos.getX(i) * 1e4) + 0}|`
-        + `${Math.round(pos.getY(i) * 1e4) + 0}|${Math.round(pos.getZ(i) * 1e4) + 0}`;
-    const table = new Map();
-    for (let i = 0; i < pos.count; i += 1) {
-        const key = keyAt(i);
-        if (table.has(key)) continue;
-        let h = seed * 374761393;
-        for (let c = 0; c < key.length; c += 1) h = ((h << 5) - h + key.charCodeAt(c)) | 0;
-        table.set(key, lo + (((h >>> 0) % 100000) / 100000) * span);
-    }
-    const perIndex = new Float32Array(pos.count);
-    for (let i = 0; i < pos.count; i += 1) perIndex[i] = table.get(keyAt(i));
-    return (i) => perIndex[i];
-}
 
 /**
  * Average vertex normals across vertices that share a position, but only where the normals
@@ -1659,59 +1648,83 @@ export function createObsidianColumnTSL(
 // oxblood) until only the drowned amber ember remains — the same light Chapter 2
 // inherits as its hydrothermal vent glow.
 export function createFirstHeartTSL(uTime, uPulseIntensity = uniform(0), uDescent = uniform(0), options = {}) {
+    // THE FIRST HEART IS ALIVE (Genesis pass, 2026-10-02). It was a soft radial glow — a light that
+    // could have been any light — at the centre of every climbing frame. Now it is FIRE WITH
+    // PERSONALITY (the Act I plan's Calcifer / Himi grammar), seen from below the way the climb
+    // sees it: flame tongues licking outward from a white-hot core, each on its own flicker,
+    // curling as they reach, coloured down the fire ramp (white-hot -> gold -> orange -> deep-red
+    // tips) — and it BEATS: a slow lub-dub swell every 2.4 s, the heart of the world. Across the
+    // seam the tongues shrink and the ramp walks back down the blackbody ladder to a drowned ember.
     const uSeam = options.uSeam ?? uniform(0);
     const uOpacity = options.uOpacity ?? uniform(1);
     const uCore = uniform(new THREE.Color(0xffe6b0)); // white-hot focal tier (reserved)
-    const uRing = uniform(new THREE.Color(0xff6a00)); // flowing-orange ring
-    const uOuter = uniform(new THREE.Color(0x7a1500)); // oxblood outer fade
+    const uRing = uniform(new THREE.Color(0xff6a00)); // flowing-orange body
+    const uOuter = uniform(new THREE.Color(0x7a1500)); // oxblood tips / halo
+    const uGold = uniform(new THREE.Color(0xffb347)); // the flame's gold shoulder
+    const n3 = EARTH_CORE_BAKE_NOISE ? _getBakedNoise01Sampler() : noise3;
 
     const p = uv().sub(0.5);
-    const d = clamp(length(p).mul(2.0), 0.0, 1.0);
+    const r = clamp(length(p).mul(2.0), 0.0, 1.0); // 0 at the core, 1 at the sprite's edge
+    const ang = atan(p.y, p.x);
 
-    // 0.2 Hz breathing (2π·0.2 ≈ 1.2566) — the heart of the world, beating slowly.
-    const breathe = sin(uTime.mul(1.2566)).mul(0.5).add(0.5);
-    const flicker = breathe.mul(0.18).add(0.88);
+    // THE HEARTBEAT: two quick swells (lub, dub) then a rest, every 2.4 s.
+    const beatT = fract(uTime.div(2.4));
+    const lubX = beatT.sub(0.08).div(0.05);
+    const dubX = beatT.sub(0.25).div(0.06);
+    const beat = exp(lubX.mul(lubX).negate()).add(exp(dubX.mul(dubX).negate()).mul(0.7));
 
-    const core = pow(clamp(oneMinus(d.mul(2.6)), 0.0, 1.0), 1.6); // tight white-hot core
-    const ring = pow(oneMinus(d), 2.4);
-    const halo = pow(oneMinus(d), 1.1);
+    // TONGUES: the flame's edge radius per direction — two noise octaves around the circle on their
+    // own clocks, the angle swirled by radius so tongues curl as they reach.
+    const swirl = ang.add(r.mul(1.4)).add(uTime.mul(0.12));
+    const ring = vec2(cos(swirl), sin(swirl));
+    const lick = n3(vec3(ring.x.mul(1.8), ring.y.mul(1.8), uTime.mul(0.7)));
+    const flicker = n3(vec3(ring.x.mul(4.2), ring.y.mul(4.2), uTime.mul(1.6).add(3.1)));
+    const seamShrink = oneMinus(uSeam.mul(0.6));
+    const reach = lick.mul(0.42).add(flicker.mul(0.2)).add(0.3).add(beat.mul(0.06))
+        .mul(seamShrink)
+        .max(0.08);
+    const inFlame = oneMinus(smoothstep(reach.mul(0.72), reach, r));
+    // Heat runs from the core to each tongue's tip.
+    const heat = clamp(oneMinus(r.div(reach)), 0.0, 1.0);
 
-    // Caldera fissure modulation: slow noise breaks the disc into a cracked glow.
-    const fissure = snoise3(vec3(p.x.mul(7.0), p.y.mul(3.0), uTime.mul(0.07))).mul(0.5).add(0.5);
-
-    // Seam quench: white surrenders to orange, then oxblood (the blackbody ladder in
-    // reverse), while overall energy dies to a drowned ember.
+    // Seam quench: white surrenders to orange, then oxblood (the blackbody ladder in reverse).
     const quenchMid = smoothstep(0.0, 0.6, uSeam);
     const quenchEnd = smoothstep(0.55, 1.0, uSeam);
     const coreColor = mix(uCore, mix(uRing, uOuter, quenchEnd), quenchMid);
-    const ringColor = mix(uRing, uOuter, quenchMid);
+    const goldColor = mix(uGold, uOuter, quenchMid);
+    let flameColor = mix(uOuter, uRing, smoothstep(0.0, 0.35, heat));
+    flameColor = mix(flameColor, goldColor, smoothstep(0.35, 0.7, heat));
+    flameColor = mix(flameColor, coreColor, smoothstep(0.6, 0.9, heat));
 
-    // The halo carries the furnace's reach: brighter oxblood skirt so it lights the shaft air.
-    let color = uOuter.mul(halo).mul(0.85)
-        .add(ringColor.mul(ring).mul(0.95).mul(fissure.mul(0.35).add(0.75)))
-        .add(coreColor.mul(core).mul(1.55));
+    // The glow in the air round the fire, and the beat swelling the core.
+    const halo = pow(oneMinus(r), 2.2);
+    const shimmer = flicker.mul(0.16).add(0.92);
+    // The white-hot heart at the centre of the fire is the brightest point of the chapter.
+    const whiteCore = pow(heat, 4.0).mul(inFlame).mul(0.45);
+    let color = flameColor.mul(inFlame).mul(shimmer).mul(beat.mul(0.3).mul(heat).add(1.0))
+        .add(coreColor.mul(whiteCore))
+        .add(uOuter.mul(halo).mul(0.45));
     const energy = uDescent.mul(0.45).add(0.75)
-        .mul(flicker)
         .mul(uPulseIntensity.mul(0.25).add(1.0))
         .mul(oneMinus(uSeam.mul(0.82)));
     color = color.mul(energy);
-    color = min(color, vec3(0.95, 0.9, 0.78)); // capped <1.0; core crosses bloom threshold
+    color = min(color, vec3(0.95, 0.9, 0.78)); // capped <1.0; the core crosses the bloom threshold
 
-    const alpha = halo.mul(1.0).mul(oneMinus(uSeam.mul(0.55))).mul(uOpacity);
+    const alpha = max(inFlame, halo.mul(0.6)).mul(oneMinus(uSeam.mul(0.55))).mul(uOpacity);
 
     const material = new THREE.SpriteNodeMaterial();
     material.colorNode = color;
     material.opacityNode = alpha;
     material.transparent = true;
     material.depthWrite = false;
-    // Depth-TESTED: at its new size a depth-blind sprite would glow through the basalt
-    // columns and ceiling slabs. Nothing it must read through writes depth (the vault,
-    // haze, smoke and steam are all depthWrite=false), so it still reads through the air.
+    // Depth-TESTED: at its size a depth-blind sprite would glow through the basalt columns and
+    // ceiling slabs. Nothing it must read through writes depth (the vault, haze, smoke and steam
+    // are all depthWrite=false), so it still reads through the air.
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.userData.uniforms = {
-        uCore, uRing, uOuter, uSeam,
+        uCore, uRing, uOuter, uGold, uSeam,
     };
 
     const mesh = new THREE.Sprite(material);
