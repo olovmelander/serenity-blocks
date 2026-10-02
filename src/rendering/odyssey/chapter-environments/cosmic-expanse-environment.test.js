@@ -178,7 +178,7 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
                 });
         });
 
-        it('shows the gas giant but nothing else during the summit window', () => {
+        it('shows only the giant, the twilight stars and the aurora carry as the giant rises', () => {
             const group = createCosmicExpanseEnvironment({ particleCount: 200 });
             group.userData.chapterOpacity = 1;
             // Camera is null here, so `approach` falls back to the progress value — which
@@ -188,18 +188,24 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
             const midSummit = positions[5] - (positions[5] - positions[4])
                 * ((SUMMIT_EARTH_REVEAL.startBeforeBoundary + SUMMIT_EARTH_REVEAL.endBeforeBoundary) / 2);
             updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, midSummit);
-
-            expect(group.userData.heroPlanet.userData.planet.material.opacity)
-                .toBeGreaterThan(0.95);
-            expect(group.userData.starsNear.material.opacity).toBeLessThan(0.01);
+            // 2026-10-02 beat order: the near stars lead the giant (twilight) and the aurora is
+            // growing out of the limb; nothing else of deep space is in yet.
+            expect(group.userData.starsNear.material.opacity).toBeGreaterThan(0.05);
+            expect(group.userData.starsFar.material.opacity).toBeLessThan(0.01);
             expect(group.userData.galaxy.material.opacity).toBeLessThan(0.01);
             // Wave 3: the sculpted field stages via its own uniform (setOpacityScale
             // must never touch its opaque material) — held shut in the summit window.
             expect(group.userData.nebulaField.userData.uReveal.value).toBeLessThan(0.01);
             expect(group.userData.nebulaField.visible).toBe(false);
-            expect(group.userData.auroraBridge.visible).toBe(false);
+            // The aurora is growing out of the limb (its band is only shown with a camera to seat it
+            // on; headless, read its envelope).
+            expect(group.userData.auroraBridge.userData.uGlow.value).toBeGreaterThan(0.1);
             expect(group.userData.voidSky.visible).toBe(false);
             expect(group.userData.diskLight.intensity).toBe(0);
+            // ...and by the window's end the giant is fully risen.
+            const summitEnd = positions[5] - (positions[5] - positions[4]) * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
+            updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, summitEnd);
+            expect(group.userData.heroPlanet.userData.planet.material.opacity).toBeGreaterThan(0.95);
         });
     });
 

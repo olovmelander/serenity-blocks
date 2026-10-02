@@ -98,8 +98,8 @@ describe('ChapterEnvironmentManager 5-6 earth-at-summit ignite', () => {
         // gas giant's own twilight reveal, so chapter 6 is never drawn before it has something
         // to show — the black-sky pop came from drawing it early)...
         expect(manager._earthIgniteBoost(at(0.7))).toBe(0);
-        // ...rising just before the planet's reveal...
-        expect(manager._earthIgniteBoost(at(0.8))).toBeGreaterThan(0);
+        // ...rising just before chapter 6's first content (the twilight stars, then the planet)...
+        expect(manager._earthIgniteBoost(at(0.86))).toBeGreaterThan(0);
         // ...and SATURATED well before the boundary, so it does not compound with the
         // earth's own reveal ramp (which would leave the planet reaching full opacity
         // only at the boundary, exactly when the sky starts going dark).

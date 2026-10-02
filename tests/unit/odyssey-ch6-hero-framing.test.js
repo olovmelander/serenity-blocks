@@ -31,6 +31,7 @@ import {
     APPROACH,
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
+    PLANET_SEAM_LOCK,
     SUMMIT_EARTH_REVEAL,
 } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.js';
 
@@ -197,54 +198,61 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         });
     });
 
-    it('frames the earth from the Ch5 summit, before the sky goes dark', () => {
-        // The ask: "see the earth shape at the top of the mountains BEFORE it gets dark."
-        // The Ch5 backdrop fade only begins at ch6Start, so every sample here is still
-        // full daylight. The gas giant must already be on screen.
-        // DERIVED, not literal. These were five p values inside the old ignite window
-        // (summitStart 0.5873 -> summitEnd 0.6258). Wave 1A's ascent re-spaced chapter 5, so
-        // the window is now 0.588 -> 0.6845 and the old samples land in its first 25% where
-        // the earth is legitimately still faint. The claim is "across the ignite, the earth is
-        // framed and shown", so derive the samples FROM the ignite.
+    it('raises the gas giant after dark and holds it in one place through the hand-off', () => {
+        // Owner reports 2026-10-02: the giant was "seen very early and then drifts as we get into
+        // space" — it faded up into the daylight sky and slid diagonally across the whole frame as
+        // the camera pitched up with the climb, then parked on the rail and shrank. Now it rises
+        // after dark and is seated from the camera (PLANET_SEAM_LOCK) until the authored march,
+        // which already sits there, takes over. Replayed with a REAL perspective camera: the seat
+        // is only applied to one (headless callers keep the authored poses).
         const cpAll = getActiveOdysseyChapterPositions();
         const skySpan = cpAll[5] - cpAll[4];
-        const igniteStart = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
-        const igniteEnd = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
-        const summitSamples = [0.30, 0.45, 0.60, 0.80, 1.0]
-            .map((f) => igniteStart + (igniteEnd - igniteStart) * f);
-        summitSamples.forEach((progress) => {
-            expect(progress).toBeLessThan(ch6Start);
-            const frame = frameAt(controller, chapterPositions, 5, progress);
-            const heroes = heroesAt(env, frame.camPos, progress);
-            const r = project(frame, heroes.heroPlanet, 16 / 9);
-            expect(r.behind, `earth behind camera @p=${progress}`).toBe(false);
-            expect(Math.abs(r.x), `earth ndcX ${r.x.toFixed(2)} @p=${progress}`).toBeLessThan(0.9);
-            expect(Math.abs(r.y), `earth ndcY ${r.y.toFixed(2)} @p=${progress}`).toBeLessThan(0.9);
-            // Reads as a distant world, not a near prop.
-            expect(r.dist).toBeGreaterThan(600);
-            // ...and it is actually SHOWN. Being framed was never the blocker on its own:
-            // the chapter was hard-zero until the boundary, so the earth existed here but
-            // was invisible. Opacity is the half of the fix that made it appear.
-            const shown = env.userData.heroPlanet.userData.planet.material.opacity;
-            expect(shown, `earth opacity ${shown.toFixed(2)} @p=${progress}`).toBeGreaterThan(0.2);
-        });
+        const spaceSpan = cpAll[6] - cpAll[5];
+        const riseStart = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
+        const riseEnd = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
+        const lockEnd = cpAll[5] + spaceSpan * PLANET_SEAM_LOCK.handoverFrom;
+        const marchFrom = cpAll[5] + spaceSpan * PLANET_SEAM_LOCK.handoverTo;
+        const cam = new THREE.PerspectiveCamera(BEYOND.fovBase, 16 / 9, 0.1, 20000);
+        const measure = (progress) => {
+            const chapterId = progress < cpAll[5] ? 5 : 6;
+            const frame = frameAt(controller, chapterPositions, chapterId, progress);
+            cam.position.copy(frame.camPos);
+            cam.up.copy(frame.cameraUp);
+            cam.lookAt(frame.lookTarget);
+            cam.updateProjectionMatrix();
+            cam.updateMatrixWorld(true);
+            updateCosmicExpanseEnvironment(env, 0.016, 1, cam, progress);
+            env.updateMatrixWorld(true);
+            const world = env.userData.heroPlanet.getWorldPosition(new THREE.Vector3());
+            return {
+                ...project(frame, world, 16 / 9),
+                opacity: env.userData.heroPlanet.userData.planet.material.opacity,
+                scale: env.userData.heroPlanet.scale.x,
+            };
+        };
 
-        // Fully present by the last third of the window, well before the boundary.
-        expect(env.userData.heroPlanet.userData.planet.material.opacity).toBeGreaterThan(0.99);
-        // ...while the rest of Space is still held out of the daylight frame.
-        expect(env.userData.starsNear.material.opacity).toBeLessThan(0.01);
-        expect(env.userData.voidSky.visible).toBe(false);
-
-        // OWNER DECISION D3 (Wave 3): the giant is genuinely BIG at the summit — the
-        // last update above ran at igniteEnd, where the summit keyframe still owns the
-        // pose — and it settles back to the approved entry scale AT the boundary, where
-        // the entry-composition thirds are asserted.
-        expect(env.userData.heroPlanet.scale.x).toBeGreaterThan(2.5);
-        const entryFrame = frameAt(controller, chapterPositions, 6, ch6Start);
-        heroesAt(env, entryFrame.camPos, ch6Start);
-        // (Masterpiece pass 2026-10: the approved entry scale grew x1.35 — the giant read as a
-        // small flat disc — so the assertion follows the authored keyframe, not a copy of it.)
-        expect(env.userData.heroPlanet.scale.x).toBeCloseTo(APPROACH.planetA.s, 3);
+        // Not in the daylight: hidden until after dark.
+        expect(measure(riseStart - 0.01).opacity).toBeLessThan(0.01);
+        // Risen and seated by the window's end; from there to the hand-over it does not move on
+        // screen however the camera pitches and turns, and it stays clear of the rail (x > 0.15).
+        const seat = measure(riseEnd);
+        expect(seat.opacity).toBeGreaterThan(0.95);
+        expect(seat.behind).toBe(false);
+        expect(seat.x).toBeGreaterThan(0.15);
+        for (let p = riseEnd; p <= lockEnd; p += 0.004) {
+            const r = measure(p);
+            expect(Math.hypot(r.x - seat.x, r.y - seat.y), `drift @p=${p.toFixed(4)}`).toBeLessThan(0.01);
+            expect(r.scale).toBeCloseTo(seat.scale, 3);
+        }
+        // The hand-over to the authored march is smooth: no jump on screen or in size.
+        let prev = measure(lockEnd);
+        for (let p = lockEnd + 0.002; p <= marchFrom + 0.01; p += 0.002) {
+            const r = measure(p);
+            expect(Math.hypot(r.x - prev.x, r.y - prev.y), `jump @p=${p.toFixed(4)}`).toBeLessThan(0.04);
+            expect(Math.abs(r.scale - prev.scale) / prev.scale, `size jump @p=${p.toFixed(4)}`).toBeLessThan(0.04);
+            prev = r;
+        }
+        // The authored entry scale is unchanged (masterpiece pass x1.35).
         expect(APPROACH.planetA.s).toBeCloseTo((34 / 28) * 1.35, 6);
     });
 });

@@ -233,8 +233,15 @@ export const APPROACH = {
 //
 // Expressed as fractions of the Ch5 span so it tracks any future layout re-authoring.
 export const SUMMIT_EARTH_REVEAL = Object.freeze({
-    // ⚠️ RETIMED AGAIN 0.28/0.15 -> 0.18/0.085 (owner report 2026-10-02: "align everything
-    // correctly when it comes to when the planets shows"). At 0.28/0.15 the gas giant faded up
+    // ⚠️ RETIMED A THIRD TIME 0.18/0.085 -> 0.0723/0.0106 (owner, same day: "the gas planet is
+    // seen very early and then drifts as we get into space"). The giant now RISES AFTER DARK, as
+    // the aurora grows from the limb: 0.725 -> 0.75, and is held at one place on screen through
+    // the hand-off (PLANET_SEAM_LOCK) instead of travelling a summit keyframe. The first stars
+    // lead it, in the twilight (`starsFromBeforeBoundary`). Order: mountain -> the sky deepens ->
+    // first stars -> the aurora grows from the limb -> the planet rises -> space.
+    //
+    // (Previous note, superseded:) ⚠️ RETIMED AGAIN 0.28/0.15 -> 0.18/0.085 (owner report
+    // 2026-10-02: "align everything correctly when it comes to when the planets shows"). At 0.28/0.15 the gas giant faded up
     // across p 0.6408 -> 0.6935 into a FULL DAYLIGHT sky — a striped planet hanging in the blue
     // — and stayed there until the sky finally went dark from ~0.69. It now rises WITH the
     // twilight: it starts as the sky begins to deepen (p 0.6813) and is full as the sky reaches
@@ -252,10 +259,12 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
     // — but 0.556 is LEVEL 31's position, not chapter 5's start. The CODE always derived
     // from chapterPositions at runtime; only the prose lied. Derive facts by importing the
     // modules, never by parsing source.)
-    startBeforeBoundary: 0.18,
-    // Fully present 8.5% of the sky span before the boundary (p = 0.7198), as the sky reaches
-    // near-black and before the first stars.
-    endBeforeBoundary: 0.085,
+    startBeforeBoundary: 0.0723, // p 0.725 — after dark
+    // Fully present just before the boundary (p 0.75), with the aurora at its height.
+    endBeforeBoundary: 0.0106,
+    // The NEAR star tier leads the planet: it fades up from here (p 0.7048, as the sky deepens
+    // to near-black) to `starsBeforeDark` at the boundary.
+    starsFromBeforeBoundary: 0.122,
     // Fraction of the Space span over which the REST of the chapter (stars, black hole,
     // nebula, dust, lights) ramps in past the boundary. Deliberately short: it must not
     // re-wash Space bright, and nothing but the earth may bleed into the daylight sky.
@@ -302,6 +311,33 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
 
 const _approachVec = new THREE.Vector3();
 const _omenLock = new THREE.Vector3();
+const _planetRay = new THREE.Vector3();
+const _planetLock = new THREE.Vector3();
+
+/**
+ * THE GAS GIANT HOLDS ITS PLACE THROUGH THE 5->6 HAND-OFF (owner report 2026-10-02: "seen very
+ * early and then drifts as we get into space"). A real-camera replay measured the authored poses
+ * sliding the giant diagonally across the whole frame (ndc (0.53, 0.49) -> (-0.03, -0.35) over
+ * p 0.685-0.72, as the camera pitches up 28 deg with the climb), parking it ON the rail for
+ * 0.72-0.755 while it shrank 3.4 -> 1.64, then sliding right again. Across the hand-off the giant
+ * is now seated from the CAMERA — at a fixed screen position right of the rail, a fixed distance
+ * and a fixed angular size — rising a touch as it fades in, and handed to the authored march over
+ * [handoverFrom, handoverTo] (fractions of the Space span past the boundary), where the march
+ * already sits within ~0.05 ndc of the seat. Only with a real perspective camera (the live
+ * journey); headless callers keep the authored poses.
+ */
+export const PLANET_SEAM_LOCK = Object.freeze({
+    ndcX: 0.25,
+    ndcY: -0.09,
+    // Starts this much lower and rises into the seat as it fades in.
+    rise: 0.07,
+    distance: 1050,
+    // Scale per world unit of distance: the authored march's own s/d at the hand-over (~0.00195),
+    // so the angular size is continuous through the blend.
+    sizeRatio: 0.00195,
+    handoverFrom: 0.178, // p ~0.775
+    handoverTo: 0.435, // p ~0.805
+});
 // Fallback only (no global progress, e.g. a bare chapter-local probe): the chapter ease at
 // which the omen starts gliding onto ch7's lock pose.
 const OMEN_HANDOFF_START = 0.86;
@@ -1974,19 +2010,29 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // GLOBAL progress like the reveal itself; `ease` is still 0 here, so the march
         // above contributes planetA and this lerp owns the approach.
         let planetScale = THREE.MathUtils.lerp(APPROACH.planetA.s, APPROACH.planetB.s, ease);
-        const { planetSummit } = APPROACH;
-        if (planetSummit && Number.isFinite(staging.summitEnd)
-            && Number.isFinite(chapterPositions?.[5]) && Number.isFinite(cameraProgress)) {
-            const toEntry = rampBetween(cameraProgress, staging.summitEnd, chapterPositions[5]);
-            if (toEntry < 1) {
-                heroPlanet.position.set(
-                    THREE.MathUtils.lerp(planetSummit.x, heroPlanet.position.x, toEntry),
-                    THREE.MathUtils.lerp(planetSummit.y, heroPlanet.position.y, toEntry),
-                    THREE.MathUtils.lerp(planetSummit.z, heroPlanet.position.z, toEntry),
-                );
-                // D3: the giant is BIG at the summit and settles to the approved entry
-                // size exactly as it settles into the entry composition.
-                planetScale = THREE.MathUtils.lerp(planetSummit.s ?? planetScale, planetScale, toEntry);
+        // (The summit keyframe travel that used to live here is RETIRED — see PLANET_SEAM_LOCK.)
+        const L = PLANET_SEAM_LOCK;
+        const ch6 = chapterPositions?.[5];
+        if (camera?.isPerspectiveCamera && Number.isFinite(cameraProgress) && Number.isFinite(ch6)
+            && Number.isFinite(chapterPositions?.[4]) && cameraProgress >= chapterPositions[4]) {
+            const lockWeight = 1 - rampBetween(
+                cameraProgress,
+                ch6 + spaceSpan * L.handoverFrom,
+                ch6 + spaceSpan * L.handoverTo,
+            );
+            if (lockWeight > 0) {
+                const riseIn = 1 - staging.earthReveal;
+                _planetRay.set(L.ndcX, L.ndcY - L.rise * riseIn * riseIn, 0.5)
+                    .unproject(camera)
+                    .sub(camera.position)
+                    .normalize();
+                _planetLock.copy(camera.position).addScaledVector(_planetRay, L.distance);
+                if (heroPlanet.parent) {
+                    heroPlanet.parent.updateWorldMatrix(true, false);
+                    heroPlanet.parent.worldToLocal(_planetLock);
+                }
+                heroPlanet.position.lerp(_planetLock, lockWeight);
+                planetScale = THREE.MathUtils.lerp(planetScale, L.distance * L.sizeRatio, lockWeight);
             }
         }
         heroPlanet.scale.setScalar(planetScale);
@@ -2146,9 +2192,14 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // fading up across [summitEnd, ch6Start] to a capped ceiling while the sky is
         // still blue. max() with the normal staging so the boundary hand-off can only
         // ever be earlier, never a dip.
-        const starsEarly = (Number.isFinite(staging.summitEnd)
-            && Number.isFinite(chapterPositions?.[5]) && Number.isFinite(cameraProgress))
-            ? rampBetween(cameraProgress, staging.summitEnd, chapterPositions[5])
+        // (2026-10-02) They now LEAD the planet: from `starsFromBeforeBoundary` (the sky deepening
+        // to near-black), not from the planet's reveal end.
+        const starsFrom = Number.isFinite(chapterPositions?.[4]) && Number.isFinite(chapterPositions?.[5])
+            ? chapterPositions[5] - (chapterPositions[5] - chapterPositions[4])
+                * SUMMIT_EARTH_REVEAL.starsFromBeforeBoundary
+            : Number.NaN;
+        const starsEarly = (Number.isFinite(starsFrom) && Number.isFinite(cameraProgress))
+            ? rampBetween(cameraProgress, starsFrom, chapterPositions[5])
                 * SUMMIT_EARTH_REVEAL.starsBeforeDark
             : 0;
         (entryTargets.starsNear || []).forEach((object) => setOpacityScale(

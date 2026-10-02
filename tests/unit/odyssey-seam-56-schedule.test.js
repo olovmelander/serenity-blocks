@@ -54,10 +54,10 @@ describe('Act II -> Space (5->6) seam schedule', () => {
         // 0.5881 start the giant faded up INSIDE the massif flyby's in-frame pass
         // (0.545-0.648) and competed with the mountain beat. It now ignites as the crown
         // exits the frame, so each beat owns its moment: mountain -> world -> stars.
-        // RETIMED AGAIN (owner report 2026-10-02): the giant no longer hangs in a daylight sky —
-        // it rises with the twilight, after the mountain beat and before the first stars.
-        expect(summitStart).toBeCloseTo(0.6813, 3);
-        expect(summitEnd).toBeCloseTo(0.7198, 3);
+        // RETIMED (owner reports 2026-10-02: it hung in the daylight sky, "seen very early and
+        // then drifts"): the giant rises AFTER DARK, with the aurora — the first stars lead it.
+        expect(summitStart).toBeCloseTo(0.7250, 3);
+        expect(summitEnd).toBeCloseTo(0.7500, 3);
 
         // ...and the staging function must agree with that arithmetic, not drift from it.
         const staging = resolveSummitEarthStaging(summitStart, ch5, ch6, ch7);
