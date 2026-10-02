@@ -81,6 +81,45 @@ import { withEmissiveMaterialBlending } from '../../../themes/shared/mrt-blend.j
 // portal cut). Cut to a fraction of that so the ecotone blend reads instead of blowing out.
 const SEAM_BLOOM_BOOST = 0.1;
 
+/**
+ * CHAPTER 7 PRESENCE for the post's black-hole terms (lens strength, black-crush softening),
+ * from the chapter-7 CROSSFADE WEIGHT the director publishes — never from the active-chapter flip.
+ *
+ * Seamless pass (2026-10-02). `ch7Presence` used to be keyed on `activeChapter === 7`, which only
+ * flips at the boundary: entering 6->7 it sat at 0 for the whole first half of the seam and then
+ * jumped to seamT (lens 0 -> 0.196, crush scale 1 -> 0.675 at p 0.8709), and leaving 7->8 it
+ * dropped from 1 to 1 - seamT at the flip (lens 0.623 -> 0.273 at p 0.9609). It now follows the
+ * director's `ch7Weight` — the same staggered coverage schedule the black hole's opaque body
+ * fades on (fully present by the 6->7 boundary, leaving only after the 7->8 boundary) — and the
+ * peak-late ramp follows chapter-7 local progress, so both are continuous in progress.
+ * Falls back to the old flip logic for a director state that predates `ch7Weight`.
+ * @param {object} directorState
+ * @returns {{presence:number, late:number}}
+ */
+export function resolveCh7LensDrive(directorState) {
+    if (!directorState) return { presence: 0, late: 0 };
+    const energy = directorState.energy ?? 0;
+    const bodyLate = THREE.MathUtils.clamp(0.35 + energy * 0.35, 0, 0.85);
+    if (Number.isFinite(directorState.ch7Weight)) {
+        const presence = THREE.MathUtils.clamp(directorState.ch7Weight, 0, 1);
+        // Peak LATE: from the body's level up to the climax over the chapter's last 40 %, held
+        // through the 7->8 departure (local is clamped to 1 there).
+        const local = THREE.MathUtils.clamp(directorState.ch7Local ?? 0, 0, 1);
+        const climb = THREE.MathUtils.smoothstep(local, 0.6, 1.0);
+        return { presence, late: THREE.MathUtils.lerp(bodyLate, 1, climb) };
+    }
+    const seamT = THREE.MathUtils.clamp(directorState.seamProgress ?? 0, 0, 1);
+    const src = directorState.sourceChapter ?? directorState.activeChapter ?? 1;
+    const tgt = directorState.targetChapter ?? directorState.activeChapter ?? 1;
+    if (directorState.activeChapter === 7) {
+        if (src === 6 && tgt === 7) return { presence: seamT, late: seamT * 0.4 };
+        if (src === 7 && tgt === 8) return { presence: 1, late: 0.6 + seamT * 0.4 };
+        return { presence: 1, late: bodyLate };
+    }
+    if (src === 7 && tgt === 8) return { presence: THREE.MathUtils.clamp(1 - seamT, 0, 1), late: 0.6 };
+    return { presence: 0, late: 0 };
+}
+
 // ── RCAS sharpen ramp (plan §11 item 4; three r185 SharpenNode) ─────────────────
 // `scale` is the LIVE render scale (applied pixel ratio ÷ the tier's full-res ratio).
 // Amount is the fraction of RCAS's maximum lobe: SharpenNode's `sharpness` is in
@@ -977,30 +1016,14 @@ export class OdysseyTslPipeline {
             this._smBloomRadius = lerp(this._smBloomRadius, sig.bloomRadius, k);
 
             // ── B4: ch7 BLACK HOLE lensing strength + void-crush softening ──
-            // ch7Presence = how much chapter 7 is on-screen (entering 6→7 ramps it on, the
-            // body holds it at 1, leaving 7→8 holds the hero until the neon-snap). Lensing
-            // PEAKS LATE: a smoothstep on the chapter's tail (the 7→8 departure seam).
-            const seamT = THREE.MathUtils.clamp(directorState.seamProgress ?? 0, 0, 1);
+            // ch7Presence = how much chapter 7 is on-screen, from the director's chapter-7
+            // crossfade weight (see resolveCh7LensDrive — never the active-chapter flip). Lensing
+            // PEAKS LATE: a smoothstep on the chapter's tail, held through the 7→8 departure.
             const src = directorState.sourceChapter ?? directorState.activeChapter ?? 1;
             const tgt = directorState.targetChapter ?? directorState.activeChapter ?? 1;
-            let ch7Presence = 0;
-            let ch7Late = 0; // 0 entry → 1 climax (drives the peak-late ramp)
-            if (directorState.activeChapter === 7) {
-                if (src === 6 && tgt === 7) {
-                    // 6→7 entry seam: switch lensing ON gradually (continuous singularity).
-                    ch7Presence = seamT; ch7Late = seamT * 0.4;
-                } else if (src === 7 && tgt === 8) {
-                    // 7→8 departure seam: hero held; lensing pushed to journey-max (late peak).
-                    ch7Presence = 1; ch7Late = 0.6 + seamT * 0.4;
-                } else {
-                    // ch7 body: present; late ramp tracks audio energy as a mid-chapter rise.
-                    ch7Presence = 1; ch7Late = THREE.MathUtils.clamp(0.35 + energy * 0.35, 0, 0.85);
-                }
-            } else if (src === 7 && tgt === 8) {
-                // active flipped to 8 but still in the 7→8 band: keep the hero lensing alive.
-                ch7Presence = THREE.MathUtils.clamp(1 - seamT, 0, 1);
-                ch7Late = 0.6;
-            }
+            const ch7Drive = resolveCh7LensDrive(directorState);
+            const ch7Presence = ch7Drive.presence;
+            const ch7Late = ch7Drive.late; // 0 entry → 1 climax (drives the peak-late ramp)
             // Only lens when the BH env actually published a valid screen target this frame.
             const lensGate = this._lensActive ? 1 : 0;
             // Point-mass gain (deflection = k·Rs²/r, see _buildOutputNode): ~0.3 on entry rising
@@ -1162,8 +1185,11 @@ export class OdysseyTslPipeline {
     // seam bloom is demoted to a barely-there accent — a small fraction of the old boost so
     // the blend stays legible instead of blowing out to white. Signatures unchanged.
     /** Transient (now subtle) bloom accent as the camera crosses a chapter seam. */
-    triggerChapterSeam({ intensity = 1 } = {}) {
-        this._seamBoost = Math.max(this._seamBoost, intensity * SEAM_BLOOM_BOOST);
+    triggerChapterSeam() {
+        // SEAMLESS PASS (2026-10-02): no punch at seam ENTRY. This used to jump the bloom by
+        // intensity * 0.1 on the first frame of every seam (where the seam envelope is still 0)
+        // and decay it over ~0.3 s — a wall-clock flash. The accent now rides the position
+        // envelope alone (setChapterSeamState), which is 0 at the window edges.
     }
 
     setChapterSeamState({ intensity = 0 } = {}) {

@@ -106,8 +106,10 @@ describe('ChapterEnvironmentManager 5-6 earth-at-summit ignite', () => {
     it('releases the boost once the normal crossfade has taken over', () => {
         const manager = makeManager();
 
-        // Held through the ecotone (which completes ~6% into the Space span) so the
-        // release is a no-op rather than a dip...
+        // Held through the ecotone so the release is a no-op rather than a dip. (Seamless pass:
+        // the ecotone completes at the 5->6 seamWidth, ~19 % of the Space span — NOT the ~6 %
+        // this comment used to claim — and the old fixed 10 % band released mid-crossfade; see
+        // the no-dip test below.)...
         // Derived for the same reason as above: these are "just past the boundary" and
         // "well into space", not the specific numbers the old layout happened to give them.
         // Wave 1C finished the derivation: the old +0.004/+0.012 were absolute p offsets,
@@ -146,5 +148,140 @@ describe('ChapterEnvironmentManager 5-6 earth-at-summit ignite', () => {
             expect(manager._seamInBoostFor(chapterId, saturated)).toBe(0);
         });
         expect(manager._seamInBoostFor(6, saturated)).toBe(1);
+    });
+});
+
+describe('ChapterEnvironmentManager seamless fades (2026-10-02)', () => {
+    const chapterPositions = getActiveOdysseyChapterPositions();
+
+    function opaqueMesh(name) {
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial());
+        mesh.name = name;
+        return mesh;
+    }
+    function glowMesh(name) {
+        const mesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(1, 1),
+            new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8 }),
+        );
+        mesh.name = name;
+        return mesh;
+    }
+    /** Inject a stub chapter env (no module load) the way createChapterEnvironment records one. */
+    function inject(manager, chapterId, group) {
+        manager.environmentGroup.add(group);
+        manager.environments.set(chapterId, {
+            chapterId,
+            group,
+            update: null,
+            config: null,
+            opacityTargets: manager._collectOpacityTargets(group),
+            rigLights: [],
+            lastOpacity: null,
+            lastVisible: false,
+        });
+    }
+    const makeManager = () => new ChapterEnvironmentManager(
+        new THREE.Scene(),
+        { setClearColor: vi.fn() },
+        { chapterPositions },
+    );
+
+    it('never forces a fade-exempt object transparent, nor fades it', () => {
+        const manager = makeManager();
+        const group = new THREE.Group();
+        const shadowRoot = new THREE.Group();
+        shadowRoot.userData.odysseyFadeExempt = true;
+        const shadow = opaqueMesh('gargantua-shadow');
+        shadowRoot.add(shadow); // exempt by ANCESTOR
+        const tagged = opaqueMesh('omen-shadow');
+        tagged.userData.odysseyFadeExempt = true; // exempt by itself
+        const rock = opaqueMesh('rock');
+        group.add(shadowRoot, tagged, rock);
+        const targets = manager._collectOpacityTargets(group);
+        const all = [...targets.materialTargets, ...targets.opaqueMaterialTargets];
+        expect(all).toContain(rock.material);
+        expect(all).not.toContain(shadow.material);
+        expect(all).not.toContain(tagged.material);
+        expect(shadow.material.transparent).toBe(false);
+        expect(tagged.material.transparent).toBe(false);
+        // ...while the ordinary opaque mesh is still collected (and QW5-forced) as before.
+        expect(rock.material.transparent).toBe(true);
+        manager.setGroupOpacity(targets, 0.3, 0.6);
+        expect(shadow.material.opacity).toBe(1);
+        expect(tagged.material.opacity).toBe(1);
+    });
+
+    it('keeps OPAQUE coverage at 1 across a crossfade (staggered), while glows crossfade symmetrically', () => {
+        const manager = makeManager();
+        const g6 = new THREE.Group();
+        const sky6 = opaqueMesh('ch6-sky');
+        const glow6 = glowMesh('ch6-glow');
+        g6.add(sky6, glow6);
+        const g7 = new THREE.Group();
+        const sky7 = opaqueMesh('ch7-dome');
+        const glow7 = glowMesh('ch7-glow');
+        g7.add(sky7, glow7);
+        inject(manager, 6, g6);
+        inject(manager, 7, g7);
+
+        const boundary = chapterPositions[6];
+        const w = manager.getBoundaryTransition('6-7').seamWidth;
+        let worstCoverage = 1;
+        for (let i = 0; i <= 40; i += 1) {
+            const p = boundary - w + (2 * w * i) / 40;
+            manager.updateVisibility(p, { mode: 'progress' });
+            const a = g6.visible ? sky6.material.opacity : 0;
+            const b = g7.visible ? sky7.material.opacity : 0;
+            worstCoverage = Math.min(worstCoverage, 1 - (1 - a) * (1 - b));
+            // Glows still sum to ~one (base opacity 0.8 each), so brightness interpolates.
+            const glowSum = (g6.visible ? glow6.material.opacity : 0) + (g7.visible ? glow7.material.opacity : 0);
+            expect(glowSum, `glow sum @${p.toFixed(4)}`).toBeLessThan(0.8 * 1.02);
+        }
+        // Symmetric forced-transparent crossfade bottomed out at 0.75 at the boundary.
+        expect(worstCoverage).toBeGreaterThan(0.999);
+        manager.updateVisibility(boundary, { mode: 'progress' });
+        expect(sky6.material.opacity).toBeCloseTo(1, 5);
+        expect(sky7.material.opacity).toBeCloseTo(1, 5);
+        expect(glow6.material.opacity).toBeCloseTo(0.4, 2);
+        expect(g7.userData.chapterCoverage).toBeCloseTo(1, 5);
+    });
+
+    it('holds chapter 6 through the 5->6 ecotone: no one-frame dip when the earth boost releases', () => {
+        const manager = makeManager();
+        const g6 = new THREE.Group();
+        g6.add(opaqueMesh('earth'));
+        inject(manager, 6, g6);
+        const boundary = chapterPositions[5];
+        const w = manager.getBoundaryTransition('5-6').seamWidth;
+        let prev = null;
+        for (let i = 0; i <= 200; i += 1) {
+            const p = boundary - 0.002 + ((w + 0.02) * i) / 200;
+            manager.updateVisibility(p, { mode: 'progress' });
+            const o = g6.userData.chapterOpacity;
+            if (prev !== null) expect(o, `ch6 opacity @${p.toFixed(5)}`).toBeGreaterThanOrEqual(prev - 1e-6);
+            prev = o;
+        }
+        expect(prev).toBe(1);
+    });
+
+    it('brings the city in continuously at 7->8 (no max() snap)', () => {
+        const manager = makeManager();
+        const g8 = new THREE.Group();
+        g8.add(opaqueMesh('tower'), glowMesh('neon'));
+        inject(manager, 8, g8);
+        const boundary = chapterPositions[7];
+        const w = manager.getBoundaryTransition('7-8').seamWidth;
+        let prev = null;
+        let worst = 0;
+        const dp = 0.0002;
+        for (let p = boundary - w - 0.002; p <= boundary + w + 0.002; p += dp) {
+            manager.updateVisibility(p, { mode: 'progress' });
+            const o = g8.userData.chapterOpacity;
+            if (prev !== null) worst = Math.max(worst, Math.abs(o - prev) * (0.001 / dp));
+            prev = o;
+        }
+        // Was 0.40 -> 1.0 in 0.0023 p (~0.26 per 0.001 p); the symmetric ecotone peaks ~0.046.
+        expect(worst).toBeLessThan(0.08);
     });
 });
