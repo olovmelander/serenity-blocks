@@ -856,8 +856,12 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0), 
     const bridges = smoothstep(0.32, 0.62, n3Bg(vec3(dir.x.mul(13.0), 5.3, 8.1)));
     const crackFlicker = grain.mul(0.5).add(0.5);
     const crackStrength = crackOpen.mul(crackOpen).mul(0.85).add(0.06);
-    color = color.add(vec3(0.20, 0.38, 0.44).mul(fissure.mul(0.55).add(seep.mul(0.14)))
-        .mul(crown).mul(bridges).mul(crackFlicker).mul(crackStrength));
+    const crackGlow = fissure.mul(0.55).add(seep.mul(0.14));
+    color = color.add(vec3(0.20, 0.38, 0.44).mul(crackGlow)
+        .mul(crown)
+        .mul(bridges)
+        .mul(crackFlicker)
+        .mul(crackStrength));
 
     // Backdrop discipline: capped below every set piece (veins and points are the exception
     // that defines the device, so the cap is generous on red and tight on the body).
