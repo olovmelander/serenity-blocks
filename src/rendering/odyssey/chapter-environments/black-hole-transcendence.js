@@ -31,6 +31,13 @@
  * exactly where the omen hands off; across the 7->8 window the hero glides onto the
  * Retrosun's direction, its shadow closes and its light becomes the city's sun
  * (urban-dreams-sun-carry.js).
+ *
+ * THE FALL (2026-10-02): the hole no longer floats beside the journey - the traveller falls into
+ * it. Still camera-locked (it can never leave the frame), but its angular size is authored by
+ * progress (transitions/odyssey-black-hole-fall.js): it grows until it swallows the frustum just
+ * past level 52, drifting onto the view axis; the disk plane sweeps through edge-on; and the
+ * shadow's surface becomes a window onto the singularity's interior - the warp tunnel
+ * (createSingularityWindowTSL) - so the eye is "inside" without a cut.
  */
 
 import * as THREE from 'three/webgpu';
@@ -38,6 +45,11 @@ import { uniform } from 'three/tsl';
 import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
 import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
 import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
+import {
+    blackHoleFallAtRest,
+    resolveBlackHoleFall,
+    resolveBlackHoleFallDepth,
+} from '../transitions/odyssey-black-hole-fall.js';
 import { CH7_SUN_CARRY, resolveSunCarry } from './urban-dreams-sun-carry.js';
 import { createSynthwaveSunTSL } from './urban-dreams.tsl.js';
 import { resolveRetrosunReveal, resolveRetrosunStage, resolveUrbanEnergy } from './urban-dreams.js';
@@ -50,10 +62,11 @@ import {
     createLensingStarfieldTSL,
     createCorridorDustTSL,
     createInfallEmberFieldTSL,
+    createSingularityWindowTSL,
     CH7_CORRIDOR_DUST_SETTINGS,
     CH7_STARFIELD,
     GARGANTUA_LOCK,
-    resolveGargantuaLockPosition,
+    resolveGargantuaFallPosition,
 } from './black-hole-transcendence.tsl.js';
 
 export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
@@ -127,6 +140,9 @@ export const CH7_QUALITY_TIERS = Object.freeze({
     low: Object.freeze({ stars: 800, dust: 0.4, embers: 0.5 }),
 });
 
+// The tunnel mouth's final angular radius (rad): past the corners of a 70 deg-FOV frame.
+const CH7_EXIT_MOUTH_MAX = 80 * (Math.PI / 180);
+
 // Camera-lock scratch (reused every frame — no per-frame allocation).
 const _up = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -160,10 +176,10 @@ function createGargantua(uniforms) {
     face.name = 'dominant-event-horizon-anchor';
     group.add(face);
 
-    const horizon = new THREE.Mesh(
-        new THREE.SphereGeometry(S, 64, 48),
-        new THREE.MeshBasicNodeMaterial({ color: 0x000000 }),
-    );
+    // The shadow IS the window onto the interior (black until the fall opens it): one opaque,
+    // depth-writing material either way, so nothing about its pipeline changes mid-chapter.
+    const singularity = createSingularityWindowTSL(uniforms.uTime);
+    const horizon = new THREE.Mesh(new THREE.SphereGeometry(S, 64, 48), singularity.material);
     horizon.name = 'gargantua-shadow';
     // FADE-EXEMPT (seamless pass; agreed interface with the environment manager): the shadow
     // is an opaque occluder through every crossfade and the chapter drives its visibility —
@@ -233,6 +249,7 @@ function createGargantua(uniforms) {
     group.userData.foldArcs = [topFold, bottomFold];
     group.userData.uSwell = uSwell;
     group.userData.uDiskFade = uDiskFade;
+    group.userData.singularity = singularity.uniforms;
     return group;
 }
 
@@ -383,10 +400,14 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
  * the frame whatever the spline does — including the near-vertical climb, where the old
  * world-up `lookAt` basis degenerated. Writes the world centre into `lensWorldPos`.
  */
-export function poseGargantua(group, camera, time = 0, glide = 0) {
+export function poseGargantua(group, camera, time = 0, glide = 0, fall = null) {
     const { distantHole } = group.userData;
     if (!distantHole || !camera?.position) return false;
-    resolveGargantuaLockPosition(camera, _heroWorld);
+    const fallState = fall ?? blackHoleFallAtRest();
+    // THE FALL: as the hole grows it recedes along the view axis just enough to keep its near
+    // surface clear of the rail and nodes, and eases onto the axis (resolveBlackHoleFallDepth).
+    const depth = fallState.active ? resolveBlackHoleFallDepth(fallState.alpha) : GARGANTUA_LOCK.lockDepth;
+    resolveGargantuaFallPosition(camera, _heroWorld, depth, fallState.centring);
     // THE 7->8 GLIDE: off the lock onto the Retrosun's direction, at the lock's distance (so the
     // shadow keeps its angular size, which is also the sun disc's). The target is held within
     // maxOffAxis of the view axis so the hero can never leave the frame.
@@ -407,6 +428,16 @@ export function poseGargantua(group, camera, time = 0, glide = 0) {
         _heroWorld.copy(camera.position).addScaledVector(_lockDir, lockDist);
     }
     group.userData.lensWorldPos?.copy(_heroWorld);
+    // The hero's scale: the shadow subtends the fall's angular radius from the eye (exactly 1 at
+    // rest, where the lock already subtends it).
+    const heroDistance = _heroWorld.distanceTo(camera.position);
+    const heroScale = fallState.active
+        ? Math.max(1e-3, (heroDistance * Math.sin(fallState.alpha)) / CH7_GARGANTUA.shadowRadius)
+        : 1;
+    distantHole.scale.setScalar(heroScale);
+    group.userData.heroScale = heroScale;
+    const windowUniforms = distantHole.userData.singularity;
+    if (windowUniforms?.uEyeZ) windowUniforms.uEyeZ.value = heroDistance / heroScale;
     _up.set(0, 1, 0).applyQuaternion(camera.quaternion);
 
     // The group is translated but not rotated, so world → local is a subtract.
@@ -439,6 +470,8 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     const [cameraProgress = null, directorState = null] = updateArgs;
     const chapterPositions = getActiveOdysseyChapterPositions();
     const carry = resolveSunCarry(cameraProgress, chapterPositions);
+    const fall = resolveBlackHoleFall(cameraProgress, chapterPositions);
+    group.userData.fall = fall;
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
@@ -455,10 +488,13 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     const { voidDome } = group.userData;
     if (voidDome) {
         voidDome.rotation.y += delta * 0.006;
+        // Inside the singularity the window covers every pixel: the deep-space dome behind it is
+        // only depth-rejected fill, so it stops drawing.
+        voidDome.visible = fall.inside < 0.999;
     }
 
     // ── CAMERA-LOCK THE HERO ─────────────────────────────────────────────────────
-    if (!poseGargantua(group, camera, time, carry?.glide ?? 0) && group.userData.distantHole) {
+    if (!poseGargantua(group, camera, time, carry?.glide ?? 0, fall) && group.userData.distantHole) {
         // No-camera fallback (smoke tests): a slow precession in place.
         group.userData.distantHole.rotation.z -= delta * 0.025;
     }
@@ -466,23 +502,47 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     // ── ONE OPAQUE SHADOW, AND THE 7->8 CARRY ────────────────────────────────────
     const { distantHole, sunCopy } = group.userData;
     const hero = distantHole?.userData;
-    const close = carry?.close ?? 0;
+    const open = carry?.open ?? 0;
     if (hero?.horizon) {
         const takeover = resolveShadowTakeover(chapterPositions);
-        // ...and across the 7->8 window the shadow contracts to nothing: the eclipse ending.
+        // ...and across the 7->8 window the tunnel's mouth opens from the vanishing point; once it
+        // has passed the frame's edges the window is gone.
         hero.horizon.visible = (!Number.isFinite(cameraProgress) || takeover === null
-            || cameraProgress > takeover) && close < 0.999;
-        hero.horizon.scale.setScalar(Math.max(1e-3, 1 - close));
+            || cameraProgress > takeover) && open < 0.999;
         // Re-asserted until the environment manager honours `odysseyFadeExempt` (until then
         // it still writes a crossfade opacity into this material every frame of a seam).
         if (hero.horizon.material) hero.horizon.material.opacity = 1;
     }
-    // The post lens shrinks with the hole: no warp — and no bloom mask — around the new sun.
+    // The post lens shrinks with the hole: no warp — and no bloom mask — around the new sun. It
+    // also grows with the fall (the shadow's world radius scales with the hero), and `portal`
+    // tells the post pass to stop masking bloom where the shadow has become the tunnel window.
     if (group.userData.lensWorldPos) {
-        group.userData.lensWorldPos.lensRadius = CH7_GARGANTUA.shadowRadius * (1 - close);
+        group.userData.lensWorldPos.lensRadius = CH7_GARGANTUA.shadowRadius
+            * (group.userData.heroScale ?? 1) * (1 - open);
+        group.userData.lensWorldPos.portal = fall.portal;
+    }
+    const windowUniforms = hero?.singularity;
+    if (windowUniforms) {
+        windowUniforms.uPortal.value = fall.portal;
+        windowUniforms.uWarp.value = fall.warp;
+        // The mouth grows to 80 deg: past the corners of a 70 deg-FOV frame.
+        windowUniforms.uOpen.value = open * CH7_EXIT_MOUTH_MAX;
+    }
+    // The disk-plane crossing: the band's plane sweeps through edge-on (a razor line) and reopens.
+    // Its outer edge is held in front of the eye (<= 0.85 of the hero's distance): left at its
+    // physical 4.8 shadow radii, the disk passed BEHIND the camera once the hole outgrew ~12 deg
+    // and its face became a cream floor under half the frame.
+    if (hero?.diskPivot) {
+        hero.diskPivot.rotation.x = -(Math.PI / 2 - fall.diskTilt);
+        const heroScale = group.userData.heroScale ?? 1;
+        const diskOuter = CH7_GARGANTUA.shadowRadius * CH7_GARGANTUA.diskOuter * heroScale;
+        const heroDistance = group.userData.lensWorldPos && camera?.position
+            ? group.userData.lensWorldPos.distanceTo(camera.position) : Infinity;
+        hero.diskPivot.scale.setScalar(Math.min(1, (0.85 * heroDistance) / Math.max(1e-3, diskOuter)));
     }
     const fill = carry?.fill ?? 0;
-    const band = carry?.band ?? 1;
+    // Once the disk has swept past, the band, its fold arcs and the embers fade out with it.
+    const band = (carry?.band ?? 1) * fall.band;
     const motifs = carry?.motifs ?? 1;
     // The photon ring brightens and warms into the new sun's limb; the thin band, its lensed
     // fold arcs and the infall embers collapse into the light; dust, shards and the far stars
@@ -503,7 +563,8 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     hero?.foldArcs?.forEach((fold) => { fold.visible = band > 0.002; });
     if (dust) dust.visible = motifs > 0.002;
     if (shardMesh) shardMesh.visible = motifs > 0.002;
-    if (stars) stars.visible = motifs > 0.002;
+    // The far stars sit behind the window once inside: depth-rejected fill, so they stop drawing.
+    if (stars) stars.visible = motifs > 0.002 && fall.inside < 0.999;
 
     // The sun copy fills the closing hole and hands the sun to chapter 8 (which draws the
     // identical disc) at carry.handedOver.
