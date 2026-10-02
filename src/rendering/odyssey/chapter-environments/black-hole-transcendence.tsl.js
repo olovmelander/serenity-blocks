@@ -36,6 +36,7 @@ import {
     max,
     mix,
     mod,
+    modelScale,
     modelViewPosition,
     modelWorldMatrix,
     normalize,
@@ -245,7 +246,11 @@ function rimFrame(shadowRadius) {
     const offset = positionView.xy.sub(modelViewPosition.xy);
     const dist = length(offset).max(1e-3);
     return {
-        rr: dist.div(shadowRadius),
+        // shadowRadius is authored in the face's LOCAL units; the offset is measured in view
+        // space, so divide by the WORLD-scaled radius. ch7's hero has scale 1 (unchanged), but
+        // ch6's omen is the same parts scaled 1.2-5.5x, and at local units its fold arcs sat
+        // permanently outside their profile and never drew (pre-merge review).
+        rr: dist.div(modelScale.x.mul(shadowRadius)),
         side: offset.x.negate().div(dist), // +1 left (approaching), -1 right
         above: offset.y.div(dist), // +1 top, -1 bottom
         angle: atan(offset.y, offset.x),
@@ -261,7 +266,10 @@ export function createGargantuaPhotonRingTSL(uTime = uniform(0), options = {}) {
     const uOpacity = uniform(1);
 
     const { side, angle } = rimFrame(shadowRadius);
-    const across = uv().y; // RingGeometry: 0 at the inner edge → 1 at the outer
+    // Radial position across the ring, from its local geometry: RingGeometry's UV is PLANAR
+    // (a square projection), so uv().y ran 0 -> 1 bottom-to-top of the whole ring, not inner-to-
+    // outer, and the razor vanished at the top and bottom of the shadow (pre-merge review).
+    const across = clamp(length(positionLocal.xy).sub(inner).div(Math.max(outer - inner, 1e-3)), 0.0, 1.0);
     // A razor: bright against the shadow, a soft fall outward.
     const profile = smoothstep(0.0, 0.18, across).mul(oneMinus(smoothstep(0.30, 1.0, across)));
     const beam = pow(clamp(side.mul(0.45).add(1.0), 0.45, 1.5), 2.0);
@@ -722,3 +730,66 @@ export function createLensingStarfieldTSL(uTime = uniform(0), options = {}) {
     mesh.frustumCulled = false;
     return { mesh, material, geometry };
 }
+
+// ── Pilot assembler (WebGPU / WebGL2 validation gate) ─────────────────────────────────────
+//
+// scripts/odyssey-webgpu-validation.mjs and pilot/odyssey-webgpu-pilot.js build every chapter's
+// TSL graph in isolation and fail on validation errors; the masterpiece pass removed the old
+// assembler with the old hero, which silently turned the ch7 entry into an empty scene
+// (pre-merge review). This one assembles TODAY's parts at the shipped proportions (the
+// CH7_GARGANTUA multiples in black-hole-transcendence.js), compact enough for the pilot's
+// ~120 u camera, so the gate exercises every ch7 pipeline again.
+export function createBlackHoleTranscendencePilotTSL() {
+    const uTime = uniform(0);
+    const uEnergy = uniform(0.4);
+    const S = 18;
+    const group = new THREE.Group();
+    group.name = 'black-hole-transcendence-pilot-tsl';
+    const face = new THREE.Group();
+    group.add(face);
+    const shadow = new THREE.Mesh(
+        new THREE.SphereGeometry(S, 48, 32),
+        new THREE.MeshBasicNodeMaterial({ color: 0x000000 }),
+    );
+    face.add(shadow);
+    const photon = createGargantuaPhotonRingTSL(uTime, { innerRadius: S, outerRadius: S * 1.075, shadowRadius: S });
+    face.add(photon.mesh);
+    const foldMaterial = createLensedFoldMaterialTSL(uTime, { shadowRadius: S });
+    const sweep = Math.PI * 0.8;
+    const foldGeometry = new THREE.TorusGeometry(S * 1.25, S * 0.05, 8, 64, sweep);
+    const topFold = new THREE.Mesh(foldGeometry, foldMaterial);
+    topFold.rotation.z = Math.PI / 2 - sweep / 2;
+    const bottomFold = new THREE.Mesh(foldGeometry, foldMaterial);
+    bottomFold.rotation.z = -Math.PI / 2 - sweep / 2;
+    face.add(topFold, bottomFold);
+    const diskPivot = new THREE.Group();
+    diskPivot.rotation.order = 'ZYX';
+    diskPivot.rotation.set(-(Math.PI / 2 - 0.10), 0, -0.10);
+    group.add(diskPivot);
+    const disk = createAccretionDiskTSL(uTime, uEnergy, { innerRadius: S * 1.34, outerRadius: S * 4.8 });
+    diskPivot.add(disk.mesh);
+    const parts = [
+        createVoidDomeTSL(uTime, uEnergy),
+        createCorridorDustTSL(uTime),
+        createInfallEmberFieldTSL(uTime),
+        createTranscendenceShardsTSL(uTime),
+        createLensingStarfieldTSL(uTime),
+    ];
+    parts.forEach((part) => group.add(part.mesh));
+    return {
+        group,
+        uniforms: { uTime, uEnergy },
+        dispose() {
+            [...parts, photon, disk].forEach((part) => {
+                part.geometry?.dispose?.();
+                part.material?.dispose?.();
+            });
+            shadow.geometry.dispose();
+            shadow.material.dispose();
+            foldGeometry.dispose();
+            foldMaterial.dispose();
+        },
+    };
+}
+
+export default createBlackHoleTranscendencePilotTSL;

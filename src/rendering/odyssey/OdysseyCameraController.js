@@ -678,6 +678,9 @@ export class OdysseyCameraController {
         // Breathing animation state
         this.breatheTime = 0;
         this._breathOffset = new THREE.Vector3();
+        // 0..1 envelope: reset whenever breathing is suspended (focus/zoom animations, portal,
+        // free camera) and eased back in, so it never resumes at full amplitude in one frame.
+        this._breathWeight = 1;
         this._breathApplied = false;
         this._breathForward = new THREE.Vector3();
         this._breathRight = new THREE.Vector3();
@@ -1302,7 +1305,7 @@ export class OdysseyCameraController {
     /**
      * Apply subtle breathing motion (sway, bob, surge, roll) as a camera-relative offset.
      */
-    applyBreathingMotion() {
+    applyBreathingMotion(deltaTime = 0) {
         const cc = this.cinematicConfig;
         const t = this.breatheTime;
         const seamWeight = this.getSeamBeatStrength();
@@ -1311,8 +1314,15 @@ export class OdysseyCameraController {
         const bobScale = this.directorCamera.bob * (1 + this.directorCamera.beatPulse * 0.08);
         const driftScale = this.directorCamera.drift;
 
-        // Don't apply during rapid animations (focus/zoom)
-        if (this.mode === 'free' || this.portalApproach?.active || (this.isAnimating && this.mode === 'focus')) return;
+        // Don't apply during rapid animations (focus/zoom). Resetting the envelope here is what
+        // makes the hand-back gentle: without it, the end of every focus or level-entry zoom
+        // switched breathing on at full amplitude — a 0.4-0.6 u one-frame twitch (pre-merge review).
+        if (this.mode === 'free' || this.portalApproach?.active || (this.isAnimating && this.mode === 'focus')) {
+            this._breathWeight = 0;
+            return;
+        }
+        this._breathWeight += (1 - this._breathWeight) * (1 - Math.exp(-Math.max(0, deltaTime) * 1.5));
+        const breath = this._breathWeight;
 
         // Camera-relative basis from the current pose (forward to the look target).
         const forward = this._breathForward.copy(this.lookAtTarget).sub(this.camera.position);
@@ -1336,9 +1346,9 @@ export class OdysseyCameraController {
                     + Math.sin(t * tau * fb * 2.17 + 2.4) * 0.3
                     + Math.sin(t * tau * fb * 3.71 + 0.2) * 0.1;
                 const surgeWave = Math.sin(t * tau * fs * 0.61 + 4.0);
-                const sway = cc.swayEnabled ? swayWave * cc.swayAmplitude * reach * swayScale * calm : 0;
-                const bob = cc.bobEnabled ? bobWave * cc.bobAmplitude * reach * bobScale * calm : 0;
-                const surge = surgeWave * (cc.surgeAmplitude ?? 0) * reach * driftScale * calm;
+                const sway = cc.swayEnabled ? swayWave * cc.swayAmplitude * reach * swayScale * calm * breath : 0;
+                const bob = cc.bobEnabled ? bobWave * cc.bobAmplitude * reach * bobScale * calm * breath : 0;
+                const surge = surgeWave * (cc.surgeAmplitude ?? 0) * reach * driftScale * calm * breath;
                 this._breathOffset.set(0, 0, 0)
                     .addScaledVector(right, sway)
                     .addScaledVector(up, bob)
@@ -1489,12 +1499,16 @@ export class OdysseyCameraController {
             && !this.pathTravel?.active
             && this.currentPosition >= ARRIVAL_SHOT.start
             && this.targetPosition >= ARRIVAL_SHOT.start;
+        // The orbit clock is FROZEN while the shot fades out and reset only once it has fully
+        // faded: resetting it on the first non-resting frame dropped the 24-degree orbit and the
+        // push-in in a single frame (a ~16 u eye pop when travel starts — pre-merge review).
+        // `target` follows `resting`, so the weight eases out at the release rate below.
         if (resting && idleFor >= ARRIVAL_SHOT.idleSeconds) {
             this._arrivalTime = Math.max(this._arrivalTime + dt, this._arrivalPreview);
-        } else if (!resting) {
+        } else if (!resting && this._arrivalWeight <= 1e-4) {
             this._arrivalTime = 0;
         }
-        const target = this._arrivalTime > 0
+        const target = (resting && this._arrivalTime > 0)
             ? THREE.MathUtils.smoothstep(this._arrivalTime, 0, ARRIVAL_SHOT.blendInSeconds)
             : 0;
         // Release quickly when the player moves again, ease in slowly.

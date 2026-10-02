@@ -46,6 +46,25 @@ const VISIBLE_DEPTH_MAX = 190;
 const VISIBLE_DEPTH_MIN = 14;
 
 /**
+ * Model-space bounds from the BIND-POSE geometry bounds. `Box3.setFromObject` on a skinned mesh
+ * runs SkinnedMesh.computeBoundingBox, which applies every bone to every vertex on the CPU —
+ * ~35 ms per whale, twice, on the main thread right after the reveal (pre-merge review). The
+ * geometry's own box is a cheap linear pass, computed once and shared by every cached clone, and
+ * the glide pose is close enough to the bind pose for a size normalisation.
+ */
+function bindPoseBounds(model) {
+    model.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    const part = new THREE.Box3();
+    model.traverse((o) => {
+        if (!o.isMesh || !o.geometry) return;
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        box.union(part.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld));
+    });
+    return box;
+}
+
+/**
  * The back-lit silhouette, in the medium: dark back, a soft belly lit by scattered light from
  * below, the surface light wrapping the edge (fresnel, strongest on faces toward the surface),
  * and colour-with-distance toward the water colour so the whales sit IN the sea.
@@ -95,8 +114,7 @@ export function createWhalePass({
 
     async function addActor(url, bodyLength, phase, radius, depth) {
         const { scene: model, animations } = await loadOdysseyGltfCached(url);
-        const box = new THREE.Box3().setFromObject(model);
-        const size = box.getSize(new THREE.Vector3());
+        const size = bindPoseBounds(model).getSize(new THREE.Vector3());
         model.scale.setScalar(bodyLength / Math.max(size.x, size.y, size.z, 1e-3));
         model.traverse((o) => {
             if (!o.isMesh) return;

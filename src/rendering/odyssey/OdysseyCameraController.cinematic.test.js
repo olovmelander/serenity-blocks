@@ -105,4 +105,49 @@ describe('OdysseyCameraController cinematic language (2026-10)', () => {
         for (let i = 0; i < 60; i += 1) controller.update(1 / 60);
         expect(controller._arrivalWeight).toBeLessThan(0.2);
     });
+    it('releases the arrival shot smoothly: travel starts without a one-frame camera jump', () => {
+        // Pre-merge review: the orbit clock was reset on the first non-resting frame, so the
+        // 24-degree orbit and the push-in dropped out in one frame (~16 u eye pop).
+        const { controller, camera } = createRealPathController(1);
+        controller.setDirectorState({ camera: getCameraProfileForChapter(8) });
+        controller.setCurrentPosition(1);
+        for (let i = 0; i < 60 * (ARRIVAL_SHOT.orbitSeconds + 4); i += 1) controller.update(1 / 60);
+        expect(controller._arrivalWeight).toBeGreaterThan(0.95);
+        const before = camera.position.clone();
+        controller.travelToPosition(0.98, 2000);
+        controller.update(1 / 60);
+        expect(camera.position.distanceTo(before)).toBeLessThan(2);
+    });
+
+    it('eases breathing back in after a focus zoom instead of resuming at full amplitude', () => {
+        // Pre-merge review: the end of every focus/level-entry zoom switched breathing on at full
+        // strength - a 0.4-0.6 u one-frame twitch. The envelope restarts at 0 and builds over ~2 s.
+        const { controller, camera } = createRealPathController(0.5);
+        controller.setCurrentPosition(0.5);
+        for (let i = 0; i < 120; i += 1) controller.update(1 / 60);
+        const nodePos = controller.getPathDataAt(0.5).position.clone();
+        const realNow = performance.now.bind(performance);
+        let now = realNow();
+        performance.now = () => now;
+        try {
+            controller.focusOnNode(nodePos, 300);
+            let last = camera.position.clone();
+            let worstStep = 0;
+            let settledStep = 0;
+            for (let i = 0; i < 90; i += 1) {
+                now += 1000 / 60;
+                controller.update(1 / 60);
+                const step = camera.position.distanceTo(last);
+                last = camera.position.clone();
+                if (i > 25) worstStep = Math.max(worstStep, step); // after the 300 ms zoom lands
+                if (i === 89) settledStep = step;
+            }
+            // No frame after the hand-back jumps far beyond the steady per-frame breath motion.
+            expect(worstStep).toBeLessThan(Math.max(0.25, settledStep * 6));
+            expect(controller._breathWeight).toBeGreaterThan(0);
+            expect(controller._breathWeight).toBeLessThan(1);
+        } finally {
+            performance.now = realNow;
+        }
+    });
 });

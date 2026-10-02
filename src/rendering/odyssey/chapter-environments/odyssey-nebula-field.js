@@ -301,15 +301,21 @@ function buildGasMaterial(uReveal, uTime, palette) {
     // ── STRUCTURE: domain-warped body, ridged filaments, low-frequency dust lanes ──
     const t = uTime.mul(0.010);
     const q = mix(mid, surface, 0.25).mul(1.6).add(vec3(seed.mul(17.0), seed.mul(-9.0), t));
+    // NOISE BUDGET 15 -> 9 octaves per fragment (pre-merge review: no tier gate, unmeasured).
+    // The warp only needs low-frequency drift (1 octave each); the gas body keeps 3, the
+    // filaments 2, the broad dust lanes 1 — the octaves cut were sub-feature detail the
+    // smoothstep thresholds below flatten anyway. fbm3/ridged3 are NOT normalised (amplitude
+    // sums 0.5 / 0.75 / 0.875 / 0.9375 for 1-4 octaves), so each call is rescaled by the ratio
+    // of sums to keep the value range every threshold below was tuned against.
     const warp = vec3(
-        fbm3(q.mul(0.6), 2),
-        fbm3(q.mul(0.6).add(vec3(5.2, 1.3, 2.7)), 2),
-        fbm3(q.mul(0.6).add(vec3(2.1, 7.7, 4.4)), 2),
+        fbm3(q.mul(0.6), 1).mul(1.5),
+        fbm3(q.mul(0.6).add(vec3(5.2, 1.3, 2.7)), 1).mul(1.5),
+        fbm3(q.mul(0.6).add(vec3(2.1, 7.7, 4.4)), 1).mul(1.5),
     ).sub(0.5).mul(1.2);
     const qw = q.add(warp);
-    const gas = smoothstep(0.28, 0.72, fbm3(qw, 4));
-    const fil = ridged3(qw.mul(1.4).add(11.0), 3);
-    const lane = ridged3(qw.mul(0.5).add(23.0), 2);
+    const gas = smoothstep(0.28, 0.72, fbm3(qw, 3).mul(0.9375 / 0.875));
+    const fil = ridged3(qw.mul(1.4).add(11.0), 2).mul(0.875 / 0.75);
+    const lane = ridged3(qw.mul(0.5).add(23.0), 1).mul(1.5);
 
     // EROSION, bounded by the ellipsoid: the rim only reaches out where the noise is dense,
     // and nothing survives outside the ellipsoid (thick = 0 ⇒ d < 0).
