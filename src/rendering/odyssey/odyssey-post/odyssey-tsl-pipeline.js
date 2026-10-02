@@ -60,6 +60,7 @@ import {
     min,
     mix,
     mrt,
+    pow,
     output,
     pass,
     renderOutput,
@@ -133,6 +134,15 @@ const MASTER = Object.freeze({
 //                    reference chapters (Mtn ch4 / Space ch6) sit at the master 0.86.
 // Values are calibrated to §2's signature table. PRESERVE the magenta ch7 tint + the
 // hot-chapter knees; the env batches depend on this look.
+//
+// Masterpiece pass (2026-10) — three OPTIONAL bloom columns, multipliers on the constructor's
+// base bloom (strength / threshold / radius), seam-lerped and smoothed like the rest and
+// written as UNIFORMS (no graph change, no recompile). A row without them is neutral (1, 1, 1)
+// = exactly the behaviour before the columns existed, which is how ch1-5 and ch8 stay
+// untouched (other sessions own those looks):
+//   • bloomStrength  — × base strength (and the director's per-beat weight on top)
+//   • bloomThreshold — × base threshold (higher = only the brightest emitters bloom)
+//   • bloomRadius    — × base radius (lower = a tighter, crisper halo)
 const CHAPTER_SIGNATURES = Object.freeze([
     // 1 Earth Core — molten amber warmth; early knee + lower sat so lava never clips.
     {
@@ -162,13 +172,33 @@ const CHAPTER_SIGNATURES = Object.freeze([
     {
         tint: [1.00, 1.00, 1.02], contrast: 1.04, vignette: 0.58, chroma: 1.0, sat: 1.12, shoulderKnee: 0.86,
     },
-    // 6 Space — cool indigo, slightly closer frame (REFERENCE stock).
+    // 6 Space — cool indigo, slightly closer frame (REFERENCE stock). Bloom: deep blacks with
+    // gilded highlights — a touch more strength on a TIGHTER radius at an unchanged threshold,
+    // so star cores and gas hearts gild without a haze lifting the void.
     {
-        tint: [0.94, 0.96, 1.10], contrast: 1.02, vignette: 1.05, chroma: 1.05, sat: 1.06, shoulderKnee: 0.86,
+        tint: [0.94, 0.96, 1.10],
+        contrast: 1.02,
+        vignette: 1.05,
+        chroma: 1.05,
+        sat: 1.06,
+        shoulderKnee: 0.86,
+        bloomStrength: 1.2,
+        bloomThreshold: 1.0,
+        bloomRadius: 0.8,
     },
-    // 7 Black Hole — magenta, value-aware vignette eased to 1.05 + CA spike (lensing).
+    // 7 Black Hole — magenta, value-aware vignette eased to 1.05 + CA spike (lensing). Bloom:
+    // stronger and tighter — the photon ring and the approaching limb blaze, the shadow stays
+    // black (the lens variant also masks bloom inside it).
     {
-        tint: [1.08, 0.90, 1.04], contrast: 1.05, vignette: 1.05, chroma: 1.9, sat: 1.06, shoulderKnee: 0.86,
+        tint: [1.08, 0.90, 1.04],
+        contrast: 1.05,
+        vignette: 1.05,
+        chroma: 1.9,
+        sat: 1.06,
+        shoulderKnee: 0.86,
+        bloomStrength: 1.4,
+        bloomThreshold: 1.08,
+        bloomRadius: 0.6,
     },
     // 8 Urban Encore — neon cyan/magenta kinetic; early knee + sat 1.0 so neon never clips.
     {
@@ -226,6 +256,10 @@ export class OdysseyTslPipeline {
         // B4 new smoothed signature columns (same seam-lerp + smoothing path as above).
         this._smChapterSat = MASTER.saturation; // per-chapter saturation (anchor ~1.06)
         this._smShoulderKnee = MASTER.shoulder; // per-chapter shoulder-knee bias
+        // Per-chapter bloom multipliers (1 = the constructor's base bloom, unchanged).
+        this._smBloomStrength = 1;
+        this._smBloomThreshold = 1;
+        this._smBloomRadius = 1;
 
         // ── B4: Black Hole (ch7) screen-space lensing state (no per-frame allocs) ──
         // setLensTarget(worldVec3) projects the BH env's group.userData.lensWorldPos to NDC
@@ -329,6 +363,8 @@ export class OdysseyTslPipeline {
             };
 
             this._baseBloom = this.bloomNode.strength.value;
+            this._baseBloomThreshold = this.bloomNode.threshold.value;
+            this._baseBloomRadius = this.bloomNode.radius.value;
         }
 
         // ── Runtime uniforms (director-driven) ──
@@ -372,9 +408,14 @@ export class OdysseyTslPipeline {
 
         // ── B4: Black Hole (ch7) screen-space gravitational-lensing uniforms ──
         // Default centred + zero strength so the warp is an exact no-op outside ch7.
-        this.uLensCenter = uniform(new THREE.Vector2(0.5, 0.5)); // NDC centre of the hero
-        this.uLensStrength = uniform(0); // radial deflection gain (0 outside ch7)
-        this.uLensRadius = uniform(params.lensRadius ?? 0.12); // black-core radius in NDC
+        this.uLensCenter = uniform(new THREE.Vector2(0.5, 0.5)); // viewport-UV centre of the hero
+        this.uLensStrength = uniform(0); // point-mass deflection gain (0 outside ch7)
+        // The PROJECTED shadow radius, in viewport-height units (aspect-corrected space). It
+        // used to be a fixed 0.12 that sat INSIDE the hero's shadow, so the warp bent black
+        // into black; setLensTarget now measures it from the hero every frame.
+        this.uLensRadius = uniform(params.lensRadius ?? 0.12);
+        this.uLensAspect = uniform(16 / 9); // viewport width / height (setSize)
+        this._smLensRadius = params.lensRadius ?? 0.12;
 
         // Scene source kept as a member so the (lazily built) output-node variants can all
         // sample it without re-resolving the pass texture node.
@@ -615,42 +656,52 @@ export class OdysseyTslPipeline {
         const dist = length(centered);
 
         let sceneHDR;
+        let lensBloomMask = null;
         if (withLens) {
             // ── 0. BLACK HOLE screen-space gravitational LENSING (ch7; the signature shot) ──
-            //        BEFORE the CA sample, warp the sample UV radially around the hero's
-            //        projected NDC centre so the starfield/disk bend into Einstein arcs. Folded
-            //        into the CA gather: the 3 chroma taps read the WARPED uv → ~0 extra fetches.
-            const lensDir = uv.sub(this.uLensCenter); // vector from hero centre to this pixel
-            const lensR = length(lensDir).max(1e-4); // radial distance (eps to avoid /0)
-            const lensN = lensDir.div(lensR); // unit radial
-            // Deflection falls as 1/r, shaped so it engages in a ring around the hole and dies
-            // out well before the frame edge (smoothstep from 2x radius down toward 0.25x).
-            const lensShape = smoothstep(this.uLensRadius.mul(2.0), this.uLensRadius.mul(0.25), lensR);
-            const deflect = this.uLensStrength.div(lensR.add(0.04)).mul(lensShape);
-            // Tangential star-smear: rotate the radial 90° and add a fraction so light streaks
-            // AROUND the photon ring (the iconic lensed arc), not just radially inward.
+            // Masterpiece pass (2026-10), the black-hole theme's lens re-derived here (theme code
+            // is never imported into Odyssey's boot closure):
+            //  - ASPECT-CORRECT: distances are measured with x scaled by the aspect, so the
+            //    lens is a circle on any display (it was an ellipse squashed by 16:9);
+            //  - SIZED TO THE SHADOW: uLensRadius is the projected shadow radius, published by
+            //    the hero every frame (it was a fixed 0.12 inside the shadow — black into black);
+            //  - POINT-MASS FALLOFF from the shadow edge: deflection k·Rs²/r, so the starfield is
+            //    pulled hardest just outside the shadow and relaxes with distance, clamped so a
+            //    sample never crosses back into the shadow (no black ring) and faded out by ~6 Rs;
+            //  - no core crush: the shadow is real geometry now, and the rail/nodes that fly into
+            //    it must stay visible. Only BLOOM is masked inside it (below).
+            const aspect = this.uLensAspect;
+            const lensDelta = uv.sub(this.uLensCenter);
+            const lensDeltaA = vec2(lensDelta.x.mul(aspect), lensDelta.y);
+            const lensR = length(lensDeltaA).max(1e-4);
+            const lensN = lensDeltaA.div(lensR);
+            const rs = this.uLensRadius.max(1e-3);
+            const outside = smoothstep(rs.mul(0.98), rs.mul(1.12), lensR);
+            const farFade = float(1.0).sub(smoothstep(rs.mul(3.0), rs.mul(6.0), lensR));
+            const pointMass = this.uLensStrength.mul(rs).mul(rs).div(lensR);
+            const deflect = min(pointMass, lensR.sub(rs).max(0.0).mul(0.22)).mul(outside).mul(farFade);
+            // Pull the sample toward the hole (radial) plus a hair of tangential swirl so the
+            // stars smear AROUND the photon ring (the lensed-arc read).
             const lensTangent = vec2(lensN.y.negate(), lensN.x);
-            // Pull the sample inward (toward the hole) + a tangential swirl. Capped by lensShape.
-            const lensWarp = lensN.mul(deflect.negate()).add(lensTangent.mul(deflect.mul(0.55)));
-            const warpedUv = uv.add(lensWarp);
+            const warpA = lensN.mul(deflect).add(lensTangent.mul(deflect.mul(0.18)));
+            const warpedUv = uv.sub(vec2(warpA.x.div(aspect), warpA.y));
 
-            // ── 1. Chromatic aberration recentred on the lensed hero (uLensStrength>0): the
-            //        chroma fringe wraps the event horizon (per §2's "center on singularity"),
-            //        blended in by the same lens gate so it eases on with the chapter.
+            // ── 1. Chromatic aberration recentred on the hero: the fringe wraps the horizon.
+            const lensGate = clamp(this.uLensStrength.mul(2.0), 0.0, 1.0);
             const radialEdge = dist.mul(dist).mul(2.4);
             const heroEdge = lensR.mul(lensR).mul(2.4);
-            const caRadial = mix(radialEdge, heroEdge, clamp(this.uLensStrength.mul(8.0), 0.0, 1.0));
-            const caCentered = mix(centered, lensDir, clamp(this.uLensStrength.mul(8.0), 0.0, 1.0));
+            const caRadial = mix(radialEdge, heroEdge, lensGate);
+            const caCentered = mix(centered, lensDelta, lensGate);
             const chromaOffset = caCentered.mul(this.uChroma).mul(caRadial);
             // The 3 chroma taps read the WARPED uv (lensing + CA gather share the same fetches).
             const sampleR = sceneColor.sample(warpedUv.add(chromaOffset)).r;
             const sampleG = sceneColor.sample(warpedUv).g;
             const sampleB = sceneColor.sample(warpedUv.sub(chromaOffset)).b;
-            // Hard black event-horizon core: crush the sample to deep void inside uLensRadius
-            // (smooth inner edge so it never reads as a hard disc). Multiplies the gathered HDR.
-            const coreMask = smoothstep(this.uLensRadius.mul(0.55), this.uLensRadius, lensR);
-            const coreGate = mix(float(1.0), coreMask, clamp(this.uLensStrength.mul(8.0), 0.0, 1.0));
-            sceneHDR = vec3(sampleR, sampleG, sampleB).mul(coreGate);
+            sceneHDR = vec3(sampleR, sampleG, sampleB);
+            // Bloom is an optical halo, but it must not paint over the event horizon: keep the
+            // shadow black even when the photon ring and disk run hot (black-hole-post.js idea).
+            const outsideShadow = smoothstep(rs.mul(0.8), rs.mul(1.03), lensR);
+            lensBloomMask = mix(float(1.0), mix(float(0.06), float(1.0), outsideShadow), lensGate);
         } else {
             // ── 1. Chromatic aberration (radial, ~0 at centre, concentrated at EDGES) ──
             // CA is a lens artifact on the source image, so it must resample the HDR scene
@@ -669,7 +720,9 @@ export class OdysseyTslPipeline {
         // ── 2. Bloom add (threshold-disciplined; only genuinely bright pixels bloom) ──
         // QW14: dropped on the no-bloom variants so the bloom node detaches from the graph
         // and its blur/composite passes are not rendered at all.
-        const preExposure = withBloom ? sceneHDR.add(this.bloomNode.rgb) : sceneHDR;
+        let bloomTerm = withBloom ? this.bloomNode.rgb : null;
+        if (bloomTerm && lensBloomMask) bloomTerm = bloomTerm.mul(lensBloomMask);
+        const preExposure = bloomTerm ? sceneHDR.add(bloomTerm) : sceneHDR;
 
         // ── 3. Exposure → 4. ACES filmic tonemap (manual; renderer = NoToneMapping) ──
         // One global exposure scales the HDR colour, then a single ACES curve maps every
@@ -687,7 +740,20 @@ export class OdysseyTslPipeline {
         // ── 5. MASTER GRADE (display space; ONE film stock for all 8 chapters) ──
         // Everything below operates on the [0,1] tonemapped image — it cannot reintroduce
         // HDR, so the grade can never cause a white blowout (Phase A/B discipline preserved).
-        const masterGraded = this._applyMasterGrade(toned);
+        //
+        // ⚠️ "DISPLAY SPACE" WAS NOT TRUE UNTIL 2026-10-01, and that was the journey's darkest
+        // bug. `toned` is LINEAR (the sRGB encode happens later, in renderOutput), so the grade's
+        // black crush (max(c - 0.018, 0) PER CHANNEL) and its S-curves pivoting on 0.5 ran on
+        // linear values: master contrast 1.07 zeroed every channel below linear 0.033 (sRGB ~50),
+        // Deep Ocean's 1.12 everything below 0.054 (sRGB ~65). In a dark frame that deletes the
+        // non-dominant channels — a charcoal-and-ember cavern rendered as PURE red (measured
+        // ~110,0,0 / 71,0,0 over warm greys that should have kept G), dark water as pure blue.
+        // Every chapter's palette had been tuned by eye on top of it. The grade now runs on a
+        // gamma-2.2 encoding of the tonemapped image — where "mid-grey", "black point" and
+        // "contrast" mean what the knobs and their comments say — and returns to linear before
+        // the vignette. The shoulder knee is converted so highlight roll-off is unchanged.
+        const tonedPerceptual = pow(max(toned, vec3(0.0)), vec3(1.0 / 2.2));
+        const masterGraded = this._applyMasterGrade(tonedPerceptual);
 
         // ── 5b. PER-CHAPTER signature shift (small, on top of the master curve) ──
         // (a) signature tint: multiply toward the chapter tint, then re-normalise toward
@@ -702,7 +768,8 @@ export class OdysseyTslPipeline {
         //     (Earth Core / Urban) drop below the 1.06 anchor so lava/neon do not over-
         //     saturate toward clipping; cool chapters keep the richer 1.06.
         const csLuma = dot(contrastShifted, vec3(0.2126, 0.7152, 0.0722));
-        const graded = mix(vec3(csLuma), contrastShifted, this.uChapterSat);
+        // Back to linear for everything downstream (vignette, grain, dither, renderOutput).
+        const graded = pow(clamp(mix(vec3(csLuma), contrastShifted, this.uChapterSat), 0.0, 1.0), vec3(2.2));
 
         // Legacy per-chapter tint hook (uGradeTint/uGradeStrength) kept live for API
         // compatibility — a subtle additional pull toward a director-supplied key colour.
@@ -767,7 +834,9 @@ export class OdysseyTslPipeline {
         // knee is the PER-CHAPTER shoulder-knee (smoothed) so hot chapters (Earth Core ~0.78
         // / Urban ~0.80) roll off EARLIER and lava/neon compress before they clip; reference
         // chapters sit at the master 0.86.
-        const knee = this.uShoulderKnee;
+        // The knee values (0.78-0.86) were authored against the LINEAR image; carry them into
+        // the perceptual encoding so the roll-off starts on the same scene values as before.
+        const knee = pow(this.uShoulderKnee, 1.0 / 2.2);
         const over = max(crushed.sub(vec3(knee)), vec3(0.0));
         const headroom = max(float(1.0).sub(knee), float(1e-3));
         // Smooth compressive curve: x - x²/(2*headroom), clamped into the remaining range.
@@ -796,7 +865,8 @@ export class OdysseyTslPipeline {
      * adds `saturation` + `shoulderKnee` to the SAME seam-lerp path as tint/contrast.
      * @param {object} directorState
      * @returns {{ contrast:number, vignetteWeight:number, chromaWeight:number,
-     *             saturation:number, shoulderKnee:number }}
+     *             saturation:number, shoulderKnee:number, bloomStrength:number,
+     *             bloomThreshold:number, bloomRadius:number }}
      * @private
      */
     _resolveChapterSignature(directorState) {
@@ -820,6 +890,9 @@ export class OdysseyTslPipeline {
             chromaWeight: lerp(src.chroma, tgt.chroma, seamT),
             saturation: lerp(src.sat, tgt.sat, seamT),
             shoulderKnee: lerp(src.shoulderKnee, tgt.shoulderKnee, seamT),
+            bloomStrength: lerp(src.bloomStrength ?? 1, tgt.bloomStrength ?? 1, seamT),
+            bloomThreshold: lerp(src.bloomThreshold ?? 1, tgt.bloomThreshold ?? 1, seamT),
+            bloomRadius: lerp(src.bloomRadius ?? 1, tgt.bloomRadius ?? 1, seamT),
         };
     }
 
@@ -869,9 +942,6 @@ export class OdysseyTslPipeline {
         // Director-driven bloom weight (post.bloom ∈ ~[0,1]); cached for the bloom-active gate
         // below. When the bloom node is disabled for this tier, _baseBloom is 0 so this stays 0.
         const bloomWeight = post?.bloom ?? 1;
-        if (this.bloomNode) {
-            this.bloomNode.strength.value = this._baseBloom * bloomWeight + this._seamBoost;
-        }
         if (atmo?.exposure !== undefined) this.uExposure.value = atmo.exposure;
         // Energy warms the legacy grade hook (post.grade ∈ [0,1]); keep tint white-ish.
         this.uGradeStrength.value = 0.14 + (post?.grade ?? energy) * 0.12;
@@ -902,6 +972,9 @@ export class OdysseyTslPipeline {
             this._smChapterTint.lerp(this._scratchTint, k);
             this._smChapterSat = lerp(this._smChapterSat, sig.saturation, k);
             this._smShoulderKnee = lerp(this._smShoulderKnee, sig.shoulderKnee, k);
+            this._smBloomStrength = lerp(this._smBloomStrength, sig.bloomStrength, k);
+            this._smBloomThreshold = lerp(this._smBloomThreshold, sig.bloomThreshold, k);
+            this._smBloomRadius = lerp(this._smBloomRadius, sig.bloomRadius, k);
 
             // ── B4: ch7 BLACK HOLE lensing strength + void-crush softening ──
             // ch7Presence = how much chapter 7 is on-screen (entering 6→7 ramps it on, the
@@ -930,8 +1003,10 @@ export class OdysseyTslPipeline {
             }
             // Only lens when the BH env actually published a valid screen target this frame.
             const lensGate = this._lensActive ? 1 : 0;
-            // Peak deflection ~0.045 NDC at the climax; eased by presence × late ramp.
-            lensTarget = 0.045 * ch7Presence * (0.4 + 0.6 * ch7Late) * lensGate;
+            // Point-mass gain (deflection = k·Rs²/r, see _buildOutputNode): ~0.3 on entry rising
+            // to ~0.7 at the climax; eased by presence × late ramp. Kept modest because the
+            // screen-space warp also bends the hero's own (already lensed) fold arcs.
+            lensTarget = 0.7 * ch7Presence * (0.45 + 0.55 * ch7Late) * lensGate;
             // Soften the ch7 black-crush so the structured violet void survives tonemap
             // (1.0 → ~0.35 with presence). Outside ch7 stays full crush.
             crushScaleTarget = lerp(1.0, 0.35, ch7Presence);
@@ -957,6 +1032,16 @@ export class OdysseyTslPipeline {
             this._smChapterTint.lerp(NEUTRAL_TINT, k);
             this._smChapterSat = lerp(this._smChapterSat, MASTER.saturation, k);
             this._smShoulderKnee = lerp(this._smShoulderKnee, MASTER.shoulder, k);
+            this._smBloomStrength = lerp(this._smBloomStrength, 1, k);
+            this._smBloomThreshold = lerp(this._smBloomThreshold, 1, k);
+            this._smBloomRadius = lerp(this._smBloomRadius, 1, k);
+        }
+        if (this.bloomNode) {
+            // Uniform writes only (strength / threshold / radius are BloomNode uniforms).
+            this.bloomNode.strength.value = this._baseBloom * bloomWeight * this._smBloomStrength
+                + this._seamBoost;
+            this.bloomNode.threshold.value = this._baseBloomThreshold * this._smBloomThreshold;
+            this.bloomNode.radius.value = this._baseBloomRadius * this._smBloomRadius;
         }
 
         // Smooth the ch7 lensing / crush + ch8 ignition (enter/exit glide, no pops).
@@ -1005,7 +1090,8 @@ export class OdysseyTslPipeline {
             // turn bloom OFF only when clearly dark (< 1e-3), back ON as soon as it is meaningful
             // (> 6e-3). Between those it holds whatever variant is already bound.
             const effBloom = this.bloomNode
-                ? (this._baseBloom * bloomWeight + this._seamBoost + this._smIgnition * 0.18)
+                ? (this._baseBloom * bloomWeight * this._smBloomStrength + this._seamBoost
+                    + this._smIgnition * 0.18)
                 : 0;
             const bloomCurrentlyOn = this._activeVariantKey
                 ? this._activeVariantKey.endsWith('|1')
@@ -1042,10 +1128,28 @@ export class OdysseyTslPipeline {
         const ndcY = this._scratchLensV3.y;
         const behind = this._scratchLensV3.z > 1; // behind the camera → ignore this frame
         if (behind || !Number.isFinite(ndcX) || !Number.isFinite(ndcY)) return;
-        // NDC (-1..1, y up) → viewport UV (0..1, y up to match viewportUV).
-        this._scratchLensV2.set(ndcX * 0.5 + 0.5, ndcY * 0.5 + 0.5);
+        // NDC (-1..1, y up) → viewport UV. ⚠️ viewportUV's origin is the TOP-left on WebGPU
+        // (y DOWN), so y flips. The old `ndcY * 0.5 + 0.5` centred the lens on the hero's
+        // MIRROR image below the frame centre — and with its core crush that drew a second,
+        // phantom "mini black hole" (the swirl the ch7 rail spiralled into) for the chapter's
+        // whole life, while the real hero was never lensed at all.
+        this._scratchLensV2.set(ndcX * 0.5 + 0.5, 0.5 - ndcY * 0.5);
         // Smooth the centre toward the new target (frame-rate aware; enter/exit glide).
         this._smLensCenter.lerp(this._scratchLensV2, 0.18);
+        // The SHADOW's projected radius, when the hero publishes its world radius on the target
+        // (black-hole-transcendence.js sets `lensWorldPos.lensRadius`): the angular radius of
+        // a sphere, as a fraction of the viewport height (the aspect-corrected lens space).
+        const worldRadius = worldVec3.lensRadius;
+        if (Number.isFinite(worldRadius) && worldRadius > 0 && this.camera.isPerspectiveCamera) {
+            const distance = this.camera.position.distanceTo(worldVec3);
+            if (distance > worldRadius) {
+                const angular = Math.asin(worldRadius / distance);
+                const halfFov = THREE.MathUtils.degToRad(this.camera.fov) * 0.5;
+                const radius = Math.tan(angular) / (2 * Math.tan(halfFov));
+                this._smLensRadius = lerp(this._smLensRadius, radius, 0.18);
+                this.uLensRadius.value = this._smLensRadius;
+            }
+        }
         this._lensActive = true;
     }
 
@@ -1130,6 +1234,7 @@ export class OdysseyTslPipeline {
     setSize(width, height) {
         this.size.width = width;
         this.size.height = height;
+        if (width > 0 && height > 0) this.uLensAspect.value = width / height;
         this.scenePass.setSize(width, height);
         // Resize the bloom render targets ONLY after the bloom node has built its
         // internal blur materials (i.e. after the first render). Calling setSize

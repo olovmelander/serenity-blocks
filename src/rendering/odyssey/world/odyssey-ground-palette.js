@@ -65,16 +65,22 @@ export const ODYSSEY_GROUND_PALETTE = Object.freeze({
     // (.467/.364/.168) than stone — a material reads by its hue family before anything else.
     // Re-authored to ~.368/.342/.290 at IDENTICAL luma, so the G3 value ladder and every
     // measurement taken against it are untouched: this moves hue only.
+    // Cooled toward a violet-grey (item 6): the warm beige rock pole and the cream snow pole
+    // converged on one sand colour across the whole massif. Ghibli stone is a cool grey that
+    // takes the sky; the warmth now comes from the light (sun colour, alpenglow), not the rock.
     rock: Object.freeze({
-        damp: Object.freeze([0.336, 0.317, 0.280]),
-        dry: Object.freeze([0.557, 0.517, 0.439]),
+        damp: Object.freeze([0.270, 0.272, 0.282]),
+        dry: Object.freeze([0.440, 0.432, 0.430]),
         shade: 'mineral',
     }),
     // Warmed off blue-white so peaks read sunlit; the damp pole is old/compacted snow.
+    // Cooled from a cream [0.99, 0.97, 0.92] (item 5): beside the warm rock pole, cream snow
+    // and pale rock converged on one beige, and the summit read as sand. Snow is the coolest,
+    // brightest thing on the island; the alpenglow term supplies its warmth where the sun is.
     snow: Object.freeze({
-        damp: Object.freeze([0.88, 0.90, 0.93]),
-        dry: Object.freeze([0.99, 0.97, 0.92]),
-        shade: 'mineral',
+        damp: Object.freeze([0.86, 0.91, 0.97]),
+        dry: Object.freeze([0.97, 0.98, 1.0]),
+        shade: 'snow',
     }),
 });
 
@@ -128,6 +134,23 @@ export const ODYSSEY_GROUND_SHADE = Object.freeze({
          * goes properly grey rather than mauve. Split the difference of the two references.
          */
         desat: 0.56,
+    }),
+    /**
+     * SNOW IS A SKY REFLECTOR, NOT A MINERAL (item 5). It used to shade as `mineral` — ambient
+     * 0.22, desaturated, then warmed by `deepTint` — so a snowfield in shadow came out a grey-
+     * beige 0.22 of its lit self and the massif read as a dune. Snow in shade is lit by the
+     * whole blue sky dome it faces and by bounce off the lit snow around it: it stays BRIGHT
+     * and goes BLUE. Every painted mountain in the reference set does this, and it is the one
+     * cue that separates snow from pale rock when the sun is behind the camera (Act II's case).
+     *   ambient   — the floor where the sun does not reach, nearly twice rock's.
+     *   deep      — the floor in a hollow the sky cannot see; a couloir stays luminous.
+     *   skyChroma — how much of the sky's HUE the shade carries (vegetation's is 0.25: the
+     *               measured law that grass shade is not blue; snow is the documented exception).
+     */
+    snow: Object.freeze({
+        ambient: 0.45,
+        deep: 0.30,
+        skyChroma: 0.62,
     }),
     /** Ambient in a hollow the sky cannot see into. Drives the wide-AO half of the shading. */
     deepAmbient: 0.13,
@@ -259,7 +282,10 @@ export const ODYSSEY_GROUND_MOISTURE = Object.freeze({
  * construction — it can only change the ORDERING of places, never the proportion. That cost a
  * capture to learn: rebalancing the bake's constants moved the massif station by almost nothing.
  */
-export const ODYSSEY_GROUND_DRYNESS = Object.freeze([0.58, 0.06]);
+// Narrowed from [0.58, 0.06] (item 6). The wide window parked most of the island on the
+// MIDPOINT of the green-gold lerp, which is olive — the "muddy khaki" read. A narrow window
+// makes the meadow decide: clean green, or a clean gold patch, with a short painted turn.
+export const ODYSSEY_GROUND_DRYNESS = Object.freeze([0.36, 0.18]);
 
 /** Linear-ish luma weights, matching the ones the output stage already uses. */
 export const ODYSSEY_GROUND_LUMA = Object.freeze([0.2126, 0.7152, 0.0722]);

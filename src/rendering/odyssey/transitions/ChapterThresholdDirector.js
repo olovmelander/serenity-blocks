@@ -91,16 +91,23 @@ export const ODYSSEY_THRESHOLD_PROFILES = Object.freeze({
         veilScale: 1.3,
         particleScale: 0.0,
     }),
+    // QUIETED 2026-10-01 (masterpiece pass). Chapter 6's omen now IS chapter 7's Gargantua and
+    // glides onto its pose across the seam, so the black hole itself carries the handoff. The
+    // old violet ring (1.45) and orange veil (1.2) flooded the frame around p 0.878-0.886 — a
+    // magenta wash over the very disk the seam is about. What remains is an accent in the
+    // disk's own gold: a thin ring, a breath of veil, a scatter of embers.
     '6-7': Object.freeze({
         id: '6-7',
         name: 'Lensing Engage',
         kind: 5,
         stinger: 'lensing-engage',
-        primary: 0xb38bff,
-        secondary: 0xff7a42,
-        particle: 0xffc175,
-        ringScale: 1.45,
-        veilScale: 1.2,
+        primary: 0xffe2b8,
+        secondary: 0xff9a52,
+        particle: 0xffd29a,
+        ringScale: 0.7,
+        veilScale: 0.35,
+        particleScale: 0.6,
+        intensityScale: 0.35,
     }),
     '7-8': Object.freeze({
         id: '7-8',

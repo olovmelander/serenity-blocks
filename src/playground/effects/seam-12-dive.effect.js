@@ -34,9 +34,10 @@ import {
 import { resolveChapterBlendState } from '../../rendering/odyssey/ChapterEnvironmentManager.js';
 import { isWorldVisibleAtProgress } from '../../rendering/odyssey/world/odyssey-world-act-gate.js';
 import {
+    STEAM_QUENCH_APPROACH_HALF_WIDTH,
     STEAM_QUENCH_EXIT_HALF_WIDTH,
-    STEAM_QUENCH_HALF_WIDTH,
     createSteamQuench,
+    steamQuenchSeamT,
 } from '../../rendering/odyssey/composition/odyssey-steam-quench.js';
 
 export const meta = {
@@ -67,7 +68,7 @@ export function create({ scene, camera, params }) {
     // The GAME's asymmetric window (approach 0.06, exit 0.03), imported not re-typed: this
     // effect is the iteration bench for the §7.2 quench decision, and until 2026-08-13 it
     // previewed a window 0.03 wider on the exit than the one the board ships.
-    const seamLo = Math.max(0, boundary - STEAM_QUENCH_HALF_WIDTH);
+    const seamLo = Math.max(0, boundary - STEAM_QUENCH_APPROACH_HALF_WIDTH);
     const seamHi = Math.min(1, boundary + STEAM_QUENCH_EXIT_HALF_WIDTH);
     const seamT = clamp01(num(params, 'seamT', 0.5));
     let cameraProgress = params.has('p')
@@ -124,7 +125,7 @@ export function create({ scene, camera, params }) {
         if (steam) {
             // Map absolute progress onto the seam window: 0 approaching, 0.5 at the boundary,
             // 1 leaving. Outside the window the volume is transparent and costs one draw.
-            steam.update(time, (p - seamLo) / ((seamHi - seamLo) || 1));
+            steam.update(time, steamQuenchSeamT(p, boundary));
         }
         if (world) {
             // The SAME gate the board applies (shared module, deliberately not re-derived):
