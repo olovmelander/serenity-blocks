@@ -19,6 +19,7 @@
 import * as THREE from 'three/webgpu';
 import { CHAPTER_CONFIGS } from '../../../core/odyssey/data/chapters.js';
 import { resolveChapterBlendState } from '../ChapterEnvironmentManager.js';
+import { staggeredIncoming, staggeredOutgoing } from '../transitions/odyssey-seam-schedule.js';
 import {
     getChapterProfile,
     getCameraProfileForChapter,
@@ -121,6 +122,8 @@ export class OdysseyDirector {
             boundaryId: null,
             boundaryPosition: null,
             seamWidth: null,
+            ch7Weight: 0,
+            ch7Local: 0,
             act: getChapterProfile(1).act,
             // blended atmosphere (colors are live THREE.Color refs — read, don't mutate)
             atmosphere: {
@@ -444,6 +447,22 @@ export class OdysseyDirector {
         this.state.boundaryPosition = blendState.boundaryPosition;
         this.state.seamWidth = blendState.seamWidth;
         this.state.act = getChapterProfile(blendState.activeChapter).act;
+
+        // ── Chapter 7 presence (seamless pass, 2026-10-02) ──
+        // The black hole's on-screen weight on the STAGGERED coverage schedule its opaque body
+        // fades on (fully present by the 6->7 boundary, leaving only after the 7->8 boundary),
+        // plus its in-chapter clock. The post lens/crush read these instead of the active-chapter
+        // flip, which stepped both terms at each boundary.
+        const rawT = THREE.MathUtils.clamp(blendState.rawSeamProgress || 0, 0, 1);
+        let ch7Weight = blendState.activeChapter === 7 ? 1 : 0;
+        if (blendState.inSeam && blendState.targetChapter === 7) ch7Weight = staggeredIncoming(rawT);
+        else if (blendState.inSeam && blendState.sourceChapter === 7) ch7Weight = staggeredOutgoing(rawT);
+        this.state.ch7Weight = ch7Weight;
+        const ch7Start = this.chapterPositions?.[6];
+        const ch7End = this.chapterPositions?.[7];
+        this.state.ch7Local = Number.isFinite(ch7Start) && Number.isFinite(ch7End) && ch7End > ch7Start
+            ? THREE.MathUtils.clamp((ascentProgress - ch7Start) / (ch7End - ch7Start), 0, 1)
+            : 0;
 
         return this.state;
     }

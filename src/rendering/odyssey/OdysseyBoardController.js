@@ -29,11 +29,13 @@ import { isWorldVisibleAtProgress, worldAtmosphericThin, worldDepartureFade } fr
 import {
     STEAM_QUENCH_APPROACH_HALF_WIDTH,
     STEAM_QUENCH_EXIT_HALF_WIDTH,
-    STEAM_QUENCH_HALF_WIDTH,
+    STEAM_QUENCH_FOG_DENSITY,
+    steamQuenchDensity,
+    steamQuenchFogColour,
     createSteamQuench,
     steamQuenchSeamT,
 } from './composition/odyssey-steam-quench.js';
-import { createCloudBank } from './composition/odyssey-cloud-bank.js';
+import { cloudBankHalfWidth, createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { createWhalePass } from './composition/odyssey-whale-pass.js';
 import { sampleColourScript } from './odyssey-colour-script.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
@@ -181,7 +183,7 @@ const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
 // The quench's window half-widths (approach 0.06 / exit 0.03, with the full MEASURED
 // rationale) moved 2026-08-13 to odyssey-steam-quench.js beside the volume they window, so
 // the board and the seam-12-dive playground drive the same quench by construction. The
-// ch5->ch6 cloud bank still uses the symmetric STEAM_QUENCH_HALF_WIDTH for both halves.
+// ch5->ch6 cloud bank has its own window now (odyssey-cloud-bank.js cloudBankHalfWidth, 152 u).
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -1174,11 +1176,8 @@ export class OdysseyBoardController {
                 });
                 if (this.cinematicJourneyActive) {
                     this.director?.onChapterEnter(chapterId, previousChapter);
-                    this.cameraController.triggerVistaBeat({
-                        chapterId,
-                        durationMs: 1450,
-                        intensity: chapterId >= 5 ? 1.08 : 0.9,
-                    });
+                    // (The 1.45 s wall-clock vista beat that fired here is now position-driven:
+                    // _handleChapterSeam passes its strength with the seam phase every frame.)
                 }
                 console.log(`[OdysseyBoard] Chapter transition: ${previousChapter} → ${chapterId}`);
             });
@@ -3576,6 +3575,22 @@ export class OdysseyBoardController {
             const inWindow = cameraProgress > lo && cameraProgress < hi;
             this.steamQuench.mesh.visible = inWindow;
             if (inWindow) this.steamQuench.update(this.time, steamQuenchSeamT(cameraProgress, this._steamBoundary));
+            // The quench's seamT, clamped (0 before the window, 1 after it), drives the two things
+            // that CARRY across this seam (seamless pass, 2026-10-02):
+            //  - the world's underwater motes become rising bubbles warm -> white -> cyan and the
+            //    fish fade by the quench density (WORLD session's setQuenchCarry; optional both ways);
+            //  - scene fog thickens toward the vapour colour, so near rock dissolves into the steam
+            //    (applied after the fog writers below; see _applySteamQuenchFog). Weighted by the
+            //    density SQUARED: at the thin start of the approach a linear weight fogged the
+            //    cavern's lava cracks toward the dim vapour and dipped the frame (luma 21 -> 12 at
+            //    p 0.0349) before the steam itself had arrived.
+            const quenchT = steamQuenchSeamT(cameraProgress, this._steamBoundary);
+            if (quenchT !== this._lastQuenchCarryT) {
+                this._lastQuenchCarryT = quenchT;
+                this.oneWorld?.setQuenchCarry?.(quenchT);
+            }
+            this._steamFogWeight = inWindow ? steamQuenchDensity(quenchT) ** 2 : 0;
+            this._steamFogT = quenchT;
         }
         if (this.cloudBank && Number.isFinite(this._cloudBankBoundary)) {
             // ⚠️ The bank's fast exit is the single largest step left in the 5->6 transition
@@ -3587,8 +3602,10 @@ export class OdysseyBoardController {
             // threshold, so the bank stayed fully bridge-coloured into space and the frame
             // ended at luma 201 instead of ~26. Fixing the exit means re-basing that colour
             // ramp on the peak first; the window is not the only thing that assumes symmetry.
-            const lo = this._cloudBankBoundary - STEAM_QUENCH_HALF_WIDTH;
-            const hi = this._cloudBankBoundary + STEAM_QUENCH_HALF_WIDTH;
+            // The bank's own window (152 u, converted on the live spline — see cloudBankHalfWidth).
+            const bankHalf = cloudBankHalfWidth();
+            const lo = this._cloudBankBoundary - bankHalf;
+            const hi = this._cloudBankBoundary + bankHalf;
             const inWindow = cameraProgress > lo && cameraProgress < hi;
             this.cloudBank.mesh.visible = inWindow;
             if (inWindow) this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo));
@@ -3626,6 +3643,15 @@ export class OdysseyBoardController {
                     this.environmentManager.updateGlobalEnvironment(cameraProgress);
                     this.lastGlobalEnvUpdateTime = nowMs;
                     this.lastGlobalEnvUpdateProgress = cameraProgress;
+                    // The manager's fog is the BASE the per-frame layers below (the One World fog,
+                    // the steam quench fog) are laid over. They used to lerp the live fog in place,
+                    // so on the frames this throttled write skipped they compounded onto their own
+                    // previous output; restoring the base first makes each layer an exact function
+                    // of progress.
+                    if (this.scene.fog) {
+                        this._fogBaseColor = (this._fogBaseColor || new THREE.Color()).copy(this.scene.fog.color);
+                        this._fogBaseDensity = this.scene.fog.density;
+                    }
                 }
             }
 
@@ -3724,6 +3750,10 @@ export class OdysseyBoardController {
             // hand over without a step. The world's own materials opt out of scene fog entirely
             // (they carry applyAerial); this is for everything else in the frame: the path
             // ribbon, the level orbs, the traveller.
+            if (this.scene.fog && this._fogBaseColor) {
+                this.scene.fog.color.copy(this._fogBaseColor);
+                this.scene.fog.density = this._fogBaseDensity;
+            }
             if (this.oneWorld) {
                 const t = this._oneWorldActT;
                 const e = Math.max(0, Math.min(1, Math.min(t / 0.06, (1 - t) / 0.06)));
@@ -3739,6 +3769,7 @@ export class OdysseyBoardController {
                     }
                 }
             }
+            this._applySteamQuenchFog();
         }
 
         // Track the active chapter (used to gate ch7-only Black Hole per-frame work below).
@@ -3987,10 +4018,9 @@ export class OdysseyBoardController {
                         await this._yieldToMain();
                     }
                 }
-                // Let the transition ENVELOPES finish: the FOV pulse (1.5s) and vista beat
-                // (1.45s) run on wall-clock, and the last chapter change (ch2->ch3 at p=0.1427)
-                // fires ~0.5s before the drive ends — so without a tail, the beat-widened
-                // frustum content never draws during the warm and pays its first draw live.
+                // A short settle tail after the drive. (It was sized for the wall-clock FOV pulse
+                // and vista beat, which are gone — every seam beat is position-driven now, so the
+                // drive itself draws them — but it still lets the last crossing's pipelines land.)
                 const tailStart = performance.now();
                 let tailFrames = 0;
                 while (performance.now() - tailStart < 1400 && tailFrames < 120) {
@@ -4218,6 +4248,21 @@ export class OdysseyBoardController {
         return Math.round(900 + (distance * 2600));
     }
 
+    /**
+     * THE STEAM AS SCENE FOG (seamless pass, 2026-10-02). Laid over whatever fog the manager and
+     * the One World wrote this frame: colour toward the vapour's average colour, density up to
+     * STEAM_QUENCH_FOG_DENSITY, both by the quench density — so near rock dissolves into the steam
+     * exactly as the shell thickens, with no extra draw. The shell itself opts out of fog.
+     */
+    _applySteamQuenchFog() {
+        const weight = this._steamFogWeight || 0;
+        if (!(weight > 1e-4) || !this.scene?.fog) return;
+        this._steamFogColor = steamQuenchFogColour(this._steamFogT ?? 0.5, this._steamFogColor || new THREE.Color());
+        this.scene.fog.color.lerp(this._steamFogColor, weight);
+        this.scene.fog.density += (Math.max(this.scene.fog.density, STEAM_QUENCH_FOG_DENSITY)
+            - this.scene.fog.density) * weight;
+    }
+
     _handleChapterSeam(cameraProgress, blendState = null) {
         const resolvedBlendState = blendState || this.environmentManager?.getBlendState(cameraProgress);
         if (!resolvedBlendState) return;
@@ -4289,6 +4334,8 @@ export class OdysseyBoardController {
                 envelope,
                 direction,
                 intensity: seamIntensity,
+                // The vista breath rides the seam envelope (was a wall-clock beat at the flip).
+                vista: resolvedBlendState.targetChapter >= 5 ? 1.08 : 0.9,
             });
             this.pathRenderer?.setSeamPhase?.({
                 boundaryId,

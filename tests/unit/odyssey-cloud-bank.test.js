@@ -3,10 +3,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+    CLOUD_BANK_HALF_WIDTH_ARC,
     CLOUD_BANK_RADIUS,
     CLOUD_BANK_Y_SCALE,
     createCloudBank,
+    cloudBankHalfWidth,
 } from '../../src/rendering/odyssey/composition/odyssey-cloud-bank.js';
+import { getOdysseyPathCurve } from '../../src/rendering/odyssey/path-utils.js';
 import { SEAM_56_AURORA_BRIDGE } from '../../src/rendering/odyssey/chapter-environments/shared/seam-bridges.js';
 
 /**
@@ -76,6 +79,16 @@ describe('cloud bank board wiring', () => {
         ),
         'utf8',
     );
+
+    it('windows the bank with its OWN width in world units, not the quench p-delta', () => {
+        // Seamless pass: the board borrowed STEAM_QUENCH_HALF_WIDTH (0.06 p). The bank's exit was
+        // tuned at 152 u on the live spline, so the window is that distance, converted live.
+        const live = CLOUD_BANK_HALF_WIDTH_ARC / getOdysseyPathCurve().getLength();
+        expect(cloudBankHalfWidth()).toBeCloseTo(live, 9);
+        expect(cloudBankHalfWidth()).toBeCloseTo(0.06, 3);
+        expect(BOARD).toMatch(/const bankHalf = cloudBankHalfWidth\(\);/);
+        expect(BOARD).not.toMatch(/_cloudBankBoundary [-+] STEAM_QUENCH_HALF_WIDTH/);
+    });
 
     it('seats the bank on the rail at the 5->6 boundary and gates it to its window', () => {
         expect(BOARD).toMatch(/const boundary56 = this\.presentationLayout\?\.chapterPositions\?\.\[5\]/);
