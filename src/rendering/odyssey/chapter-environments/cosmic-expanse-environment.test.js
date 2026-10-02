@@ -203,7 +203,6 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
             expect(group.userData.voidSky.visible).toBe(false);
             expect(group.userData.diskLight.intensity).toBe(0);
             // ...and by the window's end the giant is fully risen.
-            const summitEnd = positions[5] - (positions[5] - positions[4]) * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
             updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, summitEnd);
             expect(group.userData.heroPlanet.userData.planet.material.opacity).toBeGreaterThan(0.95);
         });

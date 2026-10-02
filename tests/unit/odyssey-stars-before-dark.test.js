@@ -17,13 +17,13 @@
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
+import * as THREE from 'three';
 import { deriveOdysseyChapterPositions } from '../../src/core/odyssey/data/odyssey-layout.js';
 import {
     SUMMIT_EARTH_REVEAL,
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
 } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.js';
-import * as THREE from 'three';
 import { getChapterPathRange, getOdysseyPathCurve } from '../../src/rendering/odyssey/path-utils.js';
 
 afterEach(() => {
