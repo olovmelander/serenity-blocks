@@ -89,12 +89,49 @@ const GLASS_GLOW_RADIUS = 1.12 * GLASS_ORB_SCALE;
 // instead of a magma ball that fills the shell and makes the transparent glass look solid.
 // Kept large enough (radius ≈0.70) to still cover the path line passing ≈0.45 behind centre.
 const INNER_CORE_DISPLAY_SCALE = 0.66;
+
+/**
+ * Per-chapter NODE light (2026-10 seamless pass). The orbs take the light of their world —
+ * `glow` is the halo / rim / padlock tint and the hue the theme icon is graded into, `accent`
+ * the sparkle. (The orbs used to wear palette.primary, so ch7 nodes were hot pink against an
+ * amber accretion disk, and every sparkle was the same hard-coded orange.) State is never told
+ * with hue — see the state language in level-node-manager.tsl.js.
+ */
+export const ODYSSEY_NODE_CHAPTER_LOOK = Object.freeze({
+    1: Object.freeze({ glow: 0xff9a3c, accent: 0xffd27a }), // ember amber — the lava's light, not its red
+    2: Object.freeze({ glow: 0x5fe0ff, accent: 0xc8f6ff }), // plankton cyan
+    3: Object.freeze({ glow: 0xffd77a, accent: 0xfff2c0 }), // sun-warmed seed-lantern gold
+    4: Object.freeze({ glow: 0xbfe4ff, accent: 0xffffff }), // ice-light
+    5: Object.freeze({ glow: 0xfff0cc, accent: 0xffd9a0 }), // sun-white
+    6: Object.freeze({ glow: 0xb3c0ff, accent: 0xe6e9ff }), // starlight
+    7: Object.freeze({ glow: 0xffb45a, accent: 0xffe0a8 }), // accretion amber
+    8: Object.freeze({ glow: 0x3ff0ff, accent: 0xff66c4 }), // neon cyan, magenta sparks
+});
+
+export function getOdysseyNodeChapterLook(chapter) {
+    return ODYSSEY_NODE_CHAPTER_LOOK[chapter] || ODYSSEY_NODE_CHAPTER_LOOK[1];
+}
+
+/**
+ * Node scale by act CAMERA DISTANCE (ODYSSEY_CAMERA_PROFILES followDistance: 24 in Act I,
+ * 30 in Act II, 42 in Act III, 36 in Act IV). One fixed size made the orbs ~20 px specks in
+ * chapters 3-6, where the camera sits nearly twice as far back as in chapters 1-2.
+ */
 const CHAPTER_NODE_BASE_SCALE = Object.freeze({
     1: 1.0,
+    2: 1.0,
+    3: 1.25,
+    4: 1.25,
+    5: 1.75,
+    6: 1.75,
+    7: 1.5,
+    8: 1.5,
 });
 // Inner-fluid flow/wobble strengths now live in the TSL builder (createFluidInnerTSL).
 const UPDATE_PROXIMITY_THRESHOLD = 0.15; // Only fully update nodes within this path-distance of the camera
-const NODE_PATH_SURFACE_OFFSET_Z = 1.8; // Increased from 0.45 so level nodes float clearly outside the spline path (radius 0.6)
+// Nodes are SEATED ON THE RIBBON — threaded on the rail like beads, at any rail direction.
+// (They floated at a fixed world +Z 1.8 off it, which put them beside the rail wherever it
+// climbs steeply — the "orbs off to one side" of ch2.)
 const CHAPTER_1_NODE_QUENCH_START = 0.58;
 const CHAPTER_1_NODE_QUENCH_END = 0.74;
 const CHAPTER_1_NODE_MIN_SCALE = 0.0;
@@ -125,7 +162,12 @@ const HIDDEN_INSTANCE_MATRIX = new THREE.Matrix4().compose(
 // in FRONT of the orb's opaque core (radius ~1.06×scale) so the core never occludes them,
 // while still leaving depth-test on so a far level's indicator can't bleed over a nearer orb.
 // Applied each frame in _updateIndicatorBillboards().
-const LOCK_PLACEMENT = Object.freeze({ up: 1.5, toward: 1.0 });
+const LOCK_PLACEMENT = Object.freeze({ up: 1.32, toward: 1.0, size: 0.5 });
+// The padlock glyph fades out as its orb nears the lens (a node passing the camera at the 4->5
+// seam put a padlock the size of a quarter of the frame on screen).
+const LOCK_NEAR_FADE = Object.freeze({ start: 5, end: 14 });
+// Whole-orb near-lens fade (world units from the camera to the orb's seat).
+const NODE_NEAR_FADE = Object.freeze({ start: 4, end: 13 });
 const STAR_PLACEMENT = Object.freeze([
     Object.freeze({ right: -0.6, up: 1.5, toward: 0.9 }),
     Object.freeze({ right: 0.0, up: 1.72, toward: 0.95 }),
@@ -201,6 +243,8 @@ export class LevelNodeManager {
         this.focalHierarchy = false;
         this.worldShellsEnabled = false;
         this.currentLevelId = 1;
+        // The furthest UNLOCKED level — the ribbon's lit frontier ends at its node.
+        this.frontierLevelId = 1;
         this._beatPulse = 0;
 
         // QW11 (perf): reused per-frame scratch so update() allocates nothing per node.
@@ -221,6 +265,7 @@ export class LevelNodeManager {
         // its (cheap) re-upload when the board is fully settled (no camera movement at all).
         this._lastIndicatorCamMatrix = new THREE.Matrix4();
         this._fallbackColor = new THREE.Color(0xffffff);
+        this._scratchLockColor = new THREE.Color();
 
         // QW11 (perf): gate the ~7040-particle + 4-instanced-attribute GPU re-upload so
         // it only happens when something the buffers depend on actually changed (camera
@@ -339,42 +384,42 @@ export class LevelNodeManager {
     }
 
     _createSharedLockTextures() {
-        // Lock icon texture
+        // Padlock GLYPH: a white silhouette with the keyhole cut through, tinted per node by
+        // the lock mesh's instanceColor (the chapter's light). It was a red/pink sticker that
+        // clashed with every blue and green world.
         const canvas = document.createElement('canvas');
         canvas.width = 128;
         canvas.height = 128;
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, 128, 128);
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 10;
+        ctx.lineWidth = 11;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.arc(64, 50, 28, Math.PI, 0, false);
+        ctx.arc(64, 52, 25, Math.PI, 0, false);
+        ctx.moveTo(39, 52);
+        ctx.lineTo(39, 64);
+        ctx.moveTo(89, 52);
+        ctx.lineTo(89, 64);
         ctx.stroke();
+        ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.moveTo(36, 50);
-        ctx.lineTo(36, 65);
-        ctx.moveTo(92, 50);
-        ctx.lineTo(92, 65);
-        ctx.stroke();
-        ctx.fillStyle = '#ff4444';
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.roundRect(24, 60, 80, 56, 8);
+        ctx.roundRect(26, 62, 76, 52, 10);
         ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = '#220000';
+        // Cut the keyhole out (transparent), so the glyph reads as one shape at any tint.
+        ctx.globalCompositeOperation = 'destination-out';
         ctx.beginPath();
-        ctx.arc(64, 78, 10, 0, Math.PI * 2);
+        ctx.arc(64, 82, 8, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.moveTo(58, 82);
-        ctx.lineTo(64, 102);
-        ctx.lineTo(70, 82);
+        ctx.moveTo(59.5, 85);
+        ctx.lineTo(64, 101);
+        ctx.lineTo(68.5, 85);
         ctx.closePath();
         ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
         const lockTexture = new THREE.CanvasTexture(canvas);
+        lockTexture.colorSpace = THREE.SRGBColorSpace;
         lockTexture.needsUpdate = true;
 
         // Lock glow texture
@@ -396,7 +441,6 @@ export class LevelNodeManager {
     rebuildPositionCache() {
         this.nodes.forEach((node) => {
             const point = this._getPathPoint(node.pathPosition);
-            point.z += NODE_PATH_SURFACE_OFFSET_Z;
             this.cachedBasePositions.set(node.config.id, point.clone());
         });
     }
@@ -447,8 +491,9 @@ export class LevelNodeManager {
                 // P3b: static per-world shell style + chapter colour for this node.
                 const chapter = level.chapter || 1;
                 const shell = resolveOdysseyNodeShellStyle(chapter, level.id);
-                const shellColor = node.group.userData.chapterColor || new THREE.Color(shell.baseColor);
-                const accentColor = new THREE.Color(shell.accentColor);
+                const look = getOdysseyNodeChapterLook(chapter);
+                const shellColor = node.group.userData.chapterColor || new THREE.Color(look.glow);
+                const accentColor = new THREE.Color(look.accent);
                 glassStyleAttr.setX(idx, shell.index);
                 glassColorAttr.setXYZ(idx, shellColor.r, shellColor.g, shellColor.b);
                 glassAccentAttr.setXYZ(idx, accentColor.r, accentColor.g, accentColor.b);
@@ -469,6 +514,15 @@ export class LevelNodeManager {
         this.glowInstancedMesh.instanceMatrix.needsUpdate = true;
         this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
+        // Padlock glyph tint = the node's chapter light (it was a pink sticker everywhere).
+        this.nodes.forEach((node) => {
+            const idx = this.instanceIdMap.get(node.config.id);
+            const tint = node.group.userData.chapterColor;
+            if (Number.isInteger(idx) && tint) {
+                this.lockInstancedMesh.setColorAt(idx, this._scratchLockColor.copy(tint).multiplyScalar(0.9));
+            }
+        });
+        if (this.lockInstancedMesh.instanceColor) this.lockInstancedMesh.instanceColor.needsUpdate = true;
 
         console.log('[LevelNodes] Created', this.nodes.size, 'level nodes in batches with instancing');
     }
@@ -488,6 +542,13 @@ export class LevelNodeManager {
 
         this.glassInstancedMesh = new THREE.InstancedMesh(this.sharedGlassGeo, glassMat, count);
         this.glassInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        // Same stale-cached-bounding-sphere hazard as the lock/star/core meshes below: three
+        // computes an InstancedMesh's bounding sphere ONCE, lazily, from whatever matrices exist
+        // at its first render. Rendered before createNodes() placed the instances (any frame
+        // during the async node build), the sphere is cached around the origin and every shell
+        // is culled for the rest of the session. The orbs hug the camera path; culling bought
+        // nothing. (Raycasting computes its own sphere and is unaffected.)
+        this.glassInstancedMesh.frustumCulled = false;
 
         // Custom attributes
         const stateArray = new Float32Array(count * 4);
@@ -527,11 +588,13 @@ export class LevelNodeManager {
 
         this.glowInstancedMesh = new THREE.InstancedMesh(this.sharedGlowGeo, glowMat, count);
         this.glowInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.glowInstancedMesh.frustumCulled = false; // see the glass shell above
 
         const colorArray = new Float32Array(count * 3);
-        const glowStateArray = new Float32Array(count * 3);
+        // aState = (locked, hovered + 2*selected, current, completed).
+        const glowStateArray = new Float32Array(count * 4);
         this.glowInstancedMesh.geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colorArray, 3));
-        this.glowInstancedMesh.geometry.setAttribute('aState', new THREE.InstancedBufferAttribute(glowStateArray, 3));
+        this.glowInstancedMesh.geometry.setAttribute('aState', new THREE.InstancedBufferAttribute(glowStateArray, 4));
 
         this.scene.add(this.glowInstancedMesh);
 
@@ -569,6 +632,9 @@ export class LevelNodeManager {
         // off-window locks, so this only stops the bogus whole-mesh cull. (Matches particleSystem +
         // innerCoreMesh, which are repositioned the same way and already set frustumCulled=false.)
         this.lockInstancedMesh.frustumCulled = false;
+        // instanceColor must exist BEFORE warm-up (it changes the pipeline): seed it white
+        // here, tint per chapter in createNodes.
+        for (let i = 0; i < count; i += 1) this.lockInstancedMesh.setColorAt(i, this._fallbackColor);
         this.scene.add(this.lockInstancedMesh);
 
         // 4. Star Instanced Mesh (Plane Mesh) - 3 stars per level
@@ -610,8 +676,10 @@ export class LevelNodeManager {
             for (let j = 0; j < particleCountPerNode; j++) {
                 const idx = i * particleCountPerNode + j;
 
-                // Random point inside sphere r=0.8
-                const r = Math.random() * 0.8;
+                // Glints live in the GAP between the core (r 0.88) and the glass (r 1.4): a
+                // sprinkle inside the globe. Spread through the core volume they bunched at the
+                // core's silhouette (the inner ones are depth-hidden) into one bright ring.
+                const r = 0.95 + (Math.random() * 0.4);
                 const theta = Math.random() * Math.PI * 2;
                 const phi = Math.acos(2 * Math.random() - 1);
 
@@ -638,7 +706,10 @@ export class LevelNodeManager {
             nodeLockedArray,
         });
 
-        const particles = createNodeParticlesTSL(this.uTime);
+        const particles = createNodeParticlesTSL(
+            this.uTime,
+            [1, 2, 3, 4, 5, 6, 7, 8].map((chapter) => getOdysseyNodeChapterLook(chapter).accent),
+        );
         const particleMat = particles.material;
 
         this.particleSystem = new THREE.Mesh(particleGeo, particleMat);
@@ -671,7 +742,6 @@ export class LevelNodeManager {
         const pathPosition = levelConfig.pathPosition || (levelConfig.id - 1) / 55;
         const point = this._getPathPoint(pathPosition);
         group.position.copy(point);
-        group.position.z += NODE_PATH_SURFACE_OFFSET_Z;
 
         // Cache the base position for per-frame floating animation (avoids getPointAt per frame)
         this.cachedBasePositions.set(levelConfig.id, group.position.clone());
@@ -994,10 +1064,10 @@ export class LevelNodeManager {
     }
 
     getChapterColor(chapter) {
-        // ═══════════════════════════════════════════════════════════════════
-        // VIBRANT CHAPTER COLORS - Saturated and eye-catching
-        // ═══════════════════════════════════════════════════════════════════
-        return new THREE.Color(getChapterProfile(chapter).palette?.primary ?? 0xffffff);
+        // The node's chapter LIGHT (halo / rim / glyph / icon grade) — see
+        // ODYSSEY_NODE_CHAPTER_LOOK. Falls back to the profile's primary for unknown ids.
+        const look = ODYSSEY_NODE_CHAPTER_LOOK[chapter];
+        return new THREE.Color(look ? look.glow : (getChapterProfile(chapter).palette?.primary ?? 0xffffff));
     }
 
     /**
@@ -1031,8 +1101,38 @@ export class LevelNodeManager {
             }
         }
         this.currentLevelId = current;
+        this.frontierLevelId = furthest;
         // QW11: progress changes the focal/lock/star/glow attribute set → re-upload once.
         this._markUploadDirty();
+    }
+
+    /**
+     * Path position (arc parameter, 0..1) of a level's node, or null if unknown.
+     * @param {number} levelId
+     * @returns {number|null}
+     */
+    getNodePathPosition(levelId) {
+        const node = this.nodes.get(levelId);
+        return Number.isFinite(node?.pathPosition) ? node.pathPosition : null;
+    }
+
+    /**
+     * Where the ribbon's lit frontier belongs: the REAL path position of the furthest
+     * unlocked node. The board used to hand the ribbon `furthestLevel / (levels + 1)`, an
+     * index fraction compared against ARC LENGTH in the shader — level 36 sits at 0.754 but
+     * that formula read 0.60, so the lit frontier missed its node by up to ~380 u.
+     * @returns {number|null}
+     */
+    getFrontierPathPosition() {
+        return this.getNodePathPosition(this.frontierLevelId);
+    }
+
+    /**
+     * Path position of the "current" node (the next one to play) — the ribbon's spark.
+     * @returns {number|null}
+     */
+    getCurrentPathPosition() {
+        return this.getNodePathPosition(this.currentLevelId);
     }
 
     /**
@@ -1154,7 +1254,6 @@ export class LevelNodeManager {
 
         const point = this._getPathPoint(node.pathPosition);
         node.group.position.copy(point);
-        node.group.position.z += NODE_PATH_SURFACE_OFFSET_Z;
         // Refresh cached base position
         this.cachedBasePositions.set(node.config.id, node.group.position.clone());
     }
@@ -1356,7 +1455,17 @@ export class LevelNodeManager {
             const baseScale = node.group.userData.baseScale ?? 1.0;
             const hoverScale = this.hoveredNode === levelId ? 1.16 : 1.0;
             const quenchScale = THREE.MathUtils.lerp(1.0, CHAPTER_1_NODE_MIN_SCALE, chapterOneQuench);
-            node.group.scale.setScalar(baseScale * hoverScale * quenchScale);
+            // Nothing comes to the lens unannounced: seated on the rail, an orb can pass within
+            // a few units of the camera where the rail does (the 7->8 seam), so it shrinks away
+            // inside NODE_NEAR_FADE instead of filling the frame.
+            const nearScale = this.camera
+                ? THREE.MathUtils.smoothstep(
+                    this.camera.position.distanceTo(basePos || node.group.position),
+                    NODE_NEAR_FADE.start,
+                    NODE_NEAR_FADE.end,
+                )
+                : 1;
+            node.group.scale.setScalar(baseScale * hoverScale * quenchScale * nearScale);
             if (node.innerMesh) {
                 node.innerMesh.visible = chapterOneQuench < 0.92;
             }
@@ -1373,20 +1482,31 @@ export class LevelNodeManager {
             // invisible nodes are zeroed in the !isVisible branch above.
             const isLocked = node.group.userData.locked;
             const isCompleted = node.group.userData.completed;
+            const isCurrent = (this.focalHierarchy && levelId === this.currentLevelId && !isLocked) ? 1.0 : 0.0;
+            // Particles pack locked + 2*completed + 4*chapterIndex into one float (8-buffer ceiling).
+            const chapterIndex = Math.max(0, Math.min(7, (node.config.chapter || 1) - 1));
+            const particlePacked = (isLocked ? 1 : 0) + (isCompleted ? 2 : 0) + (chapterIndex * 4);
 
             // Sync particle attributes
             for (let p = 0; p < particleCountPerNode; p++) {
                 const pIdx = idx * particleCountPerNode + p;
                 particleNodePosAttr.setXYZ(pIdx, node.group.position.x, node.group.position.y, node.group.position.z);
                 particleNodeScaleAttr.setX(pIdx, node.group.scale.x);
-                particleNodeLockedAttr.setX(pIdx, isLocked ? 1.0 : 0.0);
+                particleNodeLockedAttr.setX(pIdx, particlePacked);
             }
 
             // Sync instance attributes
             const isHovered = (this.hoveredNode === levelId) ? 1.0 : 0.0;
             const isSelected = (this.selectedNode === levelId) ? 1.0 : 0.0;
 
-            glassStateAttr.setXYZW(idx, isLocked ? 1.0 : 0.0, isCompleted ? 1.0 : 0.0, isHovered, isSelected);
+            // Glass aState = (locked, completed, hovered + 2*current, selected).
+            glassStateAttr.setXYZW(
+                idx,
+                isLocked ? 1.0 : 0.0,
+                isCompleted ? 1.0 : 0.0,
+                isHovered + (isCurrent * 2),
+                isSelected,
+            );
 
             // LEVER 1: inner-core instance matrix + packed aCore vec4. The legacy per-node
             // innerMesh was a child scaled by INNER_CORE_DISPLAY_SCALE and hidden when
@@ -1406,7 +1526,7 @@ export class LevelNodeManager {
                 const layerEnc = layer >= 0 ? (layer + 0.5) : -1.0;
                 const coreSeed = ((levelId || 1) * 0.61803398875) % 1000;
                 const stateBits = (isLocked ? 1 : 0) + (isCompleted ? 2 : 0)
-                    + (isHovered > 0.5 ? 4 : 0) + (isSelected > 0.5 ? 8 : 0);
+                    + (isHovered > 0.5 ? 4 : 0) + (isSelected > 0.5 ? 8 : 0) + (isCurrent > 0.5 ? 16 : 0);
                 const packedFb = this._packCoreFallback(node.group.userData.chapterColor);
                 aCoreAttr.setXYZW(idx, layerEnc, coreSeed, stateBits, packedFb);
             }
@@ -1414,8 +1534,13 @@ export class LevelNodeManager {
             // QW11: reuse a shared fallback Color instead of allocating one per node.
             const color = node.group.userData.chapterColor || this._fallbackColor;
             glowColorAttr.setXYZ(idx, color.r, color.g, color.b);
-            const isCurrent = (this.focalHierarchy && levelId === this.currentLevelId && !isLocked) ? 1.0 : 0.0;
-            glowStateAttr.setXYZ(idx, isLocked ? 1.0 : 0.0, isHovered, isCurrent);
+            glowStateAttr.setXYZW(
+                idx,
+                isLocked ? 1.0 : 0.0,
+                isHovered + (isSelected * 2),
+                isCurrent,
+                isCompleted ? 1.0 : 0.0,
+            );
 
             if (isNear) {
                 if (node.coreMaterial?.uniforms?.uTime) {
@@ -1504,7 +1629,9 @@ export class LevelNodeManager {
                 matrix.setPosition(this._scratchIndicatorPos.copy(pos)
                     .addScaledVector(camUp, LOCK_PLACEMENT.up * scale)
                     .addScaledVector(toCam, LOCK_PLACEMENT.toward * scale));
-                const s = scale * 0.9;
+                const camDistance = camPos.distanceTo(pos);
+                const s = scale * LOCK_PLACEMENT.size
+                    * THREE.MathUtils.smoothstep(camDistance, LOCK_NEAR_FADE.start, LOCK_NEAR_FADE.end);
                 matrix.scale(scaleVec.set(s, s, s));
                 this.lockInstancedMesh.setMatrixAt(idx, matrix);
             } else {
