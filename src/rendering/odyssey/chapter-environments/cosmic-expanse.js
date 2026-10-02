@@ -1679,8 +1679,8 @@ function createStreakMotes(uniforms, count) {
 }
 
 // ── THE COMET (Wave 5, §3.2 "the comet moment"; the level is literally named
-// Comet Chase) — a sculpted opaque head + dithered opaque tail sweeping a long chord
-// through the reef stretch. Unlevered like the garland: two draws, opaque queue.
+// Comet Chase) — a sculpted opaque head + a luminous additive tail sweeping a long chord
+// through the reef stretch. Unlevered like the garland: two draws.
 // Staging follows the nebula-field pattern: OUTSIDE the entryContinuity buckets
 // (setOpacityScale would flip these opaque materials transparent and dead-write
 // opacity), on a shared uReveal ticked by update() = staging × reef-window × chord
@@ -1728,15 +1728,26 @@ function createComet() {
     // assumed: on ConeGeometry `uv().y` is 0 at the BASE (local −Y, the end hugging
     // the head) and 1 at the TIP (local +Y, the trailing end) — probed directly, and
     // the first draft had both gradients inverted, painting a tail that dissolved at
-    // the nucleus and went solid-bright at its far end. Bright + dense where it
-    // leaves the head, cooling and dithering away as it trails.
+    // the nucleus and went solid-bright at its far end.
+    //
+    // LIGHT, NOT A DITHERED SOLID (seamless pass). The tail was an opaque cone whose
+    // fade-out along its length ran through the screen-space hash dither, so in every
+    // capture it read as a white salt-and-pepper blade — noise, not a comet. It is now
+    // what a comet tail is: an additive glow, icy-white where it leaves the coma and
+    // cooling to ion blue as it thins, soft at its silhouette (the view-facing term
+    // fades the cone's edges, so it reads as a luminous streamer, not a hard cone).
     const tailMat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-    tailMat.transparent = false;
-    tailMat.depthWrite = true;
-    tailMat.alphaTest = 0.5;
+    tailMat.transparent = true;
+    tailMat.depthWrite = false;
+    tailMat.blending = THREE.AdditiveBlending;
+    // Additive + no depth write: the DoubleSide back/front split buys nothing.
+    tailMat.forceSinglePass = true;
     const along = uv().y;
-    tailMat.colorNode = mix(vec3(0.85, 0.94, 0.97), vec3(0.35, 0.52, 0.66), along);
-    tailMat.opacityNode = cometDither(uReveal.mul(oneMinus(smoothstep(0.25, 0.95, along)))).mul(materialOpacity);
+    const facing = clamp(dot(N, V).abs(), 0, 1);
+    tailMat.colorNode = mix(vec3(0.80, 0.92, 1.0), vec3(0.30, 0.50, 0.95), smoothstep(0.0, 0.7, along));
+    tailMat.opacityNode = uReveal.mul(pow(oneMinus(along), 1.4)).mul(pow(facing, 1.2)).mul(0.5)
+        .mul(materialOpacity);
+    tailMat.userData.emitsBloom = true;
     const tail = new THREE.Mesh(new THREE.ConeGeometry(5, 95, 12, 1, true), tailMat);
     tail.name = 'comet-tail';
     // Cone axis is +Y with the tip at +Y/2; orient so the tip trails the head along

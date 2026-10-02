@@ -271,14 +271,14 @@ describe('additive DoubleSide materials do not double-bill (Act II->Space §8.6)
         expect(offenders).toEqual([]);
     });
 
-    it('leaves the OPAQUE DoubleSide comet tail alone', () => {
-        // It is alphaTest + depthWrite, never entering the blend queue, so r181 does not
-        // split it and forceSinglePass would be cargo cult. Pinned so a future sweep that
-        // "fixes" every DoubleSide material has to justify touching this one.
+    it('the comet tail is additive light with a single pass', () => {
+        // Seamless pass (2026-10): the tail used to be an opaque alphaTest cone whose fade ran
+        // through a screen-space dither — a white salt-and-pepper blade in every capture. It is
+        // an additive glow now, so it joins the DoubleSide + Additive rule above.
         const tail = source.slice(source.indexOf('const tailMat = new THREE.'));
         expect(tail.slice(0, 400)).toContain('THREE.DoubleSide');
-        expect(tail.slice(0, 400)).toContain('transparent = false');
-        expect(tail.slice(0, 400)).not.toContain('forceSinglePass');
+        expect(tail.slice(0, 400)).toContain('AdditiveBlending');
+        expect(tail.slice(0, 400)).toContain('forceSinglePass = true');
     });
 });
 
