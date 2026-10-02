@@ -14,8 +14,14 @@
  * `seam-5-6-v2` silently becomes the graded run; and the default boundary is pre-ascent.
  *
  *   node scripts/odyssey-seam-luma.mjs --dir <artifact dir>  # ALWAYS name the dir
- *   node scripts/odyssey-seam-luma.mjs --dir <artifact dir>
- *   node scripts/odyssey-seam-luma.mjs --dir <arm> --boundary 0.7401   # ALWAYS pass both
+ *   node scripts/odyssey-seam-luma.mjs --dir <arm> --boundary 0.7401   # explicit boundary
+ *   node scripts/odyssey-seam-luma.mjs --seam=6-7     # wave-v/seam-6-7-high-webgpu, its own boundary
+ *
+ * SEAMLESS PASS (2026-10-02): the boundary now defaults to the one the CAPTURE recorded — every
+ * station sidecar carries `boundaryPosition` (the live layout's boundary for that seam) — so a
+ * capture of any of the seven seams scores against its own boundary. `--boundary` still wins
+ * (archived captures, other layouts); 0.648 remains only as the last-resort fallback for
+ * sidecars that predate the field. `--key=value` and `--key value` both parse.
  *
  * Exits non-zero when a threshold is violated, so a wave gate can be a command.
  *
@@ -35,9 +41,11 @@ import path from 'path';
 const args = Object.fromEntries(
     process.argv.slice(2).flatMap((tok, i, all) => {
         if (!tok.startsWith('--')) return [];
-        const key = tok.replace(/^--/, '');
+        const body = tok.replace(/^--/, '');
+        const eq = body.indexOf('=');
+        if (eq > 0) return [[body.slice(0, eq), body.slice(eq + 1)]];
         const next = all[i + 1];
-        return [[key, next && !next.startsWith('--') ? next : true]];
+        return [[body, next && !next.startsWith('--') ? next : true]];
     }),
 );
 
@@ -59,7 +67,7 @@ const STEP_REFERENCE_DP = 0.01;
 // rising steps anywhere", reporting 7 rises where the real count against the boundary is 2.
 // ALWAYS pass --boundary explicitly. Deriving it here was considered and rejected: this
 // script must stay able to score archived captures taken under a different layout.
-const BOUNDARY = Number(args.boundary ?? 0.648);
+const BOUNDARY_FALLBACK = 0.648;
 // How much of the total change is allowed to land in the last third of the window.
 const MAX_TAIL_SHARE = Number(args['max-tail-share'] ?? 0.5);
 // The transition must actually COMPLETE inside the window. Without this a change that simply
@@ -71,9 +79,12 @@ const MAX_END_LUMA = Number(args['max-end-luma'] ?? 60);
 
 async function resolveDir() {
     if (args.dir) return path.resolve(ROOT, String(args.dir));
+    const seam = typeof args.seam === 'string' && /^\d-\d$/.test(args.seam) ? args.seam : '5-6';
     const entries = await readdir(ARTIFACT_ROOT, { withFileTypes: true }).catch(() => []);
-    const seams = entries.filter((e) => e.isDirectory() && e.name.startsWith('seam-5-6'));
-    if (!seams.length) throw new Error(`No seam-5-6 capture under ${ARTIFACT_ROOT}. Run the seam capture first.`);
+    const exact = entries.find((e) => e.isDirectory() && e.name === `seam-${seam}-high-webgpu`);
+    if (exact) return path.join(ARTIFACT_ROOT, exact.name);
+    const seams = entries.filter((e) => e.isDirectory() && e.name.startsWith(`seam-${seam}`));
+    if (!seams.length) throw new Error(`No seam-${seam} capture under ${ARTIFACT_ROOT}. Run the seam capture first.`);
     return path.join(ARTIFACT_ROOT, seams[seams.length - 1].name);
 }
 
@@ -92,13 +103,33 @@ async function main() {
 
     const parsed = await Promise.all(files.map(async (f) => {
         const data = JSON.parse(await readFile(path.join(dir, f), 'utf8'));
-        return { p: progressFromName(f), luma: data.meanLuma };
+        return {
+            p: progressFromName(f), luma: data.meanLuma, boundary: data.boundaryPosition, seam: data.seam,
+        };
     }));
+    // The ACT II -> SPACE gates (no rise after the boundary, the window must reach space, tail
+    // share) only mean something at 5->6 — every other seam ends somewhere bright on purpose. They
+    // apply to a 5-6 capture (or with --all-gates); every seam is held to maxStep.
+    const seamId = parsed.map((s) => s.seam).find((v) => typeof v === 'string')
+        || (path.basename(dir).match(/seam-(\d-\d)/) || [])[1]
+        || null;
+    const spaceGates = seamId === '5-6' || seamId === null || args['all-gates'] === true;
+    const recorded = parsed.map((s) => s.boundary).find((b) => Number.isFinite(b));
+    let BOUNDARY = BOUNDARY_FALLBACK;
+    let boundarySource = 'fallback (pre-ascent 0.648 — pass --boundary)';
+    if (args.boundary !== undefined && args.boundary !== true) {
+        BOUNDARY = Number(args.boundary);
+        boundarySource = '--boundary';
+    } else if (Number.isFinite(recorded)) {
+        BOUNDARY = recorded;
+        boundarySource = 'capture sidecar boundaryPosition';
+    }
     const samples = parsed
         .filter((s) => s.p !== null && typeof s.luma === 'number')
         .sort((a, b) => a.p - b.p);
 
     console.log(`[seam-luma] ${path.relative(ROOT, dir)}  (${samples.length} samples)`);
+    console.log(`[seam-luma] boundary ${BOUNDARY} (${boundarySource})`);
     if (samples.length < 3) {
         console.error('[seam-luma] FAIL: need at least 3 samples with meanLuma.');
         console.error('[seam-luma] Captures taken before frameLuma() was added carry no meanLuma — re-capture.');
@@ -152,13 +183,17 @@ async function main() {
     if (Math.abs(maxStep.rate) > MAX_STEP) {
         failures.push(`maxStep ${maxStep.rate.toFixed(1)} luma/0.01p exceeds ${MAX_STEP}`);
     }
-    if (tailShare > MAX_TAIL_SHARE) {
-        failures.push(`tailShare ${(tailShare * 100).toFixed(1)}% exceeds ${(MAX_TAIL_SHARE * 100).toFixed(0)}%`);
-    }
-    if (rises.length) failures.push(`${rises.length} rising step(s) after the boundary`);
     const endLuma = samples[samples.length - 1].luma;
-    if (endLuma > MAX_END_LUMA) {
-        failures.push(`window ends at luma ${endLuma.toFixed(1)}, above ${MAX_END_LUMA} — the transition never completes`);
+    if (spaceGates) {
+        if (tailShare > MAX_TAIL_SHARE) {
+            failures.push(`tailShare ${(tailShare * 100).toFixed(1)}% exceeds ${(MAX_TAIL_SHARE * 100).toFixed(0)}%`);
+        }
+        if (rises.length) failures.push(`${rises.length} rising step(s) after the boundary`);
+        if (endLuma > MAX_END_LUMA) {
+            failures.push(`window ends at luma ${endLuma.toFixed(1)}, above ${MAX_END_LUMA} — the transition never completes`);
+        }
+    } else {
+        console.log(`  (seam ${seamId}: maxStep is the gate; tailShare / postBoundary / endLuma are 5->6 gates)`);
     }
 
     console.log('');

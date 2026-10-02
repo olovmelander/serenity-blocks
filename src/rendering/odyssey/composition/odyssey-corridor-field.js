@@ -35,6 +35,7 @@ import {
 } from '../path-utils.js';
 import { getChapterProfile } from '../chapter-environments/shared/chapter-profile.js';
 import { computeStageBasis, stageBasisToQuaternion } from './odyssey-stage-frame.js';
+import { seamHalfWidth } from '../transitions/odyssey-seam-schedule.js';
 import {
     createCorridorSheetMaterial,
     createCorridorParticulateGeometry,
@@ -51,33 +52,31 @@ const SHEET_DEPTHS = [-90, -180, -320, -460];
 const PARTICULATE_SPREAD = 95;
 const PARTICULATE_DEPTH = 120;
 
-// Seam overlap: how wide (in path-progress) each chapter cross-fades in/out. ~12% of a
-// typical chapter span; complements A6 seam blends.
-const SEAM_OVERLAP = 0.045;
-
-// ── B7 CARRIED-ELEMENT HANDOFFS (per-boundary feel-class continuity) ────────────────
-// Each seam has a "carried element" that should LIVE IN THE FIELD across the boundary, not
-// just in the two chapter envs (§4). We extend the symmetric SEAM_OVERLAP fade asymmetrically
-// per boundary so the OUTGOING chapter's corridor content lingers (`outExtra`, demoting
-// slowly) and/or the INCOMING content appears early (`inExtra`), giving overlap continuity.
+// ── SEAM WINDOWS (seamless pass, 2026-10-02) ──────────────────────────────────────
+// Each chapter's corridor content fades across ITS SEAM'S LIVE WINDOW, expressed in that seam's
+// half-width (the same co-presence window the chapter environments crossfade over), so a
+// re-layout carries it. These used to be fixed p-deltas — a 0.045 overlap plus a per-boundary
+// carry of up to 0.045 — authored when the journey was 1767 u long and its chapters spaced
+// differently, and they had drifted badly off the seams they served (measured on the live
+// layout): chapter 8's neon corridor was already at 0.69 by p 0.9429, BEFORE the 7->8 window
+// opens; chapter 6's cosmic sheets began fading in at p 0.664, in the summit's full daylight; and
+// chapter 1's ember motes ran to p 0.13, a third of the way up the ocean.
 //
-// Keyed by the OUTGOING chapter id (boundary N->N+1). Extra is added to SEAM_OVERLAP on the
-// relevant side. ch2's RECIPE is untouched (B1); these only widen the cross-fade windows.
-//   1->2 obsidian crust -> wet basalt seabed   — moderate both sides
-//   2->3 god-ray light shafts bridge both       — moderate both sides
-//   3->4 hero summit + cloud forming (the model invisible seam) — long carry both sides
-//   4->5 cloud-sea -> cloud-deck (same clouds)  — long carry both sides
-//   5->6 haze THINS fast, stars ignite EARLY    — short out (evaporate), long in (early stars)
-//   6->7 accretion/lensing ever-present         — long carry both sides
-//   7->8 infall motes reassemble into neon cubes — short out, long in (neon resolves early)
-const SEAM_CARRY = Object.freeze({
-    1: { outExtra: 0.020, inExtra: 0.020 },
-    2: { outExtra: 0.022, inExtra: 0.022 },
-    3: { outExtra: 0.038, inExtra: 0.038 },
-    4: { outExtra: 0.040, inExtra: 0.040 },
-    5: { outExtra: 0.006, inExtra: 0.045 },
-    6: { outExtra: 0.040, inExtra: 0.036 },
-    7: { outExtra: 0.010, inExtra: 0.038 },
+// [lead, trail] in seam half-widths around the boundary: the fade runs from boundary - lead*w
+// to boundary + trail*w. Keyed by the OUTGOING chapter of the boundary (N -> N+1).
+//   1->2  embers end inside the steam quench (the world's own motes become the bubbles)
+//   5->6  the cosmos arrives only after the boundary, as the void sky takes over
+//   6->7  accretion/lensing carried symmetrically across the co-presence window
+//   7->8  the neon resolves across the window, not ahead of it
+// (2->3, 3->4, 4->5 are One World seams: chapters 2-5 build no corridor content there.)
+const SEAM_WINDOWS = Object.freeze({
+    1: { out: [1.0, 1.0], in: [1.0, 1.0] },
+    2: { out: [1.0, 1.0], in: [1.0, 1.0] },
+    3: { out: [1.0, 1.0], in: [1.0, 1.0] },
+    4: { out: [1.0, 1.0], in: [1.0, 1.0] },
+    5: { out: [1.0, 1.0], in: [0.0, 1.0] },
+    6: { out: [1.0, 1.0], in: [1.0, 1.0] },
+    7: { out: [1.0, 1.0], in: [1.0, 1.0] },
 });
 
 /**
@@ -621,40 +620,38 @@ export class OdysseyCorridorField {
     }
 
     /**
-     * Compute a chapter's visibility weight (0..1) from the active progress vs its
-     * bounds, with a smoothstep fade-in/out across the seam overlap so only active +
-     * adjacent chapters' depth shows (cross-fades at seams).
-     *
-     * B7 — the cross-fade window is widened ASYMMETRICALLY per boundary by SEAM_CARRY so
-     * the seam's carried element lives in the corridor field ACROSS the boundary:
-     *   • fade-IN at `start`  is governed by the incoming boundary (chapterId-1)->chapterId
-     *   • fade-OUT at `end`   is governed by the outgoing boundary chapterId->(chapterId+1)
+     * A chapter's visibility weight (0..1): a smoothstep fade-in across its incoming seam's
+     * window and a fade-out across its outgoing seam's window (see SEAM_WINDOWS — live seam
+     * widths, never fixed p-deltas), so only the chapters co-present at a seam show together.
      * @private
      * @param {{start:number, end:number}} bounds
      * @param {number} progress
-     * @param {number} chapterId 1-based chapter id (for the per-boundary carry lookup)
+     * @param {number} chapterId 1-based chapter id
      */
     _visibilityWeight(bounds, progress, chapterId) {
         const { start, end } = bounds;
-        // Incoming side: the carry authored for the boundary (chapterId-1)->chapterId tells
-        // how early THIS chapter's content should appear (its inExtra).
-        const inCarry = SEAM_CARRY[chapterId - 1]?.inExtra ?? 0;
-        // Outgoing side: the carry for chapterId->(chapterId+1) tells how long THIS chapter's
-        // content should linger past the boundary (its outExtra).
-        const outCarry = SEAM_CARRY[chapterId]?.outExtra ?? 0;
-        const inOverlap = SEAM_OVERLAP + inCarry;
-        const outOverlap = SEAM_OVERLAP + outCarry;
-        // The FINAL chapter has no outgoing seam: its field used to fade out symmetrically
-        // around p=1 (and fade IN past p=1), i.e. across the whole 3.9 %-long finale, never
-        // rising above ~0.6 in ch8. It now holds full strength from mid-chapter to the end.
+        const inBoundary = chapterId - 1; // boundary (chapterId-1) -> chapterId
+        const outBoundary = chapterId; // boundary chapterId -> (chapterId+1)
+        // The FINAL chapter has no outgoing seam: it holds full strength to the journey end
+        // (it used to fade out symmetrically around p=1 and never rose above ~0.6 in ch8).
         const isLastChapter = end >= 1 - 1e-6;
-        const fadeInEnd = isLastChapter
-            ? Math.min(start + inOverlap, start + (end - start) * 0.5)
-            : start + inOverlap;
-        const fadeIn = THREE.MathUtils.smoothstep(progress, start - inOverlap, fadeInEnd);
-        const fadeOut = isLastChapter
-            ? 1
-            : 1 - THREE.MathUtils.smoothstep(progress, end - outOverlap, end + outOverlap);
+
+        let fadeIn = 1;
+        if (inBoundary >= 1) {
+            const w = seamHalfWidth(inBoundary);
+            const [lead, trail] = SEAM_WINDOWS[inBoundary]?.in ?? [1, 1];
+            const a = start - lead * w;
+            const b = Math.max(a + 1e-5, start + trail * w);
+            fadeIn = THREE.MathUtils.smoothstep(progress, a, b);
+        }
+        let fadeOut = 1;
+        if (!isLastChapter) {
+            const w = seamHalfWidth(outBoundary);
+            const [lead, trail] = SEAM_WINDOWS[outBoundary]?.out ?? [1, 1];
+            const a = end - lead * w;
+            const b = Math.max(a + 1e-5, end + trail * w);
+            fadeOut = 1 - THREE.MathUtils.smoothstep(progress, a, b);
+        }
         return THREE.MathUtils.clamp(Math.min(fadeIn, fadeOut), 0, 1);
     }
 
