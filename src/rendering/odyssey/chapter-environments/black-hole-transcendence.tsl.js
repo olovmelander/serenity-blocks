@@ -277,10 +277,18 @@ export function createGargantuaPhotonRingTSL(uTime = uniform(0), options = {}) {
     const profile = smoothstep(0.0, 0.18, across).mul(oneMinus(smoothstep(0.30, 1.0, across)));
     const beam = pow(clamp(side.mul(0.45).add(1.0), 0.45, 1.5), 2.0);
     const flicker = sin(angle.mul(9.0).add(uTime.mul(0.9))).mul(0.06).add(0.94);
-    const color = mix(vec3(1.0, 0.74, 0.46), vec3(1.0, 0.96, 0.9), smoothstep(0.6, 1.4, beam));
+    let color = mix(vec3(1.0, 0.74, 0.46), vec3(1.0, 0.96, 0.9), smoothstep(0.6, 1.4, beam));
+    let gain = float(1.6);
+    // THE 7->8 SWELL (seamless pass; only chapter 7's hero passes `uSwell`): as the shadow
+    // closes the razor brightens and warms toward the Retrosun's crown, so it reads as the new
+    // sun's blazing limb. Builders without it compile the unchanged graph.
+    if (options.uSwell) {
+        color = mix(color, vec3(1.0, 0.72, 0.30), options.uSwell.mul(0.55));
+        gain = gain.mul(options.uSwell.mul(1.1).add(1.0));
+    }
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = color.mul(profile.mul(beam).mul(flicker).mul(1.6));
+    material.colorNode = color.mul(profile.mul(beam).mul(flicker).mul(gain));
     material.opacityNode = profile.mul(uOpacity);
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;

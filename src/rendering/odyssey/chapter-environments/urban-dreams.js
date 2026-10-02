@@ -50,6 +50,7 @@ import {
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import { getChapterProfile } from './shared/chapter-profile.js';
 import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
+import { resolveSunCarry } from './urban-dreams-sun-carry.js';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
@@ -124,6 +125,52 @@ export const CH8_QUALITY_TIERS = Object.freeze({
 // ═══════════════════════════════════════════════════════════════════════════════
 // Environment Creation
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The urban energy breath (audio-driven when the director runs, autonomous otherwise) — one
+ * function, so chapter 7's copy of the Retrosun breathes exactly like the real one.
+ * @param {number} time chapter clock (s)
+ * @param {object|null} directorState
+ * @returns {number}
+ */
+export function resolveUrbanEnergy(time, directorState = null) {
+    if (!directorState) return 0.45 + Math.sin(time * 0.8) * 0.28;
+    const audioEnergy = THREE.MathUtils.clamp(
+        (directorState.energy || 0) * 0.58
+            + (directorState.mid || 0) * 0.22
+            + (directorState.treble || 0) * 0.2,
+        0,
+        1,
+    );
+    return 0.34 + audioEnergy * 0.72 + (directorState.beatPulse || 0) * 0.12;
+}
+
+/**
+ * The Retrosun's heat for a global progress (its visibility floor, then the finale ignition).
+ * Shared with chapter 7's copy of the sun.
+ */
+export function resolveRetrosunReveal(progress) {
+    const positions = getActiveOdysseyChapterPositions();
+    const local = Number.isFinite(progress)
+        ? urbanLocalProgress(progress, positions[7], positions[8] ?? 1)
+        : null;
+    const ignition = local === null ? 0.6 : urbanIgnition(local);
+    return CH8_RETROSUN_STAGE.revealFloor + ignition * (1 - CH8_RETROSUN_STAGE.revealFloor);
+}
+
+/**
+ * World position of the Retrosun's centre and the city's stage orientation — chapter 8's
+ * anchor (the path centre) with the corridor rotation applied to CH8_RETROSUN_STAGE.sun.
+ * Chapter 7's 7->8 carry glides Gargantua onto this and seats its sun copy on it.
+ * @returns {{position: THREE.Vector3, quaternion: THREE.Quaternion}|null}
+ */
+export function resolveRetrosunStage() {
+    const range = getChapterPathRange(8);
+    if (!range?.center) return null;
+    const quaternion = computeCorridorOrientation();
+    const position = new THREE.Vector3(...CH8_RETROSUN_STAGE.sun).applyQuaternion(quaternion).add(range.center);
+    return { position, quaternion };
+}
 
 function createSkyGradient(uniforms) {
     const { mesh } = createSkyGradientTSL(uniforms.uTime, uniforms.uEnergy);
@@ -687,18 +734,7 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
     }
     // The encore grooves hardest — autonomous breath until Phase 6 drives audio.
     if (uniforms?.uEnergy) {
-        const audioEnergy = directorState
-            ? THREE.MathUtils.clamp(
-                (directorState.energy || 0) * 0.58
-                    + (directorState.mid || 0) * 0.22
-                    + (directorState.treble || 0) * 0.2,
-                0,
-                1,
-            )
-            : null;
-        uniforms.uEnergy.value = audioEnergy === null
-            ? 0.45 + Math.sin(time * 0.8) * 0.28
-            : 0.34 + audioEnergy * 0.72 + (directorState.beatPulse || 0) * 0.12;
+        uniforms.uEnergy.value = resolveUrbanEnergy(time, directorState);
     }
     const energy = uniforms?.uEnergy?.value ?? 0.45;
 
@@ -719,10 +755,12 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
     // everything behind them, and at opacity 1 normal blending replaces, so the frame is
     // identical. During the crossfade they keep the default order, so a half-faded city never
     // punches tower-shaped holes in chapter 7's sky. A sort key, not a material change: no
-    // pipeline is rebuilt.
+    // pipeline is rebuilt. The manager's COVERAGE weight (the staggered schedule for opaque
+    // content, full by the 7->8 boundary) decides it when present, the crossfade weight otherwise.
     const { cityTowers } = group.userData;
     if (cityTowers) {
-        cityTowers.renderOrder = (group.userData.chapterOpacity ?? 1) >= 0.999 ? -150 : 0;
+        const towerWeight = group.userData.chapterCoverage ?? group.userData.chapterOpacity ?? 1;
+        cityTowers.renderOrder = towerWeight >= 0.999 ? -150 : 0;
     }
 
     // Rain now falls in the shader: the rain material's positionNode derives a uTime-driven
@@ -775,6 +813,20 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
     if (sun?.userData?.uReveal) {
         sun.userData.uReveal.value = CH8_RETROSUN_STAGE.revealFloor
             + easedReveal * (1 - CH8_RETROSUN_STAGE.revealFloor);
+    }
+    // THE 7->8 CARRY (urban-dreams-sun-carry.js): across the seam window the sun is chapter 7's
+    // — Gargantua's light closing into a copy of this disc, drawn identically — so this one
+    // stays dark until the hand-over and then takes over at full strength (the copy hides on
+    // the same frame). Overrides the crossfade weight only inside the window.
+    const sunOpacity = sun?.material?.uniforms?.uOpacity;
+    if (sunOpacity) {
+        const carry = resolveSunCarry(cameraProgress, positions);
+        const base = sunOpacity.__odysseyBaseOpacity ?? sunOpacity.value;
+        if (carry?.active && base < 1) {
+            sunOpacity.value = carry.handedOver ? 1 : 0;
+        } else if (carry?.active) {
+            sunOpacity.value = base;
+        }
     }
 
     // EXIT DIMMING (creative plan Transition Out): over the resolve (chapter-local 0.9→1,
