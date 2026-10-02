@@ -316,6 +316,12 @@ export function createBlackHoleTSL(uTime, uEnergy) {
         new THREE.MeshBasicNodeMaterial({ color: 0x000000 }),
     );
     horizon.name = 'omen-shadow';
+    // FADE-EXEMPT (seamless pass, agreed interface with the environment manager): the shadow
+    // stays OPAQUE through every crossfade. Forced transparent and faded with the chapter, the
+    // omen's shadow and Gargantua's each covered only part of the hole at the 6->7 seam, and
+    // stars showed through it. The chapter drives its visibility instead (exactly one of the
+    // two shadows is drawn at any progress — see updateCosmicExpanseEnvironment).
+    horizon.userData.odysseyFadeExempt = true;
     face.add(horizon);
     const photon = createGargantuaPhotonRingTSL(time, {
         shadowRadius: S, innerRadius: S, outerRadius: S * 1.075,
@@ -346,6 +352,7 @@ export function createBlackHoleTSL(uTime, uEnergy) {
 
     group.userData.face = face;
     group.userData.diskPivot = diskPivot;
+    group.userData.shadow = horizon;
     return {
         group,
         disk,

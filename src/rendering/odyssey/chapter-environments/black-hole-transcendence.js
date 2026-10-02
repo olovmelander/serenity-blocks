@@ -30,7 +30,8 @@
 
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
-import { getChapterPathRange } from '../path-utils.js';
+import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
+import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
 import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
 import {
     createVoidDomeTSL,
@@ -152,6 +153,11 @@ function createGargantua(uniforms) {
         new THREE.MeshBasicNodeMaterial({ color: 0x000000 }),
     );
     horizon.name = 'gargantua-shadow';
+    // FADE-EXEMPT (seamless pass; agreed interface with the environment manager): the shadow
+    // is an opaque occluder through every crossfade and the chapter drives its visibility —
+    // see update(). Forced transparent and faded, it and ch6's omen shadow each covered only
+    // part of the hole at the 6->7 seam, and stars showed through it.
+    horizon.userData.odysseyFadeExempt = true;
     face.add(horizon);
 
     const photon = createGargantuaPhotonRingTSL(uniforms.uTime, {
@@ -344,8 +350,21 @@ export function poseGargantua(group, camera, time = 0) {
     return true;
 }
 
+/**
+ * Where ch7's shadow takes over from ch6's omen shadow: the omen's handoff completes at the
+ * 6->7 seam's start (ch7Start - ch6's seam half-width; cosmic-expanse.js
+ * resolveOmenHandoffWindow), and this chapter is only drawn past it — so exactly one opaque
+ * shadow covers the hole at every progress, and the two coincide where they swap.
+ */
+function resolveShadowTakeover(chapterPositions) {
+    const ch7Start = chapterPositions?.[6];
+    if (!Number.isFinite(ch7Start)) return null;
+    return ch7Start - (getChapterTransitionForChapter(6)?.seamWidth ?? 0.0222);
+}
+
 export function updateBlackHoleTranscendenceEnvironment(group, delta, time, camera, ...updateArgs) {
-    const [, directorState = null] = updateArgs;
+    const [cameraProgress = null, directorState = null] = updateArgs;
+    const chapterPositions = getActiveOdysseyChapterPositions();
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
@@ -368,6 +387,17 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     if (!poseGargantua(group, camera, time) && group.userData.distantHole) {
         // No-camera fallback (smoke tests): a slow precession in place.
         group.userData.distantHole.rotation.z -= delta * 0.025;
+    }
+
+    // ── ONE OPAQUE SHADOW ────────────────────────────────────────────────────────
+    const hero = group.userData.distantHole?.userData;
+    if (hero?.horizon) {
+        const takeover = resolveShadowTakeover(chapterPositions);
+        hero.horizon.visible = !Number.isFinite(cameraProgress) || takeover === null
+            || cameraProgress > takeover;
+        // Re-asserted until the environment manager honours `odysseyFadeExempt` (until then
+        // it still writes a crossfade opacity into this material every frame of a seam).
+        if (hero.horizon.material) hero.horizon.material.opacity = 1;
     }
 
     // Re-centre the corridor dust on the camera (group-local) so the camera is always

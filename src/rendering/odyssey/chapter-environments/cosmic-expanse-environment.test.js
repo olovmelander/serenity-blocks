@@ -281,3 +281,49 @@ describe('additive DoubleSide materials do not double-bill (Act II->Space §8.6)
         expect(tail.slice(0, 400)).not.toContain('forceSinglePass');
     });
 });
+
+// ── THE 6->7 HANDOFF (seamless pass) ──────────────────────────────────────────────────
+// The omen used to glide onto Gargantua's lock by camera HEIGHT, which the eye only reaches
+// after the boundary — at the crossfade's first frame the two black holes sat apart, and both
+// shadows were forced transparent, so stars showed through the hole.
+describe('omen -> Gargantua handoff runs on progress and keeps one opaque shadow', () => {
+    it('completes exactly where chapter 7 first appears, and hides the omen shadow there', async () => {
+        const { resolveOmenHandoffWindow } = await import('./cosmic-expanse.js');
+        const { resolveGargantuaLockPosition } = await import('./black-hole-transcendence.tsl.js');
+        const positions = deriveOdysseyChapterPositions();
+        const handoff = resolveOmenHandoffWindow(positions);
+        // ch7 is first drawn at the 6->7 seam start (boundary minus ch6's seam half-width).
+        expect(handoff.end).toBeCloseTo(0.8487, 3);
+        expect(handoff.start).toBeLessThan(handoff.end);
+
+        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        group.userData.chapterOpacity = 1;
+        const camera = new THREE.PerspectiveCamera(66, 16 / 9, 0.1, 9000);
+        camera.position.set(240, 1280, -1170);
+        camera.lookAt(camera.position.x + 0.87, camera.position.y + 0.2, camera.position.z - 0.45);
+        camera.updateMatrixWorld(true);
+        const { blackHole } = group.userData;
+        const { shadow } = blackHole.userData;
+        expect(shadow.userData.odysseyFadeExempt).toBe(true);
+
+        updateCosmicExpanseEnvironment(group, 0.016, 1, camera, handoff.end - 1e-4);
+        expect(shadow.visible).toBe(true);
+        expect(shadow.material.opacity).toBe(1);
+
+        updateCosmicExpanseEnvironment(group, 0.016, 1, camera, handoff.end + 1e-4);
+        expect(shadow.visible).toBe(false);
+        // ...and the omen sits on the lock, at Gargantua's size: the two coincide.
+        const lock = resolveGargantuaLockPosition(camera, new THREE.Vector3()).sub(group.position);
+        expect(blackHole.position.distanceTo(lock)).toBeLessThan(1e-3);
+        expect(blackHole.scale.x * 24).toBeCloseTo(132, 3);
+    });
+
+    it('never flips the exempt shadow transparent through the destination staging', () => {
+        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        group.userData.chapterOpacity = 0.4;
+        updateCosmicExpanseEnvironment(group, 0.016, 2.0, null, 0.55);
+        const { shadow } = group.userData.blackHole.userData;
+        expect(shadow.material.transparent).toBe(false);
+        expect(shadow.material.userData.baseOpacity).toBeUndefined();
+    });
+});
