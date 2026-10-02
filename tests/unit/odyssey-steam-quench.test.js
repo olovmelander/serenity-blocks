@@ -4,12 +4,16 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import {
+    STEAM_QUENCH_APPROACH_HALF_WIDTH,
     STEAM_QUENCH_EXIT_HALF_WIDTH,
     STEAM_QUENCH_HALF_WIDTH,
     STEAM_QUENCH_RADIUS,
     createSteamQuench,
+    steamQuenchDensity,
+    steamQuenchSeamT,
 } from '../../src/rendering/odyssey/composition/odyssey-steam-quench.js';
 import { ODYSSEY_CHAPTER_PROFILES } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
+import { ONE_WORLD_ACT_MARGIN } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
 
 /**
  * THE STEAM QUENCH — the ch1 -> Act II occlusion moment.
@@ -22,20 +26,38 @@ import { ODYSSEY_CHAPTER_PROFILES } from '../../src/rendering/odyssey/chapter-en
  */
 describe('steam quench driver', () => {
     it('is fully dense at the boundary and absent at both ends of the window', () => {
+        // Asserted on the SHIPPED curve (steamQuenchDensity drives the uniform), not on a
+        // re-typed copy of it — the old form of this test re-derived tri^2 locally and kept
+        // passing after the driver had changed underneath it.
+        expect(steamQuenchDensity(0.5)).toBeCloseTo(1, 6);
+        expect(steamQuenchDensity(0)).toBeCloseTo(0, 6);
+        expect(steamQuenchDensity(1)).toBeCloseTo(0, 6);
+        // Eased, not linear, on the way out.
+        expect(steamQuenchDensity(0.85)).toBeLessThan(0.3);
+    });
+
+    it('keeps the cathedral clear, then is dense before Act II starts drawing behind it', () => {
+        // 2026-10-01: the approach used to open at chapter-local 0.075 (a 0.06 window authored
+        // for a 0.093-long chapter that is now 0.0649 long) and veiled most of Earth Core.
+        const boundary = 0.0649;
+        const at = (p) => steamQuenchDensity(steamQuenchSeamT(p, boundary));
+        // First half of the chapter: no steam at all.
+        expect(at(boundary * 0.45)).toBe(0);
+        // ADR-0017: occlusion, never crossfade — dense where the world's act gate opens.
+        expect(at(boundary - ONE_WORLD_ACT_MARGIN)).toBeGreaterThan(0.85);
+        expect(at(boundary)).toBeCloseTo(1, 6);
+    });
+
+    it('maps the 1->2 boundary to seamT 0.5 whatever the two half-widths are', () => {
+        // The board used to map progress linearly across the asymmetric window, which put the
+        // peak and the warm->cool flip before the crossing. Piecewise keeps them ON it.
+        const b = 0.0649;
+        expect(steamQuenchSeamT(b, b)).toBeCloseTo(0.5, 9);
+        expect(steamQuenchSeamT(b - STEAM_QUENCH_APPROACH_HALF_WIDTH, b)).toBeCloseTo(0, 9);
+        expect(steamQuenchSeamT(b + STEAM_QUENCH_EXIT_HALF_WIDTH, b)).toBeCloseTo(1, 9);
+        expect(steamQuenchSeamT(NaN, b)).toBe(0);
         const q = createSteamQuench();
-        const density = (seamT) => {
-            q.update(0, seamT);
-            // Read it back off the material graph's uniform via the closure's effect on colour
-            // is not observable, so assert through the documented curve instead: tri^2.
-            const tri = 1 - Math.abs((Math.max(0, Math.min(1, seamT)) * 2) - 1);
-            return tri * tri;
-        };
-        expect(density(0.5)).toBeCloseTo(1, 6);
-        expect(density(0)).toBeCloseTo(0, 6);
-        expect(density(1)).toBeCloseTo(0, 6);
-        // Eased, not linear: a quarter of the way in it must still be mostly clear, or the
-        // approach reads as flying into a wall rather than into weather.
-        expect(density(0.25)).toBeLessThan(0.3);
+        expect(() => { q.update(0, steamQuenchSeamT(b, b)); }).not.toThrow();
         q.dispose();
     });
 
@@ -108,6 +130,7 @@ describe('steam quench board wiring', () => {
         const seam = ODYSSEY_CHAPTER_PROFILES.find((c) => c.id === 1)?.transition?.seamWidth;
         expect(seam).toBeGreaterThan(0);
         expect(STEAM_QUENCH_HALF_WIDTH).toBeGreaterThan(seam);
+        expect(STEAM_QUENCH_APPROACH_HALF_WIDTH).toBeGreaterThan(seam);
         expect(STEAM_QUENCH_EXIT_HALF_WIDTH).toBeGreaterThanOrEqual(seam);
     });
 

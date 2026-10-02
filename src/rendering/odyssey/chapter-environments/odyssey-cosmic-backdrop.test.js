@@ -75,8 +75,11 @@ describe('ch6 baked cosmic backdrop (Space overhaul Wave 2)', () => {
             maxLuma = Math.max(maxLuma, luma);
             if (luma < 10) atFloor += 1;
         }
-        // Pocketed, not a wash: bright bodies exist AND most of the sphere is void.
-        expect(maxLuma).toBeGreaterThan(60);
+        // Pocketed, not a wash: bright content exists AND most of the sphere is void. The
+        // threshold came down 60 -> 30 with the 2026-10 band: once the grade stopped crushing
+        // faint values, a band bright enough to clear 60 read as a grey smoke shape at the
+        // frame edge; the star sprites, not the dome, carry the band's brightness now.
+        expect(maxLuma).toBeGreaterThan(30);
         expect(atFloor / texels).toBeGreaterThan(0.4);
     });
 

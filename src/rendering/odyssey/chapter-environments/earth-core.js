@@ -18,7 +18,6 @@ import {
     attribute,
     clamp,
     cos,
-    float,
     fract,
     mix,
     mod,
@@ -44,7 +43,6 @@ import {
     createVolcanoBackgroundTSL,
     createRockClusterMaterialTSL,
     createObsidianColumnTSL,
-    createMagmaHorizonTSL,
     createMoltenHazeMaterialTSL,
     createMoltenPocketTSL,
     createMoltenPocketMaterialTSL,
@@ -298,8 +296,9 @@ function createVolcanicSmoke(uniforms, count, staging = null) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(center, worldSize);
-    const smokeBase = mix(vec3(0.035, 0.028, 0.038), vec3(0.13, 0.055, 0.034), aRandom);
-    const lavaTint = vec3(0.38, 0.095, 0.025).mul(pow(oneMinus(lifeProgress), 2.2));
+    // Warm greys, not reds (2026-10-01): see the haze note in createMoltenHazeMaterialTSL.
+    const smokeBase = mix(vec3(0.024, 0.021, 0.026), vec3(0.07, 0.045, 0.034), aRandom);
+    const lavaTint = vec3(0.18, 0.08, 0.035).mul(pow(oneMinus(lifeProgress), 2.2));
     // Seam: the ash whitens into rising STEAM as the waterline nears (1→2 Steam Quench).
     const smokeColor = smokeBase.add(lavaTint);
     material.colorNode = mix(smokeColor, vec3(0.32, 0.4, 0.44), uniforms.uSeam.mul(0.75));
@@ -414,7 +413,7 @@ function createEmberStars(uniforms, count) {
  * splash + node shelves), giving directional shafts of rising sparks. Spiraling, fading
  * additive billboards animated from uTime so the update loop is unchanged.
  */
-function createRisingEmbers(uniforms, count, staging = null) {
+function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_Y + 50 } = {}) {
     const bases = new Float32Array(count * 3);
     const randoms = new Float32Array(count);
     const sizes = new Float32Array(count);
@@ -452,6 +451,8 @@ function createRisingEmbers(uniforms, count, staging = null) {
             { x: 30, z: 3 - 40 }, { x: -30, z: 3 - 40 },
             { x: 30, z: 3 - 90 }, { x: -30, z: 3 - 90 },
         ];
+    const axisPoint = staging ? staging.sample(0.5) : { x: 0, z: 0 };
+    const shaftAxis = { x: axisPoint.x, z: axisPoint.z };
     // 0.30 -> 0.36 share on a 570 -> 640 count (user: "increase the amount a little"):
     // sparks 171 -> 230 while the chapter-wide riser storm keeps its density (~410).
     const splashCount = Math.floor(count * 0.36);
@@ -470,15 +471,27 @@ function createRisingEmbers(uniforms, count, staging = null) {
             bases[i3 + 2] = site.z + (Math.sin(theta) * radius);
             splashFlags[i] = 1;
             sizes[i] = 1.6 + (Math.random() * 2.6); // smaller and crisper than the risers
-        } else {
+        } else if (i % 2 === 0) {
             const col = columns[i % columns.length];
             const theta = Math.random() * TAU;
             const radius = Math.random() * col.spread;
             bases[i3] = col.x + Math.cos(theta) * radius;
-            bases[i3 + 1] = LAVA_LAKE_Y + (Math.random() - 0.5) * 8;
+            bases[i3 + 1] = LAVA_LAKE_Y;
             bases[i3 + 2] = col.z + Math.sin(theta) * radius;
             splashFlags[i] = 0;
             sizes[i] = 3.0 + Math.random() * 5.0;
+        } else {
+            // THE UPDRAFT (2026-10-01): half the risers ride the shaft itself, around the rail,
+            // so the air the camera climbs through is alive all the way up — they used to live
+            // only within +-25 u of the lake (half of them under its opaque surface), leaving
+            // the upper shaft, where the camera spends most of the act, empty.
+            const theta = Math.random() * TAU;
+            const radius = 6 + (Math.random() ** 0.7) * 40;
+            bases[i3] = shaftAxis.x + Math.cos(theta) * radius;
+            bases[i3 + 1] = LAVA_LAKE_Y;
+            bases[i3 + 2] = shaftAxis.z + Math.sin(theta) * radius;
+            splashFlags[i] = 0;
+            sizes[i] = 2.4 + Math.random() * 4.0;
         }
         randoms[i] = Math.random();
     }
@@ -495,17 +508,19 @@ function createRisingEmbers(uniforms, count, staging = null) {
     const aSize = attribute('aSize', 'float');
     const time = uniforms.uTime;
 
-    // Rise (mod 50, offset -25) + gentle spiral drift — matches the old vertex shader.
-    const riseSpeed = aRandom.mul(2.5).add(1.5);
-    const yOffset = mod(time.mul(riseSpeed).add(aRandom.mul(40.0)), 50.0).sub(25.0);
+    // RISE THE WHOLE SHAFT (2026-10-01): from the lake surface to the top of the corridor
+    // (was mod 50 centred ON the lake, so half the storm lived under it). An updraft carries
+    // sparks fast — 4-9 u/s — with a sinuous spiral that widens as they climb.
+    const riseSpan = Math.max(60, yTop - LAVA_LAKE_Y);
+    const riseSpeed = aRandom.mul(5.0).add(4.0);
+    const yOffset = mod(time.mul(riseSpeed).add(aRandom.mul(riseSpan * 7.3)), riseSpan);
     const angle = time.mul(0.4).add(aRandom.mul(TAU));
-    const radius = aRandom.mul(3.0).add(1.5);
+    const normalizedY = yOffset.div(riseSpan);
+    const radius = aRandom.mul(3.0).add(1.5).add(normalizedY.mul(5.0));
     const yPos = aBase.y.add(yOffset);
     const cx = aBase.x.add(sin(angle.add(yPos.mul(0.05))).mul(radius));
     const cz = aBase.z.add(cos(angle.mul(0.7).add(yPos.mul(0.04))).mul(radius).mul(0.8));
     const center = vec3(cx, yPos, cz);
-
-    const normalizedY = yOffset.add(25.0).div(50.0);
 
     // SPLASH ballistic arc, phase-locked to the lake's surge. Launch energy is sampled at
     // (now − age) — the heave this spark was BORN in — so a rogue surge visibly throws a
@@ -534,7 +549,9 @@ function createRisingEmbers(uniforms, count, staging = null) {
     const emberCenter = mix(center, splashCenter, splash);
     // ONE life scalar drives temperature, alpha and size for BOTH populations: risers age
     // by height, splash sparks by flight time — the ramp below never knows the difference.
-    const lifeNorm = mix(normalizedY, lifeFrac, splash);
+    // Risers cool as they climb but never reach ash: the top of the shaft is still lit by them.
+    // Offset 0.16 keeps the updraft in the orange-red band (white-hot reads as stars, not embers).
+    const lifeNorm = mix(normalizedY.mul(0.56).add(0.16), lifeFrac, splash);
     const worldSize = aSize.mul(oneMinus(lifeNorm.mul(0.5))).mul(0.16);
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -559,9 +576,12 @@ function createRisingEmbers(uniforms, count, staging = null) {
     // Splash sparks additionally: die the moment they fall back through the lake surface
     // (a spark that keeps glowing under the lava is a bug, not a look), and pulse a touch
     // brighter with the LIVE surge so a heave lights the whole burst it is throwing.
+    // Risers fade over the top 15% of the rise: lifeNorm is offset (+0.16) so it never reaches 1
+    // there, and without this the spark was still bright on the frame it wrapped to the bottom.
+    const topFade = oneMinus(smoothstep(0.85, 1.0, normalizedY));
     const alpha = oneMinus(lifeNorm).mul(aRandom.mul(0.4).add(0.6))
         .mul(mix(
-            float(1.0),
+            topFade,
             smoothstep(-1.4, 0.1, sY).mul(magmaSurgeTSL(time).mul(0.30).add(0.70)),
             splash,
         ));
@@ -743,7 +763,7 @@ function createMagmaCloudDeck(uniforms, count, corridorHigh) {
     const colors = new Float32Array(count * 3);
 
     const coolSmoke = new THREE.Color(0x080712);
-    const warmSmoke = new THREE.Color(0x2a0a05);
+    const warmSmoke = new THREE.Color(0x221a16); // warm grey (was 0x2a0a05, a pure red in linear)
     for (let i = 0; i < count; i++) {
         const zT = Math.random();
         const x = (Math.random() - 0.5) * 140;
@@ -791,7 +811,7 @@ function createMagmaCloudDeck(uniforms, count, corridorHigh) {
     const hotPocket = pow(sprite.a, 2.4)
         .mul(sin(uTime.mul(0.35).add(aSeed.mul(9.0))).mul(0.18).add(0.82));
     material.colorNode = aColor
-        .add(vec3(0.42, 0.10, 0.025).mul(hotPocket).mul(0.42))
+        .add(vec3(0.34, 0.14, 0.06).mul(hotPocket).mul(0.42))
         .mul(uPulseIntensity.mul(0.08).add(1.0));
     material.opacityNode = sprite.a.mul(0.18)
         .mul(sin(driftT.mul(0.5)).mul(0.12).add(0.88))
@@ -977,9 +997,9 @@ export function createEarthCoreEnvironment(options = {}) {
     if (!noLake) group.add(lavaFloor);
     group.userData.lavaFloor = lavaFloor;
 
-    // 3. Create volcanic crater rim - VOLUMETRIC PARTICLE SYSTEM
-    const craterRim = createParticleCraterRim(uniforms);
-    group.add(craterRim);
+    // 3. (REMOVED 2026-10-01) The crater-rim cloud: 300 puffs at opacity 0.055 that the heavy-
+    //    chapter remake plan had already measured as invisible. Its material slot is worth more
+    //    than its pixels (earth-core-drawable-budget caps the chapter at 23 materials).
 
     // 4. Geode CLUSTERS (plan item 4): small/medium/large grading with satellites and
     // tether-streams replaces the old two-sphere repetition. Cap raised 2→6 under the
@@ -1000,7 +1020,7 @@ export function createEarthCoreEnvironment(options = {}) {
 
     // 6. Rising ember particles re-aimed into a few rising COLUMNS (ember-storm) rather
     //    than an even ring, clustered at the lava-fall splash + node shelves.
-    const risingEmbers = createRisingEmbers(uniforms, 640, staging);
+    const risingEmbers = createRisingEmbers(uniforms, 640, staging, { yTop: corridorHigh });
     group.add(risingEmbers);
     group.userData.risingEmbers = risingEmbers;
 
@@ -1022,11 +1042,11 @@ export function createEarthCoreEnvironment(options = {}) {
     const magmaCloudDeck = createMagmaCloudDeck(uniforms, cloudDeckCount, corridorHigh);
     group.add(magmaCloudDeck);
     group.userData.magmaCloudDeck = magmaCloudDeck;
-    const horizonRimY = (scaleY) => LAVA_LAKE_Y + 36 * scaleY; // align rim to lake surface
-    const farHorizon = createMagmaHorizonTSL(uniforms.uTime, uniforms.uPulseIntensity, { uOpacity: uniforms.uOpacity });
-    const farHorizonPos = staging.at(0.86, { lateral: 0, forward: 20 });
-    farHorizon.mesh.position.set(farHorizonPos.x, horizonRimY(1), farHorizonPos.z);
-    group.add(farHorizon.mesh);
+    // (REMOVED 2026-10-01) The magma "far horizon": a 560 x 200 ADDITIVE plane with depthTest
+    // OFF, seated ~6 u in front of the opening camera rather than at any far shore — it painted
+    // an orange wash over the lake and the vault from the first frame (the Earth Core audit's
+    // item 7, and a measurable share of the red in the opening bisect). The vault shader now
+    // carries the lake's bounce on the low walls, which is where a far shore's glow belongs.
     // Reuse the far-horizon material + geometry for the low/mid bands: the additive graph is
     // byte-identical (same uniforms) and only the transform differs, so 3 magma-horizon
     // pipelines collapse to 1 (cold-start compile win, zero visual change — the bands are
@@ -1037,7 +1057,7 @@ export function createEarthCoreEnvironment(options = {}) {
     // layers are exactly the spend, and the far shore still reads from the one farHorizon
     // band. Their pipeline had already been collapsed into farHorizon's material, so the
     // compile cost was never theirs — only the fill was.
-    group.userData.horizons = [farHorizon.mesh];
+    group.userData.horizons = [];
 
     // 9. Molten volumetric haze hugging the path along the whole corridor span.
     // WAVE 3b: haze 225 -> 112. Near-camera additive billboards are the textbook iGPU fill
@@ -1060,11 +1080,17 @@ export function createEarthCoreEnvironment(options = {}) {
     // ~4-6 ms each is node building, the rest being per-material fixed cost (bind groups,
     // pipeline descriptor, WGSL assembly, DXC scheduling). Fewer MATERIALS is the lever;
     // smaller graphs are not (~125 nodes/ms).
+    // uLakeY: the lake plane in WORLD space, hoisted here so the pockets get it as well as the
+    // columns below — the material compares positionWorld.y against it, and the chapter-local
+    // -10 fallback sat 30 u off (the pre-merge review caught the pockets still using it).
+    const uLakeWorldY = uniform(groupCenter.y + LAVA_LAKE_Y);
     const sharedPocketMaterial = createMoltenPocketMaterialTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,
         uniforms.uBakedBounce,
-        { isColumn: false, uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam },
+        {
+            isColumn: false, uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam, uLakeY: uLakeWorldY,
+        },
     ).material;
     const moltenPockets = createMoltenPockets(group, uniforms, groupCenter, sharedPocketMaterial);
     elements.moltenPockets.push(...moltenPockets);
@@ -1111,11 +1137,17 @@ export function createEarthCoreEnvironment(options = {}) {
 
     // 12. God-ray shafts — 3–4 large low-opacity vertical cones above the lake, biased
     //     toward the lava-fall splash so the ember-storm reads as rising through light.
+    // OFF THE SHAFT AXIS (2026-10-01). Chapter 1 is a vertical shaft at near-constant XZ, so
+    // cones seated within ~20 u of the rail (the old lateral 0/-18/14/-8) put the camera INSIDE
+    // their 26-36 u radius for most of the climb — and from inside, a DoubleSide additive shell
+    // is a full-screen orange wash. A layer bisect measured it: hiding the cones alone took the
+    // frame's mean colour from (79,25,9) to (33,13,8). Pushed out to the colonnade's edge they
+    // read as what they are — shafts of light standing beside the ascent.
     const godRayConfigs = [
-        { pos: staging.lakeAt(fallStation, { lateral: 0, forward: 0 }), scale: 1.15 },
-        { pos: staging.lakeAt(0.42, { lateral: -18, forward: 8 }), scale: 1.0 },
-        { pos: staging.lakeAt(0.62, { lateral: 14, forward: 10 }), scale: 1.4 },
-        { pos: staging.lakeAt(0.18, { lateral: -8, forward: 5 }), scale: 0.9 },
+        { pos: staging.lakeAt(fallStation, { lateral: 46, forward: 14 }), scale: 1.15 },
+        { pos: staging.lakeAt(0.42, { lateral: -54, forward: 18 }), scale: 1.0 },
+        { pos: staging.lakeAt(0.62, { lateral: 58, forward: -12 }), scale: 1.4 },
+        { pos: staging.lakeAt(0.18, { lateral: -42, forward: -16 }), scale: 0.9 },
     ];
     // Build the god-ray cone material + geometry ONCE and reuse across all 4 shafts: the
     // additive graph is identical and only the transform / per-mesh visibility differ (the
@@ -1132,6 +1164,9 @@ export function createEarthCoreEnvironment(options = {}) {
             : new THREE.Mesh(sharedGodRay.geometry, sharedGodRay.material);
         mesh.position.set(cfg.pos.x, LAVA_LAKE_Y + 60, cfg.pos.z);
         mesh.scale.set(cfg.scale, cfg.scale * 1.1, cfg.scale);
+        // TIP DOWN, as the builder always said: ConeGeometry puts its apex at +Y, so without
+        // this flip every shaft widened toward the lake instead of pouring down from the vault.
+        mesh.rotation.x = Math.PI;
         mesh.frustumCulled = false;
         group.add(mesh);
         return mesh;
@@ -1185,7 +1220,6 @@ export function createEarthCoreEnvironment(options = {}) {
     // uLakeY: the lake plane in WORLD space. The material reads positionWorld, so handing it
     // the chapter-LOCAL LAVA_LAKE_Y put its contact gradient 30 units off (see the space-bug
     // note in createMoltenPocketMaterialTSL). groupCenter is this group's world origin.
-    const uLakeWorldY = uniform(groupCenter.y + LAVA_LAKE_Y);
     const sharedColumnMaterial = createMoltenPocketMaterialTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,
@@ -1554,93 +1588,6 @@ function createLavaSplashDecal(width = 80, depth = 36, opacity = 0.36) {
  * Create volcanic crater rim with jagged rock formations
  */
 /**
- * Create volcanic crater rim using Volumetric Particles
- * Replaces the mesh-based rim to avoid hard edges and lighting artifacts.
- */
-function createParticleCraterRim(uniforms) {
-    const group = new THREE.Group();
-    group.name = 'crater-rim-particles';
-
-    // 1. Generate Particle Data
-    const particleCount = 300;
-    const bases = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
-
-    // Base color: Deeper, richer volcanic tone (Less blown out)
-    const baseColor = new THREE.Color(0x5a1208); // Deep charred red
-    const glowColor = new THREE.Color(0xb83208); // Muted orange-red
-
-    const radiusBase = 95;
-    const tubeRadius = 14;
-
-    for (let i = 0; i < particleCount; i++) {
-        // Distribute in a torus volume
-        const angle = Math.random() * Math.PI * 2;
-
-        // Random offset within the tube volume (horizontal width spread)
-        const widthSpread = (Math.random() - 0.5) * tubeRadius * 3;
-
-        const r = radiusBase + widthSpread;
-
-        const x = Math.cos(angle) * r;
-        const z = Math.sin(angle) * r;
-        // Height variation - gently undulating
-        const y = -3 + (Math.random() - 0.5) * 6;
-
-        bases[i * 3] = x;
-        bases[i * 3 + 1] = y;
-        bases[i * 3 + 2] = z;
-
-        // Color variation based on height
-        // Lower particles = closer to lava = more orange/glow
-        // Higher particles = cooler/darker
-        const heightFactor = (y + 6) / 12; // 0 to 1 mapping approx
-        const mixFactor = (1.0 - heightFactor) ** 2.0 * 0.6; // Bias towards bottom
-
-        const pColor = baseColor.clone().lerp(glowColor, mixFactor);
-        colors[i * 3] = pColor.r;
-        colors[i * 3 + 1] = pColor.g;
-        colors[i * 3 + 2] = pColor.b;
-    }
-
-    // 2. Material — instanced billboard "cloud" puffs (Points are 1px on WebGPU).
-    const cloudMap = createCloudTexture();
-
-    const geometry = makeQuadInstancedGeometry(particleCount, {
-        aBase: { array: bases, itemSize: 3 },
-        aColor: { array: colors, itemSize: 3 },
-    });
-
-    const aBase = attribute('aBase', 'vec3');
-    const aColor = attribute('aColor', 'vec3');
-
-    // Keep the crater rim as distant haze, not camera-near magma boulders.
-    const worldSize = float(5.5);
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(aBase, worldSize);
-    // Sample the soft cloud sprite; tint by per-particle color, fade at low opacity.
-    const sprite = texture(cloudMap, uv());
-    material.colorNode = aColor;
-    material.opacityNode = sprite.a.mul(0.055).mul(uniforms.uOpacity);
-    material.transparent = true;
-    material.depthWrite = false;
-    material.blending = THREE.AdditiveBlending;
-    material.side = THREE.DoubleSide;
-    material.forceSinglePass = true;
-    material.userData.emitsBloom = true;
-    material.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
-
-    const particles = new THREE.Mesh(geometry, material);
-    particles.name = 'crater-rim-cloud';
-    particles.frustumCulled = false;
-    group.add(particles);
-
-    group.userData.ownedTexture = cloudMap; // OD-11: TSL-node-bound, surfaced for eviction disposal
-    return group;
-}
-
-/**
  * Generate a soft radial gradient texture for cloud particles
  */
 function createCloudTexture() {
@@ -1668,7 +1615,13 @@ function createCloudTexture() {
 function createVolcanoBackground(uniforms) {
     // Validated TSL builder sets name/renderOrder(-90)/BackSide/depthWrite=false and
     // shares in the chapter's uTime/uPulseIntensity uniforms so animation ticks unchanged.
-    const { mesh: sphere } = createVolcanoBackgroundTSL(uniforms.uTime, uniforms.uPulseIntensity);
+    const { mesh: sphere } = createVolcanoBackgroundTSL(
+        uniforms.uTime,
+        uniforms.uPulseIntensity,
+        // The crack at the crown widens with the climb: uDescent is chapter-local progress
+        // (0 at birth -> 1 at the crack) despite its legacy name.
+        { uAscent: uniforms.uDescent },
+    );
     return sphere;
 }
 
