@@ -30,13 +30,12 @@ import {
     STEAM_QUENCH_APPROACH_HALF_WIDTH,
     STEAM_QUENCH_EXIT_HALF_WIDTH,
     STEAM_QUENCH_FOG_DENSITY,
-    STEAM_QUENCH_HALF_WIDTH,
     steamQuenchDensity,
     steamQuenchFogColour,
     createSteamQuench,
     steamQuenchSeamT,
 } from './composition/odyssey-steam-quench.js';
-import { createCloudBank } from './composition/odyssey-cloud-bank.js';
+import { cloudBankHalfWidth, createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { createWhalePass } from './composition/odyssey-whale-pass.js';
 import { sampleColourScript } from './odyssey-colour-script.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
@@ -184,7 +183,7 @@ const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
 // The quench's window half-widths (approach 0.06 / exit 0.03, with the full MEASURED
 // rationale) moved 2026-08-13 to odyssey-steam-quench.js beside the volume they window, so
 // the board and the seam-12-dive playground drive the same quench by construction. The
-// ch5->ch6 cloud bank still uses the symmetric STEAM_QUENCH_HALF_WIDTH for both halves.
+// ch5->ch6 cloud bank has its own window now (odyssey-cloud-bank.js cloudBankHalfWidth, 152 u).
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -3602,8 +3601,10 @@ export class OdysseyBoardController {
             // threshold, so the bank stayed fully bridge-coloured into space and the frame
             // ended at luma 201 instead of ~26. Fixing the exit means re-basing that colour
             // ramp on the peak first; the window is not the only thing that assumes symmetry.
-            const lo = this._cloudBankBoundary - STEAM_QUENCH_HALF_WIDTH;
-            const hi = this._cloudBankBoundary + STEAM_QUENCH_HALF_WIDTH;
+            // The bank's own window (152 u, converted on the live spline — see cloudBankHalfWidth).
+            const bankHalf = cloudBankHalfWidth();
+            const lo = this._cloudBankBoundary - bankHalf;
+            const hi = this._cloudBankBoundary + bankHalf;
             const inWindow = cameraProgress > lo && cameraProgress < hi;
             this.cloudBank.mesh.visible = inWindow;
             if (inWindow) this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo));
