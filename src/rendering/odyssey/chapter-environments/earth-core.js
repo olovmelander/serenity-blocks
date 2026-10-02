@@ -53,6 +53,7 @@ import {
 } from './earth-core.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
+import { resolveQualityTier } from './shared/odyssey-quality-tier.js';
 
 /**
  * Earth Core environment configuration
@@ -994,7 +995,11 @@ export function createEarthCoreEnvironment(options = {}) {
     if (lakeFlowDir.lengthSq() < 1e-6) lakeFlowDir.set(1, 0, 0.5);
     lakeFlowDir.normalize();
     uniforms.uLakeFlowDir.value.copy(lakeFlowDir);
-    const lavaFloor = createLavaFloor(uniforms, basins, { addGlows: !noLakeGlows });
+    // GENESIS PASS: crust plates on the melt cost 18 hashes per lake fragment — High tier only.
+    const lavaFloor = createLavaFloor(uniforms, basins, {
+        addGlows: !noLakeGlows,
+        crustPlates: resolveQualityTier(options) === 'high',
+    });
     if (!noLake) group.add(lavaFloor);
     group.userData.lavaFloor = lavaFloor;
 
@@ -1472,7 +1477,7 @@ function _readLakeNoiseOptions() {
     return out;
 }
 
-function createLavaFloor(uniforms, basins = [], { addGlows = true } = {}) {
+function createLavaFloor(uniforms, basins = [], { addGlows = true, crustPlates = false } = {}) {
     const group = new THREE.Group();
     group.name = 'lava-floor';
     const lakeNoise = _readLakeNoiseOptions();
@@ -1492,6 +1497,7 @@ function createLavaFloor(uniforms, basins = [], { addGlows = true } = {}) {
             debug: lakeNoise.debug,
             uFlowDir: lakeNoise.flowDir ? uniforms.uLakeFlowDir : null,
             rimCrustBias: lakeNoise.rimCrust ? 0.12 : 0,
+            crustPlates,
         },
     );
     group.add(lavaSurface);
