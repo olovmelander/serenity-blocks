@@ -797,7 +797,11 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0), 
     // surge. The shell sits at the group origin, 10 u above the lake, unscaled, so posL.y minus
     // the lake height is world units above the lava. It is what makes the cavern a lit chamber.
     const aboveLake = posL.y.sub(LAVA_LAKE_Y);
-    const lakeGlow = exp(abs(aboveLake).div(58.0).negate());
+    // A near band (the lake-lit walls) plus a faint long tail: the lava's bounce still warms the
+    // upper vault the climb looks into (without it the shaft fell to luma ~14 and the step into
+    // the steam grew to the seam gate's limit).
+    const lakeGlow = exp(abs(aboveLake).div(58.0).negate())
+        .add(exp(abs(aboveLake).div(240.0).negate()).mul(0.22));
     const lakeBreath = magmaSurgeTSL(uTime).mul(0.22).add(0.8);
     color = color.add(vec3(0.36, 0.115, 0.035).mul(lakeGlow).mul(lakeBreath)
         .mul(grain.mul(0.5).add(0.75)));
