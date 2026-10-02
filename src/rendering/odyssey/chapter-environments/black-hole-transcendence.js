@@ -31,6 +31,7 @@
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { getChapterPathRange } from '../path-utils.js';
+import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
 import {
     createVoidDomeTSL,
     createAccretionDiskTSL,
@@ -41,6 +42,7 @@ import {
     createCorridorDustTSL,
     createInfallEmberFieldTSL,
     CH7_CORRIDOR_DUST_SETTINGS,
+    CH7_STARFIELD,
     GARGANTUA_LOCK,
     resolveGargantuaLockPosition,
 } from './black-hole-transcendence.tsl.js';
@@ -101,6 +103,19 @@ export const CH7_FOLD_ARC_SETTINGS = Object.freeze({
     tube: 31,
     radialSegments: 12,
     tubularSegments: 96,
+});
+
+/**
+ * Sprite budgets per quality tier (seamless pass). The far starfield went 760 -> 2200 sprites
+ * in the masterpiece pass and the corridor dust sits AROUND the camera (its nearest motes are
+ * the biggest quads in the chapter), so Lane B (Medium, the iGPU) no longer pays the High
+ * field: `stars` is the starfield count, `dust` / `embers` scale the particleCount-derived
+ * densities. High is unchanged (the authored chapter).
+ */
+export const CH7_QUALITY_TIERS = Object.freeze({
+    high: Object.freeze({ stars: CH7_STARFIELD.count, dust: 1, embers: 1 }),
+    medium: Object.freeze({ stars: 1300, dust: 0.6, embers: 0.7 }),
+    low: Object.freeze({ stars: 800, dust: 0.4, embers: 0.5 }),
 });
 
 // Camera-lock scratch (reused every frame — no per-frame allocation).
@@ -206,9 +221,9 @@ function createTranscendenceShards(uniforms) {
     return mesh;
 }
 
-function createLensingStarfield(uniforms) {
+function createLensingStarfield(uniforms, count = CH7_STARFIELD.count) {
     // A full far shell behind everything — the ch7 post lens bends it round the shadow.
-    const { mesh } = createLensingStarfieldTSL(uniforms.uTime);
+    const { mesh } = createLensingStarfieldTSL(uniforms.uTime, { count });
     mesh.name = 'lensing-starfield';
     return mesh;
 }
@@ -217,6 +232,8 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     const group = new THREE.Group();
     group.name = 'black-hole-transcendence-environment';
     group.userData.chapterId = 7;
+    const tier = pickByQualityTier(options, CH7_QUALITY_TIERS);
+    group.userData.qualityTier = tier;
 
     // TSL uniform nodes (shared into the .tsl builders). They expose `.value`, so
     // update() (`uniforms.uTime.value = ...`) ticks them.
@@ -242,7 +259,7 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.userData.voidDome = voidDome;
 
     // 0b. Far starfield shell (behind the hero; the post lens bends it).
-    const lensingStarfield = createLensingStarfield(uniforms);
+    const lensingStarfield = createLensingStarfield(uniforms, tier.stars);
     group.add(lensingStarfield);
     group.userData.lensingStarfield = lensingStarfield;
 
@@ -259,9 +276,9 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.userData.lensWorldPos.lensRadius = CH7_GARGANTUA.shadowRadius;
 
     // Drifting dust hugging the corridor (re-centred on the camera in update()).
-    const dustCount = options.particleCount
+    const dustCount = Math.floor((options.particleCount
         ? Math.min(CH7_CORRIDOR_DUST_SETTINGS.maxCount, Math.floor(options.particleCount * 2.0))
-        : 720;
+        : 720) * tier.dust);
     const { mesh: corridorDust } = createCorridorDustTSL(uniforms.uTime, dustCount);
     corridorDust.name = 'corridor-violet-dust';
     group.add(corridorDust);
@@ -274,7 +291,8 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     // Infall embers — matter in the disk plane, parented to the disk pivot so they orbit
     // IN the band (their authored orbit plane is local XZ; +90° about X lays it onto the
     // pivot's XY disk plane), scaled from their authored ~70-260 u radii onto the disk's.
-    const emberCount = options.particleCount ? Math.floor(options.particleCount * 1.6) : 520;
+    const emberCount = Math.floor((options.particleCount ? Math.floor(options.particleCount * 1.6) : 520)
+        * tier.embers);
     const { mesh: infallEmbers } = createInfallEmberFieldTSL(uniforms.uTime, emberCount);
     infallEmbers.rotation.x = Math.PI / 2;
     infallEmbers.scale.setScalar(CH7_GARGANTUA.emberScale);
