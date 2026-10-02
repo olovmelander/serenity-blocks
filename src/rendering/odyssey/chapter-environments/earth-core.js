@@ -43,6 +43,7 @@ import {
     createVolcanoBackgroundTSL,
     createRockClusterMaterialTSL,
     createObsidianColumnTSL,
+    basaltRandom,
     createMoltenHazeMaterialTSL,
     createMoltenPocketTSL,
     createMoltenPocketMaterialTSL,
@@ -1749,6 +1750,8 @@ function pushSeatClearOfPath(seat, radius, groupCenter) {
 function createColonnadeWalls(uniforms, staging, sharedMaterial) {
     const stations = [0.06, 0.18, 0.32, 0.46, 0.62, 0.74, 0.85];
     const prismGeometries = [];
+    // Seeded, so the colonnade is the same in every run and every A/B capture.
+    const random = basaltRandom(1743);
     stations.forEach((ft, si) => {
         [-1, 1].forEach((side) => {
             const edge = 55 + ((si * 7 + (side > 0 ? 11 : 0)) % 36); // 55–90 off-path
@@ -1760,21 +1763,26 @@ function createColonnadeWalls(uniforms, staging, sharedMaterial) {
             const clusterHeight = 60 + (si / (stations.length - 1)) * 100; // 60→160
             const prismCount = 3 + (si % 2);
             for (let pi = 0; pi < prismCount; pi += 1) {
-                const h = clusterHeight * (0.55 + Math.random() * 0.5);
-                const r = 4.5 + Math.random() * 3.5;
-                const sides = 5 + Math.floor(Math.random() * 3); // 5–7-sided jointing
+                const h = clusterHeight * (0.55 + random() * 0.5);
+                const r = 4.5 + random() * 3.5;
+                const sides = 5 + Math.floor(random() * 3); // 5–7-sided jointing
                 const prism = new THREE.CylinderGeometry(r * 0.85, r, h, sides, 1);
+                prism.rotateY(random() * Math.PI * 2);
                 prism.translate(
-                    base.x + (Math.random() - 0.5) * r * 4.0,
+                    base.x + (random() - 0.5) * r * 4.0,
                     LAVA_LAKE_Y + h * 0.5, // base seated at the lake surface
-                    base.z + (Math.random() - 0.5) * r * 4.0,
+                    base.z + (random() - 0.5) * r * 4.0,
                 );
-                prismGeometries.push(prism);
+                // Non-indexed so the merged normals are per FACE: crisp jointing facets
+                // instead of the smooth-shaded soft prisms the indexed cylinders gave.
+                prismGeometries.push(prism.toNonIndexed());
+                prism.dispose();
             }
         });
     });
     const merged = mergeGeometries(prismGeometries, false);
     prismGeometries.forEach((g) => g.dispose());
+    merged.computeVertexNormals();
     // Reuse the hoisted shared isColumn=true material (no per-site compile).
     const mesh = new THREE.Mesh(merged, sharedMaterial);
     mesh.name = 'basalt-colonnade-walls';
