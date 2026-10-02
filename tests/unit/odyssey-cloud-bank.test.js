@@ -93,7 +93,8 @@ describe('cloud bank board wiring', () => {
     it('seats the bank on the rail at the 5->6 boundary and gates it to its window', () => {
         expect(BOARD).toMatch(/const boundary56 = this\.presentationLayout\?\.chapterPositions\?\.\[5\]/);
         expect(BOARD).toMatch(/this\.cloudBank\.mesh\.visible = inWindow;/);
-        expect(BOARD).toMatch(/if \(inWindow\) this\.cloudBank\.update\(this\.time,/);
+        // (2026-10-02) The update also carries the live aurora glow (the light on the cloud tops).
+        expect(BOARD).toMatch(/this\.cloudBank\.update\(this\.time, \(cameraProgress - lo\) \/ \(hi - lo\), auroraGlow\)/);
     });
 
     it('cannot take the board down if it fails to build, and is disposed', () => {

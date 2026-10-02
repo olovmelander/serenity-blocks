@@ -28,9 +28,10 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    clamp, cos, dot, float, mix, oneMinus, pow, sin, smoothstep, uniform, uv, vec3,
+    abs, clamp, cos, dot, float, mix, oneMinus, sin, smoothstep, uniform, uv, vec3,
 } from 'three/tsl';
 import { AURORA_PALETTE } from './odyssey-planet-aurora.js';
+import { LATTICE_NOISE_PERIOD, latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 
 const TWO_PI = Math.PI * 2;
 
@@ -47,12 +48,17 @@ export const AURORA_BRIDGE = Object.freeze({
     // across [b, b + fallTo] — gone just as the One World switches off.
     riseFrom: 0.34,
     riseTo: 0.05,
-    fallTo: 0.2,
+    // 0.2 -> 0.3 (2026-10-02): the curtains now glow over the night-side cloud bank (which stays
+    // until boundary + 152 u = p ~0.814), not on the world's airglow line, so they no longer have
+    // to be gone at the One World switch-off. The longer fall dissolves the aurora INTO the
+    // arriving nebulae instead of leaving a dark gap before them (the 5->6 gate measured a dip to
+    // luma 18.6 at p 0.77 and a +3.6 recovery with the 0.2 fall).
+    fallTo: 0.3,
     // The crimson fringe outlives the green by this fraction of the fall.
     crimsonLead: 0.6,
     // Overall emission trim and chroma (1 = full palette saturation).
-    level: 0.55,
-    chroma: 0.62,
+    level: 0.85,
+    chroma: 0.8,
 });
 
 function smoothstep01(x) {
@@ -85,9 +91,44 @@ export function resolveAuroraBridgeEnvelope(p, ch6Start, ch7Start) {
 }
 
 /**
+ * Per-sheet parameters of the curtain (front -> back). Seen from orbit a farther curtain sits
+ * LOWER (nearer the limb), shorter and dimmer; each folds on its own phase, so the sheets weave
+ * and cross instead of stacking into parallel stripes (first in-game capture).
+ */
+const CURTAIN_SHEETS = Object.freeze([
+    Object.freeze({
+        foot: 0.10, height: 0.78, gain: 1.0, phase: 0.0, fineRays: true,
+    }),
+    Object.freeze({
+        foot: 0.07, height: 0.56, gain: 0.7, phase: 2.1, fineRays: false,
+    }),
+    Object.freeze({
+        foot: 0.045, height: 0.38, gain: 0.45, phase: 4.4, fineRays: false,
+    }),
+]);
+
+/**
  * The curtain band. Returns a Mesh whose `userData` carries the uniforms the chapter ticks
  * (`uGrow`, `uGlow`, `uCrimson`) and `bandCentreY` (the local y offset of the band's centre
  * above the eye — the chapter re-seats the mesh on the camera every frame).
+ *
+ * THE AURORA, AS IT IS SEEN FROM ORBIT (2026-10-02; owner: "a visually stunning aurora — now it
+ * almost feels like we have two different auroras"). The old band was ONE sine-built sheet: a
+ * dense smear on one side and a picket comb of rays on the other, with no depth, and the cloud
+ * bank drew over its lower half. Now THREE folded sheets stand on the limb, each:
+ *   - FOLDED: its lower edge meanders (three periodic folds + baked-lattice wander), so it
+ *     reads as hanging drapery, and it is BRIGHTER where the sheet turns toward the eye (seen
+ *     edge-on there, the glowing gas is deeper along the line of sight);
+ *   - a SHARP, bright green-white lower border (every real curtain has one), a green body that
+ *     dies upward, and a crimson upper glow (the 630 nm oxygen line) above it;
+ *   - RAYED: vertical striations from a lattice field stretched up the curtain, sampled on the
+ *     FOLDED azimuth so they crowd where the sheet turns and drift slowly sideways;
+ *   - ALIVE: bright and dark stretches travel along the curtain (activity), so it dances
+ *     instead of sitting still.
+ * Every azimuthal term is periodic (sines with integer frequency, lattice cells in multiples of
+ * the 64-period texture), so the cylinder's seam column joins exactly. Drawn AFTER the cloud
+ * bank (renderOrder 13 > 12): the curtains glow over the night-side cloud sea, as in orbital
+ * photographs, instead of being washed grey by it.
  */
 export function createAuroraBridgeBand(uTime) {
     const B = AURORA_BRIDGE;
@@ -100,56 +141,76 @@ export function createAuroraBridgeBand(uTime) {
     const topY = B.radius * (B.topSin / Math.sqrt(1 - B.topSin * B.topSin));
 
     const coords = uv();
-    const az = coords.x.mul(TWO_PI);
-    // Wavy lower edge: the curtain's foot rides a slow fold in azimuth, so the band reads as
-    // hanging sheets, not a ruled stripe. Kept small next to the band height (~5 %).
-    const foldA = sin(az.mul(7.0).add(time.mul(0.07)));
-    const foldB = sin(az.mul(19.0).sub(time.mul(0.045)).add(1.7));
-    const h = coords.y.sub(foldA.mul(0.035).add(foldB.mul(0.015)).add(0.02));
+    const az = coords.x;
+    const h = coords.y;
+    const A = az.mul(TWO_PI);
+    const N = LATTICE_NOISE_PERIOD;
 
-    // RAYS: the striations live INSIDE a continuous sheet (first capture: hard, evenly spaced
-    // spikes read as a picket fence on the horizon). The comb runs on a FOLDED azimuth, so the
-    // rays bunch where the sheet turns toward the eye and thin where it turns away, and two
-    // incommensurate frequencies at low contrast only texture the sheet. Every term is periodic
-    // in azimuth, so the cylinder's seam column joins exactly.
-    const azFold = az.add(sin(az.mul(4.0).add(time.mul(0.03))).mul(0.22))
-        .add(sin(az.mul(11.0).sub(time.mul(0.05)).add(0.4)).mul(0.07));
-    const rayFine = pow(sin(azFold.mul(97.0).add(time.mul(0.05))).mul(0.5).add(0.5), 1.5);
-    const rayWide = pow(sin(azFold.mul(37.0).sub(time.mul(0.03)).add(0.6)).mul(0.5).add(0.5), 1.2);
-    const rays = rayFine.mul(0.6).add(rayWide.mul(0.4)).mul(0.55).add(0.45);
-    // CLUMPS: brightness travels along the oval; the gaps are what make the bright arcs read.
-    const clumpA = sin(az.mul(3.0).sub(time.mul(0.05)).add(1.3)).mul(0.5).add(0.5);
-    const clumpB = cos(az.mul(5.0).add(time.mul(0.035))).mul(0.5).add(0.5);
-    const clump = pow(clumpA.mul(clumpB), 0.7).mul(0.9).add(0.1);
+    const greenWarm = vec3(...AURORA_PALETTE.greenWarm);
+    const greenCool = vec3(...AURORA_PALETTE.greenCool);
+    const crimson = vec3(...AURORA_PALETTE.crimson);
+    const violet = vec3(0.42, 0.10, 0.62);
+    const border = vec3(0.62, 1.0, 0.78); // the green-white lower edge
 
-    // Vertical: soft out of the airglow line, bright low, dissolving upward; and only the part
-    // the curtains have GROWN into is lit (the rise is literal: they climb out of the line).
-    const foot = smoothstep(0.0, 0.06, h);
-    // The bright lower border every aurora curtain has, riding the wavy foot.
-    const border = h.sub(0.05).div(0.05);
-    const rim = border.mul(border).negate().exp().mul(0.6);
-    const fade = pow(oneMinus(clamp(h, 0.0, 1.0)), 1.9).add(rim);
-    const grown = smoothstep(h, h.add(0.14), uGrow.mul(1.14));
+    // Activity: bright and dark stretches travelling along the oval (shared by the sheets, so
+    // a surge reads as one event moving through the whole display).
+    const activityField = latticeNoise3(vec3(az.mul(N), 3.3, time.mul(0.05)));
+    const activity = smoothstep(0.28, 0.78, activityField).mul(0.88).add(0.12);
 
-    // Colour: the airglow's own green at the very foot, the emerald body, a short crimson /
-    // pink fringe at the top — and across the fall the whole curtain walks to crimson.
-    const airglow = vec3(0.20, 0.78, 0.46);
-    const green = mix(vec3(...AURORA_PALETTE.greenWarm), vec3(...AURORA_PALETTE.greenCool), clumpA);
-    const fringe = mix(vec3(...AURORA_PALETTE.crimson), vec3(...AURORA_PALETTE.pink), smoothstep(0.82, 0.96, h));
-    let colour = mix(airglow, green, smoothstep(0.0, 0.12, h));
-    colour = mix(colour, fringe, smoothstep(0.52, 0.72, h));
-    colour = mix(colour, fringe, uCrimson.mul(0.85));
-    const graded = mix(vec3(dot(colour, vec3(0.2126, 0.7152, 0.0722))), colour, float(B.chroma)).mul(B.level);
+    let colour = vec3(0.0);
+    CURTAIN_SHEETS.forEach((sheet, i) => {
+        // The fold: three periodic sines, and their slope (how sharply the sheet turns).
+        const a1 = A.mul(3.0).add(time.mul(0.031)).add(sheet.phase);
+        const a2 = A.mul(7.0).sub(time.mul(0.047)).add(sheet.phase * 1.7);
+        const a3 = A.mul(13.0).add(time.mul(0.083)).add(sheet.phase * 2.3);
+        const fold = sin(a1).mul(0.5).add(sin(a2).mul(0.3)).add(sin(a3).mul(0.2));
+        const slope = cos(a1).mul(1.5).add(cos(a2).mul(2.1)).add(cos(a3).mul(2.6))
+            .div(6.2);
+        const wander = latticeNoise3(vec3(az.mul(N * 2), 7.1 + i * 5.3, time.mul(0.04))).sub(0.5);
+        const foldAmp = Math.min(0.085, sheet.foot * 0.75);
+        const footLine = float(sheet.foot).add(fold.mul(foldAmp)).add(wander.mul(foldAmp * 0.6));
+        const height = float(sheet.height).mul(sin(A.mul(2.0).add(sheet.phase)).mul(0.18).add(0.82));
+        const d = h.sub(footLine);
+        // Sharp lower edge, a bright border riding it, a green body dying upward, a crimson
+        // glow high above — all measured from THIS sheet's own meandering foot.
+        const lower = smoothstep(-0.012, 0.004, d);
+        const borderLine = d.div(0.02);
+        const rim = borderLine.mul(borderLine).negate().exp();
+        const up = clamp(d.div(height), 0.0, 1.0);
+        const body = up.mul(-1.9).exp();
+        const high = smoothstep(0.35, 0.7, up).mul(oneMinus(smoothstep(0.78, 1.0, up)));
+        // Rays on the FOLDED azimuth (they crowd where the sheet turns), stretched up the sheet,
+        // drifting slowly sideways; the front sheet gets a second, finer octave.
+        const rayAz = az.mul(N * 6).add(fold.mul(2.4));
+        let rayField = latticeNoise3(vec3(rayAz, d.mul(1.2), time.mul(0.22).add(i * 11.0)));
+        if (sheet.fineRays) {
+            const fine = latticeNoise3(vec3(rayAz.mul(2.3), d.mul(2.0), time.mul(0.35).add(5.0)));
+            rayField = rayField.mul(0.65).add(fine.mul(0.35));
+        }
+        // Low on the sheet the rays only texture a continuous glow; higher up they ARE the curtain.
+        const rayFloor = mix(float(0.5), float(0.12), smoothstep(0.05, 0.5, up));
+        const rays = smoothstep(0.3, 0.8, rayField).mul(oneMinus(rayFloor)).add(rayFloor);
+        // Where the sheet turns toward the eye it is seen edge-on: brighter.
+        const turn = abs(slope).mul(0.9).add(0.55);
+        // The curtains climb out of the airglow as they grow (uGrow), literally.
+        const grown = smoothstep(d, d.add(0.12), uGrow.mul(float(sheet.height).add(0.08)));
+        const presence = lower.mul(activity).mul(turn).mul(grown).mul(sheet.gain);
+        const green = mix(greenWarm, greenCool, activityField).mul(body.mul(rays))
+            .add(border.mul(rim).mul(rays.mul(0.4).add(0.6)).mul(0.6));
+        // The 630 nm oxygen glow: a FAINT high haze over the green, not a second red curtain.
+        const red = mix(crimson, violet, smoothstep(0.6, 1.0, up)).mul(high).mul(rays.mul(0.2).add(0.8)).mul(0.13);
+        colour = colour.add(green.mul(presence).mul(oneMinus(uCrimson.mul(0.85))))
+            .add(red.mul(presence));
+    });
+    // The band itself fades out before its top edge, so no curtain is ever cut by geometry.
+    const topFade = oneMinus(smoothstep(0.86, 1.0, h));
+    const graded = mix(vec3(dot(colour, vec3(0.2126, 0.7152, 0.0722))), colour, float(B.chroma))
+        .mul(B.level)
+        .mul(topFade);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = graded;
-    // During the fall the green body thins faster than the fringe (`crimson` lifts the floor
-    // of the vertical ramp), so what remains last is high red wisps.
-    const fallLift = mix(float(1.0), smoothstep(0.35, 0.8, h), uCrimson.mul(0.7));
-    const shape = foot.mul(fade).mul(rays).mul(clump)
-        .mul(grown)
-        .mul(fallLift);
-    material.opacityNode = clamp(shape, 0.0, 1.0).mul(uGlow);
+    material.opacityNode = uGlow;
     material.transparent = true;
     material.depthWrite = false;
     // The eye is always inside the band.
@@ -158,10 +219,11 @@ export function createAuroraBridgeBand(uTime) {
     material.fog = false;
     material.userData.emitsBloom = true;
 
-    const geometry = new THREE.CylinderGeometry(B.radius, B.radius, topY - footY, 192, 1, true);
+    const geometry = new THREE.CylinderGeometry(B.radius, B.radius, topY - footY, 256, 1, true);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'aurora-airglow-bridge';
-    mesh.renderOrder = -9;
+    // After the cloud bank (12): the curtains glow over the night-side cloud sea.
+    mesh.renderOrder = 13;
     mesh.frustumCulled = false;
     mesh.visible = false;
     mesh.userData.uGrow = uGrow;

@@ -1902,6 +1902,10 @@ export function createOdysseyWorld({
     const uFadeZenith = uniform(0);
     const uFadeHorizon = uniform(0);
     const uLimbGlow = uniform(0);
+    // The chapter-6 aurora's live glow (0..1), handed in by the board: as its curtains rise OUT OF
+    // the airglow line, the line yields to them (owner 2026-10-02: "it feels like we have two
+    // different auroras" — a straight green line under the curtains read as a second one).
+    const uAuroraGlow = uniform(0);
     // How far the departure has dissolved the cloud FIELD into the cloud sea below (item 10).
     const uFieldGone = uniform(0);
     const toOutputFaded = (c, fadeAmt) => {
@@ -2055,7 +2059,8 @@ export function createOdysseyWorld({
         If(uLimbGlow.greaterThan(0.0001), () => {
             const limbBand = exp(skyDir.y.sub(0.01).div(0.045).pow(2).negate());
             const airglowBand = exp(skyDir.y.sub(0.075).div(0.012).pow(2).negate());
-            out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45)))
+            const airglowYield = float(1).sub(uAuroraGlow.mul(0.8));
+            out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45).mul(airglowYield)))
                 .mul(uLimbGlow)
                 .mul(uOutputScale)
                 .mul(float(1).sub(uSubmerged))));
@@ -3194,7 +3199,12 @@ export function createOdysseyWorld({
     // bodies — the deck opens sky between masses instead of holding full form to the end).
     // Written as another PLAIN term inside cfOffset so the vertex position and the `cfWorld`
     // varying stay in the exact agreement the note above paid for.
-    const cfThinPull = positionLocal.sub(cfCentre).mul(uWorldThin.mul(-FIELD_THIN_SHRINK));
+    // ...and the DEPARTURE now finishes the job the same way (2026-10-02): as `uFieldGone` rises
+    // each mass keeps shrinking toward its centre until it is gone, instead of dissolving into a
+    // per-pixel stipple — a screen-space scatter of kept pixels that read as grainy noise over the
+    // limb in captures (p 0.71-0.72) and as sparkle in motion. `keep` is the surviving fraction.
+    const cfKeep = float(1).sub(uWorldThin.mul(FIELD_THIN_SHRINK)).mul(float(1).sub(uFieldGone.mul(0.97)));
+    const cfThinPull = positionLocal.sub(cfCentre).mul(cfKeep.sub(1));
     const cfOffset = cfDrift.add(cfBreath).add(cfThinPull);
     const cfWorld = varying(positionLocal.add(cfOffset), 'cfWorld');
     const cfGeoN = normalWorld.toVar('fieldGeoN');
@@ -3319,10 +3329,9 @@ export function createOdysseyWorld({
     const cfFade = smoothstep(float(FIELD_FADE_NEAR), float(FIELD_FADE_FAR), cfEyeDist);
     const cfHash = fract(sin(dot(screenUV.mul(vec2(1927.0, 1083.0)), vec2(12.9898, 78.233)))
         .mul(43758.5453));
-    // ...and the same stipple sinks the masses into the cloud sea as the departure completes
-    // (item 10): faded toward the void they read as dark pebbles on the bright sea (capture,
-    // ch5 0.97), so they dissolve out instead — no blend state, the opaque path as before.
-    fieldMat.opacityNode = tslStep(cfHash, cfFade.mul(float(1).sub(uFieldGone)));
+    // (The departure no longer uses this stipple — it shrinks each mass away in the position
+    // term, see cfKeep. The stipple remains only for masses passing near the eye.)
+    fieldMat.opacityNode = tslStep(cfHash, cfFade);
     // alphaTest WITHOUT `transparent`: r181 discards on it regardless, so the mesh stays in
     // the opaque queue and emits no blend state.
     fieldMat.alphaTest = 0.5;
@@ -4489,6 +4498,13 @@ export function createOdysseyWorld({
          * `state.lifePresence`) fades in by the quench density. Consumed by the next update();
          * a frame without a call is the neutral ocean. See `odysseyQuenchCarry`.
          */
+        /**
+         * THE AIRGLOW YIELDS TO THE AURORA. `setAuroraGlow(g)` (0..1, the chapter-6 band's live
+         * glow, from the board) dims the airglow line as the curtains rise out of it.
+         */
+        setAuroraGlow(glow) {
+            uAuroraGlow.value = Math.min(Math.max(Number.isFinite(glow) ? glow : 0, 0), 1);
+        },
         setQuenchCarry(t) {
             quenchT = Math.min(Math.max(Number.isFinite(t) ? t : 1, 0), 1);
             quenchFresh = true;
