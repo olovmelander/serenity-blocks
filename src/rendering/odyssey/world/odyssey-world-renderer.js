@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, If,
-    abs, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, length,
-    max, min, mix, reflect, sign, sqrt,
+    abs, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, frontFacing,
+    length, max, min, mix, reflect, select, sign, sqrt,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
-    screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition,
+    screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition, cameraViewMatrix,
 } from 'three/tsl';
 
 import {
@@ -44,6 +44,9 @@ import {
     ODYSSEY_COLOUR_SCRIPT,
     ODYSSEY_WATER_RAMP,
 } from '../odyssey-colour-script.js';
+// Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
+// so a re-shaped quench cannot leave fish visible through a thinner veil.
+import { steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
 
 // The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
 export { bakeOdysseyCloudField };
@@ -326,6 +329,60 @@ const WATER_JADE = Object.freeze([0.20, 0.72, 0.60]);
  */
 const UW_LUMINOUS = Object.freeze([0.10, 0.50, 0.54]);
 const UW_INDIGO = Object.freeze([0.014, 0.026, 0.090]);
+
+/**
+ * THE 1->2 CARRY — embers become bubbles (seamless pass, cross-session interface).
+ *
+ * The board hands the world the steam quench's own clock, `steamQuenchSeamT` (0 at the approach
+ * edge, 0.5 exactly on the 1->2 boundary, 1 at the exit edge), through `setQuenchCarry(t)`. Across
+ * it the world's motes stop being drifting specks and behave as a column of RISING BUBBLES — faster,
+ * wobbling, ring-shaped — whose colour walks ember -> white -> cyan, so the updraft of embers the
+ * player climbed through in Earth Core is the thing that turns into the sea. Ocean LIFE (fish, the
+ * whale, the light shafts) waits for the veil to thin, so nothing oceanic stands in the cavern
+ * beside the basalt columns (the audit's p=0.0529 frame).
+ *
+ * Pure function of t, exported for tests. `carry` is how much the motes behave as bubbles, `bubble`
+ * how ring-shaped they are (embers are hot dots, bubbles are rims), `tint` the colour they wear while
+ * carried, `life` the presence of ocean life: 0 on the cavern side, then 1 - the quench's density.
+ */
+export const QUENCH_EMBER = Object.freeze([1.0, 0.46, 0.16]);
+export const QUENCH_WHITE = Object.freeze([0.96, 0.97, 1.0]);
+export const QUENCH_CYAN = Object.freeze([0.42, 0.92, 0.96]);
+/** How much faster a carried mote rises (x1 + this at full carry). */
+export const QUENCH_RISE_BOOST = 4.5;
+const smooth01 = (a, b, x) => {
+    const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+    return t * t * (3 - (2 * t));
+};
+export function odysseyQuenchCarry(seamT) {
+    const t = Math.min(Math.max(Number.isFinite(seamT) ? seamT : 1, 0), 1);
+    const carry = smooth01(0.10, 0.30, t) * (1 - smooth01(0.70, 1.0, t));
+    // Rims only while carried: back to today's dot by the exit edge (t = 1 is the neutral ocean).
+    const bubble = smooth01(0.42, 0.62, t) * (1 - smooth01(0.72, 1.0, t));
+    const tint = t < 0.5
+        ? QUENCH_EMBER.map((c, i) => c + ((QUENCH_WHITE[i] - c) * smooth01(0.25, 0.5, t)))
+        : QUENCH_WHITE.map((c, i) => c + ((QUENCH_CYAN[i] - c) * smooth01(0.5, 0.8, t)));
+    // 0 until the boundary (the cavern side), then follows the veil thinning — but only once
+    // most of it is gone, so a fish never stands crisp against white vapour.
+    const life = t <= 0.5 ? 0 : smooth01(0.15, 0.95, 1 - steamQuenchDensity(t));
+    return {
+        carry, bubble, tint, life,
+    };
+}
+
+/**
+ * THE 2->3 BREACH SPRAY — bubbles become spray. When the EYE crosses sea level upward the world
+ * throws a camera-relative burst of droplets, re-using the motes (one draw that already exists and
+ * is warmed with the world — no new mesh, no new pipeline). `SPRAY_LIFE_S` is the burst's length;
+ * `SPRAY_CLIMB_RATE` lets the eye's own height above the surface age the burst too, so a scrub or a
+ * frozen-clock capture shows the burst at the age the climb implies rather than frozen at birth.
+ */
+export const SPRAY_LIFE_S = 1.8;
+export const SPRAY_CLIMB_RATE = 9;
+export function odysseySprayEnvelope(age) {
+    if (!Number.isFinite(age) || age < 0 || age >= SPRAY_LIFE_S) return 0;
+    return 1 - smooth01(SPRAY_LIFE_S * 0.55, SPRAY_LIFE_S, age);
+}
 /**
  * THE EDGE OF SPACE (item 10). The departure fade used to pull zenith, horizon, clouds and
  * ground toward the void TOGETHER, which reads as a dimmer switch. Leaving an atmosphere is
@@ -944,7 +1001,7 @@ export function createOdysseyWorld({
     // MID plate — capture-measured at p=0.185, a fixed deep-plate convergence rendered the
     // near-surface ascent as abyss-dark water.
     const uEyeDepth = uniform(1);
-    // 1 while the eye is AT the surface (within ~3 u), 0 elsewhere — the meniscus window.
+    // 1 while the eye is AT the surface (ramping out over 6 u), 0 elsewhere — the meniscus window.
     const uBreachNear = uniform(0);
     // THE CLOUD REGIME GATE (cloud plan Wave 2, exit-gate response). 1 when the eye is high
     // enough that any part of the deck can show its sunlit TOP, 0 when it cannot. The CPU
@@ -958,6 +1015,17 @@ export function createOdysseyWorld({
     // VALLEY-MIST GATE: the mist term rides smoothstep(350, 470, eye y), exactly 0 below 350 u (all of
     // ch2-3) — so it only runs above that, as a uniform branch inside applyAerial.
     const uValleyMist = uniform(0);
+    // THE 1->2 CARRY (see `odysseyQuenchCarry`): bubble behaviour, ring profile, carried tint, the
+    // extra rise phase the CPU accumulates (a speed change on a time-scaled fract would make every
+    // mote jump), and the presence of ocean life. Neutral values = today's ocean exactly.
+    const uQuench = uniform(0);
+    const uBubble = uniform(0);
+    const uMoteTint = uniform(new THREE.Color(...QUENCH_CYAN));
+    const uMoteLift = uniform(0);
+    const uLife = uniform(1);
+    // THE 2->3 SPRAY: envelope (0 = off) and age in seconds since the eye broke the surface.
+    const uSpray = uniform(0);
+    const uSprayAge = uniform(0);
     // The three water plates. Driven from the colour script's water keyframes so the ocean's
     // depth banding and the journey's palette can never drift apart (they are the same data).
     const uWaterShallow = uniform(new THREE.Color(0.29, 0.54, 0.69));
@@ -1082,7 +1150,20 @@ export function createOdysseyWorld({
      * trades some haze for colour and must not trade all of it.
      */
     const AERIAL_RATE_LAND = 0.62;
-    const applyAerial = (lit, wp, ceil = AERIAL_CEIL_WATER, rate = 1, valleyMist = false) => {
+    // `hazeFloor` (optional node, 0..1): a MINIMUM underwater haze weight, so a surface can be
+    // dissolved into the water around it uniform-driven (the fish's 1->2 presence) — no alpha,
+    // no blend state, the opaque path unchanged. JS-gated: only the caller that passes it builds it.
+    // `perFragmentMedium` (JS flag, the ground only): inside the breach band, decide the medium per
+    // fragment instead of by the eye's smoothed uSubmerged — see `subW` in submergedOf.
+    const applyAerial = (
+        lit,
+        wp,
+        ceil = AERIAL_CEIL_WATER,
+        rate = 1,
+        valleyMist = false,
+        hazeFloor = null,
+        perFragmentMedium = false,
+    ) => {
         const to = wp.sub(cameraPosition);
         const d = length(to);
         const dirY = to.div(max(d, float(0.001))).y;
@@ -1115,7 +1196,8 @@ export function createOdysseyWorld({
             // removing the steam veil exposed a frame with 97.5% of its pixels in ONE luma band.
             // 0.995 keeps a floor of the fragment's own colour so the far field converges without
             // ever fully degenerating to the plate.
-            const wRGB = clamp(float(1).sub(exp(d.mul(vec3(-0.0160, -0.0082, -0.0046)))), 0, 0.995);
+            const wRGBBase = clamp(float(1).sub(exp(d.mul(vec3(-0.0160, -0.0082, -0.0046)))), 0, 0.995);
+            const wRGB = hazeFloor ? max(wRGBBase, vec3(hazeFloor)) : wRGBBase;
             // The up-lift is a DOWNWELLING cone (pow-concentrated overhead), and grazing rays
             // converge to the DEEP plate: from 100+ u down the whole up-hemisphere is the water
             // plane's underside, whose fragments all sit AT the surface (depthBelow = 0), so
@@ -1135,7 +1217,14 @@ export function createOdysseyWorld({
             // The deep end leans INDIGO (item 4): a long water column is violet-dark, not grey-navy.
             const deepIndigo = mix(uWaterDeep, vec3(...UW_INDIGO), 0.55);
             const banded = mix(bandShallow, deepIndigo, smoothstep(float(0.45), float(0.92), depthBelow));
-            const convergePlate = mix(uWaterMid, deepIndigo, uEyeDepth);
+            // ...and in the last ~25 u under the surface the long rays converge on LUMINOUS water,
+            // not mid-blue: the top metres of a sunlit sea glow. Without it the frame just under the
+            // breach sat a 34-luma step below the daylight frame above it (2->3 seam gate).
+            const convergePlate = mix(
+                mix(uWaterMid, deepIndigo, uEyeDepth),
+                vec3(...UW_LUMINOUS).mul(1.25),
+                float(1).sub(smoothstep(float(0.0), float(0.18), uEyeDepth)).mul(0.8),
+            );
             const bandedDir = mix(banded, convergePlate, grazing);
             // ...and the overhead lift leans LUMINOUS TEAL, brightest near the surface: the ceiling
             // the ascent camera stares at for the whole chapter glows instead of sitting mid-blue.
@@ -1153,7 +1242,25 @@ export function createOdysseyWorld({
             // value structure back into the frame the steam veil used to supply.
             const litUnder = lit.mul(vec3(0.42, 0.86, 1.0));
             const submergedCol = mix(litUnder, waterTarget, wRGB);
-            return mix(air, submergedCol, uSubmerged);
+            // THE MEDIUM, PER FRAGMENT, IN THE BREACH BAND (ground only). uSubmerged is the EYE's
+            // smoothed blend over a 14 u band, so with the eye 3 u under the surface the seabed —
+            // seen through 160 u of water — took only 36 % water haze and showed as sunlit sand with
+            // its caustic flecks (the crossing frame's "grid"). Eye and fragment both under the
+            // surface: the ray never leaves the water. Both above: it never enters it. Only a ray
+            // that crosses the surface keeps the eye's blend. Outside the band this IS uSubmerged.
+            const subW = perFragmentMedium
+                ? select(
+                    cameraPosition.y.lessThan(ODYSSEY_SEA_LEVEL).and(wp.y.lessThan(ODYSSEY_SEA_LEVEL)),
+                    float(1),
+                    select(
+                        cameraPosition.y.greaterThanEqual(ODYSSEY_SEA_LEVEL)
+                            .and(wp.y.greaterThanEqual(ODYSSEY_SEA_LEVEL)),
+                        float(0),
+                        uSubmerged,
+                    ),
+                )
+                : uSubmerged;
+            return mix(air, submergedCol, subW);
         };
         // ⚠️ UNIFORM-GATED BRANCHES (seamless pass). Everything below `airBase` used to be built
         // as one expression and multiplied by uSubmerged / the eye-height smoothstep — and a
@@ -1733,7 +1840,9 @@ export function createOdysseyWorld({
         return mix(graded, uWorldFadeColour, fadeAmt);
     };
     const toOutput = (c) => toOutputFaded(c, uWorldFade);
-    groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND, true));
+    // Land ceiling + rate, valley mist on, no haze floor, the per-fragment medium (breach band).
+    const GROUND_AERIAL_ARGS = [AERIAL_CEIL_LAND, AERIAL_RATE_LAND, true, null, true];
+    groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld, ...GROUND_AERIAL_ARGS));
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
     groundMesh.frustumCulled = false;
@@ -2089,7 +2198,7 @@ export function createOdysseyWorld({
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const spec = smoothstep(float(0.9955), float(0.9995), dot(normalize(uSunDir.add(viewDir)), wN)).mul(0.9);
     const grazing = float(1).sub(clamp(abs(dot(wN, viewDir)), 0, 1));
-    // WAVE 5 — the MENISCUS: while the eye is within ~3 u of the plane, the extreme-grazing
+    // WAVE 5 — the MENISCUS: while the eye is within ~6 u of the plane, the extreme-grazing
     // sliver of the surface lights as a thin bright line — the crossing cue that makes the
     // breach one event instead of a fade. Rides `grazing`, so it IS the waterline.
     const meniscus = smoothstep(float(0.93), float(0.995), grazing).mul(uBreachNear).mul(0.9);
@@ -2302,7 +2411,10 @@ export function createOdysseyWorld({
             // Crest SSS + Snell's window + TIR; the swell-perturbed normal (shared, above)
             // is what makes the window's rim ripple live.
             const crestMask = clamp(vSwell.mul(1.6).add(0.35), 0, 1);
-            const sss = crestMask.mul(grazing).mul(clamp(dot(uSunDir, vec3(0, 1, 0)), 0, 1));
+            // Crest translucency is a NEAR-field effect (a thin crest close by); at the breach the
+            // far grazing ceiling took it everywhere and painted the TIR band a sandy gold.
+            const sss = crestMask.mul(grazing).mul(clamp(dot(uSunDir, vec3(0, 1, 0)), 0, 1))
+                .mul(float(1).sub(smoothstep(float(30), float(140), wFragDist)));
             const upCos = clamp(dot(viewDir.negate(), wN), 0, 1);
             const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
             // THE CAUSTIC WEB ON THE CEILING (item 4). Seen from below, a rippled surface is a
@@ -2349,10 +2461,29 @@ export function createOdysseyWorld({
             const windowSky = skyColourSubmergedUp.mul(1.30)
                 .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2))
                 .add(vec3(...UW_LUMINOUS).mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.5)));
-            const tirBody = mix(uWaterMid, uWaterDeep, uEyeDepth).mul(0.6);
+            // THE SURFACE FLOODS WITH LIGHT AS YOU REACH IT (2->3 seam). Seen from deep below, the
+            // ceiling outside Snell's window is the dark total-internal-reflection body; over the
+            // last ~25 u it becomes a bright, wavering lid — and without that the breach was a 37-luma
+            // jump from a dark TIR frame straight into daylight (the seam gate's worst step).
+            // uEyeDepth is a uniform, so this is two mixes on the ceiling, no branch.
+            const tirBody = mix(
+                mix(uWaterMid, uWaterDeep, uEyeDepth).mul(0.6),
+                windowSky.mul(0.74),
+                float(1).sub(smoothstep(float(0.0), float(0.18), uEyeDepth)).mul(0.85),
+            );
             const underside = mix(tirBody, windowSky, snellWindow)
                 .add(uWaterGlow.mul(sss).mul(0.55));
-            col.assign(mix(col, underside, uSubmerged));
+            // THE BREACH, PER FRAGMENT (seamless pass, 2->3). Inside the 14 u band both regimes
+            // run, and this used to cross-dissolve the WHOLE plane by the eye's uSubmerged — at
+            // the crossing frame every water pixel was a 36/64 blend of topside and ceiling, a
+            // grey muddle with whitecap flecks where the meniscus should have been the hero. The
+            // rasteriser already knows the truth for each fragment: a FRONT face (the plane's
+            // normal is +Y) is surface seen from above, a back face is ceiling seen from below.
+            // So a crest that rises above the eye shows its luminous underside while the trough
+            // beside it shows sky, split by the meniscus line where `grazing` peaks. Outside the
+            // band only one branch runs and this reduces to the old answer exactly.
+            const faceUnder = select(frontFacing, float(0), float(1));
+            col.assign(mix(col, underside, select(uSubmerged.greaterThanEqual(0.999), float(1), faceUnder)));
         });
         return col.add(vec3(0.95, 0.99, 1.0).mul(meniscus));
     })();
@@ -3227,7 +3358,10 @@ export function createOdysseyWorld({
         // 0.55 -> 0.34: the flip put the wide (formerly buried) half of every cone in front
         // of the camera, and DoubleSide additive pays both walls — at the old master the
         // shafts read as solid pipes.
+        // x uLife: the shafts arrive with the ocean as the quench veil thins (1->2 carry), never
+        // as additive light inside Earth Core's cavern.
         rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(rayShimmerSafe).mul(uSubmerged)
+            .mul(uLife)
             // 0.52 -> 0.62: the streaked shimmer's mean sits ~a quarter under the simplex's.
             .mul(0.62)
             .toVar();
@@ -3332,13 +3466,46 @@ export function createOdysseyWorld({
         const mS = attribute('aSeed', 'float');
         const mO = attribute('aOrigin', 'vec3');
         // Constant-velocity drift upward with a slow sine sway; fract recycles each mote.
-        const mRise = fract(uTime.mul(0.014).mul(mS.mul(0.5).add(0.6)).add(mS));
+        // The rise clock is `uTime + uMoteLift`: the CPU banks EXTRA phase while the 1->2 carry
+        // speeds the column up (a bubble rises far faster than a drifting speck). Scaling uTime
+        // instead would teleport every mote the moment the speed changed. uMoteLift is 0 with no
+        // carry, so the column is today's, bit for bit.
+        const mPhaseT = uTime.add(uMoteLift);
+        const mRise = fract(mPhaseT.mul(0.014).mul(mS.mul(0.5).add(0.6)).add(mS));
         const mSway = sin(uTime.mul(0.30).add(mS.mul(41))).mul(2.2);
-        const moteCenter = vec3(
-            mO.x.add(mSway),
+        // A rising bubble zig-zags; the wobble only exists while the column is carried.
+        const mWobble = sin(mPhaseT.mul(2.3).add(mS.mul(57))).mul(uQuench.mul(0.9));
+        const moteDrift = vec3(
+            mO.x.add(mSway).add(mWobble),
             mO.y.add(mRise.mul(70)),
-            mO.z.add(mSway.mul(0.7)),
+            mO.z.add(mSway.mul(0.7)).add(mWobble.mul(0.6)),
         );
+        // ── THE 2->3 SPRAY (bubbles become spray) ─────────────────────────────────────────
+        // A third of the motes double as droplets: when the eye breaks the surface (uSpray > 0)
+        // they leave the column — which the camera is leaving too — and burst CAMERA-RELATIVE:
+        // born in a loose disc just ahead of the lens, flying outward past it, thrown up then
+        // falling, so the climb out of the sea throws water at the edges of the frame. The
+        // camera basis comes from the view matrix (rows of its rotation), so nothing new is
+        // uploaded. Vertex ALU on 640 quads, and only the selected third ever moves.
+        const mSpraySel = tslStep(0.78, fract(mS.mul(13.37)));
+        const sprayOn = mSpraySel.mul(tslStep(0.0005, uSpray));
+        const camR = vec3(cameraViewMatrix.element(0).x, cameraViewMatrix.element(1).x, cameraViewMatrix.element(2).x);
+        const camU = vec3(cameraViewMatrix.element(0).y, cameraViewMatrix.element(1).y, cameraViewMatrix.element(2).y);
+        const camF = vec3(cameraViewMatrix.element(0).z, cameraViewMatrix.element(1).z, cameraViewMatrix.element(2).z)
+            .negate();
+        const sAng = fract(mS.mul(91.7)).mul(6.2831853);
+        // Weighted to the LOWER half of the frame — the surface the eye just broke is below it.
+        const sDir = camR.mul(cos(sAng)).add(camU.mul(sin(sAng).mul(0.7).sub(0.45)));
+        // Never nearer than 1.4 u: spray at the edges of the frame, not ON the lens. Born LOW in
+        // the frame (the surface the eye just left is below it), thrown up, then falling away.
+        const sAhead = max(fract(mS.mul(53.3)).mul(6.5).add(1.8).sub(uSprayAge.mul(1.6)), float(1.4));
+        const sOut = fract(mS.mul(37.1)).mul(1.4).add(0.25)
+            .add(fract(mS.mul(17.9)).mul(4.5).add(1.5).mul(uSprayAge));
+        const sLift = fract(mS.mul(7.7)).mul(3.4).add(0.8).mul(uSprayAge)
+            .sub(uSprayAge.mul(uSprayAge).mul(5.2))
+            .sub(fract(mS.mul(43.9)).mul(1.6).add(0.4));
+        const sprayCenter = cameraPosition.add(camF.mul(sAhead)).add(sDir.mul(sOut)).add(vec3(0, sLift, 0));
+        const moteCenter = mix(moteDrift, sprayCenter, sprayOn);
         // 0.5–1.1 u world size, AND screen-space capped (plan Wave 3): the reseat lifts 267
         // previously-buried motes into open water, so the additive fill they can spend is
         // clamped — a mote may never exceed ~1.2 degrees of screen no matter how close it
@@ -3347,21 +3514,38 @@ export function createOdysseyWorld({
         // slow to pulse — the rare larger glows that make a column of specks read as alive.
         const mGlow = tslStep(0.97, fract(mS.mul(7.13)));
         const moteSize = mS.mul(0.6).add(0.5).mul(mGlow.mul(2.0).add(1));
+        // Droplets: FINE spray (2-6 cm) — at 2-8 u ahead of the lens that is a 5-15 px sparkle;
+        // the first cut's 16 cm beads read as snowballs.
+        const spraySize = fract(mS.mul(29.3)).mul(0.04).add(0.02);
         const moteDist = length(moteCenter.sub(cameraPosition));
-        const moteSizeClamped = min(moteSize, moteDist.mul(0.02).add(0.04));
+        const moteSizeClamped = min(
+            mix(moteSize, spraySize, sprayOn),
+            moteDist.mul(mix(float(0.02), float(0.05), sprayOn)).add(0.04),
+        );
         moteMat.positionNode = billboardWorld(moteCenter, moteSizeClamped);
         const mUv = uv();
-        const mRadial = float(1).sub(smoothstep(float(0.0), float(0.5), length(mUv.sub(vec2(0.5)))));
+        const mR = length(mUv.sub(vec2(0.5)));
+        const mRadial = float(1).sub(smoothstep(float(0.0), float(0.5), mR));
+        const mDot = mRadial.mul(mRadial);
+        // An ember is a hot DOT; a bubble is a bright RIM round a clearer centre. uBubble walks
+        // the profile from one to the other across the carry (0 = today's dot exactly).
+        const mRing = smoothstep(float(0.20), float(0.38), mR)
+            .mul(float(1).sub(smoothstep(float(0.38), float(0.5), mR)))
+            .add(mDot.mul(0.30));
+        const mProfile = mix(mDot, mRing.mul(1.3), uBubble);
         // Transmitted light: brightness rises with depth below the surface, because the
         // background darkens with depth — the same inverse the vault's ember gate uses.
         const mDepth = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(120), 0, 1);
+        const moteBase = mix(
+            mix(vec3(0.55, 0.85, 0.90), vec3(0.35, 0.75, 0.80), mDepth)
+                .mul(mDepth.mul(0.9).add(0.35)),
+            vec3(0.42, 1.0, 0.84),
+            mGlow,
+        );
+        // Carried: the column wears the quench's tint (ember -> white -> cyan, CPU-walked).
+        const moteCarried = mix(moteBase, uMoteTint, uQuench);
         moteMat.colorNode = mix(
-            mix(
-                mix(vec3(0.55, 0.85, 0.90), vec3(0.35, 0.75, 0.80), mDepth)
-                    .mul(mDepth.mul(0.9).add(0.35)),
-                vec3(0.42, 1.0, 0.84),
-                mGlow,
-            ).mul(uOutputScale),
+            mix(moteCarried, vec3(0.92, 0.98, 1.0), sprayOn).mul(uOutputScale),
             uWorldFadeColour,
             uWorldFade,
         );
@@ -3369,8 +3553,14 @@ export function createOdysseyWorld({
         // so the field glitters instead of sitting as a static star map.
         const mTwinkle = sin(uTime.mul(mS.mul(2.6).add(0.9)).add(mS.mul(40))).mul(0.5).add(0.5);
         const mPulse = sin(uTime.mul(0.7).add(mS.mul(17))).mul(0.35).add(0.65);
-        moteMat.opacityNode = mRadial.mul(mRadial).mul(uSubmerged)
-            .mul(mix(mTwinkle.mul(mTwinkle).mul(0.55).add(0.12), mPulse.mul(0.75), mGlow));
+        // Carried bubbles burn brighter, so the column reads through what is left of the veil.
+        const moteAlpha = mProfile.mul(uSubmerged)
+            .mul(mix(mTwinkle.mul(mTwinkle).mul(0.55).add(0.12), mPulse.mul(0.75), mGlow))
+            .mul(uQuench.mul(0.9).add(1));
+        // Each droplet has its own life inside the burst (0.9-1.8 s) and fades over its last half.
+        const sLifeT = clamp(uSprayAge.div(fract(mS.mul(11.1)).mul(0.9).add(0.9)), 0, 1);
+        const sprayAlpha = mDot.mul(uSpray).mul(float(1).sub(smoothstep(float(0.55), float(1.0), sLifeT))).mul(0.85);
+        moteMat.opacityNode = mix(moteAlpha, sprayAlpha, sprayOn);
         moteMat.transparent = true;
         moteMat.depthWrite = false;
         moteMat.blending = THREE.AdditiveBlending;
@@ -3544,7 +3734,11 @@ export function createOdysseyWorld({
         const fLook = attribute('aLook', 'vec4');
         const fS = fFish.w;
         // x1.2 after the first capture: at 40-110 u the 1.3-1.7 m hulls were 6-10 px slivers.
-        const fScale = fLook.w.mul(1.2);
+        // x(0.25..1) by uLife (the 1->2 carry): while the quench veil thins the schools come IN —
+        // smaller and dissolved into the water (the haze floor on the aerial below) — instead of
+        // standing full-size and crisp beside Earth Core's basalt (the audit's p=0.0529 frame).
+        const fScaleBase = fLook.w.mul(1.2);
+        const fScale = fScaleBase.mul(uLife.mul(0.75).add(0.25));
         const fOmega = fPathB.y;
         const fHand = tslStep(0, fOmega).mul(2).sub(1);
         // THE RIBBON: an ellipse with a 2-per-lap vertical undulation, so a school rises and
@@ -3579,7 +3773,8 @@ export function createOdysseyWorld({
         // floor), a travelling wave that lags nose-to-tail, and a bank INTO the turn riding the
         // centripetal v*omega. Keyed on positionGeometry (the instancing-safe local axes).
         const fSpeed = abs(fOmega).mul(fPath.w.add(fPathB.x).mul(0.5));
-        const bodyLen = fScale.mul(4.35);
+        // The beat keys off the UNSCALED hull, so the 1->2 presence ramp never re-times the tail.
+        const bodyLen = fScaleBase.mul(4.35);
         const beatHz = fSpeed.div(bodyLen).mul(1.3).add(0.5);
         const swimPhase = uTime.mul(beatHz.mul(Math.PI * 2)).add(fS.mul(60));
         const waveAmp = clamp(float(0.9).sub(positionGeometry.z).mul(0.30), 0.06, 1.0);
@@ -3623,7 +3818,7 @@ export function createOdysseyWorld({
         const fFlash = smoothstep(float(0.80), float(0.97), fRefl.y).mul(fFlank).mul(0.95);
         const fLit = fAlbedo.mul(fLight)
             .add(vec3(0.82, 0.96, 1.0).mul(fFlash).mul(float(1).sub(fDorsal.mul(0.6))));
-        fishMat.colorNode = toOutput(applyAerial(fLit, positionWorld));
+        fishMat.colorNode = toOutput(applyAerial(fLit, positionWorld, AERIAL_CEIL_WATER, 1, false, float(1).sub(uLife)));
         fishMat.side = THREE.DoubleSide;
         fishMat.fog = false;
         fishMesh = new THREE.Mesh(fInst, fishMat);
@@ -4094,8 +4289,26 @@ export function createOdysseyWorld({
     // centred on the RAIL GROUND TRACK, not on the eye, so nothing outside could work out
     // where a ring boundary falls in a captured frame without re-deriving the offset.
     const state = {
-        submerged: 0, scriptName: '', actT: 0, lodCenter: { x: 0, z: 0 }, eyeY: null,
+        submerged: 0,
+        scriptName: '',
+        actT: 0,
+        lodCenter: { x: 0, z: 0 },
+        eyeY: null,
+        // The 1->2 carry's ocean-life presence (0..1) — the whale pass reads it so the pair
+        // arrives with the fish, by the same quench density, not inside the cavern.
+        lifePresence: 1,
+        // Seconds since the eye broke the surface (null when no spray is live) — instruments only.
+        sprayAge: null,
     };
+    // THE CARRY'S HANDSHAKE. `setQuenchCarry(t)` may be called every frame or only inside the
+    // quench window (the board owns that), so each call is CONSUMED by the next update(): a frame
+    // with no call is the neutral ocean (t = 1: no carry, full life). That makes the world correct
+    // whichever way the caller gates it, and unchanged while no caller exists at all.
+    let quenchT = 1;
+    let quenchFresh = false;
+    let lastUpdateTime = null;
+    let prevEyeY = null;
+    let sprayStart = null;
 
     const stats = {
         quality,
@@ -4171,6 +4384,17 @@ export function createOdysseyWorld({
          */
         setAtmosphericThin(t) {
             uWorldThin.value = Math.min(Math.max(t, 0), 1);
+        },
+        /**
+         * THE 1->2 CARRY (cross-session interface, seamless pass). `t` is the steam quench's own
+         * `steamQuenchSeamT` (0..1, 0.5 exactly on the 1->2 boundary). Across it the motes rise
+         * as bubbles tinted ember -> white -> cyan and ocean life (fish, shafts, the whale via
+         * `state.lifePresence`) fades in by the quench density. Consumed by the next update();
+         * a frame without a call is the neutral ocean. See `odysseyQuenchCarry`.
+         */
+        setQuenchCarry(t) {
+            quenchT = Math.min(Math.max(Number.isFinite(t) ? t : 1, 0), 1);
+            quenchFresh = true;
         },
         /**
          * THE ACT'S CLOUD PALETTE, as live TSL nodes — shared, never copied.
@@ -4265,7 +4489,9 @@ export function createOdysseyWorld({
                 (ODYSSEY_SEA_LEVEL + 2.0 - submergedRefY) / 14,
             ));
             uEyeDepth.value = Math.max(0, Math.min(1, (ODYSSEY_SEA_LEVEL - submergedRefY) / 140));
-            uBreachNear.value = Math.max(0, 1 - (Math.abs(ODYSSEY_SEA_LEVEL - submergedRefY) / 3));
+            // 6 u, not 3: the eye crosses ~11 u per 0.01 p near the surface, so a 3 u window lit the
+            // meniscus on almost no frame of the crossing — the breach's hero line went unseen.
+            uBreachNear.value = Math.max(0, 1 - (Math.abs(ODYSSEY_SEA_LEVEL - submergedRefY) / 6));
             // The deck's top read is only reachable once the eye is within the billow band:
             // deck plane 660, billow reaches ~116 below it, and `fromAboveF` needs another
             // 60 u before it leaves zero. Below that the GPU skips the whole top stack.
@@ -4274,6 +4500,47 @@ export function createOdysseyWorld({
             // surface (+4 u of swell): exact, so the gate changes no pixel.
             uCeilNet.value = (ODYSSEY_SEA_LEVEL - submergedRefY) < 66 ? 1 : 0;
             uValleyMist.value = submergedRefY > 349 ? 1 : 0;
+
+            // ── THE 1->2 CARRY (consumed; neutral when the board did not call this frame) ──
+            const dt = lastUpdateTime === null ? 0 : Math.min(Math.max(time - lastUpdateTime, 0), 0.1);
+            lastUpdateTime = time;
+            const carryT = quenchFresh ? quenchT : 1;
+            quenchFresh = false;
+            const carry = odysseyQuenchCarry(carryT);
+            uQuench.value = carry.carry;
+            uBubble.value = carry.bubble;
+            uMoteTint.value.setRGB(...carry.tint);
+            uLife.value = carry.life;
+            state.lifePresence = carry.life;
+            // Bank the extra rise phase; wrapped so the float never grows without bound (any
+            // multiple of every mote's period works — 1/(0.014 x 0.6..1.1) are not commensurate,
+            // so wrap only when the carry is idle, where the term no longer moves anything).
+            uMoteLift.value += dt * QUENCH_RISE_BOOST * carry.carry;
+            if (carry.carry === 0 && uMoteLift.value > 1e5) uMoteLift.value = 0;
+
+            // ── THE 2->3 SPRAY: fire on the EYE crossing sea level upward ──
+            // From the eye height itself, not from ODYSSEY_BREACH_P (a progress constant that has
+            // already drifted once with the layout). A jump of 40 u+ in one update is a scrub or
+            // a teleport, not a breach, and fires nothing; going back under clears the burst.
+            if (Number.isFinite(eyeY)) {
+                if (prevEyeY !== null && prevEyeY < ODYSSEY_SEA_LEVEL && eyeY >= ODYSSEY_SEA_LEVEL
+                    && Math.abs(eyeY - prevEyeY) < 40) {
+                    sprayStart = time;
+                }
+                if (eyeY < ODYSSEY_SEA_LEVEL - 0.5) sprayStart = null;
+                prevEyeY = eyeY;
+            }
+            // Aged by the clock OR by the climb, whichever is further along — a parked camera
+            // still lets the burst finish, and a frozen-clock capture shows the age the eye's
+            // height implies instead of a burst frozen at birth.
+            const sprayAge = sprayStart === null
+                ? Infinity
+                : Math.max(time - sprayStart, ((eyeY ?? ODYSSEY_SEA_LEVEL) - ODYSSEY_SEA_LEVEL) / SPRAY_CLIMB_RATE);
+            const spray = odysseySprayEnvelope(sprayAge);
+            if (spray === 0 && sprayStart !== null && sprayAge >= SPRAY_LIFE_S) sprayStart = null;
+            uSpray.value = spray;
+            uSprayAge.value = spray > 0 ? sprayAge : 0;
+            state.sprayAge = spray > 0 ? sprayAge : null;
             // Publish what this frame decided, for instruments (see `state` above). Written
             // LAST so a reader can never observe a half-updated frame.
             state.submerged = uSubmerged.value;
@@ -4314,9 +4581,13 @@ export function createOdysseyWorld({
             // would not remove the draw.
             // NOTE the draw count changes, so the p=0.16 cell must be RE-BASELINED; a pair
             // across this change is not content-matched and cannot be compared.
-            if (rayMesh) rayMesh.visible = uSubmerged.value > 0.001;
-            if (moteMesh) moteMesh.visible = uSubmerged.value > 0.001;
-            if (fishMesh) fishMesh.visible = uSubmerged.value > 0.001;
+            // Ocean LIFE also waits for the 1->2 carry (uLife): no shaft or school is submitted
+            // while the eye is still in Earth Core's cavern behind the quench. The motes stay —
+            // they ARE the carry — and also draw above water while the breach spray is live.
+            const lifeOn = uLife.value > 0.001;
+            if (rayMesh) rayMesh.visible = uSubmerged.value > 0.001 && lifeOn;
+            if (moteMesh) moteMesh.visible = uSubmerged.value > 0.001 || spray > 0;
+            if (fishMesh) fishMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             const forestDrawable = uSubmerged.value < 0.999;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
