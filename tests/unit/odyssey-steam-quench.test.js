@@ -3,13 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import * as THREE from 'three/webgpu';
 import {
     STEAM_QUENCH_APPROACH_HALF_WIDTH,
     STEAM_QUENCH_EXIT_HALF_WIDTH,
+    STEAM_QUENCH_FOG_DENSITY,
     STEAM_QUENCH_HALF_WIDTH,
+    STEAM_QUENCH_LUMA_CAP,
     STEAM_QUENCH_RADIUS,
+    steamQuenchLumaCap,
     createSteamQuench,
     steamQuenchDensity,
+    steamQuenchFogColour,
     steamQuenchSeamT,
 } from '../../src/rendering/odyssey/composition/odyssey-steam-quench.js';
 import { ODYSSEY_CHAPTER_PROFILES } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
@@ -73,6 +78,60 @@ describe('steam quench driver', () => {
         const q = createSteamQuench();
         expect(() => { q.update(0, -3); q.update(0, 7); q.update(0, NaN); }).not.toThrow();
         q.dispose();
+    });
+});
+
+describe('steam quench brightness + fog occlusion (seamless pass 2026-10-02)', () => {
+    it('never flashes brighter than the open water: the vapour luminance is capped', () => {
+        // Was a white flash: luma 20 -> 139 -> 225 at the boundary -> 111 in the ocean (the
+        // journey's worst seam step, 119.7 per 0.01 p). The fog colour carries the same cap
+        // the shader applies, so fogged rock and the shell agree.
+        const out = new THREE.Color();
+        for (let i = 0; i <= 50; i += 1) {
+            const c = steamQuenchFogColour(i / 50, out);
+            const lum = (0.2126 * c.r) + (0.7152 * c.g) + (0.0722 * c.b);
+            expect(lum).toBeLessThanOrEqual(STEAM_QUENCH_LUMA_CAP + 1e-6);
+            expect(Number.isFinite(lum)).toBe(true);
+        }
+        // Still ember-warm on the cavern side and cool on the water side.
+        const warm = steamQuenchFogColour(0.1, new THREE.Color());
+        const cool = steamQuenchFogColour(0.95, new THREE.Color());
+        expect(warm.r).toBeGreaterThan(warm.b);
+        expect(cool.b).toBeGreaterThan(cool.r);
+        expect(STEAM_QUENCH_LUMA_CAP).toBeLessThan(0.5);
+    });
+
+    it('brightens evenly across the crossing, not with the density (the 0.006 p jump)', () => {
+        // The volume must close fast (opaque where the act gate opens), so brightness that rode
+        // the density jumped the frame from luma ~22 to ~130 inside 0.006 p. The cap holds at the
+        // cavern's level while the smoke closes, climbs evenly, and holds at the ocean level.
+        let prev = -1;
+        let steepest = 0;
+        for (let i = 0; i <= 100; i += 1) {
+            const cap = steamQuenchLumaCap(i / 100);
+            expect(cap).toBeGreaterThanOrEqual(prev);
+            if (prev >= 0) steepest = Math.max(steepest, (cap - prev) * 100);
+            prev = cap;
+        }
+        // No steeper than 1.25x an even ramp of the same rise over the same span.
+        const span = 0.65 - 0.08;
+        const even = (STEAM_QUENCH_LUMA_CAP * (1 - 0.21)) / span;
+        expect(steepest).toBeLessThan(even * 1.3);
+        expect(steamQuenchLumaCap(0.9)).toBeCloseTo(STEAM_QUENCH_LUMA_CAP, 9);
+        // Where the vapour is already dense (the act gate), it is still well short of its peak.
+        const gateT = steamQuenchSeamT(0.0649 - ONE_WORLD_ACT_MARGIN, 0.0649);
+        expect(steamQuenchDensity(gateT)).toBeGreaterThan(0.85);
+        expect(steamQuenchLumaCap(gateT)).toBeLessThan(STEAM_QUENCH_LUMA_CAP * 0.35);
+    });
+
+    it('occludes near rock through scene fog, at no extra draw (the shell still opts out)', () => {
+        // INTENT CHANGE (stated): occlusion of NEAR geometry now comes from scene fog driven by
+        // the quench density — the depth-tested, non-depth-writing shell left the basalt
+        // columns crisp in front of it. The shell keeps fog=false (its own ramp) and BackSide.
+        expect(STEAM_QUENCH_FOG_DENSITY).toBeGreaterThan(0.02);
+        // ~75 % fogged at 30 u at peak density (FogExp2).
+        const at30 = 1 - Math.exp(-((STEAM_QUENCH_FOG_DENSITY * 30) ** 2));
+        expect(at30).toBeGreaterThan(0.7);
     });
 });
 
@@ -146,6 +205,13 @@ describe('steam quench board wiring', () => {
         const before = BOARD.slice(Math.max(0, idx - 700), idx);
         // The corridor field's throttled block must have CLOSED before the steam block opens.
         expect(before).toMatch(/this\.corridorField\?\.update\([^)]*\);\s*\}/);
+    });
+
+    it('carries the quench into the world and into scene fog, from the same seamT', () => {
+        // WORLD session interface: embers -> bubbles + fish fade, optional-chained both ways.
+        expect(BOARD).toMatch(/this\.oneWorld\?\.setQuenchCarry\?\.\(quenchT\)/);
+        expect(BOARD).toMatch(/this\._steamFogWeight = inWindow \? steamQuenchDensity\(quenchT\) \*\* 2 : 0;/);
+        expect(BOARD).toMatch(/_applySteamQuenchFog\(\) \{/);
     });
 
     it('cannot take the board down if it fails to build, and is disposed', () => {

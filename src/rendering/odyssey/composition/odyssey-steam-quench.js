@@ -26,7 +26,10 @@ import * as THREE from 'three/webgpu';
 import {
     cameraPosition,
     clamp,
+    dot,
     float,
+    max,
+    min,
     mix,
     normalize,
     oneMinus,
@@ -143,6 +146,95 @@ const STEAM_COOL = new THREE.Color(0xcfe6ff);
 const STEAM_COOL_SUBMERGED = new THREE.Color(...sampleColourScript(0.06).skyHorizon);
 
 /**
+ * THE PEAK IS THE OCEAN'S BRIGHTNESS, NOT A WHITE-OUT (seamless pass, 2026-10-02).
+ *
+ * The quench used to flash to white where fire meets water: vapour capped only at 0.96 per
+ * channel, so the seam ran luma 20 -> 139 -> **225** at the boundary -> 111 in the ocean — a
+ * flash at twice the brightness of what came after it, the single worst step of the journey
+ * (119.7 luma per 0.01 p). A seam is seamless when brightness travels from one side to the other,
+ * so the vapour's LUMINANCE is now capped (hue-preserving: the whole colour scales, the ember
+ * warmth and the cool vapour keep their hue) at a level that renders about as bright as the
+ * open water just past the boundary (luma ~115 against the ocean's ~111-119; a first cut at 0.2
+ * still peaked at 147). Linear, pre-tonemap; tuned against seam captures.
+ */
+export const STEAM_QUENCH_LUMA_CAP = 0.12;
+/**
+ * ...AND THE BRIGHTNESS CLIMBS EVENLY ACROSS THE CROSSING, not with the density. The volume must
+ * be OPAQUE where the world's act gate opens (ADR-0017, 0.0222 before the boundary), which leaves
+ * the density ramp only ~0.012 p from clear to closed — when brightness rode the density, the
+ * frame jumped from the cavern's luma ~22 to ~130 inside 0.006 p (127 per 0.01 p, three times the
+ * seam gate). So alpha and brightness are decoupled once more: the vapour closes as fast as the
+ * act gate needs, but its luminance cap holds at the CAVERN's brightness (DARK_FRACTION of the
+ * peak) while it closes — the frame does not change as the smoke thickens — and only then climbs,
+ * near-linearly, to the ocean's level a little past the boundary (seamT RAMP_START -> RAMP_END).
+ * The dense steam the eye enters is dim, smoky, fire-lit; it brightens as the water comes.
+ * MEASURED (seam captures r1/r2): frame luma tracks the cap almost linearly (~880 luma per unit
+ * cap at full density), which is why the ramp is linear in the cap, not display-gamma shaped.
+ */
+export const STEAM_QUENCH_DARK_FRACTION = 0.21;
+export const STEAM_QUENCH_RAMP_START = 0.08;
+export const STEAM_QUENCH_RAMP_END = 0.65;
+
+/**
+ * The vapour's luminance cap at a seamT (linear, pre-tonemap): cavern-dark while the volume
+ * closes, then an even climb to the ocean level (half linear, half smoothstep — the corners are
+ * soft and the steepest slope is only 1.25x the mean), then held.
+ * @param {number} seamT 0..1 (0.5 at the boundary)
+ * @returns {number}
+ */
+export function steamQuenchLumaCap(seamT) {
+    const t = Math.max(0, Math.min(1, Number.isFinite(seamT) ? seamT : 0));
+    const u = Math.max(0, Math.min(1, (t - STEAM_QUENCH_RAMP_START)
+        / (STEAM_QUENCH_RAMP_END - STEAM_QUENCH_RAMP_START)));
+    const k = (0.5 * u) + (0.5 * u * u * (3 - (2 * u)));
+    return STEAM_QUENCH_LUMA_CAP * (STEAM_QUENCH_DARK_FRACTION + ((1 - STEAM_QUENCH_DARK_FRACTION) * k));
+}
+
+/**
+ * THE STEAM OCCLUDES NEAR ROCK THROUGH SCENE FOG — at no extra draw cost (seamless pass).
+ * The shell is depth-tested with no depth write, so the basalt columns and geodes between the
+ * eye and the shell stayed crisp in front of a white wall (p 0.0349, 0.0409). The board now
+ * drives scene fog toward the vapour's own colour by `steamQuenchDensity`, so nearby geometry
+ * dissolves INTO the steam at the same rate the shell thickens: at peak, ~75 % at 30 u. The
+ * shell itself still opts out of fog (its own ramp must not be fogged — see its material).
+ */
+export const STEAM_QUENCH_FOG_DENSITY = 0.042;
+
+const _fogWarm = new THREE.Color();
+const _fogLit = new THREE.Color();
+const _fogShadow = new THREE.Color();
+const STEAM_FOG_FLASH = new THREE.Color(1.0, 0.97, 0.94);
+const STEAM_SHADOW_COOL = new THREE.Color(0.20, 0.25, 0.29);
+const STEAM_SHADOW_WARM = new THREE.Color(0.30, 0.22, 0.18);
+
+/**
+ * The vapour's AVERAGE colour at a seamT — the same warm -> lit -> cool -> submerged ramp the
+ * shader paints, collapsed to one colour (lit billows and shadowed gaps half and half), with
+ * the same luminance cap. The board feeds it to scene fog so fogged rock dissolves into the
+ * colour of the steam around it.
+ * @param {number} seamT 0..1 (0.5 at the boundary)
+ * @param {THREE.Color} out
+ * @returns {THREE.Color} `out`
+ */
+export function steamQuenchFogColour(seamT, out) {
+    const t = Math.max(0, Math.min(1, Number.isFinite(seamT) ? seamT : 0));
+    const w = 1 - t;
+    const flash = 1 - Math.abs(w - 0.5) * 2;
+    const submergeEase = Math.max(0, (t - 0.5) * 2) ** 1.5;
+    const cool = _fogWarm.copy(STEAM_COOL).lerp(STEAM_COOL_SUBMERGED, submergeEase);
+    _fogLit.copy(cool).lerp(STEAM_WARM, w).lerp(STEAM_FOG_FLASH, flash * 0.42).multiplyScalar(0.78);
+    _fogShadow.copy(STEAM_SHADOW_COOL).lerp(STEAM_SHADOW_WARM, w);
+    out.copy(_fogShadow).lerp(_fogLit, 0.5);
+    // Exit: the murk in the water's colour (as the shader's exit term).
+    const exit = Math.max(0, Math.min(1, (t - 0.5) / 0.12));
+    out.lerp(_fogWarm.multiplyScalar(0.9), exit);
+    const lum = (0.2126 * out.r) + (0.7152 * out.g) + (0.0722 * out.b);
+    const cap = steamQuenchLumaCap(t);
+    if (lum > cap) out.multiplyScalar(cap / lum);
+    return out;
+}
+
+/**
  * @param {object} [opts]
  * @param {number} [opts.radius] world radius of the volume
  * @returns {{ mesh: THREE.Mesh, update: (t:number, seamT:number) => void, dispose: () => void }}
@@ -162,6 +254,7 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // 0 until the crossing, -> 1 as the exit runs: the vapour stops being weather and becomes
     // TURBIDITY settling out of the water (see the exit note in the colour chain).
     const uExit = uniform(0);
+    const uLumaCap = uniform(STEAM_QUENCH_LUMA_CAP);
 
     // Billowing, in LOCAL space so the volume churns with itself rather than with the camera.
     // Two octave-sets at different rates: the slow one is the body, the fast one the edge boil.
@@ -257,7 +350,11 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // EXIT: the same volume becomes murk in the water's own colour, brightest toward the surface
     // light above, with only a soft breath of the billow left — water clearing, not cloud lifting.
     const murk = uCool.mul(float(0.82).add(billow.mul(0.22))).mul(float(0.75).add(aperture.mul(0.45)));
-    const exitColour = mix(colour, murk, uExit);
+    const exitRaw = mix(colour, murk, uExit);
+    // LUMINANCE CAP (see STEAM_QUENCH_LUMA_CAP): scale the whole colour so its luminance never
+    // exceeds the open water's — hue kept, no per-channel clip turning the ember vapour yellow.
+    const exitLuma = dot(exitRaw, vec3(0.2126, 0.7152, 0.0722));
+    const exitColour = exitRaw.mul(min(float(1.0), uLumaCap.div(max(exitLuma, float(1e-4)))));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = exitColour;
@@ -296,6 +393,7 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
             // so it is dense before Act II starts drawing (see steamQuenchDensity). Exit: the
             // square — leaving the weather quickly into open water is what the breach wants.
             uDensity.value = steamQuenchDensity(t);
+            uLumaCap.value = steamQuenchLumaCap(t);
             // Warm while the cavern is still behind you, cold once the water owns the frame.
             uWarmth.value = 1 - t;
             uExit.value = Math.max(0, Math.min(1, (t - 0.5) / 0.12));
