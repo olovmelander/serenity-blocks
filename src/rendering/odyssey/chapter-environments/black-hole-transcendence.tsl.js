@@ -15,8 +15,10 @@
  * Every fading material keeps an ecotone bridge (`material.uniforms = { uOpacity }`): r181+
  * makes `material.opacity` a dead write wherever an opacityNode is authored, so the bridge IS
  * the chapter crossfade (tests/unit/odyssey-wave46-scope-invariants.test.js counts them).
- * The shared noise is the Ashima/value-noise lib (never MaterialX noise), and every billboard
- * is `billboardLocal` — the chapter group is anchored ~1.4 km from the origin.
+ * The shared noise is the value-noise lib (never MaterialX noise) — since the seamless pass
+ * (2026-10) read from the baked lattice (shared/odyssey-lattice-noise.js: one texture fetch per
+ * octave, not eight hashes; the full-frame dome and Gargantua's disk are the big consumers) —
+ * and every billboard is `billboardLocal` — the chapter group is anchored ~1.4 km from the origin.
  */
 
 import * as THREE from 'three/webgpu';
@@ -54,6 +56,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
+import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
 const TAU = Math.PI * 2;
@@ -116,8 +119,8 @@ export function createVoidDomeTSL(uTime = uniform(0), uEnergy = uniform(0.4), op
     const base = mix(vec3(0.004, 0.003, 0.010), vec3(0.010, 0.006, 0.022), h);
 
     const q = dir.mul(2.1).add(vec3(0.0, 0.0, uTime.mul(0.004)));
-    const cloud = fbm3(q, 3);
-    const veins = ridged3(q.mul(1.7).add(7.0), 2);
+    const cloud = fbm3(q, 3, latticeNoise3);
+    const veins = ridged3(q.mul(1.7).add(7.0), 2, latticeNoise3);
     const body = smoothstep(0.50, 0.78, cloud);
     // Amplitudes are set against the display-space grade (2026-10-01): linear 0.07 already
     // reads as a strong violet there, so the nebulosity stays a whisper.
@@ -181,8 +184,8 @@ export function createAccretionDiskTSL(uTime = uniform(0), uEnergy = uniform(0.4
     const ringB = ang.sub(mod(uTime.mul(0.15), TAU)).add(shear);
     const evolve = uTime.mul(0.05);
     const rad = t.mul(2.4).add(0.8);
-    const nA = fbm3(vec3(cos(ringA).mul(rad), sin(ringA).mul(rad), evolve).mul(1.7), 3);
-    const nB = fbm3(vec3(cos(ringB).mul(rad), sin(ringB).mul(rad), evolve.add(7.0)).mul(1.7), 3);
+    const nA = fbm3(vec3(cos(ringA).mul(rad), sin(ringA).mul(rad), evolve).mul(1.7), 3, latticeNoise3);
+    const nB = fbm3(vec3(cos(ringB).mul(rad), sin(ringB).mul(rad), evolve.add(7.0)).mul(1.7), 3, latticeNoise3);
     const turb = mix(nA, nB, smoothstep(0.15, 0.65, t));
     // Fine concentric striations, wobbled by the turbulence — the dense lane structure of a
     // thin disk seen nearly edge-on.
@@ -274,10 +277,18 @@ export function createGargantuaPhotonRingTSL(uTime = uniform(0), options = {}) {
     const profile = smoothstep(0.0, 0.18, across).mul(oneMinus(smoothstep(0.30, 1.0, across)));
     const beam = pow(clamp(side.mul(0.45).add(1.0), 0.45, 1.5), 2.0);
     const flicker = sin(angle.mul(9.0).add(uTime.mul(0.9))).mul(0.06).add(0.94);
-    const color = mix(vec3(1.0, 0.74, 0.46), vec3(1.0, 0.96, 0.9), smoothstep(0.6, 1.4, beam));
+    let color = mix(vec3(1.0, 0.74, 0.46), vec3(1.0, 0.96, 0.9), smoothstep(0.6, 1.4, beam));
+    let gain = float(1.6);
+    // THE 7->8 SWELL (seamless pass; only chapter 7's hero passes `uSwell`): as the shadow
+    // closes the razor brightens and warms toward the Retrosun's crown, so it reads as the new
+    // sun's blazing limb. Builders without it compile the unchanged graph.
+    if (options.uSwell) {
+        color = mix(color, vec3(1.0, 0.72, 0.30), options.uSwell.mul(0.55));
+        gain = gain.mul(options.uSwell.mul(1.1).add(1.0));
+    }
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = color.mul(profile.mul(beam).mul(flicker).mul(1.6));
+    material.colorNode = color.mul(profile.mul(beam).mul(flicker).mul(gain));
     material.opacityNode = profile.mul(uOpacity);
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
@@ -316,7 +327,7 @@ export function createLensedFoldMaterialTSL(uTime = uniform(0), options = {}) {
     const profile = rise.mul(fall);
     const beam = pow(clamp(side.mul(0.5).add(1.0), 0.4, 1.5), 2.0);
     const underside = mix(float(0.3), float(1.0), smoothstep(-0.25, 0.25, above));
-    const turb = fbm3(vec3(angle.mul(2.5), rr.mul(4.0), uTime.mul(0.05)), 2);
+    const turb = fbm3(vec3(angle.mul(2.5), rr.mul(4.0), uTime.mul(0.05)), 2, latticeNoise3);
     const striae = sin(rr.mul(70.0).add(turb.mul(8.0))).mul(0.5).add(0.5);
     const texture = mix(float(0.6), float(1.0), striae.mul(striae)).mul(turb.mul(0.6).add(0.7));
     const hot = oneMinus(smoothstep(1.03, 1.25, rr));

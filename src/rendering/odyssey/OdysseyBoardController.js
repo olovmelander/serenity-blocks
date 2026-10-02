@@ -824,6 +824,7 @@ export class OdysseyBoardController {
         this.environmentManager.qualitySettings = {
             ...this.environmentManager.qualitySettings,
             particleCount: this.qualityPreset.particleCount,
+            qualityTier: this.qualityName, // chapters gate their cost on it (shared/odyssey-quality-tier.js)
         };
         const chapterPositions = this.presentationLayout.chapterPositions || [];
         const totalChapters = Math.max(

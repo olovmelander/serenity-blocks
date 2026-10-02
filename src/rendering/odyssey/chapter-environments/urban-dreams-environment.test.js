@@ -13,6 +13,7 @@ import { ODYSSEY_CHAPTER_PROFILES } from './shared/chapter-profile.js';
 import { getActiveOdysseyChapterPositions } from '../path-utils.js';
 import { OdysseyDirector } from '../composition/OdysseyDirector.js';
 import { urbanIgnition } from '../composition/odyssey-stage-frame.js';
+import { resolveSunCarry } from './urban-dreams-sun-carry.js';
 
 describe('Urban Dreams chapter environment (creative plan ch8)', () => {
     it('mounts the skyline cards, horizon haze, and the Gate Bridge', () => {
@@ -126,5 +127,27 @@ describe('Urban Dreams chapter environment (creative plan ch8)', () => {
         updateUrbanDreamsEnvironment(group, 0.016, 1.0, null, at(0.62));
         expect(state.urbanReveal).toBeCloseTo(group.userData.reveal, 6);
         expect(state.urbanReveal).toBeCloseTo(urbanIgnition(0.62), 6);
+    });
+
+    it('7->8: keeps its Retrosun dark through the carry, then takes over at full strength', () => {
+        // Seamless pass: across the 7->8 window the sun is chapter 7's copy (Gargantua's light
+        // closing into the identical disc); this one takes over at the hand-over frame.
+        const group = createUrbanDreamsEnvironment();
+        const positions = getActiveOdysseyChapterPositions();
+        const sunOpacity = group.userData.sun.material.uniforms.uOpacity;
+        const ch8 = positions[7];
+        sunOpacity.__odysseyBaseOpacity = 0.4; // the manager's crossfade weight mid-window
+        sunOpacity.value = 0.4;
+        updateUrbanDreamsEnvironment(group, 0.016, 1.0, null, ch8 - 0.004);
+        expect(resolveSunCarry(ch8 - 0.004, positions).handedOver).toBe(false);
+        expect(sunOpacity.value).toBe(0);
+        sunOpacity.__odysseyBaseOpacity = 0.8;
+        updateUrbanDreamsEnvironment(group, 0.016, 1.0, null, ch8 + 0.004);
+        expect(sunOpacity.value).toBe(1);
+        // Outside the window the manager's weight stands.
+        sunOpacity.__odysseyBaseOpacity = 1;
+        sunOpacity.value = 1;
+        updateUrbanDreamsEnvironment(group, 0.016, 1.0, null, 0.99);
+        expect(sunOpacity.value).toBe(1);
     });
 });

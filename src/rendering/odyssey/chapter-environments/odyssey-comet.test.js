@@ -56,17 +56,24 @@ describe('ch6 comet (Space overhaul Wave 5)', () => {
         expect(baseUv).toBe(0);
     });
 
-    it('mounts a head and a dithered-opaque tail, both fog-exempt', () => {
+    it('mounts a dithered-opaque head and a luminous additive tail, both fog-exempt', () => {
         const group = buildEnv();
         const { comet } = group.userData;
         expect(comet?.name).toBe('comet-chase');
         const names = comet.children.map((child) => child.name).sort();
         expect(names).toEqual(['comet-head', 'comet-tail']);
+        const head = comet.children.find((child) => child.name === 'comet-head');
+        const tail = comet.children.find((child) => child.name === 'comet-tail');
+        // The nucleus is solid: opaque queue + dithered dissolve.
+        expect(head.material.transparent).toBe(false);
+        expect(head.material.depthWrite).toBe(true);
+        expect(head.material.alphaTest).toBeGreaterThan(0);
+        // Seamless pass: the tail is LIGHT — additive, no depth write (its dithered-opaque
+        // fade read as white salt-and-pepper noise in every capture).
+        expect(tail.material.transparent).toBe(true);
+        expect(tail.material.depthWrite).toBe(false);
+        expect(tail.material.blending).toBe(THREE.AdditiveBlending);
         comet.children.forEach((child) => {
-            // Opaque queue + dithered dissolve, never a blend state.
-            expect(child.material.transparent).toBe(false);
-            expect(child.material.depthWrite).toBe(true);
-            expect(child.material.alphaTest).toBeGreaterThan(0);
             expect(child.material.opacityNode).toBeTruthy();
             // Space is a vacuum — every ch6 mesh joins the fog opt-out.
             expect(child.material.fog).toBe(false);

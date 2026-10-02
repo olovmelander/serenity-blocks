@@ -26,11 +26,21 @@
  *   1  Gargantua        — camera-locked: face pivot (shadow, photon ring, fold arcs) +
  *                         disk pivot (the tilted accretion band) + infall embers in its plane
  *   6  Near life        — transcendence shards + corridor dust (parallax motes)
+ *
+ * SEAMLESS PASS (2026-10): the shadow is fade-exempt and takes over from ch6's omen shadow
+ * exactly where the omen hands off; across the 7->8 window the hero glides onto the
+ * Retrosun's direction, its shadow closes and its light becomes the city's sun
+ * (urban-dreams-sun-carry.js).
  */
 
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
-import { getChapterPathRange } from '../path-utils.js';
+import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
+import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
+import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
+import { CH7_SUN_CARRY, resolveSunCarry } from './urban-dreams-sun-carry.js';
+import { createSynthwaveSunTSL } from './urban-dreams.tsl.js';
+import { resolveRetrosunReveal, resolveRetrosunStage, resolveUrbanEnergy } from './urban-dreams.js';
 import {
     createVoidDomeTSL,
     createAccretionDiskTSL,
@@ -41,6 +51,7 @@ import {
     createCorridorDustTSL,
     createInfallEmberFieldTSL,
     CH7_CORRIDOR_DUST_SETTINGS,
+    CH7_STARFIELD,
     GARGANTUA_LOCK,
     resolveGargantuaLockPosition,
 } from './black-hole-transcendence.tsl.js';
@@ -103,6 +114,19 @@ export const CH7_FOLD_ARC_SETTINGS = Object.freeze({
     tubularSegments: 96,
 });
 
+/**
+ * Sprite budgets per quality tier (seamless pass). The far starfield went 760 -> 2200 sprites
+ * in the masterpiece pass and the corridor dust sits AROUND the camera (its nearest motes are
+ * the biggest quads in the chapter), so Lane B (Medium, the iGPU) no longer pays the High
+ * field: `stars` is the starfield count, `dust` / `embers` scale the particleCount-derived
+ * densities. High is unchanged (the authored chapter).
+ */
+export const CH7_QUALITY_TIERS = Object.freeze({
+    high: Object.freeze({ stars: CH7_STARFIELD.count, dust: 1, embers: 1 }),
+    medium: Object.freeze({ stars: 1300, dust: 0.6, embers: 0.7 }),
+    low: Object.freeze({ stars: 800, dust: 0.4, embers: 0.5 }),
+});
+
 // Camera-lock scratch (reused every frame — no per-frame allocation).
 const _up = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -111,6 +135,10 @@ const _heroWorld = new THREE.Vector3();
 const _basis = new THREE.Matrix4();
 const _spin = new THREE.Quaternion();
 const _zAxis = new THREE.Vector3(0, 0, 1);
+const _fwd = new THREE.Vector3();
+const _toSun = new THREE.Vector3();
+const _lockDir = new THREE.Vector3();
+const _axis = new THREE.Vector3();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Environment Creation
@@ -137,12 +165,19 @@ function createGargantua(uniforms) {
         new THREE.MeshBasicNodeMaterial({ color: 0x000000 }),
     );
     horizon.name = 'gargantua-shadow';
+    // FADE-EXEMPT (seamless pass; agreed interface with the environment manager): the shadow
+    // is an opaque occluder through every crossfade and the chapter drives its visibility —
+    // see update(). Forced transparent and faded, it and ch6's omen shadow each covered only
+    // part of the hole at the 6->7 seam, and stars showed through it.
+    horizon.userData.odysseyFadeExempt = true;
     face.add(horizon);
 
+    const uSwell = uniform(0);
     const photon = createGargantuaPhotonRingTSL(uniforms.uTime, {
         innerRadius: S * CH7_GARGANTUA.photonInner,
         outerRadius: S * CH7_GARGANTUA.photonOuter,
         shadowRadius: S,
+        uSwell,
     });
     photon.mesh.name = 'gargantua-photon-ring';
     face.add(photon.mesh);
@@ -181,9 +216,11 @@ function createGargantua(uniforms) {
     diskPivot.rotation.set(-(Math.PI / 2 - CH7_GARGANTUA.diskTilt), 0, CH7_GARGANTUA.diskRoll);
     group.add(diskPivot);
 
+    const uDiskFade = uniform(1);
     const { mesh: disk } = createAccretionDiskTSL(uniforms.uTime, uniforms.uEnergy, {
         innerRadius: S * CH7_GARGANTUA.diskInner,
         outerRadius: S * CH7_GARGANTUA.diskOuter,
+        uFade: uDiskFade,
     });
     disk.name = 'distant-accretion-disk';
     diskPivot.add(disk);
@@ -194,7 +231,37 @@ function createGargantua(uniforms) {
     group.userData.horizon = horizon;
     group.userData.photonRing = photon.mesh;
     group.userData.foldArcs = [topFold, bottomFold];
+    group.userData.uSwell = uSwell;
+    group.userData.uDiskFade = uDiskFade;
     return group;
+}
+
+/**
+ * THE SUN COPY (7->8 carry). The Retrosun's own builder with its own uniforms, which chapter 7
+ * ticks with chapter 8's formulas (resolveUrbanEnergy / resolveRetrosunReveal). Parented to the
+ * chapter group (translated only) and oriented on the CITY's stage frame — billboardStage takes
+ * "up" from its parent frame, so the copy's gradient and scanlines sit level with the city's
+ * exactly as the real disc's do. Seated on the ray to the real sun and scaled by (its distance
+ * / the sun's), it projects to the same pixels. Hidden outside the carry.
+ */
+function createSunCopy(uniforms) {
+    const uEnergy = uniform(0.45);
+    const uReveal = uniform(0.62);
+    const { mesh } = createSynthwaveSunTSL(uniforms.uTime, uEnergy, { uReveal });
+    mesh.name = 'gargantua-sun-copy';
+    mesh.frustumCulled = false;
+    mesh.visible = false;
+    mesh.userData.uEnergy = uEnergy;
+    mesh.userData.uReveal = uReveal;
+    return mesh;
+}
+
+// Chapter-local multiplier on a manager-driven opacity bridge: the environment manager writes
+// the crossfade weight into `value` and records it as `__odysseyBaseOpacity`, so scaling from
+// the base never compounds across frames.
+function scaleBridge(uOpacity, factor) {
+    if (!uOpacity) return;
+    uOpacity.value = (uOpacity.__odysseyBaseOpacity ?? 1) * factor;
 }
 
 function createTranscendenceShards(uniforms) {
@@ -206,9 +273,9 @@ function createTranscendenceShards(uniforms) {
     return mesh;
 }
 
-function createLensingStarfield(uniforms) {
+function createLensingStarfield(uniforms, count = CH7_STARFIELD.count) {
     // A full far shell behind everything — the ch7 post lens bends it round the shadow.
-    const { mesh } = createLensingStarfieldTSL(uniforms.uTime);
+    const { mesh } = createLensingStarfieldTSL(uniforms.uTime, { count });
     mesh.name = 'lensing-starfield';
     return mesh;
 }
@@ -217,6 +284,8 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     const group = new THREE.Group();
     group.name = 'black-hole-transcendence-environment';
     group.userData.chapterId = 7;
+    const tier = pickByQualityTier(options, CH7_QUALITY_TIERS);
+    group.userData.qualityTier = tier;
 
     // TSL uniform nodes (shared into the .tsl builders). They expose `.value`, so
     // update() (`uniforms.uTime.value = ...`) ticks them.
@@ -242,7 +311,7 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.userData.voidDome = voidDome;
 
     // 0b. Far starfield shell (behind the hero; the post lens bends it).
-    const lensingStarfield = createLensingStarfield(uniforms);
+    const lensingStarfield = createLensingStarfield(uniforms, tier.stars);
     group.add(lensingStarfield);
     group.userData.lensingStarfield = lensingStarfield;
 
@@ -259,9 +328,9 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.userData.lensWorldPos.lensRadius = CH7_GARGANTUA.shadowRadius;
 
     // Drifting dust hugging the corridor (re-centred on the camera in update()).
-    const dustCount = options.particleCount
+    const dustCount = Math.floor((options.particleCount
         ? Math.min(CH7_CORRIDOR_DUST_SETTINGS.maxCount, Math.floor(options.particleCount * 2.0))
-        : 720;
+        : 720) * tier.dust);
     const { mesh: corridorDust } = createCorridorDustTSL(uniforms.uTime, dustCount);
     corridorDust.name = 'corridor-violet-dust';
     group.add(corridorDust);
@@ -271,10 +340,19 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.add(shards);
     group.userData.shards = shards;
 
+    // The 7->8 carry's sun copy and the real Retrosun's stage (computed once: the layout is
+    // fixed by the time chapters are created).
+    const sunCopy = createSunCopy(uniforms);
+    group.add(sunCopy);
+    group.userData.sunCopy = sunCopy;
+    group.userData.retrosunStage = resolveRetrosunStage();
+    if (group.userData.retrosunStage) sunCopy.quaternion.copy(group.userData.retrosunStage.quaternion);
+
     // Infall embers — matter in the disk plane, parented to the disk pivot so they orbit
     // IN the band (their authored orbit plane is local XZ; +90° about X lays it onto the
     // pivot's XY disk plane), scaled from their authored ~70-260 u radii onto the disk's.
-    const emberCount = options.particleCount ? Math.floor(options.particleCount * 1.6) : 520;
+    const emberCount = Math.floor((options.particleCount ? Math.floor(options.particleCount * 1.6) : 520)
+        * tier.embers);
     const { mesh: infallEmbers } = createInfallEmberFieldTSL(uniforms.uTime, emberCount);
     infallEmbers.rotation.x = Math.PI / 2;
     infallEmbers.scale.setScalar(CH7_GARGANTUA.emberScale);
@@ -305,10 +383,29 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
  * the frame whatever the spline does — including the near-vertical climb, where the old
  * world-up `lookAt` basis degenerated. Writes the world centre into `lensWorldPos`.
  */
-export function poseGargantua(group, camera, time = 0) {
+export function poseGargantua(group, camera, time = 0, glide = 0) {
     const { distantHole } = group.userData;
     if (!distantHole || !camera?.position) return false;
     resolveGargantuaLockPosition(camera, _heroWorld);
+    // THE 7->8 GLIDE: off the lock onto the Retrosun's direction, at the lock's distance (so the
+    // shadow keeps its angular size, which is also the sun disc's). The target is held within
+    // maxOffAxis of the view axis so the hero can never leave the frame.
+    const sunWorld = group.userData.retrosunStage?.position;
+    if (glide > 0 && sunWorld) {
+        _lockDir.copy(_heroWorld).sub(camera.position);
+        const lockDist = _lockDir.length();
+        _lockDir.normalize();
+        camera.getWorldDirection(_fwd).normalize();
+        _toSun.copy(sunWorld).sub(camera.position).normalize();
+        if (_fwd.angleTo(_toSun) > CH7_SUN_CARRY.maxOffAxis) {
+            _axis.crossVectors(_fwd, _toSun);
+            if (_axis.lengthSq() > 1e-10) {
+                _toSun.copy(_fwd).applyAxisAngle(_axis.normalize(), CH7_SUN_CARRY.maxOffAxis);
+            }
+        }
+        _lockDir.lerp(_toSun, glide).normalize();
+        _heroWorld.copy(camera.position).addScaledVector(_lockDir, lockDist);
+    }
     group.userData.lensWorldPos?.copy(_heroWorld);
     _up.set(0, 1, 0).applyQuaternion(camera.quaternion);
 
@@ -326,8 +423,22 @@ export function poseGargantua(group, camera, time = 0) {
     return true;
 }
 
+/**
+ * Where ch7's shadow takes over from ch6's omen shadow: the omen's handoff completes at the
+ * 6->7 seam's start (ch7Start - ch6's seam half-width; cosmic-expanse.js
+ * resolveOmenHandoffWindow), and this chapter is only drawn past it — so exactly one opaque
+ * shadow covers the hole at every progress, and the two coincide where they swap.
+ */
+function resolveShadowTakeover(chapterPositions) {
+    const ch7Start = chapterPositions?.[6];
+    if (!Number.isFinite(ch7Start)) return null;
+    return ch7Start - (getChapterTransitionForChapter(6)?.seamWidth ?? 0.0222);
+}
+
 export function updateBlackHoleTranscendenceEnvironment(group, delta, time, camera, ...updateArgs) {
-    const [, directorState = null] = updateArgs;
+    const [cameraProgress = null, directorState = null] = updateArgs;
+    const chapterPositions = getActiveOdysseyChapterPositions();
+    const carry = resolveSunCarry(cameraProgress, chapterPositions);
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
@@ -347,9 +458,72 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     }
 
     // ── CAMERA-LOCK THE HERO ─────────────────────────────────────────────────────
-    if (!poseGargantua(group, camera, time) && group.userData.distantHole) {
+    if (!poseGargantua(group, camera, time, carry?.glide ?? 0) && group.userData.distantHole) {
         // No-camera fallback (smoke tests): a slow precession in place.
         group.userData.distantHole.rotation.z -= delta * 0.025;
+    }
+
+    // ── ONE OPAQUE SHADOW, AND THE 7->8 CARRY ────────────────────────────────────
+    const { distantHole, sunCopy } = group.userData;
+    const hero = distantHole?.userData;
+    const close = carry?.close ?? 0;
+    if (hero?.horizon) {
+        const takeover = resolveShadowTakeover(chapterPositions);
+        // ...and across the 7->8 window the shadow contracts to nothing: the eclipse ending.
+        hero.horizon.visible = (!Number.isFinite(cameraProgress) || takeover === null
+            || cameraProgress > takeover) && close < 0.999;
+        hero.horizon.scale.setScalar(Math.max(1e-3, 1 - close));
+        // Re-asserted until the environment manager honours `odysseyFadeExempt` (until then
+        // it still writes a crossfade opacity into this material every frame of a seam).
+        if (hero.horizon.material) hero.horizon.material.opacity = 1;
+    }
+    // The post lens shrinks with the hole: no warp — and no bloom mask — around the new sun.
+    if (group.userData.lensWorldPos) {
+        group.userData.lensWorldPos.lensRadius = CH7_GARGANTUA.shadowRadius * (1 - close);
+    }
+    const fill = carry?.fill ?? 0;
+    const band = carry?.band ?? 1;
+    const motifs = carry?.motifs ?? 1;
+    // The photon ring brightens and warms into the new sun's limb; the thin band, its lensed
+    // fold arcs and the infall embers collapse into the light; dust, shards and the far stars
+    // are gone by the boundary, so no chapter-7 motif lingers over the city.
+    if (hero?.uSwell) hero.uSwell.value = fill;
+    if (hero?.photonRing) hero.photonRing.scale.setScalar(1 + fill * 0.08);
+    if (hero?.uDiskFade) hero.uDiskFade.value = band;
+    scaleBridge(hero?.foldArcs?.[0]?.material?.uniforms?.uOpacity, band);
+    const {
+        infallEmbers, corridorDust: dust, shards: shardMesh, lensingStarfield: stars,
+    } = group.userData;
+    scaleBridge(infallEmbers?.material?.uniforms?.uOpacity, band);
+    scaleBridge(dust?.material?.uniforms?.uOpacity, motifs);
+    scaleBridge(shardMesh?.material?.uniforms?.uOpacity, motifs);
+    scaleBridge(stars?.material?.uniforms?.uOpacity, motifs);
+    // Hidden outright once collapsed / gone, so nothing keeps drawing at zero.
+    if (hero?.diskPivot) hero.diskPivot.visible = band > 0.002;
+    hero?.foldArcs?.forEach((fold) => { fold.visible = band > 0.002; });
+    if (dust) dust.visible = motifs > 0.002;
+    if (shardMesh) shardMesh.visible = motifs > 0.002;
+    if (stars) stars.visible = motifs > 0.002;
+
+    // The sun copy fills the closing hole and hands the sun to chapter 8 (which draws the
+    // identical disc) at carry.handedOver.
+    const stage = group.userData.retrosunStage;
+    if (sunCopy) {
+        const copyVisible = !!(stage && distantHole && camera?.position) && fill > 0.001 && !carry?.handedOver;
+        sunCopy.visible = copyVisible;
+        if (copyVisible) {
+            distantHole.getWorldPosition(_heroWorld);
+            const heroDist = _heroWorld.distanceTo(camera.position);
+            const sunDist = Math.max(1, stage.position.distanceTo(camera.position));
+            sunCopy.position.copy(_heroWorld).sub(group.position);
+            sunCopy.scale.setScalar(heroDist / sunDist);
+            sunCopy.userData.uEnergy.value = resolveUrbanEnergy(time, directorState);
+            sunCopy.userData.uReveal.value = resolveRetrosunReveal(cameraProgress);
+            // Full strength once filled, independent of this chapter's crossfade weight: the
+            // copy must match chapter 8's disc pixel for pixel at the hand-over.
+            const copyOpacity = sunCopy.material?.uniforms?.uOpacity;
+            if (copyOpacity) copyOpacity.value = fill;
+        }
     }
 
     // Re-centre the corridor dust on the camera (group-local) so the camera is always
