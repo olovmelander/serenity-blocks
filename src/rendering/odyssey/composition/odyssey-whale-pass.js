@@ -23,7 +23,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    abs, cameraPosition, clamp, dot, length, mix, normalView, normalWorld, normalize, oneMinus,
+    abs, cameraPosition, clamp, dot, length, max, mix, normalView, normalWorld, normalize, oneMinus,
     positionWorld, pow, smoothstep, uniform, vec3,
 } from 'three/tsl';
 import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gltf-loader.js';
@@ -68,6 +68,16 @@ function bindPoseBounds(model) {
  * The back-lit silhouette, in the medium: dark back, a soft belly lit by scattered light from
  * below, the surface light wrapping the edge (fresnel, strongest on faces toward the surface),
  * and colour-with-distance toward the water colour so the whales sit IN the sea.
+ *
+ * OPAQUE since the seamless pass. It was a transparent material (blend state, the transparent
+ * queue, a read-modify-write of the HDR target on every whale fragment) whose only use of alpha
+ * was the depth-window fade — and a dark silhouette fading over the water it swims in is exactly
+ * a silhouette dissolving INTO the water colour. So the fade now rides the same haze the
+ * distance already uses (fade 0 = pure water colour, and the group is hidden there), which keeps
+ * the pair in the opaque queue: early-Z, no blend, no sort. Double-sided stays: the GLB is an
+ * unindexed triangle soup authored doubleSided, and a culled hole in a 58 u hero would show.
+ * (Its unused COLOR_0 is never uploaded: the node material reads no vertex colour, and WebGPU
+ * only binds the attributes a pipeline uses — it is CPU memory in the shared glTF cache only.)
  */
 function createWhaleMaterial(uWater, uFade) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -79,9 +89,7 @@ function createWhaleMaterial(uWater, uFade) {
     body = body.add(vec3(0.50, 0.80, 0.90).mul(fres).mul(towardSurface.mul(0.6).add(0.25)).mul(0.5));
     const dist = length(positionWorld.sub(cameraPosition));
     const haze = smoothstep(30.0, 360.0, dist).mul(0.88);
-    material.colorNode = mix(body, uWater, haze);
-    material.opacityNode = uFade;
-    material.transparent = true;
+    material.colorNode = mix(body, uWater, max(haze, oneMinus(uFade)));
     material.depthWrite = true;
     material.side = THREE.DoubleSide;
     material.forceSinglePass = true;
@@ -160,16 +168,20 @@ export function createWhalePass({
          * @param {THREE.Camera} camera
          * @param {number} submerged 0..1 (the world's underwater blend)
          * @param {boolean} inChapter whether the camera is inside the ocean chapter's span
+         * @param {number} [presence] 0..1 ocean-life presence from the world's 1->2 carry
+         *   (`oneWorld.state.lifePresence`): the pair arrives with the fish as the quench thins,
+         *   never inside Earth Core's cavern. Defaults to 1 (no carry wired = today's behaviour).
          */
-        update(time, delta, camera, submerged, inChapter) {
+        update(time, delta, camera, submerged, inChapter, presence = 1) {
             const depth = seaLevel - (camera?.position?.y ?? seaLevel);
             const inDepth = depth > VISIBLE_DEPTH_MIN && depth < VISIBLE_DEPTH_MAX;
-            const show = ready && inChapter && submerged > 0.5 && inDepth;
+            const life = Number.isFinite(presence) ? Math.min(Math.max(presence, 0), 1) : 1;
+            const show = ready && inChapter && submerged > 0.5 && inDepth && life > 0.001;
             // Fade in from the deep edge and out toward the surface, so the pair is met, not
             // switched on.
             const fadeDeep = THREE.MathUtils.smoothstep(VISIBLE_DEPTH_MAX - depth, 0, 40);
             const fadeSurface = THREE.MathUtils.smoothstep(depth - VISIBLE_DEPTH_MIN, 0, 18);
-            uFade.value = show ? Math.min(fadeDeep, fadeSurface) : 0;
+            uFade.value = show ? Math.min(fadeDeep, fadeSurface) * life : 0;
             group.visible = show && uFade.value > 0.01;
             if (!group.visible) return;
 
