@@ -55,6 +55,7 @@ export class OdysseyPathRenderer {
         this.pathGlowMesh = null;
         this.chapterMarkers = [];
         this.progress = 0;
+        this.focus = null; // path position of the current node (frontier spark)
         this.time = 0;
         this.chapterTransition = null;
         this.positionSeam = null;
@@ -336,6 +337,10 @@ export class OdysseyPathRenderer {
         // Per-tube progress (TSL uniform nodes returned by the builders).
         if (this._outerUniforms) this._outerUniforms.uProgress.value = this.progress;
         if (this._glowUniforms) this._glowUniforms.uProgress.value = this.progress;
+        // Frontier spark: the current node (or the lit frontier when none is set).
+        if (this._chapterUniforms?.uFocus) {
+            this._chapterUniforms.uFocus.value = Number.isFinite(this.focus) ? this.focus : -1;
+        }
 
         // P3: drive the diegetic flow toward the head + beat pulse from director state.
         if (this.aaa && this._chapterUniforms) {

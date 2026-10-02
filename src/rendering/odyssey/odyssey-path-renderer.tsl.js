@@ -4,32 +4,32 @@
  *
  * The ribbon is TWO draws on one Catmull-Rom curve:
  *
- *   - the BODY: an opaque, unlit MeshBasic tube whose surface carries the per-chapter
- *     character (colour + a world-unit surface pattern + flow + the hot centre line that
- *     used to be a separate, never-visible core tube), and
- *   - the HAZE: an additive back-face shell around it (the soft halo / the world's air
- *     around the ribbon).
+ *   - the BODY: an opaque, unlit MeshBasic tube that carries each world's own ribbon — a
+ *     half-Lambert-lit surface (per-chapter sun, no lit-material light-set dependency) plus
+ *     an emissive surface character in world units, a hot centre line, the lit frontier and
+ *     its spark, and
+ *   - the HAZE: an additive back-face shell around it — the world's air around the ribbon
+ *     (heat, mist, vapour, nebula), not a neon halo.
  *
- * ── CENTRE-LINE GEOMETRY (2026-10 seamless pass) ──────────────────────────────────────
- * Both tubes are built from a CENTRE-LINE geometry: every ring of vertices sits ON the
- * spline (position) with its radial direction in `normal`; the radius is applied in the
- * vertex shader. That is what lets the ribbon behave like a thing in the world instead of a
- * plastic pipe at every distance:
+ * ── ONE RECIPE PER WORLD, CROSSFADED IN ARC LENGTH (2026-10 seamless pass) ─────────────
+ * Every chapter's ribbon is the SAME material driven by a row of recipe parameters
+ * (ODYSSEY_RIBBON_RECIPES): albedo, emissive, sun direction/colour, fill, feature weights
+ * (molten cracks / caustics / drifting grains / streaks / data packets), flow, haze, width.
+ * The rows live in uniform arrays; the vertex shader computes a CHAPTER COORDINATE along the
+ * arc that ramps smoothly from one row to the next over a window around each boundary (the
+ * chapter's own seam width, i.e. the same window the environments crossfade over), and the
+ * fragment mixes the two neighbouring rows. So nothing about the ribbon steps at a seam: the
+ * old ribbon hard-switched its style at boundary - 0.006 and crossfaded colour over 0.012.
  *
- *   - NEAR the lens the radius collapses (smoothstep(1.5, 6, d)): the rail used to pass
- *     0.6-1.3 u from the camera at the 4->5 and 7->8 seams and fill a third of the frame as
- *     a pole / wedge / slab (the 7->8 capture was a 36->100->38 luma flash).
- *   - FAR away it never drops below ~1.2 px wide, so a distant stretch reads as a steady
- *     line instead of a shimmering sub-pixel hairline.
- *   - Both ENDS taper to a point instead of showing a cut tube end to the camera (ch8).
+ * ── CENTRE-LINE GEOMETRY ───────────────────────────────────────────────────────────────
+ * Both tubes are built from CENTRE-LINE geometry (rings ON the spline, radial direction in
+ * `normal`); the radius is applied in the vertex shader so the rail collapses near the lens,
+ * holds a pixel floor far away, never exceeds a screen-fraction ceiling and tapers at both
+ * ends. See ribbonRadius().
  *
  * ── ARC-LENGTH PATTERNS ────────────────────────────────────────────────────────────────
- * `uv.x` is the arc-length parameter in 0..1 over the WHOLE 2533-u journey. The old
- * patterns used it as if it were world units, so a lava crack was 42 u long, a caustic 66,
- * a ley dash 97 and a flow pulse ~290: far too large to read as surface, which is why every
- * chapter's ribbon looked like flat neon plastic. Every pattern now runs on
- * `s = uv.x * uArc` (world units along the path) and an around-the-tube coordinate in world
- * units, tuned to 2-8 u features, and fades to its mean with distance so it cannot alias.
+ * `uv.x` is the arc parameter (0..1 over the whole 2533-u journey). Every feature runs on
+ * `s = uv.x * uArc` — world units — sized to 2-8 u, and fades to its mean with distance.
  */
 
 import * as THREE from 'three/webgpu';
@@ -51,6 +51,7 @@ import {
     modelWorldMatrix,
     normalLocal,
     normalView,
+    normalWorld,
     normalize,
     positionLocal,
     positionView,
@@ -60,6 +61,7 @@ import {
     smoothstep,
     step,
     uniform,
+    uniformArray,
     uv,
     varying,
     vec2,
@@ -68,38 +70,23 @@ import {
 } from 'three/tsl';
 import { hash21 } from './chapter-environments/shared/odyssey-tsl-noise.js';
 import {
+    DEFAULT_ODYSSEY_TRANSITION,
     ODYSSEY_CHAPTER_PROFILES,
-    ODYSSEY_PATH_STYLES,
+    ODYSSEY_WORLD_SUN,
 } from './chapter-environments/shared/chapter-profile.js';
 
-// Map each path style to a shader style index.
-const PATH_STYLE_INDEX = {
-    [ODYSSEY_PATH_STYLES.LAVA_CRUST]: 0,
-    [ODYSSEY_PATH_STYLES.CAUSTIC_CURRENT]: 1,
-    [ODYSSEY_PATH_STYLES.LEY_LINE]: 2,
-    [ODYSSEY_PATH_STYLES.CAIRN_RIDGE]: 3,
-    [ODYSSEY_PATH_STYLES.JET_STREAM]: 4,
-    [ODYSSEY_PATH_STYLES.STELLAR_STREAM]: 5,
-    [ODYSSEY_PATH_STYLES.HORIZON_FILAMENT]: 6,
-    [ODYSSEY_PATH_STYLES.NEON_DATA_LINE]: 7,
-};
-
 const CHAPTER_COUNT = 8;
-const SEAM = 0.012; // chapterAt() seam width (matches live GLSL).
 
 /**
  * The ribbon's shared cross-section + emission spec.
  *
- *  - outerRadius is the BODY radius before the per-chapter widthScale; the live renderer
- *    passes ODYSSEY_PATH_DATA.radius (0.4). glowScale is the HAZE radius / body radius.
- *  - radialSegments / tubularSegments are the live tessellation. 1536 lengthwise segments
- *    put a ring every ~1.65 u (it was 256 = 9.9 u, which drew visible elbows at every tight
- *    turn: ch1 shot 1, ch7 shots 2/4, ch8 shots 2/4). 8 around is enough for a tube that is
- *    a few pixels wide almost everywhere and is never allowed near the lens.
- *  - minPixels: the far-field floor on the body's on-screen diameter.
- *  - near / far fades are in world units from the camera.
- *  - emission / flowGlowPeak / edgeGlowPeak / coreBrightness keep the raw linear emissive
- *    sane (<= ~1.0 at peak) so the post tonemap lands on a saturated glow, not white.
+ *  - outerRadius is the BODY radius before the per-chapter width; the live renderer passes
+ *    ODYSSEY_PATH_DATA.radius (0.4). glowScale is the HAZE radius / body radius.
+ *  - 1536 lengthwise rings (~1.65 u apart; 256 drew elbows at every tight turn), 8 around.
+ *  - minPixels / maxScreenRadius: the body's on-screen floor (px diameter) and ceiling
+ *    (radius as a fraction of screen height — a rail, never a pole).
+ *  - near fades are world units from the camera; endTaper is world units at each path end.
+ *  - minSeamWindow: the narrowest arc window (in p) a recipe crossfade may use.
  */
 export const ODYSSEY_PATH_CROSS_SECTION = Object.freeze({
     outerRadius: 0.4,
@@ -109,9 +96,6 @@ export const ODYSSEY_PATH_CROSS_SECTION = Object.freeze({
     tubularSegments: 1536,
     glowTubularSegments: 768,
     minPixels: 1.2,
-    // ...and a CEILING: the body's on-screen radius never exceeds this fraction of the
-    // screen height (~20 px at 720p), so wherever the rail passes the camera it reads as a
-    // rail, never as a pole. Ribbons further than ~14 u away are untouched by it.
     maxScreenRadius: 0.028,
     nearFadeStart: 1.5,
     nearFadeEnd: 6.0,
@@ -119,17 +103,13 @@ export const ODYSSEY_PATH_CROSS_SECTION = Object.freeze({
     glowNearFadeEnd: 9.0,
     endTaper: 4.0,
     emission: 1.0,
-    flowGlowPeak: 0.16,
-    edgeGlowPeak: 0.72,
-    coreBrightness: 0.55,
-    glowAlphaPeak: 0.09,
+    minSeamWindow: 0.012,
     // widthScale compression: chapter widthScale s -> 1 + (s-1)*widthScaleBlend.
     widthScaleBlend: 0.35,
 });
 
 /**
- * Compress a per-chapter `path.widthScale` toward 1.0 so it is only a gentle nudge on
- * the locked base radius.
+ * Compress a per-chapter `path.widthScale` toward 1.0 (a gentle nudge on the base radius).
  * @param {number} [widthScale]
  * @returns {number} multiplier near 1.0
  */
@@ -139,87 +119,301 @@ export function gentleWidthScale(widthScale = 1) {
 }
 
 /**
- * Default per-chapter base/emissive/style/width/bounds from ODYSSEY_CHAPTER_PROFILES.
- * @param {number[]} [chapterPositions] optional 8 chapter-start positions
+ * ONE ribbon recipe per world. Colours are sRGB hex (authored for the display-space grade).
+ * Sun direction/colour/intensity and the fill come from each chapter profile's atmosphere —
+ * except Act II's surface chapters (3-5), which take ODYSSEY_WORLD_SUN, the sun the One
+ * World terrain is actually shaded by, so the ribbon is lit from the same side as the land
+ * it lies on. `lit` is how much of the albedo the sun shapes (0 = flat), `core` the hot
+ * centre line, the feature weights pick the surface character, `speed` is u/s of flow.
  */
-function buildChapterDefaults(chapterPositions = []) {
-    const bounds = chapterPositions.filter((p) => Number.isFinite(p));
-    while (bounds.length < 9) bounds.push(1);
-    if (bounds[bounds.length - 1] < 1) bounds.push(1);
+export const ODYSSEY_RIBBON_RECIPES = Object.freeze([
+    // 1 — Earth Core: basalt crust, molten cracks, magma pushes travelling to the frontier.
+    Object.freeze({
+        base: 0x2b1d18,
+        lit: 0.85,
+        emis: 0xff6a1c,
+        gain: 1.0,
+        core: 0.25,
+        sunGain: 1.4,
+        crack: 1.0,
+        caustic: 0.0,
+        grain: 0.18,
+        streak: 0.0,
+        packet: 0.0,
+        pulse: 0.9,
+        scale: 1.0,
+        speed: 3.0,
+        haze: 0xff5a18,
+        hazeAmt: 0.10,
+        accent: 0xffb347,
+    }),
+    // 2 — Deep Ocean: lit from the surface far above, caustic shimmer, drifting plankton.
+    Object.freeze({
+        base: 0x0f4d62,
+        lit: 0.9,
+        emis: 0x45dcff,
+        gain: 0.8,
+        core: 0.2,
+        sunGain: 1.0,
+        crack: 0.0,
+        caustic: 1.0,
+        grain: 0.8,
+        streak: 0.0,
+        packet: 0.0,
+        pulse: 0.5,
+        scale: 1.0,
+        speed: 2.0,
+        haze: 0x37d6ff,
+        hazeAmt: 0.07,
+        accent: 0xb8f4ff,
+    }),
+    // 3 — Surface World: a sunlit golden thread, silk fibres, floating pollen.
+    Object.freeze({
+        base: 0x8f7535,
+        lit: 1.0,
+        emis: 0xffd27a,
+        gain: 0.32,
+        core: 0.16,
+        sunGain: 0.85,
+        worldSun: true,
+        crack: 0.0,
+        caustic: 0.0,
+        grain: 0.9,
+        streak: 0.35,
+        packet: 0.0,
+        pulse: 0.45,
+        scale: 1.0,
+        speed: 1.5,
+        haze: 0xffe6a8,
+        hazeAmt: 0.05,
+        accent: 0xfff0c0,
+    }),
+    // 4 — Mountains: frosted stone with glinting ice veins.
+    Object.freeze({
+        base: 0x8b97a6,
+        lit: 1.0,
+        emis: 0xdaf1ff,
+        gain: 0.65,
+        core: 0.18,
+        sunGain: 1.0,
+        worldSun: true,
+        crack: 0.8,
+        caustic: 0.0,
+        grain: 0.6,
+        streak: 0.0,
+        packet: 0.0,
+        pulse: 0.4,
+        scale: 1.35,
+        speed: 1.0,
+        haze: 0xe8f4ff,
+        hazeAmt: 0.05,
+        accent: 0xffffff,
+    }),
+    // 5 — Sky & Drift: a white contrail, warm on the sun side, cool on the sky side.
+    Object.freeze({
+        base: 0xeef2f8,
+        lit: 1.0,
+        emis: 0xffffff,
+        gain: 0.22,
+        core: 0.1,
+        sunGain: 1.0,
+        worldSun: true,
+        crack: 0.0,
+        caustic: 0.0,
+        grain: 0.1,
+        streak: 0.8,
+        packet: 0.0,
+        pulse: 0.3,
+        scale: 1.0,
+        speed: 3.0,
+        haze: 0xffffff,
+        hazeAmt: 0.09,
+        accent: 0xffffff,
+        fill: 0xb4d2ff,
+    }),
+    // 6 — Space: a near-dark river of stardust grains.
+    Object.freeze({
+        base: 0x0d1128,
+        lit: 0.6,
+        emis: 0xdcd4ff,
+        gain: 0.9,
+        core: 0.15,
+        sunGain: 1.0,
+        crack: 0.0,
+        caustic: 0.0,
+        grain: 1.0,
+        streak: 0.25,
+        packet: 0.0,
+        pulse: 0.35,
+        scale: 1.0,
+        speed: 2.5,
+        haze: 0x8f7bff,
+        hazeAmt: 0.05,
+        accent: 0x9fb4ff,
+    }),
+    // 7 — Black Hole: amber-to-magenta plasma streaking toward the horizon (the disk's amber,
+    // not the old hot pink 0x9a2d76).
+    Object.freeze({
+        base: 0x1c0b12,
+        lit: 0.5,
+        emis: 0xffb45a,
+        gain: 1.0,
+        core: 0.35,
+        sunGain: 1.2,
+        crack: 0.0,
+        caustic: 0.0,
+        grain: 0.2,
+        streak: 1.0,
+        packet: 0.0,
+        pulse: 0.5,
+        scale: 1.0,
+        speed: 6.0,
+        haze: 0xffa04a,
+        hazeAmt: 0.08,
+        accent: 0xd0489a,
+    }),
+    // 8 — Urban Encore: the only true neon — a segmented light-rail carrying data packets.
+    Object.freeze({
+        base: 0x0a0a1a,
+        lit: 0.3,
+        emis: 0x18d8ea,
+        gain: 1.0,
+        core: 0.9,
+        sunGain: 0.6,
+        crack: 0.0,
+        caustic: 0.0,
+        grain: 0.0,
+        streak: 0.0,
+        packet: 1.0,
+        pulse: 0.4,
+        scale: 1.0,
+        speed: 4.0,
+        haze: 0x18d8ea,
+        hazeAmt: 0.14,
+        accent: 0xff4fc0,
+    }),
+]);
 
-    const base = [];
-    const emissive = [];
-    const style = [];
-    const width = [];
-    for (let i = 0; i < CHAPTER_COUNT; i += 1) {
-        const profile = ODYSSEY_CHAPTER_PROFILES[i] || ODYSSEY_CHAPTER_PROFILES[0];
-        base.push(new THREE.Color(profile.path.baseColor));
-        emissive.push(new THREE.Color(profile.path.emissiveColor));
-        style.push(PATH_STYLE_INDEX[profile.path.style] ?? 0);
-        width.push(Number.isFinite(profile.path.widthScale) ? profile.path.widthScale : 1);
-    }
-    return {
-        bounds: bounds.slice(0, 9), base, emissive, style, width,
+const _scratchColor = new THREE.Color();
+function colorVec(hex, gain = 1) {
+    _scratchColor.set(hex);
+    return new THREE.Vector4(_scratchColor.r * gain, _scratchColor.g * gain, _scratchColor.b * gain, 0);
+}
+
+/**
+ * Pack the eight recipes into the uniform-array rows the materials read. Pure JS.
+ * @returns {Record<string, THREE.Vector4[]>}
+ */
+export function buildRibbonRecipeRows() {
+    const rows = {
+        base: [], emis: [], sun: [], sunCol: [], featA: [], featB: [], haze: [], fill: [], accent: [],
     };
+    for (let i = 0; i < CHAPTER_COUNT; i += 1) {
+        const r = ODYSSEY_RIBBON_RECIPES[i];
+        const profile = ODYSSEY_CHAPTER_PROFILES[i] || ODYSSEY_CHAPTER_PROFILES[0];
+        const atmo = profile.atmosphere || {};
+        const dir = new THREE.Vector3(...(r.worldSun ? ODYSSEY_WORLD_SUN : (atmo.lightDir || [0, 1, 0])))
+            .normalize();
+        const base = colorVec(r.base); base.w = r.lit;
+        const emis = colorVec(r.emis); emis.w = r.gain;
+        const sun = new THREE.Vector4(dir.x, dir.y, dir.z, atmo.ambientIntensity ?? 0.4);
+        const sunCol = colorVec(atmo.lightColor ?? 0xffffff, (atmo.lightIntensity ?? 1) * r.sunGain);
+        sunCol.w = r.core;
+        const width = Number.isFinite(profile.path?.widthScale) ? profile.path.widthScale : 1;
+        rows.base.push(base);
+        rows.emis.push(emis);
+        rows.sun.push(sun);
+        rows.sunCol.push(sunCol);
+        rows.featA.push(new THREE.Vector4(r.crack, r.caustic, r.grain, r.streak));
+        rows.featB.push(new THREE.Vector4(r.packet, r.pulse, r.scale, r.speed));
+        const haze = colorVec(r.haze); haze.w = r.hazeAmt;
+        const fill = colorVec(r.fill ?? atmo.ambientLight ?? 0x404040);
+        const accent = colorVec(r.accent); accent.w = width;
+        rows.haze.push(haze);
+        rows.fill.push(fill);
+        rows.accent.push(accent);
+    }
+    return rows;
+}
+
+/**
+ * Seam window (in p) for each of the 7 interior boundaries: the source chapter's transition
+ * seamWidth — the same half-width the environments crossfade over (±seamWidth).
+ * @returns {number[]} length 7
+ */
+function seamWindows() {
+    const out = [];
+    for (let k = 0; k < CHAPTER_COUNT - 1; k += 1) {
+        const t = ODYSSEY_CHAPTER_PROFILES[k]?.transition || {};
+        const w = Number.isFinite(t.seamWidth) ? t.seamWidth : DEFAULT_ODYSSEY_TRANSITION.seamWidth;
+        out.push(Math.max(ODYSSEY_PATH_CROSS_SECTION.minSeamWindow, w));
+    }
+    return out;
 }
 
 /**
  * Build the per-chapter uniform set shared by the body + haze materials.
- * @param {number[]} [chapterPositions]
+ * @param {number[]} [chapterPositions] 8 chapter starts (+ trailing 1.0)
  * @param {object} [opts]
  * @param {number} [opts.arcLength] total arc length of the curve, world units
  */
 export function createPathChapterUniforms(chapterPositions = [], opts = {}) {
-    const defaults = buildChapterDefaults(chapterPositions);
-    // uniform() must wrap a plain JS value (number / THREE.Color), NOT a TSL node —
-    // wrapping a float() node yields an un-named uniform ("Uniform null not declared").
-    const uBounds = defaults.bounds.map((b) => uniform(b));
-    const uBase = defaults.base.map((c) => uniform(c));
-    const uEmissive = defaults.emissive.map((c) => uniform(c));
-    const uStyle = defaults.style.map((s) => uniform(s));
-    const uWidth = defaults.width.map((w) => uniform(w));
+    const bounds = chapterPositions.filter((p) => Number.isFinite(p));
+    while (bounds.length < 9) bounds.push(1);
+    if (bounds[bounds.length - 1] < 1) bounds.push(1);
+    const rows = buildRibbonRecipeRows();
+    const recipe = {};
+    Object.keys(rows).forEach((key) => { recipe[key] = uniformArray(rows[key], 'vec4'); });
+    // uniform() must wrap a plain JS value (number / THREE.Color), NOT a TSL node.
     return {
-        uBounds,
-        uBase,
-        uEmissive,
-        uStyle,
-        uWidth,
+        uBounds: bounds.slice(0, 9).map((b) => uniform(b)),
+        uSeamW: seamWindows().map((w) => uniform(w)),
+        recipe,
         // World units along the whole curve: uv.x * uArc = distance along the path.
         uArc: uniform(Number.isFinite(opts.arcLength) && opts.arcLength > 0 ? opts.arcLength : 2532.7),
+        // Path position of the "current" node — the frontier spark. < 0 → follow uProgress.
+        uFocus: uniform(-1),
         uFlow: uniform(0),
         uHead: uniform(0),
         uBeat: uniform(0),
     };
 }
 
-// ── chapterAt() — per-chapter colour/style lookup along uv.x ───────────────────────
+// ── Chapter coordinate + recipe lookup ───────────────────────────────────────────
 
 /**
- * Forward seam-crossfade along the arc parameter: a `smoothstep(b-seam, b, x)` crossfade
- * at every interior boundary. styleId switches at the seam midpoint.
- * @returns {{ baseCol, emisCol, styleId, width }} TSL nodes
+ * Chapter coordinate along the arc: an integer (0..7) inside a chapter, ramping smoothly
+ * to the next integer over [b - w, b + w] around each boundary. Vertex stage.
  */
-function chapterAt(chapter, x) {
-    const {
-        uBounds, uBase, uEmissive, uStyle, uWidth,
-    } = chapter;
-
-    let baseCol = uBase[0];
-    let emisCol = uEmissive[0];
-    let styleId = uStyle[0];
-    let width = uWidth ? uWidth[0] : float(1);
-
-    for (let i = 0; i < CHAPTER_COUNT - 1; i += 1) {
-        const hi = uBounds[i + 1];
-        const t = smoothstep(hi.sub(SEAM), hi, x);
-        baseCol = mix(baseCol, uBase[i + 1], t);
-        emisCol = mix(emisCol, uEmissive[i + 1], t);
-        styleId = mix(styleId, uStyle[i + 1], step(0.5, t));
-        if (uWidth) width = mix(width, uWidth[i + 1], t);
+function chapterCoordinate(chapter, x) {
+    const { uBounds, uSeamW } = chapter;
+    let c = float(0.0);
+    for (let k = 0; k < CHAPTER_COUNT - 1; k += 1) {
+        const b = uBounds[k + 1];
+        const w = uSeamW[k];
+        c = c.add(smoothstep(b.sub(w), b.add(w), x));
     }
+    return c;
+}
 
+/** Mix the two neighbouring recipe rows at chapter coordinate c. */
+function recipeAt(chapter, c) {
+    const lo = clamp(floor(c), 0.0, CHAPTER_COUNT - 1);
+    const f = clamp(c.sub(lo), 0.0, 1.0);
+    const i0 = lo.toInt();
+    const i1 = min(lo.add(1.0), CHAPTER_COUNT - 1).toInt();
+    const row = (arr) => mix(arr.element(i0), arr.element(i1), f);
+    const r = chapter.recipe;
     return {
-        baseCol, emisCol, styleId, width,
+        base: row(r.base),
+        emis: row(r.emis),
+        sun: row(r.sun),
+        sunCol: row(r.sunCol),
+        featA: row(r.featA),
+        featB: row(r.featB),
+        haze: row(r.haze),
+        fill: row(r.fill),
+        accent: row(r.accent),
     };
 }
 
@@ -227,8 +421,7 @@ function chapterAt(chapter, x) {
 
 /**
  * 2D value noise whose lattice WRAPS in y with an integer period, so a pattern laid on
- * (s, uv.y * period) is seamless around the tube (the plain noise2 left a hard seam line
- * down the tube where uv.y jumps 1 -> 0).
+ * (s, uv.y * period) is seamless around the tube.
  */
 const noise2Wrap = /* @__PURE__ */ Fn(([pIn, period]) => {
     const i = floor(pIn).toVar();
@@ -247,71 +440,10 @@ const noise2Wrap = /* @__PURE__ */ Fn(([pIn, period]) => {
     inputs: [{ name: 'pIn', type: 'vec2' }, { name: 'period', type: 'float' }],
 });
 
-// ── stylePattern() — eight per-world surface characters, in WORLD UNITS ───────────
-
-/**
- * The eight per-world surface patterns, laid on `s` (world units along the path) and
- * `v` (0..1 around the tube). Feature sizes are 2-8 u. Selected by styleId via the same
- * `step(n, styleId + 0.5)` ladder as before.
- */
-function stylePattern(styleId, s, v, t) {
-    const sel = styleId.add(0.5);
-    // Around-the-tube lattice: 4 cells around (~0.6 u each on a 0.4-radius tube).
-    const AROUND = 4.0;
-    const va = v.mul(AROUND);
-
-    // 0 — lavaCrust: cracked molten cells (~4 u crust plates, thin bright seams).
-    const n0 = noise2Wrap(vec2(s.mul(0.28), va), float(AROUND));
-    const cracks = smoothstep(0.44, 0.5, n0).sub(smoothstep(0.5, 0.56, n0));
-    const lava = float(0.7)
-        .add(cracks.mul(2.4))
-        .add(noise2Wrap(vec2(s.mul(0.9), va.mul(2.0)), float(AROUND * 2)).mul(0.2));
-
-    // 1 — causticCurrent: flowing caustic stripes (~5 u).
-    const c = sin(s.mul(1.25).sub(t.mul(2.0))).mul(sin(v.mul(Math.PI * 2 * 2).add(t.mul(0.7))));
-    const caustic = float(0.8).add(c.mul(c).mul(0.7));
-
-    // 2 — leyLine: travelling dashes (6 u period).
-    const d = fract(s.div(6.0).sub(t.mul(0.4)));
-    const dash = smoothstep(0.0, 0.12, d).mul(smoothstep(0.55, 0.4, d));
-    const ley = float(0.6).add(dash.mul(1.3));
-
-    // 3 — cairnRidge: stone with bright veins (~3 u).
-    const vn = smoothstep(0.47, 0.5, noise2Wrap(vec2(s.mul(0.33), va), float(AROUND)));
-    const cairn = float(0.65).add(vn.mul(1.4));
-
-    // 4 — jetStream: wind streaks along the length (~8 u).
-    const st = sin(s.mul(0.78).add(v.mul(Math.PI * 2)).sub(t.mul(3.0))).mul(0.5).add(0.5);
-    const jet = float(0.7).add(st.mul(0.7));
-
-    // 5 — stellarStream: sparkle river (0.6 u cells).
-    const sp = hash21(floor(vec2(s.mul(1.6), va.mul(2.0))).add(floor(t.mul(4.0))));
-    const stellar = float(0.7).add(step(0.93, sp).mul(2.2));
-
-    // 6 — horizonFilament: lensing streaks (~7 u).
-    const l = sin(s.mul(0.9).sub(t.mul(4.0))).mul(0.5).add(0.5);
-    const horizon = float(0.7).add(pow(l, 3.0).mul(1.1));
-
-    // 7 — neonDataLine: scanline data segments (3 u).
-    const sc = step(0.5, fract(s.div(3.0).sub(t.mul(1.4))));
-    const neon = float(0.6).add(sc.mul(0.85));
-
-    let pat = lava;
-    pat = mix(pat, caustic, step(1.0, sel));
-    pat = mix(pat, ley, step(2.0, sel));
-    pat = mix(pat, cairn, step(3.0, sel));
-    pat = mix(pat, jet, step(4.0, sel));
-    pat = mix(pat, stellar, step(5.0, sel));
-    pat = mix(pat, horizon, step(6.0, sel));
-    pat = mix(pat, neon, step(7.0, sel));
-    return pat;
-}
-
 // ── Geometry ─────────────────────────────────────────────────────────────────────
 
 /**
- * A short straight-ish CatmullRom curve so the builders construct standalone (pilot page,
- * graph-construct test) without the live odyssey layout.
+ * A short CatmullRom curve so the builders construct standalone (pilot page, graph test).
  */
 function defaultPathCurve() {
     return new THREE.CatmullRomCurve3([
@@ -326,8 +458,8 @@ function defaultPathCurve() {
  * CENTRE-LINE tube geometry: each ring's vertices sit on the curve at arc parameter
  * t = i/segments (uv.x), with the unit radial direction in `normal` and uv.y = 0..1 around.
  * The materials apply the radius in their positionNode. Indexed exactly like a TubeGeometry
- * so the triangle winding faces outward once inflated.
- * @param {THREE.Curve} curve arc-length parameterised curve (getPointAt / computeFrenetFrames)
+ * so the winding faces outward once inflated.
+ * @param {THREE.Curve} curve arc-length parameterised curve
  * @param {number} tubularSegments
  * @param {number} radialSegments
  * @returns {THREE.BufferGeometry}
@@ -416,15 +548,30 @@ function ribbonRadius({
     return r.mul(near).mul(near).mul(ends);
 }
 
-// `1.0 - step(edge, x)` — the `(1.0 - step(uProgress, vUv.x))` edge mask.
-function oneMinusStep(edge, x) {
-    return float(1.0).sub(step(edge, x));
+/** 0..1 breathing at 0.5 Hz (shared with the level nodes' state language). */
+function breathe(uTime) {
+    return sin(uTime.mul(Math.PI)).mul(0.5).add(0.5);
 }
 
-// ── Body (per-chapter diegetic surface + folded hot centre line) ──────────────────
+/**
+ * Lit-frontier terms shared by body + haze: `lit` (1 on the unlocked stretch), the frontier
+ * `fuse` (the last ~10 u running into the current node, breathing), all in world units.
+ */
+function frontierTerms(s, uProgress, uFocus, uArc, uTime) {
+    const sHead = uProgress.mul(uArc);
+    // Soft 1.5-u edge instead of a hard step (no stair-step under MSAA-less tiers).
+    const lit = float(1.0).sub(smoothstep(sHead.sub(0.75), sHead.add(0.75), s));
+    const sFocus = mix(sHead, uFocus.mul(uArc), step(0.0, uFocus));
+    const fuse = smoothstep(sFocus.sub(10.0), sFocus.sub(0.5), s)
+        .mul(float(1.0).sub(smoothstep(sFocus.sub(0.5), sFocus.add(0.5), s)))
+        .mul(breathe(uTime).mul(0.45).add(0.55));
+    return { lit, fuse, sHead };
+}
+
+// ── Body ───────────────────────────────────────────────────────────────────────────
 
 /**
- * The ribbon BODY. Opaque unlit tube on centre-line geometry.
+ * The ribbon BODY. Opaque unlit tube on centre-line geometry, one recipe per world.
  * @param {object} uTime shared time uniform (uniform(0))
  * @param {object} [opts]
  */
@@ -449,13 +596,15 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
     const uProgress = opts.uProgress ?? uniform(0);
 
     const {
-        uFlow, uHead, uBeat, uArc,
+        uFlow, uBeat, uArc, uFocus,
     } = chapter;
 
     const vUv = uv();
-    const { width } = chapterAt(chapter, vUv.x);
+    // Chapter coordinate, once per vertex; interpolates exactly between ring vertices.
+    const vChapter = varying(chapterCoordinate(chapter, vUv.x));
 
     const positionNode = Fn(() => {
+        const width = recipeAt(chapter, chapterCoordinate(chapter, vUv.x)).accent.w;
         const r = ribbonRadius({
             baseRadius: uRadius,
             width,
@@ -469,73 +618,120 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
         return positionLocal.add(normalLocal.mul(r));
     })();
 
-    // World units along the path (s) and the camera distance (pattern LOD).
-    const s = vUv.x.mul(uArc);
-    const dView = length(positionView);
-    const viewDir = normalize(positionView.negate());
-    const ndv = abs(dot(normalize(normalView), viewDir));
+    const colorNode = Fn(() => {
+        const R = recipeAt(chapter, vChapter);
+        const s = vUv.x.mul(uArc);
+        const v = vUv.y;
+        const dView = length(positionView);
+        const viewDir = normalize(positionView.negate());
+        const ndv = abs(dot(normalize(normalView), viewDir));
 
-    // Progress illumination / leading-edge glow (the last ~8 u before the frontier) / rim.
-    const lit = step(vUv.x, uProgress);
-    const sHead = uProgress.mul(uArc);
-    const edgeGlow = smoothstep(sHead.sub(8.0), sHead, s)
-        .mul(oneMinusStep(uProgress, vUv.x));
-    const rim = pow(float(1.0).sub(ndv), 1.5);
+        // ── Light: half-Lambert from the world's sun + the world's fill (unlit material,
+        // so no dependence on the scene light set). ──
+        const N = normalize(normalWorld);
+        const ndl = dot(N, normalize(R.sun.xyz));
+        const hl = pow(ndl.mul(0.5).add(0.5), 2.0);
+        const light = R.fill.rgb.mul(R.sun.w).add(R.sunCol.rgb.mul(hl));
+        const albedo = R.base.rgb;
+        const body = mix(albedo, albedo.mul(light), R.base.w).toVar();
 
-    const transitionBand = float(1.0).sub(
-        smoothstep(0.0, uTransitionWidth, abs(vUv.x.sub(uTransitionHead))),
-    );
+        // ── Surface character, world units (fades to its mean with distance). ──
+        const detail = float(1.0).sub(smoothstep(110.0, 360.0, dView));
+        const sc = R.featB.z;
+        const speed = R.featB.w;
+        const n1 = noise2Wrap(vec2(s.mul(0.32).mul(sc), v.mul(4.0)), float(4.0));
+        const n2 = noise2Wrap(vec2(s.mul(0.95).mul(sc).add(13.0), v.mul(8.0)), float(8.0));
 
-    const { baseCol, emisCol, styleId } = chapterAt(chapter, vUv.x);
-    // Surface pattern, faded to its mean (1.0) with distance so it can never alias.
-    const patLod = smoothstep(90.0, 320.0, dView);
-    const pat = mix(stylePattern(styleId, s, vUv.y, uTime), float(1.0), patLod);
+        // Molten cracks / ice veins: thin iso-lines of the noise, plus a finer octave.
+        const crackLine = float(1.0).sub(smoothstep(0.0, 0.06, abs(n1.sub(0.5))));
+        const crackFine = float(1.0).sub(smoothstep(0.0, 0.05, abs(n2.sub(0.5)))).mul(0.5);
+        const crack = max(crackLine, crackFine).mul(R.featA.x);
+        // Crust plates vary in tone between the cracks.
+        body.mulAssign(float(1.0).sub(n1.mul(0.35).mul(R.featA.x)));
+        // Magma pushes: brightening waves running toward the frontier (+s).
+        const push = smoothstep(0.55, 1.0, sin(s.mul(0.3).sub(uTime.mul(speed).mul(0.3))));
 
-    // Flow pulse travelling toward the head (player progress), ~16 u wavelength.
-    const flow = sin(s.sub(uHead.mul(uArc)).mul(0.4).sub(uTime.mul(uFlow.mul(3.0).add(2.0))));
-    const flowGlow = smoothstep(0.2, 1.0, flow)
-        .mul(ODYSSEY_PATH_CROSS_SECTION.flowGlowPeak)
-        .mul(lit)
-        .mul(float(1.0).sub(patLod));
+        // Caustics: a drifting light network on the side facing the light.
+        const cA = sin(s.mul(1.05).add(n1.mul(4.0)).sub(uTime.mul(1.4)));
+        const cB = sin(v.mul(Math.PI * 4).add(s.mul(0.37)).add(uTime.mul(0.9)).add(n2.mul(3.0)));
+        const caustic = pow(float(1.0).sub(abs(cA.mul(cB))), 6.0)
+            .mul(smoothstep(-0.2, 0.8, ndl))
+            .mul(R.featA.y);
 
-    let color = mix(
-        baseCol.mul(0.5),
-        mix(baseCol, emisCol, 0.65).mul(pat),
-        max(lit, 0.4),
-    );
-    const emisGain = clamp(
-        rim.mul(0.5).add(flowGlow).add(uBeat.mul(0.18)).add(edgeGlow.mul(ODYSSEY_PATH_CROSS_SECTION.edgeGlowPeak)),
-        0.0,
-        1.0,
-    );
-    color = color.add(emisCol.mul(emisGain));
+        // Drifting grains (plankton / pollen / embers / glints / stardust): round dots on a
+        // lattice that slides along the rail.
+        const gs = vec2(s.sub(uTime.mul(speed).mul(0.4)).mul(1.7), v.mul(12.0));
+        const gCell = floor(gs);
+        const gHash = hash21(gCell.add(7.0));
+        const gDot = float(1.0).sub(smoothstep(0.12, 0.34, length(fract(gs).sub(0.5))));
+        const grain = step(0.86, gHash).mul(gDot)
+            .mul(sin(uTime.mul(gHash.mul(3.0).add(2.0)).add(gHash.mul(40.0))).mul(0.5).add(0.5))
+            .mul(R.featA.z);
 
-    // HOT CENTRE LINE — folded in from the old core tube (which sat entirely inside this
-    // opaque tube and was never visible: one wasted draw + pipeline). The camera-facing
-    // middle of the tube carries the chapter emissive, brighter on the lit stretch.
-    const coreLine = pow(ndv, 6.0).mul(float(0.45).add(lit.mul(0.55)));
-    color = color.add(emisCol.mul(coreLine).mul(ODYSSEY_PATH_CROSS_SECTION.coreBrightness));
+        // Streaks (contrail turbulence / plasma / silk fibres): noise stretched along s.
+        const st1 = noise2Wrap(vec2(s.mul(0.06).mul(sc).sub(uTime.mul(speed).mul(0.05)), v.mul(4.0)), float(4.0));
+        const st2 = noise2Wrap(
+            vec2(s.mul(0.15).mul(sc).sub(uTime.mul(speed).mul(0.11)), v.mul(8.0).add(3.0)),
+            float(8.0),
+        );
+        const streak = smoothstep(0.42, 0.85, st1.mul(0.6).add(st2.mul(0.4))).mul(R.featA.w);
 
-    // Ch5 (Sky) two-tone sun/aurora rim — ch5-gated, additive.
-    const ch5Gate = step(3.5, styleId).mul(oneMinusStep(styleId, 4.5));
-    const sunSide = smoothstep(0.42, 0.62, vUv.y);
-    const twoToneRim = pow(float(1.0).sub(ndv), 2.2);
-    const ch5RimTint = mix(vec3(0.36, 0.92, 1.0), vec3(1.0, 0.78, 0.46), sunSide);
-    color = color.add(ch5RimTint.mul(twoToneRim).mul(0.28).mul(ch5Gate));
+        // Data packets on a segmented light-rail.
+        const segGap = step(0.1, fract(s.div(2.4)));
+        const pk = fract(s.div(11.0).sub(uTime.mul(speed).div(11.0)));
+        const packet = smoothstep(0.0, 0.04, pk).mul(float(1.0).sub(smoothstep(0.08, 0.14, pk))).mul(R.featB.x);
 
-    color = color.mul(uEmission);
-    // EMISSIVE CAP: the path is in every frame — cap the raw linear emissive to 1.0 so the
-    // brightest ribbon pixel stays a saturated glow through exposure/bloom swells.
-    color = min(color, vec3(1.0));
-    color = mix(
-        color,
-        mix(color, uTransitionColor.mul(pat.add(1.4)), 0.8),
-        transitionBand.mul(uTransitionMix),
-    );
+        // Lit frontier + spark.
+        const { lit, fuse, sHead } = frontierTerms(s, uProgress, uFocus, uArc, uTime);
+        const dormant = mix(float(0.3), float(1.0), lit);
+        // Flow pulses travelling toward the head on the unlocked stretch.
+        const pulse = smoothstep(0.82, 1.0, sin(s.sub(sHead).mul(0.35).sub(uTime.mul(uFlow.mul(3.0).add(2.0)))))
+            .mul(R.featB.y).mul(lit);
+
+        // Streak tint runs from the emissive toward the accent (ch7 amber → magenta).
+        const streakCol = mix(R.emis.rgb, R.accent.rgb, st2);
+        body.assign(mix(body, body.mul(0.72).add(streakCol.mul(0.45)), streak.mul(detail)));
+        // Neon rail: dark gaps between segments.
+        body.mulAssign(mix(float(1.0), segGap.mul(0.85).add(0.15), R.featB.x));
+
+        const hot = R.emis.rgb.mul(R.emis.w);
+        const features = crack.mul(push.mul(1.2).add(1.0))
+            .add(caustic.mul(0.9))
+            .add(grain.mul(1.4))
+            .add(packet.mul(1.6));
+        // Distance mean of the features, so the far ribbon keeps the same average glow.
+        const featureMean = R.featA.x.mul(0.12).add(R.featA.y.mul(0.12)).add(R.featA.z.mul(0.04))
+            .add(R.featB.x.mul(0.1));
+        const centre = pow(ndv, 6.0).mul(R.sunCol.w).mul(lit.mul(0.6).add(0.4))
+            .mul(mix(float(1.0), segGap, R.featB.x));
+        const emissive = hot.mul(
+            mix(featureMean, features, detail).mul(dormant)
+                .add(centre)
+                .add(pulse.mul(0.5))
+                .add(uBeat.mul(0.12).mul(lit)),
+        )
+            .add(mix(hot, vec3(1.0), 0.35).mul(fuse).mul(0.9))
+            // Packets read in the accent (magenta data on the cyan rail).
+            .add(R.accent.rgb.mul(packet).mul(0.5).mul(detail).mul(dormant));
+
+        // The world's air at the silhouette — the ribbon's edge melts into its atmosphere.
+        const rim = pow(float(1.0).sub(ndv), 2.0);
+        let color = body.add(emissive).add(R.haze.rgb.mul(rim).mul(R.haze.w).mul(3.0));
+        color = color.mul(uEmission);
+        // Hue-preserving cap: scale by the brightest channel (a per-channel clamp turns an
+        // ember orange yellow and a glare olive) so the ribbon never clips to white.
+        color = color.div(max(max(max(color.r, color.g), color.b), 1.0));
+
+        // Seam crossing: a gentle glow band travelling through the threshold.
+        const transitionBand = float(1.0).sub(
+            smoothstep(0.0, uTransitionWidth, abs(vUv.x.sub(uTransitionHead))),
+        );
+        return mix(color, uTransitionColor.mul(0.9), transitionBand.mul(uTransitionMix).mul(0.35));
+    })();
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = color;
+    material.colorNode = colorNode;
     material.transparent = false;
     material.userData.emitsBloom = true;
 
@@ -563,9 +759,10 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
 // ── Additive haze shell ────────────────────────────────────────────────────────────
 
 /**
- * The additive back-face HAZE around the body (AdditiveBlending, depthWrite off). Same
- * centre-line geometry; radius = body radius * glowScale, no pixel floor, faded near the
- * lens (smoothstep(2.5, 9, d) — the creative-plan ch7 frame-15 blowout) and with distance.
+ * The additive back-face HAZE around the body (AdditiveBlending, depthWrite off): each
+ * world's air around the ribbon — heat over the lava, mist in the sea, vapour in the sky,
+ * nebula in space, the neon bloom of the city. Radius = body * glowScale, no pixel floor,
+ * faded near the lens (smoothstep(2.5, 9, d)) and with distance.
  */
 export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
     const curve = opts.curve ?? defaultPathCurve();
@@ -587,12 +784,13 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
     const uTransitionWidth = opts.uTransitionWidth ?? uniform(0.1);
     const uProgress = opts.uProgress ?? uniform(0);
 
-    const { uBeat, uArc } = chapter;
+    const { uBeat, uArc, uFocus } = chapter;
 
     const vUv = uv();
-    const { width, emisCol } = chapterAt(chapter, vUv.x);
+    const vChapter = varying(chapterCoordinate(chapter, vUv.x));
 
     const positionNode = Fn(() => {
+        const width = recipeAt(chapter, chapterCoordinate(chapter, vUv.x)).accent.w;
         const r = ribbonRadius({
             baseRadius: uRadius,
             width,
@@ -606,37 +804,42 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
         return positionLocal.add(normalLocal.mul(r));
     })();
 
-    const s = vUv.x.mul(uArc);
-    const lit = step(vUv.x, uProgress);
-    const pulse = sin(s.mul(0.5).sub(uTime.mul(3.0))).mul(0.3).add(0.7);
-    const transitionBand = float(1.0).sub(
-        smoothstep(0.0, uTransitionWidth, abs(vUv.x.sub(uTransitionHead))),
-    );
-
-    const dView = length(positionView);
-    // Soft radial profile: back faces seen head-on (centre of the halo) are densest.
-    const viewDir = normalize(positionView.negate());
-    const soft = pow(abs(dot(normalize(normalView), viewDir)), 1.5);
-    const nearFade = varying(smoothstep(
-        ODYSSEY_PATH_CROSS_SECTION.glowNearFadeStart,
-        ODYSSEY_PATH_CROSS_SECTION.glowNearFadeEnd,
-        dView,
-    ));
-    const farFade = float(1.0).sub(smoothstep(160.0, 600.0, dView));
-    const alpha = clamp(
-        lit.mul(pulse).mul(ODYSSEY_PATH_CROSS_SECTION.glowAlphaPeak)
-            .add(transitionBand.mul(uTransitionMix).mul(0.25))
-            .add(uBeat.mul(0.06).mul(lit)),
-        0.0,
-        0.5,
-    ).mul(nearFade).mul(farFade).mul(soft);
-
-    const color = mix(emisCol, uTransitionColor, transitionBand.mul(uTransitionMix));
+    // Haze colour + strength (pure expressions per slot — colour and opacity are separate
+    // graphs; see the glass-shell note in level-node-manager.tsl.js).
+    const hazeTerms = () => {
+        const R = recipeAt(chapter, vChapter);
+        const s = vUv.x.mul(uArc);
+        const { lit, fuse } = frontierTerms(s, uProgress, uFocus, uArc, uTime);
+        const dView = length(positionView);
+        // Soft radial profile: back faces seen head-on (centre of the halo) are densest.
+        const soft = pow(abs(dot(normalize(normalView), normalize(positionView.negate()))), 1.5);
+        const nearFade = smoothstep(
+            ODYSSEY_PATH_CROSS_SECTION.glowNearFadeStart,
+            ODYSSEY_PATH_CROSS_SECTION.glowNearFadeEnd,
+            dView,
+        );
+        const farFade = float(1.0).sub(smoothstep(160.0, 600.0, dView));
+        // A slow drift in the air (heat shimmer / mist) along the rail.
+        const drift = sin(s.mul(0.45).sub(uTime.mul(1.6))).mul(0.25).add(0.75);
+        const transitionBand = float(1.0).sub(
+            smoothstep(0.0, uTransitionWidth, abs(vUv.x.sub(uTransitionHead))),
+        );
+        const alpha = clamp(
+            R.haze.w.mul(drift).mul(lit.mul(0.6).add(0.4))
+                .add(fuse.mul(0.22))
+                .add(transitionBand.mul(uTransitionMix).mul(0.12))
+                .add(uBeat.mul(0.04).mul(lit)),
+            0.0,
+            0.5,
+        ).mul(nearFade).mul(farFade).mul(soft);
+        const color = mix(mix(R.haze.rgb, R.emis.rgb, fuse), uTransitionColor, transitionBand.mul(uTransitionMix));
+        return { color, alpha };
+    };
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = color;
-    material.opacityNode = alpha;
+    material.colorNode = Fn(() => hazeTerms().color)();
+    material.opacityNode = Fn(() => hazeTerms().alpha)();
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.BackSide;
