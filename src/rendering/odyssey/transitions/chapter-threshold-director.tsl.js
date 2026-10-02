@@ -27,7 +27,6 @@ import {
     abs,
     clamp,
     dot,
-    floor,
     fract,
     length,
     mix,
@@ -42,7 +41,7 @@ import {
     vec3,
     attribute,
 } from 'three/tsl';
-import { hash21, noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
+import { noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { billboardWorld, makeQuadInstancedGeometry } from '../chapter-environments/shared/odyssey-tsl-billboard.js';
 
 const DEFAULT_PRIMARY = 0xff6a22;
@@ -65,7 +64,7 @@ const RING_ACCENT_ALPHA = 0.4; // ceiling for the scanning-ring accent alpha
  * Build the shared uniform set mirroring ChapterThresholdDirector's makeUniforms(). The
  * caller's uTime is shared in so the director can tick one clock across veil/ring/particles.
  */
-function makeThresholdUniforms(uTime) {
+export function makeThresholdUniforms(uTime) {
     return {
         uTime: uTime ?? uniform(0),
         uProgress: uniform(0),
@@ -144,22 +143,19 @@ export function createVeilMaterialTSL(uTime = uniform(0), u = makeThresholdUnifo
     const split = smoothstep(0.08, 0.85, abs(uvc.x).add(uProgress.mul(0.55)));
     const band3 = oneMinus(split).mul(0.7).add(pow(oneMinus(smoothstep(0.1, 1.05, r)), 2.0));
 
-    // ── kind 4: AIRGLOW MEMBRANE (5->6, creative plan rework) ── the real ~90km
-    // airglow shell seen edge-on: a THIN horizontal olive-green luminous band (not a
-    // radial rim) that sweeps past as the camera punches through the last shell of
-    // atmosphere — a designed under-a-second event. The faint sparkle is the first
-    // stars igniting beyond the membrane (gated to the back half of the breach). The
-    // profile's lens-bubble PARTICLE component is untouched and fades across the seam
-    // beats exactly as Chapter 5's Transition Out specifies.
+    // ── kind 4: AIRGLOW (5->6) ── only the soft glow of the ~90km airglow shell sweeping
+    // past. SEAMLESS PASS (2026-10-02): the hard 0.05-wide membrane CORE drew as a teal bar
+    // ruled across the frame (p 0.7363-0.7643 in the seam audit), and the "first stars"
+    // sparkle was a step() over hash21 of the uv floored to a 70-cell grid — a lattice of hard-edged SQUARE cells, one
+    // per 70th of the quad, i.e. pixel-art stars in front of the real starfield. Both are
+    // gone; what remains is a feathered band with no edge to read. (Every shipped profile
+    // draws no veil at all now — see ChapterThresholdDirector — this keeps the material
+    // honest for the pilot harness and any future profile that re-authors a veil.)
     const membraneY = uProgress.mul(1.6).sub(0.8); // sweeps bottom→top across the breach
-    const membraneCore = oneMinus(
-        smoothstep(0.0, 0.05, abs(uvc.y.sub(membraneY).sub(mist.mul(0.03)))),
-    );
-    const membraneGlow = oneMinus(smoothstep(0.0, 0.22, abs(uvc.y.sub(membraneY)))).mul(0.4);
-    const sparkle4 = step(0.955, hash21(floor(vUv.mul(70.0))))
-        .mul(0.45)
-        .mul(smoothstep(0.4, 0.9, uProgress));
-    const band4 = membraneCore.add(membraneGlow).add(sparkle4);
+    const membraneGlow = oneMinus(
+        smoothstep(0.0, 0.3, abs(uvc.y.sub(membraneY).sub(mist.mul(0.05)))),
+    ).mul(0.4);
+    const band4 = membraneGlow;
 
     // ── kind 5: GRAVITATIONAL SHEAR (6->7, creative plan rework) ── the old tight
     // expanding interference ring buried the portal eye in moiré. Replaced by 3–5

@@ -42,6 +42,22 @@ import {
 } from 'three/tsl';
 import { fbm3 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { SEAM_56_AURORA_BRIDGE } from '../chapter-environments/shared/seam-bridges.js';
+import { arcToP } from '../transitions/odyssey-seam-schedule.js';
+
+/**
+ * THE BANK'S OWN WINDOW, in WORLD UNITS (seamless pass, 2026-10-02). The board used to window
+ * the bank with the steam quench's STEAM_QUENCH_HALF_WIDTH (0.06 p) — a number borrowed from a
+ * different occluder and authored as "106 u" on a 1767 u journey. On the live 2533 u spline that
+ * 0.06 is 152 u, and it is at 152 u that the bank's exit was measured and tuned (the radius-620
+ * limb work, the -34 luma 5->6 step). So the window is now pinned at that DISTANCE and converted
+ * to progress against the live spline: unchanged today, and a re-layout no longer resizes it.
+ */
+export const CLOUD_BANK_HALF_WIDTH_ARC = 152;
+
+/** @returns {number} the bank's window half-width in progress units, on the live spline */
+export function cloudBankHalfWidth() {
+    return arcToP(CLOUD_BANK_HALF_WIDTH_ARC);
+}
 
 /**
  * World radius of the bank (before the Y squash). The journey's largest transition.
