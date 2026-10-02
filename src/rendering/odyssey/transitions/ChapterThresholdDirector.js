@@ -6,6 +6,19 @@
  * The director owns a compact set of prebuilt scene-space effects centered on
  * the chapter seam. Triggers only update state; no geometry is allocated while
  * the player crosses a boundary.
+ *
+ * ⚠️ SEAMLESS PASS (2026-10-02): EVERY OVERLAY IS OFF, AT EVERY SEAM. The veil (an additive
+ * 32x20 quad), the scanning ring (a torus) and the 180 rail particles were non-diegetic
+ * graphics laid over the world, and the camera flew THROUGH them: the 4->5 "Summit Liftoff"
+ * lavender flash (luma 193 at p 0.3709) was the eye passing the veil plane and its particle
+ * cloud, the 2->3 waterline band and ring floated in the sky after the breach, and 1->2 drew a
+ * ring circle over the ocean at p 0.0749. Each seam now carries something IN the world instead
+ * (embers -> bubbles -> spray, cloud tops -> cloud sea, omen -> Gargantua, accretion light -> the
+ * city's sun). So every profile authors veilScale = ringScale = particleScale = 0, and a
+ * component no profile asks for is NOT BUILT: zero meshes, zero materials, zero pipelines at
+ * warm-up and zero draws at a seam (was 3 draws: quad + torus + 180-instance burst). The class
+ * stays — it still resolves the profiles the audio stingers read, keeps the trigger/seam-phase
+ * API the board calls, and re-builds a component if a future profile authors a scale again.
  */
 
 import * as THREE from 'three/webgpu';
@@ -14,6 +27,7 @@ import {
     createRingMaterialTSL,
     createParticleMaterialTSL,
     createParticleGeometry,
+    makeThresholdUniforms,
 } from './chapter-threshold-director.tsl.js';
 
 const DEFAULT_PROFILE = Object.freeze({
@@ -24,9 +38,9 @@ const DEFAULT_PROFILE = Object.freeze({
     primary: 0xff6a22,
     secondary: 0x58d8ff,
     particle: 0xbdefff,
-    ringScale: 1.0,
-    veilScale: 1.0,
-    particleScale: 1.0,
+    ringScale: 0,
+    veilScale: 0,
+    particleScale: 0,
 });
 
 export const ODYSSEY_THRESHOLD_PROFILES = Object.freeze({
@@ -38,8 +52,9 @@ export const ODYSSEY_THRESHOLD_PROFILES = Object.freeze({
         primary: 0xff6a22,
         secondary: 0x58d8ff,
         particle: 0xc7f4ff,
-        ringScale: 0.95,
-        veilScale: 1.0,
+        ringScale: 0,
+        veilScale: 0,
+        particleScale: 0,
     }),
     '2-3': Object.freeze({
         id: '2-3',
@@ -49,8 +64,9 @@ export const ODYSSEY_THRESHOLD_PROFILES = Object.freeze({
         primary: 0x4bd6ff,
         secondary: 0xfff1b8,
         particle: 0xffffff,
-        ringScale: 1.08,
-        veilScale: 1.1,
+        ringScale: 0,
+        veilScale: 0,
+        particleScale: 0,
     }),
     '3-4': Object.freeze({
         id: '3-4',
@@ -60,9 +76,9 @@ export const ODYSSEY_THRESHOLD_PROFILES = Object.freeze({
         primary: 0x9cc7b8,
         secondary: 0xc8dded,
         particle: 0xe8f7ff,
-        ringScale: 0.55,
+        ringScale: 0,
         veilScale: 0,
-        particleScale: 0.45,
+        particleScale: 0,
         intensityScale: 0.24,
     }),
     '4-5': Object.freeze({
@@ -73,29 +89,31 @@ export const ODYSSEY_THRESHOLD_PROFILES = Object.freeze({
         primary: 0xffd1b6,
         secondary: 0xaed6ff,
         particle: 0xf4fbff,
-        ringScale: 1.18,
-        veilScale: 1.25,
+        ringScale: 0,
+        veilScale: 0,
+        particleScale: 0,
     }),
     '5-6': Object.freeze({
         id: '5-6',
         name: 'Atmosphere Edge',
         kind: 4,
         stinger: 'atmosphere-edge',
-        // Creative plan (6→ Transition In, beat 2): the veil is the thin olive-green
-        // AIRGLOW membrane (#7FBF6A over #2B3D1F) the camera punches through — the
-        // real last shell of atmosphere. The lens-bubble particle color stays cool.
+        // Creative plan (6→ Transition In, beat 2) authored the veil as the olive-green
+        // AIRGLOW membrane the camera punches through. Seamless pass: it drew as a hard teal
+        // bar across the frame (p 0.7363-0.7643), so the membrane is now the world's own
+        // airglow -> aurora carry and this profile draws nothing. Colours kept for the API.
         primary: 0x68d8c8,
         secondary: 0x06162f,
         particle: 0x174e66,
-        ringScale: 1.35,
-        veilScale: 1.3,
-        particleScale: 0.0,
+        ringScale: 0,
+        veilScale: 0,
+        particleScale: 0,
     }),
     // QUIETED 2026-10-01 (masterpiece pass). Chapter 6's omen now IS chapter 7's Gargantua and
     // glides onto its pose across the seam, so the black hole itself carries the handoff. The
     // old violet ring (1.45) and orange veil (1.2) flooded the frame around p 0.878-0.886 — a
-    // magenta wash over the very disk the seam is about. What remains is an accent in the
-    // disk's own gold: a thin ring, a breath of veil, a scatter of embers.
+    // magenta wash over the very disk the seam is about. The gold accent that replaced it is
+    // gone too (seamless pass): the black hole carries this seam on its own.
     '6-7': Object.freeze({
         id: '6-7',
         name: 'Lensing Engage',
@@ -104,9 +122,9 @@ export const ODYSSEY_THRESHOLD_PROFILES = Object.freeze({
         primary: 0xffe2b8,
         secondary: 0xff9a52,
         particle: 0xffd29a,
-        ringScale: 0.7,
-        veilScale: 0.35,
-        particleScale: 0.6,
+        ringScale: 0,
+        veilScale: 0,
+        particleScale: 0,
         intensityScale: 0.35,
     }),
     '7-8': Object.freeze({
@@ -117,13 +135,25 @@ export const ODYSSEY_THRESHOLD_PROFILES = Object.freeze({
         primary: 0xffffff,
         secondary: 0x00f0ff,
         particle: 0xff66c4,
-        ringScale: 1.25,
-        veilScale: 1.35,
+        ringScale: 0,
+        veilScale: 0,
+        particleScale: 0,
     }),
 });
 
 export function getOdysseyThresholdProfile(boundaryId) {
     return ODYSSEY_THRESHOLD_PROFILES[boundaryId] || DEFAULT_PROFILE;
+}
+
+/**
+ * Whether any authored profile draws the given overlay component. Missing keys keep their
+ * historical default (particleScale defaulted to 1), so an omitted scale is never silently 0.
+ * @param {'veilScale'|'ringScale'|'particleScale'} key
+ * @returns {boolean}
+ */
+export function thresholdComponentAuthored(key) {
+    return [DEFAULT_PROFILE, ...Object.values(ODYSSEY_THRESHOLD_PROFILES)]
+        .some((profile) => (profile[key] ?? 1) > 0.001);
 }
 
 function easeOutCubic(t) {
@@ -150,37 +180,47 @@ export class ChapterThresholdDirector {
         this.group.visible = false;
         this.group.renderOrder = 80;
 
-        // TSL/WebGPU materials. The veil builder constructs the shared uniform set
-        // (TSL uniform() nodes expose .value get/set + .value.set() for colors, exactly
-        // like the old THREE uniforms), which the ring + particles then share so a single
-        // uTime/uProgress/etc. clock drives all three. trigger()/setSeamPhase()/update()
-        // keep mutating this.uniforms.*.value unchanged.
-        const veil = createVeilMaterialTSL();
-        this.uniforms = veil.uniforms;
-        this.veil = veil.mesh;
-        this.veil.name = 'threshold-veil';
-        this.veil.frustumCulled = false;
-        this.group.add(this.veil);
+        // TSL/WebGPU materials share ONE uniform set (TSL uniform() nodes expose .value
+        // get/set + .value.set() for colors, exactly like the old THREE uniforms) so a single
+        // uTime/uProgress/etc. clock drives every component. trigger()/setSeamPhase()/update()
+        // keep mutating this.uniforms.*.value whether or not any component is built.
+        // Components no profile authors are not built at all (see the header) — null here.
+        this.uniforms = makeThresholdUniforms();
+        this.veil = null;
+        this.ring = null;
+        this.particles = null;
 
-        const ring = createRingMaterialTSL(this.uniforms.uTime, this.uniforms);
-        this.ring = ring.mesh;
-        this.ring.name = 'threshold-ring';
-        this.ring.frustumCulled = false;
-        this.group.add(this.ring);
-
-        const particleCount = this.qualityName === 'Minimal' || this.qualityName === 'Low' ? 96 : 180;
-        const particles = createParticleMaterialTSL(this.uniforms.uTime, this.uniforms);
-        // createParticleMaterialTSL builds a 180-instance geometry by default; rebuild on the
-        // quality-resolved count (mirrors createThresholdBreachPilotTSL's override).
-        if (particleCount !== 180) {
-            particles.geometry.dispose();
-            particles.geometry = createParticleGeometry(particleCount);
-            particles.mesh.geometry = particles.geometry;
+        if (thresholdComponentAuthored('veilScale')) {
+            const veil = createVeilMaterialTSL(this.uniforms.uTime, this.uniforms);
+            this.veil = veil.mesh;
+            this.veil.name = 'threshold-veil';
+            this.veil.frustumCulled = false;
+            this.group.add(this.veil);
         }
-        this.particles = particles.mesh;
-        this.particles.name = 'threshold-particles';
-        this.particles.frustumCulled = false;
-        this.group.add(this.particles);
+
+        if (thresholdComponentAuthored('ringScale')) {
+            const ring = createRingMaterialTSL(this.uniforms.uTime, this.uniforms);
+            this.ring = ring.mesh;
+            this.ring.name = 'threshold-ring';
+            this.ring.frustumCulled = false;
+            this.group.add(this.ring);
+        }
+
+        if (thresholdComponentAuthored('particleScale')) {
+            const particleCount = this.qualityName === 'Minimal' || this.qualityName === 'Low' ? 96 : 180;
+            const particles = createParticleMaterialTSL(this.uniforms.uTime, this.uniforms);
+            // createParticleMaterialTSL builds a 180-instance geometry by default; rebuild on the
+            // quality-resolved count (mirrors createThresholdBreachPilotTSL's override).
+            if (particleCount !== 180) {
+                particles.geometry.dispose();
+                particles.geometry = createParticleGeometry(particleCount);
+                particles.mesh.geometry = particles.geometry;
+            }
+            this.particles = particles.mesh;
+            this.particles.name = 'threshold-particles';
+            this.particles.frustumCulled = false;
+            this.group.add(this.particles);
+        }
 
         this._scratchPosition = new THREE.Vector3();
         this._scratchTangent = new THREE.Vector3(0, 1, 0);
@@ -328,14 +368,24 @@ export class ChapterThresholdDirector {
         }
 
         const scale = 1 + env * 0.16 + energy * 0.05;
-        this.veil.visible = profile.veilScale > 0.001;
-        this.ring.visible = profile.ringScale > 0.001;
-        this.veil.scale.setScalar(profile.veilScale * scale);
-        this.ring.scale.setScalar(profile.ringScale * (0.75 + progress * 0.75 + env * 0.15));
-        this.ring.rotation.z += deltaSeconds * (0.4 + profile.kind * 0.035) * this.active.direction;
+        const veilScale = profile.veilScale ?? 1.0;
+        const ringScale = profile.ringScale ?? 1.0;
         const particleScale = profile.particleScale ?? 1.0;
-        this.particles.visible = particleScale > 0.001;
-        this.particles.scale.setScalar((1 + progress * 0.65 + beat * 0.08) * particleScale);
+        if (this.veil) {
+            this.veil.visible = veilScale > 0.001;
+            this.veil.scale.setScalar(veilScale * scale);
+        }
+        if (this.ring) {
+            this.ring.visible = ringScale > 0.001;
+            this.ring.scale.setScalar(ringScale * (0.75 + progress * 0.75 + env * 0.15));
+            this.ring.rotation.z += deltaSeconds * (0.4 + profile.kind * 0.035) * this.active.direction;
+        }
+        if (this.particles) {
+            this.particles.visible = particleScale > 0.001;
+            this.particles.scale.setScalar((1 + progress * 0.65 + beat * 0.08) * particleScale);
+        }
+        // Nothing to draw this seam: keep the (empty or all-hidden) group out of the render list.
+        this.group.visible = !!((this.veil?.visible) || (this.ring?.visible) || (this.particles?.visible));
 
         if (!this.active.positionDriven && progress >= 1) {
             this.active = null;
