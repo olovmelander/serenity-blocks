@@ -18,7 +18,6 @@ import {
     attribute,
     clamp,
     cos,
-    float,
     fract,
     mix,
     mod,
@@ -577,9 +576,12 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
     // Splash sparks additionally: die the moment they fall back through the lake surface
     // (a spark that keeps glowing under the lava is a bug, not a look), and pulse a touch
     // brighter with the LIVE surge so a heave lights the whole burst it is throwing.
+    // Risers fade over the top 15% of the rise: lifeNorm is offset (+0.16) so it never reaches 1
+    // there, and without this the spark was still bright on the frame it wrapped to the bottom.
+    const topFade = oneMinus(smoothstep(0.85, 1.0, normalizedY));
     const alpha = oneMinus(lifeNorm).mul(aRandom.mul(0.4).add(0.6))
         .mul(mix(
-            float(1.0),
+            topFade,
             smoothstep(-1.4, 0.1, sY).mul(magmaSurgeTSL(time).mul(0.30).add(0.70)),
             splash,
         ));
@@ -1078,11 +1080,17 @@ export function createEarthCoreEnvironment(options = {}) {
     // ~4-6 ms each is node building, the rest being per-material fixed cost (bind groups,
     // pipeline descriptor, WGSL assembly, DXC scheduling). Fewer MATERIALS is the lever;
     // smaller graphs are not (~125 nodes/ms).
+    // uLakeY: the lake plane in WORLD space, hoisted here so the pockets get it as well as the
+    // columns below — the material compares positionWorld.y against it, and the chapter-local
+    // -10 fallback sat 30 u off (the pre-merge review caught the pockets still using it).
+    const uLakeWorldY = uniform(groupCenter.y + LAVA_LAKE_Y);
     const sharedPocketMaterial = createMoltenPocketMaterialTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,
         uniforms.uBakedBounce,
-        { isColumn: false, uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam },
+        {
+            isColumn: false, uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam, uLakeY: uLakeWorldY,
+        },
     ).material;
     const moltenPockets = createMoltenPockets(group, uniforms, groupCenter, sharedPocketMaterial);
     elements.moltenPockets.push(...moltenPockets);
@@ -1212,7 +1220,6 @@ export function createEarthCoreEnvironment(options = {}) {
     // uLakeY: the lake plane in WORLD space. The material reads positionWorld, so handing it
     // the chapter-LOCAL LAVA_LAKE_Y put its contact gradient 30 units off (see the space-bug
     // note in createMoltenPocketMaterialTSL). groupCenter is this group's world origin.
-    const uLakeWorldY = uniform(groupCenter.y + LAVA_LAKE_Y);
     const sharedColumnMaterial = createMoltenPocketMaterialTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,

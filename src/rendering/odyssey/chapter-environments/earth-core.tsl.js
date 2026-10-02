@@ -1206,12 +1206,16 @@ export function createMoltenPocketMaterialTSL(
     const n3 = EARTH_CORE_BAKE_NOISE ? _getBakedNoise01Sampler() : noise3;
     const vNormal = varying(normalize(normalLocal));
     const vWorldPos = varying(positionWorld);
+    // Pattern space: the columns are static, so world space keeps their plates continuous across
+    // separate meshes; the floating blobs bob and spin every frame, so their crust and cracks must
+    // ride with them (object space) instead of sliding across the surface.
+    const vPatternPos = isColumn ? vWorldPos : varying(positionLocal);
     const vWorldY = varying(positionWorld.y);
     const vLakeDist = varying(length(positionWorld.xz.sub(vec2(LAKE_CENTER_X, LAKE_CENTER_Z))));
     const lakeFalloff = oneMinus(clamp(vLakeDist.div(160.0), 0.0, 1.0));
 
     // Plates: big charred slabs (~11 u on columns, ~6 u on the small blobs).
-    const plates = fbm3(vWorldPos.mul(isColumn ? 0.09 : 0.16), 3, n3);
+    const plates = fbm3(vPatternPos.mul(isColumn ? 0.09 : 0.16), 3, n3);
     const plateMix = smoothstep(0.32, 0.76, plates);
     let albedo = mix(vec3(0.016, 0.014, 0.017), vec3(0.052, 0.040, 0.035), plateMix);
     if (isColumn) {
@@ -1222,7 +1226,7 @@ export function createMoltenPocketMaterialTSL(
 
     // Cracks: ridged filaments, stretched along Y on the columns so they run with the grain.
     const veinScale = isColumn ? vec3(0.21, 0.07, 0.21) : vec3(0.26, 0.26, 0.26);
-    const veinField = ridged3(vWorldPos.mul(veinScale).add(vec3(0.0, uTime.mul(0.02), 0.0)), 3, n3);
+    const veinField = ridged3(vPatternPos.mul(veinScale).add(vec3(0.0, uTime.mul(0.02), 0.0)), 3, n3);
     const veinMask = smoothstep(isColumn ? 0.80 : 0.66, 0.97, veinField);
     const heightAboveLake = vWorldY.sub(uLakeY);
     // Hot at the lake, cooling with height - never quite dead, so high rock still has a pulse.

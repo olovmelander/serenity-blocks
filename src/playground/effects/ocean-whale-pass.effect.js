@@ -72,7 +72,10 @@ export function create({
     let mixer = null;
     let whale = null;
     const rec = getChapter2CreatureAssetById('whale-glide');
+    let disposed = false;
     const ready = rec ? loadOdysseyGltfCached(rec.url).then(({ scene: model, animations }) => {
+        // Switched away before the GLB resolved: never add a whale to the next effect's scene.
+        if (disposed) return false;
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
         const s = (Number(params.get('size')) || 60) / Math.max(size.x, size.y, size.z);
@@ -114,6 +117,7 @@ export function create({
             cam.lookAt(0, 1, 0.25);
         },
         dispose() {
+            disposed = true;
             if (whale) scene.remove(whale);
             scene.remove(dome);
             disposables.forEach((d) => d.dispose?.());
