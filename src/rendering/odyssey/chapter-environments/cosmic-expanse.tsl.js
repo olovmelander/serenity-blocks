@@ -59,6 +59,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
+import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import {
     createAccretionDiskTSL as createGargantuaDiskTSL,
     createGargantuaPhotonRingTSL,
@@ -446,16 +447,23 @@ export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal
 
     const n = normalize(positionLocal);
 
+    // NOISE BUDGET (seamless pass): 19 analytic octaves (8 hashes each) -> 13 baked-lattice
+    // fetches. The giant frames ~200-300 px across, so the dropped octaves were the 2-5 px
+    // cells that only shimmered (the bands' 5th octave at n*2.6 is ~2 px; the second warp's
+    // 4th-5th at n*6.0 are sub-pixel). Each fbm is rescaled by its amplitude-sum ratio so the
+    // warp and swirl keep the range the band/threshold constants were tuned against.
+    const nz = latticeNoise3;
     // Latitudinal storm bands — sharper, multi-frequency turbulent warp so the
     // banding reads as flowing cloud belts with crisp edges, not a soft blur.
-    const warp = fbm3(n.mul(2.6).add(time.mul(0.04))).mul(3.4)
-        .add(fbm3(n.mul(6.0).add(time.mul(0.07))).mul(1.1));
+    const warp = fbm3(n.mul(2.6).add(time.mul(0.04)), 4, nz).mul(3.4 * (0.96875 / 0.9375))
+        .add(fbm3(n.mul(6.0).add(time.mul(0.07)), 3, nz).mul(1.1 * (0.96875 / 0.875)));
     const bands = sin(n.y.mul(13.0).add(warp));
     // Push contrast: bias the band term toward its extremes so crests/troughs pop.
     const bandT = clamp(pow(bands.mul(0.5).add(0.5), float(0.7)), 0.0, 1.0);
 
     // Fine swirling cloud turbulence layered on top of the belts.
-    const swirl = fbm3(n.mul(5.5).add(vec3(time.mul(0.06), time.mul(0.02), 0.0)), 4);
+    const swirl = fbm3(n.mul(5.5).add(vec3(time.mul(0.06), time.mul(0.02), 0.0)), 3, nz)
+        .mul(0.9375 / 0.875);
     const detail = clamp(bandT.add(swirl.sub(0.5).mul(0.5)), 0.0, 1.0);
 
     // Crest ↔ trough, then drop the darkest belts toward shadow for depth.
@@ -467,7 +475,9 @@ export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal
     const spotCenter = normalize(vec3(0.55, -0.32, 0.62));
     const spotDot = dot(n, spotCenter);
     const spotMask = smoothstep(0.86, 0.985, spotDot);
-    const spotSwirl = ridged3(n.mul(9.0).add(time.mul(0.12))).mul(0.6).add(0.4);
+    // 3 octaves (was 5): the storm cell is ~15 % of the disc, so its 4th-5th octaves were
+    // single pixels. Rescaled to keep the ridged range.
+    const spotSwirl = ridged3(n.mul(9.0).add(time.mul(0.12)), 3, nz).mul(0.96875 / 0.875).mul(0.6).add(0.4);
     color = mix(color, uStorm.mul(spotSwirl), spotMask.mul(0.85));
 
     // Day / night terminator — WORLD-space normal vs. the world-space sun, so the lit side is
@@ -621,7 +631,7 @@ export function createDistantGalaxyTSL(uTime) {
     // Dust lanes: a thin dark band on each arm's inner (leading) edge.
     const lane = pow(max(0.0, cos(phase.add(0.9))), 10.0).mul(smoothstep(0.04, 0.12, r)).mul(disc);
     // Clumpy starlight + sparse pink knots along the arms.
-    const clump = fbm3(vec3(p.mul(18.0), 3.1), 2);
+    const clump = fbm3(vec3(p.mul(18.0), 3.1), 2, latticeNoise3);
     const knots = smoothstep(0.62, 0.78, clump).mul(arms);
 
     let color = uCore.mul(bulge.mul(1.5));
