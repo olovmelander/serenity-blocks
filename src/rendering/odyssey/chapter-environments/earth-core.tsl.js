@@ -725,7 +725,14 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0), 
     // Veins breathe slowly and individually (phase from the field itself), so the ceiling is
     // alive without a global strobe.
     const veinBreath = sin(uTime.mul(0.9).add(veinField.mul(9.0))).mul(0.25).add(0.75);
-    color = color.add(vec3(1.0, 0.30, 0.07).mul(veinMask.mul(darknessGate).mul(veinBreath).mul(0.42)));
+    // FISSURE FIELDS, NOT WALLPAPER (2026-10-02). Looking up the shaft the darkness gate is ~1
+    // over the whole frame, so the veins covered the dome at one even density and read as a
+    // texture. The low-frequency grain (already computed) now gathers them into fissure
+    // fields between quiet charred plates — the ceiling gets a value structure, for zero
+    // extra noise. The live fields burn a little hotter so the dome's total ember light holds.
+    const fissureField = smoothstep(0.30, 0.52, grain);
+    color = color.add(vec3(1.0, 0.30, 0.07).mul(veinMask.mul(darknessGate).mul(veinBreath)
+        .mul(fissureField).mul(0.56)));
 
     // The galaxy: sparse ember points IN the rock, shaded inside their cell (a whole-cell fill
     // renders as skewed squares on the sphere — the study's t=32 capture).
