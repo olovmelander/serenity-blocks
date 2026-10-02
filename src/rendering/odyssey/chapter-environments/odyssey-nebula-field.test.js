@@ -6,6 +6,8 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
+    NEBULA_OCTAVES,
+    NEBULA_PROXY_MARGIN,
     createNebulaFieldTSL,
     nebulaGasHullDistance,
     resolveNebulaGasVolumes,
@@ -46,14 +48,16 @@ describe('ch6 nebula field — six authored masses as luminous gas', () => {
         expect(validateNebulaFieldClearance()).toEqual([]);
     });
 
-    it('builds the composed field as TWO additive gas draws (warm + cool)', () => {
+    it('builds the composed field as ONE additive gas draw', () => {
         // Masterpiece pass (2026-10): the opaque painted sculpts read as plasticine in-game;
-        // the masses are emissive gas now. Still one draw per PAINT ROLE (the warm workhorses
-        // and the dim cool giant stay separable), but each is an ADDITIVE, non-depth-writing
-        // material: order-independent against every other additive layer in the chapter.
+        // the masses are emissive gas now — an ADDITIVE, non-depth-writing material,
+        // order-independent against every other additive layer in the chapter.
+        // Seamless pass (2026-10): the warm/cool split compiled the IDENTICAL graph twice (the
+        // palette is indexed per spec), and additive layers need no ordering, so all six masses
+        // are one geometry on one material: one draw, one material build.
         const field = createNebulaFieldTSL();
         expect(field.masses).toBe(ODYSSEY_NEBULA_FIELD_SPECS.length);
-        expect(field.parts).toHaveLength(2);
+        expect(field.parts).toHaveLength(1);
         field.parts.forEach(({ mesh, material, geometry }) => {
             expect(mesh.isMesh).toBe(true);
             expect(material.transparent).toBe(true);
@@ -71,6 +75,23 @@ describe('ch6 nebula field — six authored masses as luminous gas', () => {
         // Triangle budget: 6 masses x 3 volumes x a 320-face proxy hull.
         expect(field.triangles).toBeGreaterThan(3000);
         expect(field.triangles).toBeLessThan(9000);
+    });
+
+    it('hugs its gas with the hull and gates its fragment octaves by quality tier', () => {
+        // The hull only has to clear the ellipsoid: the detail-3 icosphere's flattest facet sits
+        // at ~0.988 of its vertex radius, so the margin must stay above ~1.012 — and every bit
+        // above that is additive fill that can only shade to zero.
+        expect(NEBULA_PROXY_MARGIN).toBeGreaterThan(1.015);
+        expect(NEBULA_PROXY_MARGIN).toBeLessThanOrEqual(1.05);
+        // High keeps the authored detail; Lane B (Medium) must not pay it.
+        const fetches = (tier) => NEBULA_OCTAVES[tier].gas + NEBULA_OCTAVES[tier].filaments;
+        expect(fetches('high')).toBe(5);
+        expect(fetches('medium')).toBeLessThan(fetches('high'));
+        expect(fetches('low')).toBeLessThanOrEqual(fetches('medium'));
+        // Every tier builds.
+        ['High', 'Medium', 'Low', undefined].forEach((qualityTier) => {
+            expect(createNebulaFieldTSL({ qualityTier }).parts).toHaveLength(1);
+        });
     });
 
     it('every gas hull leaves the camera axis its free field (back faces would vanish)', () => {

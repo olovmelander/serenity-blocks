@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import {
     createBlackHoleTranscendenceEnvironment,
+    updateBlackHoleTranscendenceEnvironment,
     poseGargantua,
     CH7_FOLD_ARC_SETTINGS,
     CH7_GARGANTUA,
@@ -10,6 +11,9 @@ import {
     CH7_CORRIDOR_DUST_SETTINGS,
 } from './black-hole-transcendence.tsl.js';
 import { ODYSSEY_CHAPTER_PROFILES } from './shared/chapter-profile.js';
+import { getActiveOdysseyChapterPositions } from '../path-utils.js';
+import { CH7_SUN_CARRY, resolveSunCarry } from './urban-dreams-sun-carry.js';
+import { resolveRetrosunStage } from './urban-dreams.js';
 
 describe('Black Hole chapter environment (creative plan ch7)', () => {
     it('caps the locked hero shadow with the lensed fold arcs', () => {
@@ -103,5 +107,95 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
         expect(profile.atmosphere.fogColor).toBe(0x160c2a);
         expect(profile.path.emissiveColor).toBe(0x9a2d76);
         expect(profile.path.widthScale).toBeLessThanOrEqual(0.84);
+    });
+});
+
+// ── SEAMLESS PASS (2026-10) ───────────────────────────────────────────────────────────
+describe('Gargantua at the seams', () => {
+    const positions = getActiveOdysseyChapterPositions();
+    const ch7 = positions[6];
+    const ch8 = positions[7];
+    // A camera that looks roughly up the chapter-8 approach.
+    const cameraAt = () => {
+        const camera = new THREE.PerspectiveCamera(64, 16 / 9, 0.1, 9000);
+        camera.position.set(258, 1389, -1114);
+        camera.lookAt(camera.position.x - 0.05, camera.position.y + 0.72, camera.position.z - 0.69);
+        camera.updateMatrixWorld(true);
+        return camera;
+    };
+
+    it('takes the shadow over from the omen exactly where ch7 is first drawn, opaque', () => {
+        const group = createBlackHoleTranscendenceEnvironment({ particleCount: 200 });
+        const { horizon } = group.userData.distantHole.userData;
+        expect(horizon.userData.odysseyFadeExempt).toBe(true);
+        const takeover = ch7 - 0.0222;
+        updateBlackHoleTranscendenceEnvironment(group, 0.016, 1, cameraAt(), takeover + 1e-4);
+        expect(horizon.visible).toBe(true);
+        expect(horizon.material.opacity).toBe(1);
+        expect(horizon.material.transparent).toBe(false);
+        updateBlackHoleTranscendenceEnvironment(group, 0.016, 1, cameraAt(), takeover - 1e-4);
+        expect(horizon.visible).toBe(false);
+        expect(ch8).toBeGreaterThan(ch7);
+    });
+
+    it('7->8: glides onto the Retrosun, closes the shadow and hands a matching sun to ch8', () => {
+        const group = createBlackHoleTranscendenceEnvironment({ particleCount: 200 });
+        const sun = resolveRetrosunStage().position;
+        // Facing the city with the sun ~15 deg off-axis (inside maxOffAxis, as on the live
+        // approach: 11-23 deg across the window).
+        const camera = cameraAt();
+        const towardSun = sun.clone().sub(camera.position).normalize();
+        const side = new THREE.Vector3(1, 0, 0).cross(towardSun).normalize();
+        camera.lookAt(camera.position.clone().add(towardSun.applyAxisAngle(side, 0.26)));
+        camera.updateMatrixWorld(true);
+        const { distantHole, sunCopy } = group.userData;
+        const toSun = sun.clone().sub(camera.position).normalize();
+        const heroDir = () => distantHole.getWorldPosition(new THREE.Vector3()).sub(camera.position).normalize();
+
+        // Before the window: on the lock, shadow full, no copy.
+        updateBlackHoleTranscendenceEnvironment(group, 0.016, 1, camera, ch8 - 0.03);
+        group.updateMatrixWorld(true);
+        expect(heroDir().angleTo(toSun)).toBeGreaterThan(0.05);
+        expect(distantHole.userData.horizon.scale.x).toBe(1);
+        expect(group.userData.lensWorldPos.lensRadius).toBe(CH7_GARGANTUA.shadowRadius);
+        expect(sunCopy.visible).toBe(false);
+
+        // Late in the window, before the hand-over: on the sun's direction, the shadow closed,
+        // the copy lit at the sun's angular size, and no chapter-7 motif left over the city.
+        const p = ch8 + 0.0017;
+        const carry = resolveSunCarry(p, positions);
+        expect(carry.glide).toBe(1);
+        expect(carry.close).toBe(1);
+        expect(carry.handedOver).toBe(false);
+        updateBlackHoleTranscendenceEnvironment(group, 0.016, 1, camera, p);
+        group.updateMatrixWorld(true);
+        expect(heroDir().angleTo(toSun)).toBeLessThan(0.01);
+        expect(distantHole.userData.horizon.visible).toBe(false);
+        expect(group.userData.lensWorldPos.lensRadius).toBeLessThan(1);
+        expect(sunCopy.visible).toBe(true);
+        const copyWorld = sunCopy.getWorldPosition(new THREE.Vector3());
+        expect(sunCopy.scale.x).toBeCloseTo(
+            copyWorld.distanceTo(camera.position) / sun.distanceTo(camera.position),
+            3,
+        );
+        expect(sunCopy.material.uniforms.uOpacity.value).toBeCloseTo(1, 3);
+        expect(group.userData.corridorDust.visible).toBe(false);
+        expect(group.userData.lensingStarfield.visible).toBe(false);
+        expect(distantHole.userData.diskPivot.visible).toBe(false);
+
+        // After the hand-over the copy is gone (chapter 8 draws the identical disc).
+        updateBlackHoleTranscendenceEnvironment(group, 0.016, 1, camera, ch8 + 0.004);
+        expect(sunCopy.visible).toBe(false);
+    });
+
+    it('7->8: never glides the hero out of frame when the sun is still far off-axis', () => {
+        const group = createBlackHoleTranscendenceEnvironment({ particleCount: 200 });
+        const camera = cameraAt(); // the sun ~30 deg off-axis here
+        updateBlackHoleTranscendenceEnvironment(group, 0.016, 1, camera, ch8 + 0.0017);
+        group.updateMatrixWorld(true);
+        const hero = group.userData.distantHole.getWorldPosition(new THREE.Vector3())
+            .sub(camera.position).normalize();
+        const forward = camera.getWorldDirection(new THREE.Vector3());
+        expect(forward.angleTo(hero)).toBeLessThanOrEqual(CH7_SUN_CARRY.maxOffAxis + 1e-3);
     });
 });

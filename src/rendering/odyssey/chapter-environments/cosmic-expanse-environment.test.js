@@ -227,7 +227,9 @@ describe('setOpacityScale re-arm (Act II->Space §8.4)', () => {
     it('ends every opacityNode assignment with .mul(materialOpacity)', () => {
         // Assignments may span lines, so match up to the terminating semicolon.
         const assignments = source.match(/^\s*\w+\.opacityNode = [\s\S]*?;$/gm) || [];
-        expect(assignments.length).toBeGreaterThanOrEqual(8);
+        // 8 -> 7 (seamless pass): the aurora bridge moved to cosmic-expanse-aurora.js and is
+        // staged by its own progress-driven uniforms, outside setOpacityScale's buckets.
+        expect(assignments.length).toBeGreaterThanOrEqual(7);
 
         const unarmed = assignments.filter((a) => !a.includes('materialOpacity'));
         expect(unarmed).toEqual([]);
@@ -269,13 +271,59 @@ describe('additive DoubleSide materials do not double-bill (Act II->Space §8.6)
         expect(offenders).toEqual([]);
     });
 
-    it('leaves the OPAQUE DoubleSide comet tail alone', () => {
-        // It is alphaTest + depthWrite, never entering the blend queue, so r181 does not
-        // split it and forceSinglePass would be cargo cult. Pinned so a future sweep that
-        // "fixes" every DoubleSide material has to justify touching this one.
+    it('the comet tail is additive light with a single pass', () => {
+        // Seamless pass (2026-10): the tail used to be an opaque alphaTest cone whose fade ran
+        // through a screen-space dither — a white salt-and-pepper blade in every capture. It is
+        // an additive glow now, so it joins the DoubleSide + Additive rule above.
         const tail = source.slice(source.indexOf('const tailMat = new THREE.'));
         expect(tail.slice(0, 400)).toContain('THREE.DoubleSide');
-        expect(tail.slice(0, 400)).toContain('transparent = false');
-        expect(tail.slice(0, 400)).not.toContain('forceSinglePass');
+        expect(tail.slice(0, 400)).toContain('AdditiveBlending');
+        expect(tail.slice(0, 400)).toContain('forceSinglePass = true');
+    });
+});
+
+// ── THE 6->7 HANDOFF (seamless pass) ──────────────────────────────────────────────────
+// The omen used to glide onto Gargantua's lock by camera HEIGHT, which the eye only reaches
+// after the boundary — at the crossfade's first frame the two black holes sat apart, and both
+// shadows were forced transparent, so stars showed through the hole.
+describe('omen -> Gargantua handoff runs on progress and keeps one opaque shadow', () => {
+    it('completes exactly where chapter 7 first appears, and hides the omen shadow there', async () => {
+        const { resolveOmenHandoffWindow } = await import('./cosmic-expanse.js');
+        const { resolveGargantuaLockPosition } = await import('./black-hole-transcendence.tsl.js');
+        const positions = deriveOdysseyChapterPositions();
+        const handoff = resolveOmenHandoffWindow(positions);
+        // ch7 is first drawn at the 6->7 seam start (boundary minus ch6's seam half-width).
+        expect(handoff.end).toBeCloseTo(0.8487, 3);
+        expect(handoff.start).toBeLessThan(handoff.end);
+
+        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        group.userData.chapterOpacity = 1;
+        const camera = new THREE.PerspectiveCamera(66, 16 / 9, 0.1, 9000);
+        camera.position.set(240, 1280, -1170);
+        camera.lookAt(camera.position.x + 0.87, camera.position.y + 0.2, camera.position.z - 0.45);
+        camera.updateMatrixWorld(true);
+        const { blackHole } = group.userData;
+        const { shadow } = blackHole.userData;
+        expect(shadow.userData.odysseyFadeExempt).toBe(true);
+
+        updateCosmicExpanseEnvironment(group, 0.016, 1, camera, handoff.end - 1e-4);
+        expect(shadow.visible).toBe(true);
+        expect(shadow.material.opacity).toBe(1);
+
+        updateCosmicExpanseEnvironment(group, 0.016, 1, camera, handoff.end + 1e-4);
+        expect(shadow.visible).toBe(false);
+        // ...and the omen sits on the lock, at Gargantua's size: the two coincide.
+        const lock = resolveGargantuaLockPosition(camera, new THREE.Vector3()).sub(group.position);
+        expect(blackHole.position.distanceTo(lock)).toBeLessThan(1e-3);
+        expect(blackHole.scale.x * 24).toBeCloseTo(132, 3);
+    });
+
+    it('never flips the exempt shadow transparent through the destination staging', () => {
+        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        group.userData.chapterOpacity = 0.4;
+        updateCosmicExpanseEnvironment(group, 0.016, 2.0, null, 0.55);
+        const { shadow } = group.userData.blackHole.userData;
+        expect(shadow.material.transparent).toBe(false);
+        expect(shadow.material.userData.baseOpacity).toBeUndefined();
     });
 });

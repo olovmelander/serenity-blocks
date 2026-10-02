@@ -34,7 +34,6 @@ import {
     attribute,
     cameraPosition,
     clamp,
-    color as tslColor,
     cos,
     dot,
     float,
@@ -58,6 +57,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
+import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
 import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
 import {
     createVoidSkyTSL,
@@ -73,6 +73,7 @@ import {
 import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
 import { GARGANTUA_LOCK, resolveGargantuaLockPosition } from './black-hole-transcendence.tsl.js';
 import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
+import { createAuroraBridgeBand, resolveAuroraBridgeEnvelope } from './cosmic-expanse-aurora.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import { pickStellarClass } from './odyssey-stellar-ramp.js';
@@ -291,24 +292,31 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
     starsBeforeDark: 0.5,
 });
 
-/**
- * Level trim on the carried Ch5 aurora bridge, applied after the hue fix above. 0.65 rather
- * than a deeper cut because switching to managed `color()` already removes most of the
- * excess on its own; this only takes the remaining edge off so the curtains sit behind the
- * cloud limb instead of competing with it.
- */
-const BRIDGE_LEVEL = 0.65;
-/**
- * How much of the bridge's chroma survives (1 = untouched, 0 = greyscale). The curtains are
- * additive and were measuring 99-100 % saturation across ~44 % of the non-black pixels at
- * p=0.7501, against a cloud-limb frame whose mean lit saturation is 38 %.
- */
-const BRIDGE_CHROMA = 0.55;
-
 const _approachVec = new THREE.Vector3();
 const _omenLock = new THREE.Vector3();
-// Chapter ease at which the omen starts gliding onto ch7's lock pose (see the handoff).
+// Fallback only (no global progress, e.g. a bare chapter-local probe): the chapter ease at
+// which the omen starts gliding onto ch7's lock pose.
 const OMEN_HANDOFF_START = 0.86;
+// THE 6->7 HANDOFF, BY PROGRESS (seamless pass). It used to run on the camera's HEIGHT through
+// the chapter (ease 0.86 -> 1), which the eye only reaches after the boundary: at the 6->7
+// crossfade's first frame (p 0.8487) the omen was ~27 % of the way to Gargantua's pose, so the
+// two black holes sat apart while both were drawn. It now glides across this fraction of the
+// Space span and COMPLETES exactly where ch7 first appears (the boundary minus ch6's seam
+// half-width), so from the crossfade's first frame the two coincide.
+export const OMEN_HANDOFF_SPAN = 0.2;
+
+/**
+ * Global-progress schedule of the omen -> Gargantua handoff.
+ * @returns {{start: number, end: number}|null} null when the layout is unknown
+ */
+export function resolveOmenHandoffWindow(chapterPositions) {
+    const ch6Start = chapterPositions?.[5];
+    const ch7Start = chapterPositions?.[6];
+    if (!Number.isFinite(ch6Start) || !Number.isFinite(ch7Start) || ch7Start <= ch6Start) return null;
+    const seamWidth = getChapterTransitionForChapter(6)?.seamWidth ?? 0.0222;
+    const end = ch7Start - seamWidth;
+    return { start: end - (ch7Start - ch6Start) * OMEN_HANDOFF_SPAN, end };
+}
 
 // B3 (Overdraw) — hard caps on the nebula billboard tiers. The wispy nebula is a
 // fill-rate multiplier (many large overlapping additive quads), so the COUNT is capped
@@ -459,6 +467,9 @@ function setOpacityScale(root, scale, chapterOpacity = 1) {
     // because the ramp was never reaching a fragment.
     root.visible = opacity > 0.002;
     root.traverse((child) => {
+        // FADE-EXEMPT meshes (the omen's shadow) are opaque occluders whose visibility the
+        // chapter drives itself; flipping them transparent is what let stars through the hole.
+        if (child.userData?.odysseyFadeExempt) return;
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         materials.forEach((material) => {
             if (!material || typeof material.opacity !== 'number') return;
@@ -703,6 +714,8 @@ export function createCosmicExpanseEnvironment(options = {}) {
     const nebulaSprites = readCh6UrlFlag('odysseyCh6NebulaSprites');
     const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL({
         uTime: uniforms.uTime,
+        // The board's quality preset (seamless pass): Medium/Low trim the gas's finest octaves.
+        qualityTier: options.qualityTier,
     }) : null;
     if (nebulaField) {
         corridor.add(nebulaField.mesh);
@@ -836,18 +849,15 @@ export function createCosmicExpanseEnvironment(options = {}) {
     corridor.add(comet);
     group.userData.comet = comet;
 
-    // AURORA BRIDGE — Ch6-OWNED aurora that ramps in via uApproach (NOT Ch5's daylight uDusk cap)
-    // so the northern lights greet the 5→6 handoff and linger over the now-dark vacuum (in-game
-    // "aurora gone" fix). The builder existed (createAuroraFilamentBridge, below) but was never
-    // added to the group. It self-gates via uApproach so it's present at the handoff.
-    // MISPLACEMENT FIX (owner report 2026-08-15, "the aurora feels misplaced"): the
-    // curtains are authored in the -Z corridor convention (x spread, y overhead,
-    // depth down -Z) but were parented to the chapter GROUP — the exact 43-84 deg
-    // off-axis bug the `cosmic-corridor` frame was built to fix, and every other
-    // ambient field moved there; the bridge never did. Corridor-parented, the
-    // greeting curtains actually hang over the camera's entry stretch.
-    const auroraBridge = createAuroraFilamentBridge(uniforms);
-    corridor.add(auroraBridge);
+    // THE AURORA BRIDGE (seamless pass, 2026-10) — see cosmic-expanse-aurora.js. A curtain band
+    // around the eye whose foot sits on the One World's airglow line: it grows out of that
+    // line across the final climb, peaks just before the 5->6 boundary and only falls after
+    // it, so the air's last light carries straight into space. Parented to the chapter GROUP
+    // (translated, never rotated) because its axis is WORLD up, like the airglow it stands on;
+    // update() re-seats it on the camera every frame. Driven by global progress through its
+    // own uniforms — outside the entryContinuity buckets, which wait for `spaceReveal`.
+    const auroraBridge = createAuroraBridgeBand(uniforms.uTime);
+    group.add(auroraBridge);
     group.userData.auroraBridge = auroraBridge;
     // Buckets tolerate bisected-out tiers: filter(Boolean) so update()'s forEach walks
     // only what was actually built.
@@ -866,10 +876,6 @@ export function createCosmicExpanseEnvironment(options = {}) {
         heroes: [galaxy].filter(Boolean),
         nebula: [nebulaVolume, nebulaFar].filter(Boolean),
         clutter: [dustNear, dustFar, asteroids, streakMotes].filter(Boolean),
-        // The carried aurora filaments self-gate on uApproach, which is 0 through all of
-        // Ch5 — i.e. fully green and fully alive. Without this they would hang in the
-        // daylight sky the moment the early ignite makes the chapter visible.
-        bridge: [auroraBridge],
     };
 
     // Lighting (ominous accretion key)
@@ -1608,101 +1614,6 @@ function createAsteroidGarland() {
 }
 
 /**
- * AURORA→FILAMENT BRIDGE (creative plan Transition In): three stretched curtain
- * filaments at the chapter entry, recoloring green → crimson as the first ~12% of the
- * chapter elapses and dissolving by ~18% — the sky has become interstellar gas.
- */
-export function createAuroraFilamentBridge(uniforms) {
-    const group = new THREE.Group();
-    group.name = 'aurora-filament-bridge';
-    const { uTime, uApproach } = uniforms;
-
-    const vUv = uv();
-    const strands = pow(sin(vUv.x.mul(42.0).add(uTime.mul(1.2))).mul(0.5).add(0.5), 2.0)
-        .mul(0.7)
-        .add(0.3);
-    // Recolor completes across the first ~12% of the chapter; the filaments stretch as
-    // they recolor (handled by the plane scale below) and are gone by ~18%.
-    const recolor = clamp(uApproach.mul(3.2), 0.0, 1.0);
-    // ⚠️ THESE WERE LINEAR LITERALS WRITTEN AS IF THEY WERE THE sRGB HEXES BESIDE THEM.
-    // `vec3()` is consumed as a LINEAR working-space value, but #3DFF8E linearises to
-    // (0.047, 1.000, 0.270) — the shipped (0.24, 1.0, 0.56) carried ~5x the red and ~2x the
-    // blue the author named. Same slip on both crimsons.
-    //
-    // MEASURED consequence (capture arm-limb-v2, p=0.7501): 19.8 % of the frame — about 44 %
-    // of every non-black pixel — sat at hue 152, saturation 99-100 %, against a limb frame
-    // whose mean lit saturation is 38 %. The post stack's saturation lift (MASTER 1.15 x ch6
-    // 1.06) then clipped the red channel to literal 0. This carried-Ch5 aurora, not the
-    // nebula field, IS the green wall in that frame; the field's own reveal there is ~0.056.
-    //
-    // `color()` routes through THREE.Color's colour management, so these now MEAN the hexes.
-    const green = tslColor(0x3dff8e); // Ch5's last aurora green
-    const crimson = mix(tslColor(0xc71f37), tslColor(0xe8485c), strands);
-    // A modest level cut on top. The bridge is additive, so out = colour x alpha and this is
-    // numerically identical to trimming the alpha ceiling — but it belongs in colorNode,
-    // because the opacityNode is one of the eight bound by the materialOpacity re-arm
-    // contract. Cutting alpha alone would fix the LEVEL and leave the hue clipping.
-    const toned = mix(green, crimson, recolor);
-    // ⚠️ THE HUE FIX ABOVE MAKES THIS MORE VIVID, NOT LESS — it was mis-read once already.
-    // The shipped (0.24, 1.0, 0.56) was an accidentally PALE green; the hex it claimed to be
-    // linearises to (0.047, 1.000, 0.270), which is further from grey. Correcting the slip is
-    // right because the code should mean what it says, but on its own it INCREASES the clash.
-    // The desaturation is the term that actually calms the frame, so the two ship together.
-    const graded = mix(
-        vec3(dot(toned, vec3(0.2126, 0.7152, 0.0722))),
-        toned,
-        BRIDGE_CHROMA,
-    ).mul(BRIDGE_LEVEL);
-    const vertical = smoothstep(0.0, 0.3, vUv.y).mul(smoothstep(1.0, 0.2, vUv.y));
-    // GONE BY A QUARTER OF THE CHAPTER (masterpiece pass, 2026-10). It used to linger to
-    // approach 0.85, and once recoloured the three curtains overhead read in-game as one huge
-    // flat crimson smear filling the right third of every ch6 frame (bisected 2026-10-01: with
-    // the nebula hidden the smear was these planes over the dome's posterized rust lane — the
-    // lane is re-baked soft in odyssey-cosmic-backdrop.js). The greeting is a 5→6 beat; the
-    // deep-space frame belongs to the nebulae.
-    const alive = oneMinus(smoothstep(0.06, 0.24, uApproach));
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = graded.mul(strands.add(0.4));
-    material.opacityNode = vertical.mul(strands).mul(0.46).mul(alive).mul(materialOpacity);
-    material.transparent = true;
-    material.depthWrite = false;
-    material.side = THREE.DoubleSide;
-    material.blending = THREE.AdditiveBlending;
-    // r181 splits a transparent DoubleSide material into a back-face pass and a front-face
-    // pass (Renderer.js:3131), so this material bills TWICE. Blending here is Additive with
-    // depthWrite off, which makes the two passes order-independent — the split buys nothing
-    // and forceSinglePass reclaims it for free. Precedent: odyssey-planet-aurora.js:301-309.
-    material.forceSinglePass = true;
-    material.userData.emitsBloom = true;
-
-    // Seats are CORRIDOR-LOCAL (entry ≈ z +150, exit ≈ z −150): the three curtains
-    // span the first half of the travel so the camera passes UNDER them while they
-    // are still green — the 5→6 greeting — instead of watching them off to one side.
-    [
-        {
-            x: -60, y: 70, z: 60, w: 460, h: 92, rotZ: 0.05,
-        },
-        {
-            x: 40, y: 84, z: -30, w: 540, h: 88, rotZ: -0.04,
-        },
-        {
-            x: -10, y: 92, z: -120, w: 500, h: 80, rotZ: 0.03,
-        },
-    ].forEach((cfg) => {
-        const filament = new THREE.Mesh(new THREE.PlaneGeometry(cfg.w, cfg.h, 1, 1), material);
-        filament.position.set(cfg.x, cfg.y, cfg.z);
-        filament.rotation.z = cfg.rotZ;
-        // Stretched horizontally — curtains elongating into filaments.
-        filament.scale.set(1.3, 0.85, 1);
-        filament.renderOrder = -9;
-        filament.frustumCulled = false;
-        group.add(filament);
-    });
-    return group;
-}
-
-/**
  * STREAK-MOTE TIER (creative plan asset 6): rail-hugging elongated additive quads
  * whose streak mask runs along the travel diagonal — the forward-speed cue through
  * the long middle act. GPU-driven wrap (no per-frame CPU).
@@ -1768,8 +1679,8 @@ function createStreakMotes(uniforms, count) {
 }
 
 // ── THE COMET (Wave 5, §3.2 "the comet moment"; the level is literally named
-// Comet Chase) — a sculpted opaque head + dithered opaque tail sweeping a long chord
-// through the reef stretch. Unlevered like the garland: two draws, opaque queue.
+// Comet Chase) — a sculpted opaque head + a luminous additive tail sweeping a long chord
+// through the reef stretch. Unlevered like the garland: two draws.
 // Staging follows the nebula-field pattern: OUTSIDE the entryContinuity buckets
 // (setOpacityScale would flip these opaque materials transparent and dead-write
 // opacity), on a shared uReveal ticked by update() = staging × reef-window × chord
@@ -1817,15 +1728,26 @@ function createComet() {
     // assumed: on ConeGeometry `uv().y` is 0 at the BASE (local −Y, the end hugging
     // the head) and 1 at the TIP (local +Y, the trailing end) — probed directly, and
     // the first draft had both gradients inverted, painting a tail that dissolved at
-    // the nucleus and went solid-bright at its far end. Bright + dense where it
-    // leaves the head, cooling and dithering away as it trails.
+    // the nucleus and went solid-bright at its far end.
+    //
+    // LIGHT, NOT A DITHERED SOLID (seamless pass). The tail was an opaque cone whose
+    // fade-out along its length ran through the screen-space hash dither, so in every
+    // capture it read as a white salt-and-pepper blade — noise, not a comet. It is now
+    // what a comet tail is: an additive glow, icy-white where it leaves the coma and
+    // cooling to ion blue as it thins, soft at its silhouette (the view-facing term
+    // fades the cone's edges, so it reads as a luminous streamer, not a hard cone).
     const tailMat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-    tailMat.transparent = false;
-    tailMat.depthWrite = true;
-    tailMat.alphaTest = 0.5;
+    tailMat.transparent = true;
+    tailMat.depthWrite = false;
+    tailMat.blending = THREE.AdditiveBlending;
+    // Additive + no depth write: the DoubleSide back/front split buys nothing.
+    tailMat.forceSinglePass = true;
     const along = uv().y;
-    tailMat.colorNode = mix(vec3(0.85, 0.94, 0.97), vec3(0.35, 0.52, 0.66), along);
-    tailMat.opacityNode = cometDither(uReveal.mul(oneMinus(smoothstep(0.25, 0.95, along)))).mul(materialOpacity);
+    const facing = clamp(dot(N, V).abs(), 0, 1);
+    tailMat.colorNode = mix(vec3(0.80, 0.92, 1.0), vec3(0.30, 0.50, 0.95), smoothstep(0.0, 0.7, along));
+    tailMat.opacityNode = uReveal.mul(pow(oneMinus(along), 1.4)).mul(pow(facing, 1.2)).mul(0.5)
+        .mul(materialOpacity);
+    tailMat.userData.emitsBloom = true;
     const tail = new THREE.Mesh(new THREE.ConeGeometry(5, 95, 12, 1, true), tailMat);
     tail.name = 'comet-tail';
     // Cone axis is +Y with the tip at +Y/2; orient so the tip trails the head along
@@ -1971,8 +1893,15 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // glides onto ch7's camera lock — the same spot, the same size (shadow 132 u) — so as
         // the chapters cross-fade the two black holes coincide and read as one. Needs a REAL
         // camera (a view direction); a bare position probe keeps the authored dive pose.
+        let handoff = 0;
+        let omenShadowLive = true;
         if (camera?.isCamera) {
-            const handoff = THREE.MathUtils.smoothstep(ease, OMEN_HANDOFF_START, 1);
+            const handoffWindow = Number.isFinite(cameraProgress) ? resolveOmenHandoffWindow(chapterPositions) : null;
+            // Strictly past the window end is where ch7 (and its shadow) is on screen.
+            if (handoffWindow) omenShadowLive = cameraProgress <= handoffWindow.end;
+            handoff = handoffWindow
+                ? THREE.MathUtils.smoothstep(cameraProgress, handoffWindow.start, handoffWindow.end)
+                : THREE.MathUtils.smoothstep(ease, OMEN_HANDOFF_START, 1);
             if (handoff > 0) {
                 resolveGargantuaLockPosition(camera, _omenLock).sub(group.position);
                 blackHole.position.lerp(_omenLock, handoff);
@@ -1986,6 +1915,16 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // Square to the eye (ch7's Gargantua pose): the shadow faces the camera and the disk
         // band reads across the frame wherever the corridor turns.
         orientBlackHoleOmen(blackHole, camera);
+        // EXACTLY ONE OPAQUE SHADOW. The omen's shadow covers the hole until the handoff is
+        // complete — the frame ch7 appears, with Gargantua's identical shadow (same lock, same
+        // radius) taking over there (black-hole-transcendence.js). Opacity is re-asserted
+        // because, until the environment manager honours `odysseyFadeExempt`, it still writes a
+        // crossfade opacity into this material each frame.
+        const { shadow } = blackHole.userData;
+        if (shadow) {
+            shadow.visible = omenShadowLive;
+            if (shadow.material) shadow.material.opacity = 1;
+        }
     }
     if (debris && blackHole) {
         // Keep the infall seated on the hole as it looms — and IN its disk plane.
@@ -2110,9 +2049,34 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         asteroids.instanceMatrix.needsUpdate = true;
     }
 
+    // THE AURORA BRIDGE: grow out of the airglow before the boundary, only fall after it.
+    const { auroraBridge } = group.userData;
+    if (auroraBridge?.userData?.uGlow) {
+        const envelope = resolveAuroraBridgeEnvelope(cameraProgress, chapterPositions?.[5], chapterPositions?.[6]);
+        auroraBridge.userData.uGrow.value = envelope.grow;
+        auroraBridge.userData.uGlow.value = envelope.glow;
+        auroraBridge.userData.uCrimson.value = envelope.crimson;
+        // Hidden whenever it is dark: it used to keep rasterising its planes at alpha 0 for
+        // ~80 % of the chapter. Visibility is a draw-list toggle, never a new pipeline (the
+        // band is built, and compiled at warm-up, with the chapter).
+        auroraBridge.visible = envelope.glow > 0.002 && !!camera?.position;
+        if (camera?.position) {
+            auroraBridge.position.set(
+                camera.position.x - group.position.x,
+                camera.position.y - group.position.y + auroraBridge.userData.bandCentreY,
+                camera.position.z - group.position.z,
+            );
+        }
+    }
+
     const chapterOpacity = group.userData.chapterOpacity ?? 1;
-    // `spaceArrival` (not raw nebulaReveal) — see THE 5->6 HAND-OFF above.
-    const voidSkyOpacity = spaceArrival * spaceReveal * chapterOpacity;
+    // THE VOID SKY OWNS THE BACKGROUND BEFORE THE WORLD LETS GO (seamless pass). It used to
+    // ride `spaceArrival` too, which is still ~0.52 at p 0.7765 — the frame the One World
+    // switches off — so the colour behind the departing sky changed from the world's to the
+    // director's clear colour. It now rides the space gate alone, which completes at
+    // gateEnd (0.7730, held below the switch-off by odyssey-seam-56-schedule.test.js). The
+    // dome is a dark backdrop (one band below the gas), so arriving faster is no luma rise.
+    const voidSkyOpacity = spaceReveal * chapterOpacity;
     if (uniforms?.uVoidSkyOpacity) {
         uniforms.uVoidSkyOpacity.value = voidSkyOpacity;
     }
@@ -2191,7 +2155,6 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             entryState.clutterReveal * spaceReveal,
             chapterOpacity,
         ));
-        entryTargets.bridge.forEach((object) => setOpacityScale(object, spaceReveal, chapterOpacity));
     }
 }
 
