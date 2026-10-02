@@ -123,7 +123,7 @@ Integrated branch vs main `4f7922e5`, alternating per station on one quiet machi
 The masterpiece pass had made ch2 (+0.20), ch4 (+0.13), ch6 (+0.62) and ch8 (+0.33) more expensive;
 this pass takes every station back to or below main, ch6–8 by 0.27–0.39 ms (baked lattice noise,
 the nebula as one draw with per-vertex warp, towers drawn first so the city occludes, tiered
-sprites), the world's ocean column and massif by 0.06–0.13 ms, and removes ~40 draws across the
+sprites), the world's ocean column and massif by 0.06–0.13 ms, and draws 1–22 fewer per station across the
 journey (threshold director, corridor layers, markers, core tube). 5→6 is one tick up (the aurora
 curtain band) with five fewer draws. ch2 remains 0.14 ms above the pre-masterpiece figure.
 JSONs: `repos/odyssey-gpu/perf-baseline/` (`integ-1/`, `sl-space-1/`, root = the morning matrix).
