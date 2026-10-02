@@ -33,6 +33,7 @@ import {
     clamp,
     cos,
     dot,
+    exp,
     float,
     length,
     max,
@@ -49,7 +50,9 @@ import {
     positionLocal,
     positionViewDirection,
     positionWorld,
+    select,
     sin,
+    sqrt,
     smoothstep,
     step,
     fract,
@@ -255,6 +258,34 @@ function moltenRockField(pos, uTime, uPulseIntensity, heatBias, pool) {
     return { color, glow: heatGlow.add(veins.mul(0.6)), crackHeat };
 }
 
+/**
+ * GENESIS PASS (2026-10-02): crust plates on a lava lake. A 2D cellular (Worley) field over a
+ * 3x3 neighbourhood, unrolled at build time: `edge` is F2 - F1 (0 on the border between two
+ * plates — where the melt shows through), `cellId` a per-plate random in [0, 1) for value
+ * variation. 18 hashes; the lake only builds it on the High tier.
+ * @returns {{ edge: *, cellId: * }}
+ */
+function lavaPlateField(p) {
+    const cell = floor(p);
+    const local = fract(p);
+    let f1 = float(8.0);
+    let f2 = float(8.0);
+    let cellId = float(0.0);
+    for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+            const offset = vec2(dx, dy);
+            const id = cell.add(offset);
+            const jitter = vec2(hash21(id), hash21(id.add(vec2(17.31, 41.7))));
+            const toPoint = offset.add(jitter.mul(0.8).add(0.1)).sub(local);
+            const d = dot(toPoint, toPoint);
+            f2 = min(f2, max(f1, d));
+            cellId = select(d.lessThan(f1), hash21(id.add(vec2(5.13, 2.71))), cellId);
+            f1 = min(f1, d);
+        }
+    }
+    return { edge: sqrt(f2).sub(sqrt(f1)), cellId };
+}
+
 // ── Opaque molten LAVA LAKE (the camera looks ACROSS it) ─────────────────────────
 //
 // THE #1 FIX. The old additive vertex-displaced PlaneGeometry seen edge-on read as a
@@ -291,11 +322,19 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // met no visible floor (user report 2026-08-12). Now dark warm ROCK with heat under it:
     // still the darkest value on the lake ladder, still far below the molten, but a surface.
     const uColorCool = uniform(new THREE.Color(0x1a0b06));
-    const uColorReflect = uniform(new THREE.Color(0x091022)); // Complementary cool obsidian sheen (<10%)
+    // GENESIS PASS (2026-10-02): the lake MIRRORS THE LIT CAVERN. It was a cool obsidian sheen —
+    // against walls that were black that was a fair accent, but once the vault glows with the
+    // lake's own light (createVolcanoBackgroundTSL) a blue-black grazing reflection read as a dead
+    // black band between the near molten and the glowing far wall. Now the grazing sheen is the
+    // walls' warm glow, so the far lake melts into the far wall instead of meeting it at a ruler line.
+    const uColorReflect = uniform(new THREE.Color(0x8a3e16)); // the lit cavern walls, reflected (~ the vault glow, linear 0.25,0.05,0.008)
     const uLegacyHot = uniform(new THREE.Color(0xffffaa)); // Legacy-floor yellow-white vein cores
     const uQuenchSilver = uniform(new THREE.Color(0x9fc2d4)); // silvery-blue pahoehoe sheen (seam)
     const uQuenchTeal = uniform(new THREE.Color(0x2a9eaa)); // teal quench end-state (seam)
     const uSeam = options.uSeam ?? uniform(0);
+    // GENESIS PASS: crust plates with incandescent seams in the near/mid field (High tier only;
+    // build-time, so the other tiers compile the unchanged graph).
+    const crustPlates = options.crustPlates === true;
 
     // MOLTEN BASINS (plan: legacy-floor revival). Designated pools along the rail where
     // the legacy additive floor's character returns at full energy — taller swells,
@@ -429,13 +468,43 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
             .mul(heatAlive),
     );
 
+    // CRUST PLATES ON THE MELT (Genesis pass, 2026-10-02). Up close the lake was one flat red
+    // sheet with soft dark blotches — a texture, not a lava lake. Real lava lakes (Nyiragongo,
+    // Erta Ale) read as dark cooled plates jostling on the melt with incandescent seams between
+    // them: so in the near/mid field (faded out before grazing range, where the cells would
+    // alias) plates drift with the flow, each its own value, and the seams glow orange with
+    // yellow-white cores — hottest in the molten basins, cooling silver -> teal across the quench.
+    if (crustPlates) {
+        // Warped at plate scale by the lake's own flow fields, so the plates come in every size and
+        // shape (unwarped, the cells tiled the lake like a honeycomb floor).
+        const plateWarp = vec2(flow1.sub(0.5), flow2.sub(0.5)).mul(1.6);
+        const plateP = vec2(wPos.x, wPos.z).mul(0.11).add(plateWarp)
+            .add(vec2(ftime.mul(0.35), ftime.mul(0.2)));
+        const { edge, cellId } = lavaPlateField(plateP);
+        const near = oneMinus(smoothstep(30.0, 150.0, length(vPos.sub(cameraPosition))));
+        // Seams of every width: hairline cracks to wide molten gaps, keyed on the crack field.
+        const seamWidth = mix(float(0.05), float(0.16), smoothstep(0.35, 0.75, cracks));
+        const seam = oneMinus(smoothstep(0.015, seamWidth, edge));
+        const seamCore = oneMinus(smoothstep(0.0, seamWidth.mul(0.3), edge));
+        // Plates break up where the melt runs hottest — open molten rivers show through — and thin
+        // out in the basins' pools.
+        const openMelt = smoothstep(0.62, 0.86, temp);
+        const plateCover = mix(float(0.84), float(0.52), vBasin).mul(oneMinus(openMelt))
+            .mul(oneMinus(seam)).mul(near);
+        const plateColor = uColorCool.mul(cellId.mul(0.7).add(0.55)).add(uColorMid.mul(0.06));
+        color = mix(color, plateColor, plateCover);
+        let seamColor = mix(uColorHot, uLegacyHot, seamCore.mul(vBasin.mul(0.55).add(0.25)));
+        seamColor = mix(mix(seamColor, uQuenchSilver, seamMid), uQuenchTeal, seamEnd);
+        color = color.add(seamColor.mul(seam).mul(near).mul(0.6).mul(heatAlive.mul(0.6).add(0.4)));
+    }
+
     // Fresnel grazing-angle reflection: at the shallow look-across angle the lake
     // surface picks up a cool obsidian sheen, breaking the monochrome amber (<10%).
     // The lake is horizontal (normal = +Y), so the grazing term is driven by how
     // shallow the view ray is to the surface (small |viewDir.y| → strong fresnel).
     const viewDir = normalize(vPos.sub(cameraPosition));
     const fresnel = pow(oneMinus(clamp(abs(viewDir.y), 0.0, 1.0)), 3.0);
-    color = mix(color, uColorReflect, fresnel.mul(0.35));
+    color = mix(color, uColorReflect, fresnel.mul(0.42));
 
     // §3.1 Bright hot/dark horizon RIM line: a crisp molten edge where the lake meets
     // the far wall (the rim ring of the wide plane), so the floor reads as having a
@@ -456,7 +525,7 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     color = color.add(uColorHot.mul(rimGlow).mul(0.6));
     // Beyond the rim the lake falls to near-black charred shore (the dark vault meets).
     const beyondRim = smoothstep(0.5, 0.62, radial);
-    color = mix(color, uColorCool, beyondRim.mul(0.85));
+    color = mix(color, mix(uColorCool, uColorReflect, 0.55), beyondRim.mul(0.85));
 
     // §5.5 (cheap) heat-shimmer: wobble the molten read in the lower/near frame by a
     // small sin(uTime + worldY) so the lake surface visibly RIPPLES with heat. No pass.
@@ -472,9 +541,13 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // §5.6 atmospheric depth (manual for MeshBasic): mix toward the warm haze color
     // with camera distance so the far reaches of the wide lake desaturate into fog and
     // the near surface stays crisp — the depth cue lit materials get free from fogNode.
+    // GENESIS PASS (2026-10-02): the air over a lava lake GLOWS — it is lit by the lake itself. The
+    // old haze was a near-black smoke, so the far half of the lake fell into a dark band between
+    // the near molten and the (now lake-lit) far wall. The far lake now hazes into the same warm
+    // lit air the vault glows with, so floor, air and wall read as one lit chamber.
     const camDist = length(vPos.sub(cameraPosition));
-    const haze = vec3(0.055, 0.018, 0.016); // cooler dark smoke medium
-    const fogAmt = smoothstep(120.0, 320.0, camDist).mul(0.35);
+    const haze = vec3(0.30, 0.095, 0.03); // the lake-lit air (matches the vault's lake glow)
+    const fogAmt = smoothstep(40.0, 260.0, camDist).mul(0.55);
     color = mix(color, haze, fogAmt);
 
     // Cap the displayed emission below 1.0 (soft) so ACES+bloom gild, never clip.
@@ -716,12 +789,29 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0), 
     const grain = fbm3(dir.mul(3.4), 3, n3Bg);
     color = color.mul(grain.mul(0.6).add(0.7));
 
+    // THE LAKE LIGHTS THE CAVERN (Genesis pass, 2026-10-02). The key is the lava BELOW, but the
+    // vault never showed it: looking across the lake the eye met black rock with ember squiggles
+    // right down to the lake's far edge — a night sky, and a ruler-straight horizon. Now the walls
+    // glow with the lake's light just above (and just below — the band beyond the lake's 180 u
+    // rim that read as a black stripe) the lava, fading with height, breathing with the lake's
+    // surge. The shell sits at the group origin, 10 u above the lake, unscaled, so posL.y minus
+    // the lake height is world units above the lava. It is what makes the cavern a lit chamber.
+    const aboveLake = posL.y.sub(LAVA_LAKE_Y);
+    // A near band (the lake-lit walls) plus a faint long tail: the lava's bounce still warms the
+    // upper vault the climb looks into (without it the shaft fell to luma ~14 and the step into
+    // the steam grew to the seam gate's limit).
+    const lakeGlow = exp(abs(aboveLake).div(58.0).negate())
+        .add(exp(abs(aboveLake).div(240.0).negate()).mul(0.22));
+    const lakeBreath = magmaSurgeTSL(uTime).mul(0.22).add(0.8);
+    color = color.add(vec3(0.36, 0.115, 0.035).mul(lakeGlow).mul(lakeBreath)
+        .mul(grain.mul(0.5).add(0.75)));
+
     // DARKNESS-GATED VEINS. ridged3 -> filaments; 11.0 puts the filament width at crack scale
     // on a 250 u shell (at 2.1 the study's first capture read as orange nebula). Squaring the
     // gate keeps the mid-heights genuinely dark instead of a gradient of half-lit veins.
     const veinField = ridged3(dir.mul(11.0).add(vec3(0.0, uTime.mul(0.015), 0.0)), 4, n3Bg);
     const veinMask = smoothstep(0.70, 0.95, veinField);
-    const darknessGate = pow(oneMinus(keyReach), 2.0);
+    const darknessGate = pow(oneMinus(keyReach), 2.0).mul(oneMinus(lakeGlow.mul(0.85)));
     // Veins breathe slowly and individually (phase from the field itself), so the ceiling is
     // alive without a global strobe.
     const veinBreath = sin(uTime.mul(0.9).add(veinField.mul(9.0))).mul(0.25).add(0.75);
@@ -731,8 +821,13 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0), 
     // fields between quiet charred plates — the ceiling gets a value structure, for zero
     // extra noise. The live fields burn a little hotter so the dome's total ember light holds.
     const fissureField = smoothstep(0.30, 0.52, grain);
-    color = color.add(vec3(1.0, 0.30, 0.07).mul(veinMask.mul(darknessGate).mul(veinBreath)
-        .mul(fissureField).mul(0.56)));
+    // GLOWING CRACKS, NOT STICKERS (Genesis pass, 2026-10-02): one broad uniform mask read as
+    // flat orange blobs pasted on the dome. A crack that glows is a thin HOT core inside a soft
+    // dim halo — so the same field now gives a narrow yellow-orange core and a faint red glow.
+    const veinCore = smoothstep(0.85, 0.965, veinField);
+    const veinLight = vec3(1.0, 0.5, 0.15).mul(veinCore).mul(1.35)
+        .add(vec3(0.8, 0.17, 0.04).mul(veinMask).mul(0.26));
+    color = color.add(veinLight.mul(darknessGate).mul(veinBreath).mul(fissureField));
 
     // The galaxy: sparse ember points IN the rock, shaded inside their cell (a whole-cell fill
     // renders as skewed squares on the sphere — the study's t=32 capture).
@@ -751,13 +846,31 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0), 
     // growing with the climb. Starved at the start (the study proved an unstarved seed turns
     // the cathedral into a cool cave with warm decorations); it only becomes a real light in
     // the chapter's last third, where the steam takes the frame anyway.
+    // GENESIS PASS (2026-10-02): it was a band selecting every azimuth within ~37 deg of one axis
+    // — seen from below near the zenith, a 74 deg teal BOW-TIE fanning out of the frame centre on
+    // every climbing frame, not a crack. Now a narrow, jagged, meandering fissure through the
+    // crown (the First Heart sits in it, dead centre above the climb), its cool light seeping a
+    // little way into the rock, both widening with the ascent.
     const crackOpen = smoothstep(0.15, 0.9, uAscent);
-    const crackAxis = smoothstep(float(0.93).sub(crackOpen.mul(0.06)), 1.0, vH);
-    const crackAz = abs(normalize(vec2(dir.x, dir.z).add(vec2(1e-4, 0.0))).x);
-    const crackLine = smoothstep(float(0.80).sub(crackOpen.mul(0.25)), 0.99, crackAz);
+    // Only round the zenith (the frame centre on the climb), fading toward the frame's edges —
+    // a first cut at 0.78-0.96 drew it corner to corner like a bolt of lightning.
+    const crown = smoothstep(0.90, 0.995, vH);
+    const meander = n3Bg(vec3(dir.x.mul(7.0), 3.7, 1.3)).sub(0.5).mul(0.11)
+        .add(n3Bg(vec3(dir.x.mul(29.0), 7.1, 2.9)).sub(0.5).mul(0.035));
+    const across = abs(dir.z.add(meander));
+    const crackWidth = mix(float(0.003), float(0.012), crackOpen);
+    const fissure = oneMinus(smoothstep(crackWidth, crackWidth.mul(2.4), across));
+    const seep = exp(across.div(mix(float(0.02), float(0.055), crackOpen)).negate());
+    // Broken along its length (rock bridges), so it reads as a fissure, not one continuous arc.
+    const bridges = smoothstep(0.32, 0.62, n3Bg(vec3(dir.x.mul(13.0), 5.3, 8.1)));
     const crackFlicker = grain.mul(0.5).add(0.5);
-    color = color.add(vec3(0.30, 0.62, 0.68).mul(crackAxis.mul(crackLine).mul(crackFlicker)
-        .mul(crackOpen.mul(0.55).add(0.10))));
+    const crackStrength = crackOpen.mul(crackOpen).mul(0.85).add(0.06);
+    const crackGlow = fissure.mul(0.55).add(seep.mul(0.14));
+    color = color.add(vec3(0.20, 0.38, 0.44).mul(crackGlow)
+        .mul(crown)
+        .mul(bridges)
+        .mul(crackFlicker)
+        .mul(crackStrength));
 
     // Backdrop discipline: capped below every set piece (veins and points are the exception
     // that defines the device, so the cap is generous on red and tight on the body).

@@ -16,8 +16,15 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute,
+    cameraPosition,
     clamp,
     cos,
+    cross,
+    dot,
+    length,
+    max,
+    normalize,
+    positionLocal,
     fract,
     mix,
     mod,
@@ -53,6 +60,7 @@ import {
 } from './earth-core.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
+import { resolveQualityTier } from './shared/odyssey-quality-tier.js';
 
 /**
  * Earth Core environment configuration
@@ -555,12 +563,30 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
     const lifeNorm = mix(normalizedY.mul(0.56).add(0.16), lifeFrac, splash);
     const worldSize = aSize.mul(oneMinus(lifeNorm.mul(0.5))).mul(0.16);
 
+    // MOTION STREAKS (Genesis pass, 2026-10-02): sparks that rise at 4-9 u/s rendered as round
+    // dots — the storm had no speed. Each quad is now stretched along its own velocity projected
+    // off the view axis (risers: straight up; splash sparks: their ballistic arc), up to 3.2x
+    // where the motion is side-on, not at all when it runs along the view (looking up the shaft
+    // they still race into the vanishing point as dots, which is what the eye would see).
+    const splashVel = vec3(cos(dirA).mul(v0h), v0y.sub(age.mul(12.0)), sin(dirA).mul(v0h));
+    const velocity = normalize(mix(vec3(0.0, 1.0, 0.0), normalize(splashVel), splash));
+    const toCam = normalize(cameraPosition.sub(emberCenter));
+    const sideOn = velocity.sub(toCam.mul(dot(velocity, toCam)));
+    const sideOnLen = length(sideOn);
+    const along = sideOn.div(max(sideOnLen, 1e-4));
+    const across = normalize(cross(along, toCam));
+    const stretch = mix(1.0, 3.2, clamp(sideOnLen.mul(1.4), 0.0, 1.0));
+    const corner = positionLocal.xy;
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(emberCenter, worldSize);
+    material.positionNode = emberCenter
+        .add(across.mul(corner.x.mul(worldSize)))
+        .add(along.mul(corner.y.mul(worldSize).mul(stretch)));
     // §5.3 temperature ramp by LIFE (white-hot → orange → red → ash, pyrestorm look):
     // fresh sparks at the lava are hottest, cooling as they rise. `life` = 1 new → 0 old.
     const life = oneMinus(lifeNorm);
-    const whiteHot = vec3(1.0, 0.95, 0.85);
+    // Gold, not white (Genesis pass): stretched into streaks, white-hot young sparks read as
+    // drifting snowflakes. The hottest tier is a yellow-gold; white lives only in the tiny core.
+    const whiteHot = vec3(1.0, 0.74, 0.36);
     const orange = vec3(1.0, 0.45, 0.06);
     const red = vec3(0.8, 0.12, 0.02);
     const ash = vec3(0.2, 0.12, 0.08);
@@ -573,7 +599,7 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
     const dist = p.length().mul(2.0);
     const glow = pow(clamp(oneMinus(dist), 0.0, 1.0), 1.8);
     const core = smoothstep(0.2, 0.0, dist.mul(0.5));
-    const hotColor = mix(baseColor, vec3(1.0, 0.95, 0.85), core.mul(0.5));
+    const hotColor = mix(baseColor, vec3(1.0, 0.9, 0.7), core.mul(0.3));
     // Splash sparks additionally: die the moment they fall back through the lake surface
     // (a spark that keeps glowing under the lava is a bug, not a look), and pulse a touch
     // brighter with the LIVE surge so a heave lights the whole burst it is throwing.
@@ -994,7 +1020,11 @@ export function createEarthCoreEnvironment(options = {}) {
     if (lakeFlowDir.lengthSq() < 1e-6) lakeFlowDir.set(1, 0, 0.5);
     lakeFlowDir.normalize();
     uniforms.uLakeFlowDir.value.copy(lakeFlowDir);
-    const lavaFloor = createLavaFloor(uniforms, basins, { addGlows: !noLakeGlows });
+    // GENESIS PASS: crust plates on the melt cost 18 hashes per lake fragment — High tier only.
+    const lavaFloor = createLavaFloor(uniforms, basins, {
+        addGlows: !noLakeGlows,
+        crustPlates: resolveQualityTier(options) === 'high',
+    });
     if (!noLake) group.add(lavaFloor);
     group.userData.lavaFloor = lavaFloor;
 
@@ -1472,7 +1502,7 @@ function _readLakeNoiseOptions() {
     return out;
 }
 
-function createLavaFloor(uniforms, basins = [], { addGlows = true } = {}) {
+function createLavaFloor(uniforms, basins = [], { addGlows = true, crustPlates = false } = {}) {
     const group = new THREE.Group();
     group.name = 'lava-floor';
     const lakeNoise = _readLakeNoiseOptions();
@@ -1492,6 +1522,7 @@ function createLavaFloor(uniforms, basins = [], { addGlows = true } = {}) {
             debug: lakeNoise.debug,
             uFlowDir: lakeNoise.flowDir ? uniforms.uLakeFlowDir : null,
             rimCrustBias: lakeNoise.rimCrust ? 0.12 : 0,
+            crustPlates,
         },
     );
     group.add(lavaSurface);
