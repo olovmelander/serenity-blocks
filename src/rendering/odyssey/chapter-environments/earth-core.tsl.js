@@ -817,8 +817,13 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0), 
     // fields between quiet charred plates — the ceiling gets a value structure, for zero
     // extra noise. The live fields burn a little hotter so the dome's total ember light holds.
     const fissureField = smoothstep(0.30, 0.52, grain);
-    color = color.add(vec3(1.0, 0.30, 0.07).mul(veinMask.mul(darknessGate).mul(veinBreath)
-        .mul(fissureField).mul(0.56)));
+    // GLOWING CRACKS, NOT STICKERS (Genesis pass, 2026-10-02): one broad uniform mask read as
+    // flat orange blobs pasted on the dome. A crack that glows is a thin HOT core inside a soft
+    // dim halo — so the same field now gives a narrow yellow-orange core and a faint red glow.
+    const veinCore = smoothstep(0.85, 0.965, veinField);
+    const veinLight = vec3(1.0, 0.5, 0.15).mul(veinCore).mul(1.35)
+        .add(vec3(0.8, 0.17, 0.04).mul(veinMask).mul(0.26));
+    color = color.add(veinLight.mul(darknessGate).mul(veinBreath).mul(fissureField));
 
     // The galaxy: sparse ember points IN the rock, shaded inside their cell (a whole-cell fill
     // renders as skewed squares on the sphere — the study's t=32 capture).
