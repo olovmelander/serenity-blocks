@@ -233,6 +233,14 @@ export const APPROACH = {
 //
 // Expressed as fractions of the Ch5 span so it tracks any future layout re-authoring.
 export const SUMMIT_EARTH_REVEAL = Object.freeze({
+    // ⚠️ RETIMED AGAIN 0.28/0.15 -> 0.18/0.085 (owner report 2026-10-02: "align everything
+    // correctly when it comes to when the planets shows"). At 0.28/0.15 the gas giant faded up
+    // across p 0.6408 -> 0.6935 into a FULL DAYLIGHT sky — a striped planet hanging in the blue
+    // — and stayed there until the sky finally went dark from ~0.69. It now rises WITH the
+    // twilight: it starts as the sky begins to deepen (p 0.6813) and is full as the sky reaches
+    // near-black (p 0.7198), then the first stars take over [summitEnd, ch6Start]. Order of
+    // beats: mountain (to ~0.648) -> the sky deepens -> the planet rises with the dark -> the
+    // stars -> the aurora over the limb -> space.
     // ⚠️ RETIMED 0.41 -> 0.28 (north-island plan Wave 0, owner playtest 2026-08-16). At
     // 0.41 the ignite started at p 0.5881 — INSIDE the massif flyby's in-frame pass
     // (0.545–0.648) — so the D3-sized giant faded up mid-mountain-beat and read as
@@ -244,10 +252,10 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
     // — but 0.556 is LEVEL 31's position, not chapter 5's start. The CODE always derived
     // from chapterPositions at runtime; only the prose lied. Derive facts by importing the
     // modules, never by parsing source.)
-    startBeforeBoundary: 0.28,
-    // Fully present 15% of the sky span before the boundary (p = 0.6935) — comfortably
-    // before the 5->6 backdrop fade begins.
-    endBeforeBoundary: 0.15,
+    startBeforeBoundary: 0.18,
+    // Fully present 8.5% of the sky span before the boundary (p = 0.7198), as the sky reaches
+    // near-black and before the first stars.
+    endBeforeBoundary: 0.085,
     // Fraction of the Space span over which the REST of the chapter (stars, black hole,
     // nebula, dust, lights) ramps in past the boundary. Deliberately short: it must not
     // re-wash Space bright, and nothing but the earth may bleed into the daylight sky.
@@ -387,17 +395,19 @@ function rampBetween(value, start, end) {
  * lights) at zero until the camera is actually past the boundary, so the early ignite
  * cannot leak deep-space clutter into the daylight frame.
  *
- * `spaceReveal` is 1 OUTSIDE the summit window in both directions — below it the manager
- * keeps the chapter at zero opacity anyway, and returning 1 there keeps headless callers
- * that pass a chapter-local progress (no camera) behaving exactly as before.
+ * `spaceReveal` is 0 through ALL of chapter 5 (not just the summit window — the manager draws
+ * ch6 before the window opens) and ramps in past the boundary; it is 1 outside chapter 5 so
+ * headless callers that pass a chapter-local progress (no camera) behave exactly as before.
  *
  * @param {number} progress global path progress 0..1
  * @param {number} ch5Start global progress where chapter 5 begins
  * @param {number} ch6Start global progress where chapter 6 begins (the Space boundary)
  * @param {number} ch7Start global progress where chapter 7 begins
+ * @param {{chapterLocal?: boolean}} [opts] `chapterLocal`: `progress` is CHAPTER-LOCAL (headless
+ *   callers with no camera pass one), so the chapter-5 gate cannot apply to it
  * @returns {{earthReveal: number, spaceReveal: number, summitStart: number, summitEnd: number}}
  */
-export function resolveSummitEarthStaging(progress, ch5Start, ch6Start, ch7Start) {
+export function resolveSummitEarthStaging(progress, ch5Start, ch6Start, ch7Start, opts = {}) {
     if (!Number.isFinite(progress) || !Number.isFinite(ch5Start) || !Number.isFinite(ch6Start)
         || ch6Start <= ch5Start) {
         return {
@@ -413,7 +423,17 @@ export function resolveSummitEarthStaging(progress, ch5Start, ch6Start, ch7Start
     const gateEnd = ch6Start + spaceSpan * SUMMIT_EARTH_REVEAL.spaceGateBand;
 
     const earthReveal = rampBetween(progress, summitStart, summitEnd);
-    const spaceReveal = (progress >= summitStart && progress < gateEnd)
+    // THE SPACE GATE IS SHUT THROUGH ALL OF CHAPTER 5 (owner report 2026-10-02: "suddenly the
+    // sky turns black, it pops back to sky colors and then we get into space"). It used to be
+    // shut only inside the summit window and returned 1 — FULL SPACE — below it, on the belief
+    // that "the manager keeps the chapter at zero opacity anyway" there. That stopped being true
+    // when the summit window was retimed later (0.41 -> 0.28) and the manager's ch6 ignite was
+    // not: from p 0.572 the manager drew ch6 with its void sky at full reveal, so a hard-edged
+    // black backdrop covered the daylight sky (0.59 -> 0.64), then flipped back to blue the frame
+    // the summit window opened. Now: 0 from ch5's start to the boundary, ramping in over the gate
+    // after it; 1 outside chapter 5 (headless callers with a chapter-local progress, other acts).
+    const windowStart = opts.chapterLocal ? summitStart : ch5Start;
+    const spaceReveal = (progress >= windowStart && progress < gateEnd)
         ? rampBetween(progress, ch6Start, gateEnd)
         : 1;
 
@@ -1829,11 +1849,14 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     // holds the rest of the chapter at zero until the camera is actually in Space, so
     // the early ignite cannot drag stars, the black hole or nebula into the daylight.
     const chapterPositions = getActiveOdysseyChapterPositions();
+    // With a camera (the live journey) the progress is GLOBAL and the chapter-5 gate applies;
+    // headless callers (no camera) pass a chapter-local progress.
     const staging = resolveSummitEarthStaging(
         cameraProgress,
         chapterPositions?.[4],
         chapterPositions?.[5],
         chapterPositions?.[6],
+        { chapterLocal: !camera },
     );
     const { spaceReveal } = staging;
 

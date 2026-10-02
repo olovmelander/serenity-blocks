@@ -150,13 +150,25 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
             expect(stage(gateEnd).spaceReveal).toBe(1);
         });
 
-        it('leaves progress outside the summit window untouched', () => {
-            // Below the window the manager keeps the chapter at zero opacity anyway, and
-            // headless callers pass a chapter-local progress here — both must behave as
-            // they did before the gate existed.
+        it('shuts the space gate through ALL of chapter 5, not just the summit window', () => {
+            // Owner report 2026-10-02 ("the sky turns black, pops back to sky colors, then
+            // space"): this gate used to return 1 — full space — below the summit window on the
+            // belief that the manager keeps chapter 6 invisible there. It does not (its ignite
+            // starts earlier), and the void sky drew over the daylight. Global progress anywhere
+            // in chapter 5 now reads 0.
+            expect(stage(CH5 + 0.001).spaceReveal).toBe(0);
+            expect(stage(mid(CH5, summitStart)).spaceReveal).toBe(0);
+            expect(stage(summitStart - 0.001).spaceReveal).toBe(0);
+            // Outside chapter 5 (other acts) nothing changes.
             expect(stage(0.05).spaceReveal).toBe(1);
-            expect(stage(0.5).spaceReveal).toBe(1);
             expect(stage(0.9).spaceReveal).toBe(1);
+        });
+
+        it('leaves a chapter-local (headless, no camera) progress outside the window untouched', () => {
+            const local = (p) => resolveSummitEarthStaging(p, CH5, CH6, CH7, { chapterLocal: true });
+            expect(local(0.05).spaceReveal).toBe(1);
+            expect(local(0.5).spaceReveal).toBe(1);
+            expect(local(0.9).spaceReveal).toBe(1);
         });
 
         it('degrades safely without a resolved layout', () => {

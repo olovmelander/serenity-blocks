@@ -94,8 +94,12 @@ describe('ChapterEnvironmentManager 5-6 earth-at-summit ignite', () => {
         const cp = getActiveOdysseyChapterPositions();
         const at = (f) => cp[4] + (cp[5] - cp[4]) * f;
         expect(manager._earthIgniteBoost(at(0.14))).toBe(0);
-        // Rising as the camera crests...
-        expect(manager._earthIgniteBoost(at(0.68))).toBeGreaterThan(0);
+        // Nothing through the mountain beat either (2026-10-02: the ignite is aligned with the
+        // gas giant's own twilight reveal, so chapter 6 is never drawn before it has something
+        // to show — the black-sky pop came from drawing it early)...
+        expect(manager._earthIgniteBoost(at(0.7))).toBe(0);
+        // ...rising just before the planet's reveal...
+        expect(manager._earthIgniteBoost(at(0.8))).toBeGreaterThan(0);
         // ...and SATURATED well before the boundary, so it does not compound with the
         // earth's own reveal ramp (which would leave the planet reaching full opacity
         // only at the boundary, exactly when the sky starts going dark).
