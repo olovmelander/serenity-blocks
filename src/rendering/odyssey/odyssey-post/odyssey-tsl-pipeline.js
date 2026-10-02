@@ -454,6 +454,10 @@ export class OdysseyTslPipeline {
         // into black; setLensTarget now measures it from the hero every frame.
         this.uLensRadius = uniform(params.lensRadius ?? 0.12);
         this.uLensAspect = uniform(16 / 9); // viewport width / height (setSize)
+        // THE FALL (ch7, 2026-10-02): how far the shadow has become the warp tunnel's window
+        // (0 = the black shadow, 1 = the tunnel). Published on the lens target by the hero; it
+        // lifts the in-shadow bloom mask so the tunnel's light can glow.
+        this.uLensPortal = uniform(0);
         this._smLensRadius = params.lensRadius ?? 0.12;
 
         // Scene source kept as a member so the (lazily built) output-node variants can all
@@ -740,7 +744,9 @@ export class OdysseyTslPipeline {
             // Bloom is an optical halo, but it must not paint over the event horizon: keep the
             // shadow black even when the photon ring and disk run hot (black-hole-post.js idea).
             const outsideShadow = smoothstep(rs.mul(0.8), rs.mul(1.03), lensR);
-            lensBloomMask = mix(float(1.0), mix(float(0.06), float(1.0), outsideShadow), lensGate);
+            // ...unless the shadow has become the tunnel window (the fall): then its light blooms.
+            const inShadowBloom = mix(float(0.06), float(1.0), clamp(this.uLensPortal, 0.0, 1.0));
+            lensBloomMask = mix(float(1.0), mix(inShadowBloom, float(1.0), outsideShadow), lensGate);
         } else {
             // ── 1. Chromatic aberration (radial, ~0 at centre, concentrated at EDGES) ──
             // CA is a lens artifact on the source image, so it must resample the HDR scene
@@ -1162,6 +1168,8 @@ export class OdysseyTslPipeline {
         // The SHADOW's projected radius, when the hero publishes its world radius on the target
         // (black-hole-transcendence.js sets `lensWorldPos.lensRadius`): the angular radius of
         // a sphere, as a fraction of the viewport height (the aspect-corrected lens space).
+        const { portal } = worldVec3;
+        this.uLensPortal.value = Number.isFinite(portal) ? Math.min(1, Math.max(0, portal)) : 0;
         const worldRadius = worldVec3.lensRadius;
         if (Number.isFinite(worldRadius) && worldRadius > 0 && this.camera.isPerspectiveCamera) {
             const distance = this.camera.position.distanceTo(worldVec3);

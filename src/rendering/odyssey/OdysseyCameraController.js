@@ -22,6 +22,7 @@ import {
     smooth01,
     smoother01,
 } from './transitions/odyssey-seam-schedule.js';
+import { resolveBlackHoleFallCamera, resolveBlackHoleFallExit } from './transitions/odyssey-black-hole-fall.js';
 
 const DEFAULT_CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [0, 1];
 const CHAPTER_1_LOOK_DOWN = new THREE.Vector3(0, -26, 0);
@@ -97,6 +98,10 @@ const DEFAULT_CHAPTER_FRAMING = Object.freeze({
     fovOffset: 0,
     pitchDeg: 0,
     yawDeg: 0,
+    //   rollDeg    roll about the view axis, applied after lookAt (+ = counter-clockwise).
+    //              Only chapter 7's fall authors it (caught by the hole's spin); zero for
+    //              players who prefer reduced motion.
+    rollDeg: 0,
     // STAGE FRAME (2026-10). A set-piece chapter authored in a fixed basis (the Urban
     // corridor) needs the camera to share that basis, or the camera's own path frame rolls
     // the set on screen. stage (0..1) blends the camera up-vector, right-vector and dolly
@@ -206,7 +211,7 @@ const FRAMING_BLEND_RATE = 2.4;
 
 const FRAMING_KEYS = Object.freeze([
     'lookForward', 'lookRight', 'lookUp', 'camRight', 'camUp', 'camForward', 'downLookScale',
-    'worldUp', 'climbScale', 'fovOffset', 'pitchDeg', 'yawDeg', 'stage', 'stageAim',
+    'worldUp', 'climbScale', 'fovOffset', 'pitchDeg', 'yawDeg', 'stage', 'stageAim', 'rollDeg',
 ]);
 
 // Chapters whose set piece is authored in a fixed stage basis (see `stage` above).
@@ -447,12 +452,38 @@ function resolveChapter8Framing(t) {
     return out;
 }
 
+// THE FALL (chapter 7, 2026-10-02): a gentle roll (frame dragging) and a widening FOV (speed)
+// across the plunge into the black hole, both sin-shaped from the chapter's start to where the 7->8
+// window opens (transitions/odyssey-black-hole-fall.js), so they are exactly zero at both seams.
+const CH7_FALL_EXIT = resolveBlackHoleFallExit(DEFAULT_CHAPTER_POSITIONS) ?? 0.82;
+let reducedMotionPreferred = null;
+function prefersReducedMotion() {
+    if (reducedMotionPreferred === null) {
+        reducedMotionPreferred = typeof window !== 'undefined'
+            && !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    }
+    return reducedMotionPreferred;
+}
+/** Test / settings hook: force the reduced-motion preference (null = re-read the media query). */
+export function setOdysseyCameraReducedMotion(value) {
+    reducedMotionPreferred = value === null ? null : !!value;
+}
+function resolveChapter7Framing(t) {
+    const fall = resolveBlackHoleFallCamera(t, CH7_FALL_EXIT);
+    return {
+        ...resolveChapterFraming(7),
+        rollDeg: prefersReducedMotion() ? 0 : fall.rollDeg,
+        fovOffset: fall.fovOffset,
+    };
+}
+
 function resolveChapterFramingForProgress(chapterId, inChapterProgress = 0) {
     if (chapterId === 1) return resolveChapter1Framing(inChapterProgress);
     if (chapterId === 2) return resolveChapter2Framing(inChapterProgress);
     if (chapterId === 3) return resolveChapter3Framing(inChapterProgress);
     if (chapterId === 4) return resolveChapter4Framing(inChapterProgress);
     if (chapterId === 5) return resolveChapter5Framing(inChapterProgress);
+    if (chapterId === 7) return resolveChapter7Framing(inChapterProgress);
     if (chapterId === 8) return resolveChapter8Framing(inChapterProgress);
     return resolveChapterFraming(chapterId);
 }
@@ -1432,6 +1463,16 @@ export class OdysseyCameraController {
         if (this._pendingViewRoll) {
             this.camera.rotateZ(this._pendingViewRoll);
         }
+        this.applyFramingRoll();
+    }
+
+    /**
+     * The active framing's authored roll (chapter 7's fall), about the view axis, after lookAt.
+     * Public so harnesses that drive lookAt themselves (the ch7 playground bench) can apply it.
+     */
+    applyFramingRoll() {
+        const rollDeg = this._activeFraming?.rollDeg ?? 0;
+        if (rollDeg) this.camera.rotateZ(THREE.MathUtils.degToRad(rollDeg));
     }
 
     /**
