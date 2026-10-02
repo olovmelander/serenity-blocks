@@ -131,7 +131,7 @@ export function steamQuenchDensity(seamT) {
 }
 
 /** Ember-lit steam on the Chapter 1 side; the fire is still behind you. */
-const STEAM_WARM = new THREE.Color(0xffb079);
+const STEAM_WARM = new THREE.Color(0xffa45e); // gold (was 0xffb079, a peach that greyed under exposure)
 /** Cold vapour on the Act II side — the orange->cyan the profile asks for. */
 const STEAM_COOL = new THREE.Color(0xcfe6ff);
 /**
@@ -205,7 +205,13 @@ const _fogLit = new THREE.Color();
 const _fogShadow = new THREE.Color();
 const STEAM_FOG_FLASH = new THREE.Color(1.0, 0.97, 0.94);
 const STEAM_SHADOW_COOL = new THREE.Color(0.20, 0.25, 0.29);
-const STEAM_SHADOW_WARM = new THREE.Color(0.30, 0.22, 0.18);
+// GOLDEN, NOT MUD (Genesis pass, 2026-10-02): the warm half's shadows were a neutral warm grey
+// and its lit billows were pushed toward white, so once the exposure scaled the volume down to
+// the cavern's brightness the steam read as beige-grey mud. Amber shadows and less whitening while
+// the fire is still below make it a golden vapour lit by the lava and the First Heart; the
+// pearly white flash still peaks at the crossover, then the cool half takes over unchanged.
+const STEAM_SHADOW_WARM = new THREE.Color(0.34, 0.17, 0.08);
+const STEAM_WARM_WHITENING = 0.6; // how much less the flash whitens the vapour while warm
 
 /**
  * The vapour's AVERAGE colour at a seamT — the same warm -> lit -> cool -> submerged ramp the
@@ -238,7 +244,9 @@ export function steamQuenchMeanColour(seamT, out) {
     const flash = 1 - Math.abs(w - 0.5) * 2;
     const submergeEase = Math.max(0, (t - 0.5) * 2) ** 1.5;
     const cool = _fogWarm.copy(STEAM_COOL).lerp(STEAM_COOL_SUBMERGED, submergeEase);
-    _fogLit.copy(cool).lerp(STEAM_WARM, w).lerp(STEAM_FOG_FLASH, flash * 0.42).multiplyScalar(0.78);
+    _fogLit.copy(cool).lerp(STEAM_WARM, w)
+        .lerp(STEAM_FOG_FLASH, flash * 0.42 * (1 - (w * STEAM_WARM_WHITENING)))
+        .multiplyScalar(0.78);
     _fogShadow.copy(STEAM_SHADOW_COOL).lerp(STEAM_SHADOW_WARM, w);
     out.copy(_fogShadow).lerp(_fogLit, 0.5);
     // Exit: the murk in the water's colour (as the shader's exit term).
@@ -357,9 +365,10 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // pass ran to 1.40 and clipped the billow to flat white where the volume fills the frame).
     // Gaps are shadowed VAPOUR, not smoke (a hard dark/bright split read as camouflage):
     // a cool or warm grey ~half the lit value, blended across the whole billow range.
-    const shadowVapour = mix(vec3(0.20, 0.25, 0.29), vec3(0.30, 0.22, 0.18), w);
+    const shadowVapour = mix(vec3(0.20, 0.25, 0.29), vec3(STEAM_SHADOW_WARM.r, STEAM_SHADOW_WARM.g, STEAM_SHADOW_WARM.b), w);
     // Lit vapour sits below white so the rays and the aperture are the brightest thing.
-    const litVapour = mix(tint, vec3(1.0, 0.97, 0.94), flash.mul(0.42)).mul(0.78);
+    const litVapour = mix(tint, vec3(1.0, 0.97, 0.94), flash.mul(0.42).mul(oneMinus(w.mul(STEAM_WARM_WHITENING))))
+        .mul(0.78);
     // LIGHT SHAFTS FROM THE CRACK. Looking up the shaft, rays fan out from the zenith: noise
     // sampled on the view azimuth (on a circle, so there is no atan seam), streaming slowly,
     // strongest near the aperture and fading toward the edges of the view. They make the
