@@ -1447,6 +1447,60 @@ function weldCoincidentNormals(geometry) {
     nrm.needsUpdate = true;
 }
 
+/**
+ * Small deterministic PRNG (mulberry32) so seeded basalt geometry is identical run to run.
+ * @param {number} seed
+ * @returns {() => number} uniform [0, 1)
+ */
+export function basaltRandom(seed) {
+    let a = (seed * 2654435761) >>> 0;
+    return () => {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/**
+ * A Fingal's Cave basalt BUNDLE: one tall 6-sided core prism ringed by 5–6 slimmer 5–7-sided
+ * prisms of stepped heights, all seated on one base (y = -height/2, like the CylinderGeometry
+ * it replaces) inside the same footprint. Non-indexed with per-face normals, so every facet
+ * is a crisp flat plane that catches the lake light differently from its neighbour — the
+ * columnar-jointing read. The old single 18-sided tapered cylinder shaded as a smooth cone,
+ * which is why the framing pillars looked like plastic stakes in every capture.
+ * Separate prisms cannot tear (no shared vertices to jitter apart), so no welding is needed.
+ */
+export function createBasaltBundleGeometry(radius, height, seed = 0) {
+    const rand = basaltRandom(seed + 11);
+    const parts = [];
+    const addPrism = (r, h, x, z, sides) => {
+        const prism = new THREE.CylinderGeometry(r * 0.93, r, h, sides, 1);
+        prism.rotateY(rand() * Math.PI * 2);
+        prism.translate(x, -height * 0.5 + h * 0.5, z);
+        parts.push(prism.toNonIndexed());
+        prism.dispose();
+    };
+    addPrism(radius * 0.5, height, 0, 0, 6);
+    const ring = 5 + Math.floor(rand() * 2);
+    const phase = rand() * Math.PI * 2;
+    for (let i = 0; i < ring; i += 1) {
+        const angle = phase + (i / ring) * Math.PI * 2 + (rand() - 0.5) * 0.35;
+        const dist = radius * (0.52 + rand() * 0.1);
+        const r = radius * (0.28 + rand() * 0.12);
+        // Stepped tops: a staircase of cut faces is the colonnade signature.
+        const h = height * (0.48 + rand() * 0.44);
+        addPrism(r, h, Math.cos(angle) * dist, Math.sin(angle) * dist, 5 + Math.floor(rand() * 3));
+    }
+    const merged = mergeGeometries(parts, false);
+    parts.forEach((part) => part.dispose());
+    merged.computeVertexNormals();
+    merged.computeBoundingBox();
+    merged.computeBoundingSphere();
+    return merged;
+}
+
 export function createObsidianColumnTSL(
     uTime,
     uPulseIntensity = uniform(0),
@@ -1463,38 +1517,11 @@ export function createObsidianColumnTSL(
     const { material } = sharedMaterial
         ? { material: sharedMaterial }
         : createMoltenPocketMaterialTSL(uTime, uPulseIntensity, uBakedBounce, true);
-    const RADIAL = 18;
-    const geometry = new THREE.CylinderGeometry(radius * 0.72, radius, height, RADIAL, 5);
-    const pos = geometry.attributes.position;
-    // THE PILLARS WERE NOT SOLID, AND THIS LOOP WAS WHY (user report, 2026-08-12: "you can
-    // see inside them at some angles", "the bottom is not attached").
-    //
-    // CylinderGeometry emits COINCIDENT DUPLICATE vertices in two places: the radial UV seam
-    // (RADIAL+1 columns of vertices, first and last at the same position) and the cap rims
-    // (each cap's rim vertices are separate from the side-wall ring at the same positions).
-    // The old loop drew an INDEPENDENT `Math.random()` per vertex, so every duplicate pair
-    // was pushed to a different radius: measured on the live r=6.8 column, all 45 duplicate
-    // groups diverged, up to 0.78 units — 11.5% of the radius, matching the +-6% jitter
-    // band's 12% worst case. That tears a full-height slit along the seam (you see into the
-    // hollow interior) and unwelds both caps from the wall (the base "floats").
-    //
-    // Fix: the jitter is now a DETERMINISTIC hash of (radial segment, ring height), so every
-    // copy of a coincident vertex receives an IDENTICAL displacement and the shell stays
-    // closed. Silhouette irregularity is preserved — it is the same +-6% band, just welded.
-    // Being seeded also makes the geometry reproducible run to run, which the old
-    // Math.random() denied every capture comparison.
-    const jitterAt = weldedJitter(geometry, seed + 1, 0.94, 0.12);
-    for (let i = 0; i < pos.count; i += 1) {
-        const x = pos.getX(i);
-        const z = pos.getZ(i);
-        if (Math.hypot(x, z) < 1e-4) continue; // cap centre is on the axis; scaling is a no-op
-        const jitter = jitterAt(i);
-        pos.setX(i, x * jitter);
-        pos.setZ(i, z * jitter);
-    }
-    pos.needsUpdate = true;
-    geometry.computeVertexNormals();
-    weldCoincidentNormals(geometry);
+    // A basalt BUNDLE, not a tapered cylinder (2026-10-02): see createBasaltBundleGeometry.
+    // Closed prisms with no shared vertices keep the 2026-08-12 guarantees ("you can see
+    // inside them", "the bottom is not attached") by construction: every prism is a closed
+    // shell and every base sits exactly at y = -height/2, the lake line.
+    const geometry = createBasaltBundleGeometry(radius, height, seed);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'obsidian-column';
     return { mesh, material, geometry };
