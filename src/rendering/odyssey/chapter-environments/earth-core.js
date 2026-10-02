@@ -50,6 +50,7 @@ import {
     createVolcanoBackgroundTSL,
     createRockClusterMaterialTSL,
     createObsidianColumnTSL,
+    shapeMoltenBoulder,
     basaltRandom,
     createMoltenHazeMaterialTSL,
     createMoltenPocketTSL,
@@ -1913,14 +1914,16 @@ function createRockCluster(uniforms, position, size, material, shared = {}) {
     // Merged geode: the core boulder plus (for the larger seats) 3–4 small satellite
     // shards orbiting it — one geometry, one draw call, ONE shared cluster material
     // (dark albedo + emissive veins + lake bounce + seam/proximity fades).
-    const partGeometries = [new THREE.SphereGeometry(size, 24, 24)];
+    // GENESIS PASS: shaped molten boulders (lumps, bulges, pits) instead of perfect spheres.
+    const clusterSeed = Math.round((position.x * 7.1) + (position.z * 3.3));
+    const partGeometries = [shapeMoltenBoulder(new THREE.SphereGeometry(size, 36, 26), { seed: clusterSeed })];
     const satelliteCount = size >= 4.5 ? 3 + Math.floor(Math.random() * 2) : 0;
     let firstSatellite = null;
     for (let s = 0; s < satelliteCount; s += 1) {
         const satSize = 0.8 + Math.random() * 0.8;
         const angle = (s / satelliteCount) * TAU + Math.random() * 0.8;
         const orbit = size * (1.7 + Math.random() * 0.9);
-        const sat = new THREE.SphereGeometry(satSize, 18, 18);
+        const sat = shapeMoltenBoulder(new THREE.SphereGeometry(satSize, 24, 18), { seed: clusterSeed + s + 1 });
         const sx = Math.cos(angle) * orbit;
         const sy = -size * 0.35 + Math.random() * size * 0.9;
         const sz = Math.sin(angle) * orbit;

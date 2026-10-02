@@ -57,8 +57,13 @@ JSONs: `repos/odyssey-gpu/perf-baseline/ch1g-1/`.
 
 ## 4. Open items
 
-- The First Heart is still a radial sprite; the Act I plan's Calcifer grammar (a teardrop flame
-  with pose-based breathing) would give the destination personality.
-- The floating molten geodes are low-poly "potatoes"; the basalt-bundle treatment could extend to them.
+- ~~The First Heart is still a radial sprite~~ — DONE (follow-up, `ce0aaf8b`): a living flame
+  seen from below — tongues licking out from a white-hot core on their own flicker, curling as
+  they reach, coloured white-hot -> gold -> orange -> deep red, beating a slow lub-dub every 2.4 s;
+  the seam quench shrinks the tongues and walks the ramp down. Same sprite, same draw.
+- ~~The floating molten geodes are low-poly "potatoes"~~ — DONE (`ce0aaf8b`): `shapeMoltenBoulder`
+  shapes the pockets' and the lake geodes' spheres in place into lumpy, pitted volcanic bombs
+  (deterministic multi-scale Perlin; closed shell, welded seam normals, UVs kept). Seam 1->2 PASS
+  (42.9).
 - The steam is warm tan rather than truly luminous gold; its exposure cap keeps it dim by design
   (the seam gate) — a richer look would trade brightness for saturation further.
