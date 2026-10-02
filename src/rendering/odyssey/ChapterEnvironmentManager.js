@@ -27,6 +27,11 @@ import {
     SEAM_56_COLOUR_HALF_WIDTH,
     SEAM_56_AURORA_BRIDGE,
 } from './chapter-environments/shared/seam-bridges.js';
+import {
+    seamHalfWidth,
+    staggeredIncoming,
+    staggeredOutgoing,
+} from './transitions/odyssey-seam-schedule.js';
 
 // Chapter↔module wiring lives in the ONE registry (plan §4.5):
 // chapter-environments/registry.js. Loaders are explicit dynamic-import thunks
@@ -95,10 +100,11 @@ const OPACITY_APPLY_EPSILON = 0.01;
 // chapter 6. Earlier versions pulled Space fully forward across the tail of Sky, which
 // made the seam technically smooth but visually cluttered: planets, rocks, stars and
 // magenta nebula all arrived before the aurora had finished speaking.
-// 7->8 afterglow: the singularity's core glow "becomes" the first neon — pull the Urban
-//   (ch8) env opacity slightly FORWARD into the tail of Black Hole so the neon city resolves
-//   out of the BH afterglow rather than snapping in.
-const SEAM_78_AFTERGLOW_BAND = 0.05; // fraction of BH's span before the boundary to pre-seed neon
+// 7->8 afterglow: RETIRED (seamless pass, 2026-10-02). It pulled the Urban env forward with a
+//   max() ramp over the last 5 % of the black hole's span (0.0045 p), which — combined with the
+//   crossfade it was max()ed against — took ch8 from 0.40 to 1.0 in 0.0023 p (~6 u): the city
+//   snapped in. The staggered coverage schedule below brings the city's opaque content in over
+//   the first half of the 7->8 window instead, continuously, so the boost has nothing to add.
 // Journey end: over the last ~18% of the FINAL chapter (aligned with the urban finale crane
 //   + spire ignition window) expose a graceful 0->1 end ramp on the finale env's userData
 //   (consumed for the exposure bleed / beacon hold) so the journey EASES out — a slow bleed
@@ -132,11 +138,15 @@ const SEAM_56_AURORA_CARRY_BAND = 0.85; // fraction of Space span by which the C
 // reach full opacity at the boundary, i.e. exactly when the sky starts going dark.
 const SEAM_56_EARTH_IGNITE_START = 0.45; // fraction of the Ch5 span before the boundary
 const SEAM_56_EARTH_IGNITE_END = 0.32; // ...and where it reaches full weight
-// Hold full presence just past the boundary until the normal ecotone crossfade has
-// caught up (it completes within ~6% of the Space span), so releasing the boost is a
-// no-op rather than a dip. Without a release the boost would pin ch6 visible through
-// chapters 7 and 8.
-const SEAM_56_EARTH_HOLD_BAND = 0.10; // fraction of the Space span
+// Hold full presence past the boundary until the 5->6 ECOTONE ENDS, where chapter 6's own
+// weight is already 1, so the release is a no-op rather than a dip. (Without a release the
+// boost would pin ch6 visible through chapters 7 and 8.)
+// ⚠️ This used to be a fixed 10 % of the Space span on the belief that the ecotone completes
+// within ~6 % of it. It does not: the ecotone half-width is the 5->6 seamWidth (0.0222 p), which
+// is ~19 % of the 0.117 p Space span, so the band released at p 0.76596 while the crossfade was
+// only 0.539 — and every chapter-6 material (the earth, the void sky, the stars) dropped from 1
+// to 0.54 in ONE frame and then climbed back (the audit's -13 luma step at 0.7703). The hold now
+// ends exactly where the ecotone does, derived from the live seam width.
 
 function smootherstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
@@ -536,19 +546,50 @@ export class ChapterEnvironmentManager {
     _collectOpacityTargets(group) {
         const uniformTargets = [];
         const materialTargets = [];
+        // SEAMLESS PASS (2026-10-02): targets that were authored OPAQUE are kept apart so they
+        // can run the staggered coverage schedule (see updateVisibility). A material counts as
+        // opaque when its AUTHORED .transparent flag was false — read before QW5 forces it.
+        const opaqueUniformTargets = [];
+        const opaqueMaterialTargets = [];
 
         const seenUniforms = new Set();
         const seenMaterials = new Set();
 
+        // FADE EXEMPTION (the agreed interface with the chapter owners): an object tagged
+        // `userData.odysseyFadeExempt === true` — or any descendant of one — is never collected,
+        // so it is never forced transparent and never faded here. Its chapter drives its own
+        // handoff (the omen / Gargantua shadows, whose forced transparency let the stars show
+        // through the black hole at p 0.8589). It still hides with its group at weight 0.
+        // A material shared with a non-exempt mesh is treated as exempt too: forcing it
+        // transparent would change the exempt object as well.
+        const exemptMaterials = new Set();
+        group.traverse((child) => {
+            if (!child.material) return;
+            let node = child;
+            let exempt = false;
+            while (node) {
+                if (node.userData?.odysseyFadeExempt === true) { exempt = true; break; }
+                if (node === group) break;
+                node = node.parent;
+            }
+            if (!exempt) return;
+            const list = Array.isArray(child.material) ? child.material : [child.material];
+            list.forEach((material) => { if (material) exemptMaterials.add(material); });
+        });
+
         const collectMaterial = (material) => {
-            if (!material || seenMaterials.has(material)) return;
+            if (!material || seenMaterials.has(material) || exemptMaterials.has(material)) return;
             seenMaterials.add(material);
+
+            const authoredOpaque = material.userData?.baseTransparent !== undefined
+                ? material.userData.baseTransparent === false
+                : material.transparent !== true;
 
             const opacityUniform = material.uniforms?.uOpacity;
             if (opacityUniform && typeof opacityUniform.value === 'number') {
                 if (!seenUniforms.has(opacityUniform)) {
                     seenUniforms.add(opacityUniform);
-                    uniformTargets.push(opacityUniform);
+                    (authoredOpaque ? opaqueUniformTargets : uniformTargets).push(opacityUniform);
                 }
                 return;
             }
@@ -565,7 +606,7 @@ export class ChapterEnvironmentManager {
                     material.userData.lastTransparent = material.transparent;
                     material.transparent = true;
                 }
-                materialTargets.push(material);
+                (authoredOpaque ? opaqueMaterialTargets : materialTargets).push(material);
             }
         };
 
@@ -578,7 +619,9 @@ export class ChapterEnvironmentManager {
             }
         });
 
-        return { uniformTargets, materialTargets };
+        return {
+            uniformTargets, materialTargets, opaqueUniformTargets, opaqueMaterialTargets,
+        };
     }
 
     /**
@@ -953,30 +996,15 @@ export class ChapterEnvironmentManager {
     }
 
     /**
-     * B7 — early-ignite opacity boost for seams where the incoming biome should read before
-     * the boundary. 5->6 is intentionally excluded: Chapter 6 now handles its own staged
-     * aurora-to-starfield reveal so the opening is not cluttered.
-     *
-     *  • ch8 Urban — seed the neon city across the last ~5% of Black Hole (7->8 afterglow)
+     * B7 — early-ignite PRESENCE boost for a seam whose incoming chapter must exist before the
+     * boundary. Only chapter 6 (the earth seen from the Ch5 summit) remains: the 7->8 neon
+     * afterglow ramp was retired by the staggered coverage schedule (see its constant).
      *
      * @param {number} chapterId incoming chapter id
      * @param {number} progress current path progress (0..1)
      * @returns {number} early-ignite boost 0..1
      */
     _seamInBoostFor(chapterId, progress) {
-        // Generic helper: ramp 0->1 as `progress` crosses the last `band` of the OUTGOING
-        // chapter (chapterId-1) up to the boundary at chapterPositions[chapterId-1].
-        const ramp = (band) => {
-            const boundary = this.chapterPositions[chapterId - 1];
-            const prevBoundary = this.chapterPositions[chapterId - 2] ?? 0;
-            if (!Number.isFinite(boundary) || !Number.isFinite(prevBoundary)) return 0;
-            const span = boundary - prevBoundary;
-            if (span <= 0) return 0;
-            const start = boundary - span * band;
-            return smoothstep01((progress - start) / Math.max(1e-5, boundary - start));
-        };
-
-        if (chapterId === 8) return ramp(SEAM_78_AFTERGLOW_BAND);
         if (chapterId === 6) return this._earthIgniteBoost(progress);
         return 0;
     }
@@ -996,7 +1024,9 @@ export class ChapterEnvironmentManager {
 
         if (progress >= boundary) {
             if (!Number.isFinite(nextBoundary) || nextBoundary <= boundary) return 0;
-            const holdEnd = boundary + (nextBoundary - boundary) * SEAM_56_EARTH_HOLD_BAND;
+            // Held until the 5->6 ecotone ends (see the hold note up top): chapter 6's own weight
+            // is 1 from there, so dropping the boost changes nothing on screen.
+            const holdEnd = Math.min(nextBoundary, boundary + seamHalfWidth(5));
             return progress <= holdEnd ? 1 : 0;
         }
 
@@ -1085,12 +1115,24 @@ export class ChapterEnvironmentManager {
         // The fog colour/density lerp (updateGlobalEnvironment) still uses the narrow seam.
         const ecotoneWeights = this._resolvedBlendState.ecotoneWeights || null;
 
+        const ecotone = this._resolvedBlendState.ecotone || null;
         this.environments.forEach((env, chapterId) => {
             let progressOpacity = this._resolvedBlendState.weights?.[chapterId] || 0;
+            // COVERAGE (seamless pass, 2026-10-02). The symmetric crossfade above drives the
+            // TRANSPARENT/additive content (glows sum to one across the window, so the frame's
+            // brightness interpolates). OPAQUE content runs a STAGGERED schedule instead: the
+            // incoming chapter is fully drawn by the boundary and the outgoing one only starts
+            // leaving there. Forcing both opaque sides transparent at a symmetric 0.5/0.5 left
+            // coverage at 1-(1-a)(1-b) = 0.75, so whatever lay behind both showed through — the
+            // stars through the black hole at p 0.8589.
+            let coverageOpacity = progressOpacity;
             if (ecotoneWeights && ecotoneWeights[chapterId] !== undefined
                 && (chapterId === this._resolvedBlendState.ecotone.sourceChapter
                     || chapterId === this._resolvedBlendState.ecotone.targetChapter)) {
                 progressOpacity = ecotoneWeights[chapterId];
+                coverageOpacity = chapterId === ecotone.targetChapter
+                    ? staggeredIncoming(ecotone.t)
+                    : staggeredOutgoing(ecotone.t);
                 if (mode === 'progress'
                     && chapterId === 5
                     && this._resolvedBlendState.ecotone.boundaryId === '5-6') {
@@ -1110,6 +1152,12 @@ export class ChapterEnvironmentManager {
                     progressOpacity = this.cameraProgress <= boundary
                         ? 0
                         : smoothstep01((this.cameraProgress - boundary) / Math.max(1e-5, end - boundary));
+                    coverageOpacity = progressOpacity;
+                }
+                if (mode === 'progress'
+                    && chapterId === 5
+                    && this._resolvedBlendState.ecotone.boundaryId === '5-6') {
+                    coverageOpacity = progressOpacity;
                 }
             }
 
@@ -1120,6 +1168,11 @@ export class ChapterEnvironmentManager {
             if (mode === 'progress') {
                 const seamInBoost = this._seamInBoostFor(chapterId, this.cameraProgress);
                 if (seamInBoost > progressOpacity) progressOpacity = seamInBoost;
+                if (seamInBoost > coverageOpacity) coverageOpacity = seamInBoost;
+                // 5->6 carry of the Ch5 env. Inert on the default path (chapter 5 is suppressed
+                // by the One World and never created) but LIVE on the ADR-0015 recovery path
+                // (?odysseyOneWorld=0 or a world-build failure), where it is what keeps the
+                // inherited summit + aurora from popping — so it stays.
                 if (chapterId === 5) {
                     const boundary56 = this.chapterPositions[5];
                     const nextBoundary = this.chapterPositions[6] ?? 1;
@@ -1138,6 +1191,7 @@ export class ChapterEnvironmentManager {
                                 (this.cameraProgress - holdEnd) / Math.max(1e-5, carryEnd - holdEnd),
                             );
                         if (carry > progressOpacity) progressOpacity = carry;
+                        if (carry > coverageOpacity) coverageOpacity = carry;
                     }
                 }
             }
@@ -1149,7 +1203,13 @@ export class ChapterEnvironmentManager {
                     0,
                     1,
                 );
+            const coverage = mode === 'progress'
+                ? THREE.MathUtils.clamp(coverageOpacity, 0, 1)
+                : opacity;
             env.group.userData.chapterOpacity = opacity;
+            // The staggered (coverage) weight, for chapter code that fades its own OPAQUE
+            // content (backdrop domes, planet bodies) and wants the same no-see-through schedule.
+            env.group.userData.chapterCoverage = coverage;
             // Stage 1 — per-chapter detail LOD signal. Off-center chapters read 'mid'/'far' so their
             // own update() sheds heavy sublayers WITHOUT teardown (no re-create hitch, no recompile).
             // Flag OFF (or the active/near chapter) always resolves to 'near'/'hidden' → identical to
@@ -1172,23 +1232,34 @@ export class ChapterEnvironmentManager {
                 this._applyFarParticleLod(env.group, detailLevel);
                 env._lastDetailLevel = detailLevel;
             }
-            const isVisible = opacity > 0;
+            // Drawn while EITHER schedule has it on screen (coverage leads on the way in and
+            // trails on the way out). The light rig follows the group's presence.
+            const presence = Math.max(opacity, coverage);
+            const isVisible = presence > 0;
             env.group.visible = isVisible;
 
             const visibilityChanged = env.lastVisible !== isVisible;
             const opacityDelta = env.lastOpacity === null
                 ? Infinity
-                : Math.abs(opacity - env.lastOpacity);
+                : Math.max(
+                    Math.abs(opacity - env.lastOpacity),
+                    Math.abs(coverage - (env.lastCoverage ?? coverage)),
+                );
             const shouldApplyOpacity = visibilityChanged
                 || opacityDelta >= OPACITY_APPLY_EPSILON
-                || (opacity > 0 && opacity < 1)
+                || (presence > 0 && Math.min(opacity, coverage) < 1)
                 || (opacity === 1 && env.lastOpacity !== 1);
 
             if (isVisible && shouldApplyOpacity) {
-                this.setGroupOpacity(env.opacityTargets, opacity);
+                this.setGroupOpacity(env.opacityTargets, opacity, coverage);
             }
 
+            // lastOpacity stays the SYMMETRIC weight: it scales this chapter's rig lights, and
+            // lights are global — two chapters' rigs at full across the boundary would over-light
+            // both sides. (Both schedules are > 0 on exactly the same span, so the eviction and
+            // light-slot checks that test lastOpacity > 0 still see "drawing" correctly.)
             env.lastOpacity = opacity;
+            env.lastCoverage = coverage;
             env.lastVisible = isVisible;
         });
 
@@ -1236,17 +1307,35 @@ export class ChapterEnvironmentManager {
      * @param {{uniformTargets: Object[], materialTargets: THREE.Material[]}} opacityTargets
      * @param {number} opacity
      */
-    setGroupOpacity(opacityTargets, opacity) {
+    setGroupOpacity(opacityTargets, opacity, coverage = opacity) {
         if (!opacityTargets) return;
 
         const clampedOpacity = THREE.MathUtils.clamp(opacity, 0, 1);
+        const clampedCoverage = THREE.MathUtils.clamp(
+            Number.isFinite(coverage) ? coverage : opacity,
+            0,
+            1,
+        );
 
-        for (const uniform of opacityTargets.uniformTargets) {
+        const applyUniform = (uniform, value) => {
             // Preserve the manager-controlled value so chapter-local effects
             // can layer their own opacity without compounding over frames.
-            uniform.__odysseyBaseOpacity = clampedOpacity;
-            uniform.value = clampedOpacity;
-        }
+            uniform.__odysseyBaseOpacity = value;
+            uniform.value = value;
+        };
+        for (const uniform of opacityTargets.uniformTargets) applyUniform(uniform, clampedOpacity);
+        for (const uniform of opacityTargets.opaqueUniformTargets || []) applyUniform(uniform, clampedCoverage);
+
+        const applyMaterial = (material, value) => {
+            if (material.userData.baseOpacity === undefined) {
+                material.userData.baseOpacity = material.opacity;
+                material.userData.baseTransparent = material.transparent;
+                material.userData.lastTransparent = material.transparent;
+                material.transparent = true;
+            }
+            material.opacity = material.userData.baseOpacity * value;
+        };
+        for (const material of opacityTargets.opaqueMaterialTargets || []) applyMaterial(material, clampedCoverage);
 
         for (const material of opacityTargets.materialTargets) {
             if (material.userData.baseOpacity === undefined) {
