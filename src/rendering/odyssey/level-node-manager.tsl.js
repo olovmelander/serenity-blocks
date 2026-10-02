@@ -45,8 +45,9 @@ import {
     dot,
     float,
     floor,
-    fract,
+    mod,
     length,
+    max,
     min,
     mix,
     normalize,
@@ -63,13 +64,14 @@ import {
     vec2,
     vec3,
     attribute,
+    uniformArray,
     positionGeometry,
     positionLocal,
     positionView,
     normalLocal,
     normalGeometry,
 } from 'three/tsl';
-import { hash21, snoise3 } from './chapter-environments/shared/odyssey-tsl-noise.js';
+import { snoise3 } from './chapter-environments/shared/odyssey-tsl-noise.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './chapter-environments/shared/odyssey-tsl-billboard.js';
 
 // Geometry constants mirror LevelNodeManager.js so the pilot reproduces orb sizes.
@@ -81,6 +83,20 @@ const INNER_FLOW_STRENGTH = 0.28;
 const INNER_WOBBLE_STRENGTH = 0.028;
 
 const TAU = Math.PI * 2;
+
+// ── State language (2026-10 seamless pass) ───────────────────────────────────────
+// State is told by BRIGHTNESS and SHAPE, never by hue — the hue belongs to the chapter:
+//   locked    dim (<= 35 %), frosted, no halo, a small padlock glyph in the chapter tint
+//   unlocked  half glow, a small halo
+//   current   an inner light breathing at ~0.5 Hz, the biggest halo, the ribbon's spark
+//   completed a steady warm fill, the stars
+//   selected  a crisp ring (aState.w — read nowhere before this pass)
+const WARM_FILL = vec3(1.0, 0.78, 0.44);
+
+/** 0..1 breathing at 0.5 Hz (one breath every two seconds). */
+function breathe(uTime) {
+    return sin(uTime.mul(Math.PI)).mul(0.5).add(0.5);
+}
 
 // ── Glass node shells (additive per-instance shell identity; bloom-eligible) ─────
 
@@ -111,7 +127,6 @@ export function createGlassShellTSL(uTime = uniform(0), uAAA = uniform(0)) {
     const aNodeSeed = attribute('aNodeSeed', 'float');
 
     const vUv = uv();
-    const vLocalPos = varying(positionLocal);
 
     // ── Vertex: per-style displacement along the normal (only when uAAA > 0.5) ──
     const positionNode = Fn(() => {
@@ -171,167 +186,76 @@ export function createGlassShellTSL(uTime = uniform(0), uAAA = uniform(0)) {
     const vNormal = normalView;
     const vViewPosition = varying(positionView.negate());
 
-    // ── Fragment: per-style shell colour (uAAA) or default white glass ──
-    // Color and opacity are built from two parallel Fn closures (same branch
-    // structure) so each material node is a standalone graph — no struct threading.
-    const colorNode = Fn(() => {
-        const uLocked = aState.x;
+    // aState = (locked, completed, hovered + 2*current, selected).
+    const uLocked = aState.x;
+    const uCompleted = aState.y;
+    const uCurrent = step(1.5, aState.z);
+    const uHovered = aState.z.sub(uCurrent.mul(2.0));
+    const uSelected = aState.w;
 
+    // ── Clear glass, told by state. (The eight painted per-world shell ladders that used
+    // to run here were multiplied by 0.08 and then overwritten — dead cost, removed; the
+    // per-world identity returns as the opaque beacon skins.)
+    // Pure expressions, rebuilt per slot: colour and opacity must be STANDALONE graphs. A
+    // single Fn feeding both slots (rgb / a of one vec4) left the opacity reading a var the
+    // colour build had assigned — the shell rendered fully transparent.
+    const glassTerms = () => {
         const viewDir = normalize(vViewPosition);
-        const rim = pow(oneMinus(abs(dot(vNormal, viewDir))), 2.5);
-
-        const color = vec3(0.0).toVar();
-
-        If(uAAA.greaterThan(0.5), () => {
-            const nc = aNodeColor;
-            const ac = aNodeAccentColor;
-            const seed = aNodeSeed;
-            const s = aNodeStyle.add(0.5);
-
-            If(s.lessThan(1.0), () => {
-                // magmaGeode — smooth warm-orange waypoint shell.
-                // It must read as navigation UI, not the chapter's environmental hero.
-                const ftime = uTime.mul(0.08);
-                const p = vLocalPos.mul(2.2).add(seed.mul(17.0));
-
-                // Slow flowing molten noise field (domain warped for organic feel).
-                const warp = snoise3(p.add(vec3(ftime, 0.0, 0.0))).mul(0.35);
-                const moltenNoise = snoise3(p.add(warp).add(vec3(0.0, ftime.negate(), 0.0))).mul(0.5).add(0.5);
-                const moltenIntensity = smoothstep(0.22, 0.82, moltenNoise);
-
-                // Broad crust mottling only. High-frequency cracks made the orbs read
-                // jagged and broken in the Earth Core screenshots.
-                const crustNoise = snoise3(vLocalPos.mul(3.0).add(seed.mul(13.0))).mul(0.5).add(0.5);
-                const crustFactor = smoothstep(0.18, 0.78, crustNoise);
-
-                // Warm-orange body base, intentionally below the lava-fall/lake value.
-                const moltenBase = vec3(0.42, 0.09, 0.018);
-                const moltenHot = vec3(0.78, 0.22, 0.04);
-                const moltenColor = mix(moltenBase, moltenHot, moltenIntensity.mul(0.58));
-
-                // Base dark charred rock color (not void!)
-                const crustColor = vec3(0.055, 0.018, 0.008);
-
-                // Blended round magma-shell color with soft continents, no hard cracks.
-                let bodyColor = mix(crustColor, moltenColor, oneMinus(crustFactor.mul(0.74)).mul(0.56));
-
-                // Small warm edge only; no yellow-white rim bloom.
-                bodyColor = bodyColor.add(vec3(0.66, 0.14, 0.03).mul(rim).mul(0.14));
-                color.assign(min(bodyColor, vec3(0.62, 0.26, 0.10)));
-            }).ElseIf(s.lessThan(2.0), () => {
-                // bubblePearl — pearlescent thin-film
-                const irid = cos(uTime.mul(0.24).add(rim.mul(3.2)).add(seed.mul(6.0)).add(vec3(0.0, 2.0, 4.0)))
-                    .mul(0.5).add(0.5);
-                color.assign(mix(vec3(0.82, 0.95, 1.0), irid, 0.55).mul(mix(vec3(1.0), ac, 0.28)));
-            }).ElseIf(s.lessThan(3.0), () => {
-                // seedLantern — warm organic glow
-                const ribs = pow(abs(sin(vUv.x.add(seed).mul(18.0))), 8.0);
-                color.assign(mix(nc.mul(0.42), ac.mul(1.2), ribs.mul(0.65).add(rim.mul(0.38))));
-            }).ElseIf(s.lessThan(4.0), () => {
-                // cairnLantern — icy faceted crystal
-                const facet = step(0.5, fract(vUv.x.add(seed).mul(8.0))).mul(0.5)
-                    .add(step(0.5, fract(vUv.y.sub(seed).mul(8.0))).mul(0.5));
-                color.assign(nc.mul(rim.mul(0.95).add(0.28)).add(ac.mul(facet).mul(0.28)));
-            })
-                .ElseIf(s.lessThan(5.0), () => {
-                // cloudWisp — soft diffuse pastel (Ch5 Sky node identity)
-                    const wisps = smoothstep(
-                        0.3,
-                        0.95,
-                        sin(
-                            vUv.x.mul(15.0)
-                                .add(vUv.y.mul(10.0))
-                                .sub(uTime.mul(0.7))
-                                .add(seed.mul(9.0)),
-                        ).mul(0.5).add(0.5),
-                    );
-                    color.assign(
-                        mix(vec3(0.92), nc, 0.48)
-                            .mul(rim.mul(0.42).add(0.58))
-                            .add(ac.mul(wisps).mul(0.12)),
-                    );
-                    // Two-tone sun/aurora rim — surgical, ch5-only (inside this branch):
-                    // the upper hemisphere (facing the on-camera sun) picks up a thin
-                    // WARM rim; the lower (away) picks up a COOL aurora rim. Additive +
-                    // rim-gated so it stays a soft fringe (the shell ceiling clamps).
-                    const sunSide = smoothstep(-0.2, 0.6, vNormal.y);
-                    const rimTint = mix(vec3(0.36, 0.92, 1.0), vec3(1.0, 0.78, 0.46), sunSide);
-                    color.addAssign(rimTint.mul(rim).mul(0.22));
-                })
-                .ElseIf(s.lessThan(6.0), () => {
-                // starlitOrb — dark with sparkle points
-                    const spark = step(
-                        0.955,
-                        hash21(floor(vUv.mul(44.0)).add(floor(uTime.mul(3.0))).add(seed.mul(17.0))),
-                    );
-                    color.assign(nc.mul(0.14).add(ac.mul(rim).mul(0.9)).add(vec3(1.25, 1.15, 1.5).mul(spark)));
-                })
-                .ElseIf(s.lessThan(7.0), () => {
-                // lensedShard — concentric lensing rings
-                    const rings = sin(
-                        length(vUv.sub(0.5))
-                            .mul(42.0)
-                            .sub(uTime.mul(2.0))
-                            .add(seed.mul(8.0)),
-                    ).mul(0.5).add(0.5);
-                    color.assign(mix(nc.mul(0.18), ac.mul(1.2), pow(rings, 3.0)).add(nc.mul(rim).mul(0.55)));
-                })
-                .Else(() => {
-                // neonSign — bright electric rim
-                    const flick = sin(uTime.mul(18.0).add(vUv.y.mul(6.0)).add(seed.mul(20.0))).mul(0.15).add(0.85);
-                    const scan = step(0.9, fract(vUv.y.add(uTime.mul(0.23)).add(seed).mul(13.0)));
-                    const edge = min(min(vUv.x, oneMinus(vUv.x)), min(vUv.y, oneMinus(vUv.y)));
-                    const frame = oneMinus(smoothstep(0.025, 0.09, edge));
-                    color.assign(
-                        nc.mul(rim.mul(1.35).add(0.5))
-                            .mul(flick)
-                            .add(ac.mul(scan.mul(0.45).add(frame.mul(0.9)))),
-                    );
-                });
-        }).Else(() => {
-            // ── Original white glass (default look, flag off) ──
-            const irid = vec3(
-                cos(uTime.mul(0.2).add(rim.mul(3.0)).add(0.0)).mul(0.5).add(0.5),
-                cos(uTime.mul(0.2).add(rim.mul(3.0)).add(2.0)).mul(0.5).add(0.5),
-                cos(uTime.mul(0.2).add(rim.mul(3.0)).add(4.0)).mul(0.5).add(0.5),
-            );
-            color.assign(mix(vec3(1.0), irid, rim.mul(0.15).mul(oneMinus(uLocked.mul(0.5)))));
-        });
-
-        // ── Snow-globe glassify ──────────────────────────────────────────────────────
-        // Collapse the painted per-world shell into CLEAR glass so the (now small) themed
-        // core reads as the object suspended inside the globe. Almost no body; the energy
-        // goes into an accent-tinted Fresnel rim plus a tight fixed-light SPECULAR HOTSPOT —
-        // a bright glint on the upper-front of the sphere that reads unmistakably as shiny
-        // glass (not a bare magma ball). Per-style colour survives only as a faint tint.
         const gN = normalize(vNormal);
-        const gNdv = abs(dot(gN, viewDir));
-        const gFresnel = pow(oneMinus(gNdv), 3.0);
-        // Fixed view-space key light → a studio glint that sits upper-front regardless of
-        // where the orb is on the path (MeshBasic has no real lighting, so we fake it).
-        const gLightDir = normalize(vec3(0.45, 0.7, 0.75));
-        const gHot = pow(clamp(dot(gN, gLightDir), 0.0, 1.0), 26.0).mul(1.3);
-        const gTintRim = mix(aNodeColor, aNodeAccentColor, 0.5).mul(gFresnel).mul(0.8);
-        color.assign(color.mul(0.08).add(gTintRim).add(vec3(gHot.add(gFresnel.mul(0.1)))));
+        const ndv = abs(dot(gN, viewDir));
+        const fresnel = pow(oneMinus(ndv), 3.0);
+        // Fixed view-space key light → a studio glint upper-front (MeshBasic: faked).
+        const hot = pow(clamp(dot(gN, normalize(vec3(0.45, 0.7, 0.75))), 0.0, 1.0), 26.0);
+        const breath = breathe(uTime);
 
-        // Shared locked response (color *= 1 - uLocked*0.4); ceiling clamp keeps the bright
-        // glassy rim/glint from blowing past white into the additive halo + bloom.
-        return min(color.mul(oneMinus(uLocked.mul(0.4))), vec3(1.0));
-    })();
+        // Brightness ladder: locked 0.35, unlocked 0.55, current 0.7..1.0, completed 0.85.
+        const bright = mix(
+            mix(float(0.55), float(0.85), uCompleted),
+            float(0.7).add(breath.mul(0.3)),
+            uCurrent,
+        ).mul(mix(1.0, 0.35 / 0.55, uLocked));
+
+        // Rim colour: the chapter tint; completed leans warm; locked is FROSTED (desaturated).
+        const tint0 = mix(aNodeColor, mix(aNodeColor, WARM_FILL, 0.5), uCompleted);
+        const tint = mix(
+            tint0,
+            vec3(dot(tint0, vec3(0.299, 0.587, 0.114))).mul(0.8).add(0.12),
+            uLocked.mul(0.75),
+        );
+
+        // Selection ring: a crisp band just inside the silhouette (r ~ 0.88-0.96).
+        const edge = oneMinus(ndv);
+        const ring = smoothstep(0.42, 0.52, edge).mul(oneMinus(smoothstep(0.66, 0.78, edge)));
+        const ringOn = max(uSelected, uHovered.mul(0.35));
+
+        const col = tint.mul(fresnel).mul(bright).mul(1.15)
+            .add(vec3(hot.mul(mix(1.0, 0.25, uLocked))))
+            // Frost: a faint milky body so a locked orb reads as frosted glass.
+            .add(vec3(0.85, 0.9, 1.0).mul(uLocked).mul(0.06))
+            // Warm fill (completed) / breathing inner light (current) through the body.
+            .add(WARM_FILL.mul(uCompleted).mul(0.10))
+            .add(aNodeColor.mul(uCurrent).mul(breath).mul(0.16))
+            .add(mix(aNodeAccentColor, vec3(1.0), 0.5).mul(ring).mul(ringOn).mul(0.9));
+
+        const alpha = clamp(
+            float(0.05)
+                .add(fresnel.mul(0.5).mul(bright.add(0.3)))
+                .add(hot.mul(0.9).mul(mix(1.0, 0.3, uLocked)))
+                .add(uLocked.mul(0.16))
+                .add(uCompleted.mul(0.08))
+                .add(uCurrent.mul(breath).mul(0.10))
+                .add(ring.mul(ringOn).mul(0.8)),
+            0.0,
+            0.9,
+        ).mul(uHovered.mul(0.4).add(0.6));
+
+        return { col: min(col, vec3(1.0)), alpha };
+    };
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = colorNode;
-    material.opacityNode = glassOpacityNode(
-        aState,
-        vNormal,
-        vViewPosition,
-        uTime,
-        uAAA,
-        aNodeStyle,
-        aNodeSeed,
-        vUv,
-    );
+    material.colorNode = Fn(() => glassTerms().col)();
+    material.opacityNode = Fn(() => glassTerms().alpha)();
     material.transparent = true;
     material.depthWrite = false;
     material.userData.emitsBloom = true;
@@ -340,99 +264,6 @@ export function createGlassShellTSL(uTime = uniform(0), uAAA = uniform(0)) {
     return {
         mesh: null, material, geometry, uniforms: { uTime, uAAA },
     };
-}
-
-/**
- * Opacity twin of the glass shell — re-derives rim and the per-style alpha so the
- * material's opacityNode is a standalone float node (color and alpha share the same
- * branch structure; kept separate to avoid threading a struct across stages).
- */
-function glassOpacityNode(
-    aState,
-    vNormal,
-    vViewPosition,
-    uTime,
-    uAAA,
-    aNodeStyle,
-    aNodeSeed,
-    vUv,
-) {
-    return Fn(() => {
-        const uHovered = aState.z;
-
-        const viewDir = normalize(vViewPosition);
-        const rim = pow(oneMinus(abs(dot(vNormal, viewDir))), 2.5);
-
-        const seed = aNodeSeed;
-        const alpha = float(0.0).toVar();
-
-        If(uAAA.greaterThan(0.5), () => {
-            const s = aNodeStyle.add(0.5);
-            If(s.lessThan(1.0), () => {
-                alpha.assign(0.34);
-            }).ElseIf(s.lessThan(2.0), () => {
-                const caustic = pow(
-                    sin(
-                        vUv.x.add(vUv.y)
-                            .mul(28.0)
-                            .add(uTime)
-                            .add(seed.mul(8.0)),
-                    ).mul(0.5).add(0.5),
-                    3.0,
-                );
-                alpha.assign(rim.mul(0.42).add(caustic.mul(0.1)).add(0.1));
-            }).ElseIf(s.lessThan(3.0), () => {
-                const ribs = pow(abs(sin(vUv.x.add(seed).mul(18.0))), 8.0);
-                alpha.assign(ribs.mul(0.18).add(rim.mul(0.32)).add(0.18));
-            }).ElseIf(s.lessThan(4.0), () => {
-                alpha.assign(rim.mul(0.5).add(0.14));
-            })
-                .ElseIf(s.lessThan(5.0), () => {
-                    const wisps = smoothstep(
-                        0.3,
-                        0.95,
-                        sin(
-                            vUv.x.mul(15.0)
-                                .add(vUv.y.mul(10.0))
-                                .sub(uTime.mul(0.7))
-                                .add(seed.mul(9.0)),
-                        ).mul(0.5).add(0.5),
-                    );
-                    alpha.assign(wisps.mul(0.15).add(rim.mul(0.26)).add(0.12));
-                })
-                .ElseIf(s.lessThan(6.0), () => {
-                    const spark = step(
-                        0.955,
-                        hash21(floor(vUv.mul(44.0)).add(floor(uTime.mul(3.0))).add(seed.mul(17.0))),
-                    );
-                    alpha.assign(rim.mul(0.32).add(spark.mul(0.6)).add(0.12));
-                })
-                .ElseIf(s.lessThan(7.0), () => {
-                    alpha.assign(rim.mul(0.42).add(0.18));
-                })
-                .Else(() => {
-                    const edge = min(min(vUv.x, oneMinus(vUv.x)), min(vUv.y, oneMinus(vUv.y)));
-                    const frame = oneMinus(smoothstep(0.025, 0.09, edge));
-                    alpha.assign(rim.mul(0.45).add(frame.mul(0.16)).add(0.2));
-                });
-        }).Else(() => {
-            alpha.assign(rim.mul(0.25).add(0.15));
-        });
-
-        // ── Snow-globe glassify ──────────────────────────────────────────────────────
-        // Clear-glass alpha profile: very transparent through the centre (so the suspended
-        // core reads as the thing inside the globe), glassy toward the grazing rim, opaque at
-        // the specular hotspot. depthWrite stays off so it blends over the core.
-        const gN = normalize(vNormal);
-        const gNdv = abs(dot(gN, viewDir));
-        const gFresnel = pow(oneMinus(gNdv), 3.0);
-        const gLightDir = normalize(vec3(0.45, 0.7, 0.75));
-        const gHot = pow(clamp(dot(gN, gLightDir), 0.0, 1.0), 26.0);
-        alpha.assign(clamp(float(0.05).add(gFresnel.mul(0.5)).add(gHot.mul(0.9)), 0.0, 0.85));
-
-        // Shared hover response (alpha *= 0.6 + uHovered*0.4).
-        return alpha.mul(uHovered.mul(0.4).add(0.6));
-    })();
 }
 
 // ── Additive halo / glow (bloom-eligible) ────────────────────────────────────────
@@ -444,32 +275,39 @@ function glassOpacityNode(
  */
 export function createGlowHaloTSL(uTime = uniform(0), uBeatPulse = uniform(0)) {
     const aColor = attribute('aColor', 'vec3');
-    const aState = attribute('aState', 'vec3'); // x:locked y:hovered z:current
+    // aState = (locked, hovered + 2*selected, current, completed).
+    const aState = attribute('aState', 'vec4');
 
     const vNormal = normalView;
     const vColor = aColor;
 
     const uLocked = aState.x;
-    const uHovered = aState.y;
+    const uSelected = step(1.5, aState.y);
+    const uHovered = aState.y.sub(uSelected.mul(2.0));
     const uCurrent = aState.z;
+    const uCompleted = aState.w;
 
-    // A4-NODE: tighter rim falloff (pow 4.0, was 3.0) so the additive halo is a crisp
-    // ring around the orb instead of a broad blob that clipped to white in
-    // Surface/Mtn/Sky/Space. The halo COLOUR is the per-node aColor (already the chapter
-    // accent fed by the manager) — no fixed-cyan to re-tint here.
-    const rim = pow(oneMinus(abs(dot(vNormal, vec3(0.0, 0.0, 1.0)))), 4.0);
-    const emphasis = uHovered.mul(0.18).add(uCurrent.mul(uBeatPulse.mul(0.22).add(0.24)));
-    // Clamp the additive halo alpha so even the focal/beat-pulsing node never stacks into
-    // a pure-white bloom or becomes the sustained chapter hero (peak <= 0.38).
+    // Back-face halo rim against the fixed view direction: 1.0 at the halo's silhouette.
+    const rimRaw = oneMinus(abs(dot(vNormal, vec3(0.0, 0.0, 1.0))));
+    const rim = pow(rimRaw, 4.0);
+    const breath = breathe(uTime);
+    // Halo size by state: none when locked, small when unlocked, steady when completed,
+    // biggest + breathing (and beat-pulsing) on the current node.
+    const emphasis = mix(mix(float(0.10), float(0.16), uCompleted), breath.mul(0.16).add(0.22)
+        .add(uBeatPulse.mul(0.12)), uCurrent)
+        .add(uHovered.mul(0.12));
+    // The selection ring: a crisp line at the halo's silhouette.
+    const ring = smoothstep(0.80, 0.9, rimRaw).mul(oneMinus(smoothstep(0.95, 1.0, rimRaw))).mul(uSelected);
     const alpha = clamp(
-        rim.mul(emphasis.add(0.12)).mul(oneMinus(uLocked.mul(0.7))),
+        rim.mul(emphasis).add(ring.mul(0.55)).mul(oneMinus(uLocked)),
         0.0,
-        0.38,
+        0.6,
     );
+    const haloColor = mix(mix(vColor, mix(vColor, WARM_FILL, 0.45), uCompleted), vec3(1.0), ring.mul(0.5));
 
     const material = new THREE.MeshBasicNodeMaterial();
     // Keep the halo a saturated tint (sub-white) so bloom adds glow, not a white core.
-    material.colorNode = min(vColor, vec3(1.0));
+    material.colorNode = min(haloColor, vec3(1.0));
     material.opacityNode = alpha;
     material.transparent = true;
     material.depthWrite = false;
@@ -528,12 +366,26 @@ export function createNodeParticleGeometry(count, {
  * aNodeScale, perspective is automatic). gl_PointCoord → uv(); the GLSL `discard` at
  * d>0.5 becomes a soft round falloff under additive blending. Port of particleMat.
  */
-export function createNodeParticlesTSL(uTime = uniform(0)) {
+export function createNodeParticlesTSL(uTime = uniform(0), accentColors = null) {
     const aOffset = attribute('aOffset', 'vec3');
     const aPState = attribute('aPState', 'vec2'); // x:speed y:phase
     const aNodePos = attribute('aNodePos', 'vec3');
     const aNodeScale = attribute('aNodeScale', 'float');
-    const aNodeLocked = attribute('aNodeLocked', 'float');
+    // Packed (8-vertex-buffer ceiling): locked + 2*completed + 4*chapterIndex(0..7).
+    const aNodePacked = attribute('aNodeLocked', 'float');
+    const chapterIndex = floor(aNodePacked.add(0.5).mul(0.25));
+    const stateBits = aNodePacked.sub(chapterIndex.mul(4.0));
+    const nodeCompleted = step(1.5, stateBits);
+    const aNodeLocked = stateBits.sub(nodeCompleted.mul(2.0));
+    // The sparkle takes the CHAPTER's accent (it was a hard-coded orange on every orb in
+    // every world — the "same gold ring" on all 59 nodes).
+    const accents = uniformArray(
+        (accentColors && accentColors.length === 8 ? accentColors : [
+            0xffd27a, 0xc8f6ff, 0xfff2c0, 0xffffff, 0xffd9a0, 0xe6e9ff, 0xffe0a8, 0xff66c4,
+        ]).map((c) => new THREE.Color(c)),
+        'color',
+    );
+    const accent = varying(accents.element(chapterIndex.toInt()).rgb);
 
     const speed = aPState.x.mul(mix(1.0, 0.35, aNodeLocked));
     const phase = aPState.y;
@@ -548,7 +400,13 @@ export function createNodeParticlesTSL(uTime = uniform(0)) {
     // Animated world-space CENTER of the particle (was the GLSL worldPos / gl_Position).
     const center = aNodePos.add(animatedOffset.mul(aNodeScale));
 
-    const vOpacity = varying(sin(t.mul(1.5)).mul(0.12).add(0.26));
+    // The swarm is a quiet shimmer, never a ring (the selection ring is the only ring): the
+    // opaque core hides the inner motes, so a dense bright swarm read as a halo band around
+    // every orb — "every orb wears the same gold ring". Locked orbs barely glitter;
+    // completed ones carry a warmer, slightly brighter swarm.
+    const vOpacity = varying(sin(t.mul(1.5)).mul(0.08).add(0.14)
+        .mul(mix(1.0, 0.25, aNodeLocked))
+        .mul(nodeCompleted.mul(0.4).add(1.0)));
 
     // World-space billboard size (replaces gl_PointSize; perspective is automatic).
     //
@@ -561,7 +419,8 @@ export function createNodeParticlesTSL(uTime = uniform(0)) {
     // a world-space billboard cannot match both, so 1.0 splits the difference. Lane B's fill
     // cost for the restored glitter rides on the §7.1 measurement (the no-level-nodes A/B
     // now prices the orbs WITH visible sparkles, which is the question that matters).
-    const worldSize = aNodeScale.mul(1.0);
+    // Small glints (nodes now scale up to 1.75x with act camera distance).
+    const worldSize = aNodeScale.mul(0.2);
     const positionNode = billboardWorld(center, worldSize);
 
     // gl_PointCoord → uv(); round mask via the quad uv (soft falloff under additive).
@@ -572,7 +431,7 @@ export function createNodeParticlesTSL(uTime = uniform(0)) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = vec3(1.0, 0.7, 0.2);
+    material.colorNode = mix(accent, mix(accent, WARM_FILL, 0.5), nodeCompleted);
     material.opacityNode = alpha;
     material.transparent = true;
     material.depthWrite = false;
@@ -590,6 +449,35 @@ export function createNodeParticlesTSL(uTime = uniform(0)) {
     return {
         mesh: null, material, geometry: null, uniforms: { uTime },
     };
+}
+
+// ── Core grading ───────────────────────────────────────────────────────────────
+
+/**
+ * The level's theme icon, re-graded into the chapter: its structure (luminance) survives,
+ * its hue becomes the chapter's. A pink theme icon no longer fights the lava world — it
+ * reads as ember-lit glass in ch1, plankton-lit in ch2, and so on.
+ */
+function gradeIconToChapter(icon, tint) {
+    const lum = dot(icon, vec3(0.299, 0.587, 0.114));
+    const graded = tint.mul(lum.mul(0.8).add(0.38));
+    return mix(icon, graded, 0.8);
+}
+
+/**
+ * Shared core state response (brightness, never hue): locked dims to ~35 % and frosts,
+ * the current node breathes an inner light at 0.5 Hz, completed carries a warm fill.
+ */
+function applyCoreState(color, {
+    locked, completed, hovered, selected, current, tint, uTime,
+}) {
+    const luma = dot(color, vec3(0.299, 0.587, 0.114));
+    // Frost: desaturate toward a cool milky luminance.
+    color.assign(mix(color, vec3(luma).mul(vec3(0.92, 0.96, 1.0)).add(tint.mul(0.05)), locked.mul(0.8)));
+    color.mulAssign(mix(1.0, 0.35, locked));
+    color.addAssign(WARM_FILL.mul(completed).mul(0.16));
+    color.mulAssign(current.mul(breathe(uTime).mul(0.45).add(0.1)).add(1.0));
+    color.mulAssign(hovered.mul(0.10).add(selected.mul(0.06)).add(1.0));
 }
 
 // ── Inner fluid theme-icon core (opaque; NOT bloom-eligible) ─────────────────────
@@ -670,21 +558,19 @@ export function createFluidInnerTSL(
                 snoise3(vec3(baseUv.mul(3.4), t.mul(0.12)).add(uSeed)).mul(0.5).add(0.5),
             ).mul(0.58),
         );
-        const color = mix(fallbackMagma, sampled, step(0.5, uUseTexture)).toVar();
-
-        // Locked "dormant gem" treatment — softened so a dark theme icon no longer reads as a
-        // near-black void when previewing locked chapters ahead (masterplan §2 #11): gentler
-        // ×0.60 brightness floor + lighter desaturation + a small biome-tint glow floor.
-        const luma = dot(color, vec3(0.299, 0.587, 0.114));
-        color.assign(mix(vec3(luma), color, oneMinus(uLocked.mul(0.30))));
-        color.mulAssign(mix(0.60, 1.0, oneMinus(uLocked)));
-        color.addAssign(uLocked.mul(uFallbackColor).mul(0.12));
-        color.addAssign(uCompleted.mul(0.15));
-
+        const color = mix(fallbackMagma, gradeIconToChapter(sampled, uFallbackColor), step(0.5, uUseTexture))
+            .toVar();
+        applyCoreState(color, {
+            locked: uLocked,
+            completed: uCompleted,
+            hovered: uHovered,
+            selected: uSelected,
+            current: float(0.0),
+            tint: uFallbackColor,
+            uTime,
+        });
         const rim = pow(oneMinus(abs(dot(normalize(vViewNormal), vec3(0.0, 0.0, 1.0)))), 2.2);
         color.addAssign(rim.mul(0.08));
-        color.mulAssign(uHovered.mul(0.10).add(uSelected.mul(0.06)).add(1.0));
-
         return color;
     })();
 
@@ -722,34 +608,42 @@ export function createFluidInnerTSL(
 // and the per-node theme texture sample becomes a layer-indexed DataArrayTexture sample.
 //   aCore.x = layer+0.5 (icon) or -1 sentinel (procedural magma, no icon)
 //   aCore.y = per-level seed
-//   aCore.z = state bitfield: locked|completed<<1|hovered<<2|selected<<3
-//   aCore.w = 5-5-5 packed fallback rgb
+//   aCore.z = state bitfield: locked|completed<<1|hovered<<2|selected<<3|current<<4
+//   aCore.w = 5-5-5 packed chapter tint (fallback magma + the icon grade)
 export function createFluidInnerInstancedTSL(arrayTexture, uTime = uniform(0)) {
     const aCore = attribute('aCore', 'vec4');
     const uFlowStrength = uniform(INNER_FLOW_STRENGTH);
     const uWobbleStrength = uniform(INNER_WOBBLE_STRENGTH);
 
     // Decode packed channels.
-    const seed = aCore.y;
-    const layerF = floor(aCore.x); // 0..LAYERS-1 (valid only when x>=0)
-    const useTexture = step(float(0.0), aCore.x); // 1 when x>=0, 0 for the -1 sentinel
-    const stateZ = aCore.z;
-    const uLocked = step(0.5, fract(stateZ.mul(0.5)).mul(2.0)); // bit0
-    const uCompleted = step(0.5, fract(floor(stateZ.mul(0.5)).mul(0.5)).mul(2.0)); // bit1
-    const uHovered = step(0.5, fract(floor(stateZ.mul(0.25)).mul(0.5)).mul(2.0)); // bit2
-    const uSelected = step(0.5, fract(floor(stateZ.mul(0.125)).mul(0.5)).mul(2.0)); // bit3
-    // 5-5-5 unpack of the fallback colour (only feeds the *0.36 magma tint, sub-perceptual).
-    const fw = aCore.w;
-    const fbR = floor(fw.div(1024.0)).div(31.0);
-    const fbG = floor(fw.div(32.0)).sub(floor(fw.div(1024.0)).mul(32.0)).div(31.0);
-    const fbB = fw.sub(floor(fw.div(32.0)).mul(32.0)).div(31.0);
-    const fallbackColor = vec3(fbR, fbG, fbB);
+    // DECODE IN THE VERTEX STAGE, FROM ROUNDED INTEGERS. These packed channels used to be
+    // decoded per FRAGMENT with floor/fract straight off the interpolated attribute: an
+    // instance constant arrives as 9.9999 on some pixels and 10.0001 on others, and
+    // floor(9.9999 * 0.5) flips a bit — the locked bit flickered per pixel across a selected
+    // node's core as dark "frost" speckle. Rounding first makes every decode exact; doing it
+    // per vertex (varying of a constant) also takes it off the fragment bill.
+    const bit = (zi, k) => mod(floor(zi.div(2 ** k)), 2.0);
+    const seed = varying(aCore.y);
+    const layerF = varying(floor(aCore.x)); // 0..LAYERS-1 (valid only when x>=0); x = layer + 0.5
+    const useTexture = varying(step(float(0.0), aCore.x)); // 1 when x>=0, 0 for the -1 sentinel
+    const stateZ = floor(aCore.z.add(0.5));
+    const uLocked = varying(bit(stateZ, 0));
+    const uCompleted = varying(bit(stateZ, 1));
+    const uHovered = varying(bit(stateZ, 2));
+    const uSelected = varying(bit(stateZ, 3));
+    const uCurrent = varying(bit(stateZ, 4));
+    // 5-5-5 unpack of the chapter tint (fallback magma + the icon grade).
+    const fw = floor(aCore.w.add(0.5));
+    const fbR = floor(fw.div(1024.0));
+    const fbG = floor(fw.div(32.0)).sub(fbR.mul(32.0));
+    const fbB = fw.sub(floor(fw.div(32.0)).mul(32.0));
+    const fallbackColor = varying(vec3(fbR, fbG, fbB).div(31.0));
 
     // ── Vertex: wobble phases/normal from the geometry nodes — identical on r181
     // (positionLocal/normalLocal are the raw attributes inside positionNode) and correct on
     // r185 (positionLocal is post-instance there); placement rides the positionLocal add-base. ──
-    const vertexSpeed = mix(0.22, 1.25, oneMinus(uLocked));
-    const vPhase = uTime.mul(vertexSpeed).add(seed);
+    const vertexSpeed = mix(0.22, 1.25, oneMinus(bit(stateZ, 0)));
+    const vPhase = uTime.mul(vertexSpeed).add(aCore.y);
     const waveA = sin(vPhase.add(positionGeometry.y.mul(7.0)).add(positionGeometry.x.mul(5.0)));
     const waveB = cos(vPhase.mul(0.8).add(positionGeometry.z.mul(6.0)).sub(positionGeometry.y.mul(4.0)));
     const wobble = waveA.add(waveB.mul(0.65)).mul(uWobbleStrength);
@@ -787,19 +681,19 @@ export function createFluidInnerInstancedTSL(arrayTexture, uTime = uniform(0)) {
                 snoise3(vec3(baseUv.mul(3.4), t.mul(0.12)).add(seed)).mul(0.5).add(0.5),
             ).mul(0.58),
         );
-        const color = mix(fallbackMagma, sampled, step(0.5, useTexture)).toVar();
-
-        // Locked "dormant gem" treatment — softened so a dark theme icon no longer reads as a
-        // near-black void when previewing locked chapters ahead (masterplan §2 #11): gentler
-        // ×0.60 brightness floor + lighter desaturation + a small biome-tint glow floor.
-        const luma = dot(color, vec3(0.299, 0.587, 0.114));
-        color.assign(mix(vec3(luma), color, oneMinus(uLocked.mul(0.30))));
-        color.mulAssign(mix(0.60, 1.0, oneMinus(uLocked)));
-        color.addAssign(uLocked.mul(fallbackColor).mul(0.12));
-        color.addAssign(uCompleted.mul(0.15));
+        const color = mix(fallbackMagma, gradeIconToChapter(sampled, fallbackColor), step(0.5, useTexture))
+            .toVar();
+        applyCoreState(color, {
+            locked: uLocked,
+            completed: uCompleted,
+            hovered: uHovered,
+            selected: uSelected,
+            current: uCurrent,
+            tint: fallbackColor,
+            uTime,
+        });
         const rim = pow(oneMinus(abs(dot(normalize(vViewNormal), vec3(0.0, 0.0, 1.0)))), 2.2);
         color.addAssign(rim.mul(0.08));
-        color.mulAssign(uHovered.mul(0.10).add(uSelected.mul(0.06)).add(1.0));
         return color;
     })();
 
@@ -858,7 +752,7 @@ export function createLevelNodesPilotTSL({ instanceCount = 6, particlesPerNode =
     glowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     const glowColorArray = new Float32Array(instanceCount * 3);
-    const glowStateArray = new Float32Array(instanceCount * 3);
+    const glowStateArray = new Float32Array(instanceCount * 4);
 
     const matrix = new THREE.Matrix4();
     const pos = new THREE.Vector3();
@@ -889,13 +783,14 @@ export function createLevelNodesPilotTSL({ instanceCount = 6, particlesPerNode =
         accentArray[i * 3 + 2] = a.b;
         seedArray[i] = (i * 97) / 997;
 
-        // glow aState (vec3): locked/hovered/current
+        // glow aState (vec4): locked / hovered+2*selected / current / completed
         glowColorArray[i * 3 + 0] = c.r;
         glowColorArray[i * 3 + 1] = c.g;
         glowColorArray[i * 3 + 2] = c.b;
-        glowStateArray[i * 3 + 0] = 0;
-        glowStateArray[i * 3 + 1] = 0;
-        glowStateArray[i * 3 + 2] = i === 0 ? 1 : 0;
+        glowStateArray[i * 4 + 0] = 0;
+        glowStateArray[i * 4 + 1] = i === 1 ? 2 : 0;
+        glowStateArray[i * 4 + 2] = i === 0 ? 1 : 0;
+        glowStateArray[i * 4 + 3] = i % 2;
     }
 
     glassMesh.geometry.setAttribute('aState', new THREE.InstancedBufferAttribute(stateArray, 4));
@@ -906,7 +801,7 @@ export function createLevelNodesPilotTSL({ instanceCount = 6, particlesPerNode =
     glassMesh.instanceMatrix.needsUpdate = true;
 
     glowMesh.geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(glowColorArray, 3));
-    glowMesh.geometry.setAttribute('aState', new THREE.InstancedBufferAttribute(glowStateArray, 3));
+    glowMesh.geometry.setAttribute('aState', new THREE.InstancedBufferAttribute(glowStateArray, 4));
     glowMesh.instanceMatrix.needsUpdate = true;
 
     group.add(glassMesh, glowMesh);
