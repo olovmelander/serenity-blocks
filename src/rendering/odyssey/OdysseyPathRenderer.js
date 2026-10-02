@@ -5,11 +5,13 @@
  * Creates a glowing 3D spline path that represents the player's odyssey
  * from Earth Core to Black Hole transcendence.
  *
- * WebGPU migration: the three glowing tubes (outer / core / glow) are now TSL
- * NodeMaterials built by odyssey-path-renderer.tsl.js (WebGPURenderer cannot render
- * raw GLSL THREE.ShaderMaterial). The variable-radius tube geometry, pathCurve, and the
- * full public API (buildPath/rebuildPath/update/triggerChapterTransition/pathCurve/…)
- * are unchanged; only the materials moved GLSL→TSL.
+ * The ribbon is two draws: an opaque BODY and an additive HAZE shell, both TSL
+ * NodeMaterials built by odyssey-path-renderer.tsl.js on CENTRE-LINE geometry (the radius
+ * is applied in the vertex shader so the ribbon can collapse near the lens, hold a pixel
+ * floor in the distance and taper at its ends). The old third "core" tube sat entirely
+ * inside the opaque body and was never visible; its hot centre line now lives in the body.
+ * Public API (buildPath/rebuildPath/update/triggerChapterTransition/setSeamPhase/pathCurve/…)
+ * is unchanged.
  */
 
 import * as THREE from 'three/webgpu';
@@ -17,30 +19,28 @@ import { uniform } from 'three/tsl';
 import { buildOdysseyPathCurve } from './path-utils.js';
 import {
     createPathOuterTSL,
-    createPathCoreTSL,
     createPathGlowTSL,
     createPathChapterUniforms,
+    createPathCentreLineGeometry,
     ODYSSEY_PATH_CROSS_SECTION,
 } from './odyssey-path-renderer.tsl.js';
 import {
     ODYSSEY_CHAPTER_PROFILES,
 } from './chapter-environments/shared/chapter-profile.js';
 
-// ── Path-tube LOD ceilings (Batch 2 perf) ────────────────────────────────────────
-// The path is ALWAYS ON (drawn in every chapter), so its resident vert count is paid
-// every frame. The locked spec (ODYSSEY_PATH_CROSS_SECTION) and the live ODYSSEY_PATH_DATA
-// over-tessellate it (up to 32/480 radial/tubular). Cap the live tube here so the
-// polygonal silhouette is still smooth but ~half the verts are shed with negligible
-// silhouette change. These are CEILINGS: any lower value supplied by pathData /
-// ODYSSEY_PATH_CROSS_SECTION is still honoured (Math.min), so the API + cross-section
-// consumers keep working. Tubular drives computeFrenetFrames(count) too — capping it
-// here also halves the Frenet-frame work.
+// ── Path-tube tessellation ───────────────────────────────────────────────────────
+// The path is ALWAYS ON (drawn in every chapter). Centre-line geometry: the radius lives in
+// the vertex shader, so these counts only decide how smooth the spline reads. 1536 rings
+// (~1.65 u apart over the 2533-u journey) remove the elbows 256 drew at every tight turn;
+// the haze is a soft additive shell and keeps half that. Body 1536x8 + haze 768x6 =
+// 33.8k triangles, replacing outer 256x8 + core 256x6 + glow 256x8 (11.3k) + 8 lit torus
+// markers (4.1k): +18k triangles of trivially cheap vertex work for -1 draw / -1 pipeline
+// here (and -8 draws / the only lit pipeline when the markers fold into the shader).
 const PATH_LOD = Object.freeze({
-    radialSegments: 16, // outer  (was up to 32)
-    coreRadialSegments: 12, // core   (was up to 24)
-    glowRadialSegments: 12, // glow   (was up to 20)
-    tubularSegments: 256, // outer/core (was up to 480 / live 300)
-    glowTubularSegments: 256, // glow   (was up to 320)
+    radialSegments: ODYSSEY_PATH_CROSS_SECTION.radialSegments,
+    tubularSegments: ODYSSEY_PATH_CROSS_SECTION.tubularSegments,
+    glowRadialSegments: ODYSSEY_PATH_CROSS_SECTION.glowRadialSegments,
+    glowTubularSegments: ODYSSEY_PATH_CROSS_SECTION.glowTubularSegments,
 });
 
 /**
@@ -52,10 +52,10 @@ export class OdysseyPathRenderer {
         this.aaa = !!options.aaa; // Diegetic per-chapter path styling.
         this.pathCurve = null;
         this.pathMesh = null;
-        this.pathCoreMesh = null; // Inner glowing core
         this.pathGlowMesh = null;
         this.chapterMarkers = [];
         this.progress = 0;
+        this.focus = null; // path position of the current node (frontier spark)
         this.time = 0;
         this.chapterTransition = null;
         this.positionSeam = null;
@@ -66,14 +66,12 @@ export class OdysseyPathRenderer {
         this._chapterColorCache = [];
         this._chapterUniforms = null; // TSL per-chapter uniform set (createPathChapterUniforms)
         this._chapterBounds = [];
-        this._chapterWidthScales = [];
         // Shared TSL time uniform ticked once per frame; passed into every builder so
         // the existing update() loop drives all three tubes.
         this._uTime = uniform(0);
         // Per-tube builder uniform sets ({ uTime, uProgress, uTransition* }) wired into
         // applyTransitionUniforms()/update() so animation still ticks (TSL .value setter).
         this._outerUniforms = null;
-        this._coreUniforms = null;
         this._glowUniforms = null;
         // QW12: applyTransitionUniforms() built a fresh [...].filter(Boolean) array per
         // call (twice/frame via updateChapterTransition). Build the targets array once
@@ -99,17 +97,13 @@ export class OdysseyPathRenderer {
         while (bounds.length < 9) bounds.push(1);
         if (bounds[bounds.length - 1] < 1) bounds.push(1);
 
-        const width = [];
-        for (let i = 0; i < 8; i += 1) {
-            const profile = ODYSSEY_CHAPTER_PROFILES[i] || ODYSSEY_CHAPTER_PROFILES[0];
-            width.push(Number.isFinite(profile.path.widthScale) ? profile.path.widthScale : 1);
-        }
-
         this._chapterBounds = bounds.slice(0, 9);
-        this._chapterWidthScales = width;
         // TSL per-chapter uniform set ({ uBounds[9], uBase[8], uEmissive[8], uStyle[8],
-        // uFlow, uHead, uBeat }) shared by the outer / core / glow TSL builders.
-        this._chapterUniforms = createPathChapterUniforms(bounds.slice(0, 9));
+        // uWidth[8], uArc, uFlow, uHead, uBeat }) shared by the body + haze builders. uArc
+        // turns the arc parameter into world units so every pattern is sized in metres.
+        this._chapterUniforms = createPathChapterUniforms(bounds.slice(0, 9), {
+            arcLength: this.pathCurve?.getLength?.(),
+        });
     }
 
     /**
@@ -130,7 +124,7 @@ export class OdysseyPathRenderer {
         // Create outer glow tube
         this.createPathGlow(pathData);
 
-        // Add chapter transition markers
+        // Chapter thresholds live in the ribbon shader (no marker meshes).
         this.createChapterMarkers(pathData.chapterPositions);
 
         console.log('[OdysseyPath] Path built with', pathData.controlPoints.length, 'control points');
@@ -143,228 +137,69 @@ export class OdysseyPathRenderer {
         this.setProgress(progress);
     }
 
-    _getChapterWidthScaleAt(t) {
-        const x = THREE.MathUtils.clamp(t, 0, 1);
-        const bounds = this._chapterBounds?.length ? this._chapterBounds : [0, 1];
-        const widths = this._chapterWidthScales?.length ? this._chapterWidthScales : [1];
-
-        for (let index = 0; index < Math.min(8, bounds.length - 1); index += 1) {
-            const lo = bounds[index];
-            const hi = bounds[index + 1];
-            if (x >= lo && x <= hi) {
-                const current = widths[index] ?? 1;
-                const next = widths[Math.min(index + 1, widths.length - 1)] ?? current;
-                const seam = 0.018;
-                if (x > hi - seam && index < widths.length - 1) {
-                    const mix = THREE.MathUtils.smoothstep(x, hi - seam, hi);
-                    return THREE.MathUtils.lerp(current, next, mix);
-                }
-                return current;
-            }
-        }
-
-        return widths[widths.length - 1] ?? 1;
-    }
-
-    _createVariableTubeGeometry(radius, radialSegments = 12, tubularSegments = 240) {
-        const segments = Math.max(2, Math.floor(tubularSegments));
-        const sides = Math.max(3, Math.floor(radialSegments));
-        const vertexCount = (segments + 1) * (sides + 1);
-        const positions = new Float32Array(vertexCount * 3);
-        const normals = new Float32Array(vertexCount * 3);
-        const uvs = new Float32Array(vertexCount * 2);
-        const indices = [];
-        const frames = this.pathCurve.computeFrenetFrames(segments, false);
-        const point = new THREE.Vector3();
-        const radial = new THREE.Vector3();
-
-        for (let i = 0; i <= segments; i += 1) {
-            const t = i / segments;
-            this.pathCurve.getPointAt(t, point);
-            const scaledRadius = radius * this._getChapterWidthScaleAt(t);
-
-            for (let j = 0; j <= sides; j += 1) {
-                const v = j / sides;
-                const angle = v * Math.PI * 2;
-                radial.copy(frames.normals[i]).multiplyScalar(Math.cos(angle));
-                radial.addScaledVector(frames.binormals[i], Math.sin(angle)).normalize();
-
-                const vertexIndex = i * (sides + 1) + j;
-                const p3 = vertexIndex * 3;
-                positions[p3] = point.x + radial.x * scaledRadius;
-                positions[p3 + 1] = point.y + radial.y * scaledRadius;
-                positions[p3 + 2] = point.z + radial.z * scaledRadius;
-                normals[p3] = radial.x;
-                normals[p3 + 1] = radial.y;
-                normals[p3 + 2] = radial.z;
-
-                const uvIndex = vertexIndex * 2;
-                uvs[uvIndex] = t;
-                uvs[uvIndex + 1] = v;
-            }
-        }
-
-        for (let i = 0; i < segments; i += 1) {
-            for (let j = 0; j < sides; j += 1) {
-                const a = i * (sides + 1) + j;
-                const b = (i + 1) * (sides + 1) + j;
-                const c = (i + 1) * (sides + 1) + j + 1;
-                const d = i * (sides + 1) + j + 1;
-                indices.push(a, b, d, b, c, d);
-            }
-        }
-
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-        geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-        geometry.setIndex(indices);
-        geometry.computeBoundingSphere();
-        return geometry;
-    }
-
     /**
-     * Build a TSL builder material, then swap in this renderer's variable-radius tube
-     * geometry. The builders (odyssey-path-renderer.tsl.js) create a throwaway uniform
-     * TubeGeometry/mesh on their own demo curve — we keep the builder's NodeMaterial +
-     * returned uniform nodes, dispose its geometry, and mount the material on our
-     * variable-radius geometry so the diegetic surface still maps over uv (x = along
-     * path, y = around tube). Both the legacy and AAA paths route through here.
-     * @param {Function} builder createPathOuterTSL / createPathCoreTSL / createPathGlowTSL
-     * @param {THREE.BufferGeometry} geometry variable-radius tube geometry
+     * Build a body/haze material on centre-line geometry (radius applied in-shader).
+     * @param {Function} builder createPathOuterTSL / createPathGlowTSL
+     * @param {THREE.BufferGeometry} geometry centre-line geometry
+     * @param {number} radius body radius (the haze builder scales it by glowScale)
      * @returns {{ mesh: THREE.Mesh, uniforms: object }}
      */
-    _buildTSLTube(builder, geometry) {
+    _buildTSLTube(builder, geometry, radius) {
         const built = builder(this._uTime, {
             chapter: this._chapterUniforms,
             curve: this.pathCurve,
+            geometry,
+            radius,
         });
-        // Discard the builder's throwaway demo geometry; mount its material on ours.
-        built.geometry?.dispose?.();
-        const mesh = new THREE.Mesh(geometry, built.material);
-        mesh.name = built.mesh?.name || 'odyssey-path-tube';
-        return { mesh, uniforms: built.uniforms };
+        return { mesh: built.mesh, uniforms: built.uniforms };
     }
 
     createPathTube(pathData) {
-        // ═══════════════════════════════════════════════════════════════════
-        // OUTER PATH TUBE - Main visible path
-        // ═══════════════════════════════════════════════════════════════════
-        const outerRadius = pathData.radius || 0.6; // Increased from 0.3
-        // Batch2 LOD: cap radial/tubular at PATH_LOD ceilings (the always-on tube sheds
-        // ~half its verts with negligible silhouette change). Math.min keeps any lower
-        // value supplied by pathData / the cross-section spec honoured. computeFrenetFrames
-        // is driven by the (capped) tubular count inside _createVariableTubeGeometry.
-        const geometry = this._createVariableTubeGeometry(
-            outerRadius,
-            Math.min(
-                pathData.radialSegments || ODYSSEY_PATH_CROSS_SECTION.radialSegments,
-                PATH_LOD.radialSegments,
-            ),
-            Math.min(
-                pathData.segments || ODYSSEY_PATH_CROSS_SECTION.tubularSegments,
-                PATH_LOD.tubularSegments,
-            ),
+        // BODY — the visible ribbon. Its hot centre line replaces the old core tube.
+        const radius = pathData.radius || ODYSSEY_PATH_CROSS_SECTION.outerRadius;
+        const geometry = createPathCentreLineGeometry(
+            this.pathCurve,
+            PATH_LOD.tubularSegments,
+            PATH_LOD.radialSegments,
         );
-
-        // P3: the per-chapter diegetic colour/style branch (TSL NodeMaterial) replaces the
-        // legacy orange→purple GLSL gradient — required on WebGPURenderer.
-        const outer = this._buildTSLTube(createPathOuterTSL, geometry);
+        const outer = this._buildTSLTube(createPathOuterTSL, geometry, radius);
         this.pathMesh = outer.mesh;
         this._outerUniforms = outer.uniforms;
         this.scene.add(this.pathMesh);
-
-        // ═══════════════════════════════════════════════════════════════════
-        // INNER CORE - Bright glowing center line
-        // ═══════════════════════════════════════════════════════════════════
-        const coreRadius = outerRadius * 0.3; // Inner core is 30% of outer
-        // Batch2 LOD: core sits inside the outer tube — fewer radial sides read fine and
-        // the tubular count is capped to match the outer.
-        const coreGeometry = this._createVariableTubeGeometry(
-            coreRadius,
-            Math.max(6, Math.min(
-                Math.floor((pathData.radialSegments || ODYSSEY_PATH_CROSS_SECTION.radialSegments) * 0.75),
-                PATH_LOD.coreRadialSegments,
-            )),
-            Math.min(
-                pathData.segments || ODYSSEY_PATH_CROSS_SECTION.coreTubularSegments,
-                PATH_LOD.tubularSegments,
-            ),
-        );
-
-        const core = this._buildTSLTube(createPathCoreTSL, coreGeometry);
-        this.pathCoreMesh = core.mesh;
-        this._coreUniforms = core.uniforms;
-        this.scene.add(this.pathCoreMesh);
     }
 
     createPathGlow(pathData) {
-        // Batch2 LOD: the glow halo is a soft additive shell — radial/tubular caps are
-        // invisible there. Math.min keeps lower pathData / cross-section values honoured.
-        const geometry = this._createVariableTubeGeometry(
-            (pathData.radius || 0.3) * 2,
-            Math.max(6, Math.min(
-                Math.floor(pathData.radialSegments || ODYSSEY_PATH_CROSS_SECTION.glowRadialSegments),
-                PATH_LOD.glowRadialSegments,
-            )),
-            Math.min(
-                pathData.segments || ODYSSEY_PATH_CROSS_SECTION.glowTubularSegments,
-                PATH_LOD.glowTubularSegments,
-            ),
+        // HAZE — the additive shell around the body.
+        const radius = pathData.radius || ODYSSEY_PATH_CROSS_SECTION.outerRadius;
+        const geometry = createPathCentreLineGeometry(
+            this.pathCurve,
+            PATH_LOD.glowTubularSegments,
+            PATH_LOD.glowRadialSegments,
         );
-
-        const glow = this._buildTSLTube(createPathGlowTSL, geometry);
+        const glow = this._buildTSLTube(createPathGlowTSL, geometry, radius);
         this.pathGlowMesh = glow.mesh;
         this._glowUniforms = glow.uniforms;
         this.scene.add(this.pathGlowMesh);
 
         // QW12: build the applyTransitionUniforms targets array ONCE (was rebuilt per call).
-        // createPathTube (outer+core) runs before createPathGlow in buildPath, so all three
-        // uniform sets exist here.
         this._transitionTargets = [
             this._outerUniforms,
-            this._coreUniforms,
             this._glowUniforms,
         ].filter(Boolean);
     }
 
-    createChapterMarkers(chapterPositions) {
-        // Fresh rings (and, on rebuild, fresh tube uniform sets) start at the rest pose
-        // but the tube transition uniforms still need their one-time reset applied — clear
-        // the latch so updateChapterTransition re-applies the steady state once.
+    /**
+     * Chapter THRESHOLDS are drawn by the ribbon shader itself (two collars standing proud of
+     * the rail either side of each boundary — see thresholdCollars() in
+     * odyssey-path-renderer.tsl.js). The eight lit Standard-material torus rings that used to
+     * mark them cost 8 draws and the journey's only light-set-dependent pipeline, and every one
+     * sat around the first orb of its chapter (each chapter starts ON a level node). Kept as a
+     * no-op so callers and the rebuild path keep their shape; `chapterMarkers` stays empty.
+     */
+    createChapterMarkers() {
+        // Fresh tube uniform sets start at the rest pose but the transition uniforms still need
+        // their one-time reset applied — clear the latch so updateChapterTransition re-applies.
         this._steadyStateApplied = false;
-        chapterPositions.forEach((pos, index) => {
-            if (index >= ODYSSEY_CHAPTER_PROFILES.length) {
-                return;
-            }
-            const chapterColor = this.getChapterColor(index + 1);
-
-            const point = this.pathCurve.getPointAt(pos);
-
-            // Create ring marker. SELF-LIT via emissive: the body color is black so
-            // the ring never depends on chapter lights (several chapters — Deep Ocean
-            // among them — run with no local lights at all, which made the lit body
-            // render as the "unlit black torus" flagged by the creative plan's Ch2
-            // diagnosis). The emissive term renders without lights, and the seam code
-            // animates material.emissive/emissiveIntensity, so the material MUST stay
-            // MeshStandardMaterial (updateChapterTransition writes those every frame).
-            const geometry = new THREE.TorusGeometry(1.5, 0.1, 8, 32);
-            const material = new THREE.MeshStandardMaterial({
-                color: 0x000000,
-                emissive: chapterColor,
-                emissiveIntensity: 0.5,
-            });
-
-            const ring = new THREE.Mesh(geometry, material);
-            ring.position.copy(point);
-
-            // Orient ring to face along path
-            const tangent = this.pathCurve.getTangentAt(pos);
-            ring.lookAt(point.clone().add(tangent));
-
-            this.chapterMarkers.push(ring);
-            this.scene.add(ring);
-        });
     }
 
     /**
@@ -373,6 +208,15 @@ export class OdysseyPathRenderer {
      */
     setProgress(normalizedProgress) {
         this.progress = THREE.MathUtils.clamp(normalizedProgress, 0, 1);
+    }
+
+    /**
+     * Path position of the "current" node (the one to play next) — where the ribbon's
+     * frontier spark sits. null → the spark follows the lit frontier (setProgress).
+     * @param {number|null} position
+     */
+    setFocus(position) {
+        this.focus = Number.isFinite(position) ? THREE.MathUtils.clamp(position, 0, 1) : null;
     }
 
     getChapterColor(chapterId) {
@@ -457,13 +301,16 @@ export class OdysseyPathRenderer {
     update(deltaTime, directorState = null) {
         this.time += deltaTime;
 
-        // Shared TSL time uniform drives all three tubes (outer/core/glow).
+        // Shared TSL time uniform drives both tubes (body/haze).
         this._uTime.value = this.time;
 
         // Per-tube progress (TSL uniform nodes returned by the builders).
         if (this._outerUniforms) this._outerUniforms.uProgress.value = this.progress;
-        if (this._coreUniforms) this._coreUniforms.uProgress.value = this.progress;
         if (this._glowUniforms) this._glowUniforms.uProgress.value = this.progress;
+        // Frontier spark: the current node (or the lit frontier when none is set).
+        if (this._chapterUniforms?.uFocus) {
+            this._chapterUniforms.uFocus.value = Number.isFinite(this.focus) ? this.focus : -1;
+        }
 
         // P3: drive the diegetic flow toward the head + beat pulse from director state.
         if (this.aaa && this._chapterUniforms) {
@@ -473,11 +320,6 @@ export class OdysseyPathRenderer {
         }
 
         this.updateChapterTransition();
-
-        // Rotate chapter markers subtly
-        this.chapterMarkers.forEach((ring, i) => {
-            ring.rotation.z += deltaTime * 0.2 * (i % 2 === 0 ? 1 : -1);
-        });
     }
 
     updateChapterTransition() {
@@ -493,24 +335,6 @@ export class OdysseyPathRenderer {
                 Math.max(0.006, seam.width),
                 seam.incomingColor,
             );
-
-            this.chapterMarkers.forEach((ring, index) => {
-                const chapterId = index + 1;
-                const { material } = ring;
-                const chapterColor = this.getChapterColor(chapterId);
-                material.emissive.copy(chapterColor);
-                if (chapterId === seam.toChapter) {
-                    material.emissive.lerp(seam.incomingColor, 0.4);
-                    material.emissiveIntensity = 0.5 + envelope * 1.15;
-                    ring.scale.setScalar(1 + envelope * 0.26);
-                } else if (chapterId === seam.fromChapter) {
-                    material.emissiveIntensity = 0.5 + envelope * 0.45;
-                    ring.scale.setScalar(1 + envelope * 0.12);
-                } else {
-                    material.emissiveIntensity = 0.5;
-                    ring.scale.setScalar(1);
-                }
-            });
             return;
         }
 
@@ -524,13 +348,6 @@ export class OdysseyPathRenderer {
                 return;
             }
             this.applyTransitionUniforms(0, 0.5, 0.08, this.transitionResetColor);
-            this.chapterMarkers.forEach((ring, index) => {
-                const { material } = ring;
-                const chapterColor = this.getChapterColor(index + 1);
-                material.emissive.copy(chapterColor);
-                material.emissiveIntensity = 0.5;
-                ring.scale.setScalar(1);
-            });
             this._steadyStateApplied = true;
             return;
         }
@@ -553,24 +370,6 @@ export class OdysseyPathRenderer {
             0.08 + ((1 - rawProgress) * 0.04),
             this.chapterTransition.incomingColor,
         );
-
-        this.chapterMarkers.forEach((ring, index) => {
-            const chapterId = index + 1;
-            const { material } = ring;
-            const chapterColor = this.getChapterColor(chapterId);
-            material.emissive.copy(chapterColor);
-            if (chapterId === this.chapterTransition.toChapter) {
-                material.emissive.lerp(this.chapterTransition.incomingColor, 0.35);
-                material.emissiveIntensity = 0.5 + (envelope * 1.1);
-                ring.scale.setScalar(1 + (envelope * 0.25));
-            } else if (chapterId === this.chapterTransition.fromChapter) {
-                material.emissiveIntensity = 0.5 + (envelope * 0.45);
-                ring.scale.setScalar(1 + (envelope * 0.12));
-            } else {
-                material.emissiveIntensity = 0.5;
-                ring.scale.setScalar(1);
-            }
-        });
 
         if (rawProgress >= 1) {
             this.chapterTransition.active = false;
@@ -602,13 +401,6 @@ export class OdysseyPathRenderer {
             this.pathMesh = null;
         }
 
-        if (this.pathCoreMesh) {
-            this.pathCoreMesh.geometry.dispose();
-            this.pathCoreMesh.material.dispose();
-            this.scene.remove(this.pathCoreMesh);
-            this.pathCoreMesh = null;
-        }
-
         if (this.pathGlowMesh) {
             this.pathGlowMesh.geometry.dispose();
             this.pathGlowMesh.material.dispose();
@@ -616,17 +408,11 @@ export class OdysseyPathRenderer {
             this.pathGlowMesh = null;
         }
 
-        this.chapterMarkers.forEach((ring) => {
-            ring.geometry.dispose();
-            ring.material.dispose();
-            this.scene.remove(ring);
-        });
         this.chapterMarkers = [];
         this.pathCurve = null;
         this.positionSeam = null;
         this.chapterTransition = null;
         this._outerUniforms = null;
-        this._coreUniforms = null;
         this._glowUniforms = null;
         this._transitionTargets = [];
         this._chapterUniforms = null;

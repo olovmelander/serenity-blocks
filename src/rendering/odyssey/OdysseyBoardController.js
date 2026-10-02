@@ -981,6 +981,8 @@ export class OdysseyBoardController {
         }
         await this.nodeManager.createNodes(this.levelData, this._yieldTask.bind(this));
         this.nodeManager.updateFromProgress(this.progressData);
+        // The ribbon's lit frontier starts at the furthest unlocked node (not at 0).
+        this._syncPathFrontier(this.progressData);
 
         // A/B lever, applied HERE so it works on its own (fixed 2026-08-12). It used to be
         // read only inside _sampleGpuProfile, i.e. ?odysseyHideLevelNodes=1 was a silent
@@ -4189,11 +4191,23 @@ export class OdysseyBoardController {
     updateProgress(progressData) {
         this.progressData = progressData;
         this.nodeManager?.updateFromProgress(progressData);
-        // totalLevels + 1, computed — the old literal 56 quietly under-reported the
-        // trail once the space lengthening took the roster from 55 to 59 levels.
-        this.pathRenderer?.setProgress(
-            progressData.furthestLevel / (this.levelData.length + 1 || 60),
-        );
+        this._syncPathFrontier(progressData);
+    }
+
+    /**
+     * Light the ribbon up to the furthest unlocked node's REAL path position. The ribbon
+     * compares this against arc length, so the old `furthestLevel / (levels + 1)` index
+     * fraction missed the node by up to ~380 u (level 36 sits at 0.754; the fraction read
+     * 0.60). The fraction stays only as a fallback before the nodes exist.
+     * @param {Object} progressData
+     */
+    _syncPathFrontier(progressData) {
+        if (!this.pathRenderer || !progressData) return;
+        const frontier = this.nodeManager?.getFrontierPathPosition?.();
+        this.pathRenderer.setProgress(Number.isFinite(frontier)
+            ? frontier
+            : (progressData.furthestLevel || 1) / (this.levelData.length + 1 || 60));
+        this.pathRenderer.setFocus?.(this.nodeManager?.getCurrentPathPosition?.() ?? null);
     }
 
     getLayoutData() {
@@ -4232,6 +4246,8 @@ export class OdysseyBoardController {
         this.nodeManager.updateLayout(this.levelData, this.pathRenderer.pathCurve);
         if (this.progressData) {
             this.nodeManager.updateFromProgress(this.progressData);
+            // The re-laid-out nodes moved along the path; the lit frontier follows them.
+            this._syncPathFrontier(this.progressData);
         }
 
         this.cameraController.applyLayout(this.pathRenderer.pathCurve, {
