@@ -7,9 +7,12 @@
  * purple/cyan lumps with yellow crests and hard silhouettes floating on black — a cumulus
  * language that belongs to the sky chapters, not to interstellar gas.
  *
- * NOW (masterpiece pass, 2026-10): the same six placements and the same two draws (one per
- * paint role), but each mass is a small cluster of soft ELLIPSOIDAL GAS VOLUMES, and the mesh
- * that carries them is only a COVERAGE PROXY (an icosphere hull just outside each volume):
+ * NOW (masterpiece pass, 2026-10): the same six placements, but each mass is a small cluster of
+ * soft ELLIPSOIDAL GAS VOLUMES, and the mesh that carries them is only a COVERAGE PROXY (an
+ * icosphere hull just outside each volume). Seamless pass (2026-10): ONE draw for all six
+ * masses (the two paint-role meshes compiled the identical graph twice), hulls hugging their
+ * gas (margin 1.08 -> 1.03), the noise read from the baked lattice (one texture fetch per
+ * octave instead of eight hashes) and the octave budget gated by quality tier:
  *
  * - THICKNESS, NOT SURFACE. Each fragment intersects its view ray with its volume's ellipsoid
  *   and reads the normalised half-chord — 1 through the core, 0 at the rim. That is the
@@ -22,9 +25,9 @@
  * - VALUE LADDER. Hot heart → body hue → cool transparent rim; one dominant hue per mass with
  *   a complementary accent riding the filaments (palette per mass below).
  *
- * Blending is ADDITIVE (order-independent — the two draws and every other additive layer in
- * the chapter composite correctly in any order). FrontSide on closed hulls keeps the overdraw
- * to one layer per volume; satellites overlapping their primary is where a mass is densest.
+ * Blending is ADDITIVE (order-independent — the draw and every other additive layer in the
+ * chapter composite correctly in any order). FrontSide on closed hulls keeps the overdraw to
+ * one layer per volume; satellites overlapping their primary is where a mass is densest.
  *
  * REVEAL: still deliberately NOT in the chapter's `entryContinuity` buckets — those write
  * `material.opacity`, which an opacityNode overrides (r181+). The field group exposes ONE
@@ -36,11 +39,13 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute, cameraPosition, clamp, dot, float, fract, int, mix, modelWorldMatrixInverse,
-    normalWorld, normalize, oneMinus, positionWorld, pow, smoothstep, sqrt, uniform,
+    normalWorld, normalize, oneMinus, positionLocal, positionWorld, pow, smoothstep, sqrt, uniform,
     uniformArray, varying, vec3, vec4,
 } from 'three/tsl';
 import { cloudFieldSdf } from '../world/odyssey-cloud-field.js';
-import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
+import { fbm3, noise3, ridged3 } from './shared/odyssey-tsl-noise.js';
+import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
+import { resolveQualityTier } from './shared/odyssey-quality-tier.js';
 import {
     NEBULA_FIELD_CLEARANCE,
     ODYSSEY_NEBULA_FIELD_SPECS,
@@ -94,8 +99,11 @@ const GAS_SCALE = Object.freeze({
 // Depth of a mass as a fraction of its width (the sculpt grammar's ~0.3w lobe spread).
 const GAS_DEPTH = 0.62;
 // The coverage hull sits this much outside the gas ellipsoid, so the hull's own silhouette
-// is always empty space (thickness reaches 0 inside it).
-export const NEBULA_PROXY_MARGIN = 1.08;
+// is always empty space (thickness reaches 0 inside it). Seamless pass: 1.08 -> 1.03. The
+// detail-3 icosphere's flattest facet dips to ~0.988 of its vertex radius, so 1.03 still
+// clears the ellipsoid (>= 1.017) while every hull rasterises ~9% fewer additive fragments
+// that could only ever shade to zero.
+export const NEBULA_PROXY_MARGIN = 1.03;
 // Icosphere detail of each proxy (detail 3 = 320 faces — round enough at any size the
 // chapter frames it, since it only bounds the gas and is never itself seen).
 const PROXY_DETAIL = 3;
@@ -268,7 +276,24 @@ function paletteArrays(specs) {
     };
 }
 
-function buildGasMaterial(uReveal, uTime, palette) {
+/**
+ * Octave budget per quality tier, for the two FRAGMENT-rate fields (the low-frequency warp and
+ * dust lanes run per vertex — see buildGasMaterial). `high` keeps the masterpiece-pass detail:
+ * a 3-octave body and 2-octave filaments (1 analytic noise + 4 lattice fetches per fragment).
+ * `medium` (Lane B, the iGPU) and `low` drop the body's third octave and the filaments' second
+ * — the finest wisps and hairline crests, a few pixels wide at the masses' framed size.
+ */
+export const NEBULA_OCTAVES = Object.freeze({
+    high: Object.freeze({ gas: 3, filaments: 2 }),
+    medium: Object.freeze({ gas: 2, filaments: 1 }),
+    low: Object.freeze({ gas: 2, filaments: 1 }),
+});
+
+// fbm3/ridged3 are NOT normalised: amplitude sums for 1-4 octaves are 0.5/0.75/0.875/0.9375.
+const OCTAVE_SUM = [0, 0.5, 0.75, 0.875, 0.9375];
+
+function buildGasMaterial(uReveal, uTime, palette, tier = 'high') {
+    const octaves = NEBULA_OCTAVES[tier] ?? NEBULA_OCTAVES.high;
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.FrontSide });
     material.transparent = true;
     material.depthWrite = false;
@@ -288,8 +313,11 @@ function buildGasMaterial(uReveal, uTime, palette) {
     const accent = varying(palette.uAccent.element(index));
 
     // ── THICKNESS: the view ray through the volume's ellipsoid (corridor-local frame) ──
+    // `positionLocal` IS the corridor-local hull point (the mesh carries no transform of its
+    // own beyond the corridor's); in the fragment stage it arrives as a varying, which saves
+    // the per-fragment inverse-matrix multiply the world round trip used to cost.
     const camL = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1.0)).xyz;
-    const pL = modelWorldMatrixInverse.mul(vec4(positionWorld, 1.0)).xyz;
+    const pL = positionLocal;
     const o = camL.sub(C).div(R);
     const dn = normalize(pL.sub(camL).div(R));
     const b = dot(o, dn);
@@ -299,23 +327,51 @@ function buildGasMaterial(uReveal, uTime, palette) {
     const surface = pL.sub(C).div(R);
 
     // ── STRUCTURE: domain-warped body, ridged filaments, low-frequency dust lanes ──
+    // NOISE BUDGET (pre-merge review: 15 -> 9 octaves; seamless pass: 9 analytic octaves per
+    // fragment -> 1 analytic + 2-4 baked-lattice fetches). The warp only needs low-frequency
+    // drift (1 octave each); the gas body keeps 3, the filaments 2, the broad dust lanes 1 — the
+    // octaves cut were sub-feature detail the smoothstep thresholds below flatten anyway. Each
+    // field is rescaled by the ratio of amplitude sums (OCTAVE_SUM) to keep the value range
+    // every threshold below was tuned against — which also lets the tier drop octaves freely.
+    //
+    // VERTEX-RATE LOW FREQUENCIES (seamless pass). The sample point, its three-axis warp and
+    // the dust-lane field all vary by about one lattice cell across a whole volume (q * 0.6,
+    // q * 0.5), while a hull triangle spans ~1/20 of it — so they are evaluated once per
+    // VERTEX (162 per hull) and interpolated, instead of once per fragment (~10^5 per hull).
+    // At that rate they keep the ANALYTIC noise (8 hashes per vertex is free), so the masses'
+    // shapes are exactly the masterpiece pass's. The thickness stays per fragment: it is what
+    // draws the soft rim, and sqrt(1 - c^2) is the one term here that is not smooth across a
+    // triangle. So does the lanes' ridge FOLD: only the smooth noise value is interpolated and
+    // the crease (1 - |2n - 1|)^2 is taken per fragment, so a lane's crest stays sharp.
+    //
+    // WHICH OCTAVES MAY BE BAKED. Each mass spans only ~3 lattice cells, so its silhouette and
+    // brightness ARE the particular random values of the gas's first octave — the masses were
+    // composed against analytic noise3's values, and a re-seeded first octave re-dealt them
+    // (measured: -24 % frame luma, chunkier lobes). So the first gas octave stays analytic
+    // (one noise3 per fragment) and only the detail octaves — finer than a mass's shape, where
+    // any random deal reads the same — come from the lattice (shared/odyssey-lattice-noise.js:
+    // one texture fetch per octave instead of eight hashes).
     const t = uTime.mul(0.010);
     const q = mix(mid, surface, 0.25).mul(1.6).add(vec3(seed.mul(17.0), seed.mul(-9.0), t));
-    // NOISE BUDGET 15 -> 9 octaves per fragment (pre-merge review: no tier gate, unmeasured).
-    // The warp only needs low-frequency drift (1 octave each); the gas body keeps 3, the
-    // filaments 2, the broad dust lanes 1 — the octaves cut were sub-feature detail the
-    // smoothstep thresholds below flatten anyway. fbm3/ridged3 are NOT normalised (amplitude
-    // sums 0.5 / 0.75 / 0.875 / 0.9375 for 1-4 octaves), so each call is rescaled by the ratio
-    // of sums to keep the value range every threshold below was tuned against.
     const warp = vec3(
         fbm3(q.mul(0.6), 1).mul(1.5),
         fbm3(q.mul(0.6).add(vec3(5.2, 1.3, 2.7)), 1).mul(1.5),
         fbm3(q.mul(0.6).add(vec3(2.1, 7.7, 4.4)), 1).mul(1.5),
     ).sub(0.5).mul(1.2);
-    const qw = q.add(warp);
-    const gas = smoothstep(0.28, 0.72, fbm3(qw, 3).mul(0.9375 / 0.875));
-    const fil = ridged3(qw.mul(1.4).add(11.0), 2).mul(0.875 / 0.75);
-    const lane = ridged3(qw.mul(0.5).add(23.0), 1).mul(1.5);
+    const qwVertex = q.add(warp);
+    const qw = varying(qwVertex, 'vNebulaQw');
+    // ridged3(x, 1) * 1.5 == 0.75 * (1 - |2 n(x) - 1|)^2 — written out so the fold is per fragment.
+    const laneNoise = varying(noise3(qwVertex.mul(0.5).add(23.0)), 'vNebulaLane');
+    const laneFold = float(1.0).sub(laneNoise.mul(2.0).sub(1.0).abs());
+    const lane = laneFold.mul(laneFold).mul(0.75);
+    // fbm3's octave walk written out: octave 1 analytic, octaves 2+ from the lattice.
+    let gasField = noise3(qw).mul(0.5);
+    for (let octave = 1; octave < octaves.gas; octave += 1) {
+        gasField = gasField.add(latticeNoise3(qw.mul(2.03 ** octave)).mul(0.5 ** (octave + 1)));
+    }
+    const gas = smoothstep(0.28, 0.72, gasField.mul(0.9375 / OCTAVE_SUM[octaves.gas]));
+    const fil = ridged3(qw.mul(1.4).add(11.0), octaves.filaments, latticeNoise3)
+        .mul(0.875 / OCTAVE_SUM[octaves.filaments]);
 
     // EROSION, bounded by the ellipsoid: the rim only reaches out where the noise is dense,
     // and nothing survives outside the ellipsoid (thick = 0 ⇒ d < 0).
@@ -338,43 +394,44 @@ function buildGasMaterial(uReveal, uTime, palette) {
     emission = emission.add(accent.xyz.mul(filaments).mul(0.12));
     emission = emission.mul(float(1.0).sub(dust.mul(0.92)));
 
-    // Backstop fade on the hull itself (it is already empty there by construction).
+    // Backstop fade on the hull itself (it is already empty there by construction). Its ramp
+    // has to end INSIDE the facing range where hull rays still miss the gas: a ray grazing the
+    // ellipsoid meets a hull of margin m at facing sqrt(1 - 1/m^2) (0.24 at m = 1.03), so the
+    // old 0.55 ramp — sized for the 1.08 hull — would now dim every mass's real rim.
     const V = normalize(cameraPosition.sub(positionWorld));
     const facing = clamp(dot(normalize(normalWorld), V), 0.0, 1.0);
-    const proxyFade = smoothstep(0.0, 0.55, facing);
+    const proxyFade = smoothstep(0.0, 0.2, facing);
 
     material.colorNode = emission.mul(body.w).mul(proxyFade);
     material.opacityNode = uReveal;
     return material;
 }
 
-export function createNebulaFieldTSL({ uTime = null } = {}) {
+export function createNebulaFieldTSL({ uTime = null, qualityTier = 'high' } = {}) {
     const uReveal = uniform(0);
     const time = uTime ?? uniform(0);
     const group = new THREE.Group();
     group.name = 'nebula-field';
 
-    const specIndexById = new Map(ODYSSEY_NEBULA_FIELD_SPECS.map((s, i) => [s.id, i]));
-    const palette = paletteArrays(ODYSSEY_NEBULA_FIELD_SPECS);
+    const specs = ODYSSEY_NEBULA_FIELD_SPECS;
+    const specIndexById = new Map(specs.map((s, i) => [s.id, i]));
+    const palette = paletteArrays(specs);
 
-    let triangles = 0;
-    let masses = 0;
-    const parts = [];
-    ['warm', 'cool'].forEach((paint) => {
-        const specs = ODYSSEY_NEBULA_FIELD_SPECS.filter((s) => s.paint === paint);
-        if (!specs.length) return;
-        const built = buildGasGeometry(specs, specIndexById);
-        const material = buildGasMaterial(uReveal, time, palette);
-        const mesh = new THREE.Mesh(built.geometry, material);
-        mesh.name = `nebula-field-${paint}`;
-        // Merged meshes spanning the corridor: the camera lives inside their bounds
-        // for most of the chapter — culling them would pop.
-        mesh.frustumCulled = false;
-        group.add(mesh);
-        parts.push({ mesh, material, geometry: built.geometry });
-        triangles += built.triangles;
-        masses += specs.length;
-    });
+    // ONE DRAW (seamless pass). The warm/cool split bought nothing: both meshes compiled the
+    // identical graph (the palette is indexed per spec, not per paint role) and, being
+    // additive, composite in any order — so every volume of every mass is one geometry on
+    // one material. `paint` still picks each mass's palette fallback.
+    const built = buildGasGeometry(specs, specIndexById);
+    const material = buildGasMaterial(uReveal, time, palette, resolveQualityTier(qualityTier));
+    const mesh = new THREE.Mesh(built.geometry, material);
+    mesh.name = 'nebula-field-gas';
+    // A merged mesh spanning the corridor: the camera lives inside its bounds for most of
+    // the chapter — culling it would pop.
+    mesh.frustumCulled = false;
+    group.add(mesh);
+    const parts = [{ mesh, material, geometry: built.geometry }];
+    const { triangles } = built;
+    const masses = specs.length;
 
     group.userData.uReveal = uReveal;
     group.userData.triangles = triangles;

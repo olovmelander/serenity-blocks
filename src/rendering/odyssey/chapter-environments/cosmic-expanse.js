@@ -703,6 +703,8 @@ export function createCosmicExpanseEnvironment(options = {}) {
     const nebulaSprites = readCh6UrlFlag('odysseyCh6NebulaSprites');
     const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL({
         uTime: uniforms.uTime,
+        // The board's quality preset (seamless pass): Medium/Low trim the gas's finest octaves.
+        qualityTier: options.qualityTier,
     }) : null;
     if (nebulaField) {
         corridor.add(nebulaField.mesh);
