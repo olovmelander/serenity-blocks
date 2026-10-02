@@ -1,13 +1,14 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, If,
-    abs, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, frontFacing,
+    abs, atan, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, frontFacing,
     length, max, min, mix, reflect, select, sign, sqrt,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
     screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition, cameraViewMatrix,
 } from 'three/tsl';
 
 import {
+    ODYSSEY_MASSIFS,
     ODYSSEY_NORTH_LAKE,
     ODYSSEY_SEA_LEVEL,
 } from './odyssey-world-height.js';
@@ -1465,8 +1466,55 @@ export function createOdysseyWorld({
         // slope; both port directly here, the jitter riding a low-frequency read of the detail
         // texture (one fetch) instead of procedural noise. The band is also tightened 620..790 ->
         // 620..730 now that the jitter, not the ramp width, is what softens the boundary.
-        const snowJitter = texture(detailTex, positionWorld.xz.mul(0.0016)).b.sub(0.5).mul(92);
-        const snowHeight = height.add(snowJitter).add(edgeBreak.mul(9)).toVar();
+        const snowJitterRaw = texture(detailTex, positionWorld.xz.mul(0.0016)).b.toVar();
+        /**
+         * SNOW FINGERS — wind-scoured ribs, snow in the couloirs (seamless pass, open item from the
+         * masterpiece pass: "summit snow is uniform rather than patchy").
+         *
+         * The jitter above made the snowline WOBBLE, and the crest strip took snow off the relief's
+         * convex bumps — but the relief is round ridged noise at ~450 u, so what that drew was
+         * camouflage: grey blotches scattered evenly over a cream cone, the same at every azimuth.
+         * A real snowy peak is organised by its FALL LINES: snow fills the couloirs that run down
+         * the flanks and reaches far below the cap in long tongues, while the ribs between them are
+         * scoured to stone well above it. On a cone the fall line is radial, so the couloirs are a
+         * function of AZIMUTH around the hero summit: ~11 fingers (two incommensurate harmonics, so
+         * no two are alike), warped by the same low-frequency noise the jitter reads and twisted
+         * gently with radius, so they meander as they descend instead of radiating like a clock
+         * face. Couloirs carry the snowline ~95 u lower, ribs lift it ~95 u higher; the baked
+         * gullies add their own (snow pools in hollows). Rock takes the opposite sign (the ribs).
+         *
+         * One atan + two sins, inside a branch on the hero's footprint — no derivative and no fetch
+         * inside, so it is legal in non-uniform flow, and the rest of the island skips it.
+         */
+        const heroMassif = ODYSSEY_MASSIFS.find((m) => m.id === 'hero');
+        const heroRel = positionWorld.xz.sub(vec2(heroMassif.x, heroMassif.z));
+        const heroR = length(heroRel);
+        const heroW = float(1).sub(smoothstep(
+            float(heroMassif.radius * 0.55),
+            float(heroMassif.radius * 0.95),
+            heroR,
+        )).toVar();
+        const couloir = Fn(() => {
+            const c = float(0).toVar();
+            If(heroW.greaterThan(0.001), () => {
+                const az = atan(heroRel.y, heroRel.x);
+                const fin = sin(az.mul(11).add(snowJitterRaw.mul(2.4)).add(heroR.mul(0.0045))).mul(0.62)
+                    .add(sin(az.mul(17).add(heroR.mul(0.006)).add(1.7)).mul(0.38));
+                // -1 on a rib, +1 down a couloir; drawn rather than ramped (a narrow-ish window),
+                // so tongues read as painted shapes.
+                c.assign(smoothstep(float(-0.20), float(0.50), fin).mul(2).sub(1).mul(heroW));
+            });
+            return c;
+        })().toVar();
+        // The jitter halves on the hero (the fingers own its structure now), not elsewhere.
+        const snowJitter = snowJitterRaw.sub(0.5).mul(mix(float(92), float(46), heroW));
+        const snowHeight = height.add(snowJitter).add(edgeBreak.mul(9))
+            .add(couloir.mul(95))
+            .add(gully.mul(70))
+            .toVar();
+        // The altitude the ROCK term reads: the ribs (couloir < 0) go to stone lower, the couloirs
+        // later — the opposite of the snow, which is what makes the stripes.
+        const alpineHeight = height.add(snowJitter).add(edgeBreak.mul(9)).sub(couloir.mul(45)).toVar();
         /**
          * SNOW, MINUS THE RIBS. The summit read as a sand dune in the ascent capture, and the
          * diagnosis was not the rock palette at all — measured, the pale cone screens at
@@ -1488,13 +1536,32 @@ export function createOdysseyWorld({
         const wSnow = smoothstep(float(620), float(730), snowHeight)
             .mul(float(1).sub(smoothstep(float(0.62), float(0.76), slope)))
             .mul(float(1).sub(smoothstep(float(0.18), float(0.40), crest).mul(float(GROUND_SNOW_CREST_STRIP))));
+        // The SLOPE half takes the same patch rule as the altitude half below: on the massif's
+        // mid flanks (slope 0.2-0.35, the whole ch4 view) a 0.17..0.40 ramp made every fragment
+        // part stone, part grass — the khaki. Off the massif the ramp is kept as it was.
+        const slopeRockRamp = smoothstep(float(0.17), float(0.40), slope.add(edgeBreak.mul(0.035)));
+        const slopeRockPatch = smoothstep(
+            snowJitterRaw.mul(0.55).add(edgeBreak.mul(0.25)).add(0.18),
+            snowJitterRaw.mul(0.55).add(edgeBreak.mul(0.25)).add(0.30),
+            smoothstep(float(0.13), float(0.42), slope),
+        );
         const wRock = clamp(max(
-            smoothstep(float(0.17), float(0.40), slope.add(edgeBreak.mul(0.035))),
+            mix(slopeRockRamp, slopeRockPatch, smoothstep(float(380), float(440), height)),
             // ...reaching FULL rock above the treeline (item 6). Capped at 0.75 it left a quarter
             // of every summit fragment to `kGrass`, whose dry pole is gold — 25 % gold over grey
             // stone is the khaki that made the snowless parts of the cone read as a dune.
-            smoothstep(float(470), float(640), snowHeight).mul(0.75)
-                .add(smoothstep(float(600), float(720), snowHeight).mul(0.25)),
+            // PATCHES, NOT A RAMP (seamless pass — "ch4 slopes read drab"). The old altitude term
+            // was a smooth 470..720 ramp, so every fragment in the band was part meadow, part
+            // stone — and a 40/60 blend of gold grass over grey rock IS khaki: the drab sheet the
+            // whole ch4 climb looks at. The same altitude now sets a PROBABILITY, and a patch
+            // field (the jitter's low-frequency noise, edged by the atlas break-up) decides each
+            // fragment: green alpine meadow islands in grey scree, thinning with height until the
+            // stone owns the cone. Every pixel lands on a real material, not on their average.
+            smoothstep(
+                snowJitterRaw.mul(0.62).add(edgeBreak.mul(0.25)).add(0.12),
+                snowJitterRaw.mul(0.62).add(edgeBreak.mul(0.25)).add(0.26),
+                smoothstep(float(440), float(700), alpineHeight),
+            ),
         ).add(crest.mul(uRidgeRock).mul(formGate)), 0, 1);
 
         /**
@@ -1524,11 +1591,14 @@ export function createOdysseyWorld({
         // because the midpoint of a two-pole lerp is already half-way to gold and the midpoint
         // is where most of the island sits. Ref1's lawn is GREEN with golden patches — so green
         // is the default and gold arrives only where the field says the ground is truly dry.
+        // ...and ALPINE meadows stay green (seamless pass): the dry pole is lowland gold, and on
+        // the massif's flanks it painted the khaki sheet; from the massif's foot (~370 u) up,
+        // most of the dryness is withdrawn, so the patches between the scree read as pasture.
         const dryness = smoothstep(
             float(ODYSSEY_GROUND_DRYNESS[0]),
             float(ODYSSEY_GROUND_DRYNESS[1]),
             moist,
-        ).toVar();
+        ).mul(float(1).sub(smoothstep(float(368), float(520), height).mul(0.72))).toVar();
         const poles = (mat) => mix(
             vec3(...ODYSSEY_GROUND_PALETTE[mat].damp),
             vec3(...ODYSSEY_GROUND_PALETTE[mat].dry),
