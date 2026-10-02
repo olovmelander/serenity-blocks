@@ -3227,12 +3227,35 @@ export function createOdysseyWorld({
     // ...and the underside family takes the same crevice shift, because from the climb the
     // camera mostly sees cumulus from BELOW, where the lit band never reaches: a fold in the
     // base drops into the under-shade tone before the open belly around it does.
-    const cfUnder = mix(
-        cloudUnderLit,
-        cloudUnderShade,
-        float(1).sub(smoothstep(float(-0.70).add(cfShift.mul(0.6)), float(-0.20).add(cfShift.mul(0.6)), cfN.y)),
+    // THE BASE, SEEN FROM BELOW (seamless pass — "clouds seen from below look wrong/flat"). Looking
+    // up at a cumulus the whole silhouette is underside, and both under tones sat within ~14 % of
+    // the lit body and of the sky behind them — a flat lilac cut-out. A real base has a CORE: the
+    // thickest, down-facing middle is the darkest thing in the cloud (a cool slate), so it now
+    // falls a step deeper than `cloudUnderShade` on the most down-facing faces, over a wider
+    // window, while the shoulders keep the lighter under tone. Still lighter than the zenith
+    // behind it (the anti-navy rule), and the bright edge below finishes the read.
+    // The sculpted masses are lobed all round (no flat base), so "base" is read from BOTH cues:
+    // how far a face turns down, and how low it sits in its mass (`color.g`, 0 at the foot) —
+    // the lower half of every cumulus falls into the core, which is what draws a flat bottom.
+    const cfBaseCore = cloudUnderShade.mul(vec3(0.74, 0.77, 0.88));
+    // How much this fragment is BASE (faces turned down) — the edge rule below keys off it too.
+    const cfUnderness = float(1).sub(smoothstep(float(-0.25), float(0.05), cfN.y)).toVar('fieldUnder');
+    const cfCoreW = clamp(
+        float(1).sub(smoothstep(float(-0.80).add(cfShift.mul(0.4)), float(-0.30).add(cfShift.mul(0.4)), cfN.y)).mul(0.7)
+            .add(float(1).sub(smoothstep(float(0.05), float(0.50), cfCrown)).mul(cfUnderness).mul(0.6)),
+        0,
+        1,
     );
-    const cfLitBase = mix(cfBody, cfUnder, float(1).sub(smoothstep(float(-0.25), float(0.05), cfN.y)));
+    const cfUnder = mix(
+        mix(
+            cloudUnderLit,
+            cloudUnderShade,
+            float(1).sub(smoothstep(float(-0.70).add(cfShift.mul(0.6)), float(-0.20).add(cfShift.mul(0.6)), cfN.y)),
+        ),
+        cfBaseCore,
+        cfCoreW,
+    );
+    const cfLitBase = mix(cfBody, cfUnder, cfUnderness);
     // CROWNS WHITEN: a tower's top sees the most sky and the most sun, so the upper third of
     // every mass leans to pure cloud white where it is lit — the bright cauliflower heads over
     // cooler, creased bodies that the reference cumulus all share.
@@ -3266,10 +3289,14 @@ export function createOdysseyWorld({
     const cfSilver = smoothstep(float(0.30), float(0.60), cfHg.mul(cfRim.mul(0.6).add(0.4)));
     const cfCrownSun = smoothstep(float(0.48), float(0.66), cfWrap.mul(cfWrap).mul(cfCrown));
     const cfWarm = mix(cfLit, cfLit.mul(vec3(1.05, 0.985, 0.90)), cfCrownSun.mul(cfBand));
+    // The painted edge: on the lit body it dims toward the sky on the SHADE side (unchanged); on
+    // the BASE it does the opposite — a cloud's thin rim seen from below is the brightest part of
+    // its underside (sky light passing through the thinnest water), so the silhouette of a base
+    // is drawn as a luminous lining round a darker core instead of dissolving into the sky.
     const fieldCol = mix(
         cfWarm,
-        mix(cloudShade, uSkyHorizon, float(0.30)),
-        cfEdge.mul(0.55).mul(float(1).sub(cfBand.mul(0.85))),
+        mix(mix(cloudShade, uSkyHorizon, float(0.30)), cloudWhite, cfUnderness.mul(0.9)),
+        cfEdge.mul(mix(float(0.55).mul(float(1).sub(cfBand.mul(0.85))), float(0.62), cfUnderness)),
     ).add(uSunColour.mul(cfSilver).mul(FIELD_MIE_GAIN));
     // ATMOSPHERIC THINNING (Wave 3 / F3): the paint half. As `uWorldThin` rises the whole
     // Witness band structure (lit/shade/underside/Mie) collapses toward one flat, low-sat
