@@ -100,7 +100,16 @@ const BANK_BRIDGE = new THREE.Color(SEAM_56_AURORA_BRIDGE.fogColor);
 /** Exit side: ch6's near-black vacuum. */
 const BANK_VOID = new THREE.Color(0x05060f);
 /** Aurora lift on the bright billows in the dense half (the bridge's ambient teal). */
-const BANK_AURORA = new THREE.Color(SEAM_56_AURORA_BRIDGE.ambientLight);
+/**
+ * THE NIGHT SIDE (2026-10-02, owner: "a visually stunning aurora — now it almost feels like we
+ * have two different auroras"). By the time the bank is in frame the sky has gone black and the
+ * aurora is up, but the bank kept the SUNLIT cloud-top tone until well past the boundary — a flat
+ * grey floor under a night sky, laid over the aurora's lower half. Seen from orbit at night the
+ * cloud sea is dark slate, lit only by the aurora above it. Pre-gain linear (uLimbGain applies).
+ */
+const BANK_NIGHT = new THREE.Color(0.085, 0.10, 0.155);
+/** The aurora's own green (odyssey-planet-aurora.js AURORA_PALETTE.greenWarm), as it lights the tops. */
+const BANK_AURORA_LIGHT = new THREE.Color(0.04, 1.0, 0.30);
 /**
  * Overall level of the limb band. The bank used to derive its brightness from filling the
  * frame; a horizon band has to be given one.
@@ -130,8 +139,12 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     const uDaylit = uniform(BANK_DAYLIT);
     const uBridge = uniform(BANK_BRIDGE);
     const uVoid = uniform(BANK_VOID);
-    const uAurora = uniform(BANK_AURORA);
     const uLimbGain = uniform(BANK_LIMB_GAIN);
+    const uNight = uniform(BANK_NIGHT);
+    const uAuroraLight = uniform(BANK_AURORA_LIGHT);
+    // The live aurora's glow (0..1), handed in by the board from the chapter-6 band — so the
+    // light on the clouds is THE aurora's, on its schedule, not a second tint of its own.
+    const uAuroraGlow = uniform(0);
 
     // Frequency DERIVED from the radius (the quench's lesson: 0.028 at r=110 was three
     // cells of flat blur across the whole volume). ~10.5 cells across the shell at any
@@ -258,10 +271,18 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // and only the deep troughs turn to shade, with a broad turn between.
     const entryBand = smoothstep(0.12, 0.50, billow);
     const entry = mix(entryShade, entryLit, entryBand);
-    const base = mix(mix(entry, uBridge, toBridge), uVoid, toVoid);
-    // Aurora on the bright billows, strongest mid-crossing where the bank is densest — the
-    // aurora seen from inside the weather rather than painted on a dome behind it.
-    const auroraAmt = billow.mul(d).mul(smoothstep(0.15, 0.6, a).mul(oneMinus(smoothstep(0.6, 1.0, a)))).mul(0.35);
+    const dayBase = mix(mix(entry, uBridge, toBridge), uVoid, toVoid);
+    // NIGHT FALLS ON THE CLOUD SEA as the sky goes dark (seamT 0.12 -> 0.42 = p ~0.709 -> 0.745):
+    // dark slate with the billows' form kept in value, falling to the void with the same tint.
+    const toNight = smoothstep(0.12, 0.42, a);
+    const nightBase = mix(uNight.mul(mix(float(0.7), float(1.15), billow)), uVoid, toVoid);
+    const base = mix(dayBase, nightBase, toNight);
+    // THE AURORA LIGHTS THE TOPS: its green on the bright billows, strongest at the limb under
+    // the curtains' feet, scaled by the live aurora glow. (This replaces the bank's own aurora
+    // tint — a second, separately-timed aurora colour on the clouds.)
+    const auroraLight = uAuroraLight.mul(billow.mul(billow)).mul(uAuroraGlow)
+        .mul(limbCore.mul(0.8).add(0.2))
+        .mul(0.13);
     // INTERIOR FORM IN THE COLOUR TERM, never the alpha (the torn-curtain lesson) — but
     // QUANTISED, so the bank speaks the deck's language. The deck is now poster cumulus with
     // two flat value bands and a drawn edge (cloud plan Waves 1-2); a smooth `0.42 + 0.72 *
@@ -280,7 +301,7 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
     // The limb is now the only bright thing left in frame, so its LEVEL is an art lever in
     // its own right rather than whatever the density envelope happens to produce. Applied
     // last, after the bands and the aurora, so it scales the finished tone.
-    const colour = mix(base, uAurora, auroraAmt).mul(posterised).mul(uLimbGain);
+    const colour = base.add(auroraLight).mul(posterised).mul(uLimbGain);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = colour;
@@ -321,9 +342,13 @@ export function createCloudBank({ radius = CLOUD_BANK_RADIUS, palette = null } =
 
     return {
         mesh,
-        /** @param {number} time seconds @param {number} seamT 0 -> 0.5 boundary -> 1 */
-        update(time, seamT) {
+        /**
+         * @param {number} time seconds @param {number} seamT 0 -> 0.5 boundary -> 1
+         * @param {number} [auroraGlow] the live aurora band's glow, 0..1
+         */
+        update(time, seamT, auroraGlow = 0) {
             uTime.value = time;
+            uAuroraGlow.value = Math.max(0, Math.min(1, Number.isFinite(auroraGlow) ? auroraGlow : 0));
             const t = Math.max(0, Math.min(1, Number.isFinite(seamT) ? seamT : 0));
             const tri = 1 - Math.abs((t * 2) - 1);
             // THE APPROACH MUST BE EMPTY, NOT FAINT. `tri * tri` is nonzero from the first

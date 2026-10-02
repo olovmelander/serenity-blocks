@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { deriveOdysseyChapterPositions } from '../../../core/odyssey/data/odyssey-layout.js';
 import { ONE_WORLD_ACT_MARGIN } from '../world/odyssey-world-act-gate.js';
+import { cloudBankHalfWidth } from '../composition/odyssey-cloud-bank.js';
 import {
     AURORA_BRIDGE,
     createAuroraBridgeBand,
@@ -29,15 +30,20 @@ describe('ch6 aurora bridge — the airglow grows into an aurora and dissolves i
         expect(env(ch6 - 0.03).grow).toBeLessThan(env(ch6 - 0.015).grow);
     });
 
-    it('only falls after the boundary, and is gone by the One World switch-off', () => {
+    it('only falls after the boundary, and is gone before the cloud bank it glows over', () => {
         let last = env(ch6).glow;
         for (let p = ch6; p <= ch6 + 0.04; p += 0.0005) {
             const { glow } = env(p);
             expect(glow, `p=${p.toFixed(4)}`).toBeLessThanOrEqual(last + 1e-9);
             last = glow;
         }
+        // (2026-10-02) It used to be pinned gone at the One World switch-off, when the curtains
+        // stood on the world's airglow line. They now glow over the night-side cloud bank, so the
+        // fall must finish inside the bank's window (and well after the switch-off it may linger).
         const worldOff = ch6 + ONE_WORLD_ACT_MARGIN;
-        expect(env(worldOff).glow).toBeLessThan(0.02);
+        const bankEnd = ch6 + cloudBankHalfWidth();
+        expect(ch6 + (ch7 - ch6) * AURORA_BRIDGE.fallTo).toBeLessThan(bankEnd);
+        expect(env(worldOff).glow).toBeLessThan(0.5);
         expect(env(ch6 + (ch7 - ch6) * AURORA_BRIDGE.fallTo).glow).toBe(0);
         // The green dies first: the crimson walk leads the fall.
         expect(env(ch6 + 0.01).crimson).toBeGreaterThan(1 - env(ch6 + 0.01).glow);

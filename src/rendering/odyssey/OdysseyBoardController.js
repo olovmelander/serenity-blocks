@@ -3617,7 +3617,15 @@ export class OdysseyBoardController {
             const hi = this._cloudBankBoundary + bankHalf;
             const inWindow = cameraProgress > lo && cameraProgress < hi;
             this.cloudBank.mesh.visible = inWindow;
-            if (inWindow) this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo));
+            if (inWindow) {
+                // The aurora that lights the cloud tops is chapter 6's band, read live (one frame
+                // late — the environments update after this — which is invisible on a glow ramp).
+                const auroraBand = this.environmentManager?.environments?.get(6)?.group?.userData?.auroraBridge;
+                const auroraGlow = auroraBand?.visible ? (auroraBand.userData?.uGlow?.value ?? 0) : 0;
+                this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo), auroraGlow);
+                // ...and the world's airglow line yields to the curtains rising out of it.
+                this.oneWorld?.setAuroraGlow?.(auroraGlow);
+            }
         }
 
         // WAVE 5: release the deferred breach stinger ON the constant — the frame the eye
