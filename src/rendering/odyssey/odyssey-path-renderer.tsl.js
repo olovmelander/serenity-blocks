@@ -40,6 +40,7 @@ import {
     cameraProjectionMatrix,
     clamp,
     dot,
+    exp,
     float,
     floor,
     fract,
@@ -548,6 +549,28 @@ function ribbonRadius({
     return r.mul(near).mul(near).mul(ends);
 }
 
+/**
+ * CHAPTER THRESHOLDS — folded into the ribbon (they were 8 lit torus rings, each sitting
+ * around the first orb of its chapter: every chapter starts ON a level node). Two collars
+ * stand proud of the rail at ±COLLAR_OFFSET u either side of each interior boundary — just
+ * outside the threshold node's glass at its largest act scale — so the gate frames the node
+ * instead of hiding behind it. Returns 0..1 (sum over the 7 boundaries; they never overlap).
+ */
+const COLLAR_OFFSET = 3.6;
+// Crisp light band (fragment) vs. the bulge's wider kernel (vertex): rings are ~1.65 u apart,
+// so a bulge as narrow as the band would alias between them.
+const COLLAR_HALF_WIDTH = 0.5;
+const COLLAR_BULGE_HALF_WIDTH = 0.95;
+function thresholdCollars(chapter, s, halfWidth = COLLAR_HALF_WIDTH) {
+    const { uBounds, uArc } = chapter;
+    let collar = float(0.0);
+    for (let k = 1; k < CHAPTER_COUNT; k += 1) {
+        const d = abs(s.sub(uBounds[k].mul(uArc))).sub(COLLAR_OFFSET).div(halfWidth);
+        collar = collar.add(exp(d.mul(d).negate()));
+    }
+    return min(collar, 1.0);
+}
+
 /** 0..1 breathing at 0.5 Hz (shared with the level nodes' state language). */
 function breathe(uTime) {
     return sin(uTime.mul(Math.PI)).mul(0.5).add(0.5);
@@ -604,7 +627,8 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
     const vChapter = varying(chapterCoordinate(chapter, vUv.x));
 
     const positionNode = Fn(() => {
-        const width = recipeAt(chapter, chapterCoordinate(chapter, vUv.x)).accent.w;
+        const width = recipeAt(chapter, chapterCoordinate(chapter, vUv.x)).accent.w
+            .mul(thresholdCollars(chapter, vUv.x.mul(uArc), COLLAR_BULGE_HALF_WIDTH).mul(1.5).add(1.0));
         const r = ribbonRadius({
             baseRadius: uRadius,
             width,
@@ -722,11 +746,22 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
         // ember orange yellow and a glare olive) so the ribbon never clips to white.
         color = color.div(max(max(max(color.r, color.g), color.b), 1.0));
 
-        // Seam crossing: a gentle glow band travelling through the threshold.
+        // Threshold collars: a steady glow in the blend of both worlds' light, swelling as
+        // the camera crosses (the seam envelope is POSITION-driven, so this never pops). The
+        // crossing band touches ONLY the collars — it used to tint the whole visible ribbon
+        // toward the incoming colour for 850 ms of wall clock at every boundary.
+        const collar = thresholdCollars(chapter, s);
         const transitionBand = float(1.0).sub(
             smoothstep(0.0, uTransitionWidth, abs(vUv.x.sub(uTransitionHead))),
         );
-        return mix(color, uTransitionColor.mul(0.9), transitionBand.mul(uTransitionMix).mul(0.35));
+        const collarGlow = collar.mul(transitionBand.mul(uTransitionMix).mul(0.25).add(0.75));
+        const collarCol = mix(
+            mix(R.emis.rgb, vec3(1.0), 0.35),
+            uTransitionColor,
+            transitionBand.mul(uTransitionMix).mul(0.4),
+        );
+        const withCollar = mix(color, collarCol, collarGlow.mul(0.85));
+        return withCollar.div(max(max(max(withCollar.r, withCollar.g), withCollar.b), 1.0));
     })();
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -824,15 +859,20 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
         const transitionBand = float(1.0).sub(
             smoothstep(0.0, uTransitionWidth, abs(vUv.x.sub(uTransitionHead))),
         );
+        const collar = thresholdCollars(chapter, s);
         const alpha = clamp(
             R.haze.w.mul(drift).mul(lit.mul(0.6).add(0.4))
                 .add(fuse.mul(0.22))
-                .add(transitionBand.mul(uTransitionMix).mul(0.12))
+                .add(collar.mul(transitionBand.mul(uTransitionMix).mul(0.25).add(0.08)))
                 .add(uBeat.mul(0.04).mul(lit)),
             0.0,
             0.5,
         ).mul(nearFade).mul(farFade).mul(soft);
-        const color = mix(mix(R.haze.rgb, R.emis.rgb, fuse), uTransitionColor, transitionBand.mul(uTransitionMix));
+        const color = mix(
+            mix(R.haze.rgb, R.emis.rgb, max(fuse, collar.mul(0.6))),
+            uTransitionColor,
+            transitionBand.mul(uTransitionMix).mul(collar),
+        );
         return { color, alpha };
     };
 
