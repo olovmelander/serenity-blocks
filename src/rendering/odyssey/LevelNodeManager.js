@@ -201,6 +201,8 @@ export class LevelNodeManager {
         this.focalHierarchy = false;
         this.worldShellsEnabled = false;
         this.currentLevelId = 1;
+        // The furthest UNLOCKED level — the ribbon's lit frontier ends at its node.
+        this.frontierLevelId = 1;
         this._beatPulse = 0;
 
         // QW11 (perf): reused per-frame scratch so update() allocates nothing per node.
@@ -1031,8 +1033,38 @@ export class LevelNodeManager {
             }
         }
         this.currentLevelId = current;
+        this.frontierLevelId = furthest;
         // QW11: progress changes the focal/lock/star/glow attribute set → re-upload once.
         this._markUploadDirty();
+    }
+
+    /**
+     * Path position (arc parameter, 0..1) of a level's node, or null if unknown.
+     * @param {number} levelId
+     * @returns {number|null}
+     */
+    getNodePathPosition(levelId) {
+        const node = this.nodes.get(levelId);
+        return Number.isFinite(node?.pathPosition) ? node.pathPosition : null;
+    }
+
+    /**
+     * Where the ribbon's lit frontier belongs: the REAL path position of the furthest
+     * unlocked node. The board used to hand the ribbon `furthestLevel / (levels + 1)`, an
+     * index fraction compared against ARC LENGTH in the shader — level 36 sits at 0.754 but
+     * that formula read 0.60, so the lit frontier missed its node by up to ~380 u.
+     * @returns {number|null}
+     */
+    getFrontierPathPosition() {
+        return this.getNodePathPosition(this.frontierLevelId);
+    }
+
+    /**
+     * Path position of the "current" node (the next one to play) — the ribbon's spark.
+     * @returns {number|null}
+     */
+    getCurrentPathPosition() {
+        return this.getNodePathPosition(this.currentLevelId);
     }
 
     /**
