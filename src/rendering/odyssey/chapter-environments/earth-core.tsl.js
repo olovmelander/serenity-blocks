@@ -1539,7 +1539,8 @@ export function createFirstHeartTSL(uTime, uPulseIntensity = uniform(0), uDescen
     const coreColor = mix(uCore, mix(uRing, uOuter, quenchEnd), quenchMid);
     const ringColor = mix(uRing, uOuter, quenchMid);
 
-    let color = uOuter.mul(halo).mul(0.55)
+    // The halo carries the furnace's reach: brighter oxblood skirt so it lights the shaft air.
+    let color = uOuter.mul(halo).mul(0.85)
         .add(ringColor.mul(ring).mul(0.95).mul(fissure.mul(0.35).add(0.75)))
         .add(coreColor.mul(core).mul(1.55));
     const energy = uDescent.mul(0.45).add(0.75)
@@ -1556,7 +1557,9 @@ export function createFirstHeartTSL(uTime, uPulseIntensity = uniform(0), uDescen
     material.opacityNode = alpha;
     material.transparent = true;
     material.depthWrite = false;
-    material.depthTest = false; // destination glow must read through haze from frame 01
+    // Depth-TESTED: at its new size a depth-blind sprite would glow through the basalt
+    // columns and ceiling slabs. Nothing it must read through writes depth (the vault,
+    // haze, smoke and steam are all depthWrite=false), so it still reads through the air.
     material.blending = THREE.AdditiveBlending;
     material.userData.emitsBloom = true;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge

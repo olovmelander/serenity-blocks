@@ -1187,25 +1187,30 @@ export function createEarthCoreEnvironment(options = {}) {
     group.userData.lavaFallRevealables = [lavaFallGroup, fallSplash, godRays[0]];
 
     // 12b. THE FIRST HEART — the chapter's hero / destination landmark (plan item 1):
-    // a white-hot caldera fissure seated past the chapter's end, dead on the rail's
-    // vanishing line, visible from frame 01 and growing across the whole descent. The
-    // white-hot #ffe6b0 tier belongs to it exclusively (palette law).
+    // the white-hot vent at the top of the shaft where the Earth's fire first touches the
+    // sea. It is the SOURCE of the steam quench the camera flies through into the ocean,
+    // so the climb reads as "follow the path into the light" and the 1→2 seam has a cause.
+    // The white-hot #ffe6b0 tier belongs to it exclusively (palette law).
     const heart = createFirstHeartTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,
         uniforms.uDescent,
         { uSeam: uniforms.uSeam, uOpacity: uniforms.uOpacity },
     );
-    // WORLD-SPACE ON PURPOSE. The First Heart is the chapter's vanishing-point landmark and
-    // its framing is pinned by earth-core-environment.test.js. It was authored against the OLD
-    // staging frame, whose horizontal "forward" at the chapter's end happened to be almost
-    // exactly world +Z (0.0073, 0, 1.0000). Making the basis constant (§11.2) redefines
-    // forward, which swung the Heart 160.5 units and threw it off screen (NDC x 4.07, caught
-    // by that test). Stating the offset in world terms keeps the composition the test verifies
-    // and makes it immune to any future change of staging basis.
-    const heartAnchor = staging.sample(1.0);
-    heart.mesh.position.set(heartAnchor.x + 0.63, heartAnchor.y + 42, heartAnchor.z + 86);
-    const heartBaseScale = 6;
+    // SEATED ON THE RAIL, just past the chapter's end. Since the Wave 1A ascent the camera
+    // climbs the shaft looking almost straight up (look.y ≈ 1.0 from local 0.15), so the
+    // rail's vanishing point is the centre of frame — a heart ON the rail stays dead centre
+    // for the whole climb (NDC |x|,|y| ≤ 0.11 from local 0.25 to the act gate). The old seat
+    // (staging end + (0.63, 42, 86), from the descent era) projected low-right at ~230 u and
+    // a scale of 6 gave it a 12–18 px radius: in every capture it was invisible. Reading the
+    // spline directly keeps it immune to staging-basis changes, the reason the old seat was
+    // stated in world terms (earth-core-environment.test.js pins the framing).
+    const heartSeat = getOdysseyPathPointAt((chapterTEnd ?? 0.125) + 0.004).sub(groupCenter);
+    heart.mesh.position.copy(heartSeat);
+    // ~90–170 u from the eye during the climb: a 44 u sprite gives the white core a 40–75 px
+    // radius at 1080p inside a 110–230 px halo — a furnace the path climbs into, larger than
+    // any level orb (at 20 u it still read as one more orb among the nodes on the rail).
+    const heartBaseScale = 44;
     heart.mesh.scale.set(heartBaseScale, heartBaseScale, 1);
     group.add(heart.mesh);
     group.userData.firstHeart = heart.mesh;
@@ -2171,22 +2176,12 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
     }
 
     // The First Heart breathes at 0.2 Hz and gutters down across the seam band (its
-    // color walk-down happens in-shader; the scale settles as the waterline rises).
+    // color walk-down happens in-shader; the scale settles as the waterline rises). The
+    // seam band alone drives it: the extra p windows here (0.078–0.083, local 0.78–0.84)
+    // were authored for the pre-re-layout chapter and fired out of step with the quench.
     const heart = group.userData.firstHeart;
     if (heart) {
-        const seam = uniforms?.uSeam ? uniforms.uSeam.value : 0;
-        const localProgress = group.userData.localProgress ?? 0;
-        const cameraProgressNow = group.userData.cameraProgress ?? 0;
-        const tEnd = group.userData.chapterTEnd ?? 0.093;
-        const globalQuench = Math.max(
-            THREE.MathUtils.smoothstep(cameraProgressNow, tEnd - 0.018, tEnd - 0.010),
-            THREE.MathUtils.smoothstep(cameraProgressNow, 0.078, 0.083),
-        );
-        const heartQuench = Math.max(
-            seam,
-            globalQuench,
-            THREE.MathUtils.smoothstep(localProgress, 0.78, 0.84),
-        );
+        const heartQuench = uniforms?.uSeam ? uniforms.uSeam.value : 0;
         const base = group.userData.firstHeartBaseScale ?? 44;
         const breathe = 1 + Math.sin(time * 1.2566) * 0.06;
         heart.scale.setScalar(base * breathe * (1 - heartQuench * 0.92));
