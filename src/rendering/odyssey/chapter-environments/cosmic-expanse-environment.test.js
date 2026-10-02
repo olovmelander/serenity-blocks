@@ -227,7 +227,9 @@ describe('setOpacityScale re-arm (Act II->Space §8.4)', () => {
     it('ends every opacityNode assignment with .mul(materialOpacity)', () => {
         // Assignments may span lines, so match up to the terminating semicolon.
         const assignments = source.match(/^\s*\w+\.opacityNode = [\s\S]*?;$/gm) || [];
-        expect(assignments.length).toBeGreaterThanOrEqual(8);
+        // 8 -> 7 (seamless pass): the aurora bridge moved to cosmic-expanse-aurora.js and is
+        // staged by its own progress-driven uniforms, outside setOpacityScale's buckets.
+        expect(assignments.length).toBeGreaterThanOrEqual(7);
 
         const unarmed = assignments.filter((a) => !a.includes('materialOpacity'));
         expect(unarmed).toEqual([]);
