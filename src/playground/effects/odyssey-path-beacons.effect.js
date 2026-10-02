@@ -158,6 +158,40 @@ export function create({ scene, camera, params }) {
             driveCamera();
             return { cameraProgress, front: state.front ?? defaultFront() };
         },
+        /** Screen position (px) + distance of every node in front of the camera. */
+        probe() {
+            const out = [];
+            const v = new THREE.Vector3();
+            nodeManager.nodes.forEach((node, id) => {
+                v.copy(node.group.position);
+                const dist = v.distanceTo(camera.position);
+                v.project(camera);
+                if (v.z < 1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2) {
+                    out.push({
+                        id,
+                        x: Math.round((v.x + 1) * 640),
+                        y: Math.round((1 - v.y) * 360),
+                        d: Math.round(dist),
+                    });
+                }
+            });
+            const meshes = {};
+            ['glassInstancedMesh', 'glowInstancedMesh', 'innerCoreMesh', 'particleSystem', 'lockInstancedMesh']
+                .forEach((key) => {
+                    const mesh = nodeManager[key];
+                    if (!mesh) return;
+                    const m = new THREE.Matrix4();
+                    if (mesh.isInstancedMesh && out[0]) mesh.getMatrixAt(nodeManager.instanceIdMap.get(out[0].id), m);
+                    meshes[key] = {
+                        visible: mesh.visible,
+                        inScene: !!mesh.parent,
+                        count: mesh.count,
+                        firstScale: new THREE.Vector3().setFromMatrixScale(m).x.toFixed(3),
+                        renderOrder: mesh.renderOrder,
+                    };
+                });
+            return { cameraProgress, nodes: out, meshes };
+        },
         pathRenderer,
         nodeManager,
         cameraRig,
