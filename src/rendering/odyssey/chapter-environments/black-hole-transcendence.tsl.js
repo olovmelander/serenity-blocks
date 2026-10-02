@@ -31,7 +31,9 @@ import {
     cos,
     cross,
     dot,
+    exp,
     float,
+    floor,
     fract,
     length,
     log,
@@ -49,13 +51,15 @@ import {
     pow,
     sin,
     smoothstep,
+    texture as sampleTexture,
     uniform,
     uv,
     varying,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
-import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
+import { fbm3, hash21, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
@@ -94,6 +98,153 @@ export function resolveGargantuaLockPosition(camera, out) {
         .addScaledVector(_lockFwd, GARGANTUA_LOCK.lockDepth)
         .addScaledVector(_lockUp, GARGANTUA_LOCK.upBias)
         .addScaledVector(_lockRight, GARGANTUA_LOCK.rightBias);
+}
+
+/**
+ * THE FALL (2026-10-02): the lock's position for a hero `depth` ahead of the eye, its screen bias
+ * scaled with the depth (so the hole keeps its place on screen as it recedes to keep its near
+ * surface clear of the rail) and eased onto the view axis by `centring`. At depth = lockDepth and
+ * centring = 0 this is exactly resolveGargantuaLockPosition (the ch6 omen handoff lands on it).
+ * @returns {THREE.Vector3} `out`
+ */
+export function resolveGargantuaFallPosition(camera, out, depth = GARGANTUA_LOCK.lockDepth, centring = 0) {
+    camera.getWorldDirection(_lockFwd).normalize();
+    _lockUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    _lockRight.crossVectors(_lockFwd, _lockUp);
+    if (_lockRight.lengthSq() < 1e-8) _lockRight.set(1, 0, 0);
+    _lockRight.normalize();
+    _lockUp.crossVectors(_lockRight, _lockFwd).normalize();
+    const bias = (depth / GARGANTUA_LOCK.lockDepth) * (1 - centring);
+    return out.copy(camera.position)
+        .addScaledVector(_lockFwd, depth)
+        .addScaledVector(_lockUp, GARGANTUA_LOCK.upBias * bias)
+        .addScaledVector(_lockRight, GARGANTUA_LOCK.rightBias * bias);
+}
+
+// ── The singularity window — the shadow's surface opens onto the warp tunnel (the fall) ──
+//
+// The colours of every world the journey has crossed, streaming down the tunnel inside the
+// singularity: ember, deep ocean, island green, snow, aurora, nebula violet, accretion amber,
+// the city's neon. Authored in sRGB; the texture is tagged so the sampler returns linear.
+const CH7_JOURNEY_PALETTE = Object.freeze([
+    [255, 112, 40], [24, 132, 220], [92, 196, 84], [214, 228, 255],
+    [72, 255, 156], [150, 84, 255], [255, 168, 64], [255, 70, 186],
+]);
+let _journeyPalette = null;
+function getJourneyPaletteTexture() {
+    if (_journeyPalette) return _journeyPalette;
+    const data = new Uint8Array(CH7_JOURNEY_PALETTE.length * 4);
+    CH7_JOURNEY_PALETTE.forEach(([r, g, b], i) => {
+        data.set([r, g, b, 255], i * 4);
+    });
+    const tex = new THREE.DataTexture(data, CH7_JOURNEY_PALETTE.length, 1, THREE.RGBAFormat);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    _journeyPalette = tex;
+    return tex;
+}
+
+/**
+ * The shadow's own material during the fall: pure black while `uPortal` is 0 (the plain shadow),
+ * and — as the hole swallows the frame — a window onto the interior. Opaque and depth-writing
+ * like the black shadow it replaces (same pipeline state; fade-exempt), so the rail and nodes in
+ * front of it still draw over it.
+ *
+ * The tunnel is computed from the VIEW RAY in the shadow's local frame (the face pivot turns +Z to
+ * the eye; XY is the screen plane), not from geometry: a ray at angle theta from the axis meets a
+ * unit-radius tunnel at depth cot(theta), so streak lanes in azimuth scrolled along that depth
+ * converge on the vanishing point like hyperspace, and the same function keeps reading correctly
+ * however large the sphere grows. `uEyeZ` is the eye's distance from the centre in the sphere's
+ * LOCAL units (world distance / hero scale).
+ * @returns {{ material: THREE.MeshBasicNodeMaterial, uniforms: object }}
+ */
+export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
+    const uPortal = options.uPortal ?? uniform(0);
+    const uWarp = options.uWarp ?? uniform(0);
+    const uEyeZ = options.uEyeZ ?? uniform(GARGANTUA_LOCK.lockDepth);
+    // The tunnel's MOUTH at the 7->8 exit: angular radius (rad) of the opening round the vanishing
+    // point, through which the city and its sun are seen (alpha-tested away; 0 = no opening).
+    const uOpen = options.uOpen ?? uniform(0);
+    const palette = getJourneyPaletteTexture();
+
+    const ray = normalize(positionLocal.sub(vec3(0.0, 0.0, uEyeZ)));
+    const cosT = ray.z.negate().max(1e-4);
+    const sinT = length(vec2(ray.x, ray.y)).max(1e-4);
+    // Depth down the tunnel (cot theta), capped where the lanes would alias at the vanishing point.
+    const depth = cosT.div(sinT).min(80.0);
+    const warp = clamp(uWarp, 0.0, 1.0);
+    // A spiral: the lanes twist with depth (more as the warp builds) and the whole tunnel turns.
+    const twist = depth.mul(warp.mul(0.035).add(0.012)).add(uTime.mul(0.05));
+    const ang = atan(ray.y, ray.x).add(twist);
+
+    // STREAK LANES: 56 angular lanes, each with its own speed and dash length; not every lane lit.
+    const LANES = 56;
+    const lanePos = ang.div(TAU).add(0.5).mul(LANES);
+    const lane = floor(lanePos);
+    const laneF = fract(lanePos);
+    const r1 = hash21(vec2(lane, 7.13));
+    const r2 = hash21(vec2(lane, 1.91));
+    const speed = mix(0.35, 1.0, r1).mul(warp.mul(1.6).add(0.35));
+    const seg = fract(depth.mul(mix(0.05, 0.12, r2)).add(uTime.mul(speed)).add(r1.mul(17.0)));
+    const head = smoothstep(0.0, 0.32, seg).mul(oneMinus(smoothstep(0.32, 0.36, seg)));
+    const core = oneMinus(smoothstep(0.06, 0.22, abs(laneF.sub(0.5))));
+    const lit = smoothstep(0.55, 0.85, r2.add(warp.mul(0.3)));
+    const streaks = head.mul(core).mul(lit);
+
+    // LOG DEPTH: cot(theta) crowds everything interesting into the centre of the frame; its log
+    // spreads features evenly across screen radius, so bands and filaments read edge to centre.
+    const logDepth = log(depth.add(0.25));
+    // WALL FILAMENTS: accretion matter spiralling past, two baked-lattice octaves, stretched along
+    // the tunnel (low frequency in depth, high in angle) and streaming toward the eye.
+    const wallDepth = logDepth.mul(1.1).sub(uTime.mul(mix(0.35, 1.2, warp)));
+    const wall = vec3(cos(ang).mul(3.4), sin(ang).mul(3.4), wallDepth);
+    const filamentField = latticeNoise3(wall).mul(0.65).add(latticeNoise3(wall.mul(2.3)).mul(0.35));
+    const filaments = smoothstep(0.5, 0.8, filamentField);
+
+    // The journey's colours, in rings down the tunnel that zoom outward past the eye.
+    const band = fract(logDepth.mul(0.42).sub(uTime.mul(0.12)));
+    const tint = sampleTexture(palette, vec2(band, 0.5)).rgb;
+    // Far down the tunnel is dimmer — except the exit light dead ahead (the light at the end,
+    // which becomes the city's sun at the 7->8 seam).
+    const far = exp(depth.mul(-0.035));
+    const exitLight = exp(sinT.mul(sinT).mul(-260.0));
+    // The mouth: everything inside the opening is cut away (the scene behind shows through) and a
+    // blazing rim rides its edge. Gated so no opening exists until the exit begins.
+    const theta = atan(sinT, cosT);
+    const opening = smoothstep(0.0, 0.002, uOpen);
+    const inMouth = oneMinus(smoothstep(uOpen.mul(0.96), uOpen.add(0.002), theta)).mul(opening);
+    const rimOffset = theta.sub(uOpen).div(0.03);
+    // The rim blazes while the mouth is small (the light at the end of the tunnel) and fades as it
+    // widens: at full width a fixed-intensity rim is a huge bright circle round the whole view
+    // (a +20 luma spike in the 7->8 seam gate).
+    const rimFade = oneMinus(smoothstep(0.25, 1.1, uOpen));
+    const rim = exp(rimOffset.mul(rimOffset).negate()).mul(opening).mul(rimFade);
+    const color = tint.mul(filaments.mul(0.30).add(0.015)).mul(far.mul(0.8).add(0.2))
+        .add(mix(tint, vec3(1.0), head.mul(0.35)).mul(streaks).mul(1.3))
+        .add(vec3(1.0, 0.86, 0.62).mul(exitLight).mul(1.6).mul(oneMinus(opening)))
+        .add(vec3(1.0, 0.82, 0.55).mul(rim).mul(1.8));
+
+    // As the mouth widens the tunnel walls dim with it, so the frame's brightness eases down into
+    // the (darker) city instead of dropping on the frame the mouth passes the edges.
+    const leaving = oneMinus(clamp(uOpen.div(1.4), 0.0, 1.0).mul(0.45));
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color.mul(clamp(uPortal, 0.0, 1.0)).mul(leaving);
+    // Opaque with an alpha test (fixed at creation, so no pipeline change at runtime): the mouth
+    // is discarded, the rest writes depth like the plain shadow.
+    material.opacityNode = oneMinus(inMouth);
+    material.alphaTest = 0.5;
+    material.userData.emitsBloom = true;
+    return {
+        material,
+        uniforms: {
+            uPortal, uWarp, uEyeZ, uOpen,
+        },
+    };
 }
 
 // ── Void dome — deep space (-100 backstop; must NOT bloom) ──────────────────────────

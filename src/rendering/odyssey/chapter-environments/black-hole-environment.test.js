@@ -138,7 +138,7 @@ describe('Gargantua at the seams', () => {
         expect(ch8).toBeGreaterThan(ch7);
     });
 
-    it('7->8: glides onto the Retrosun, closes the shadow and hands a matching sun to ch8', () => {
+    it('7->8: the tunnel mouth opens on the Retrosun and hands a matching sun to ch8', () => {
         const group = createBlackHoleTranscendenceEnvironment({ particleCount: 200 });
         const sun = resolveRetrosunStage().position;
         // Facing the city with the sun ~15 deg off-axis (inside maxOffAxis, as on the live
@@ -152,20 +152,26 @@ describe('Gargantua at the seams', () => {
         const toSun = sun.clone().sub(camera.position).normalize();
         const heroDir = () => distantHole.getWorldPosition(new THREE.Vector3()).sub(camera.position).normalize();
 
-        // Before the window: on the lock, shadow full, no copy.
+        // Before the window (THE FALL): inside the black hole - the shadow has swallowed the
+        // frame and is the warp tunnel's window (portal open, no mouth yet), no copy.
         updateBlackHoleTranscendenceEnvironment(group, 0.016, 1, camera, ch8 - 0.03);
         group.updateMatrixWorld(true);
         expect(heroDir().angleTo(toSun)).toBeGreaterThan(0.05);
-        expect(distantHole.userData.horizon.scale.x).toBe(1);
-        expect(group.userData.lensWorldPos.lensRadius).toBe(CH7_GARGANTUA.shadowRadius);
+        expect(distantHole.userData.horizon.visible).toBe(true);
+        expect(group.userData.fall.inside).toBe(1);
+        expect(group.userData.lensWorldPos.portal).toBe(1);
+        expect(group.userData.lensWorldPos.lensRadius)
+            .toBeCloseTo(CH7_GARGANTUA.shadowRadius * group.userData.heroScale, 3);
+        expect(distantHole.userData.singularity.uOpen.value).toBe(0);
         expect(sunCopy.visible).toBe(false);
 
-        // Late in the window, before the hand-over: on the sun's direction, the shadow closed,
-        // the copy lit at the sun's angular size, and no chapter-7 motif left over the city.
+        // Late in the window, before the hand-over: the vanishing point on the sun's direction, the
+        // mouth wider than the frame (the window gone), the copy lit at the sun's angular size, and
+        // no chapter-7 motif left over the city.
         const p = ch8 + 0.0017;
         const carry = resolveSunCarry(p, positions);
         expect(carry.glide).toBe(1);
-        expect(carry.close).toBe(1);
+        expect(carry.open).toBe(1);
         expect(carry.handedOver).toBe(false);
         updateBlackHoleTranscendenceEnvironment(group, 0.016, 1, camera, p);
         group.updateMatrixWorld(true);
