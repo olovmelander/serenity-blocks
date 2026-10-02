@@ -136,8 +136,15 @@ const SEAM_56_AURORA_CARRY_BAND = 0.85; // fraction of Space span by which the C
 // reaches 1 at the boundary) so the chapter is already fully weighted by the time the
 // earth's own reveal fades up — otherwise the two ramps compound and the earth would only
 // reach full opacity at the boundary, i.e. exactly when the sky starts going dark.
-const SEAM_56_EARTH_IGNITE_START = 0.45; // fraction of the Ch5 span before the boundary
-const SEAM_56_EARTH_IGNITE_END = 0.32; // ...and where it reaches full weight
+// ⚠️ ALIGNED WITH THE PLANET'S OWN REVEAL (2026-10-02). These were 0.45 / 0.32 (p 0.572 / 0.625)
+// while cosmic-expanse.js moved the gas giant's reveal later twice; ch6 was then drawn for a long
+// stretch with nothing of its own to show — and, through a gating bug, with its void sky at full
+// strength (the black-sky-then-blue pop the owner reported). Presence now saturates just before
+// the reveal starts (SUMMIT_EARTH_REVEAL.startBeforeBoundary = 0.18, p 0.6813), so ch6 is never
+// drawn earlier than it has something to show. tests/unit/odyssey-seam-56-schedule.test.js pins
+// the ordering.
+const SEAM_56_EARTH_IGNITE_START = 0.22; // fraction of the Ch5 span before the boundary (p 0.6651)
+const SEAM_56_EARTH_IGNITE_END = 0.185; // ...and where it reaches full weight (p 0.6793)
 // Hold full presence past the boundary until the 5->6 ECOTONE ENDS, where chapter 6's own
 // weight is already 1, so the release is a no-op rather than a dip. (Without a release the
 // boost would pin ch6 visible through chapters 7 and 8.)
