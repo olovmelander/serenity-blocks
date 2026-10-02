@@ -2120,7 +2120,13 @@ export class OdysseyBoardController {
     _tickWhalePass(delta, cameraProgress) {
         const wp = this.whalePass;
         if (!wp || this._whaleFailed) return;
-        if (!wp.isLoaded && !this._whaleLoading && this.isActive) {
+        const [c1, c2] = this._whaleRange || [0, 0];
+        // Fetch as chapter 2 APPROACHES, not right after the reveal: the load decodes and clones
+        // a ~25k-triangle skinned GLB on the main thread, which used to land in Earth Core (the
+        // heaviest chapter). 0.04 of progress ahead of the boundary is ahead of the steam quench
+        // window, so the pair is fetched, live-compiled and ready before the veil thins.
+        const nearOcean = cameraProgress > c1 - 0.04 && cameraProgress < c2 + 0.01;
+        if (!wp.isLoaded && !this._whaleLoading && this.isActive && nearOcean) {
             this._whaleLoading = true;
             wp.load()
                 .then((ok) => {
@@ -2153,9 +2159,10 @@ export class OdysseyBoardController {
                 })
                 .finally(() => { this._whaleCompiling = false; });
         }
-        const [c1, c2] = this._whaleRange || [0, 0];
         const inChapter = cameraProgress > c1 && cameraProgress < c2 + 0.01;
-        wp.update(this.time, delta, this.camera, this.oneWorld?.state?.submerged ?? 0, inChapter);
+        // `lifePresence`: the world's 1->2 carry — the pair fades in with the fish (seamless pass).
+        const worldState = this.oneWorld?.state;
+        wp.update(this.time, delta, this.camera, worldState?.submerged ?? 0, inChapter, worldState?.lifePresence ?? 1);
     }
 
     async _prewarmChapterEnvironment(chapterId) {
