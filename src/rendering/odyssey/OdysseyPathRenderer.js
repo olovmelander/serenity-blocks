@@ -124,7 +124,7 @@ export class OdysseyPathRenderer {
         // Create outer glow tube
         this.createPathGlow(pathData);
 
-        // Add chapter transition markers
+        // Chapter thresholds live in the ribbon shader (no marker meshes).
         this.createChapterMarkers(pathData.chapterPositions);
 
         console.log('[OdysseyPath] Path built with', pathData.controlPoints.length, 'control points');
@@ -188,48 +188,18 @@ export class OdysseyPathRenderer {
         ].filter(Boolean);
     }
 
-    createChapterMarkers(chapterPositions) {
-        // Fresh rings (and, on rebuild, fresh tube uniform sets) start at the rest pose
-        // but the tube transition uniforms still need their one-time reset applied — clear
-        // the latch so updateChapterTransition re-applies the steady state once.
+    /**
+     * Chapter THRESHOLDS are drawn by the ribbon shader itself (two collars standing proud of
+     * the rail either side of each boundary — see thresholdCollars() in
+     * odyssey-path-renderer.tsl.js). The eight lit Standard-material torus rings that used to
+     * mark them cost 8 draws and the journey's only light-set-dependent pipeline, and every one
+     * sat around the first orb of its chapter (each chapter starts ON a level node). Kept as a
+     * no-op so callers and the rebuild path keep their shape; `chapterMarkers` stays empty.
+     */
+    createChapterMarkers() {
+        // Fresh tube uniform sets start at the rest pose but the transition uniforms still need
+        // their one-time reset applied — clear the latch so updateChapterTransition re-applies.
         this._steadyStateApplied = false;
-        chapterPositions.forEach((pos, index) => {
-            if (index >= ODYSSEY_CHAPTER_PROFILES.length) {
-                return;
-            }
-            // Chapter 1 starts at the path's origin: there is no threshold to mark there, and
-            // its ring sat on top of level 1's orb (ch1 shot 1).
-            if (index === 0) {
-                return;
-            }
-            const chapterColor = this.getChapterColor(index + 1);
-
-            const point = this.pathCurve.getPointAt(pos);
-
-            // Create ring marker. SELF-LIT via emissive: the body color is black so
-            // the ring never depends on chapter lights (several chapters — Deep Ocean
-            // among them — run with no local lights at all, which made the lit body
-            // render as the "unlit black torus" flagged by the creative plan's Ch2
-            // diagnosis). The emissive term renders without lights, and the seam code
-            // animates material.emissive/emissiveIntensity, so the material MUST stay
-            // MeshStandardMaterial (updateChapterTransition writes those every frame).
-            const geometry = new THREE.TorusGeometry(1.5, 0.1, 8, 32);
-            const material = new THREE.MeshStandardMaterial({
-                color: 0x000000,
-                emissive: chapterColor,
-                emissiveIntensity: 0.5,
-            });
-
-            const ring = new THREE.Mesh(geometry, material);
-            ring.position.copy(point);
-
-            // Orient ring to face along path
-            const tangent = this.pathCurve.getTangentAt(pos);
-            ring.lookAt(point.clone().add(tangent));
-
-            this.chapterMarkers.push(ring);
-            this.scene.add(ring);
-        });
     }
 
     /**
@@ -350,11 +320,6 @@ export class OdysseyPathRenderer {
         }
 
         this.updateChapterTransition();
-
-        // Rotate chapter markers subtly
-        this.chapterMarkers.forEach((ring, i) => {
-            ring.rotation.z += deltaTime * 0.2 * (i % 2 === 0 ? 1 : -1);
-        });
     }
 
     updateChapterTransition() {
@@ -370,24 +335,6 @@ export class OdysseyPathRenderer {
                 Math.max(0.006, seam.width),
                 seam.incomingColor,
             );
-
-            this.chapterMarkers.forEach((ring, index) => {
-                const chapterId = index + 1;
-                const { material } = ring;
-                const chapterColor = this.getChapterColor(chapterId);
-                material.emissive.copy(chapterColor);
-                if (chapterId === seam.toChapter) {
-                    material.emissive.lerp(seam.incomingColor, 0.4);
-                    material.emissiveIntensity = 0.5 + envelope * 1.15;
-                    ring.scale.setScalar(1 + envelope * 0.26);
-                } else if (chapterId === seam.fromChapter) {
-                    material.emissiveIntensity = 0.5 + envelope * 0.45;
-                    ring.scale.setScalar(1 + envelope * 0.12);
-                } else {
-                    material.emissiveIntensity = 0.5;
-                    ring.scale.setScalar(1);
-                }
-            });
             return;
         }
 
@@ -401,13 +348,6 @@ export class OdysseyPathRenderer {
                 return;
             }
             this.applyTransitionUniforms(0, 0.5, 0.08, this.transitionResetColor);
-            this.chapterMarkers.forEach((ring, index) => {
-                const { material } = ring;
-                const chapterColor = this.getChapterColor(index + 1);
-                material.emissive.copy(chapterColor);
-                material.emissiveIntensity = 0.5;
-                ring.scale.setScalar(1);
-            });
             this._steadyStateApplied = true;
             return;
         }
@@ -430,24 +370,6 @@ export class OdysseyPathRenderer {
             0.08 + ((1 - rawProgress) * 0.04),
             this.chapterTransition.incomingColor,
         );
-
-        this.chapterMarkers.forEach((ring, index) => {
-            const chapterId = index + 1;
-            const { material } = ring;
-            const chapterColor = this.getChapterColor(chapterId);
-            material.emissive.copy(chapterColor);
-            if (chapterId === this.chapterTransition.toChapter) {
-                material.emissive.lerp(this.chapterTransition.incomingColor, 0.35);
-                material.emissiveIntensity = 0.5 + (envelope * 1.1);
-                ring.scale.setScalar(1 + (envelope * 0.25));
-            } else if (chapterId === this.chapterTransition.fromChapter) {
-                material.emissiveIntensity = 0.5 + (envelope * 0.45);
-                ring.scale.setScalar(1 + (envelope * 0.12));
-            } else {
-                material.emissiveIntensity = 0.5;
-                ring.scale.setScalar(1);
-            }
-        });
 
         if (rawProgress >= 1) {
             this.chapterTransition.active = false;
@@ -486,11 +408,6 @@ export class OdysseyPathRenderer {
             this.pathGlowMesh = null;
         }
 
-        this.chapterMarkers.forEach((ring) => {
-            ring.geometry.dispose();
-            ring.material.dispose();
-            this.scene.remove(ring);
-        });
         this.chapterMarkers = [];
         this.pathCurve = null;
         this.positionSeam = null;
