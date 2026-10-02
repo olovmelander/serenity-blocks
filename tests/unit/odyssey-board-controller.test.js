@@ -395,10 +395,15 @@ describe('OdysseyBoardController presentation layout', () => {
             rebuildPath: vi.fn(async () => {
                 controller.pathRenderer.pathCurve = nextCurve;
             }),
+            // The re-laid-out nodes move along the path, so the override re-syncs the lit
+            // frontier (seamless pass): the renderer takes the furthest node's path position.
+            setProgress: vi.fn(),
+            setFocus: vi.fn(),
         };
         controller.nodeManager = {
             updateLayout: vi.fn(),
             updateFromProgress: vi.fn(),
+            getFrontierPathPosition: vi.fn(() => 0.44),
         };
         controller.cameraController = {
             getCurrentPosition: vi.fn(() => 0.25),
@@ -434,5 +439,7 @@ describe('OdysseyBoardController presentation layout', () => {
             preservePosition: 0.25,
         }));
         expect(controller.environmentManager.setChapterPositions).toHaveBeenCalledWith([0, 0.44, 1]);
+        // The lit frontier follows the furthest node's NEW path position, not a level fraction.
+        expect(controller.pathRenderer.setProgress).toHaveBeenCalledWith(0.44);
     });
 });
