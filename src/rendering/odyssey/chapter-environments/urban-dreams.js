@@ -599,7 +599,7 @@ export function createUrbanDreamsEnvironment(options = {}) {
     // uOpacity bridge: with an opacityNode, material.opacity is a dead write (r181+), so the
     // billboard ignored the 7→8 crossfade and POPPED in at the seam.
     const holoOpacity = uniform(1);
-    holoMaterial.opacityNode = holoEdge.mul(0.42).mul(holoOpacity);
+    holoMaterial.opacityNode = holoEdge.mul(0.3).mul(holoOpacity);
     holoMaterial.uniforms = { uOpacity: holoOpacity };
     holoMaterial.transparent = true;
     holoMaterial.depthWrite = false;
@@ -615,7 +615,11 @@ export function createUrbanDreamsEnvironment(options = {}) {
     // never passed under it. It is now a LOW skybridge seen from above, spanning the
     // boulevard below the eye line: its magenta billboard glows over the wet street, below
     // the sun/spire sightline, as one more layer of the city rather than a bar across it.
-    const BRIDGE_DECK_Y = -38;
+    // Lowered again 2026-10-02 (-38 -> -50): with the seamless pass's camera framing the deck
+    // sat just under the eye line at the chapter's start and read as an unlit black bar across
+    // the bottom of the frame with a pink panel on it. Near street level it is one more
+    // crossing in the boulevard below, seen from above, as the re-stage intended.
+    const BRIDGE_DECK_Y = -50;
     bridgeDeck.position.y = BRIDGE_DECK_Y;
     gateBridge.children.forEach((child) => {
         if (!child.userData.isPylon) return;
