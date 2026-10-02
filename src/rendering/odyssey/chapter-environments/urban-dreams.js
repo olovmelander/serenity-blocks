@@ -49,6 +49,7 @@ import {
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import { getChapterProfile } from './shared/chapter-profile.js';
+import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
@@ -108,6 +109,18 @@ export const CH8_RETROSUN_STAGE = Object.freeze({
 const CYAN = 0x00f2ff;
 const MAGENTA = 0xff3fb4;
 
+/**
+ * Per-quality-tier set dressing (seamless pass). Chapters used to get only a particle count,
+ * so Lane B (Medium, the iGPU) paid the full High city. `high` is the authored city. Medium
+ * keeps the composition and thins the rain; Low also drops the two outermost tower banks
+ * (the skyline cards hold the horizon behind them) and every other holo sign.
+ */
+export const CH8_QUALITY_TIERS = Object.freeze({
+    high: Object.freeze({ towerBanks: 6, signStride: 1, rain: 900 }),
+    medium: Object.freeze({ towerBanks: 6, signStride: 1, rain: 600 }),
+    low: Object.freeze({ towerBanks: 4, signStride: 2, rain: 380 }),
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Environment Creation
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -126,11 +139,12 @@ function createSynthwaveSun(uniforms) {
     return mesh;
 }
 
-function createCityBlocks(uniforms) {
+function createCityBlocks(uniforms, tier = CH8_QUALITY_TIERS.high) {
     const { group } = createCityBlocksTSL(uniforms.uTime, uniforms.uEnergy, {
         uCityLight: uniforms.uCityLight,
         uIgniteRadius: uniforms.uIgniteRadius,
         uDim: uniforms.uDim,
+        bankCount: tier.towerBanks,
     });
     group.name = 'city-blocks';
     return group;
@@ -186,10 +200,9 @@ const RAIN_SPAN = RAIN_SPAN_TOP - RAIN_SPAN_BOTTOM;
 const RAIN_FALL_SPEED = 120; // corridor units/sec
 const RAIN_COUNT = 900;
 
-function createRainCurtain(uniforms) {
+function createRainCurtain(uniforms, count = RAIN_COUNT) {
     const uTime = uniforms?.uTime ?? uniform(0);
     const uRainDensity = uniforms?.uRainDensity ?? uniform(1);
-    const count = RAIN_COUNT;
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     const phases = new Float32Array(count);
@@ -256,6 +269,8 @@ function createRainCurtain(uniforms) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    // Additive + no depth write: the DoubleSide back/front split buys nothing (seamless pass).
+    material.forceSinglePass = true;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'rain-streak-curtain';
@@ -269,8 +284,10 @@ function createNeonCitySpire(uniforms) {
     return group;
 }
 
-function createHologramSigns(uniforms) {
-    const { group } = createHologramSignsTSL(uniforms.uTime, uniforms.uEnergy);
+function createHologramSigns(uniforms, tier = CH8_QUALITY_TIERS.high) {
+    const { group } = createHologramSignsTSL(uniforms.uTime, uniforms.uEnergy, {
+        signStride: tier.signStride,
+    });
     group.name = 'hologram-sign-stack';
     return group;
 }
@@ -415,10 +432,12 @@ function computeCorridorOrientation() {
     return stageBasisToQuaternion(basis, quaternion);
 }
 
-export function createUrbanDreamsEnvironment() {
+export function createUrbanDreamsEnvironment(options = {}) {
     const group = new THREE.Group();
     group.name = 'urban-dreams-environment';
     group.userData.chapterId = 8;
+    const tier = pickByQualityTier(options, CH8_QUALITY_TIERS);
+    group.userData.qualityTier = tier;
 
     // Shared TSL uniform nodes — passed INTO every .tsl builder so the materials and
     // this file's update() tick the same uTime/uEnergy. `.value` is mutated each frame.
@@ -538,6 +557,7 @@ export function createUrbanDreamsEnvironment() {
     holoMaterial.transparent = true;
     holoMaterial.depthWrite = false;
     holoMaterial.side = THREE.DoubleSide;
+    holoMaterial.forceSinglePass = true; // additive, no depth write: one pass, not two
     holoMaterial.blending = THREE.AdditiveBlending;
     holoMaterial.userData.emitsBloom = true;
     const holoBillboard = new THREE.Mesh(new THREE.PlaneGeometry(64, 22), holoMaterial);
@@ -573,9 +593,10 @@ export function createUrbanDreamsEnvironment() {
     corridor.add(gateBridge);
     group.userData.gateBridge = gateBridge;
 
-    const cityBlocks = createCityBlocks(uniforms);
+    const cityBlocks = createCityBlocks(uniforms, tier);
     corridor.add(cityBlocks);
     group.userData.cityBlocks = cityBlocks;
+    group.userData.cityTowers = cityBlocks.getObjectByName('city-tower-instances-tsl') ?? null;
 
     const rails = createNeonRails();
     corridor.add(rails);
@@ -592,7 +613,7 @@ export function createUrbanDreamsEnvironment() {
     // Rain lives IN the corridor (2026-10) and falls along the CITY's down: in world space
     // the climb is nearly vertical, so the old world -Y fall streamed along the view axis
     // into the lens. The stage-space billboard keeps each streak upright on the city's up.
-    const rain = createRainCurtain(uniforms);
+    const rain = createRainCurtain(uniforms, tier.rain);
     corridor.add(rain);
     group.userData.rain = rain;
 
@@ -611,7 +632,7 @@ export function createUrbanDreamsEnvironment() {
     group.userData.reveal = 0; // eased 0..1 ignition value (mirror of uReveal.value)
     group.userData.progress = 0; // raw 0..1 chapter/path progress (camera crane driver)
 
-    const signs = createHologramSigns(uniforms);
+    const signs = createHologramSigns(uniforms, tier);
     corridor.add(signs);
     group.userData.signs = signs;
 
@@ -686,6 +707,22 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
         rails.children.forEach((ring, index) => {
             ring.rotation.z += delta * (0.18 + index * 0.05);
         });
+    }
+
+    // THE TOWERS OCCLUDE FIRST (seamless pass). The facade has no uOpacity bridge, so the
+    // environment manager makes it transparent:true for the 7->8 crossfade (QW5), and in the
+    // transparent queue renderOrder outranks depth: the sky dome (-100), horizon haze (-98),
+    // Retrosun (-95), skyline cards (-88/-86), the 720 x 1400 street (-80) and the haze stack
+    // (-70) all drew IN FULL before the towers that cover ~2/3 of the frame, and the towers then
+    // painted over them — several screens of blended fill nobody saw. Once the city is fully
+    // present the towers go to the FRONT of the queue (-150): their depth then early-rejects
+    // everything behind them, and at opacity 1 normal blending replaces, so the frame is
+    // identical. During the crossfade they keep the default order, so a half-faded city never
+    // punches tower-shaped holes in chapter 7's sky. A sort key, not a material change: no
+    // pipeline is rebuilt.
+    const { cityTowers } = group.userData;
+    if (cityTowers) {
+        cityTowers.renderOrder = (group.userData.chapterOpacity ?? 1) >= 0.999 ? -150 : 0;
     }
 
     // Rain now falls in the shader: the rain material's positionNode derives a uTime-driven

@@ -58,13 +58,39 @@ import {
     step,
     uniform,
     uv,
+    varying,
     vec2,
     vec3,
     vec4,
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
-import { fbm2, hash21 } from './shared/odyssey-tsl-noise.js';
+import { hash21 } from './shared/odyssey-tsl-noise.js';
+import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+
+/**
+ * fbm2's octave walk (rotate by mat2(0.8, 0.6, -0.6, 0.8), lacunarity 2.02, amplitude 0.5^k)
+ * read from the shared baked lattice — one texture fetch per octave instead of noise2's four
+ * hashes (seamless pass). Each octave samples its own INTEGER z-plane of the lattice: a
+ * half-integer z would average two planes and shrink the noise's spread, moving every
+ * threshold tuned against noise2.
+ * @param {*} pInput vec2 node
+ * @param {number} octaves
+ * @returns {*} float node in ~[0, sum of amplitudes]
+ */
+export function latticeFbm2(pInput, octaves = 3) {
+    let value = float(0.0);
+    let amplitude = 0.5;
+    let p = vec2(pInput);
+    for (let i = 0; i < octaves; i += 1) {
+        value = value.add(latticeNoise3(vec3(p.x, p.y, 3 + i * 11)).mul(amplitude));
+        const rx = p.x.mul(0.80).add(p.y.mul(-0.60));
+        const ry = p.x.mul(0.60).add(p.y.mul(0.80));
+        p = vec2(rx, ry).mul(2.02);
+        amplitude *= 0.5;
+    }
+    return value;
+}
 
 const CYAN = 0x00f2ff;
 const MAGENTA = 0xff3fb4;
@@ -155,7 +181,7 @@ export function createSkyGradientTSL(uTime, uEnergy) {
         azimuth.mul(1.6).add(uTimeNode.mul(0.02)),
         dir.y.mul(2.2),
     );
-    const smog = fbm2(smogUV, 3).mul(smoothstep(0.7, 0.1, h)); // 5->3 oct (perf): full-screen sky, masked low
+    const smog = latticeFbm2(smogUV, 3).mul(smoothstep(0.7, 0.1, h)); // 5->3 oct (perf): full-screen sky, masked low
     const smogTint = vec3(0.06, 0.05, 0.09).mul(smog);
 
     // DISTANT CITY-LIGHT BOKEH: a DENSE field of soft neon pinpoints filling the lower
@@ -191,7 +217,12 @@ export function createSkyGradientTSL(uTime, uEnergy) {
     material.transparent = true;
     material.depthWrite = false;
 
-    const geometry = new THREE.SphereGeometry(440, 32, 20);
+    // 440 -> 1800 (seamless pass). The paint is purely directional (normalize(positionLocal)),
+    // so the radius only sets DEPTH — and at 440 the dome sat in FRONT of the far tower ranks
+    // (z to -650), the Retrosun (-700) and the far street (-1220). That never showed while the
+    // dome drew first and everything painted over it; once the towers draw first and occlude
+    // (urban-dreams.js update), the dome must lie behind every piece of the city.
+    const geometry = new THREE.SphereGeometry(1800, 32, 20);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -100;
     return { mesh, material, geometry };
@@ -333,6 +364,8 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    // Camera-facing quads cannot overlap themselves: one pass, not a back + front split.
+    material.forceSinglePass = true;
     material.blending = THREE.NormalBlending;
     material.userData.emitsBloom = true;
 
@@ -387,6 +420,8 @@ export function createSkylineSilhouetteTSL(uTime = uniform(0), { seedOffset = 0,
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    // A flat card cannot overlap itself, so the back/front split pass is pure overhead.
+    material.forceSinglePass = true;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
 
     const geometry = new THREE.PlaneGeometry(1700, 300, 1, 1);
@@ -419,6 +454,8 @@ export function createHorizonHazeTSL(uTime = uniform(0)) {
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
+    // A flat band cannot overlap itself, so the back/front split pass is pure overhead.
+    material.forceSinglePass = true;
     material.blending = THREE.NormalBlending;
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
 
@@ -518,12 +555,19 @@ function createFacadeMaterial(uTime, uEnergy, { uCityLight, uIgniteRadius, uDim 
     // a sprinkle of single windows. Ground floor (lobby) excluded — the street bounce owns it.
     // IGNITION WAVE: distance (corridor plane) from the spire base; inside the expanding
     // ring a building runs at its ignited floor count, and the wavefront itself flares.
-    const local = modelWorldMatrixInverse.mul(vec4(positionWorld, 1.0)).xyz;
-    const spireDist = length(vec2(local.x.sub(S.spire[0]), local.z.sub(S.spire[1])));
+    // Corridor-plane position of the fragment: linear in the vertex, so it is interpolated
+    // from the vertex stage instead of an inverse-matrix multiply per fragment.
+    const local = varying(modelWorldMatrixInverse.mul(vec4(positionWorld, 1.0)).xyz.xz, 'vCityPlane');
+    const spireDist = length(vec2(local.x.sub(S.spire[0]), local.y.sub(S.spire[1])));
     const inWave = oneMinus(smoothstep(igniteRadius.sub(60.0), igniteRadius, spireDist));
     const waveFront = smoothstep(igniteRadius.sub(90.0), igniteRadius.sub(30.0), spireDist)
         .mul(inWave).mul(step(1.0, igniteRadius));
     const cityLight = mix(arrivalLight, float(S.ignitedLight), inWave);
+    // HASH BUDGET (seamless pass): 7 hashes per fragment -> 3. One hash per FLOOR, one per
+    // tenant RUN, one per WINDOW; everything else that was hashed separately but only ever
+    // varied per floor (warm/cool, the rare neon floor) is a cheap re-mix of the floor hash,
+    // and the per-BUILDING gutter threshold is computed once per vertex. Same statistics,
+    // a different deal of the same cards.
     const floorRnd = hash21(vec2(cell.y, seed.mul(0.731)));
     const floorOn = step(oneMinus(occupancy.mul(cityLight)), floorRnd);
     const runRnd = hash21(vec2(floor(cell.x.div(4.0)), cell.y.add(faceSeed.mul(11.0))));
@@ -532,13 +576,13 @@ function createFacadeMaterial(uTime, uEnergy, { uCityLight, uIgniteRadius, uDim 
     const single = step(oneMinus(occupancy.mul(S.scatter).mul(cityLight)), winRnd);
     const aboveLobby = step(1.0, cell.y);
     // The resolve: whole buildings gutter out as uDim rises (per-building threshold).
-    const buildingAlive = step(dim, hash21(vec2(seed, 91.7)).mul(0.98).add(0.01));
+    const buildingAlive = step(dim, varying(hash21(vec2(seed, 91.7)), 'vCityGutter').mul(0.98).add(0.01));
     const lit = max(inFloor, single).mul(aboveLobby).mul(buildingAlive).mul(isSide);
 
     // ── WHAT colour ───────────────────────────────────────────────────────────────
-    const warmRnd = hash21(vec2(cell.y, seed.add(41.0)));
+    const warmRnd = fract(floorRnd.mul(13.37).add(0.37));
     const isWarm = step(warmRnd, warmBias);
-    const neonFloor = step(0.965, hash21(vec2(cell.y, seed.add(7.0))));
+    const neonFloor = step(0.965, fract(floorRnd.mul(31.71).add(0.11)));
     const warm = vec3(1.0, 0.56, 0.24).mul(S.warmGain);
     const cool = vec3(0.52, 0.8, 1.0).mul(S.coolGain);
     const neonTint = mix(vec3(1.0, 0.18, 0.66), vec3(0.0, 0.85, 1.0), step(0.5, fract(seed.mul(3.7))));
@@ -657,7 +701,9 @@ export const CH8_CITY_LAYOUT = Object.freeze({
     seed: 0x0c8d2e,
 });
 
-export function createCityBlocksTSL(uTime, uEnergy, { uCityLight, uIgniteRadius, uDim } = {}) {
+export function createCityBlocksTSL(uTime, uEnergy, {
+    uCityLight, uIgniteRadius, uDim, bankCount,
+} = {}) {
     const uTimeNode = uTime ?? uniform(0);
     const uEnergyNode = uEnergy ?? uniform(0.45);
 
@@ -679,7 +725,10 @@ export function createCityBlocksTSL(uTime, uEnergy, { uCityLight, uIgniteRadius,
     const L = CH8_CITY_LAYOUT;
     const rand = mulberry32(L.seed);
     const heroSlots = new Map(L.heroes.map(([rank, side, bank, hue]) => [`${rank}:${side}:${bank}`, hue]));
-    const TOWER_COUNT = L.ranks * 2 * L.banks.length;
+    // Low tier drops the OUTERMOST banks (the skyline cards carry the horizon behind them);
+    // the layout is still dealt for every bank so the kept towers are identical on all tiers.
+    const banksKept = Math.max(1, Math.min(L.banks.length, bankCount ?? L.banks.length));
+    const TOWER_COUNT = L.ranks * 2 * banksKept;
     const sharedBox = new THREE.BoxGeometry(1, 1, 1);
     const facadeMaterial = createFacadeMaterial(uTimeNode, uEnergyNode, { uCityLight, uIgniteRadius, uDim });
     const towers = new THREE.InstancedMesh(sharedBox, facadeMaterial, TOWER_COUNT);
@@ -717,15 +766,19 @@ export function createCityBlocksTSL(uTime, uEnergy, { uCityLight, uIgniteRadius,
                 }
                 const lateral = bank.lateral + rand() * bank.latJit + width * 0.5 - 8;
                 const zJitter = bank.zStag + (rand() - 0.5) * bank.zJit;
+                const warmy = rand() < 0.5;
+                const facadeSeed = rand() * 100;
+                const occupancyRoll = rand();
+                const warmRoll = rand();
+                if (b >= banksKept) continue;
                 scratchPos.set(side * lateral, STREET_Y + height * 0.5, z + zJitter);
                 scratchScale.set(width, height, depth);
                 scratchMatrix.compose(scratchPos, scratchQuat, scratchScale);
                 towers.setMatrixAt(instance, scratchMatrix);
 
-                const warmy = rand() < 0.5;
-                facadeArray[instance * 4] = rand() * 100; // seed
-                facadeArray[instance * 4 + 1] = 0.07 + rand() * 0.26 + (heroHue > 0 ? 0.08 : 0); // occupancy
-                facadeArray[instance * 4 + 2] = warmy ? 0.72 + rand() * 0.2 : 0.08 + rand() * 0.2; // warm bias
+                facadeArray[instance * 4] = facadeSeed; // seed
+                facadeArray[instance * 4 + 1] = 0.07 + occupancyRoll * 0.26 + (heroHue > 0 ? 0.08 : 0); // occupancy
+                facadeArray[instance * 4 + 2] = warmy ? 0.72 + warmRoll * 0.2 : 0.08 + warmRoll * 0.2; // warm bias
                 facadeArray[instance * 4 + 3] = heroHue;
                 dimsArray[instance * 3] = width;
                 dimsArray[instance * 3 + 1] = height;
@@ -1025,11 +1078,13 @@ function createSignMaterial(uTime, uEnergy, { color, glyphGrid = [18, 5] } = {})
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    // Additive + no depth write: the DoubleSide back/front split buys nothing (seamless pass).
+    material.forceSinglePass = true;
     material.userData.emitsBloom = true;
     return material;
 }
 
-export function createHologramSignsTSL(uTime, uEnergy) {
+export function createHologramSignsTSL(uTime, uEnergy, options = {}) {
     const uTimeNode = uTime ?? uniform(0);
     const uEnergyNode = uEnergy ?? uniform(0.45);
 
@@ -1060,7 +1115,10 @@ export function createHologramSignsTSL(uTime, uEnergy) {
         ['blade', -1, 30, 22, -110], ['blade', 1, 29, 4, -160], ['blade', -1, 31, -8, -230],
         ['marquee', -1, 31, -34, -280], ['blade', 1, 31, 18, -320], ['blade', -1, 32, 30, -410],
     ];
+    // Low tier keeps every other sign (the near ones carry the boulevard read either way).
+    const stride = options.signStride ?? 1;
     configs.forEach(([kind, side, offset, y, z], index) => {
+        if (index % stride !== 0) return;
         const blade = kind === 'blade';
         const cyan = (index % 3) !== 1;
         let material;
@@ -1109,7 +1167,7 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy) {
 
     // Puddles: large slow fbm blobs — inside a puddle the reflection is crisp and strong,
     // on the damp asphalt between them it is weaker and broken.
-    const puddle = smoothstep(0.42, 0.62, fbm2(vec2(sx.mul(0.012), sz.mul(0.006)), 3));
+    const puddle = smoothstep(0.42, 0.62, latticeFbm2(vec2(sx.mul(0.012), sz.mul(0.006)), 3));
     const ripple = sin(sz.mul(0.9).add(sx.mul(0.15)).sub(uTimeNode.mul(1.6))).mul(0.5).add(0.5);
     const shimmer = mix(ripple.mul(0.6).add(0.4), 1.0, puddle.mul(0.6));
 
@@ -1169,7 +1227,10 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy) {
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
-    material.side = THREE.DoubleSide;
+    // FRONT face only (seamless pass): the road is only ever seen from above (the eye rides
+    // 60-80 u over it), and a transparent DoubleSide material is split into a back pass and a
+    // front pass — a whole extra draw of a 720 x 1400 plane that could never rasterise.
+    material.side = THREE.FrontSide;
 
     // Lay the road flat under the whole corridor (local -Z forward, so length runs along z).
     const geometry = new THREE.PlaneGeometry(S.width, S.length, 1, 1);
@@ -1186,7 +1247,7 @@ export function createWetReflectionPlaneTSL(uTime, uEnergy) {
 function createHazeMaterial(uTime, uEnergy) {
     const vUv = uv();
     const c = vUv.sub(0.5);
-    const fog = fbm2(vUv.mul(5.0).add(vec2(uTime.mul(0.05), 0.0)), 3); // 5->3 oct (perf): 9 radial-masked ground-haze pools
+    const fog = latticeFbm2(vUv.mul(5.0).add(vec2(uTime.mul(0.05), 0.0)), 3); // 5->3 oct (perf): 9 radial-masked ground-haze pools
     const radial = smoothstep(0.55, 0.0, length(c));
     const color = mix(vec3(0.0, 0.34, 0.48), vec3(0.48, 0.08, 0.34), vUv.x);
     // Halved 2026-10: over the new dark wet street these pools are mist, not a floor wash.
@@ -1201,6 +1262,8 @@ function createHazeMaterial(uTime, uEnergy) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    // Additive + no depth write: the DoubleSide back/front split buys nothing (seamless pass).
+    material.forceSinglePass = true;
     return material;
 }
 
@@ -1308,7 +1371,7 @@ export function createNeonHazeStackTSL(uTime, uEnergy) {
     // Soft radial-ish falloff that reaches 0 well before the quad edge (feathered).
     const radial = smoothstep(0.5, 0.06, length(vec2(c.x.mul(1.3), c.y)));
     // Rolling fog texture so the curtain breathes rather than reading as a flat card.
-    const fog = fbm2(vec2(vUv.x.mul(3.0).add(aSeed), vUv.y.mul(2.0).add(uTimeNode.mul(0.08))), 3); // 5->3 oct (perf): 7 large additive haze curtains
+    const fog = latticeFbm2(vec2(vUv.x.mul(3.0).add(aSeed), vUv.y.mul(2.0).add(uTimeNode.mul(0.08))), 3); // 5->3 oct (perf): 7 large additive haze curtains
     // Cyan low / magenta high vertical gradient — the chapter's two-tone air.
     const hazeColor = mix(vec3(0.0, 0.34, 0.52), vec3(0.50, 0.06, 0.36), vUv.y);
     const alpha = clamp(
@@ -1327,6 +1390,8 @@ export function createNeonHazeStackTSL(uTime, uEnergy) {
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
     material.side = THREE.DoubleSide;
+    // Additive + no depth write: the DoubleSide back/front split buys nothing (seamless pass).
+    material.forceSinglePass = true;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'neon-haze-stack-tsl';
