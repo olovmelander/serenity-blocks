@@ -86,8 +86,16 @@ export const ODYSSEY_EYE_RAIL_OFFSET_Y = -16;
  *
  * Anything staged on the breach — audio release, Snell's window, the meniscus, the colour script
  * handoff — hangs off THIS constant and nothing else.
+ *
+ * ⚠️ RE-MEASURED 2026-10-02 (seamless pass): 0.20023 above predates two re-layouts. On the live
+ * spline the RAIL crosses sea level at 0.13381 and the EYE (real computeFollowFrame, settled,
+ * with the seam phase and act camera the board feeds it) at **0.13727** — the seam capture shows
+ * the eye breaking the surface between its 0.1367 and 0.1427 stations. At 0.20023 the
+ * surface-break stinger fired ~150 u after the breach, deep into chapter 3's meadow.
+ * `odyssey-breach-p.test.js` recomputes the eye crossing from the live layout and fails if this
+ * drifts again (a re-layout or a framing change must update it here).
  */
-export const ODYSSEY_BREACH_P = 0.20023;
+export const ODYSSEY_BREACH_P = 0.13727;
 
 /** The datum the canonical peaks' feet sit on. */
 export const ODYSSEY_MASSIF_FOOT_Y = 297.5556;
