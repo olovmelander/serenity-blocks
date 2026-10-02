@@ -1173,11 +1173,8 @@ export class OdysseyBoardController {
                 });
                 if (this.cinematicJourneyActive) {
                     this.director?.onChapterEnter(chapterId, previousChapter);
-                    this.cameraController.triggerVistaBeat({
-                        chapterId,
-                        durationMs: 1450,
-                        intensity: chapterId >= 5 ? 1.08 : 0.9,
-                    });
+                    // (The 1.45 s wall-clock vista beat that fired here is now position-driven:
+                    // _handleChapterSeam passes its strength with the seam phase every frame.)
                 }
                 console.log(`[OdysseyBoard] Chapter transition: ${previousChapter} → ${chapterId}`);
             });
@@ -3986,10 +3983,9 @@ export class OdysseyBoardController {
                         await this._yieldToMain();
                     }
                 }
-                // Let the transition ENVELOPES finish: the FOV pulse (1.5s) and vista beat
-                // (1.45s) run on wall-clock, and the last chapter change (ch2->ch3 at p=0.1427)
-                // fires ~0.5s before the drive ends — so without a tail, the beat-widened
-                // frustum content never draws during the warm and pays its first draw live.
+                // A short settle tail after the drive. (It was sized for the wall-clock FOV pulse
+                // and vista beat, which are gone — every seam beat is position-driven now, so the
+                // drive itself draws them — but it still lets the last crossing's pipelines land.)
                 const tailStart = performance.now();
                 let tailFrames = 0;
                 while (performance.now() - tailStart < 1400 && tailFrames < 120) {
@@ -4288,6 +4284,8 @@ export class OdysseyBoardController {
                 envelope,
                 direction,
                 intensity: seamIntensity,
+                // The vista breath rides the seam envelope (was a wall-clock beat at the flip).
+                vista: resolvedBlendState.targetChapter >= 5 ? 1.08 : 0.9,
             });
             this.pathRenderer?.setSeamPhase?.({
                 boundaryId,

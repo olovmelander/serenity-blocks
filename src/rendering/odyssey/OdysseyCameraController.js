@@ -16,6 +16,12 @@ import {
     computeStageBasis,
     urbanIgnition,
 } from './composition/odyssey-stage-frame.js';
+import {
+    seamHalfWidth,
+    seamWindowAt,
+    smooth01,
+    smoother01,
+} from './transitions/odyssey-seam-schedule.js';
 
 const DEFAULT_CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [0, 1];
 const CHAPTER_1_LOOK_DOWN = new THREE.Vector3(0, -26, 0);
@@ -274,7 +280,13 @@ function resolveChapter1Framing(t) {
 // camera's progress WITHIN chapter 2:
 //   • EARLY  (0.0): tilt UP toward the shimmering surface / god-rays   = "light far above"
 //   • MID    (0.5): level toward the leviathan, biased to the left third (hero off-centre)
-//   • LATE   (1.0): tilt DOWN toward the glowing reef / indigo abyss   = the dive-out
+//   • LATE   (1.0): tilt UP AGAIN toward the brightening surface       = the breach
+// ⚠️ LATE USED TO TILT DOWN (lookUp -6, camUp -2: "toward the reef / indigo abyss"), which was
+// the dive of an older layout. The live rail ASCENDS through the end of chapter 2 and breaks
+// the surface at the 2->3 seam, so the down-tilt aimed the eye at the abyss in the last
+// seconds before the breach and the seam then had to swing it up to chapter 3's level shot.
+// Seamless pass (2026-10-02): the late beat looks UP toward the light the rail is climbing
+// into, and lands close to chapter 3's entry framing so the breach needs no swing at all.
 // Each keyframe is a full framing record (DEFAULT + overrides) so the lerp is total and
 // never leaks another chapter's bias. Smoothstep-crossfaded between the three acts; the
 // result still flows through the SAME _activeFraming seam-lerp path as every chapter.
@@ -292,8 +304,9 @@ const CHAPTER_2_ARC = Object.freeze({
     }),
     late: Object.freeze({
         ...DEFAULT_CHAPTER_FRAMING,
-        lookUp: -6.0,
-        camUp: -2.0,
+        lookForward: 2.0,
+        lookUp: 4.0,
+        camUp: 0.6,
     }),
 });
 
@@ -446,6 +459,120 @@ function resolveChapterFramingForProgress(chapterId, inChapterProgress = 0) {
 
 export { resolveChapterFramingForProgress };
 
+// Framing keys that re-base the camera's ORIENTATION BASIS (the Urban stage basis, and the
+// world-up roll lock). They follow the staggered (coverage) schedule instead of the symmetric
+// seam lerp — see resolveJourneyFraming. worldUp is here because a HALF-applied roll lock is
+// the one state that is worse than either end: the up-vector is then a moving mix of the path
+// normal and gravity, and where the view is steep (4->5 looks ~68 deg up the near-vertical rail)
+// that mix sits almost parallel to the view axis, so the image rolled up to 80 deg mid-seam.
+// The value is where in the window (0..1, 0.5 = the boundary) the lock completes. worldUp locks
+// by the boundary. The STAGE basis by 0.7: the Urban basis sits ~40-60 deg off the black hole's
+// near-vertical rail, and squeezing that swing into the first half of a 0.0324 p window swung
+// the eye ~8 u per 0.001 p (3x plain travel); at 0.7 the city is ~80 % aligned at the boundary
+// — it is fully drawn there, so the residual is a few degrees of roll — and the swing is gentle.
+const BASIS_ALIGN_END = Object.freeze({ stage: 0.7, stageAim: 0.7, worldUp: 0.5 });
+
+function chapterAtProgress(progress, chapterPositions) {
+    for (let index = 0; index < chapterPositions.length - 1; index += 1) {
+        const start = chapterPositions[index];
+        const end = chapterPositions[index + 1] ?? 1;
+        if (progress >= start && progress <= end) return index + 1;
+    }
+    return 1;
+}
+
+function localChapterProgress(chapterId, progress, chapterPositions) {
+    const start = chapterPositions[chapterId - 1];
+    const end = chapterPositions[chapterId] ?? 1;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+    return THREE.MathUtils.clamp((progress - start) / (end - start), 0, 1);
+}
+
+/**
+ * THE JOURNEY FRAMING — the target framing as a CONTINUOUS function of progress.
+ *
+ * Seamless pass (2026-10-02). The target used to be "the framing of whichever chapter the
+ * camera is in", so it SWITCHED at every boundary and a 2.4/s wall-clock ease hid the switch.
+ * Hidden badly: 4->5 swapped ch4's end pose (lookUp +4.6, worldUp 0) for ch5's entry pose
+ * (lookUp -40, worldUp 0.92) and the eye swooped from dirY 0.94 to 0.69 inside 0.004 p; every
+ * other seam stepped 3-30 u of eye and up to 78 deg of roll in one frame of a teleport capture.
+ *
+ * Now, inside a seam window (the same window the chapter fades use), the framing is
+ * lerp(source chapter's framing, target chapter's framing, smootherstep(t)), each side
+ * evaluated at its own in-chapter progress (the source holds its exit pose past the boundary,
+ * the target holds its entry pose before it). At the window edges it equals the plain chapter
+ * framing, so it is continuous everywhere and the wall-clock ease is only a lag filter on top.
+ *
+ * STAGE keys (the Urban corridor basis) use the staggered coverage schedule instead: a stage
+ * chapter is fully drawn by the boundary (ChapterEnvironmentManager), so the camera must be on
+ * its basis by then — the city used to show through the black hole rolled ~40 deg because the
+ * alignment only began AFTER the boundary.
+ *
+ * @param {number} progress 0..1
+ * @param {number[]} chapterPositions live chapter boundaries [0, ..., 1]
+ * @returns {object} full framing record (DEFAULT keys + overrides)
+ */
+export function resolveJourneyFraming(progress, chapterPositions = DEFAULT_CHAPTER_POSITIONS) {
+    const seam = seamWindowAt(progress, chapterPositions);
+    if (!seam) {
+        const chapterId = chapterAtProgress(progress, chapterPositions);
+        return resolveChapterFramingForProgress(chapterId, localChapterProgress(chapterId, progress, chapterPositions));
+    }
+    const src = resolveChapterFramingForProgress(
+        seam.source,
+        localChapterProgress(seam.source, progress, chapterPositions),
+    );
+    const dst = resolveChapterFramingForProgress(
+        seam.target,
+        localChapterProgress(seam.target, progress, chapterPositions),
+    );
+    const blend = smoother01(seam.t);
+    const out = { ...DEFAULT_CHAPTER_FRAMING };
+    for (let i = 0; i < FRAMING_KEYS.length; i += 1) {
+        const key = FRAMING_KEYS[i];
+        const fallback = DEFAULT_CHAPTER_FRAMING[key];
+        const a = src[key] ?? fallback;
+        const b = dst[key] ?? fallback;
+        let w = blend;
+        const alignEnd = BASIS_ALIGN_END[key];
+        if (alignEnd) {
+            // Moving ONTO a stronger basis lock completes early (by `alignEnd` of the window);
+            // moving off one holds it until the mirror point (the staggered coverage schedule).
+            w = b >= a ? smooth01(seam.t / alignEnd) : 1 - smooth01((1 - seam.t) / alignEnd);
+        }
+        out[key] = THREE.MathUtils.lerp(a, b, w);
+    }
+    return out;
+}
+
+// ── 6->7 HAIRPIN — the path turns ~170 deg just past the boundary ─────────────────
+// The rail doubles back between ~p 0.877 and 0.892 (tangent yaw 65 -> -135 deg in ~35 u), and
+// the follow camera swung round with it: the view turned at up to 13 deg per 0.001 p, while
+// Gargantua (camera-locked) sat still and the whole starfield whipped past it. The seam
+// look-ahead made it worse by aiming INTO the turn from the boundary on.
+//
+// Inside this window the camera's travel direction is a CHORD of the rail,
+// P(p + h(1 - lag)) - P(p - h(1 + lag)), instead of the local tangent. A chord is exact on a
+// straight run; across a U-turn it rotates over the chord's whole span rather than the turn's,
+// and because the U also CLIMBS, the chord rolls over the top of the turn instead of swinging
+// flat across it — measured on the live spline: peak view rotation 13.1 -> ~6 deg per 0.001 p,
+// spread over the whole window (pitch peaks ~63 deg at the apex; Gargantua is camera-locked,
+// so the hero holds its place in frame through it). The eye placement, the look target and the
+// lateral biases all use it. h is 0 at both window edges (h = H sin(pi u)), so the chord IS the
+// tangent there and the frame is continuous; the lag keeps the camera a little behind the
+// turn rather than anticipating it. The window starts AT the boundary — ch6's dive onto the
+// omen (pinned by odyssey-ch6-hero-framing.test.js) is untouched — and is sized in 6->7 seam
+// half-widths, so a re-layout carries it.
+export const HAIRPIN_67 = Object.freeze({
+    boundaryIndex: 6, // chapterPositions[6] = the 6->7 boundary
+    startSeams: 0, // window starts AT the boundary
+    endSeams: 2.07, // ... and ends this many seam half-widths past it (~0.046 p, 116 u)
+    chordSeams: 1.35, // peak chord half-span H, in seam half-widths (~0.03 p, 76 u)
+    lag: 0.25, // chord centre trails the camera by lag * h
+    rampIn: 0.2, // weight ramps at the edges: the look-ahead point already sits round the bend at
+    rampOut: 0.2, // the boundary, so a short ramp swung the aim ~20 u per 0.001 p onto the chord
+});
+
 function buildChapterBoundaryPositions(chapterPositions) {
     const terminalTrimmed = chapterPositions[chapterPositions.length - 1] >= 1
         ? chapterPositions.slice(0, -1)
@@ -572,16 +699,19 @@ export class OdysseyCameraController {
         this._frameAxis = new THREE.Vector3();
         this._frameLookTangent = new THREE.Vector3();
         this._frameQuat = new THREE.Quaternion();
+        // 6->7 hairpin chord (see HAIRPIN_67), never reallocated.
+        this._frameChord = new THREE.Vector3();
+        this._frameChordA = new THREE.Vector3();
+        this._frameTravel = new THREE.Vector3();
+        this._frameTravelRight = new THREE.Vector3();
+        this._frameReach = new THREE.Vector3();
+        this._hairpinWindow = undefined;
 
         // UNIT A7-CAMERA: smoothed per-chapter framing. `_activeFraming` is eased
         // toward the resolved framing of the chapter under the camera so boundary
         // changes never snap. Seeded from the start chapter so the first frame is
         // already framed correctly.
-        const startChapterId = this._getChapterAtProgress(this.currentPosition);
-        this._activeFraming = resolveChapterFramingForProgress(
-            startChapterId,
-            this._getInChapterProgress(startChapterId),
-        );
+        this._activeFraming = resolveJourneyFraming(this.currentPosition, this.chapterPositions);
         this._framingInitialized = false;
 
         // Configuration
@@ -711,6 +841,7 @@ export class OdysseyCameraController {
 
     _buildPathLut() {
         this._stageFrame = undefined; // re-derived lazily against the new curve
+        this._hairpinWindow = undefined;
         const count = this.config.freeCamera.pathLutSamples;
         this.pathLut = {
             positions: new Float32Array(count * 3), // x, y, z
@@ -843,6 +974,7 @@ export class OdysseyCameraController {
         this.chapterBoundaryPositions = buildChapterBoundaryPositions(this.chapterPositions);
         this.chapter1EndPosition = this.chapterPositions[1] ?? this.chapter1EndPosition;
         this._stageFrame = undefined;
+        this._hairpinWindow = undefined;
         this.startPosition = Number.isFinite(options.startPosition)
             ? options.startPosition
             : (this.levelPositions[0] ?? this.chapterPositions[0] ?? 0);
@@ -1426,18 +1558,16 @@ export class OdysseyCameraController {
     }
 
     updateChapterFraming(deltaTime) {
-        const chapterId = this._getChapterAtProgress(this.currentPosition);
         // A few chapters stage a target framing that varies with the camera's progress
         // THROUGH the chapter (a live act-arc), not a single static override:
-        //   • ch2 Deep Ocean — three-act vertical reveal (tilt up -> level -> tilt down)
+        //   • ch2 Deep Ocean — three-act vertical reveal (tilt up -> level -> tilt up to the breach)
         //   • ch3 Surface     — hero-tree lookAt strengthening at the mid-chapter beat
         //   • ch5 Sky Drift    — summit hold -> aurora canopy -> atmosphere-edge crane
         //   • ch8 Urban        — finale CRANE up the igniting spire over the last ~18%
-        // Every other chapter uses its static override.
-        const target = resolveChapterFramingForProgress(
-            chapterId,
-            this._getInChapterProgress(chapterId),
-        );
+        // Every other chapter uses its static override. Across a seam the two sides are
+        // lerped by progress (resolveJourneyFraming), so the target itself never steps; the
+        // exponential ease below only filters it.
+        const target = resolveJourneyFraming(this.currentPosition, this.chapterPositions);
         const active = this._activeFraming;
 
         // Snap on the very first frame (avoids a visible ease-in from defaults on load).
@@ -1453,6 +1583,62 @@ export class OdysseyCameraController {
             const fallback = DEFAULT_CHAPTER_FRAMING[key];
             active[key] = THREE.MathUtils.lerp(active[key] ?? fallback, target[key] ?? fallback, lerp);
         }
+    }
+
+    /**
+     * The 6->7 hairpin window in progress (see HAIRPIN_67), cached; null if the layout has no
+     * 6->7 boundary.
+     * @returns {{start:number, end:number, h:number}|null}
+     */
+    _getHairpinWindow() {
+        if (this._hairpinWindow !== undefined) return this._hairpinWindow;
+        const boundary = this.chapterPositions[HAIRPIN_67.boundaryIndex];
+        if (!Number.isFinite(boundary) || this.chapterPositions.length < HAIRPIN_67.boundaryIndex + 2) {
+            this._hairpinWindow = null;
+            return null;
+        }
+        const w = seamHalfWidth(HAIRPIN_67.boundaryIndex);
+        this._hairpinWindow = {
+            start: boundary + HAIRPIN_67.startSeams * w,
+            end: Math.min(1, boundary + HAIRPIN_67.endSeams * w),
+            h: HAIRPIN_67.chordSeams * w,
+        };
+        return this._hairpinWindow;
+    }
+
+    /**
+     * How strongly the camera rides the rail CHORD instead of its tangent at `progress`
+     * (0 outside the 6->7 hairpin window). Writes the chord direction into `_frameChord`.
+     * @param {number} progress
+     * @returns {number} 0..1
+     */
+    _resolveHairpinDamp(progress) {
+        const win = this._getHairpinWindow();
+        if (!win || progress <= win.start || progress >= win.end) return 0;
+        const u = (progress - win.start) / (win.end - win.start);
+        const weight = smooth01(u / HAIRPIN_67.rampIn)
+            * (1 - smooth01((u - (1 - HAIRPIN_67.rampOut)) / HAIRPIN_67.rampOut));
+        if (!(weight > 1e-4)) return 0;
+        const h = win.h * Math.sin(Math.PI * u);
+        const throwaway = this._frameThrow;
+        const ahead = this.getPathDataAt(
+            progress + h * (1 - HAIRPIN_67.lag),
+            this._frameChord,
+            throwaway,
+            throwaway,
+            throwaway,
+        ).position;
+        const behind = this.getPathDataAt(
+            progress - h * (1 + HAIRPIN_67.lag),
+            this._frameChordA,
+            throwaway,
+            throwaway,
+            throwaway,
+        ).position;
+        ahead.sub(behind);
+        if (ahead.lengthSq() < 1e-8) return 0;
+        ahead.normalize();
+        return weight;
     }
 
     /**
@@ -1644,17 +1830,13 @@ export class OdysseyCameraController {
      * @param {number} chapterId
      */
     onChapterChange(chapterId) {
-        if (chapterId !== this.lastChapterId) {
-            // The seam beat (triggerChapterSeam) already fires the pulse on the way INTO the
-            // seam; firing again at the boundary restarted it mid-hump (two pulses, a snap).
-            // Only pulse here when no seam beat covered this crossing (e.g. a direct jump).
-            const seamCovered = this.fovPulseActive
-                || (this.seamBeat && (performance.now() - this.seamBeat.startTime) < 2500);
-            if (!seamCovered) {
-                this.triggerFovPulse('expand');
-            }
-            this.lastChapterId = chapterId;
-        }
+        // NO FOV PULSE AT A CHAPTER CHANGE (seamless pass, 2026-10-02). The pulse was a
+        // wall-clock +7-8 deg widen fired as the camera ENTERED a seam (triggerChapterSeam)
+        // and again here at the boundary whenever the seam took longer than 2.5 s to cross —
+        // which, at travel speed, it always did. A lens breathing on a timer is a non-diegetic
+        // beat: invisible in a position capture, a hiccup in play. The per-act FOV still moves,
+        // continuously, through the director's seam-blended fovBase.
+        this.lastChapterId = chapterId;
     }
 
     triggerChapterSeam({
@@ -1669,18 +1851,30 @@ export class OdysseyCameraController {
             intensity: THREE.MathUtils.clamp(intensity, 0, 1.6),
             direction: Math.sign(direction) || 1,
         };
-        this.triggerFovPulse('expand', {
-            amount: this.cinematicConfig.fovPulseAmount * (0.8 + (0.45 * intensity)),
-            duration: Math.max(0.55, durationMs / 1000),
-        });
+        // (The FOV pulse that used to fire here is gone — see onChapterChange. This is now
+        // bookkeeping for the position-driven beat only.)
     }
 
+    /**
+     * Position-driven seam phase, set by the board every frame the camera is inside a seam.
+     * Every seam beat the camera plays (the forward lean, the look-ahead stretch, the vista
+     * breath) reads THIS envelope — sin(pi * t) across the seam window — so each one is 0 at
+     * the window edges and continuous in progress, never a wall-clock event.
+     * @param {object} phase
+     * @param {string} phase.boundaryId
+     * @param {number} [phase.seamPhase] -1..1 across the window
+     * @param {number} [phase.envelope] 0..1, peaks at the boundary
+     * @param {number} [phase.direction] travel direction sign
+     * @param {number} [phase.intensity] seam intensity (fx preset)
+     * @param {number} [phase.vista] vista-breath strength for this seam (0 = none)
+     */
     setSeamPhase({
         boundaryId,
         seamPhase = 0,
         envelope = 0,
         direction = 1,
         intensity = 1,
+        vista = undefined,
     } = {}) {
         if (!boundaryId) return;
         this.positionSeamBeat = {
@@ -1689,6 +1883,7 @@ export class OdysseyCameraController {
             envelope: THREE.MathUtils.clamp(envelope || 0, 0, 1),
             direction: Math.sign(direction) || 1,
             intensity: THREE.MathUtils.clamp(intensity, 0, 1.6),
+            vista: Number.isFinite(vista) ? THREE.MathUtils.clamp(vista, 0, 1.4) : null,
         };
     }
 
@@ -1696,16 +1891,18 @@ export class OdysseyCameraController {
         this.positionSeamBeat = null;
     }
 
+    /**
+     * Legacy vista trigger. The vista breath is driven by the seam envelope now
+     * (getVistaBeatStrength); this only records a default strength for seam phases that do
+     * not pass their own, and never starts a timer.
+     */
     triggerVistaBeat({
         chapterId = 1,
-        durationMs = 1350,
         intensity = 1,
     } = {}) {
         this.vistaBeat = {
-            active: true,
+            active: false,
             chapterId,
-            startTime: performance.now(),
-            duration: Math.max(1, durationMs),
             intensity: THREE.MathUtils.clamp(intensity, 0, 1.4),
         };
     }
@@ -2019,10 +2216,22 @@ export class OdysseyCameraController {
         const vistaPullback = vistaWeight * (2.6 + this.directorCamera.followDistance * 0.08);
         const vistaLift = vistaWeight * 1.85;
 
+        // 6->7 HAIRPIN: ride the rail's chord, not its tangent (see HAIRPIN_67). `travel` and
+        // `travelRight` are the tangent/right everywhere else, so the frame is untouched there.
+        const hairpin = this._resolveHairpinDamp(clampedPosition);
+        let travel = tangent;
+        let travelRight = right;
+        if (hairpin > 0) {
+            travel = this._frameTravel.copy(tangent).lerp(this._frameChord, hairpin).normalize();
+            travelRight = this._frameTravelRight.crossVectors(travel, normal);
+            if (travelRight.lengthSq() > 1e-8) travelRight.normalize();
+            else travelRight = right;
+        }
+
         // UNIT A7-CAMERA: smoothed per-chapter framing (path-frame biases).
         const framing = this._activeFraming;
 
-        const gravityBlend = THREE.MathUtils.clamp(1 - Math.abs(tangent.y) * 0.45, 0.35, 0.9);
+        const gravityBlend = THREE.MathUtils.clamp(1 - Math.abs(travel.y) * 0.45, 0.35, 0.9);
         const cameraUp = this._frameCameraUp.copy(normal).lerp(PATH_FRAME_GRAVITY_UP, gravityBlend).normalize();
         // Roll-stabilisation (per-chapter): pull the up-vector toward WORLD up so a
         // near-vertical spline can't tilt the horizon. Default worldUp 0 = unchanged.
@@ -2035,12 +2244,12 @@ export class OdysseyCameraController {
         const stageWeight = THREE.MathUtils.clamp(framing.stage ?? 0, 0, 1);
         const stageAimWeight = THREE.MathUtils.clamp(framing.stageAim ?? 0, 0, 1);
         const stage = (stageWeight > 0 || stageAimWeight > 0) ? this._getStageFrame() : null;
-        let eyeRight = right;
-        let dolly = tangent;
+        let eyeRight = travelRight;
+        let dolly = travel;
         if (stage && stageWeight > 0) {
             cameraUp.lerp(stage.up, stageWeight).normalize();
-            eyeRight = this._frameRightBlend.copy(right).lerp(stage.right, stageWeight).normalize();
-            dolly = this._frameDolly.copy(tangent).lerp(stage.forward, stageWeight).normalize();
+            eyeRight = this._frameRightBlend.copy(travelRight).lerp(stage.right, stageWeight).normalize();
+            dolly = this._frameDolly.copy(travel).lerp(stage.forward, stageWeight).normalize();
         }
         const camPos = this._frameCamPos.copy(pathPoint)
             .addScaledVector(dolly, -(this.directorCamera.followDistance + vistaPullback))
@@ -2069,9 +2278,15 @@ export class OdysseyCameraController {
         const lookAheadDistance = this.cinematicConfig.lookAheadEnabled
             ? this.cinematicConfig.lookAheadDistance
             : 0.01;
+        // The seam stretches the look-ahead by up to 40 %, CONTINUOUSLY with the seam envelope.
+        // (It used to switch x1.4 on the first frame forwardOffset was > 0 — a ~14 u aim jump
+        // at every seam entry and exit, measured 30-32 u of look-target step per 0.001 p.)
+        // The vista breath adds a little reach (was 0.018 p = 45 u, which at 6->7 aimed the
+        // boundary frame straight into the hairpin's far leg).
+        const seamStretch = 1 + 0.4 * Math.min(1, seamWeight);
         const rawLookAheadT = clampedPosition
-            + (lookAheadDistance * (forwardOffset > 0 ? 1.4 : 1) * this.directorCamera.drift)
-            + vistaWeight * 0.018;
+            + (lookAheadDistance * seamStretch * this.directorCamera.drift)
+            + vistaWeight * 0.006;
         const lookAheadT = THREE.MathUtils.clamp(rawLookAheadT, 0, 1);
         const { position: lookTarget, tangent: lookTangent } = this.getPathDataAt(
             lookAheadT,
@@ -2086,18 +2301,25 @@ export class OdysseyCameraController {
         if (rawLookAheadT > 1) {
             lookTarget.addScaledVector(lookTangent, (rawLookAheadT - 1) * this.travelModel.pathLength);
         }
-        if (forwardOffset > 0) {
-            lookTarget.addScaledVector(tangent, forwardOffset * 0.45 * seamDirection);
+        // HAIRPIN: the look-ahead point lies on the far side of the turn; aim along the chord at
+        // the same reach instead, blended by the same weight as the eye.
+        if (hairpin > 0) {
+            const reach = lookTarget.distanceTo(pathPoint);
+            this._frameReach.copy(pathPoint).addScaledVector(travel, reach);
+            lookTarget.lerp(this._frameReach, hairpin);
         }
-        const climbBias = THREE.MathUtils.clamp((tangent.y + 0.15) * 0.55, 0, 0.65)
+        if (forwardOffset > 0) {
+            lookTarget.addScaledVector(travel, forwardOffset * 0.45 * seamDirection);
+        }
+        const climbBias = THREE.MathUtils.clamp((travel.y + 0.15) * 0.55, 0, 0.65)
             * (framing.climbScale ?? 1);
         lookTarget.addScaledVector(cameraUp, climbBias * (2.5 + this.directorCamera.followDistance * 0.12));
 
         // UNIT A7-CAMERA: per-chapter look-target re-aim (rule-of-thirds yaw/pitch
         // + down-path bias) so the hero / set piece stays in frame, not the void.
         lookTarget
-            .addScaledVector(tangent, framing.lookForward)
-            .addScaledVector(right, framing.lookRight)
+            .addScaledVector(travel, framing.lookForward)
+            .addScaledVector(travelRight, framing.lookRight)
             .addScaledVector(cameraUp, framing.lookUp);
 
         lookTarget.add(this.getLookAtOffset(clampedPosition));
@@ -2357,35 +2579,33 @@ export class OdysseyCameraController {
     }
 
     updateVistaBeat() {
-        if (!this.vistaBeat?.active) return;
-
-        const elapsed = performance.now() - this.vistaBeat.startTime;
-        if (elapsed >= this.vistaBeat.duration) {
-            this.vistaBeat.active = false;
-        }
+        // Position-driven now (getVistaBeatStrength); nothing runs on the clock.
     }
 
+    /**
+     * Seam beat strength, from the POSITION envelope only. The wall-clock fallback (a sin hump
+     * over beatDurationMs from seam entry) is gone: it was the only thing left that could move
+     * the camera in a frame where progress did not.
+     * @returns {number}
+     */
     getSeamBeatStrength() {
-        if (this.positionSeamBeat) {
-            return this.positionSeamBeat.envelope * (this.positionSeamBeat.intensity || 0);
-        }
-
-        if (!this.seamBeat?.active) return 0;
-
-        const elapsed = performance.now() - this.seamBeat.startTime;
-        const t = THREE.MathUtils.clamp(elapsed / this.seamBeat.duration, 0, 1);
-        const envelope = Math.sin(t * Math.PI);
-        return envelope * (this.seamBeat.intensity || 0);
+        if (!this.positionSeamBeat) return 0;
+        return this.positionSeamBeat.envelope * (this.positionSeamBeat.intensity || 0);
     }
 
+    /**
+     * THE VISTA BREATH — the camera eases back and up as it crosses a boundary so the new
+     * chapter opens wide. It used to be a 1.45 s wall-clock beat fired at the active-chapter
+     * flip (the board's onChapterChange), so it began on a step and never appeared in a
+     * capture. Now it is the seam envelope squared: 0 at the window edges, peak at the
+     * boundary, identical at any travel speed.
+     * @returns {number}
+     */
     getVistaBeatStrength() {
-        if (!this.vistaBeat?.active) return 0;
-
-        const elapsed = performance.now() - this.vistaBeat.startTime;
-        const t = THREE.MathUtils.clamp(elapsed / this.vistaBeat.duration, 0, 1);
-        const intro = THREE.MathUtils.smoothstep(t, 0, 0.28);
-        const outro = 1 - THREE.MathUtils.smoothstep(t, 0.68, 1);
-        return intro * outro * (this.vistaBeat.intensity || 0);
+        const seam = this.positionSeamBeat;
+        if (!seam) return 0;
+        const strength = Number.isFinite(seam.vista) ? seam.vista : (this.vistaBeat?.intensity ?? 0.9);
+        return seam.envelope * seam.envelope * strength;
     }
 
     getCrossedBoundaryIds(startPosition, endPosition) {
