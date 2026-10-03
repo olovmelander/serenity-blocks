@@ -1,0 +1,241 @@
+[
+  {
+    "name": "T-standard",
+    "shape": [
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        1,
+        1,
+        1
+      ]
+    ],
+    "x": 3,
+    "y": 8,
+    "color": 11023028,
+    "bs": 40,
+    "fx": {
+      "gradient": true,
+      "highlight": 0.18,
+      "shadow": 0.18,
+      "rim": true,
+      "rimAlpha": 0.42,
+      "rimWidthFactor": 0.05,
+      "gloss": true,
+      "glossAlpha": 0.22
+    },
+    "commandCount": 32,
+    "digest": "314ef1bd2b666d2e2dfacb98f1cb581b5ebf820c788aa7b54656bd41bf3f5a11"
+  },
+  {
+    "name": "T-fractional",
+    "shape": [
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        1,
+        1,
+        1
+      ]
+    ],
+    "x": 3.5,
+    "y": 8.25,
+    "color": 11023028,
+    "bs": 37.5,
+    "fx": {
+      "gradient": true,
+      "highlight": 0.18,
+      "shadow": 0.18,
+      "rim": true,
+      "rimAlpha": 0.42,
+      "rimWidthFactor": 0.05,
+      "gloss": true,
+      "glossAlpha": 0.22
+    },
+    "commandCount": 32,
+    "digest": "290bc65402203ab1a863ce57698823d0fa27cae8969cd15b3196fe673a6a0cb8"
+  },
+  {
+    "name": "T-hidden-clipped",
+    "shape": [
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        1,
+        1,
+        1
+      ]
+    ],
+    "x": 3,
+    "y": 3,
+    "color": 11023028,
+    "bs": 40,
+    "fx": {
+      "gradient": true,
+      "highlight": 0.18,
+      "shadow": 0.18,
+      "rim": true,
+      "rimAlpha": 0.42,
+      "rimWidthFactor": 0.05,
+      "gloss": true,
+      "glossAlpha": 0.22
+    },
+    "commandCount": 26,
+    "digest": "586c6bf22372f3d4b03ccc6c3832beab3c3891738d074695f22e02eee0478e4e"
+  },
+  {
+    "name": "T-new-color",
+    "shape": [
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        1,
+        1,
+        1
+      ]
+    ],
+    "x": 3,
+    "y": 8,
+    "color": 3254120,
+    "bs": 40,
+    "fx": {
+      "gradient": true,
+      "highlight": 0.18,
+      "shadow": 0.18,
+      "rim": true,
+      "rimAlpha": 0.42,
+      "rimWidthFactor": 0.05,
+      "gloss": true,
+      "glossAlpha": 0.22
+    },
+    "commandCount": 32,
+    "digest": "d38872b46db7c2b666808c7ef7bba43089d7515ba5f465f39b9a61be12590074"
+  },
+  {
+    "name": "L-new-effects",
+    "shape": [
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ]
+    ],
+    "x": 3.1,
+    "y": 4.7,
+    "color": 16609578,
+    "bs": 37.5,
+    "fx": {
+      "gradient": true,
+      "highlight": 0.35,
+      "shadow": 0.07,
+      "rim": true,
+      "rimAlpha": 0.42,
+      "rimWidthFactor": 0.05,
+      "gloss": true,
+      "glossAlpha": 0.41
+    },
+    "commandCount": 28,
+    "digest": "41ba8b919ba58c6f2b34a482f6860e86b130b0ba945f0a0cab7a240a619c9a72"
+  },
+  {
+    "name": "I-no-depth",
+    "shape": [
+      [
+        1,
+        1,
+        1,
+        1
+      ]
+    ],
+    "x": 3,
+    "y": 6,
+    "color": 9601197,
+    "bs": 40,
+    "fx": {
+      "gradient": false,
+      "highlight": 0.18,
+      "shadow": 0.18,
+      "rim": false,
+      "rimAlpha": 0.42,
+      "rimWidthFactor": 0.05,
+      "gloss": false,
+      "glossAlpha": 0.22
+    },
+    "commandCount": 5,
+    "digest": "bfe6b9995d99f674773f4fbd4f137a1f1838334b91c2fab93faf5708b0f2e388"
+  },
+  {
+    "name": "disconnected",
+    "shape": [
+      [
+        1,
+        0,
+        1
+      ],
+      [
+        1,
+        0,
+        0
+      ]
+    ],
+    "x": 3,
+    "y": 6,
+    "color": 9600750,
+    "bs": 40,
+    "fx": {
+      "gradient": true,
+      "highlight": 0.18,
+      "shadow": 0.18,
+      "rim": true,
+      "rimAlpha": 0.42,
+      "rimWidthFactor": 0.05,
+      "gloss": true,
+      "glossAlpha": 0.22
+    },
+    "commandCount": 31,
+    "digest": "2c67af6a86f8d3dc2fcda86e6b0aad770ea1ef59899702457ac0591f792ed9c7"
+  },
+  {
+    "name": "empty-clipped",
+    "shape": [
+      [
+        1
+      ]
+    ],
+    "x": 3,
+    "y": 3,
+    "color": 9601197,
+    "bs": 40,
+    "fx": {
+      "gradient": true,
+      "highlight": 0.18,
+      "shadow": 0.18,
+      "rim": true,
+      "rimAlpha": 0.42,
+      "rimWidthFactor": 0.05,
+      "gloss": true,
+      "glossAlpha": 0.22
+    },
+    "commandCount": 0,
+    "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  }
+]

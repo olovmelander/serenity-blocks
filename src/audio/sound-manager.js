@@ -48,6 +48,7 @@ export class SoundManager {
         this.playPromise = null; // Track pending play promise to avoid AbortError
         this.trackNames = [];
         this.songsData = [];
+        this.pendingTrackInitialization = null;
         this.themeLinkSuspended = false;
         this.pendingThemeLinkedTrack = null;
         this.pendingTrackKey = null;
@@ -80,6 +81,7 @@ export class SoundManager {
         this.oneShotLoads = new Map();
         this.noiseBuffers = new Map();
         this.activeAudioVoices = new Set();
+        this.soundEffectTimers = new Set();
         this.lastAnalyzerBootstrapError = null;
         this.lastAudioAnalysis = {
             bassEnergy: 0,
@@ -129,12 +131,21 @@ export class SoundManager {
             this.musicGainNode = this.audioContext.createGain();
             this.musicGainNode.gain.value = this.getMusicVolume();
             this.ensureSfxBus();
-            this.soundSets = createSoundSets(this.createTone.bind(this), this.createRichTone.bind(this));
+            const scheduleSfx = this.scheduleSoundEffect.bind(this);
+            const canPlaySfx = this.canPlaySoundEffect.bind(this);
+            this.soundSets = createSoundSets(
+                this.createTone.bind(this),
+                this.createRichTone.bind(this),
+                scheduleSfx,
+                canPlaySfx,
+            );
             this.sfxPlayer = new SoundEffectPlayer(
                 this.soundSets,
                 this.soundSet,
                 this.createTone.bind(this),
                 this.createRichTone.bind(this),
+                scheduleSfx,
+                canPlaySfx,
             );
         }
         this.bindRuntimeAudioHooks();
@@ -298,11 +309,13 @@ export class SoundManager {
     trackAudioVoice(sources, nodes, onended = null) {
         let remaining = sources.length;
         const voice = { stop: null };
+        const connectedNodes = new Set(nodes);
         const disconnect = () => {
             for (const source of sources) source.onended = null;
-            for (const node of nodes) {
+            for (const node of connectedNodes) {
                 try { node.disconnect(); } catch { /* already disconnected */ }
             }
+            connectedNodes.clear();
             this.activeAudioVoices.delete(voice);
         };
         voice.stop = () => {
@@ -321,6 +334,7 @@ export class SoundManager {
             source.onended = (event) => {
                 source.onended = null;
                 try { source.disconnect(); } catch { /* already disconnected */ }
+                connectedNodes.delete(source);
                 remaining -= 1;
                 if (remaining === 0) {
                     disconnect();
@@ -328,6 +342,22 @@ export class SoundManager {
                 }
             };
         });
+    }
+
+    canPlaySoundEffect() {
+        return Boolean(this.audioContext) && !this.isMuted && this.getSfxVolume() > 0;
+    }
+
+    /** Keep the original note delays and gain-at-play behavior under one teardown owner. */
+    scheduleSoundEffect(callback, delayMs = 0) {
+        if (!this.canPlaySoundEffect()) return null;
+        const resourceToken = this.audioResourceToken;
+        const timer = setTimeout(() => {
+            this.soundEffectTimers.delete(timer);
+            if (resourceToken === this.audioResourceToken && this.canPlaySoundEffect()) callback();
+        }, delayMs);
+        this.soundEffectTimers.add(timer);
+        return timer;
     }
 
     bindRuntimeAudioHooks() {
@@ -732,21 +762,31 @@ export class SoundManager {
      * Initializes tracks from songs.json
      * @returns {Promise<SoundManager>} Returns this for chaining
      */
-    async initializeTracks() {
-        const songs = await loadSongs();
-        this.songsData = songs;
-        this.trackNames = songs.map((song) => nameToKey(song.name));
+    initializeTracks() {
+        if (this.pendingTrackInitialization) return this.pendingTrackInitialization;
+        const resourceToken = this.audioResourceToken;
+        const pending = loadSongs().then((songs) => {
+            // Teardown retires this owner even if the shared manifest fetch is
+            // still useful to another manager or a replacement initialization.
+            if (resourceToken !== this.audioResourceToken) return this;
+            this.songsData = songs;
+            this.trackNames = songs.map((song) => nameToKey(song.name));
 
-        // Set default track if current doesn't exist
-        if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
-            this.musicTrack = this.trackNames[0];
-        }
+            // Set default track if current doesn't exist
+            if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
+                this.musicTrack = this.trackNames[0];
+            }
 
-        // Populate the dropdown
-        this.populateMusicDropdown();
-        this.preloadDefaultTrack();
+            // Populate the dropdown
+            this.populateMusicDropdown();
+            this.preloadDefaultTrack();
 
-        return this;
+            return this;
+        }).finally(() => {
+            if (this.pendingTrackInitialization === pending) this.pendingTrackInitialization = null;
+        });
+        this.pendingTrackInitialization = pending;
+        return pending;
     }
 
     /**
@@ -1205,7 +1245,7 @@ export class SoundManager {
         if (!this.audioContext) {
             this.resumeAudioContext();
         }
-        if (!this.audioContext || this.isMuted) return;
+        if (!this.canPlaySoundEffect()) return;
 
         const intensity = clampUnitVolume(options.intensity ?? 1, 1);
         const volume = 0.32 * intensity;
@@ -1215,7 +1255,7 @@ export class SoundManager {
                 volume: (params.volume ?? volume) * intensity,
             });
             if (delayMs > 0) {
-                setTimeout(run, delayMs);
+                this.scheduleSoundEffect(run, delayMs);
             } else {
                 run();
             }
@@ -1793,6 +1833,9 @@ export class SoundManager {
 
     cleanup() {
         this.audioResourceToken += 1;
+        this.pendingTrackInitialization = null;
+        for (const timer of this.soundEffectTimers) clearTimeout(timer);
+        this.soundEffectTimers.clear();
         this.stopBackgroundMusic();
         if (this._deferredAnalysisHandle !== null) {
             if (this._deferredAnalysisKind === 'idle') window.cancelIdleCallback?.(this._deferredAnalysisHandle);

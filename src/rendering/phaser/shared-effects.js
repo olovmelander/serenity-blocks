@@ -86,6 +86,8 @@ export class SharedEffects {
 
         // Hit-stop (impact freeze) guard so overlapping big clears don't stack freezes
         this._hitStopActive = false;
+        this._hitStopTimer = null;
+        this._hitStopRestore = null;
 
         // PERFORMANCE: Track graphics objects and text objects for proper cleanup
         // Prevents accumulation of orphaned display objects
@@ -248,32 +250,30 @@ export class SharedEffects {
             return; // Phaser build doesn't expose timeScale - skip gracefully
         }
 
-        const prevTime = timeClock.timeScale || 1;
-        const prevTween = tweenMgr.timeScale || 1;
+        const prevTime = timeClock.timeScale;
+        const prevTween = tweenMgr.timeScale;
 
         this._hitStopActive = true;
+        const restore = () => {
+            if (this._hitStopRestore !== restore) return;
+            this._hitStopActive = false;
+            this._hitStopRestore = null;
+            this._hitStopTimer = null;
+            // Restore captured owners, even if a restarted scene replaced them.
+            try { timeClock.timeScale = prevTime; } catch (e) { /* owner disposed */ }
+            try { tweenMgr.timeScale = prevTween; } catch (e) { /* owner disposed */ }
+        };
+        this._hitStopRestore = restore;
         try {
             timeClock.timeScale = 0.0001;
             tweenMgr.timeScale = 0.0001;
         } catch (e) {
-            this._hitStopActive = false;
+            restore();
             return;
         }
 
         // Real-clock restore: scene timers are frozen, so delayedCall can't fire here.
-        setTimeout(() => {
-            this._hitStopActive = false;
-            try {
-                if (scene && scene.time && typeof scene.time.timeScale === 'number') {
-                    scene.time.timeScale = prevTime;
-                }
-                if (scene && scene.tweens && typeof scene.tweens.timeScale === 'number') {
-                    scene.tweens.timeScale = prevTween;
-                }
-            } catch (e) {
-                // Scene torn down mid-freeze - nothing to restore
-            }
-        }, Math.max(16, durationMs));
+        this._hitStopTimer = setTimeout(restore, Math.max(16, durationMs));
     }
 
     /**
@@ -2251,6 +2251,8 @@ export class SharedEffects {
      * Should be called when effects are no longer needed
      */
     cleanup() {
+        if (this._hitStopTimer !== null) clearTimeout(this._hitStopTimer);
+        this._hitStopRestore?.();
         debugLog('[SharedEffects] Cleaning up all resources:', {
             particles: this.activeParticleSystems.size,
             graphics: this.activeGraphics.length,

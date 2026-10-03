@@ -21,6 +21,13 @@ export class BreathworkSessionManager {
         this.isPaused = false;
         this.timer = null;
         this.breathTimer = null;
+        this.audioTimer = null;
+        this.progressUpdateTimer = null;
+        this.phaseTimeouts = new Set();
+        this.phaseToken = 0;
+        this.destroyed = false;
+        this.indicatorPhaseHandler = null;
+        this.phaseDurationOffsets = [];
         this.phaseStartTime = 0;
         this.currentBreathCount = 0;
         this.onProgressCallback = null;
@@ -559,12 +566,14 @@ export class BreathworkSessionManager {
      * @param {function} onPhaseChange - Optional callback for phase transitions
      */
     startSession(sessionId, onProgress, onComplete, onPhaseChange = null) {
+        if (this.destroyed) return;
         const session = this.SESSIONS[sessionId];
         if (!session) {
             console.error('Invalid session ID:', sessionId);
             return;
         }
 
+        this.stopSession();
         this.activeSession = session;
         this.sessionId = sessionId;
         this.currentPhaseIndex = 0;
@@ -572,6 +581,13 @@ export class BreathworkSessionManager {
         this.currentBreathCount = 0;
         this.sessionStartTime = Date.now();
         this.totalSessionDuration = this._calculateTotalDuration(sessionId);
+        let elapsed = 0;
+        this.phaseDurationOffsets = session.phases.map((phase) => {
+            const offset = elapsed;
+            elapsed += phase.type === 'active'
+                ? phase.pattern.reduce((a, b) => a + b, 0) * phase.breaths : phase.duration;
+            return offset;
+        });
         this.onProgressCallback = onProgress;
         this.onCompleteCallback = onComplete;
         this.onPhaseChangeCallback = onPhaseChange;
@@ -593,9 +609,10 @@ export class BreathworkSessionManager {
             }
 
             // Register callback to sync audio with visual phase changes
-            this.indicator.onPhaseChangeCallback = (newPhase, prevPhase) => {
+            this.indicatorPhaseHandler = (newPhase, prevPhase) => {
                 this._onBreathPhaseChange(newPhase, prevPhase);
             };
+            this.indicator.onPhaseChangeCallback = this.indicatorPhaseHandler;
 
             this.indicator.start();
 
@@ -612,16 +629,20 @@ export class BreathworkSessionManager {
      * Stop the current session
      */
     stopSession() {
-        if (!this.activeSession) return;
-
-        console.log('[BreathworkSessionManager] Stopping session');
-        clearTimeout(this.timer);
-        clearInterval(this.breathTimer);
-        clearInterval(this.audioTimer);
+        const hadSession = Boolean(this.activeSession);
+        this._clearPhaseTimers();
         this.activeSession = null;
+        this.isPaused = false;
+        this.onProgressCallback = null;
+        this.onCompleteCallback = null;
+        this.onPhaseChangeCallback = null;
 
         // Release indicator control
-        if (this.indicator) {
+        if (this.indicator && hadSession) {
+            if (this.indicator.onPhaseChangeCallback === this.indicatorPhaseHandler) {
+                this.indicator.onPhaseChangeCallback = null;
+            }
+            this.indicatorPhaseHandler = null;
             this.indicator.setExternalControl(false);
             this.indicator.stop();
 
@@ -635,6 +656,38 @@ export class BreathworkSessionManager {
         if (this.audioManager) {
             this.audioManager.stopAll();
         }
+    }
+
+    _clearPhaseTimers() {
+        this.phaseToken += 1;
+        clearTimeout(this.timer);
+        clearInterval(this.breathTimer);
+        clearInterval(this.audioTimer);
+        clearInterval(this.progressUpdateTimer);
+        this.timer = null;
+        this.breathTimer = null;
+        this.audioTimer = null;
+        this.progressUpdateTimer = null;
+        for (const timer of this.phaseTimeouts) clearTimeout(timer);
+        this.phaseTimeouts.clear();
+    }
+
+    _schedulePhase(callback, delay) {
+        const { phaseToken } = this;
+        const timer = setTimeout(() => {
+            this.phaseTimeouts.delete(timer);
+            if (this.activeSession && !this.isPaused && phaseToken === this.phaseToken) callback();
+        }, delay);
+        this.phaseTimeouts.add(timer);
+        return timer;
+    }
+
+    destroy() {
+        if (this.destroyed) return;
+        this.stopSession();
+        this.destroyed = true;
+        this.audioManager?.destroy();
+        this.indicator = null;
     }
 
     /**
@@ -657,7 +710,9 @@ export class BreathworkSessionManager {
      * @private
      */
     _runPhase() {
-        if (!this.activeSession) return;
+        if (!this.activeSession || this.isPaused) return;
+        this._clearPhaseTimers();
+        const { phaseToken } = this;
 
         const phase = this.activeSession.phases[this.currentPhaseIndex];
         this.phaseStartTime = Date.now();
@@ -729,9 +784,11 @@ export class BreathworkSessionManager {
                 subPrompt: phase.subPrompt,
             });
         }
+        if (phaseToken !== this.phaseToken || !this.activeSession) return;
 
         // Start progress updates
         this._startProgressUpdates(phase, phaseDuration);
+        if (phaseToken !== this.phaseToken || !this.activeSession) return;
 
         // Handle timing
         if (phase.type === 'active') {
@@ -742,10 +799,10 @@ export class BreathworkSessionManager {
             // Start breath counter
             this._startBreathCounter(phase.pattern, phase.breaths);
 
-            this.timer = setTimeout(() => this._nextPhase(), totalDuration);
+            this.timer = this._schedulePhase(() => this._nextPhase(), totalDuration);
         } else {
             // For fixed duration phases
-            this.timer = setTimeout(() => this._nextPhase(), phase.duration * 1000);
+            this.timer = this._schedulePhase(() => this._nextPhase(), phase.duration * 1000);
         }
 
         // TRIGGER AUDIO - Use event-based chaining to prevent overlaps
@@ -808,10 +865,12 @@ export class BreathworkSessionManager {
         }
 
         let currentIndex = 0;
+        const { phaseToken } = this;
 
         const playNext = () => {
             // Check if still in the same phase
-            if (!this.activeSession || this.currentPhaseIndex !== this.activeSession.phases.indexOf(phase)) {
+            if (!this.activeSession || this.isPaused || phaseToken !== this.phaseToken
+                || this.activeSession.phases[this.currentPhaseIndex] !== phase) {
                 console.log('[SessionManager] Phase changed, stopping voice chain');
                 return;
             }
@@ -839,7 +898,7 @@ export class BreathworkSessionManager {
             // Handle delay items
             if (typeof item === 'object' && item.delay) {
                 console.log(`[SessionManager] Waiting ${item.delay}ms...`);
-                setTimeout(playNext, item.delay);
+                this._schedulePhase(playNext, item.delay);
                 return;
             }
 
@@ -860,10 +919,10 @@ export class BreathworkSessionManager {
         let currentDelay = startDelay;
         const fillerInterval = 30000; // 30 seconds between fillers
 
-        fillers.forEach((filler, index) => {
-            setTimeout(() => {
+        fillers.forEach((filler) => {
+            this._schedulePhase(() => {
                 // Check if still in same phase
-                if (this.activeSession && this.currentPhaseIndex === this.activeSession.phases.indexOf(phase)) {
+                if (this.activeSession?.phases[this.currentPhaseIndex] === phase) {
                     console.log(`[SessionManager] Playing filler: ${filler}`);
                     this.audioManager.playVoice(filler);
                 }
@@ -877,11 +936,11 @@ export class BreathworkSessionManager {
      * @private
      */
     _scheduleIntention(intentions, delay, phase) {
-        setTimeout(() => {
+        this._schedulePhase(() => {
             // Only play intention if still in same grounding phase (not during active breathing)
             const currentPhase = this.activeSession?.phases[this.currentPhaseIndex];
             if (this.activeSession
-                && this.currentPhaseIndex === this.activeSession.phases.indexOf(phase)
+                && currentPhase === phase
                 && currentPhase?.type === 'grounding') {
                 // Pick random intention
                 const intention = intentions[Math.floor(Math.random() * intentions.length)];
@@ -900,7 +959,7 @@ export class BreathworkSessionManager {
      * @param {string} prevPhase - Previous phase
      * @private
      */
-    _onBreathPhaseChange(newPhase, prevPhase) {
+    _onBreathPhaseChange(newPhase) {
         if (!this.activeSession || this.isPaused) return;
 
         const phase = this.activeSession.phases[this.currentPhaseIndex];
@@ -943,9 +1002,8 @@ export class BreathworkSessionManager {
                 this.forcedGuidanceRemaining--;
                 console.log(`[SessionManager] FORCED guidance cycle (Remaining: ${this.forcedGuidanceRemaining})`);
                 this.currentCycleIsGuidance = true;
-            }
-            // Condition B: Regular periodic guidance (every 5th cycle)
-            else if (this.breathCycleCount % 5 === 0) {
+            } else if (this.breathCycleCount % 5 === 0) {
+                // Condition B: Regular periodic guidance (every 5th cycle)
                 console.log(`[SessionManager] Starting PERIODIC guidance cycle (Cycle ${this.breathCycleCount})`);
                 this.currentCycleIsGuidance = true;
             } else {
@@ -970,7 +1028,7 @@ export class BreathworkSessionManager {
 
                     // Schedule intention 10 seconds after this exhale
                     const intentions = this.pendingIntentions;
-                    setTimeout(() => {
+                    this._schedulePhase(() => {
                         // Only play if still in grounding phase
                         const currentPhase = this.activeSession?.phases[this.currentPhaseIndex];
                         if (this.activeSession && currentPhase?.type === 'grounding') {
@@ -994,6 +1052,7 @@ export class BreathworkSessionManager {
      */
     _startRhythmicAudio(pattern, cues, totalBreaths) {
         clearInterval(this.audioTimer);
+        const { phaseToken } = this;
         let breathCount = 0;
         const [inhale, hold1, exhale, hold2] = pattern;
         const cycleDuration = (inhale + hold1 + exhale + hold2) * 1000;
@@ -1002,7 +1061,7 @@ export class BreathworkSessionManager {
         const cueInterval = 5; // Play cue every 5th breath
 
         const playCycle = () => {
-            if (this.isPaused) return;
+            if (!this.activeSession || this.isPaused || phaseToken !== this.phaseToken) return;
             if (breathCount >= totalBreaths) {
                 clearInterval(this.audioTimer);
                 return;
@@ -1017,7 +1076,7 @@ export class BreathworkSessionManager {
 
                 // Exhale cue
                 if (cues.out) {
-                    setTimeout(() => {
+                    this._schedulePhase(() => {
                         if (!this.isPaused) this.audioManager.playCue(cues.out);
                     }, (inhale + hold1) * 1000);
                 }
@@ -1038,12 +1097,14 @@ export class BreathworkSessionManager {
      */
     _startBreathCounter(pattern, totalBreaths) {
         clearInterval(this.breathTimer);
+        const { phaseToken } = this;
 
         const breathCycle = pattern.reduce((a, b) => a + b, 0) * 1000; // ms
         this.currentBreathCount = 0;
 
         // Count a breath each cycle
         this.breathTimer = setInterval(() => {
+            if (!this.activeSession || this.isPaused || phaseToken !== this.phaseToken) return;
             this.currentBreathCount++;
             if (this.currentBreathCount >= totalBreaths) {
                 clearInterval(this.breathTimer);
@@ -1061,32 +1122,25 @@ export class BreathworkSessionManager {
             clearInterval(this.progressUpdateTimer);
         }
 
+        const { phaseToken } = this;
+        const elapsedBeforePhase = this.phaseDurationOffsets[this.currentPhaseIndex] || 0;
+        const phaseLabel = this._getPhaseLabel(phase.type);
         const updateProgress = () => {
-            if (!this.activeSession) return;
+            if (!this.activeSession || this.isPaused || phaseToken !== this.phaseToken) return;
 
             const elapsed = (Date.now() - this.phaseStartTime) / 1000;
             const remaining = Math.max(0, phaseDuration - elapsed);
             const phaseProgress = Math.min(1, elapsed / phaseDuration);
 
             // Calculate session progress
-            let elapsedSessionTime = 0;
-            for (let i = 0; i < this.currentPhaseIndex; i++) {
-                const p = this.activeSession.phases[i];
-                if (p.type === 'active') {
-                    const cycle = p.pattern.reduce((a, b) => a + b, 0);
-                    elapsedSessionTime += cycle * p.breaths;
-                } else {
-                    elapsedSessionTime += p.duration;
-                }
-            }
-            elapsedSessionTime += elapsed;
+            const elapsedSessionTime = elapsedBeforePhase + elapsed;
             const sessionProgress = Math.min(1, elapsedSessionTime / this.totalSessionDuration);
 
             // Build rich progress object
             const progressData = {
                 // Phase info
                 phase: phase.type,
-                phaseLabel: this._getPhaseLabel(phase.type),
+                phaseLabel,
                 phaseIndex: this.currentPhaseIndex + 1,
                 totalPhases: this.activeSession.phases.length,
 
@@ -1120,6 +1174,7 @@ export class BreathworkSessionManager {
             if (this.onProgressCallback) {
                 this.onProgressCallback(progressData);
             }
+            if (!this.activeSession || phaseToken !== this.phaseToken) return;
 
             // Update breathing indicator's progress UI
             if (this.indicator && this.indicator.updateProgress) {
@@ -1139,7 +1194,9 @@ export class BreathworkSessionManager {
         updateProgress();
 
         // Then update every 100ms for smooth progress
-        this.progressUpdateTimer = setInterval(updateProgress, 100);
+        if (this.activeSession && !this.isPaused && phaseToken === this.phaseToken) {
+            this.progressUpdateTimer = setInterval(updateProgress, 100);
+        }
     }
 
     /**
@@ -1147,9 +1204,8 @@ export class BreathworkSessionManager {
      * @private
      */
     _nextPhase() {
-        clearInterval(this.breathTimer);
-        clearInterval(this.progressUpdateTimer);
-        clearInterval(this.audioTimer);
+        if (!this.activeSession || this.isPaused) return;
+        this._clearPhaseTimers();
 
         this.currentPhaseIndex++;
 
@@ -1177,11 +1233,9 @@ export class BreathworkSessionManager {
             completed: true,
         };
 
-        if (this.onCompleteCallback) {
-            this.onCompleteCallback(sessionStats);
-        }
-
+        const onComplete = this.onCompleteCallback;
         this.stopSession();
+        if (onComplete) onComplete(sessionStats);
     }
 
     /**
@@ -1192,9 +1246,7 @@ export class BreathworkSessionManager {
 
         this.isPaused = true;
         this.pauseTime = Date.now();
-        clearTimeout(this.timer);
-        clearInterval(this.breathTimer);
-        clearInterval(this.progressUpdateTimer);
+        this._clearPhaseTimers();
 
         console.log('[BreathworkSessionManager] Session paused');
 

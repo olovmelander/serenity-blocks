@@ -8,7 +8,7 @@
  * @param {Function} createTone - Function to create audio tones
  * @returns {Object} Sound sets object with Retro, Zen, Pulse, and Nebula profiles
  */
-export function createSoundSets(createTone, createRichTone) {
+export function createSoundSets(createTone, createRichTone, schedule = setTimeout, canPlay = null) {
     // Fallback if createRichTone is not provided (for backward compatibility)
     const richTone = createRichTone || ((params) => {
         // Simple fallback to createTone using primary oscillator
@@ -16,23 +16,23 @@ export function createSoundSets(createTone, createRichTone) {
         createTone(osc.freq, params.duration, osc.type, osc.gain * params.volume);
     });
 
-    return {
+    const soundSets = {
         Retro: {
             move: () => createTone(200, 0.05, 'square', 0.2),
             rotate: () => createTone(400, 0.08, 'triangle', 0.3),
             drop: () => createTone(120, 0.1, 'sine', 0.4),
             lineClear: () => {
-                [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => createTone(f, 0.2, 'sine', 0.4), i * 50));
+                [523, 659, 784, 1047].forEach((f, i) => schedule(() => createTone(f, 0.2, 'sine', 0.4), i * 50));
             },
             levelUp: () => {
-                [261, 329, 392, 523, 659].forEach((f, i) => setTimeout(() => createTone(f, 0.15, 'sine', 0.5), i * 60));
+                [261, 329, 392, 523, 659].forEach((f, i) => schedule(() => createTone(f, 0.15, 'sine', 0.5), i * 60));
             },
             gameOver: () => {
-                [400, 350, 300, 250, 200].forEach((f, i) => setTimeout(() => createTone(f, 0.3, 'sawtooth', 0.5), i * 150));
+                [400, 350, 300, 250, 200].forEach((f, i) => schedule(() => createTone(f, 0.3, 'sawtooth', 0.5), i * 150));
             },
             garbageSend: () => {
                 // Whizz sound - ascending sweep
-                [800, 1200, 1600].forEach((f, i) => setTimeout(() => createTone(f, 0.08, 'square', 0.25), i * 30));
+                [800, 1200, 1600].forEach((f, i) => schedule(() => createTone(f, 0.08, 'square', 0.25), i * 30));
             },
         },
         Zen: {
@@ -40,17 +40,17 @@ export function createSoundSets(createTone, createRichTone) {
             rotate: () => createTone(150, 0.1, 'sine', 0.15),
             drop: () => createTone(80, 0.2, 'sine', 0.2),
             lineClear: () => {
-                [261, 329, 392].forEach((f, i) => setTimeout(() => createTone(f, 0.5, 'sine', 0.15), i * 80));
+                [261, 329, 392].forEach((f, i) => schedule(() => createTone(f, 0.5, 'sine', 0.15), i * 80));
             },
             levelUp: () => {
-                [392, 493, 587].forEach((f, i) => setTimeout(() => createTone(f, 0.6, 'sine', 0.2), i * 100));
+                [392, 493, 587].forEach((f, i) => schedule(() => createTone(f, 0.6, 'sine', 0.2), i * 100));
             },
             gameOver: () => {
-                [220, 164, 130].forEach((f, i) => setTimeout(() => createTone(f, 0.8, 'sine', 0.2), i * 200));
+                [220, 164, 130].forEach((f, i) => schedule(() => createTone(f, 0.8, 'sine', 0.2), i * 200));
             },
             garbageSend: () => {
                 // Gentle whoosh
-                [600, 800, 1000].forEach((f, i) => setTimeout(() => createTone(f, 0.12, 'sine', 0.15), i * 40));
+                [600, 800, 1000].forEach((f, i) => schedule(() => createTone(f, 0.12, 'sine', 0.15), i * 40));
             },
         },
         Pulse: {
@@ -58,20 +58,20 @@ export function createSoundSets(createTone, createRichTone) {
             rotate: () => createTone(420, 0.08, 'square', 0.22),
             drop: () => createTone(180, 0.14, 'triangle', 0.28),
             lineClear: () => {
-                [440, 554, 659, 880].forEach((f, i) => setTimeout(
+                [440, 554, 659, 880].forEach((f, i) => schedule(
                     () => createTone(f, 0.18, i % 2 === 0 ? 'sawtooth' : 'square', 0.25),
                     i * 45,
                 ));
             },
             levelUp: () => {
-                [523, 659, 784, 988].forEach((f, i) => setTimeout(() => createTone(f, 0.22, 'square', 0.3), i * 70));
+                [523, 659, 784, 988].forEach((f, i) => schedule(() => createTone(f, 0.22, 'square', 0.3), i * 70));
             },
             gameOver: () => {
-                [330, 294, 262, 220].forEach((f, i) => setTimeout(() => createTone(f, 0.4, 'triangle', 0.28), i * 160));
+                [330, 294, 262, 220].forEach((f, i) => schedule(() => createTone(f, 0.4, 'triangle', 0.28), i * 160));
             },
             garbageSend: () => {
                 // Sharp attack sound
-                [900, 1400, 1800].forEach((f, i) => setTimeout(() => createTone(f, 0.1, 'sawtooth', 0.28), i * 25));
+                [900, 1400, 1800].forEach((f, i) => schedule(() => createTone(f, 0.1, 'sawtooth', 0.28), i * 25));
             },
         },
         Nebula: {
@@ -107,7 +107,7 @@ export function createSoundSets(createTone, createRichTone) {
                 volume: 0.5,
             }),
             lineClear: () => {
-                [392, 523, 659, 784].forEach((f, i) => setTimeout(
+                [392, 523, 659, 784].forEach((f, i) => schedule(
                     () => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.2 },
@@ -120,26 +120,26 @@ export function createSoundSets(createTone, createRichTone) {
                     }),
                     i * 100,
                 ));
-                setTimeout(() => richTone({
+                schedule(() => richTone({
                     oscillators: [{ type: 'sine', freq: 987, gain: 0.2 }],
                     envelope: { attack: 0.1, decay: 0.8, release: 0.5 },
                     volume: 0.2,
                 }), 420);
             },
             levelUp: () => {
-                [330, 494, 660, 880].forEach((f, i) => setTimeout(() => richTone({
+                [330, 494, 660, 880].forEach((f, i) => schedule(() => richTone({
                     oscillators: [{ type: 'triangle', freq: f, gain: 0.25 }],
                     envelope: { attack: 0.05, decay: 0.4, release: 0.2 },
                     volume: 0.3,
                 }), i * 120));
-                setTimeout(() => richTone({
+                schedule(() => richTone({
                     oscillators: [{ type: 'sine', freq: 1175, gain: 0.2 }],
                     envelope: { attack: 0.1, decay: 1.0, release: 0.5 },
                     volume: 0.25,
                 }), 520);
             },
             gameOver: () => {
-                [523, 392, 261, 196].forEach((f, i) => setTimeout(() => richTone({
+                [523, 392, 261, 196].forEach((f, i) => schedule(() => richTone({
                     oscillators: [
                         { type: 'sawtooth', freq: f, gain: 0.2 },
                         { type: 'square', freq: f / 2, gain: 0.1 },
@@ -148,7 +148,7 @@ export function createSoundSets(createTone, createRichTone) {
                     filter: { type: 'lowpass', frequency: 800, envAmount: -400 },
                     volume: 0.3,
                 }), i * 210));
-                setTimeout(() => richTone({
+                schedule(() => richTone({
                     oscillators: [{ type: 'triangle', freq: 130, gain: 0.4 }],
                     envelope: { attack: 0.5, decay: 2.0, release: 1.0 },
                     volume: 0.4,
@@ -193,7 +193,7 @@ export function createSoundSets(createTone, createRichTone) {
             lineClear: () => {
                 // Ethereal chord
                 [261.63, 329.63, 392.00, 523.25].forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [{ type: 'sine', freq: f, gain: 0.2 }],
                         envelope: { attack: 0.2, decay: 1.5, release: 1.0 },
                         volume: 0.25,
@@ -202,7 +202,7 @@ export function createSoundSets(createTone, createRichTone) {
             },
             levelUp: () => {
                 [440, 554, 659, 880, 1108].forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [
                             { type: 'triangle', freq: f, gain: 0.15 },
                             { type: 'sine', freq: f * 2, gain: 0.1 },
@@ -263,7 +263,7 @@ export function createSoundSets(createTone, createRichTone) {
             lineClear: () => {
                 // Warm fire chord (C minor add9)
                 [65.41, 77.78, 98.00, 146.83].forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [
                             { type: 'sawtooth', freq: f, gain: 0.2 },
                             { type: 'sine', freq: f * 2, gain: 0.15 },
@@ -275,7 +275,7 @@ export function createSoundSets(createTone, createRichTone) {
                     }), i * 40);
                 });
                 // Sparkle burst
-                setTimeout(() => richTone({
+                schedule(() => richTone({
                     noise: { type: 'white', gain: 0.2 },
                     filter: { type: 'highpass', frequency: 2000 },
                     envelope: { attack: 0.01, decay: 0.3 },
@@ -343,7 +343,7 @@ export function createSoundSets(createTone, createRichTone) {
             lineClear: () => {
                 // Nordic ambient chord (Am9: A2, C3, E3, B3) - Cold, spacious, organic
                 [110.00, 130.81, 164.81, 246.94].forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.3 },
                             { type: 'triangle', freq: f, gain: 0.15 },
@@ -354,7 +354,7 @@ export function createSoundSets(createTone, createRichTone) {
                     }), i * 60);
                 });
                 // Subtle mist texture
-                setTimeout(() => richTone({
+                schedule(() => richTone({
                     noise: { type: 'pink', gain: 0.15 },
                     filter: { type: 'highpass', frequency: 2000 },
                     envelope: { attack: 0.5, decay: 1.5, release: 1.0 },
@@ -364,7 +364,7 @@ export function createSoundSets(createTone, createRichTone) {
             levelUp: () => {
                 // Aurora swell
                 [220, 440, 880].forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [{ type: 'sine', freq: f, gain: 0.2 }],
                         filter: {
                             type: 'bandpass', frequency: f, envAmount: 600, Q: 2,
@@ -426,7 +426,7 @@ export function createSoundSets(createTone, createRichTone) {
             lineClear: () => {
                 // Ethereal Space Chord (Eb Lydian: Eb, G, Bb, D, F)
                 [155.56, 196.00, 233.08, 293.66, 349.23].forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.2 },
                             { type: 'sine', freq: f * 1.01, gain: 0.1 }, // Detuned layer
@@ -436,7 +436,7 @@ export function createSoundSets(createTone, createRichTone) {
                     }), i * 80);
                 });
                 // Stardust shimmer
-                setTimeout(() => richTone({
+                schedule(() => richTone({
                     noise: { type: 'white', gain: 0.1 },
                     filter: { type: 'highpass', frequency: 4000 },
                     envelope: { attack: 0.1, decay: 1.0, release: 1.0 },
@@ -513,7 +513,7 @@ export function createSoundSets(createTone, createRichTone) {
                 // Using a long, evolving chord with low frequencies
                 // Frequencies: 40Hz, 80Hz, 120Hz (harmonic series)
                 [40, 80, 120, 160].forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.3 },
                             { type: 'sine', freq: f * 1.01, gain: 0.1 }, // Detuned
@@ -596,7 +596,7 @@ export function createSoundSets(createTone, createRichTone) {
                 // "Long evolving drone" - shifted up
                 const freqs = [60, 90, 120]; // Shifted up ~10-20Hz
                 freqs.forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.25 },
                             { type: 'sawtooth', freq: f * 1.005, gain: 0.06 },
@@ -674,7 +674,7 @@ export function createSoundSets(createTone, createRichTone) {
             lineClear: () => {
                 // Glowing Cluster Chord (F# Major add9: F#2, A#2, C#3, G#3)
                 [185.00, 233.08, 277.18, 415.30].forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.25 },
                             { type: 'triangle', freq: f, gain: 0.1 },
@@ -686,7 +686,7 @@ export function createSoundSets(createTone, createRichTone) {
                 });
                 // Bioluminescent sparkles (Granular details)
                 for (let j = 0; j < 3; j++) {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         noise: { type: 'white', gain: 0.08 },
                         filter: { type: 'highpass', frequency: 3000 + (j * 1000) },
                         envelope: { attack: 0.01, decay: 0.1, release: 0.05 },
@@ -761,7 +761,7 @@ export function createSoundSets(createTone, createRichTone) {
                 // Deep Healing Frequencies (Solfeggio Scale, octave down)
                 // 198Hz, 208Hz, 216Hz, 264Hz — warm, grounded resonance
                 [198, 208, 216, 264].forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.5 }, // Deep healing tone
                             { type: 'sine', freq: f * 0.5, gain: 0.2 }, // Sub-octave warmth
@@ -775,7 +775,7 @@ export function createSoundSets(createTone, createRichTone) {
                 });
 
                 // Earth drone (87Hz — deep grounding sub)
-                setTimeout(() => richTone({
+                schedule(() => richTone({
                     oscillators: [
                         { type: 'sine', freq: 87, gain: 0.6 },
                         { type: 'sine', freq: 88, gain: 0.6 }, // Slow beating/pulsing
@@ -855,7 +855,7 @@ export function createSoundSets(createTone, createRichTone) {
             lineClear: () => {
                 // Twilight Glow Chord (Db Major 9: Db3, F3, Ab3, C4, Eb4)
                 [138.59, 174.61, 207.65, 261.63, 311.13].forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.2 },
                             { type: 'triangle', freq: f, gain: 0.1 },
@@ -867,7 +867,7 @@ export function createSoundSets(createTone, createRichTone) {
                 });
                 // Glitch artifacts
                 for (let j = 0; j < 3; j++) { // Reduced count
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         noise: { type: 'white', gain: 0.05 }, // Reduced gain
                         filter: { type: 'highpass', frequency: 4000 },
                         envelope: { attack: 0.001, decay: 0.05, release: 0.01 },
@@ -954,7 +954,7 @@ export function createSoundSets(createTone, createRichTone) {
                 // "Healing" Resonant Chord (C Minor 9: C2, Eb2, G2, Bb2, D3) - Deep, dark, meditative
                 const freqs = [65.41, 77.78, 98.00, 116.54, 146.83];
                 freqs.forEach((f, i) => {
-                    setTimeout(() => richTone({
+                    schedule(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.4 }, // Pure fundamental
                             { type: 'triangle', freq: f * 2, gain: 0.1 }, // First harmonic warmth
@@ -967,7 +967,7 @@ export function createSoundSets(createTone, createRichTone) {
                     }), i * 40); // Slower strum for grandeur
                 });
                 // Deep atmospheric shimmer
-                setTimeout(() => richTone({
+                schedule(() => richTone({
                     noise: { type: 'pink', gain: 0.08 },
                     filter: {
                         type: 'lowpass', frequency: 600, envAmount: -200, Q: 1,
@@ -1016,13 +1016,29 @@ export function createSoundSets(createTone, createRichTone) {
             },
         },
     };
+    if (canPlay) {
+        Object.values(soundSets).forEach((profile) => {
+            Object.keys(profile).forEach((effect) => {
+                const play = profile[effect];
+                profile[effect] = () => (canPlay() ? play() : undefined);
+            });
+        });
+    }
+    return soundSets;
 }
 
 /**
  * Sound effect player wrapper
  */
 export class SoundEffectPlayer {
-    constructor(soundSets, soundSet = 'Zen', createTone = null, createRichTone = null) {
+    constructor(
+        soundSets,
+        soundSet = 'Zen',
+        createTone = null,
+        createRichTone = null,
+        schedule = setTimeout,
+        canPlay = () => true,
+    ) {
         this.soundSets = soundSets;
         this.soundSet = soundSet;
         this.lastMoveSoundAt = -Infinity;
@@ -1031,6 +1047,8 @@ export class SoundEffectPlayer {
         // Injected by SoundManager so we don't need to duplicate them into every sound profile.
         this._createTone = createTone;
         this._createRichTone = createRichTone;
+        this._schedule = schedule;
+        this._canPlay = canPlay;
     }
 
     /**
@@ -1084,7 +1102,7 @@ export class SoundEffectPlayer {
      * @param {number} cascadeCount
      */
     playCascadeChime(cascadeCount) {
-        if (!this._createTone) return;
+        if (!this._createTone || !this._canPlay()) return;
         const semitones = (cascadeCount - 1) * 2; // 2 semitones per stage
         const pitchFactor = 1.05946 ** semitones;
         const baseFreq = 523.25; // C5
@@ -1092,7 +1110,7 @@ export class SoundEffectPlayer {
         // A short, bright bell tone that rises with each cascade.
         this._createTone(freq, 0.18, 'sine', Math.min(0.25 + cascadeCount * 0.04, 0.55));
         // Octave overtone for sparkle
-        setTimeout(() => this._createTone(freq * 2, 0.12, 'triangle', 0.12), 40);
+        this._schedule(() => this._createTone(freq * 2, 0.12, 'triangle', 0.12), 40);
     }
 
     /**
@@ -1100,16 +1118,16 @@ export class SoundEffectPlayer {
      * Plays across all 5 notes of a pentatonic scale starting from C4.
      */
     playPerfectClear() {
-        if (!this._createTone) return;
+        if (!this._createTone || !this._canPlay()) return;
         const pentatonic = [261.63, 293.66, 329.63, 392.00, 523.25]; // C4 pentatonic
         pentatonic.forEach((f, i) => {
-            setTimeout(() => {
+            this._schedule(() => {
                 this._createTone(f, 0.4, 'sine', 0.35);
                 this._createTone(f * 2, 0.25, 'triangle', 0.15);
             }, i * 70);
         });
         // Final resolution chord: octave hit at 380ms
-        setTimeout(() => this._createTone(523.25, 0.6, 'sine', 0.4), 380);
+        this._schedule(() => this._createTone(523.25, 0.6, 'sine', 0.4), 380);
     }
 
     /**
@@ -1117,13 +1135,13 @@ export class SoundEffectPlayer {
      * Rising-then-falling chirp to evoke the spin motion.
      */
     playTSpin() {
-        if (!this._createTone) return;
+        if (!this._createTone || !this._canPlay()) return;
         // Rising chirp
         [660, 784, 880].forEach((f, i) => {
-            setTimeout(() => this._createTone(f, 0.1, 'triangle', 0.3), i * 35);
+            this._schedule(() => this._createTone(f, 0.1, 'triangle', 0.3), i * 35);
         });
         // Falling tail
-        setTimeout(() => this._createTone(659, 0.15, 'sine', 0.2), 120);
+        this._schedule(() => this._createTone(659, 0.15, 'sine', 0.2), 120);
     }
 
     /**
@@ -1131,12 +1149,12 @@ export class SoundEffectPlayer {
      * A short power-chord stab to punctuate the B2B bonus.
      */
     playB2B() {
-        if (!this._createTone) return;
+        if (!this._createTone || !this._canPlay()) return;
         // Quick double-hit: root + major third
         this._createTone(440, 0.15, 'square', 0.28);
-        setTimeout(() => this._createTone(554, 0.12, 'square', 0.2), 30);
+        this._schedule(() => this._createTone(554, 0.12, 'square', 0.2), 30);
         // Decay shimmer
-        setTimeout(() => this._createTone(880, 0.2, 'sine', 0.15), 80);
+        this._schedule(() => this._createTone(880, 0.2, 'sine', 0.15), 80);
     }
 
     /**

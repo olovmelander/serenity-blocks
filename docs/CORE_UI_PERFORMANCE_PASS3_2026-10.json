@@ -1,0 +1,2049 @@
+{
+  "date": "2026-10-03",
+  "baselineCommit": "b52959f8cd74d3055f10c516b4dc4e5a7fcc8910",
+  "scope": "Shared UI, menus, audio, replay seeking, score storage, and Phaser CPU presentation work. No theme or WebGPU/Odyssey-renderer source changes.",
+  "measurementLimits": "Repeated operation counts and content parity. No whole-game FPS, real-hardware input latency, heap, packaged Electron, or GPU timing claim.",
+  "sourceFingerprints": {
+    "src/audio/music-loader.js": "f443732895e4e3e68d8b3a5a8a4bd6248d7017f1cc2220d0d1e5c2e90d51f3d7",
+    "src/audio/sound-manager.js": "3fbfbfcc0c9c0d6d678bae9eaf7c317a05821d40eb269fe9a3e1812834f948c9",
+    "src/core/demo/DemoPlayer.js": "8c522941abe89ae353ccff02a38e2b2dfb1b5557f26b73af5e78b9aada1ffa8d",
+    "src/core/infinity-grid.js": "4c5e2f2113aebb8a02d6dde9306d0eb3e3ccd8a012b9f7f33776116f802534b7",
+    "src/rendering/draw.js": "052d1a3b6a5ad664882ead71ac3e7f7ac8134a3317a747e60046bceaf65c3956",
+    "src/rendering/phaser/base-board-scene.js": "ce741466d0a19055d8f86b147c3e5bc6a7dcc41834af7c21b868e647e1c8e024",
+    "src/ui/components/steam-leaderboard-panel.js": "fcbc0968b0f829a4b8bccafc80d6cfda2e046ece97f8047f06aae4579daaf1ca",
+    "src/ui/effects/enhanced-breathing-indicator.js": "c90e7e0d542b6e8dbebf18111d03d43d66c501eb74dc41f7896a2fc021cfb4be",
+    "src/ui/high-scores.js": "d3a565b9fe5d297c17590ff90b86976bf6ba1fc2bb8679f04f3f869ff226394e",
+    "src/ui/infinity/InfinityMinimap.js": "bd55d4b6edd25d0a7fad7cecd0f58d650197a1db0638f1de782af0cdd547660e",
+    "src/ui/modals.js": "6e70fcf7d134b4025ebccf9478c4547aba0c41a3c3859d2aa8832c7e5a05f40a",
+    "src/ui/next-queue-ui.js": "e5def89562cfa0316a5070748258843d60768dd04c648dd27660c05a2daf6bdc",
+    "src/ui/odyssey/ResultsModal.js": "d8b1130aad522b0d42938ff5e663c1b2008aebdf955a75e9a6d1c9d87df147fb",
+    "src/ui/opponent-watch-manager.js": "19b4dbdbdd01f42cfffeaea9ccc6070a3f160f7889ce3083ad8039c6543405b5",
+    "src/utils/performance-monitor.js": "9158707d4a330e233a150ae16ba249f935b1cbfe25aa97799c2b354f4ce835d2"
+  },
+  "validation": {
+    "testFiles": 469,
+    "testsPassed": 5015,
+    "newRegressionTests": 117,
+    "productionBuild": "pass",
+    "bootClosure": "pass; entry 3 chunks/12 KB, main 3 chunks/851 KB",
+    "typecheck": "pass",
+    "tsCoverageRatchet": "pass",
+    "lintRatchet": "pass; lowered 1253 to 1241 errors; 1004 warnings, 0 fatal",
+    "architectureFitness": "pass; no baseline raised",
+    "dependencyBoundaries": "pass; 1012 modules/3211 dependencies",
+    "themeLifecycle": "pass",
+    "performanceBudgetGate": "pass; existing structural/baseline gate, no new GPU candidate",
+    "developmentReleaseGates": "pass",
+    "productionDependencyAudit": "pass; 0 vulnerabilities",
+    "shippedIpStrings": "pass",
+    "pagesArtifact": "pass after final build",
+    "diffCheck": "pass"
+  },
+  "probes": {
+    "shared": {
+      "instrument": "Actual methods with counted substitutes; no timing/FPS claim. Counter result summaries are read after counted collection.",
+      "baselineCommit": "b52959f",
+      "sources": {
+        "src/utils/performance-monitor.js": {
+          "before": "d49e3ae8c65324dc9bfcae5bd98c8175316caea8b4ce77b97bb23609ed63890d",
+          "after": "9158707d4a330e233a150ae16ba249f935b1cbfe25aa97799c2b354f4ce835d2"
+        },
+        "src/ui/effects/enhanced-breathing-indicator.js": {
+          "before": "a4d1c6dd579f8db591ee36af2f03dab08ada8b10c358de6f4471edd023e348d4",
+          "after": "c90e7e0d542b6e8dbebf18111d03d43d66c501eb74dc41f7896a2fc021cfb4be"
+        },
+        "src/core/infinity-grid.js": {
+          "before": "b0be4ac08d855de11b314dff73a643737daf48f481dd8906716027d77e162ca6",
+          "after": "4c5e2f2113aebb8a02d6dde9306d0eb3e3ccd8a012b9f7f33776116f802534b7"
+        }
+      },
+      "before": [
+        {
+          "topRow": {
+            "rows": 1000,
+            "columns": 10,
+            "result": 0,
+            "cellReads": 9991
+          },
+          "counterCollection": {
+            "calls": 240,
+            "overlayVisible": false,
+            "enabled": false,
+            "sorts": 480,
+            "averageTraversals": 480,
+            "result": {
+              "calls": 239,
+              "triangles": 2390,
+              "geometries": 0,
+              "textures": 0,
+              "programs": 0,
+              "callsAvg": 209.5,
+              "trianglesAvg": 2095,
+              "callsP50": 209,
+              "callsMax": 239,
+              "trianglesP50": 2090,
+              "trianglesMax": 2390
+            }
+          },
+          "identicalProgress": {
+            "callbacks": 100,
+            "dots": 20,
+            "queries": 100,
+            "labels": 100,
+            "styles": 6200
+          },
+          "constantHold": {
+            "callbacks": 240,
+            "labels": 240,
+            "styles": 2880
+          }
+        },
+        {
+          "topRow": {
+            "rows": 1000,
+            "columns": 10,
+            "result": 0,
+            "cellReads": 9991
+          },
+          "counterCollection": {
+            "calls": 240,
+            "overlayVisible": false,
+            "enabled": false,
+            "sorts": 480,
+            "averageTraversals": 480,
+            "result": {
+              "calls": 239,
+              "triangles": 2390,
+              "geometries": 0,
+              "textures": 0,
+              "programs": 0,
+              "callsAvg": 209.5,
+              "trianglesAvg": 2095,
+              "callsP50": 209,
+              "callsMax": 239,
+              "trianglesP50": 2090,
+              "trianglesMax": 2390
+            }
+          },
+          "identicalProgress": {
+            "callbacks": 100,
+            "dots": 20,
+            "queries": 100,
+            "labels": 100,
+            "styles": 6200
+          },
+          "constantHold": {
+            "callbacks": 240,
+            "labels": 240,
+            "styles": 2880
+          }
+        }
+      ],
+      "after": [
+        {
+          "topRow": {
+            "rows": 1000,
+            "columns": 10,
+            "result": 0,
+            "cellReads": 1
+          },
+          "counterCollection": {
+            "calls": 240,
+            "overlayVisible": false,
+            "enabled": false,
+            "sorts": 0,
+            "averageTraversals": 0,
+            "result": {
+              "calls": 239,
+              "triangles": 2390,
+              "geometries": 0,
+              "textures": 0,
+              "programs": 0,
+              "callsAvg": 209.5,
+              "trianglesAvg": 2095,
+              "callsP50": 209,
+              "callsMax": 239,
+              "trianglesP50": 2090,
+              "trianglesMax": 2390
+            }
+          },
+          "identicalProgress": {
+            "callbacks": 100,
+            "dots": 20,
+            "queries": 1,
+            "labels": 1,
+            "styles": 62
+          },
+          "constantHold": {
+            "callbacks": 240,
+            "labels": 1,
+            "styles": 12
+          }
+        },
+        {
+          "topRow": {
+            "rows": 1000,
+            "columns": 10,
+            "result": 0,
+            "cellReads": 1
+          },
+          "counterCollection": {
+            "calls": 240,
+            "overlayVisible": false,
+            "enabled": false,
+            "sorts": 0,
+            "averageTraversals": 0,
+            "result": {
+              "calls": 239,
+              "triangles": 2390,
+              "geometries": 0,
+              "textures": 0,
+              "programs": 0,
+              "callsAvg": 209.5,
+              "trianglesAvg": 2095,
+              "callsP50": 209,
+              "callsMax": 239,
+              "trianglesP50": 2090,
+              "trianglesMax": 2390
+            }
+          },
+          "identicalProgress": {
+            "callbacks": 100,
+            "dots": 20,
+            "queries": 1,
+            "labels": 1,
+            "styles": 62
+          },
+          "constantHold": {
+            "callbacks": 240,
+            "labels": 1,
+            "styles": 12
+          }
+        }
+      ]
+    },
+    "menuHud": {
+      "cases": [
+        {
+          "name": "initial T I O",
+          "equal": true,
+          "widths": [
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ]
+          ]
+        },
+        {
+          "name": "queue L,J,S",
+          "equal": true,
+          "widths": [
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ]
+          ]
+        },
+        {
+          "name": "queue Z,T,I",
+          "equal": true,
+          "widths": [
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ]
+          ]
+        },
+        {
+          "name": "queue O",
+          "equal": true,
+          "widths": [
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ]
+          ]
+        },
+        {
+          "name": "queue ",
+          "equal": true,
+          "widths": [
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ]
+          ]
+        },
+        {
+          "name": "queue I,S,Z",
+          "equal": true,
+          "widths": [
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ],
+            [
+              72,
+              72
+            ]
+          ]
+        },
+        {
+          "name": "ResizeObserver-driven asymmetric slot resize",
+          "equal": true,
+          "widths": [
+            [
+              103,
+              86
+            ],
+            [
+              103,
+              86
+            ],
+            [
+              103,
+              86
+            ]
+          ]
+        },
+        {
+          "name": "DPR 2 resize",
+          "equal": true,
+          "widths": [
+            [
+              206,
+              172
+            ],
+            [
+              206,
+              172
+            ],
+            [
+              206,
+              172
+            ]
+          ]
+        },
+        {
+          "name": "theme colors",
+          "equal": true,
+          "widths": [
+            [
+              206,
+              172
+            ],
+            [
+              206,
+              172
+            ],
+            [
+              206,
+              172
+            ]
+          ]
+        },
+        {
+          "name": "context restoration",
+          "equal": true,
+          "widths": [
+            [
+              206,
+              172
+            ],
+            [
+              206,
+              172
+            ],
+            [
+              206,
+              172
+            ]
+          ]
+        }
+      ],
+      "multiplayerCases": [
+        {
+          "name": "queue T,I,O",
+          "equal": true
+        },
+        {
+          "name": "queue L,J,Z",
+          "equal": true
+        },
+        {
+          "name": "queue ",
+          "equal": true
+        },
+        {
+          "name": "queue I,O",
+          "equal": true
+        },
+        {
+          "name": "context restoration secondary slot",
+          "equal": true
+        }
+      ],
+      "operations": [
+        {
+          "lane": "before",
+          "canvases": 180,
+          "draws": 180,
+          "layoutReads": 360
+        },
+        {
+          "lane": "after",
+          "canvases": 3,
+          "draws": 3,
+          "layoutReads": 6
+        }
+      ],
+      "statCases": [
+        {
+          "lane": "before",
+          "layoutReads": 5,
+          "presentation": [
+            {
+              "id": "score",
+              "text": "123",
+              "classes": "pulse"
+            },
+            {
+              "id": "lines",
+              "text": "1",
+              "classes": "pulse"
+            },
+            {
+              "id": "level",
+              "text": "2",
+              "classes": "single-player-stat-value pulse"
+            },
+            {
+              "id": "next-level",
+              "text": "9",
+              "classes": "pulse"
+            },
+            {
+              "id": "speed",
+              "text": "1.1x",
+              "classes": "single-player-stat-value pulse"
+            },
+            {
+              "id": "bpm",
+              "text": "0",
+              "classes": ""
+            },
+            {
+              "id": "ppm",
+              "text": "0",
+              "classes": ""
+            }
+          ]
+        },
+        {
+          "lane": "after",
+          "layoutReads": 1,
+          "presentation": [
+            {
+              "id": "score",
+              "text": "123",
+              "classes": "pulse"
+            },
+            {
+              "id": "lines",
+              "text": "1",
+              "classes": "pulse"
+            },
+            {
+              "id": "level",
+              "text": "2",
+              "classes": "single-player-stat-value pulse"
+            },
+            {
+              "id": "next-level",
+              "text": "9",
+              "classes": "pulse"
+            },
+            {
+              "id": "speed",
+              "text": "1.1x",
+              "classes": "single-player-stat-value pulse"
+            },
+            {
+              "id": "bpm",
+              "text": "0",
+              "classes": ""
+            },
+            {
+              "id": "ppm",
+              "text": "0",
+              "classes": ""
+            }
+          ]
+        }
+      ],
+      "retainedCanvases": true,
+      "breathingCases": [
+        {
+          "phase": "inhale",
+          "equal": true,
+          "beforePresentationSha256": "8a092f2c9cfed1ea185031b0c9ffe208a7b7773b4adcd68c265c3ac3614ff70f",
+          "afterPresentationSha256": "8a092f2c9cfed1ea185031b0c9ffe208a7b7773b4adcd68c265c3ac3614ff70f"
+        },
+        {
+          "phase": "hold1",
+          "equal": true,
+          "beforePresentationSha256": "d9033c12525d65a8f002724c41bb8862cfe0d0ce92ca037e6bee2dec3deb1ed7",
+          "afterPresentationSha256": "d9033c12525d65a8f002724c41bb8862cfe0d0ce92ca037e6bee2dec3deb1ed7"
+        },
+        {
+          "phase": "exhale",
+          "equal": true,
+          "beforePresentationSha256": "4a71eb5d20196a8474fba3256d52979162402a8b916cdae698a4e24c895608ac",
+          "afterPresentationSha256": "4a71eb5d20196a8474fba3256d52979162402a8b916cdae698a4e24c895608ac"
+        },
+        {
+          "phase": "hold2",
+          "equal": true,
+          "beforePresentationSha256": "498eeef020a449988f679ce97991b863d4479dd210a68a274c296bf08ead2cb6",
+          "afterPresentationSha256": "498eeef020a449988f679ce97991b863d4479dd210a68a274c296bf08ead2cb6"
+        },
+        {
+          "phase": "inhale",
+          "equal": true,
+          "beforePresentationSha256": "76f58a9280cd5449b8b7d87af97eda9aab6d343c80c86ee80a0969cb7b62fa90",
+          "afterPresentationSha256": "76f58a9280cd5449b8b7d87af97eda9aab6d343c80c86ee80a0969cb7b62fa90"
+        },
+        {
+          "phase": "hidden progress catch-up",
+          "equal": true
+        }
+      ],
+      "errors": [],
+      "baselineCommit": "b52959f",
+      "instrument": "Chromium 153.0.8010.0, actual baseline/current modules in an isolated Vite fixture; work counts and exact normalized preview/DOM presentation parity, not game FPS",
+      "sourceHashes": {
+        "src/ui/next-queue-ui.js": {
+          "before": "19b7506252d732c0694ce19675686ec4489d6a52112bf28432ed84011b057044",
+          "after": "e5def89562cfa0316a5070748258843d60768dd04c648dd27660c05a2daf6bdc"
+        },
+        "src/rendering/draw.js": {
+          "before": "35baf512982b44a79d4980949070e30d437cb1270d6d8c8a9244059f9e1871be",
+          "after": "052d1a3b6a5ad664882ead71ac3e7f7ac8134a3317a747e60046bceaf65c3956"
+        },
+        "src/ui/effects/enhanced-breathing-indicator.js": {
+          "before": "a4d1c6dd579f8db591ee36af2f03dab08ada8b10c358de6f4471edd023e348d4",
+          "after": "c90e7e0d542b6e8dbebf18111d03d43d66c501eb74dc41f7896a2fc021cfb4be"
+        }
+      }
+    },
+    "opponentCounts": {
+      "sourceSha256": "19b4dbdbdd01f42cfffeaea9ccc6070a3f160f7889ce3083ad8039c6543405b5",
+      "before": {
+        "run1": {
+          "opponentUi": {
+            "workload": "4 unchanged visible opponent boards across 60 presentation updates",
+            "counts": {
+              "selectors": 720,
+              "fragWrites": 240,
+              "colorStyleWrites": 1440,
+              "garbageHeightWrites": 240,
+              "segmentClears": 240,
+              "segmentCreates": 960,
+              "segmentAppends": 960,
+              "classOps": 720
+            }
+          },
+          "spotlightLayout": {
+            "workload": "120 unchanged spectator spotlight sizing calls after initial sizing",
+            "counts": {
+              "selectors": 360,
+              "layoutReads": 240,
+              "styleWrites": 0
+            }
+          }
+        },
+        "run2": {
+          "opponentUi": {
+            "workload": "4 unchanged visible opponent boards across 60 presentation updates",
+            "counts": {
+              "selectors": 720,
+              "fragWrites": 240,
+              "colorStyleWrites": 1440,
+              "garbageHeightWrites": 240,
+              "segmentClears": 240,
+              "segmentCreates": 960,
+              "segmentAppends": 960,
+              "classOps": 720
+            }
+          },
+          "spotlightLayout": {
+            "workload": "120 unchanged spectator spotlight sizing calls after initial sizing",
+            "counts": {
+              "selectors": 360,
+              "layoutReads": 240,
+              "styleWrites": 0
+            }
+          }
+        },
+        "scope": "Actual current prototype methods with fake DOM counters. Unrelated effects/death/selection helpers are stubbed in opponent UI workload. These are operation counts, not timing or browser forced-layout measurements."
+      },
+      "after": {
+        "run1": {
+          "opponentUi": {
+            "workload": "4 unchanged visible opponent boards across 60 presentation updates",
+            "counts": {
+              "selectors": 12,
+              "fragWrites": 4,
+              "colorStyleWrites": 24,
+              "garbageHeightWrites": 4,
+              "segmentClears": 4,
+              "segmentCreates": 16,
+              "segmentAppends": 16,
+              "classOps": 12
+            }
+          },
+          "spotlightLayout": {
+            "workload": "120 unchanged spectator spotlight sizing calls after initial sizing",
+            "counts": {
+              "selectors": 0,
+              "layoutReads": 0,
+              "styleWrites": 0
+            }
+          }
+        },
+        "run2": {
+          "opponentUi": {
+            "workload": "4 unchanged visible opponent boards across 60 presentation updates",
+            "counts": {
+              "selectors": 12,
+              "fragWrites": 4,
+              "colorStyleWrites": 24,
+              "garbageHeightWrites": 4,
+              "segmentClears": 4,
+              "segmentCreates": 16,
+              "segmentAppends": 16,
+              "classOps": 12
+            }
+          },
+          "spotlightLayout": {
+            "workload": "120 unchanged spectator spotlight sizing calls after initial sizing",
+            "counts": {
+              "selectors": 0,
+              "layoutReads": 0,
+              "styleWrites": 0
+            }
+          }
+        },
+        "scope": "Actual current prototype methods with fake DOM counters. Unrelated effects/death/selection helpers are stubbed in opponent UI workload. These are operation counts, not timing or browser forced-layout measurements."
+      }
+    },
+    "opponentBrowser": {
+      "hud": [
+        {
+          "name": "initial",
+          "identical": true
+        },
+        {
+          "name": "unchanged",
+          "identical": true
+        },
+        {
+          "name": "frags/color changed",
+          "identical": true
+        },
+        {
+          "name": "same-total color changed",
+          "identical": true
+        },
+        {
+          "name": "same-total type changed",
+          "identical": true
+        },
+        {
+          "name": "same-total order changed",
+          "identical": true
+        },
+        {
+          "name": "dead",
+          "identical": true
+        },
+        {
+          "name": "waiting",
+          "identical": true
+        },
+        {
+          "name": "revived",
+          "identical": true
+        },
+        {
+          "name": "frags node replacement",
+          "identical": true
+        },
+        {
+          "name": "garbage node replacement",
+          "identical": true
+        }
+      ],
+      "spotlight": [
+        {
+          "name": "initial",
+          "identical": true,
+          "before": {
+            "name": "initial",
+            "width": 325,
+            "height": 650,
+            "styleWidth": "325px",
+            "styleHeight": "650px",
+            "pixels": 617429574
+          },
+          "after": {
+            "name": "initial",
+            "width": 325,
+            "height": 650,
+            "styleWidth": "325px",
+            "styleHeight": "650px",
+            "pixels": 617429574
+          }
+        },
+        {
+          "name": "cached",
+          "identical": true,
+          "before": {
+            "name": "cached",
+            "width": 325,
+            "height": 650,
+            "styleWidth": "325px",
+            "styleHeight": "650px",
+            "pixels": 617429574
+          },
+          "after": {
+            "name": "cached",
+            "width": 325,
+            "height": 650,
+            "styleWidth": "325px",
+            "styleHeight": "650px",
+            "pixels": 617429574
+          }
+        },
+        {
+          "name": "stage resized",
+          "identical": true,
+          "before": {
+            "name": "stage resized",
+            "width": 250,
+            "height": 500,
+            "styleWidth": "250px",
+            "styleHeight": "500px",
+            "pixels": 3018693293
+          },
+          "after": {
+            "name": "stage resized",
+            "width": 250,
+            "height": 500,
+            "styleWidth": "250px",
+            "styleHeight": "500px",
+            "pixels": 3018693293
+          }
+        },
+        {
+          "name": "panel resized",
+          "identical": true,
+          "before": {
+            "name": "panel resized",
+            "width": 194,
+            "height": 388,
+            "styleWidth": "194px",
+            "styleHeight": "388px",
+            "pixels": 439666567
+          },
+          "after": {
+            "name": "panel resized",
+            "width": 194,
+            "height": 388,
+            "styleWidth": "194px",
+            "styleHeight": "388px",
+            "pixels": 439666567
+          }
+        },
+        {
+          "name": "show after hide",
+          "identical": true,
+          "before": {
+            "name": "show after hide",
+            "width": 194,
+            "height": 388,
+            "styleWidth": "194px",
+            "styleHeight": "388px",
+            "pixels": 439666567
+          },
+          "after": {
+            "name": "show after hide",
+            "width": 194,
+            "height": 388,
+            "styleWidth": "194px",
+            "styleHeight": "388px",
+            "pixels": 439666567
+          }
+        },
+        {
+          "name": "piece moved",
+          "identical": true,
+          "before": {
+            "name": "piece moved",
+            "width": 194,
+            "height": 388,
+            "styleWidth": "194px",
+            "styleHeight": "388px",
+            "pixels": 899519332
+          },
+          "after": {
+            "name": "piece moved",
+            "width": 194,
+            "height": 388,
+            "styleWidth": "194px",
+            "styleHeight": "388px",
+            "pixels": 899519332
+          }
+        },
+        {
+          "name": "equal-total garbage color changed",
+          "identical": true,
+          "before": {
+            "name": "equal-total garbage color changed",
+            "width": 194,
+            "height": 388,
+            "styleWidth": "194px",
+            "styleHeight": "388px",
+            "pixels": 899519332
+          },
+          "after": {
+            "name": "equal-total garbage color changed",
+            "width": 194,
+            "height": 388,
+            "styleWidth": "194px",
+            "styleHeight": "388px",
+            "pixels": 899519332
+          }
+        }
+      ],
+      "shownImmediately": {
+        "before": {
+          "width": "194px",
+          "height": "388px"
+        },
+        "after": {
+          "width": "194px",
+          "height": "388px"
+        }
+      },
+      "baselineStaleResizeCases": [
+        {
+          "name": "stage resized",
+          "bitmapWidth": 325,
+          "bitmapHeight": 650,
+          "styleWidth": "250px",
+          "styleHeight": "500px"
+        },
+        {
+          "name": "panel resized",
+          "bitmapWidth": 250,
+          "bitmapHeight": 500,
+          "styleWidth": "194px",
+          "styleHeight": "388px"
+        },
+        {
+          "name": "show after hide",
+          "bitmapWidth": 194,
+          "bitmapHeight": 388,
+          "styleWidth": "194px",
+          "styleHeight": "388px"
+        }
+      ],
+      "errors": [],
+      "scope": "Real Chromium DOM and 2D canvas, actual baseline/current methods. Decorative ghost time is pinned. For resize/visibility cases the baseline reference is explicitly redrawn after recording its stale bitmap dimensions: baseline does not invalidate canvas content on layout changes. Independent overlays/selection are stubbed. Operation counts are recorded separately.",
+      "sourceSha256": "19b4dbdbdd01f42cfffeaea9ccc6070a3f160f7889ce3083ad8039c6543405b5"
+    },
+    "minimap": {
+      "cases": [
+        {
+          "name": "initial empty",
+          "changedChannels": 0,
+          "maxChannelDifference": 0,
+          "meanChannelDifference": 0
+        },
+        {
+          "name": "cached empty",
+          "changedChannels": 0,
+          "maxChannelDifference": 0,
+          "meanChannelDifference": 0
+        },
+        {
+          "name": "in-place build change",
+          "changedChannels": 0,
+          "maxChannelDifference": 0,
+          "meanChannelDifference": 0
+        },
+        {
+          "name": "animated scanline and pulse",
+          "changedChannels": 0,
+          "maxChannelDifference": 0,
+          "meanChannelDifference": 0
+        },
+        {
+          "name": "in-place removed top",
+          "changedChannels": 0,
+          "maxChannelDifference": 0,
+          "meanChannelDifference": 0
+        },
+        {
+          "name": "replacement board",
+          "changedChannels": 0,
+          "maxChannelDifference": 0,
+          "meanChannelDifference": 0
+        },
+        {
+          "name": "scaled max and board expansion",
+          "changedChannels": 0,
+          "maxChannelDifference": 0,
+          "meanChannelDifference": 0
+        },
+        {
+          "name": "resize",
+          "changedChannels": 0,
+          "maxChannelDifference": 0,
+          "meanChannelDifference": 0
+        },
+        {
+          "name": "restored geometry",
+          "changedChannels": 0,
+          "maxChannelDifference": 0,
+          "meanChannelDifference": 0
+        }
+      ],
+      "workload": [
+        {
+          "condition": "before",
+          "clearRect": 60,
+          "fillRect": 6000,
+          "arc": 20880,
+          "createLinearGradient": 120,
+          "fillText": 480
+        },
+        {
+          "condition": "after",
+          "clearRect": 60,
+          "drawImage": 120,
+          "createLinearGradient": 60,
+          "fillRect": 540,
+          "fillText": 480
+        }
+      ],
+      "errors": [],
+      "instrument": "Real headless Chromium Canvas2D: fixed Date.now/performance.now, same state/camera/dimensions, all RGBA channels compared; counters wrap native Canvas2D methods including cache canvases; warm 60-update workload only, not FPS",
+      "sources": {
+        "baselineMinimap": "d6511e3a82015a74f3187aa51f5769f758b1365af20e0fb41bb9a23c5cece320",
+        "optimizedMinimap": "bd55d4b6edd25d0a7fad7cecd0f58d650197a1db0638f1de782af0cdd547660e",
+        "optimizedInfinityGrid": "4c5e2f2113aebb8a02d6dde9306d0eb3e3ccd8a012b9f7f33776116f802534b7"
+      }
+    },
+    "phaser": {
+      "instrument": "Actual baseline/current BaseBoardScene modules and installed Phaser 4.1 Graphics drawing methods with renderer-dependent mixins excluded. Counts are CPU work/numeric command values, not GPU timing or FPS.",
+      "baselineCommit": "b52959f",
+      "baselineSourceSha256": "05b610e7fb6e429dbb19f48f3568cdd573310d5cf77e4c51d07fecbe61373f0e",
+      "candidateSourceSha256": "ce741466d0a19055d8f86b147c3e5bc6a7dcc41834af7c21b868e647e1c8e024",
+      "installedGraphicsSha256": "02bd72d5a663095a339e7309048eb5f1f0fde27212b76954b5bd069edff9ddbb",
+      "baselineRepeatMatches": true,
+      "candidateRepeatMatches": true,
+      "baseline": {
+        "stationary": {
+          "frames": 120,
+          "bodyBuilds": 120,
+          "glossBuilds": 120,
+          "graphicObjects": 4,
+          "activeBodyRectangleCalls": 960,
+          "activeGradientCalls": 960,
+          "pieceClears": 120,
+          "numericValuesPerFrame": 204,
+          "frameCommandDigest": "f9eb6c1184e46a3f0466916c180fc48d81af5aedc59c28debcdd3bde94c5082b",
+          "distinctGhostFrames": 120
+        },
+        "animationScan": {
+          "frames": 120,
+          "settledPieces": 1000,
+          "isAnimatingReads": 120000
+        },
+        "blind": {
+          "frames": 120,
+          "garbageCells": 50,
+          "clears": 120,
+          "rectangleCalls": 6000,
+          "frameCommandDigest": "b2f899f646d93ef07a79be705d280819cf474d160e2287e4df0cf4f939bdbcc0",
+          "transitionCommandDigest": "d7c79a6374ef05acd5b97c95e619c906e6179ea73554584f8eec773a61a6d50b"
+        },
+        "stack": {
+          "occupiedCells": 200,
+          "shadeCalls": 400,
+          "commandDigest": "953663f97c28a13784313953b63500589641dbe7ee996f05218d3bf4206e394d"
+        }
+      },
+      "candidate": {
+        "stationary": {
+          "frames": 120,
+          "bodyBuilds": 1,
+          "glossBuilds": 1,
+          "graphicObjects": 4,
+          "activeBodyRectangleCalls": 8,
+          "activeGradientCalls": 8,
+          "pieceClears": 120,
+          "numericValuesPerFrame": 204,
+          "frameCommandDigest": "f9eb6c1184e46a3f0466916c180fc48d81af5aedc59c28debcdd3bde94c5082b",
+          "distinctGhostFrames": 120
+        },
+        "animationScan": {
+          "frames": 120,
+          "settledPieces": 1000,
+          "isAnimatingReads": 1000
+        },
+        "blind": {
+          "frames": 120,
+          "garbageCells": 50,
+          "clears": 1,
+          "rectangleCalls": 50,
+          "frameCommandDigest": "b2f899f646d93ef07a79be705d280819cf474d160e2287e4df0cf4f939bdbcc0",
+          "transitionCommandDigest": "d7c79a6374ef05acd5b97c95e619c906e6179ea73554584f8eec773a61a6d50b"
+        },
+        "stack": {
+          "occupiedCells": 200,
+          "shadeCalls": 21,
+          "commandDigest": "953663f97c28a13784313953b63500589641dbe7ee996f05218d3bf4206e394d"
+        }
+      },
+      "errors": [],
+      "commandParity": {
+        "stationaryFrames": true,
+        "blindPlateau": true,
+        "blindTransitions": true,
+        "dirtyStack": true
+      }
+    },
+    "replay": {
+      "instrument": "Actual DemoPlayer explicit-seek/updateGame/physics modules; canonical snapshot hashes and callback ordering from pre-optimization HEAD; operation counts, not whole-game FPS or heap measurements.",
+      "sourceHashes": {
+        "src/core/demo/DemoPlayer.js": "8c522941abe89ae353ccff02a38e2b2dfb1b5557f26b73af5e78b9aada1ffa8d",
+        "src/core/game.js": "7bc32957569d5455be36d22abaf40c939063b4ac78371a4c17ef7f904222a910",
+        "src/core/physics.js": "91b99996a33ea77d079f7de2aaf7ff21670c0202f633c6fad9e34e7c770373da",
+        "src/core/demo/demo-state.js": "5a23ace806c729da3a941e1a760bf9e3f8be097e8de3a773ac286e5cbcce1f56"
+      },
+      "scenarios": [
+        {
+          "kind": "plain",
+          "baseline": {
+            "canonicalHash": "3707f64fe098354b800e53f89e5aaefbe03e37f12c0f89db186bc36ba9d5a5d6",
+            "rngState": 218261,
+            "lines": 0,
+            "level": 1,
+            "score": 72,
+            "simFrame": 300,
+            "simTimeMs": 5000,
+            "hitStopRemaining": 0,
+            "currentInputIndex": 10,
+            "log": [
+              [
+                "input",
+                10,
+                "move",
+                -1,
+                167
+              ],
+              [
+                "input",
+                10,
+                "move",
+                1,
+                167
+              ],
+              [
+                "input",
+                10,
+                "rotate",
+                "flip",
+                167
+              ],
+              [
+                "input",
+                10,
+                "rotate",
+                "flip",
+                167
+              ],
+              [
+                "input",
+                20,
+                "hardDrop",
+                null,
+                333
+              ],
+              [
+                "hardDrop",
+                333,
+                "<object>"
+              ],
+              [
+                "spawn",
+                333
+              ],
+              [
+                "input",
+                30,
+                "move",
+                -1,
+                500
+              ],
+              [
+                "input",
+                55,
+                "hardDrop",
+                null,
+                917
+              ],
+              [
+                "hardDrop",
+                917,
+                "<object>"
+              ],
+              [
+                "spawn",
+                917
+              ],
+              [
+                "input",
+                280,
+                "move",
+                -1,
+                4666.999999999996
+              ],
+              [
+                "input",
+                280,
+                "move",
+                1,
+                4667
+              ],
+              [
+                "input",
+                280,
+                "softDrop",
+                null,
+                4667
+              ]
+            ],
+            "workload": {
+              "draws": 304,
+              "stats": 304,
+              "steps": 313,
+              "yields": 0,
+              "timerRanBeforeCompletion": false
+            }
+          },
+          "optimized": {
+            "canonicalHash": "3707f64fe098354b800e53f89e5aaefbe03e37f12c0f89db186bc36ba9d5a5d6",
+            "rngState": 218261,
+            "lines": 0,
+            "level": 1,
+            "score": 72,
+            "simFrame": 300,
+            "simTimeMs": 5000,
+            "hitStopRemaining": 0,
+            "currentInputIndex": 10,
+            "log": [
+              [
+                "input",
+                10,
+                "move",
+                -1,
+                167
+              ],
+              [
+                "input",
+                10,
+                "move",
+                1,
+                167
+              ],
+              [
+                "input",
+                10,
+                "rotate",
+                "flip",
+                167
+              ],
+              [
+                "input",
+                10,
+                "rotate",
+                "flip",
+                167
+              ],
+              [
+                "input",
+                20,
+                "hardDrop",
+                null,
+                333
+              ],
+              [
+                "hardDrop",
+                333,
+                "<object>"
+              ],
+              [
+                "spawn",
+                333
+              ],
+              [
+                "input",
+                30,
+                "move",
+                -1,
+                500
+              ],
+              [
+                "input",
+                55,
+                "hardDrop",
+                null,
+                917
+              ],
+              [
+                "hardDrop",
+                917,
+                "<object>"
+              ],
+              [
+                "spawn",
+                917
+              ],
+              [
+                "input",
+                280,
+                "move",
+                -1,
+                4666.999999999996
+              ],
+              [
+                "input",
+                280,
+                "move",
+                1,
+                4667
+              ],
+              [
+                "input",
+                280,
+                "softDrop",
+                null,
+                4667
+              ]
+            ],
+            "workload": {
+              "draws": 1,
+              "stats": 1,
+              "steps": 313,
+              "yields": 2,
+              "timerRanBeforeCompletion": true
+            }
+          }
+        },
+        {
+          "kind": "clear",
+          "baseline": {
+            "canonicalHash": "77a21e992396faa42d4ac7ce41c0c7f519ccd66e854cb7c1e9be9ce2603cd5ea",
+            "rngState": 218261,
+            "lines": 15,
+            "level": 2,
+            "score": 1878,
+            "simFrame": 300,
+            "simTimeMs": 5000,
+            "hitStopRemaining": 0,
+            "currentInputIndex": 10,
+            "log": [
+              [
+                "input",
+                10,
+                "move",
+                -1,
+                167
+              ],
+              [
+                "input",
+                10,
+                "move",
+                1,
+                167
+              ],
+              [
+                "input",
+                10,
+                "rotate",
+                "flip",
+                167
+              ],
+              [
+                "input",
+                10,
+                "rotate",
+                "flip",
+                167
+              ],
+              [
+                "input",
+                20,
+                "hardDrop",
+                null,
+                333
+              ],
+              [
+                "hardDrop",
+                333,
+                "<object>"
+              ],
+              [
+                "clearImpact",
+                333,
+                1,
+                1
+              ],
+              [
+                "perfectClear",
+                533,
+                1,
+                1500
+              ],
+              [
+                "spawn",
+                533
+              ],
+              [
+                "input",
+                30,
+                "move",
+                -1,
+                533
+              ],
+              [
+                "input",
+                55,
+                "hardDrop",
+                null,
+                917
+              ],
+              [
+                "hardDrop",
+                917,
+                "<object>"
+              ],
+              [
+                "spawn",
+                917
+              ],
+              [
+                "input",
+                280,
+                "move",
+                -1,
+                4666.999999999996
+              ],
+              [
+                "input",
+                280,
+                "move",
+                1,
+                4667
+              ],
+              [
+                "input",
+                280,
+                "softDrop",
+                null,
+                4667
+              ]
+            ],
+            "workload": {
+              "draws": 291,
+              "stats": 291,
+              "steps": 300,
+              "yields": 0,
+              "timerRanBeforeCompletion": false
+            }
+          },
+          "optimized": {
+            "canonicalHash": "77a21e992396faa42d4ac7ce41c0c7f519ccd66e854cb7c1e9be9ce2603cd5ea",
+            "rngState": 218261,
+            "lines": 15,
+            "level": 2,
+            "score": 1878,
+            "simFrame": 300,
+            "simTimeMs": 5000,
+            "hitStopRemaining": 0,
+            "currentInputIndex": 10,
+            "log": [
+              [
+                "input",
+                10,
+                "move",
+                -1,
+                167
+              ],
+              [
+                "input",
+                10,
+                "move",
+                1,
+                167
+              ],
+              [
+                "input",
+                10,
+                "rotate",
+                "flip",
+                167
+              ],
+              [
+                "input",
+                10,
+                "rotate",
+                "flip",
+                167
+              ],
+              [
+                "input",
+                20,
+                "hardDrop",
+                null,
+                333
+              ],
+              [
+                "hardDrop",
+                333,
+                "<object>"
+              ],
+              [
+                "clearImpact",
+                333,
+                1,
+                1
+              ],
+              [
+                "perfectClear",
+                533,
+                1,
+                1500
+              ],
+              [
+                "spawn",
+                533
+              ],
+              [
+                "input",
+                30,
+                "move",
+                -1,
+                533
+              ],
+              [
+                "input",
+                55,
+                "hardDrop",
+                null,
+                917
+              ],
+              [
+                "hardDrop",
+                917,
+                "<object>"
+              ],
+              [
+                "spawn",
+                917
+              ],
+              [
+                "input",
+                280,
+                "move",
+                -1,
+                4666.999999999996
+              ],
+              [
+                "input",
+                280,
+                "move",
+                1,
+                4667
+              ],
+              [
+                "input",
+                280,
+                "softDrop",
+                null,
+                4667
+              ]
+            ],
+            "workload": {
+              "draws": 1,
+              "stats": 1,
+              "steps": 300,
+              "yields": 2,
+              "timerRanBeforeCompletion": true
+            }
+          }
+        }
+      ]
+    },
+    "audioStorage": {
+      "instrument": "Real Chromium IndexedDB/DOM; actual baseline b52959f and current modules. Work counts and atomicity, not full-game FPS.",
+      "sourceHashes": {
+        "src/ui/high-scores.js": "d3a565b9fe5d297c17590ff90b86976bf6ba1fc2bb8679f04f3f869ff226394e",
+        "src/audio/sound-manager.js": "3fbfbfcc0c9c0d6d678bae9eaf7c317a05821d40eb269fe9a3e1812834f948c9",
+        "src/audio/music-loader.js": "f443732895e4e3e68d8b3a5a8a4bd6248d7017f1cc2220d0d1e5c2e90d51f3d7"
+      },
+      "repeats": [
+        {
+          "run": 1,
+          "results": [
+            {
+              "mode": "baseline",
+              "saveWork": {
+                "transactions": 6,
+                "writeTransactions": 5,
+                "fullCursorRows": 152,
+                "keyCursorRows": 0,
+                "atSaveResolved": {
+                  "writeTransactions": 5,
+                  "writeCommits": 4,
+                  "notifications": 1,
+                  "notificationCommits": 4
+                }
+              },
+              "retention": {
+                "highScores": 100,
+                "history": 50,
+                "tiedScoreIds": [
+                  101,
+                  51
+                ],
+                "equalTimestampHistoryIds": [
+                  51,
+                  50,
+                  49,
+                  48,
+                  47,
+                  46,
+                  45,
+                  44,
+                  43,
+                  42,
+                  41,
+                  40,
+                  39,
+                  38,
+                  37,
+                  36,
+                  35,
+                  34,
+                  33,
+                  32,
+                  31,
+                  30,
+                  29,
+                  28,
+                  27,
+                  26,
+                  25,
+                  24,
+                  23,
+                  22,
+                  21,
+                  20,
+                  19,
+                  18,
+                  17,
+                  16,
+                  15,
+                  14,
+                  13,
+                  12,
+                  11,
+                  10,
+                  9,
+                  8,
+                  7,
+                  6,
+                  5,
+                  4,
+                  3,
+                  2
+                ],
+                "savedRecord": {
+                  "score": 50,
+                  "lines": 4,
+                  "level": 3,
+                  "speedMultiplier": 1,
+                  "theme": "calm",
+                  "musicTrack": "Moon",
+                  "timestamp": 1000,
+                  "demoId": 7
+                },
+                "stats": {
+                  "id": "stats",
+                  "totalGames": 101,
+                  "totalScore": 5000,
+                  "totalLines": 104,
+                  "highestScore": 99,
+                  "highestLevel": 3,
+                  "bestScorePerLevel": {
+                    "1": 99,
+                    "3": 50
+                  }
+                }
+              },
+              "rollback": null,
+              "requestFailureRollback": null,
+              "concurrent": null,
+              "audio": {
+                "concurrentInitCalls": 2,
+                "fetches": 2,
+                "optionInsertions": 120,
+                "options": 60
+              }
+            },
+            {
+              "mode": "after",
+              "saveWork": {
+                "transactions": 1,
+                "writeTransactions": 1,
+                "fullCursorRows": 0,
+                "keyCursorRows": 4,
+                "atSaveResolved": {
+                  "writeTransactions": 1,
+                  "writeCommits": 1,
+                  "notifications": 1,
+                  "notificationCommits": 1
+                }
+              },
+              "retention": {
+                "highScores": 100,
+                "history": 50,
+                "tiedScoreIds": [
+                  101,
+                  51
+                ],
+                "equalTimestampHistoryIds": [
+                  51,
+                  50,
+                  49,
+                  48,
+                  47,
+                  46,
+                  45,
+                  44,
+                  43,
+                  42,
+                  41,
+                  40,
+                  39,
+                  38,
+                  37,
+                  36,
+                  35,
+                  34,
+                  33,
+                  32,
+                  31,
+                  30,
+                  29,
+                  28,
+                  27,
+                  26,
+                  25,
+                  24,
+                  23,
+                  22,
+                  21,
+                  20,
+                  19,
+                  18,
+                  17,
+                  16,
+                  15,
+                  14,
+                  13,
+                  12,
+                  11,
+                  10,
+                  9,
+                  8,
+                  7,
+                  6,
+                  5,
+                  4,
+                  3,
+                  2
+                ],
+                "savedRecord": {
+                  "score": 50,
+                  "lines": 4,
+                  "level": 3,
+                  "speedMultiplier": 1,
+                  "theme": "calm",
+                  "musicTrack": "Moon",
+                  "timestamp": 1000,
+                  "demoId": 7
+                },
+                "stats": {
+                  "id": "stats",
+                  "totalGames": 101,
+                  "totalScore": 5000,
+                  "totalLines": 104,
+                  "highestScore": 99,
+                  "highestLevel": 3,
+                  "bestScorePerLevel": {
+                    "1": 99,
+                    "3": 50
+                  }
+                }
+              },
+              "rollback": {
+                "error": "DataCloneError",
+                "allStoresPreserved": true,
+                "notifications": 0
+              },
+              "requestFailureRollback": {
+                "error": "ConstraintError",
+                "allStoresPreserved": true,
+                "notifications": 0
+              },
+              "concurrent": {
+                "saves": 20,
+                "stats": {
+                  "id": "stats",
+                  "totalGames": 121,
+                  "totalScore": 7190,
+                  "totalLines": 314,
+                  "highestScore": 119,
+                  "highestLevel": 4,
+                  "bestScorePerLevel": {
+                    "1": 116,
+                    "2": 117,
+                    "3": 118,
+                    "4": 119
+                  }
+                },
+                "notifications": 20,
+                "retainedHighScores": 100,
+                "retainedHistory": 50,
+                "allSavedScoresPresent": true
+              },
+              "audio": {
+                "concurrentInitCalls": 2,
+                "fetches": 1,
+                "optionInsertions": 60,
+                "options": 60
+              }
+            }
+          ]
+        },
+        {
+          "run": 2,
+          "results": [
+            {
+              "mode": "baseline",
+              "saveWork": {
+                "transactions": 6,
+                "writeTransactions": 5,
+                "fullCursorRows": 152,
+                "keyCursorRows": 0,
+                "atSaveResolved": {
+                  "writeTransactions": 5,
+                  "writeCommits": 4,
+                  "notifications": 1,
+                  "notificationCommits": 4
+                }
+              },
+              "retention": {
+                "highScores": 100,
+                "history": 50,
+                "tiedScoreIds": [
+                  101,
+                  51
+                ],
+                "equalTimestampHistoryIds": [
+                  51,
+                  50,
+                  49,
+                  48,
+                  47,
+                  46,
+                  45,
+                  44,
+                  43,
+                  42,
+                  41,
+                  40,
+                  39,
+                  38,
+                  37,
+                  36,
+                  35,
+                  34,
+                  33,
+                  32,
+                  31,
+                  30,
+                  29,
+                  28,
+                  27,
+                  26,
+                  25,
+                  24,
+                  23,
+                  22,
+                  21,
+                  20,
+                  19,
+                  18,
+                  17,
+                  16,
+                  15,
+                  14,
+                  13,
+                  12,
+                  11,
+                  10,
+                  9,
+                  8,
+                  7,
+                  6,
+                  5,
+                  4,
+                  3,
+                  2
+                ],
+                "savedRecord": {
+                  "score": 50,
+                  "lines": 4,
+                  "level": 3,
+                  "speedMultiplier": 1,
+                  "theme": "calm",
+                  "musicTrack": "Moon",
+                  "timestamp": 1000,
+                  "demoId": 7
+                },
+                "stats": {
+                  "id": "stats",
+                  "totalGames": 101,
+                  "totalScore": 5000,
+                  "totalLines": 104,
+                  "highestScore": 99,
+                  "highestLevel": 3,
+                  "bestScorePerLevel": {
+                    "1": 99,
+                    "3": 50
+                  }
+                }
+              },
+              "rollback": null,
+              "requestFailureRollback": null,
+              "concurrent": null,
+              "audio": {
+                "concurrentInitCalls": 2,
+                "fetches": 2,
+                "optionInsertions": 120,
+                "options": 60
+              }
+            },
+            {
+              "mode": "after",
+              "saveWork": {
+                "transactions": 1,
+                "writeTransactions": 1,
+                "fullCursorRows": 0,
+                "keyCursorRows": 4,
+                "atSaveResolved": {
+                  "writeTransactions": 1,
+                  "writeCommits": 1,
+                  "notifications": 1,
+                  "notificationCommits": 1
+                }
+              },
+              "retention": {
+                "highScores": 100,
+                "history": 50,
+                "tiedScoreIds": [
+                  101,
+                  51
+                ],
+                "equalTimestampHistoryIds": [
+                  51,
+                  50,
+                  49,
+                  48,
+                  47,
+                  46,
+                  45,
+                  44,
+                  43,
+                  42,
+                  41,
+                  40,
+                  39,
+                  38,
+                  37,
+                  36,
+                  35,
+                  34,
+                  33,
+                  32,
+                  31,
+                  30,
+                  29,
+                  28,
+                  27,
+                  26,
+                  25,
+                  24,
+                  23,
+                  22,
+                  21,
+                  20,
+                  19,
+                  18,
+                  17,
+                  16,
+                  15,
+                  14,
+                  13,
+                  12,
+                  11,
+                  10,
+                  9,
+                  8,
+                  7,
+                  6,
+                  5,
+                  4,
+                  3,
+                  2
+                ],
+                "savedRecord": {
+                  "score": 50,
+                  "lines": 4,
+                  "level": 3,
+                  "speedMultiplier": 1,
+                  "theme": "calm",
+                  "musicTrack": "Moon",
+                  "timestamp": 1000,
+                  "demoId": 7
+                },
+                "stats": {
+                  "id": "stats",
+                  "totalGames": 101,
+                  "totalScore": 5000,
+                  "totalLines": 104,
+                  "highestScore": 99,
+                  "highestLevel": 3,
+                  "bestScorePerLevel": {
+                    "1": 99,
+                    "3": 50
+                  }
+                }
+              },
+              "rollback": {
+                "error": "DataCloneError",
+                "allStoresPreserved": true,
+                "notifications": 0
+              },
+              "requestFailureRollback": {
+                "error": "ConstraintError",
+                "allStoresPreserved": true,
+                "notifications": 0
+              },
+              "concurrent": {
+                "saves": 20,
+                "stats": {
+                  "id": "stats",
+                  "totalGames": 121,
+                  "totalScore": 7190,
+                  "totalLines": 314,
+                  "highestScore": 119,
+                  "highestLevel": 4,
+                  "bestScorePerLevel": {
+                    "1": 116,
+                    "2": 117,
+                    "3": 118,
+                    "4": 119
+                  }
+                },
+                "notifications": 20,
+                "retainedHighScores": 100,
+                "retainedHistory": 50,
+                "allSavedScoresPresent": true
+              },
+              "audio": {
+                "concurrentInitCalls": 2,
+                "fetches": 1,
+                "optionInsertions": 60,
+                "options": 60
+              }
+            }
+          ]
+        }
+      ],
+      "errors": [],
+      "assertions": "passed"
+    }
+  }
+}

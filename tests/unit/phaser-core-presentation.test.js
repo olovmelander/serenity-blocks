@@ -3,6 +3,8 @@ import {
 } from 'vitest';
 import EventEmitter from 'eventemitter3';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createBoardScene } from '../../src/rendering/phaser/board-scene.js';
 import { createBoardGrid } from '../../src/core/board.js';
 import { BaseGameMode } from '../../src/core/game-modes/BaseGameMode.js';
@@ -18,8 +20,17 @@ const TweenBuilder = require('../../node_modules/phaser/src/tweens/builders/Twee
 class FakeScene {
     constructor() { this.events = new EventEmitter(); }
 }
-const PHASER = { Scene: FakeScene, Utils: { String: { UUID: () => 'presentation' } } };
+const PHASER = {
+    Scene: FakeScene,
+    Utils: { String: { UUID: () => 'presentation' } },
+    BlendModes: { ADD: 1, NORMAL: 0 },
+};
 const BoardScene = createBoardScene(PHASER);
+// Captured from commit 6080857's actual fused draw path, including fractional rounding.
+const fillBaseline = JSON.parse(
+    readFileSync(new URL('../fixtures/phaser-piece-fill-baseline.json', import.meta.url), 'utf8'),
+);
+const commandDigest = (draw) => createHash('sha256').update(JSON.stringify(draw.commands)).digest('hex');
 
 function graphics() {
     const result = { commands: [], clearCount: 0 };
@@ -159,6 +170,82 @@ describe('Phaser board presentation ownership', () => {
         const edited = scene._getPieceGeometry(shape, 8, true);
         expect(edited).not.toBe(first);
         expect(edited.present.size).toBe(3);
+    });
+
+    it.each(fillBaseline)('matches original fused Graphics commands for $name', (sample) => {
+        const scene = board();
+        const draw = graphics();
+        scene.blockSize = sample.bs;
+        scene.drawFusedPiece(draw, sample.shape, sample.x, sample.y, sample.color, {
+            alpha: 0.83, fx: sample.fx, gloss: true, skipHiddenRows: true,
+        });
+        expect(draw.commands).toHaveLength(sample.commandCount);
+        expect(commandDigest(draw)).toBe(sample.digest);
+    });
+
+    it('compiles one gradient and reuses rectangle storage across120 moving-piece frames', () => {
+        const scene = board();
+        const sample = fillBaseline[0];
+        const bilerp = vi.spyOn(scene, '_bilerpColor');
+        const bounds = vi.spyOn(scene, '_cellBounds');
+        const rect = vi.spyOn(scene, '_cellRect');
+        const draw = graphics();
+        for (let frame = 0; frame < 120; frame++) {
+            scene.drawFusedPiece(draw, sample.shape, 3 + (frame % 3) * 0.5, 8 + frame * 0.025, sample.color, {
+                alpha: 1, fx: sample.fx, gloss: true, skipHiddenRows: true,
+            });
+        }
+        expect(bilerp).toHaveBeenCalledTimes(16);
+        expect(bounds).toHaveBeenCalledOnce();
+        expect(rect).toHaveBeenCalledTimes(960);
+        expect(new Set(rect.mock.results.map(({ value }) => value)).size).toBe(1);
+    });
+
+    it('invalidates style/bounds for color, mutable effect values, clipping, resize and in-place shapes', () => {
+        const scene = board();
+        const drawSample = (sample, shape = sample.shape, fx = sample.fx) => {
+            const draw = graphics();
+            scene.blockSize = sample.bs;
+            scene.drawFusedPiece(draw, shape, sample.x, sample.y, sample.color, {
+                alpha: 0.83, fx, gloss: true, skipHiddenRows: true,
+            });
+            expect(commandDigest(draw)).toBe(sample.digest);
+        };
+        const shape = fillBaseline[0].shape.map((row) => [...row]);
+        drawSample(fillBaseline[0], shape);
+        drawSample(fillBaseline[3], shape); // Same shape, different color.
+        drawSample(fillBaseline[2], shape); // Hidden-row clipping.
+        drawSample(fillBaseline[1], shape); // Fractional block-size/position change.
+        for (let y = 0; y < shape.length; y++) {
+            for (let x = 0; x < shape[y].length; x++) shape[y][x] = fillBaseline[6].shape[y][x];
+        }
+        drawSample(fillBaseline[6], shape); // Cascade-style in-place shape edit.
+
+        const changedEffects = { ...fillBaseline[0].fx };
+        const sample = fillBaseline[4];
+        scene.blockSize = sample.bs;
+        scene.drawFusedPiece(graphics(), sample.shape, sample.x, sample.y, sample.color, { fx: changedEffects });
+        Object.assign(changedEffects, sample.fx);
+        drawSample(sample, sample.shape, changedEffects);
+    });
+
+    it('reuses unchanged view bands and updates camera bounds once per position update', () => {
+        const scene = board();
+        const first = scene.getVisibleRowRange();
+        expect(scene.getVisibleRowRange()).toBe(first);
+        scene.cameraSettings = {
+            activeTopRow: 4, currentTopRow: 4, visibleRows: 15, manualControl: true,
+        };
+        const next = scene.getVisibleRowRange();
+        expect(next).not.toBe(first);
+        expect(scene.getVisibleRowRange()).toBe(next);
+        const camera = scene.cameras.main;
+        camera.setBounds = vi.fn();
+        scene.updateCameraPosition(6, true);
+        expect(camera.setBounds).toHaveBeenCalledOnce();
+        expect(scene.getVisibleRowRange().startRow).toBe(6);
+        scene.events.emit('shutdown');
+        expect(scene._visibleRowRangeCache).toBeNull();
     });
 
     it('preserves live online and manual Infinity exploration while freezing owned pausable boards', () => {

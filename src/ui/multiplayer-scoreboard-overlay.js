@@ -10,6 +10,7 @@ export class MultiplayerScoreboardOverlay {
         this.localPlayerId = null;
         this.goalText = '';
         this.sortBy = 'frags';
+        this.playersDirty = false;
 
         this.createUI();
     }
@@ -58,7 +59,9 @@ export class MultiplayerScoreboardOverlay {
         };
 
         this.goalText = conditions[endCondition] || '';
-        this.sortBy = this._getSortField(endCondition);
+        const sortBy = this._getSortField(endCondition);
+        if (sortBy !== this.sortBy) this.playersDirty = true;
+        this.sortBy = sortBy;
 
         if (this.goalContainer) {
             this.goalContainer.textContent = this.goalText;
@@ -80,9 +83,11 @@ export class MultiplayerScoreboardOverlay {
 
         // Deterministic total order (see OnlineScoreboard): primary metric → frags →
         // score → lines → stable id, so tied players never swap on input-order wobble.
-        this.players = [...players].sort((a, b) => this._compare(a, b));
-
-        this.render();
+        this.players = [...players];
+        this.playersDirty = true;
+        // Network and RAF feeds continue while Tab's overlay is hidden. Keep the
+        // latest state, then sort/build it once when the overlay becomes visible.
+        if (this.isVisible()) this.render();
     }
 
     _compare(a, b) {
@@ -95,7 +100,11 @@ export class MultiplayerScoreboardOverlay {
     }
 
     render() {
-        if (!this.listContainer) return;
+        if (!this.listContainer || !this.isVisible()) return;
+        if (this.playersDirty) {
+            this.players.sort((a, b) => this._compare(a, b));
+            this.playersDirty = false;
+        }
 
         // Dirty-check: skip the innerHTML rebuild when nothing rendered changed.
         const sig = this.players.map((p) => `${p.id}|${p.name}|${p.frags || 0}|${p.score || 0}|`
@@ -134,6 +143,7 @@ export class MultiplayerScoreboardOverlay {
     show() {
         if (this.container) {
             this.container.classList.remove('hidden');
+            this.render();
         }
     }
 
@@ -145,7 +155,8 @@ export class MultiplayerScoreboardOverlay {
 
     toggle() {
         if (!this.container) return;
-        this.container.classList.toggle('hidden');
+        if (this.isVisible()) this.hide();
+        else this.show();
     }
 
     isVisible() {
@@ -157,6 +168,9 @@ export class MultiplayerScoreboardOverlay {
             this.container.remove();
             this.container = null;
         }
+        this.listContainer = null;
+        this.goalContainer = null;
+        this.players = [];
     }
 
     _escapeHtml(text) {

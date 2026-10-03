@@ -101,6 +101,7 @@ export class ModalManager {
         };
         this.gamepadController = gamepadController;
         this.menuCoverage = createMenuCoverageController();
+        this.gameOverLeaderboardPanel = null;
     }
 
     /**
@@ -118,6 +119,7 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.add('visible');
+            if (modalName === 'gameOver') this.gameOverLeaderboardPanel?.show();
             if (modalName === 'start') {
                 document.body.classList.add('start-modal-open');
                 // Show replays icon when start modal is open
@@ -149,6 +151,7 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.remove('visible');
+            if (modalName === 'gameOver') this.gameOverLeaderboardPanel?.hide();
             if (modalName === 'start') {
                 document.body.classList.remove('start-modal-open');
                 // Hide replays icon when start modal closes
@@ -190,6 +193,8 @@ export class ModalManager {
     }
 
     destroy() {
+        this.gameOverLeaderboardPanel?.destroy();
+        this.gameOverLeaderboardPanel = null;
         this.menuCoverage.destroy();
     }
 }
@@ -232,6 +237,8 @@ export async function showGameOverModal(
     if (!shouldPresent()) {
         return false;
     }
+    modalManager.gameOverLeaderboardPanel?.destroy();
+    modalManager.gameOverLeaderboardPanel = null;
 
     // Calculate speed multiplier
     const LEVEL_SPEEDS = [
@@ -505,6 +512,7 @@ export async function showGameOverModal(
             });
 
             leaderboardPanel.mount(leaderboardHost);
+            modalManager.gameOverLeaderboardPanel = leaderboardPanel;
         }
     } catch (error) {
         if (!shouldPresent()) {

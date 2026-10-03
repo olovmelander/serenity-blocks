@@ -40,6 +40,8 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md](CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md) | Reference | Shipped design of the rebuilt theme (composition solver, world/post modules, tiers, event language) with perf and screenshot evidence. |
 | [CHROMADELIC_HIGHWAY_WEBGPU_UPGRADE_PLAN.md](CHROMADELIC_HIGHWAY_WEBGPU_UPGRADE_PLAN.md) | Superseded | Rendering/composition parts replaced by the 2026-09 visual overhaul; keep for history. |
 | [CORE_UI_PERFORMANCE_FIXES_2026-10.md](CORE_UI_PERFORMANCE_FIXES_2026-10.md) | Reference | Menu/audio/Phaser audit fixes, regression coverage and bounded before/after menu-rendering evidence; theme and WebGPU work excluded. |
+| [CORE_UI_PERFORMANCE_FOLLOWUP_2026-10.md](CORE_UI_PERFORMANCE_FOLLOWUP_2026-10.md) | Reference | Additional shared UI/audio/Phaser/input/transport/storage optimizations with deterministic work counts, command parity and lifecycle regressions. |
+| [CORE_UI_PERFORMANCE_PASS3_2026-10.md](CORE_UI_PERFORMANCE_PASS3_2026-10.md) | Reference | Retained HUD/minimap/Phaser presentation, responsive replay seeks, atomic local scores and shared audio startup; repeated work counts and state/command/pixel preservation checks. |
 | [COSMIC_NOIR_PERF_AUDIT_2026-06-30.md](COSMIC_NOIR_PERF_AUDIT_2026-06-30.md) | Reference | Theme performance evidence. |
 | [cosmic-cursor-global-fix-plan.md](cosmic-cursor-global-fix-plan.md) | Reference | UI fix plan. |
 | [gameplay-effects-plan.md](gameplay-effects-plan.md) | Reference | Gameplay effects plan. |
