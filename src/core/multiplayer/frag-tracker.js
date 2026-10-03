@@ -11,7 +11,6 @@ import { MessageTypes } from '../network/message-types.js';
 export class FragTracker {
     constructor(ffaGameState) {
         this.gameState = ffaGameState;
-        this.isHost = ffaGameState.isHost;
 
         // Kill feed (recent kills for display)
         this.killFeed = [];
@@ -19,6 +18,15 @@ export class FragTracker {
 
         // Death tracking (who killed who)
         this.deathLog = [];
+    }
+
+    /**
+   * Host authority is read live from the owning game state. A value cached at
+   * construction left a peer promoted by host migration unable to record deaths
+   * or end a round — the match froze after every migration.
+   */
+    get isHost() {
+        return Boolean(this.gameState?.isHost);
     }
 
     /**
