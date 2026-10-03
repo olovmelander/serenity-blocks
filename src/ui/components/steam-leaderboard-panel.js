@@ -14,6 +14,44 @@ const DEFAULT_CACHE_TTL = {
 };
 
 const defaultCache = new LeaderboardCache();
+const pendingRequestsByCache = new WeakMap();
+
+const requestLeaderboard = (request) => {
+    let pendingRequests = pendingRequestsByCache.get(request.cache);
+    if (!pendingRequests) {
+        pendingRequests = new Map();
+        pendingRequestsByCache.set(request.cache, pendingRequests);
+    }
+
+    const requestKey = JSON.stringify([steamService.steamId, request.cacheKey]);
+    let pending = pendingRequests.get(requestKey);
+    if (!pending) {
+        pending = Promise.resolve().then(() => steamService.getLeaderboard(
+            request.board.name,
+            request.view,
+            request.start,
+            request.pageSize,
+        )).then((response) => {
+            const data = response?.supported ? {
+                entries: Array.isArray(response.entries) ? response.entries : [],
+                supported: true,
+                notice: response?.notice || '',
+            } : {
+                entries: [],
+                supported: false,
+                notice: response?.error || 'Leaderboards unavailable',
+            };
+            request.cache.set(request.cacheKey, data);
+            return data;
+        }).finally(() => {
+            if (pendingRequests.get(requestKey) === pending) {
+                pendingRequests.delete(requestKey);
+            }
+        });
+        pendingRequests.set(requestKey, pending);
+    }
+    return pending;
+};
 
 export const formatNumber = (value) => {
     if (typeof value === 'bigint') return value.toString();
@@ -66,15 +104,43 @@ export class SteamLeaderboardPanel {
         this.listEl = null;
         this.statusEl = null;
         this.updatedEl = null;
+        this.active = false;
+        this.loadGeneration = 0;
+        this._onClick = null;
     }
 
     mount(container) {
         if (!container) return;
+        this.destroy();
         this.container = container;
+        this.active = true;
         this.container.classList.add('steam-leaderboard-panel');
         this._renderShell();
         this._bindHandlers();
         this._load();
+    }
+
+    hide() {
+        this.active = false;
+        this.loadGeneration += 1;
+    }
+
+    show() {
+        if (!this.container || this.active) return;
+        this.active = true;
+        this._load();
+    }
+
+    destroy() {
+        this.hide();
+        if (this.container && this._onClick) {
+            this.container.removeEventListener('click', this._onClick);
+        }
+        this._onClick = null;
+        this.container = null;
+        this.listEl = null;
+        this.statusEl = null;
+        this.updatedEl = null;
     }
 
     _renderShell() {
@@ -137,8 +203,9 @@ export class SteamLeaderboardPanel {
     }
 
     _bindHandlers() {
-        this.container.addEventListener('click', (event) => {
-            const target = event.target;
+        this._onClick = (event) => {
+            if (!this.active) return;
+            const { target } = event;
             if (!(target instanceof HTMLElement)) return;
 
             if (target.dataset.boardId) {
@@ -148,7 +215,8 @@ export class SteamLeaderboardPanel {
             if (target.dataset.viewId) {
                 this._setView(target.dataset.viewId);
             }
-        });
+        };
+        this.container.addEventListener('click', this._onClick);
     }
 
     _setBoard(boardId) {
@@ -178,22 +246,45 @@ export class SteamLeaderboardPanel {
         return this.boards.find((board) => board.id === this.currentBoardId) || this.boards[0];
     }
 
-    _getCacheKey(boardName) {
-        return `${boardName}|${this.currentView}|0|${this.pageSize}`;
+    _getCacheKey(boardName, view = this.currentView, pageSize = this.pageSize) {
+        return `${boardName}|${view}|0|${pageSize}`;
+    }
+
+    _ownsRequest(request) {
+        return this.active
+            && this.container === request.container
+            && this.loadGeneration === request.generation
+            && this.currentBoardId === request.boardId
+            && this.currentView === request.view
+            && this.pageSize === request.pageSize;
     }
 
     async _load() {
+        if (!this.active || !this.container) return;
+        const generation = ++this.loadGeneration;
         const board = this._getBoard();
         if (!board) {
             this._renderMessage('No leaderboards configured.');
             return;
         }
 
-        const cacheKey = this._getCacheKey(board.name);
-        const ttl = this.cacheTtlByView[this.currentView] ?? this.cacheTtlByView.global;
-        const cached = this.cache.get(cacheKey, ttl);
+        const request = {
+            board: { ...board },
+            boardId: this.currentBoardId,
+            view: this.currentView,
+            start: 0,
+            pageSize: this.pageSize,
+            cache: this.cache,
+            cacheKey: this._getCacheKey(board.name, this.currentView, this.pageSize),
+            container: this.container,
+            generation,
+        };
+        const ttl = this.cacheTtlByView[request.view] ?? this.cacheTtlByView.global;
+        const cached = request.cache.get(request.cacheKey, ttl);
+        const hasCachedEntries = cached?.data?.supported
+            && Array.isArray(cached.data.entries);
 
-        if (cached?.data?.entries?.length) {
+        if (hasCachedEntries) {
             this._renderEntries(board, cached.data.entries, cached.data.supported, cached.data.notice);
             this._setUpdatedLabel(cached.ageMs);
             if (!cached.stale) {
@@ -207,49 +298,45 @@ export class SteamLeaderboardPanel {
 
         if (!steamService.isAvailable()) {
             if (!steamService.initComplete) {
-                await steamService.waitForInit();
+                try {
+                    await steamService.waitForInit();
+                } catch (err) {
+                    if (this._ownsRequest(request)) {
+                        console.warn('[SteamLeaderboardPanel] Failed to initialize Steam:', err.message);
+                        this._setStatus('Failed to refresh leaderboard.');
+                    }
+                    return;
+                }
             }
         }
 
+        if (!this._ownsRequest(request)) return;
+
         if (!steamService.isAvailable()) {
-            if (!cached?.data?.entries?.length) {
+            if (!hasCachedEntries) {
                 this._renderMessage('Steam offline. Showing cached scores when available.');
             }
             return;
         }
 
-        await this._fetchLeaderboard(board, cacheKey);
+        await this._fetchLeaderboard(request);
     }
 
-    async _fetchLeaderboard(board, cacheKey) {
+    async _fetchLeaderboard(request) {
         try {
-            const response = await steamService.getLeaderboard(
-                board.name,
-                this.currentView,
-                0,
-                this.pageSize,
-            );
+            const response = await requestLeaderboard(request);
+            if (!this._ownsRequest(request)) return;
 
-            if (!response?.supported) {
-                this.cache.set(cacheKey, {
-                    entries: [],
-                    supported: false,
-                    notice: response?.error || 'Leaderboards unavailable',
-                });
+            if (!response.supported) {
                 this._renderMessage('Leaderboards unavailable (Steam API missing).');
                 return;
             }
 
-            const entries = Array.isArray(response.entries) ? response.entries : [];
-            this.cache.set(cacheKey, {
-                entries,
-                supported: true,
-                notice: response?.notice || '',
-            });
-            this._renderEntries(board, entries, true, response?.notice);
+            this._renderEntries(request.board, response.entries, true, response.notice);
             this._setUpdatedLabel(0);
             this._setStatus('');
         } catch (err) {
+            if (!this._ownsRequest(request)) return;
             console.warn('[SteamLeaderboardPanel] Failed to fetch leaderboard:', err.message);
             this._setStatus('Failed to refresh leaderboard.');
         }
@@ -347,7 +434,7 @@ export class SteamLeaderboardPanel {
 
         const rank = document.createElement('div');
         rank.className = 'steam-leaderboard-rank';
-        rank.textContent = entry.rank ? `#${entry.rank}` : entry.rank === 0 ? '#0' : '—';
+        rank.textContent = entry.rank || entry.rank === 0 ? `#${entry.rank}` : '—';
 
         const name = document.createElement('div');
         name.className = 'steam-leaderboard-name';

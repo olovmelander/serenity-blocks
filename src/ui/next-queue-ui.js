@@ -41,11 +41,17 @@ function trimShape(shape) {
     return trimmed;
 }
 
-let cachedNextPieces = [];
+const queueStates = new Map();
+const canvasSlots = new WeakMap();
+const trimmedShapes = new Map();
 let listenersRegistered = false;
 let unsubscribeThemeChanged = null;
+let unsubscribeViewportChanged = null;
 let styleManager = null;
-let pendingStyleInit = false;
+let pendingStyleInit = null;
+let resizeFrame = null;
+let resizeObserver = null;
+let styleRevision = 0;
 
 function createFallbackStyle(color) {
     return {
@@ -70,18 +76,16 @@ function getStyleManager() {
     const settingsManager = hasWindow ? window.settingsManager : null;
 
     if (!themeManager || !settingsManager) {
-        pendingStyleInit = true;
-        setTimeout(() => {
-            pendingStyleInit = false;
-            if (cachedNextPieces.length > 0) {
-                updateNextQueue(cachedNextPieces);
-            }
+        pendingStyleInit = setTimeout(() => {
+            pendingStyleInit = null;
+            renderQueues(getLiveQueues());
         }, 100);
         return null;
     }
 
     styleManager = new TetrominoStyleManager(themeManager, settingsManager);
     styleManager.init();
+    styleRevision += 1;
     return styleManager;
 }
 
@@ -116,14 +120,6 @@ function resolveStyleConfig(pieceKey) {
     };
 }
 
-function getEffectiveEffects(styleConfig) {
-    const overrides = styleConfig.rendererOverrides?.canvas || {};
-    return {
-        ...styleConfig.effects,
-        ...overrides,
-    };
-}
-
 function ensureListeners() {
     if (listenersRegistered) {
         return;
@@ -133,15 +129,27 @@ function ensureListeners() {
     if (eventBus && typeof eventBus.on === 'function') {
         unsubscribeThemeChanged = eventBus.on(EVENTS.THEME_CHANGED, () => {
             styleManager?.refresh?.();
-            if (cachedNextPieces.length > 0) {
-                updateNextQueue(cachedNextPieces);
-            }
+            styleRevision += 1;
+            renderQueues(getLiveQueues());
         });
+        unsubscribeViewportChanged = eventBus.on(EVENTS.VIEWPORT_RESIZED, handleResize);
     }
 
     if (typeof window !== 'undefined') {
         window.addEventListener('settingsChanged', handleSettingsChanged);
         window.addEventListener('beforeunload', cleanupListeners);
+    }
+    const Observer = globalThis.ResizeObserver || globalThis.window?.ResizeObserver;
+    if (Observer) {
+        resizeObserver = new Observer((entries) => {
+            const live = getLiveQueues();
+            live.forEach((state) => {
+                if (entries.some((entry) => state.slots.some((slot) => slot.element === entry.target))) {
+                    state.measureNeeded = true;
+                }
+            });
+            scheduleResize();
+        });
     }
 }
 
@@ -150,10 +158,21 @@ function cleanupListeners() {
         window.removeEventListener('settingsChanged', handleSettingsChanged);
         window.removeEventListener('beforeunload', cleanupListeners);
     }
+    if (pendingStyleInit !== null) clearTimeout(pendingStyleInit);
+    if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+    pendingStyleInit = null;
+    resizeFrame = null;
+    resizeObserver?.disconnect();
+    resizeObserver = null;
+    queueStates.clear();
+    styleManager?.destroy();
+    styleManager = null;
     if (unsubscribeThemeChanged) {
         unsubscribeThemeChanged();
         unsubscribeThemeChanged = null;
     }
+    unsubscribeViewportChanged?.();
+    unsubscribeViewportChanged = null;
     listenersRegistered = false;
 }
 
@@ -162,26 +181,21 @@ function handleSettingsChanged(event) {
         return;
     }
     styleManager?.refresh?.();
-    if (cachedNextPieces.length > 0) {
-        updateNextQueue(cachedNextPieces);
-    }
+    styleRevision += 1;
+    renderQueues(getLiveQueues());
 }
 
-export function drawPiece(canvas, pieceKey) {
-    if (!canvas) return;
+function drawMeasuredPiece(canvas, pieceKey, displayWidth, displayHeight, dpr, isHighlight, styleConfig) {
     const ctx = canvas.getContext('2d');
-    const shape = trimShape(SHAPES[pieceKey]);
-    const styleConfig = resolveStyleConfig(pieceKey);
+    if (!ctx) return;
+    let shape = trimmedShapes.get(pieceKey);
+    if (!shape) {
+        shape = trimShape(SHAPES[pieceKey]);
+        trimmedShapes.set(pieceKey, shape);
+    }
 
     const rows = shape.length;
     const cols = shape[0].length;
-
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-
-    // Measure the container to fit the piece within it (like multiplayer does)
-    const slot = canvas.closest('.player-next-piece');
-    const displayWidth = slot ? slot.clientWidth : (canvas.clientWidth || BASE_BLOCK_SIZE * cols + BASE_PADDING * 2);
-    const displayHeight = slot ? slot.clientHeight : (canvas.clientHeight || BASE_BLOCK_SIZE * rows + BASE_PADDING * 2);
 
     const renderWidth = Math.max(1, Math.round(displayWidth * dpr));
     const renderHeight = Math.max(1, Math.round(displayHeight * dpr));
@@ -190,8 +204,8 @@ export function drawPiece(canvas, pieceKey) {
         canvas.width = renderWidth;
         canvas.height = renderHeight;
     }
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
+    if (canvas.style.width !== '100%') canvas.style.width = '100%';
+    if (canvas.style.height !== '100%') canvas.style.height = '100%';
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -201,7 +215,6 @@ export function drawPiece(canvas, pieceKey) {
     ctx.imageSmoothingEnabled = false;
 
     // Scale block size to fit within the container with padding
-    const isHighlight = slot && slot.classList.contains('highlight');
     const paddingFactor = isHighlight ? 0.18 : 0.22;
     const padding = Math.max(BASE_PADDING, Math.min(displayWidth, displayHeight) * paddingFactor);
     const availableWidth = Math.max(1, displayWidth - padding * 2);
@@ -223,35 +236,130 @@ export function drawPiece(canvas, pieceKey) {
     ctx.restore();
 }
 
+export function drawPiece(canvas, pieceKey) {
+    if (!canvas || !SHAPES[pieceKey]) return;
+    const ownedSlot = canvasSlots.get(canvas);
+    if (ownedSlot) ownedSlot.lastDraw = null;
+    const shape = trimShape(SHAPES[pieceKey]);
+    const slot = canvas.closest('.player-next-piece');
+    const displayWidth = slot ? slot.clientWidth : (canvas.clientWidth || BASE_BLOCK_SIZE * shape[0].length + BASE_PADDING * 2);
+    const displayHeight = slot ? slot.clientHeight : (canvas.clientHeight || BASE_BLOCK_SIZE * shape.length + BASE_PADDING * 2);
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    drawMeasuredPiece(
+        canvas,
+        pieceKey,
+        displayWidth,
+        displayHeight,
+        dpr,
+        !!slot?.classList.contains('highlight'),
+        resolveStyleConfig(pieceKey),
+    );
+}
+
+function getLiveQueues() {
+    const live = [];
+    queueStates.forEach((state, id) => {
+        if (document.getElementById(id) === state.container) {
+            live.push(state);
+        } else {
+            state.slots.forEach((slot) => resizeObserver?.unobserve(slot.element));
+            queueStates.delete(id);
+        }
+    });
+    return live;
+}
+
+function scheduleResize() {
+    if (resizeFrame !== null) return;
+    resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null;
+        renderQueues(getLiveQueues());
+    });
+}
+
+function handleResize() {
+    getLiveQueues().forEach((state) => { state.measureNeeded = true; });
+    scheduleResize();
+}
+
+function renderQueues(states) {
+    if (states.some((state) => state.nextPieces.some((pieceKey) => SHAPES[pieceKey]))) getStyleManager();
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    // Read every affected slot before changing any canvas backing store.
+    states.forEach((state) => {
+        if (!state.measureNeeded && resizeObserver) return;
+        state.slots.forEach((slot) => {
+            slot.width = slot.element.clientWidth;
+            slot.height = slot.element.clientHeight;
+        });
+        state.measureNeeded = false;
+    });
+    states.forEach((state) => {
+        state.slots.forEach((slot, index) => {
+            const pieceKey = SHAPES[state.nextPieces[index]] ? state.nextPieces[index] : null;
+            const last = slot.lastDraw;
+            if (last?.pieceKey === pieceKey && last.width === slot.width
+                && last.height === slot.height && last.dpr === dpr && last.revision === styleRevision
+                && (!pieceKey || (slot.canvas.width === Math.max(1, Math.round(slot.width * dpr))
+                    && slot.canvas.height === Math.max(1, Math.round(slot.height * dpr))))) return;
+            slot.element.classList.toggle('empty', !pieceKey);
+            if (pieceKey) {
+                drawMeasuredPiece(
+                    slot.canvas,
+                    pieceKey,
+                    slot.width,
+                    slot.height,
+                    dpr,
+                    index === 0,
+                    resolveStyleConfig(pieceKey),
+                );
+            } else if (!last || last.pieceKey) {
+                const ctx = slot.canvas.getContext('2d');
+                ctx?.clearRect(0, 0, slot.canvas.width, slot.canvas.height);
+            }
+            slot.lastDraw = {
+                pieceKey, width: slot.width, height: slot.height, dpr, revision: styleRevision,
+            };
+        });
+    });
+}
+
 export function updateNextQueue(nextPieces, containerId = 'next-queue-container') {
     ensureListeners();
-    cachedNextPieces = Array.isArray(nextPieces) ? [...nextPieces] : [];
-
     const queueContainer = document.getElementById(containerId);
+    getLiveQueues();
     if (!queueContainer) return;
-    queueContainer.innerHTML = '';
-
-    queueContainer.classList.remove('next-queue-container');
-    queueContainer.classList.add('player-next-pieces', 'single-player-next');
-
-    const slotsToRender = 3;
-
-    for (let index = 0; index < slotsToRender; index += 1) {
-        const pieceKey = nextPieces[index];
-        const pieceContainer = document.createElement('div');
-        pieceContainer.className = 'player-next-piece';
-        if (index === 0) {
-            pieceContainer.classList.add('highlight');
+    let state = queueStates.get(containerId);
+    if (!state || state.slots.some((slot) => slot.element.parentNode !== queueContainer
+        || slot.canvas.parentNode !== slot.element)) {
+        state?.slots.forEach((slot) => resizeObserver?.unobserve(slot.element));
+        queueContainer.innerHTML = '';
+        queueContainer.classList.remove('next-queue-container');
+        queueContainer.classList.add('player-next-pieces', 'single-player-next');
+        state = {
+            container: queueContainer, nextPieces: [], slots: [], measureNeeded: true,
+        };
+        const fragment = document.createDocumentFragment();
+        for (let index = 0; index < 3; index += 1) {
+            const element = document.createElement('div');
+            element.className = 'player-next-piece';
+            if (index === 0) element.classList.add('highlight');
+            const canvas = document.createElement('canvas');
+            element.appendChild(canvas);
+            fragment.appendChild(element);
+            const slot = { element, canvas, lastDraw: null };
+            state.slots.push(slot);
+            canvasSlots.set(canvas, slot);
+            canvas.addEventListener('contextrestored', () => {
+                if (queueStates.get(containerId) !== state) return;
+                slot.lastDraw = null;
+                renderQueues([state]);
+            });
         }
-
-        const canvas = document.createElement('canvas');
-        pieceContainer.appendChild(canvas);
-        queueContainer.appendChild(pieceContainer);
-
-        if (pieceKey) {
-            drawPiece(canvas, pieceKey);
-        } else {
-            pieceContainer.classList.add('empty');
-        }
+        queueContainer.appendChild(fragment);
+        queueStates.set(containerId, state);
+        state.slots.forEach((slot) => resizeObserver?.observe(slot.element));
     }
+    state.nextPieces = Array.isArray(nextPieces) ? nextPieces.slice(0, 3) : [];
+    renderQueues([state]);
 }

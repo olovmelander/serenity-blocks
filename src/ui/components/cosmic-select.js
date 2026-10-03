@@ -131,9 +131,11 @@ export function enhanceSelect(select, { label = null } = {}) {
 
     const setActive = (index) => {
         if (index < 0 || index >= state.optionEls.length) return;
+        if (index === state.activeIndex) return;
+        state.optionEls[state.activeIndex]?.classList.remove('is-active');
         state.activeIndex = index;
-        state.optionEls.forEach((el, i) => el.classList.toggle('is-active', i === index));
         const activeEl = state.optionEls[index];
+        activeEl.classList.add('is-active');
         trigger.setAttribute('aria-activedescendant', activeEl.id);
         activeEl.scrollIntoView({ block: 'nearest' });
     };
@@ -166,6 +168,8 @@ export function enhanceSelect(select, { label = null } = {}) {
         wrapper.classList.remove('is-open');
         trigger.setAttribute('aria-expanded', 'false');
         trigger.removeAttribute('aria-activedescendant');
+        state.optionEls[state.activeIndex]?.classList.remove('is-active');
+        state.activeIndex = -1;
         doc.removeEventListener('pointerdown', onOutsidePointer, true);
         if (focusTrigger) trigger.focus();
     };
@@ -383,6 +387,8 @@ export function enhanceSelectOverlay(select) {
     let overlay = null;
     let open = false;
     let cleanupOpen = null;
+    let positionFrame = 0;
+    let positionStyles = {};
 
     const closeOverlay = () => {
         if (!open) return;
@@ -401,17 +407,39 @@ export function enhanceSelectOverlay(select) {
         }
     };
 
-    const position = () => {
+    const setPositionStyle = (property, value) => {
+        // CSSOM rounds fractional pixels when serializing. Compare our owned
+        // input strings so unchanged anchors do not keep rewriting style.
+        if (positionStyles[property] === value) return;
+        positionStyles[property] = value;
+        overlay.style[property] = value;
+    };
+
+    const position = (rect = select.getBoundingClientRect()) => {
         if (!overlay) return;
-        const rect = select.getBoundingClientRect();
-        overlay.style.minWidth = `${rect.width}px`;
-        overlay.style.left = `${rect.left}px`;
+        setPositionStyle('minWidth', `${rect.width}px`);
+        setPositionStyle('left', `${rect.left}px`);
         const overlayHeight = overlay.offsetHeight;
         const spaceBelow = window.innerHeight - rect.bottom;
         const openUp = spaceBelow < overlayHeight + 8 && rect.top > spaceBelow;
-        overlay.style.top = openUp
+        const top = openUp
             ? `${Math.max(4, rect.top - overlayHeight - 4)}px`
             : `${rect.bottom + 4}px`;
+        setPositionStyle('top', top);
+    };
+
+    const schedulePosition = () => {
+        if (positionFrame || !open) return;
+        positionFrame = requestAnimationFrame(() => {
+            positionFrame = 0;
+            if (!open) return;
+            const rect = select.getBoundingClientRect();
+            if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
+                closeOverlay();
+                return;
+            }
+            position(rect);
+        });
     };
 
     const openOverlay = () => {
@@ -419,12 +447,28 @@ export function enhanceSelectOverlay(select) {
         open = true;
         select.classList.add('cosmic-open');
         overlay = doc.createElement('div');
+        positionStyles = {};
         overlay.className = 'cosmic-select__listbox cosmic-select__overlay';
         overlay.setAttribute('role', 'listbox');
         // The native <select> remains the accessible control; the overlay is a
         // pointer-only visual layer, so hide it from the a11y tree.
         overlay.setAttribute('aria-hidden', 'true');
 
+        let activeOption = null;
+        overlay.addEventListener('pointerover', (event) => {
+            const option = event.target.closest('.cosmic-select__option');
+            if (!option || option === activeOption) return;
+            activeOption?.classList.remove('is-active');
+            option.classList.add('is-active');
+            activeOption = option;
+        });
+        overlay.addEventListener('mousedown', (event) => {
+            const option = event.target.closest('.cosmic-select__option');
+            if (!option) return;
+            event.preventDefault(); // keep focus on the select, avoid a blur race
+            if (option.getAttribute('aria-disabled') !== 'true') commit(option.dataset.value);
+            closeOverlay();
+        });
         readOptions(select).forEach((opt) => {
             const el = doc.createElement('div');
             el.className = 'cosmic-select__option';
@@ -433,15 +477,6 @@ export function enhanceSelectOverlay(select) {
             el.setAttribute('aria-selected', opt.value === select.value ? 'true' : 'false');
             if (opt.disabled) el.setAttribute('aria-disabled', 'true');
             el.textContent = opt.label;
-            el.addEventListener('pointerenter', () => {
-                overlay.querySelectorAll('.is-active').forEach((o) => o.classList.remove('is-active'));
-                el.classList.add('is-active');
-            });
-            el.addEventListener('mousedown', (event) => {
-                event.preventDefault(); // keep focus on the select, avoid a blur race
-                if (!opt.disabled) commit(opt.value);
-                closeOverlay();
-            });
             overlay.appendChild(el);
         });
 
@@ -457,18 +492,15 @@ export function enhanceSelectOverlay(select) {
         // select; only close if the select scrolls out of the viewport.
         const onScroll = (event) => {
             if (overlay && (event.target === overlay || overlay.contains(event.target))) return;
-            const rect = select.getBoundingClientRect();
-            if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
-                closeOverlay();
-                return;
-            }
-            position();
+            schedulePosition();
         };
-        const onResize = () => position();
+        const onResize = schedulePosition;
         doc.addEventListener('pointerdown', onOutside, true);
         window.addEventListener('scroll', onScroll, true);
         window.addEventListener('resize', onResize);
         cleanupOpen = () => {
+            if (positionFrame) cancelAnimationFrame(positionFrame);
+            positionFrame = 0;
             doc.removeEventListener('pointerdown', onOutside, true);
             window.removeEventListener('scroll', onScroll, true);
             window.removeEventListener('resize', onResize);
@@ -511,9 +543,9 @@ export function enhanceSelectOverlay(select) {
  */
 export function enhanceAllSelects(root) {
     if (!root) return [];
+    if (root.tagName === 'SELECT') return isEnhanceable(root) ? [enhanceSelectOverlay(root)] : [];
     const selects = [];
-    if (root.tagName === 'SELECT') selects.push(root);
-    if (typeof root.querySelectorAll === 'function') {
+    if (root.childElementCount !== 0 && typeof root.querySelectorAll === 'function') {
         selects.push(...root.querySelectorAll('select'));
     }
     return selects.filter(isEnhanceable).map((select) => enhanceSelectOverlay(select));
@@ -533,16 +565,33 @@ export function installCosmicSelects({ root = document, observe = true } = {}) {
 
     if (observe && typeof MutationObserver === 'function' && !cosmicSelectObserver && document.body) {
         cosmicSelectObserver = new MutationObserver((mutations) => {
+            const addedRoots = new Set();
+            const changedSelects = new Set();
             mutations.forEach((mutation) => {
                 // Enhance any <select> added later (modals, lobby, hub, …).
                 mutation.addedNodes.forEach((node) => {
-                    if (node.nodeType === 1) enhanceAllSelects(node);
+                    if (node.nodeType === 1 && node.tagName !== 'OPTION' && node.tagName !== 'OPTGROUP') {
+                        addedRoots.add(node);
+                    }
                 });
                 // If an already-enhanced select's <option>s changed (dynamically
                 // populated dropdowns), refresh its themed view to match.
                 const { target } = mutation;
-                if (target?.tagName === 'SELECT' && target.dataset.cosmicEnhanced === 'true') {
-                    target._cosmicSelect?.refresh();
+                const select = target?.tagName === 'SELECT'
+                    ? target
+                    : target?.closest?.('option, optgroup')?.closest('select');
+                if (select?.dataset.cosmicEnhanced === 'true') changedSelects.add(select);
+            });
+            addedRoots.forEach((node) => {
+                let parent = node.parentElement;
+                while (parent && !addedRoots.has(parent)) parent = parent.parentElement;
+                if (!parent) enhanceAllSelects(node);
+            });
+            // One native option update can produce many mutation records. Rebuild
+            // the themed view once per select, after the complete batch settles.
+            changedSelects.forEach((select) => {
+                if (select.isConnected !== false) {
+                    select._cosmicSelect?.refresh();
                 }
             });
         });

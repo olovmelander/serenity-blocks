@@ -1,0 +1,236 @@
+{
+  "description": "Recorded from pre-optimization DemoPlayer explicit seeks using real game, physics, seeded RNG and hit-stop callbacks. Presentation counters do not enter the canonical snapshot hash.",
+  "sourceCommit": "b52959f8cd74d3055f10c516b4dc4e5a7fcc8910",
+  "scenarios": [
+    {
+      "kind": "plain",
+      "canonicalHash": "3707f64fe098354b800e53f89e5aaefbe03e37f12c0f89db186bc36ba9d5a5d6",
+      "rngState": 218261,
+      "lines": 0,
+      "level": 1,
+      "score": 72,
+      "simFrame": 300,
+      "simTimeMs": 5000,
+      "hitStopRemaining": 0,
+      "currentInputIndex": 10,
+      "log": [
+        [
+          "input",
+          10,
+          "move",
+          -1,
+          167
+        ],
+        [
+          "input",
+          10,
+          "move",
+          1,
+          167
+        ],
+        [
+          "input",
+          10,
+          "rotate",
+          "flip",
+          167
+        ],
+        [
+          "input",
+          10,
+          "rotate",
+          "flip",
+          167
+        ],
+        [
+          "input",
+          20,
+          "hardDrop",
+          null,
+          333
+        ],
+        [
+          "hardDrop",
+          333,
+          "<object>"
+        ],
+        [
+          "spawn",
+          333
+        ],
+        [
+          "input",
+          30,
+          "move",
+          -1,
+          500
+        ],
+        [
+          "input",
+          55,
+          "hardDrop",
+          null,
+          917
+        ],
+        [
+          "hardDrop",
+          917,
+          "<object>"
+        ],
+        [
+          "spawn",
+          917
+        ],
+        [
+          "input",
+          280,
+          "move",
+          -1,
+          4666.999999999996
+        ],
+        [
+          "input",
+          280,
+          "move",
+          1,
+          4667
+        ],
+        [
+          "input",
+          280,
+          "softDrop",
+          null,
+          4667
+        ]
+      ],
+      "workload": {
+        "draws": 304,
+        "stats": 304,
+        "steps": 313,
+        "yields": 0,
+        "timerRanBeforeCompletion": false
+      }
+    },
+    {
+      "kind": "clear",
+      "canonicalHash": "77a21e992396faa42d4ac7ce41c0c7f519ccd66e854cb7c1e9be9ce2603cd5ea",
+      "rngState": 218261,
+      "lines": 15,
+      "level": 2,
+      "score": 1878,
+      "simFrame": 300,
+      "simTimeMs": 5000,
+      "hitStopRemaining": 0,
+      "currentInputIndex": 10,
+      "log": [
+        [
+          "input",
+          10,
+          "move",
+          -1,
+          167
+        ],
+        [
+          "input",
+          10,
+          "move",
+          1,
+          167
+        ],
+        [
+          "input",
+          10,
+          "rotate",
+          "flip",
+          167
+        ],
+        [
+          "input",
+          10,
+          "rotate",
+          "flip",
+          167
+        ],
+        [
+          "input",
+          20,
+          "hardDrop",
+          null,
+          333
+        ],
+        [
+          "hardDrop",
+          333,
+          "<object>"
+        ],
+        [
+          "clearImpact",
+          333,
+          1,
+          1
+        ],
+        [
+          "perfectClear",
+          533,
+          1,
+          1500
+        ],
+        [
+          "spawn",
+          533
+        ],
+        [
+          "input",
+          30,
+          "move",
+          -1,
+          533
+        ],
+        [
+          "input",
+          55,
+          "hardDrop",
+          null,
+          917
+        ],
+        [
+          "hardDrop",
+          917,
+          "<object>"
+        ],
+        [
+          "spawn",
+          917
+        ],
+        [
+          "input",
+          280,
+          "move",
+          -1,
+          4666.999999999996
+        ],
+        [
+          "input",
+          280,
+          "move",
+          1,
+          4667
+        ],
+        [
+          "input",
+          280,
+          "softDrop",
+          null,
+          4667
+        ]
+      ],
+      "workload": {
+        "draws": 291,
+        "stats": 291,
+        "steps": 300,
+        "yields": 0,
+        "timerRanBeforeCompletion": false
+      }
+    }
+  ]
+}

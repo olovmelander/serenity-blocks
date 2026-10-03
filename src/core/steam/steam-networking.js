@@ -56,6 +56,9 @@ const PEER_BROADCAST_MESSAGE_TYPES = new Set([
 export class SteamNetworking {
     constructor() {
         this.initialized = false;
+        this.pollInterval = null;
+        /** @type {{ inFlight: boolean } | null} */
+        this.p2pPollingSession = null;
         this.steamId = null;
         this.playerName = null;
         this.isHost = false;
@@ -823,28 +826,31 @@ export class SteamNetworking {
    * Start polling for incoming P2P packets
    */
     startP2PPolling() {
-        if (this.mockMode) return;
+        if (this.mockMode || this.pollInterval) return;
 
-        // Guard against a second init() orphaning the previous interval — that
-        // would leak a 60Hz timer and double-process every incoming packet.
-        if (this.pollInterval) {
-            clearInterval(this.pollInterval);
-            this.pollInterval = null;
-        }
+        const session = { inFlight: false };
+        this.p2pPollingSession = session;
 
         // Poll for P2P packets at 60Hz via steamworks.js preload API.
         // steamworks.js 0.4.0 P2P is single-channel: drain it each tick. The
         // logical channel rides inside the envelope (used for seq tracking), so
         // we don't need a per-channel transport here.
         this.pollInterval = setInterval(async () => {
+            if (session.inFlight || this.p2pPollingSession !== session) return;
+            session.inFlight = true;
             try {
                 let packet = await ipcRenderer.invoke('steam:readP2PPacket');
-                while (packet) {
+                while (packet && this.p2pPollingSession === session) {
                     this.handleP2PPacket(packet, 0);
+                    // A packet handler can retire or replace the online mode.
+                    // Its former drain must not dispatch or read into that owner.
+                    if (this.p2pPollingSession !== session) return;
                     packet = await ipcRenderer.invoke('steam:readP2PPacket');
                 }
             } catch (err) {
                 // Ignore polling errors
+            } finally {
+                session.inFlight = false;
             }
         }, 16); // ~60Hz
     }
@@ -858,6 +864,8 @@ export class SteamNetworking {
      * lobby first).
      */
     stopP2PPolling() {
+        // Invalidate outstanding asynchronous reads before retiring the timer.
+        this.p2pPollingSession = null;
         if (this.pollInterval) {
             clearInterval(this.pollInterval);
             this.pollInterval = null;
@@ -1200,9 +1208,7 @@ export class SteamNetworking {
    */
     shutdown() {
         this._clearNetworkImpairmentTimers();
-        if (this.pollInterval) {
-            clearInterval(this.pollInterval);
-        }
+        this.stopP2PPolling();
         this.stopHeartbeat();
         if (this._disconnectCheckInterval) {
             clearInterval(this._disconnectCheckInterval);

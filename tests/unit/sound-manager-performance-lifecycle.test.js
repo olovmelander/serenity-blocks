@@ -3,6 +3,7 @@ import {
 } from 'vitest';
 import { SoundManager } from '../../src/audio/sound-manager.js';
 import { AudioAnalyzer } from '../../src/audio/audio-analyzer.js';
+import { createSoundSets, SoundEffectPlayer } from '../../src/audio/sound-effects.js';
 
 function createAudioContext() {
     const nodes = [];
@@ -326,6 +327,8 @@ describe('audio cancellation, cache ownership and transient graphs', () => {
         sources[0].onended();
         expect(gain.disconnect).toHaveBeenCalled();
         expect(sources[0].disconnect).toHaveBeenCalled();
+        expect(sources[0].disconnect).toHaveBeenCalledOnce();
+        expect(gain.disconnect).toHaveBeenCalledOnce();
         expect(manager.activeAudioVoices.size).toBe(0);
         expect(finished).toHaveBeenCalledOnce();
     });
@@ -339,6 +342,73 @@ describe('audio cancellation, cache ownership and transient graphs', () => {
         manager.cleanup();
         expect(window.cancelIdleCallback).toHaveBeenCalledWith(42);
         expect(manager._deferredAnalysisHandle).toBeNull();
+    });
+
+    it.each(['muted', 'zero-volume'])('disabled %s effects do not allocate delayed note timers', (disabled) => {
+        const { manager } = createManager();
+        const tone = vi.spyOn(manager, 'createTone');
+        const schedule = manager.scheduleSoundEffect.bind(manager);
+        const canPlay = manager.canPlaySoundEffect.bind(manager);
+        const sets = createSoundSets(tone, manager.createRichTone.bind(manager), schedule, canPlay);
+        const player = new SoundEffectPlayer(sets, 'Zen', tone, null, schedule, canPlay);
+        if (disabled === 'muted') manager.isMuted = true;
+        else manager.setSFXVolume(0);
+        for (let i = 0; i < 60; i += 1) player.playLineClear();
+        player.playPerfectClear();
+        expect(tone).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+        expect(manager.soundEffectTimers.size).toBe(0);
+    });
+
+    it('delayed notes preserve delay ordering and use live gain/mute values at playback time', async () => {
+        const { manager, context } = createManager();
+        const sets = createSoundSets(
+            manager.createTone.bind(manager),
+            manager.createRichTone.bind(manager),
+            manager.scheduleSoundEffect.bind(manager),
+            manager.canPlaySoundEffect.bind(manager),
+        );
+        sets.Zen.lineClear();
+        expect(vi.getTimerCount()).toBe(3);
+        manager.setSFXVolume(0.5);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(context.createOscillator).toHaveBeenCalledOnce();
+        const noteGain = context.createGain.mock.results.at(-1).value;
+        expect(noteGain.gain.setValueAtTime).toHaveBeenCalledWith(0.075, 0);
+        manager.isMuted = true;
+        await vi.advanceTimersByTimeAsync(80);
+        expect(context.createOscillator).toHaveBeenCalledOnce();
+        manager.isMuted = false;
+        await vi.advanceTimersByTimeAsync(80);
+        expect(context.createOscillator).toHaveBeenCalledTimes(2);
+        expect(manager.soundEffectTimers.size).toBe(0);
+        manager.cleanup();
+    });
+
+    it('full cleanup cancels scheduled effects before a replacement audio context can receive them', async () => {
+        const { manager } = createManager();
+        const tone = vi.spyOn(manager, 'createTone');
+        const schedule = manager.scheduleSoundEffect.bind(manager);
+        const canPlay = manager.canPlaySoundEffect.bind(manager);
+        const sets = createSoundSets(tone, manager.createRichTone.bind(manager), schedule, canPlay);
+        const player = new SoundEffectPlayer(sets, 'Zen', tone, null, schedule, canPlay);
+        player.playPerfectClear();
+        player.playLineClear();
+        expect(manager.soundEffectTimers.size).toBe(9);
+        manager.cleanup();
+        manager.audioContext = createAudioContext().context;
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(tone).not.toHaveBeenCalled();
+        expect(manager.soundEffectTimers.size).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('music tones retain their independent volume even when sound effects are disabled', () => {
+        const { manager, context } = createManager();
+        manager.setSFXVolume(0);
+        manager.createTone(440, 0.1, 'sine', 0.3, null, true);
+        expect(context.createOscillator).toHaveBeenCalledOnce();
+        expect(context.createGain.mock.results.at(-1).value.gain.setValueAtTime).toHaveBeenCalledWith(0.3, 0);
     });
 });
 

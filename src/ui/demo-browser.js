@@ -17,6 +17,7 @@ export class DemoBrowser {
         this.modal = document.getElementById('demo-browser-modal');
         this.listContainer = document.getElementById('demo-list');
         this.importInput = document.getElementById('import-demo-input');
+        this.refreshGeneration = 0;
 
         this.setupEventListeners();
     }
@@ -48,18 +49,21 @@ export class DemoBrowser {
     }
 
     hide() {
+        this.refreshGeneration += 1;
         if (this.modal) {
             this.modal.classList.remove('visible');
         }
     }
 
     async refreshList() {
-        if (!this.listContainer) return;
+        if (!this.listContainer || !this.modal?.classList.contains('visible')) return;
+        const generation = ++this.refreshGeneration;
 
         this.listContainer.innerHTML = '<div class="loading-spinner">Loading...</div>';
 
         try {
-            const demos = await this.demoManager.listDemos();
+            const demos = await this.demoManager.listDemos({ includeReplayData: false });
+            if (generation !== this.refreshGeneration) return;
 
             if (demos.length === 0) {
                 this.listContainer.innerHTML = '<div class="empty-state">No replays found. Play a game to record one!</div>';
@@ -71,11 +75,14 @@ export class DemoBrowser {
 
             this.listContainer.innerHTML = '';
 
+            const fragment = document.createDocumentFragment();
             demos.forEach((demo) => {
                 const card = this.createDemoCard(demo);
-                this.listContainer.appendChild(card);
+                fragment.appendChild(card);
             });
+            this.listContainer.appendChild(fragment);
         } catch (err) {
+            if (generation !== this.refreshGeneration) return;
             console.error('Failed to load demos:', err);
             this.listContainer.innerHTML = '<div class="error-state">Failed to load replays.</div>';
         }

@@ -170,16 +170,7 @@ export class PerformanceMonitor {
         // programs}) once per frame after rendering; we keep a rolling avg so
         // the overlay number doesn't flicker. Whichever counter is the largest
         // tells us the dominant cost class (draw calls vs vertex vs material).
-        this.renderCounters = {
-            calls: 0,
-            triangles: 0,
-            geometries: 0,
-            textures: 0,
-            programs: 0,
-            callsAvg: 0,
-            trianglesAvg: 0,
-        };
-        this._counterSamples = { calls: [], triangles: [] };
+        this._resetRenderCounters();
 
         // Quality mode tracking
         this.qualityMode = 'Unknown';
@@ -353,16 +344,7 @@ export class PerformanceMonitor {
         this.latestNetworkStats = null;
         this.sectionTimers.clear();
         this.sectionMetrics.clear();
-        this.renderCounters = {
-            calls: 0,
-            triangles: 0,
-            geometries: 0,
-            textures: 0,
-            programs: 0,
-            callsAvg: 0,
-            trianglesAvg: 0,
-        };
-        this._counterSamples = { calls: [], triangles: [] };
+        this._resetRenderCounters();
 
         console.log('[PerformanceMonitor] Metrics reset');
     }
@@ -964,6 +946,40 @@ export class PerformanceMonitor {
         return arr.reduce((sum, val) => sum + val, 0) / arr.length;
     }
 
+    _resetRenderCounters() {
+        this._counterSamples = { calls: [], triangles: [] };
+        const state = { samples: this._counterSamples, stats: null };
+        this._counterState = state;
+        this.renderCounters = {
+            calls: 0, triangles: 0, geometries: 0, textures: 0, programs: 0,
+        };
+        // Keep the existing enumerable counter API. Summaries are resolved once
+        // per changed sample window when an overlay/report actually reads them.
+        for (const key of [
+            'callsAvg', 'trianglesAvg', 'callsP50', 'callsMax', 'trianglesP50', 'trianglesMax',
+        ]) {
+            Object.defineProperty(this.renderCounters, key, {
+                enumerable: true,
+                get: () => this._getRenderCounterStats(state)[key],
+            });
+        }
+    }
+
+    _getRenderCounterStats(state = this._counterState) {
+        if (!state.stats) {
+            const { samples } = state;
+            state.stats = {
+                callsAvg: this.calculateAverage(samples.calls),
+                trianglesAvg: this.calculateAverage(samples.triangles),
+                callsP50: medianOf(samples.calls),
+                callsMax: maxOf(samples.calls),
+                trianglesP50: medianOf(samples.triangles),
+                trianglesMax: maxOf(samples.triangles),
+            };
+        }
+        return state.stats;
+    }
+
     /**
      * Phase D.1: ingest renderer.info-style counters from the active theme.
      * Called once per frame after `renderer.render()`. Cheap — just stores the
@@ -989,17 +1005,9 @@ export class PerformanceMonitor {
         if (samples.calls.length > SAMPLE_SIZE) samples.calls.shift();
         samples.triangles.push(triangles);
         if (samples.triangles.length > SAMPLE_SIZE) samples.triangles.shift();
-        this.renderCounters.callsAvg = this.calculateAverage(samples.calls);
-        this.renderCounters.trianglesAvg = this.calculateAverage(samples.triangles);
-        // Wave -1 of docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md makes "median and p99, never mean"
-        // an exit criterion for anything a decision is measured against. The rolling averages
-        // above stay for the live overlay and the themes that read them; these are what the
-        // COMMITTED perf report consumes, because a mean draw count over a journey that swings
-        // between 40 and 260 draws describes no frame the game ever rendered.
-        this.renderCounters.callsP50 = medianOf(samples.calls);
-        this.renderCounters.callsMax = maxOf(samples.calls);
-        this.renderCounters.trianglesP50 = medianOf(samples.triangles);
-        this.renderCounters.trianglesMax = maxOf(samples.triangles);
+        // Samples still collect while the overlay is closed, preserving report
+        // evidence. Avoid sorting/scanning them until a summary is requested.
+        this._counterState.stats = null;
     }
 
     /**
