@@ -1,3 +1,10 @@
+> **DORMANT (verified 2026-10-03) — do not follow this workflow.** Everything below lived
+> under `C:\AI` on the RTX 5080 dev machine, which is gone (see the banner in
+> [ASSET_PIPELINE_BLACKWELL.md](ASSET_PIPELINE_BLACKWELL.md)); `C:\AI` does not exist on the
+> current machine. SFX generation is unavailable until the owner decides to rebuild it. Do
+> not call the wrapper and do not try to reinstall it or Stable Audio — ask the user. The
+> text is kept as the record of how the setup worked.
+
 # Stable Audio SFX Workflow
 
 Serenity Blocks uses a shared local Stable Audio 3 Small-SFX setup for AI-generated sound-effect candidates.
