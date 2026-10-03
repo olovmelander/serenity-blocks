@@ -622,6 +622,33 @@ describe('InfinityMode fixed-tick loop adapter', () => {
         expect(gamepadController.setFixedTickInputAdapter).not.toHaveBeenCalled();
     });
 
+    it('defers legacy grid expansion while a cascade is in flight', () => {
+        const { boardScene, gameState, mode } = createMode({ needsHybrid: true });
+        delete mode._maybeExpandGrid; // exercise the real method, not the harness stub
+        boardScene.cameraSettings = { manualControl: false };
+        mode._findHighestBlockRow = vi.fn(() => 5); // stack within the expansion threshold
+        mode._compensateCameraForGridExpansion = vi.fn();
+        const rowsBefore = gameState.board.length;
+        const piece = { y: 20, shape: [[1]] };
+        gameState.lockedPieces = [piece];
+
+        // Mid-cascade: processPhysicsLegacy still holds pre-expansion row indices.
+        gameState.isProcessingPhysics = true;
+        mode._maybeExpandGrid();
+
+        expect(gameState.board.length).toBe(rowsBefore);
+        expect(piece.y).toBe(20);
+        expect(mode._compensateCameraForGridExpansion).not.toHaveBeenCalled();
+
+        // The first frame after the cascade settles performs the deferred expansion.
+        gameState.isProcessingPhysics = false;
+        mode._maybeExpandGrid();
+
+        expect(gameState.board.length).toBe(rowsBefore + 10);
+        expect(piece.y).toBe(30);
+        expect(mode._compensateCameraForGridExpansion).toHaveBeenCalledWith(10);
+    });
+
     it('uses captured fixed hit-stop policy independently of live settings and scene tiers', () => {
         const {
             boardScene, gameState, mode, settings, settingsManager,
