@@ -320,6 +320,51 @@ describe('FFA join handshake', () => {
         });
     });
 
+    it('treats a roster member announcing with a new join nonce as a reconnect', () => {
+        const existing = { steamId: PEER_ID, name: 'Peer', isDisconnected: false };
+        const { game, network } = makeHostGame({
+            players: new Map([
+                [HOST_ID, { steamId: HOST_ID, name: 'Host' }],
+                [PEER_ID, existing],
+            ]),
+        });
+        const handlers = registerFor(game);
+        const sentTypes = () => network.sendP2PMessage.mock.calls.map(([, type]) => type);
+
+        // First announce and its retries (one join attempt, one nonce): WELCOME only.
+        handlers.get(MessageTypes.NET_HELLO)(hello());
+        handlers.get(MessageTypes.NET_HELLO)(hello());
+        expect(game.broadcastPlayerList).not.toHaveBeenCalled();
+        expect(game.queueResync).not.toHaveBeenCalled();
+        expect(sentTypes()).toEqual([MessageTypes.NET_WELCOME, MessageTypes.NET_WELCOME]);
+
+        // The client restarted and joins again: it needs the roster and the state.
+        handlers.get(MessageTypes.NET_HELLO)(hello({ handshakeNonce: 'join-attempt-2' }));
+        expect(game.broadcastPlayerList).toHaveBeenCalledTimes(1);
+        expect(game.queueResync).toHaveBeenCalledTimes(1);
+        expect(game.queueResync).toHaveBeenCalledWith(PEER_ID);
+        expect(game.addPlayer).not.toHaveBeenCalled();
+
+        // Retries of the second attempt are no-ops again.
+        handlers.get(MessageTypes.NET_HELLO)(hello({ handshakeNonce: 'join-attempt-2' }));
+        expect(game.broadcastPlayerList).toHaveBeenCalledTimes(1);
+        expect(game.queueResync).toHaveBeenCalledTimes(1);
+    });
+
+    it('resyncs a spectator that rejoins, and never treats a nonce-less announce as a rejoin', () => {
+        const { game } = makeHostGame({ spectators: new Set([PEER_ID]) });
+        const handlers = registerFor(game);
+
+        handlers.get(MessageTypes.NET_HELLO)(hello({ asSpectator: true }));
+        handlers.get(MessageTypes.NET_HELLO)(hello({ asSpectator: true, handshakeNonce: null }));
+        expect(game.queueResync).not.toHaveBeenCalled();
+
+        handlers.get(MessageTypes.NET_HELLO)(hello({ asSpectator: true, handshakeNonce: 'join-attempt-2' }));
+        expect(game.broadcastPlayerList).toHaveBeenCalledTimes(1);
+        expect(game.queueResync).toHaveBeenCalledWith(PEER_ID);
+        expect(game._registerSpectator).not.toHaveBeenCalled();
+    });
+
     it('ignores the legacy LOBBY_PLAYER_JOINED admission path before negotiation', () => {
         const stub = Object.assign(Object.create(FFAGameStateP2P.prototype), {
             isHost: true,
