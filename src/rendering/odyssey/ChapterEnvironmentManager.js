@@ -143,8 +143,11 @@ const SEAM_56_AURORA_CARRY_BAND = 0.85; // fraction of Space span by which the C
 // the reveal starts (SUMMIT_EARTH_REVEAL.startBeforeBoundary = 0.18, p 0.6813), so ch6 is never
 // drawn earlier than it has something to show. tests/unit/odyssey-seam-56-schedule.test.js pins
 // the ordering.
-const SEAM_56_EARTH_IGNITE_START = 0.22; // fraction of the Ch5 span before the boundary (p 0.6651)
-const SEAM_56_EARTH_IGNITE_END = 0.185; // ...and where it reaches full weight (p 0.6793)
+// (Re-aligned again the same day: chapter 6's first content is now the twilight STARS from
+// starsFromBeforeBoundary 0.122 = p 0.7048 — the planet follows at 0.725 — so presence saturates
+// just before the stars.)
+const SEAM_56_EARTH_IGNITE_START = 0.16; // fraction of the Ch5 span before the boundary (p 0.6894)
+const SEAM_56_EARTH_IGNITE_END = 0.13; // ...and where it reaches full weight (p 0.7016)
 // Hold full presence past the boundary until the 5->6 ECOTONE ENDS, where chapter 6's own
 // weight is already 1, so the release is a no-op rather than a dip. (Without a release the
 // boost would pin ch6 visible through chapters 7 and 8.)

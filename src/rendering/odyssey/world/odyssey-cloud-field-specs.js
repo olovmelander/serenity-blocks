@@ -18,6 +18,27 @@
  *   - `strata`    the far row. Small on screen, cheap, and the thing that makes the horizon
  *                 feel inhabited — the job The Witness gives its painted cutout quads.
  *
+ * THREE LEVELS FOR THE CLIMB (2026-10-03, owner-approved: "move a few of chapter 5's clouds").
+ * Every mass used to share one base level (830-1075), which is right for a sky seen from the
+ * ground — and from the chapter-5 climb (eye 560 -> 1100) it put the whole field in ONE ROW at
+ * the horizon, with empty sky above the summit and nothing below the eye. Six masses moved:
+ *   - F4, F5, F6 and O04 DOWN to bases 540-620: a valley layer over the island's north-east,
+ *     seen from above from the mountain's shoulder (terrain under them tops out at 280-394);
+ *   - F1 and F3 UP to 1340-1420 and off the summit's axis: two towers that stand above the
+ *     summit's shoulders in the climb's shots (F1 upper left, F3 upper right).
+ * Solved against a real-camera replay of the climb's stations; the retired heroes' other
+ * placements are unchanged.
+ *
+ * ...AND A SEA BELOW, AND A BANNER (same day, the climb's remaining items):
+ *   - the two satellite clusters ahead of the climb (A05-A12) drop to bases 615-690 and join the
+ *     valley layer, so from the upper mountain there is a broken floor of cloud below the
+ *     horizon row instead of one more row on it. (A veil painted on the ground was tried first
+ *     and rejected by capture: from above it read as pale paint and washed out the island.)
+ *   - B1 and B2 are THE BANNER CLOUD: two low, long masses on the summit's lee, streaming
+ *     west-north-west away from the rail (role `banner`: they sit far closer to the rail than
+ *     any other mass, on the side it never visits, and take their own clearance);
+ *   - F1 rises again (1340 -> 1700) to stand above the banner instead of behind it.
+ *
  * CLEARANCE IS A SURFACE DISTANCE, PER ROLE — see `CLOUD_FIELD_CLEARANCE` and
  * `validateCloudFieldClearance`. The heroes used CENTRE distance, which cannot do the job: a
  * mass 700 u away by centre but 880 u wide still swallows the camera, and Wave 0's ch5 probe
@@ -37,7 +58,24 @@ export const CLOUD_FIELD_CLEARANCE = Object.freeze({
     framing: 420,
     overhead: 300,
     strata: 260,
+    // The summit's banner cloud: by design the closest masses to the rail (~230 u by centre),
+    // on the lee side the rail never visits.
+    banner: 110,
     default: 300,
+});
+
+/**
+ * THE BANNER HOLDS ITS STATION. Every mass in the field drifts on a bounded Lissajous (up to
+ * 145 u in plan — see FIELD_DRIFT_XZ in the world renderer), which is far more than the banner's
+ * clearance to the rail and would walk it off the summit it streams from (the first in-game
+ * capture caught exactly that: the banner 120 u downwind of the peak). The field's vertex stage
+ * therefore scales the drift by a mass's distance from the hero summit's axis: none inside
+ * `radius[0]`, all of it beyond `radius[1]`. Only the banner's centres lie inside (the next
+ * nearest mass is 484 u out — pinned by odyssey-cloud-field.test.js). They still breathe.
+ */
+export const CLOUD_FIELD_ANCHOR = Object.freeze({
+    massif: 'hero',
+    radius: Object.freeze([330, 470]),
 });
 
 /**
@@ -50,24 +88,24 @@ export const CLOUD_FIELD_CLEARANCE = Object.freeze({
  * A future mass added at `near` must come out of another `near`, not be appended.
  */
 export const ODYSSEY_CLOUD_FIELD_SPECS = Object.freeze([
-    // ── FRAMING — the retired heroes' placements, verbatim ────────────────────────────
+    // ── FRAMING — the retired heroes' placements (six re-levelled 2026-10-03, see above) ──
     Object.freeze({
-        id: 'F1-summit-tower', role: 'framing', lod: 'near', x: -320, base: 860, z: -2250, w: 640, h: 330, yaw: 0.4, seed: 11.3,
+        id: 'F1-summit-tower', role: 'framing', lod: 'near', x: -1140, base: 1700, z: -2050, w: 640, h: 330, yaw: 0.4, seed: 11.3,
     }),
     Object.freeze({
         id: 'F2-left-flank', role: 'framing', lod: 'near', x: -1750, base: 830, z: -2050, w: 700, h: 300, yaw: 1.9, seed: 27.1,
     }),
     Object.freeze({
-        id: 'F3-deep-ahead', role: 'framing', lod: 'near', x: -750, base: 900, z: -3150, w: 880, h: 380, yaw: 2.6, seed: 58.2,
+        id: 'F3-deep-ahead', role: 'framing', lod: 'near', x: 820, base: 1420, z: -2450, w: 880, h: 380, yaw: 2.6, seed: 58.2,
     }),
     Object.freeze({
-        id: 'F4-right-flank', role: 'framing', lod: 'near', x: 620, base: 845, z: -2150, w: 600, h: 280, yaw: -0.8, seed: 43.6,
+        id: 'F4-right-flank', role: 'framing', lod: 'near', x: 620, base: 560, z: -2150, w: 600, h: 280, yaw: -0.8, seed: 43.6,
     }),
     Object.freeze({
-        id: 'F5-far-right', role: 'framing', lod: 'near', x: 1450, base: 875, z: -3050, w: 820, h: 320, yaw: -2.1, seed: 71.9,
+        id: 'F5-far-right', role: 'framing', lod: 'near', x: 1450, base: 600, z: -3050, w: 820, h: 320, yaw: -2.1, seed: 71.9,
     }),
     Object.freeze({
-        id: 'F6-ascent-right', role: 'framing', lod: 'near', x: 1550, base: 855, z: -1000, w: 620, h: 290, yaw: 1.2, seed: 86.4,
+        id: 'F6-ascent-right', role: 'framing', lod: 'near', x: 1550, base: 540, z: -1000, w: 620, h: 290, yaw: 1.2, seed: 86.4,
     }),
 
     // ── OVERHEAD — the middle distance the heroes left empty ──────────────────────────
@@ -81,7 +119,7 @@ export const ODYSSEY_CLOUD_FIELD_SPECS = Object.freeze([
         id: 'O03', role: 'overhead', lod: 'mid', x: 900, base: 910, z: -520, w: 540, h: 250, yaw: -1.4, seed: 133.9,
     }),
     Object.freeze({
-        id: 'O04', role: 'overhead', lod: 'mid', x: 2250, base: 880, z: -1900, w: 580, h: 260, yaw: 0.2, seed: 149.4,
+        id: 'O04', role: 'overhead', lod: 'mid', x: 2250, base: 620, z: -1900, w: 580, h: 260, yaw: 0.2, seed: 149.4,
     }),
     Object.freeze({
         id: 'O05', role: 'overhead', lod: 'near', x: -2600, base: 925, z: -2750, w: 1080, h: 330, yaw: 1.7, seed: 164.8,
@@ -166,29 +204,29 @@ export const ODYSSEY_CLOUD_FIELD_SPECS = Object.freeze([
     }),
 
     Object.freeze({
-        id: 'A05', role: 'strata', lod: 'far', x: 690, base: 972, z: -3420, w: 350, h: 132, yaw: -0.3, seed: 762.6,
+        id: 'A05', role: 'strata', lod: 'far', x: 690, base: 660, z: -3420, w: 350, h: 132, yaw: -0.3, seed: 762.6,
     }),
     Object.freeze({
-        id: 'A06', role: 'strata', lod: 'far', x: -220, base: 946, z: -3380, w: 275, h: 105, yaw: 1.5, seed: 778.1,
+        id: 'A06', role: 'strata', lod: 'far', x: -220, base: 640, z: -3380, w: 275, h: 105, yaw: 1.5, seed: 778.1,
     }),
     Object.freeze({
-        id: 'A07', role: 'strata', lod: 'far', x: 640, base: 990, z: -4290, w: 310, h: 118, yaw: 2.8, seed: 793.5,
+        id: 'A07', role: 'strata', lod: 'far', x: 640, base: 690, z: -4290, w: 310, h: 118, yaw: 2.8, seed: 793.5,
     }),
     Object.freeze({
-        id: 'A08', role: 'strata', lod: 'far', x: -160, base: 962, z: -4380, w: 225, h: 88, yaw: -2.0, seed: 809.0,
+        id: 'A08', role: 'strata', lod: 'far', x: -160, base: 655, z: -4380, w: 225, h: 88, yaw: -2.0, seed: 809.0,
     }),
 
     Object.freeze({
-        id: 'A09', role: 'strata', lod: 'far', x: 1980, base: 930, z: -1520, w: 300, h: 115, yaw: 0.4, seed: 824.4,
+        id: 'A09', role: 'strata', lod: 'far', x: 1980, base: 630, z: -1520, w: 300, h: 115, yaw: 0.4, seed: 824.4,
     }),
     Object.freeze({
-        id: 'A10', role: 'strata', lod: 'far', x: 2640, base: 952, z: -1180, w: 250, h: 96, yaw: -1.6, seed: 839.9,
+        id: 'A10', role: 'strata', lod: 'far', x: 2640, base: 650, z: -1180, w: 250, h: 96, yaw: -1.6, seed: 839.9,
     }),
     Object.freeze({
-        id: 'A11', role: 'strata', lod: 'far', x: 2200, base: 968, z: -2320, w: 365, h: 138, yaw: 2.1, seed: 855.3,
+        id: 'A11', role: 'strata', lod: 'far', x: 2200, base: 670, z: -2320, w: 365, h: 138, yaw: 2.1, seed: 855.3,
     }),
     Object.freeze({
-        id: 'A12', role: 'strata', lod: 'far', x: 2880, base: 912, z: -2060, w: 210, h: 82, yaw: 0.9, seed: 870.7,
+        id: 'A12', role: 'strata', lod: 'far', x: 2880, base: 615, z: -2060, w: 210, h: 82, yaw: 0.9, seed: 870.7,
     }),
 
     Object.freeze({
@@ -196,6 +234,17 @@ export const ODYSSEY_CLOUD_FIELD_SPECS = Object.freeze([
     }),
     Object.freeze({
         id: 'A14', role: 'strata', lod: 'far', x: -820, base: 1028, z: -1620, w: 340, h: 128, yaw: 1.3, seed: 901.6,
+    }),
+
+    // ── THE BANNER — the cloud the summit trails on its lee (2026-10-03) ───────────────
+    // Anchored 122 u and 300 u downwind of the hero summit (-183, 1050, -1059) along
+    // (-0.94, 0, -0.33), long axis on the wind (yaw 0.34), rising a little as it trails. From the
+    // climb's shots it streams left from the summit's tip at the summit's own screen height.
+    Object.freeze({
+        id: 'B1-banner-root', role: 'banner', lod: 'near', x: -298, base: 1019, z: -1099, w: 190, h: 66, yaw: 0.34, seed: 933.7,
+    }),
+    Object.freeze({
+        id: 'B2-banner-tail', role: 'banner', lod: 'near', x: -466, base: 1040, z: -1158, w: 290, h: 96, yaw: 0.34, seed: 948.2,
     }),
 
     // ── STRATA — the far row that inhabits the horizon ────────────────────────────────

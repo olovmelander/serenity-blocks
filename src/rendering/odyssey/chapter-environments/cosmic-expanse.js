@@ -70,7 +70,7 @@ import {
     createNebulaPillarTSL,
     createAsteroidRockTSL,
 } from './cosmic-expanse.tsl.js';
-import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
+import { createBakedVoidSkyTSL, GALACTIC_BAND_AXIS } from './odyssey-cosmic-backdrop.js';
 import { GARGANTUA_LOCK, resolveGargantuaLockPosition } from './black-hole-transcendence.tsl.js';
 import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
 import { createAuroraBridgeBand, resolveAuroraBridgeEnvelope } from './cosmic-expanse-aurora.js';
@@ -188,8 +188,10 @@ export const APPROACH = {
     },
     // Wave 1C: moved right-of-centre to re-open the planet's band (see planetA note).
     // Entry ndc (0.35, 0.27), distance 1214 vs 1215 before — apparent size preserved.
+    // (2026-10-03) `s` 155 -> 70 and 250 -> 100: the galaxy is a small, far jewel in the upper
+    // right — at 6.6 deg it rivalled the black hole's 8.3 deg at the hand-off.
     galaxyA: {
-        x: 810, y: 663, z: 186, s: 155,
+        x: 810, y: 663, z: 186, s: 70,
     },
     // ⚠️ THE TRIAD IS ONE FIT, NOT THREE — and the summit needed its own keyframe (Wave
     // 1C). A feasibility sweep proved NO single static planetA satisfies both the Ch5
@@ -212,7 +214,7 @@ export const APPROACH = {
         x: 900, y: 150, z: -250, s: 3.4,
     },
     galaxyB: {
-        x: 942, y: 449, z: 39, s: 250,
+        x: 942, y: 449, z: 39, s: 100,
     },
 };
 
@@ -233,8 +235,15 @@ export const APPROACH = {
 //
 // Expressed as fractions of the Ch5 span so it tracks any future layout re-authoring.
 export const SUMMIT_EARTH_REVEAL = Object.freeze({
-    // ⚠️ RETIMED AGAIN 0.28/0.15 -> 0.18/0.085 (owner report 2026-10-02: "align everything
-    // correctly when it comes to when the planets shows"). At 0.28/0.15 the gas giant faded up
+    // ⚠️ RETIMED A THIRD TIME 0.18/0.085 -> 0.0723/0.0106 (owner, same day: "the gas planet is
+    // seen very early and then drifts as we get into space"). The giant now RISES AFTER DARK, as
+    // the aurora grows from the limb: 0.725 -> 0.75, and is held at one place on screen through
+    // the hand-off (PLANET_SEAM_LOCK) instead of travelling a summit keyframe. The first stars
+    // lead it, in the twilight (`starsFromBeforeBoundary`). Order: mountain -> the sky deepens ->
+    // first stars -> the aurora grows from the limb -> the planet rises -> space.
+    //
+    // (Previous note, superseded:) ⚠️ RETIMED AGAIN 0.28/0.15 -> 0.18/0.085 (owner report
+    // 2026-10-02: "align everything correctly when it comes to when the planets shows"). At 0.28/0.15 the gas giant faded up
     // across p 0.6408 -> 0.6935 into a FULL DAYLIGHT sky — a striped planet hanging in the blue
     // — and stayed there until the sky finally went dark from ~0.69. It now rises WITH the
     // twilight: it starts as the sky begins to deepen (p 0.6813) and is full as the sky reaches
@@ -252,10 +261,12 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
     // — but 0.556 is LEVEL 31's position, not chapter 5's start. The CODE always derived
     // from chapterPositions at runtime; only the prose lied. Derive facts by importing the
     // modules, never by parsing source.)
-    startBeforeBoundary: 0.18,
-    // Fully present 8.5% of the sky span before the boundary (p = 0.7198), as the sky reaches
-    // near-black and before the first stars.
-    endBeforeBoundary: 0.085,
+    startBeforeBoundary: 0.0723, // p 0.725 — after dark
+    // Fully present just before the boundary (p 0.75), with the aurora at its height.
+    endBeforeBoundary: 0.0106,
+    // The NEAR star tier leads the planet: it fades up from here (p 0.7048, as the sky deepens
+    // to near-black) to `starsBeforeDark` at the boundary.
+    starsFromBeforeBoundary: 0.122,
     // Fraction of the Space span over which the REST of the chapter (stars, black hole,
     // nebula, dust, lights) ramps in past the boundary. Deliberately short: it must not
     // re-wash Space bright, and nothing but the earth may bleed into the daylight sky.
@@ -302,6 +313,34 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
 
 const _approachVec = new THREE.Vector3();
 const _omenLock = new THREE.Vector3();
+const _planetRay = new THREE.Vector3();
+const _keyLocal = new THREE.Vector3();
+const _planetLock = new THREE.Vector3();
+
+/**
+ * THE GAS GIANT HOLDS ITS PLACE THROUGH THE 5->6 HAND-OFF (owner report 2026-10-02: "seen very
+ * early and then drifts as we get into space"). A real-camera replay measured the authored poses
+ * sliding the giant diagonally across the whole frame (ndc (0.53, 0.49) -> (-0.03, -0.35) over
+ * p 0.685-0.72, as the camera pitches up 28 deg with the climb), parking it ON the rail for
+ * 0.72-0.755 while it shrank 3.4 -> 1.64, then sliding right again. Across the hand-off the giant
+ * is now seated from the CAMERA — at a fixed screen position right of the rail, a fixed distance
+ * and a fixed angular size — rising a touch as it fades in, and handed to the authored march over
+ * [handoverFrom, handoverTo] (fractions of the Space span past the boundary), where the march
+ * already sits within ~0.05 ndc of the seat. Only with a real perspective camera (the live
+ * journey); headless callers keep the authored poses.
+ */
+export const PLANET_SEAM_LOCK = Object.freeze({
+    ndcX: 0.25,
+    ndcY: -0.09,
+    // Starts this much lower and rises into the seat as it fades in.
+    rise: 0.07,
+    distance: 1050,
+    // Scale per world unit of distance: the authored march's own s/d at the hand-over (~0.00195),
+    // so the angular size is continuous through the blend.
+    sizeRatio: 0.00195,
+    handoverFrom: 0.178, // p ~0.775
+    handoverTo: 0.435, // p ~0.805
+});
 // Fallback only (no global progress, e.g. a bare chapter-local probe): the chapter ease at
 // which the omen starts gliding onto ch7's lock pose.
 const OMEN_HANDOFF_START = 0.86;
@@ -359,8 +398,8 @@ export const CH6_STARFIELD = Object.freeze({
     // Share of the far tier seated in the galactic band, and the band's half-thickness.
     bandShare: 0.45,
     bandSigma: 0.09,
-    // The dome bake's galactic lane axis (odyssey-cosmic-backdrop.js COSMIC_BACKDROP_DEFAULTS).
-    bandAxis: Object.freeze([0.4, 0.18, 1.0]),
+    // The dome bake's galactic lane axis — the SAME constant, so glow and stars are one band.
+    bandAxis: GALACTIC_BAND_AXIS,
     // Diffraction spikes are the brightest class's signature only (coreGain ≥ this).
     spikeCoreGain: 1.15,
 });
@@ -895,7 +934,10 @@ export function createCosmicExpanseEnvironment(options = {}) {
         earth: [heroPlanet].filter(Boolean),
         heroes: [galaxy].filter(Boolean),
         nebula: [nebulaVolume, nebulaFar].filter(Boolean),
-        clutter: [dustNear, dustFar, asteroids, streakMotes].filter(Boolean),
+        clutter: [dustNear, dustFar, asteroids].filter(Boolean),
+        // The speed streaks belong to THE PULL, not to the whole chapter: they used to rush the
+        // lens from the first frame of space, with the camera parked in orbit.
+        streaks: [streakMotes].filter(Boolean),
     };
 
     // Lighting (ominous accretion key)
@@ -1638,6 +1680,15 @@ function createAsteroidGarland() {
  * whose streak mask runs along the travel diagonal — the forward-speed cue through
  * the long middle act. GPU-driven wrap (no per-frame CPU).
  */
+/**
+ * THE PULL (2026-10-03) — chapter 6's last beat, in chapter-local progress: the gas streams
+ * toward the black hole, warms to the disk's amber, and the speed streaks arrive. Before it the
+ * chapter is still (Orbit, Drift, Cathedral); `PULL_STREAM_RATE` is the wisps' speed in noise
+ * cells per second at full pull (one cell in ~14 s: a visible, unhurried current).
+ */
+const PULL_BEAT = Object.freeze({ from: 0.6, to: 0.82 });
+const PULL_STREAM_RATE = 0.07;
+
 function createStreakMotes(uniforms, count) {
     const bases = new Float32Array(count * 3);
     const seeds = new Float32Array(count);
@@ -1705,9 +1756,16 @@ function createStreakMotes(uniforms, count) {
 // (setOpacityScale would flip these opaque materials transparent and dead-write
 // opacity), on a shared uReveal ticked by update() = staging × reef-window × chord
 // end-fade, dissolved by the same screen-space hash dither.
-const COMET_PATH = Object.freeze({
-    a: new THREE.Vector3(250, 70, -330),
-    b: new THREE.Vector3(-270, -50, -790),
+//
+// RE-SEATED 2026-10-03. The old chord (250,70,-330) -> (-270,-50,-790) ran AWAY from the camera
+// (440 -> 800 u) and, on the real camera, straight behind the rail and its nodes (ndc x 0.5 ->
+// -0.2 at y 0.1): a 7 px head hidden by the path. This chord was solved by unprojecting two
+// screen points at the Drift's middle (p 0.802): it enters at the right edge at mid height and
+// sweeps down-left across the open lower-right sky to the bottom of the frame, 420 -> 300 u out,
+// crossing the Milky Way and passing clear of the gas giant (>= 0.3 ndc) for the whole Drift.
+export const COMET_PATH = Object.freeze({
+    a: new THREE.Vector3(300, 104, -256),
+    b: new THREE.Vector3(75, -150, -210),
     periodSec: 70,
 });
 
@@ -1740,7 +1798,7 @@ function createComet() {
     const edge = vec3(0.95, 0.98, 1.0).mul(clamp(oneMinus(dot(N, V)), 0, 1).pow(2.5).mul(0.5));
     headMat.colorNode = base.add(edge);
     headMat.opacityNode = cometDither(uReveal).mul(materialOpacity);
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 1), headMat);
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 2), headMat);
     head.name = 'comet-head';
     group.add(head);
 
@@ -1765,7 +1823,8 @@ function createComet() {
     const along = uv().y;
     const facing = clamp(dot(N, V).abs(), 0, 1);
     tailMat.colorNode = mix(vec3(0.80, 0.92, 1.0), vec3(0.30, 0.50, 0.95), smoothstep(0.0, 0.7, along));
-    tailMat.opacityNode = uReveal.mul(pow(oneMinus(along), 1.4)).mul(pow(facing, 1.2)).mul(0.5)
+    // 0.5 -> 0.85 (2026-10-03): the comet is the Drift's one event now, alone in a quiet sky.
+    tailMat.opacityNode = uReveal.mul(pow(oneMinus(along), 1.4)).mul(pow(facing, 1.2)).mul(0.85)
         .mul(materialOpacity);
     tailMat.userData.emitsBloom = true;
     const tail = new THREE.Mesh(new THREE.ConeGeometry(5, 95, 12, 1, true), tailMat);
@@ -1841,6 +1900,21 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     }
     const entryState = resolveCosmicEntryContinuity(approach);
     group.userData.entryContinuityState = entryState;
+    // THE CHAPTER'S BEAT (2026-10-03): chapter-local progress BY PROGRESS when the journey gives
+    // a global one (a camera is present); headless callers' value is already chapter-local.
+    // `approach` is the camera's HEIGHT through the chapter — pinned at 0 until p 0.766 and only
+    // 0.82 at the hand-off — which is why everything staged on it arrived in one bunch.
+    const beatPositions = getActiveOdysseyChapterPositions();
+    const beatT = (camera && Number.isFinite(cameraProgress)
+        && Number.isFinite(beatPositions?.[5]) && Number.isFinite(beatPositions?.[6])
+        && beatPositions[6] > beatPositions[5])
+        ? THREE.MathUtils.clamp((cameraProgress - beatPositions[5]) / (beatPositions[6] - beatPositions[5]), 0, 1)
+        : approach;
+    group.userData.beatT = beatT;
+    // THE PULL — the chapter's last beat (nodes 45-46, chapter-local 0.6 -> 0.82 = p 0.824 ->
+    // 0.85): the gas streams toward the hole and the speed streaks arrive.
+    const pull = THREE.MathUtils.smoothstep(beatT, PULL_BEAT.from, PULL_BEAT.to);
+    group.userData.pull = pull;
 
     // ── EARTH AT THE SUMMIT / SPACE GATE ─────────────────────────────────────────
     // Driven by GLOBAL progress (not `approach`, which is pinned at 0 until the camera
@@ -1974,19 +2048,29 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // GLOBAL progress like the reveal itself; `ease` is still 0 here, so the march
         // above contributes planetA and this lerp owns the approach.
         let planetScale = THREE.MathUtils.lerp(APPROACH.planetA.s, APPROACH.planetB.s, ease);
-        const { planetSummit } = APPROACH;
-        if (planetSummit && Number.isFinite(staging.summitEnd)
-            && Number.isFinite(chapterPositions?.[5]) && Number.isFinite(cameraProgress)) {
-            const toEntry = rampBetween(cameraProgress, staging.summitEnd, chapterPositions[5]);
-            if (toEntry < 1) {
-                heroPlanet.position.set(
-                    THREE.MathUtils.lerp(planetSummit.x, heroPlanet.position.x, toEntry),
-                    THREE.MathUtils.lerp(planetSummit.y, heroPlanet.position.y, toEntry),
-                    THREE.MathUtils.lerp(planetSummit.z, heroPlanet.position.z, toEntry),
-                );
-                // D3: the giant is BIG at the summit and settles to the approved entry
-                // size exactly as it settles into the entry composition.
-                planetScale = THREE.MathUtils.lerp(planetSummit.s ?? planetScale, planetScale, toEntry);
+        // (The summit keyframe travel that used to live here is RETIRED — see PLANET_SEAM_LOCK.)
+        const L = PLANET_SEAM_LOCK;
+        const ch6 = chapterPositions?.[5];
+        if (camera?.isPerspectiveCamera && Number.isFinite(cameraProgress) && Number.isFinite(ch6)
+            && Number.isFinite(chapterPositions?.[4]) && cameraProgress >= chapterPositions[4]) {
+            const lockWeight = 1 - rampBetween(
+                cameraProgress,
+                ch6 + spaceSpan * L.handoverFrom,
+                ch6 + spaceSpan * L.handoverTo,
+            );
+            if (lockWeight > 0) {
+                const riseIn = 1 - staging.earthReveal;
+                _planetRay.set(L.ndcX, L.ndcY - L.rise * riseIn * riseIn, 0.5)
+                    .unproject(camera)
+                    .sub(camera.position)
+                    .normalize();
+                _planetLock.copy(camera.position).addScaledVector(_planetRay, L.distance);
+                if (heroPlanet.parent) {
+                    heroPlanet.parent.updateWorldMatrix(true, false);
+                    heroPlanet.parent.worldToLocal(_planetLock);
+                }
+                heroPlanet.position.lerp(_planetLock, lockWeight);
+                planetScale = THREE.MathUtils.lerp(planetScale, L.distance * L.sizeRatio, lockWeight);
             }
         }
         heroPlanet.scale.setScalar(planetScale);
@@ -2116,6 +2200,24 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         const fieldReveal = spaceArrival * spaceReveal * chapterOpacity;
         nebulaFieldMesh.userData.uReveal.value = fieldReveal;
         nebulaFieldMesh.visible = fieldReveal > 0.002;
+        // THE BEAT and THE KEY (2026-10-03): each mass fades in on its own window of the
+        // chapter's progress (odyssey-nebula-field-specs.js `beat`), and every mass is painted
+        // by one light — the black hole, wherever it is — handed over in the corridor's frame.
+        if (nebulaFieldMesh.userData.uBeat) nebulaFieldMesh.userData.uBeat.value = beatT;
+        // THE PULL: across the chapter's last beat the gas's wisps stream toward the hole and
+        // its lit face warms to the disk's amber.
+        if (nebulaFieldMesh.userData.uPull) {
+            nebulaFieldMesh.userData.uPull.value = pull;
+            nebulaFieldMesh.userData.uPullPhase.value += THREE.MathUtils.clamp(delta, 0, 0.05)
+                * pull * PULL_STREAM_RATE;
+        }
+        const { corridor: nebulaCorridor, blackHole: keyHole } = group.userData;
+        if (nebulaFieldMesh.userData.uKey && nebulaCorridor && keyHole) {
+            keyHole.getWorldPosition(_keyLocal);
+            nebulaCorridor.updateWorldMatrix(true, false);
+            nebulaCorridor.worldToLocal(_keyLocal);
+            nebulaFieldMesh.userData.uKey.value.copy(_keyLocal);
+        }
     }
 
     // The comet sweeps its chord on a fixed period, alive only through the reef
@@ -2127,10 +2229,14 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         comet.position.lerpVectors(COMET_PATH.a, COMET_PATH.b, s);
         const endFade = THREE.MathUtils.smoothstep(s, 0, 0.1)
             * (1 - THREE.MathUtils.smoothstep(s, 0.9, 1));
-        const reefWindow = THREE.MathUtils.smoothstep(approach, 0.28, 0.38)
-            * (1 - THREE.MathUtils.smoothstep(approach, 0.62, 0.74));
-        const cometReveal = entryState.clutterReveal * spaceReveal * chapterOpacity
-            * reefWindow * endFade;
+        // (2026-10-03) On the chapter's BEAT, not the camera's height (`approach` is pinned at
+        // 0 until p 0.766): the comet is the Drift's one event, crossing the quiet sky before
+        // the gas arrives, and gone before the pull.
+        const reefWindow = THREE.MathUtils.smoothstep(beatT, 0.24, 0.34)
+            * (1 - THREE.MathUtils.smoothstep(beatT, 0.56, 0.68));
+        // No `clutterReveal` factor any more: that ramp rides the camera's height and only opens
+        // at beat ~0.34-0.65, which pushed the comet out of the Drift and into the pull.
+        const cometReveal = spaceReveal * chapterOpacity * reefWindow * endFade;
         comet.userData.uReveal.value = cometReveal;
         comet.visible = cometReveal > 0.02;
     }
@@ -2146,9 +2252,14 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // fading up across [summitEnd, ch6Start] to a capped ceiling while the sky is
         // still blue. max() with the normal staging so the boundary hand-off can only
         // ever be earlier, never a dip.
-        const starsEarly = (Number.isFinite(staging.summitEnd)
-            && Number.isFinite(chapterPositions?.[5]) && Number.isFinite(cameraProgress))
-            ? rampBetween(cameraProgress, staging.summitEnd, chapterPositions[5])
+        // (2026-10-02) They now LEAD the planet: from `starsFromBeforeBoundary` (the sky deepening
+        // to near-black), not from the planet's reveal end.
+        const starsFrom = Number.isFinite(chapterPositions?.[4]) && Number.isFinite(chapterPositions?.[5])
+            ? chapterPositions[5] - (chapterPositions[5] - chapterPositions[4])
+                * SUMMIT_EARTH_REVEAL.starsFromBeforeBoundary
+            : Number.NaN;
+        const starsEarly = (Number.isFinite(starsFrom) && Number.isFinite(cameraProgress))
+            ? rampBetween(cameraProgress, starsFrom, chapterPositions[5])
                 * SUMMIT_EARTH_REVEAL.starsBeforeDark
             : 0;
         (entryTargets.starsNear || []).forEach((object) => setOpacityScale(
@@ -2176,6 +2287,11 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         entryTargets.clutter.forEach((object) => setOpacityScale(
             object,
             entryState.clutterReveal * spaceReveal,
+            chapterOpacity,
+        ));
+        (entryTargets.streaks ?? []).forEach((object) => setOpacityScale(
+            object,
+            entryState.clutterReveal * spaceReveal * pull,
             chapterOpacity,
         ));
     }

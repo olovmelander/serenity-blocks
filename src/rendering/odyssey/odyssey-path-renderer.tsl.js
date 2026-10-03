@@ -232,13 +232,15 @@ export const ODYSSEY_RIBBON_RECIPES = Object.freeze([
         accent: 0xffffff,
         fill: 0xb4d2ff,
     }),
-    // 6 — Space: a near-dark river of stardust grains.
+    // 6 — Space: a luminous stream of stardust flowing toward the black hole. (2026-10-03: it
+    // was a near-dark navy tube — base 0x0d1128, core 0.15; the path has to read as a current of
+    // light in the dark, warming toward chapter 7's amber.)
     Object.freeze({
-        base: 0x0d1128,
+        base: 0x1a2148,
         lit: 0.6,
-        emis: 0xdcd4ff,
-        gain: 0.9,
-        core: 0.15,
+        emis: 0xe4dcff,
+        gain: 1.0,
+        core: 0.34,
         sunGain: 1.0,
         crack: 0.0,
         caustic: 0.0,
@@ -248,9 +250,9 @@ export const ODYSSEY_RIBBON_RECIPES = Object.freeze([
         pulse: 0.35,
         scale: 1.0,
         speed: 2.5,
-        haze: 0x8f7bff,
-        hazeAmt: 0.05,
-        accent: 0x9fb4ff,
+        haze: 0x9c8cff,
+        hazeAmt: 0.10,
+        accent: 0xffc88a,
     }),
     // 7 — Black Hole: amber-to-magenta plasma streaking toward the horizon (the disk's amber,
     // not the old hot pink 0x9a2d76).

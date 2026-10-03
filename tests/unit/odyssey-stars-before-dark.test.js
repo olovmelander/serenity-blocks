@@ -17,13 +17,14 @@
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
+import * as THREE from 'three';
 import { deriveOdysseyChapterPositions } from '../../src/core/odyssey/data/odyssey-layout.js';
 import {
     SUMMIT_EARTH_REVEAL,
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
 } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.js';
-import { getChapterPathRange } from '../../src/rendering/odyssey/path-utils.js';
+import { getChapterPathRange, getOdysseyPathCurve } from '../../src/rendering/odyssey/path-utils.js';
 
 afterEach(() => {
     vi.unstubAllGlobals();
@@ -47,16 +48,31 @@ describe('stars before dark', () => {
         return group;
     }
 
-    it('keeps BOTH tiers dark through the whole earth-ignite window', () => {
+    it('lets the first stars LEAD the planet, in the twilight (2026-10-02 beat order)', () => {
+        // The planet now rises after dark; the near stars arrive first, as the sky deepens.
         const env = buildEnv();
+        const starsFrom = ch6 - skySpan * SUMMIT_EARTH_REVEAL.starsFromBeforeBoundary;
+        // A camera stand-in on the rail: with a camera the progress is GLOBAL, so the chapter-5
+        // space gate applies (headless callers without one pass chapter-local progress).
+        const curve = getOdysseyPathCurve();
+        const at = (p) => {
+            const probe = new THREE.Object3D();
+            probe.position.copy(curve.getPointAt(p));
+            updateCosmicExpanseEnvironment(env, 0.016, 1.0, probe, p);
+        };
+        expect(starsFrom).toBeLessThan(summitStart);
+        // Before the twilight: nothing at all.
+        at(starsFrom - 0.002);
+        expect(env.userData.starsNear.material.opacity).toBeLessThan(0.01);
+        // As the planet starts to rise the near stars are already out — the far tier is not.
+        at(summitStart);
+        expect(env.userData.starsNear.material.opacity).toBeGreaterThan(0.05);
+        expect(env.userData.starsFar.material.opacity).toBeLessThan(0.01);
+        expect(env.userData.summitEarthStaging.earthReveal).toBeLessThan(0.01);
         [0.25, 0.6, 1.0].forEach((f) => {
-            const p = summitStart + (summitEnd - summitStart) * f;
-            updateCosmicExpanseEnvironment(env, 0.016, 1.0, null, p);
-            expect(env.userData.starsNear.material.opacity, `near tier lit at ignite f=${f}`)
+            at(summitStart + (summitEnd - summitStart) * f);
+            expect(env.userData.starsFar.material.opacity, `far tier lit at rise f=${f}`)
                 .toBeLessThan(0.01);
-            expect(env.userData.starsFar.material.opacity, `far tier lit at ignite f=${f}`)
-                .toBeLessThan(0.01);
-            // ...while the earth itself IS revealed (the beat this staging must not break).
             expect(env.userData.summitEarthStaging.earthReveal).toBeGreaterThan(0);
         });
     });
