@@ -36,6 +36,36 @@ const FIXED_TICK_ACTIONS = Object.freeze({
     hardDrop: { action: 'hardDrop', value: null, held: false },
 });
 
+const TEXT_INPUT_TYPES = new Set(['', 'text', 'search', 'email', 'url', 'tel', 'password', 'number']);
+
+/**
+ * True when a key press belongs to a text field rather than the game: a text-like
+ * <input>, a <textarea>, contenteditable content, or a key-binding capture box.
+ * A field that is disabled or no longer on screen (left focused inside a closed
+ * modal) does not count, so it can never swallow gameplay keys.
+ *
+ * @param {any} element - Event target or document.activeElement
+ * @returns {boolean}
+ */
+export function isTextEntryElement(element) {
+    if (!element || typeof element !== 'object') return false;
+    if (element.classList?.contains?.('key-input')) return true;
+
+    const tag = typeof element.tagName === 'string' ? element.tagName.toUpperCase() : '';
+    const type = String(element.getAttribute?.('type') ?? element.type ?? '').toLowerCase();
+    const isField = tag === 'TEXTAREA'
+        || (tag === 'INPUT' && TEXT_INPUT_TYPES.has(type))
+        || element.isContentEditable === true;
+    if (!isField || element.disabled) return false;
+
+    return typeof element.checkVisibility !== 'function' || element.checkVisibility({
+        checkOpacity: true,
+        checkVisibilityCSS: true,
+        opacityProperty: true,
+        visibilityProperty: true,
+    });
+}
+
 /**
  * Input controller state management
  * Tracks keyboard keys and input timers for DAS (Delayed Auto Shift)
@@ -72,6 +102,7 @@ export class InputController {
         this.handleKeyDown = null;
         this.handleKeyUp = null;
         this.handleVisibilityChange = null;
+        this.handleWindowBlur = null;
         this.handleClick = null;
         this.fixedTickInputAdapter = null;
         this.fixedTickHeldKeys = new Map();
@@ -382,6 +413,10 @@ export class InputController {
             document.removeEventListener('visibilitychange', this.handleVisibilityChange);
             this.handleVisibilityChange = null;
         }
+        if (this.handleWindowBlur) {
+            if (typeof window !== 'undefined') window.removeEventListener?.('blur', this.handleWindowBlur);
+            this.handleWindowBlur = null;
+        }
     }
 
     removeClickControls() {
@@ -569,8 +604,10 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 if (initSound) initSound();
             }
 
-            // Don't handle input if typing in key binding input
-            if (document.activeElement && document.activeElement.classList.contains('key-input')) {
+            // Typing is not gameplay: keys pressed in a text field (match chat, a
+            // lobby name, a key-binding capture box) belong to that field. Without
+            // this, chatting in a match moved, rotated and hard-dropped the piece.
+            if (isTextEntryElement(e.target) || isTextEntryElement(document.activeElement)) {
                 return;
             }
 
@@ -785,6 +822,20 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     };
     inputController.handleVisibilityChange = handleVisibilityChange;
     document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Alt-tab does not hide the document, so visibilitychange never fires and the
+    // keyup goes to the other application: a held key kept shifting or soft-dropping
+    // the piece while the player was away. Release everything when the window loses
+    // focus. Physical latches are dropped too — their keyup will never arrive, and a
+    // stale latch would swallow the first press after returning. A key still held on
+    // return only produces repeat events, which never re-arm an action.
+    const handleWindowBlur = () => {
+        inputController.clearTimers();
+        inputController.clearFixedTickInput({ dropPhysicalLatches: true });
+        inputController.keyMap = {};
+    };
+    inputController.handleWindowBlur = handleWindowBlur;
+    if (typeof window !== 'undefined') window.addEventListener?.('blur', handleWindowBlur);
 
     console.log('[Keyboard] Keyboard controls initialized');
 }
