@@ -231,8 +231,12 @@ export class GameModeManager {
             console.log(`[GameModeManager] Mode ${modeId} activated successfully`);
         } catch (error) {
             console.error(`[GameModeManager] Failed to activate mode ${modeId}:`, error);
-            this.currentMode = null;
-            this.currentModeId = null;
+            // Only clear the mode THIS call installed. A slow activation that fails after
+            // the player has moved on must not wipe the mode they switched to.
+            if (this.currentMode === mode) {
+                this.currentMode = null;
+                this.currentModeId = null;
+            }
             throw error;
         }
     }

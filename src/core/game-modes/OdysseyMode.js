@@ -2429,24 +2429,6 @@ export class OdysseyMode extends BaseGameMode {
         console.log(`[Odyssey] GameState created via HybridEngine: mode=${mechanics.baseMode}, rows=${mechanics.board.rows}, startLevel=${this.gameState.level}`);
     }
 
-    /**
-     * Apply level's theme
-     * @private
-     */
-    async _applyLevelTheme(levelConfig) {
-        const { theme } = levelConfig;
-
-        console.log(`[Odyssey] Applying theme: ${theme.primary}`);
-
-        // Phase 4: Use transition manager if available
-        if (this.transitionManager) {
-            await this.transitionManager.setupLevel(theme);
-        } else if (this.deps.themeManager) {
-            // Fallback to direct switch
-            await this.deps.themeManager.switchTheme(theme.primary);
-        }
-    }
-
     // =============================
     // Private: Gameplay
     // =============================
@@ -3401,7 +3383,7 @@ export class OdysseyMode extends BaseGameMode {
         }
 
         // Create board controller
-        this.boardController = new OdysseyBoardController(boardContainer, {
+        const controller = new OdysseyBoardController(boardContainer, {
             editorMode: isOdysseyLayoutEditorEnabled(),
             soundManager: this.deps?.soundManager || null,
             // Cold-start: eagerly load only the player's reachable chapter neighbourhood
@@ -3410,6 +3392,7 @@ export class OdysseyMode extends BaseGameMode {
             // The chapter the board reveals into — fast-start warms only this one.
             focusChapter: this.odysseyState?.currentChapter || 1,
         });
+        this.boardController = controller;
 
         // Prepare level data with path positions
         const levelData = this.levelRegistry.getAllLevelPresentations();
@@ -3418,8 +3401,13 @@ export class OdysseyMode extends BaseGameMode {
         // Get progress data (shared with the warm-board re-sync in _showBoardView).
         const progressData = this._buildOdysseyProgressData();
 
-        // Initialize the board
-        await this.boardController.initialize(levelData, progressData, presentationLayout);
+        // Initialize the board. Odyssey can be deactivated while this builds (GPU-loss
+        // route-out, a Steam invite, a mode switch): _disposeOdysseyBoard() has then
+        // torn this controller down and cleared the field. Wiring callbacks onto null
+        // threw, which failed the activation and cleared GameModeManager's current
+        // mode — the one the player had just switched to.
+        await controller.initialize(levelData, progressData, presentationLayout);
+        if (this.boardController !== controller) return;
 
         // Connect level selection callback - now shows info panel first
         // Click once to select (shows info), click again or use Play button to enter
@@ -3767,16 +3755,6 @@ export class OdysseyMode extends BaseGameMode {
             const pct = this.odysseyState.getOverallProgress();
             progress.textContent = `Progress: ${pct}%`;
         }
-    }
-
-    /**
-     * Handle back button
-     * @private
-     */
-    _handleBackButton() {
-        // Return to main menu
-        this.deps.gameManager?.returnToMenu?.();
-        window.dispatchEvent(new CustomEvent('return-to-menu'));
     }
 
     /**
