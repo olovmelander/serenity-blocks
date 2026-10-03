@@ -1,6 +1,13 @@
+> **STATUS (verified 2026-10-03): EXECUTED — landed in `7a694d73` (2026-07-18), merged as
+> #306 (`1ab9e83b`). This is a record, not a backlog. Current entry point:
+> [docs/ONLINE_MP_PERFORMANCE_REVIEW_2026-07-18.md](docs/ONLINE_MP_PERFORMANCE_REVIEW_2026-07-18.md)
+> for the evidence, and Phase 6 of
+> [docs/ARCHITECTURAL_REMEDIATION_PLAN.md](docs/ARCHITECTURAL_REMEDIATION_PLAN.md) for what
+> is still open in multiplayer.**
+
 # PLAN-mp-host-input-latency — kill the host's ~33–50 ms input lag and MP's half-rate rendering
 
-**Rank: 1 of 5. Do this first.**
+**Rank when written (2026-07-18): 1 of 5 — done, see the banner above.**
 Source of truth: `docs/ONLINE_MP_PERFORMANCE_REVIEW_2026-07-18.md` §2.1, §2.2, §2.3 and P0 items 1–3.
 Read that document's §2.1–2.3 and §3 (verified negatives) in full before touching code.
 

@@ -1,6 +1,13 @@
+> **STATUS (verified 2026-10-03): EXECUTED — OD-07 and OD-08 landed in `a29c27ff`
+> (2026-07-26); `3768f3b8` recorded them in the audit and corrected the OD-08 premise. This
+> is a record, not a backlog.** The optional OD-05 stretch is not covered by that commit.
+> Current entry point: [ODYSSEY_MODE_PERFORMANCE_AUDIT.md](ODYSSEY_MODE_PERFORMANCE_AUDIT.md)
+> §13 (findings register); for Odyssey startup work since then,
+> [docs/R185_FAST_AND_BEAUTIFUL_PLAN_2026-08.md](docs/R185_FAST_AND_BEAUTIFUL_PLAN_2026-08.md).
+
 # PLAN-odyssey-reveal-latency — stop the loading overlay and camera travel from hiding a ready board
 
-**Rank: 4 of 5.**
+**Rank when written (2026-07-18): 4 of 5 — done, see the banner above.**
 Source of truth: `ODYSSEY_MODE_PERFORMANCE_AUDIT.md` findings **OD-07** and **OD-08** (§6.1
 and §13), optional stretch **OD-05**. Read those entries first.
 

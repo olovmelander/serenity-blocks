@@ -1,6 +1,12 @@
+> **STATUS (verified 2026-10-03): EXECUTED — landed in `e2368f93` (2026-07-18), merged as
+> #306 (`1ab9e83b`); the owner-side real-GPU baseline followed in `ae6abbb5`. This is a
+> record, not a backlog. Current entry point:
+> [reports/odyssey-perf/README.md](reports/odyssey-perf/README.md) (the perf lane) and
+> [ADR-0016](docs/adr/0016-perf-claims-require-a-verified-instrument.md).**
+
 # PLAN-odyssey-perf-lane-honesty — make the Odyssey perf harness trustworthy (Batch 0)
 
-**Rank: 3 of 5.**
+**Rank when written (2026-07-18): 3 of 5 — done, see the banner above.**
 Source of truth: `ODYSSEY_MODE_PERFORMANCE_AUDIT.md` findings **OD-01, OD-02, OD-14,
 OD-15** (§13 ranked-findings register) and §3.2/§4.2. Read those sections first. The
 audit's central verdict: *no trustworthy Odyssey performance measurement exists* — every

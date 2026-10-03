@@ -1,6 +1,15 @@
+> **STATUS (verified 2026-10-03): EXECUTED — Waves 0–3 landed 2026-08-16/17 in `4b197fd0`
+> (planet retime), `b13a8f64` (the lake), `07127515` (the hills) and `56302e59` (the autumn
+> shore), with follow-ups `0c871723` and `cd78eb62`. This is a record, not a backlog.**
+> The lake's final site, size and shape differ from this plan (owner direction mid-wave), and
+> the planet timing set in Wave 0 was changed again by the 2026-10 5→6 work — read the code,
+> not the numbers below. Current entry point:
+> [ODYSSEY_SEAMLESS_PASS_2026-10.md](ODYSSEY_SEAMLESS_PASS_2026-10.md) (seam 5→6) and
+> [ODYSSEY_MASTERPIECE_PASS_2026-10.md](ODYSSEY_MASTERPIECE_PASS_2026-10.md) §5.
+
 # Odyssey — the North Island comes alive (the lake behind the mountain) (2026-08)
 
-**Status: PLANNED 2026-08-16, NOT STARTED.** Owner ask, with screenshot, after playing the
+**Status when written: PLANNED 2026-08-16 (executed since — see the banner above).** Owner ask, with screenshot, after playing the
 landed 1C flyby: *"since we see the back of the mountain now, i want to add a lake there
 and work with the landscape, add hills, some trees, and other things that makes this part
 of the island feel alive"* — red-marked region on the north plateau. Plus the question this
