@@ -573,7 +573,7 @@ export function createHeroPlanetSurfaceTSL(uTime, { aurora = true, uAuroraReveal
 // tumbling. Do not "fix" these to match the hero — the trade was made knowingly.
 export function createAsteroidRockTSL() {
     const uKey = uniform(new THREE.Vector3(0.48, 0.62, 0.62).normalize());
-    const uLit = uniform(new THREE.Color(0x4c4658)); // cool violet key (the void)
+    const uLit = uniform(new THREE.Color(0x35323f)); // dark stone under the void's cool fill
     const uWarm = uniform(new THREE.Color(0xc46636)); // accretion-orange bounce
     const uDark = uniform(new THREE.Color(0x0d0c14)); // shadow floor, never pure black
 
@@ -594,8 +594,11 @@ export function createAsteroidRockTSL() {
     // pass: the rocks now sit in front of glowing gas, so the rim is the nebula's own light
     // wrapping the silhouette (rose over violet) and strong enough to read — at 0.2 they were
     // flat dark discs, read as holes in the cloud.
+    // (2026-10-03) AMBER, not rose: the rim is the black hole's disk light on dark stone — the
+    // same single key the gas is painted by. The rose-over-violet rim made a ring of pink candy
+    // round the hole in every late-chapter frame.
     const fres = pow(oneMinus(max(0.0, dot(normalView, positionViewDirection))), 2.2);
-    color = color.add(mix(vec3(0.42, 0.40, 0.78), vec3(0.95, 0.52, 0.66), fres).mul(fres).mul(0.55));
+    color = color.add(mix(vec3(0.26, 0.26, 0.48), vec3(1.0, 0.58, 0.26), fres).mul(fres).mul(0.42));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;

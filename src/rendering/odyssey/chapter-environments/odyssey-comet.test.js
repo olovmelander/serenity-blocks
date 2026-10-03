@@ -13,6 +13,7 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import {
+    COMET_PATH,
     SUMMIT_EARTH_REVEAL,
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
@@ -85,7 +86,7 @@ describe('ch6 comet (Space overhaul Wave 5)', () => {
         const { comet } = group.userData;
         const tail = comet.children.find((child) => child.name === 'comet-tail');
         // The chord runs a -> b; the tail body must sit on the -travel side of the head.
-        const dir = new THREE.Vector3(-270, -50, -790).sub(new THREE.Vector3(250, 70, -330)).normalize();
+        const dir = COMET_PATH.b.clone().sub(COMET_PATH.a).normalize();
         expect(tail.position.dot(dir)).toBeLessThan(0);
         // ...and its local +Y (the cone tip) must point further backwards still.
         const tipWorldOffset = new THREE.Vector3(0, 47.5, 0)

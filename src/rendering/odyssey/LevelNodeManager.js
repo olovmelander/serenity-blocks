@@ -103,7 +103,7 @@ export const ODYSSEY_NODE_CHAPTER_LOOK = Object.freeze({
     3: Object.freeze({ glow: 0xffd77a, accent: 0xfff2c0 }), // sun-warmed seed-lantern gold
     4: Object.freeze({ glow: 0xbfe4ff, accent: 0xffffff }), // ice-light
     5: Object.freeze({ glow: 0xfff0cc, accent: 0xffd9a0 }), // sun-white
-    6: Object.freeze({ glow: 0xb3c0ff, accent: 0xe6e9ff }), // starlight
+    6: Object.freeze({ glow: 0xffdcaa, accent: 0xfff1d6 }), // star-lantern gold (was a near-neutral periwinkle: grey moons)
     7: Object.freeze({ glow: 0xffb45a, accent: 0xffe0a8 }), // accretion amber
     8: Object.freeze({ glow: 0x3ff0ff, accent: 0xff66c4 }), // neon cyan, magenta sparks
 });

@@ -31,7 +31,7 @@ import {
 } from './odyssey-ground-palette.js';
 import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
-import { ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
+import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
 import { buildForestTreeGeometry } from './odyssey-forest-geometry.js';
 import { forestLodDistanceForTier, getForestSpecies } from './odyssey-forest-species.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
@@ -93,6 +93,7 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
         detailScales: 2,
         cavity: 0.30,
         ridgeRock: 0.16,
+        cloudShadows: true,
     },
     low: {
         gridN: 96,
@@ -105,6 +106,7 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
         detailScales: 1,
         cavity: 0.24,
         ridgeRock: 0.12,
+        cloudShadows: false,
     },
 });
 
@@ -154,6 +156,34 @@ const GROUND_SNOW_SHADE = Object.freeze([0.80, 0.99, 1.32]);
  * smooth white cone when the silhouette cannot help.
  */
 const GROUND_SNOW_CREST_STRIP = 0.75;
+/**
+ * CLOUD SHADOWS ON THE MASSIF (2026-10-03). The world's sun stands BEHIND the chapter-5 camera,
+ * so the face it climbs is front-lit and carried no shadow shapes at all. Soft shadows of the
+ * cumulus now drift across the upper mountain: the cloud noise the deck reads (detail texture,
+ * alpha), sampled at `world` units per tile and scrolled downwind, takes `depth` of the direct
+ * light where it is dense (`window`, set against the channel's measured p50 0.55 / p90 0.71).
+ * Snow in that shade takes its ice-blue from the shade model, so the white cone gets large,
+ * slow blue shapes. Above `from` only — the lowlands, chapters 3-4's subject, are untouched —
+ * and on the high tier only (ODYSSEY_WORLD_QUALITY.cloudShadows): one extra fetch per fragment.
+ */
+const GROUND_CLOUD_SHADOW = Object.freeze({
+    world: 400,
+    window: Object.freeze([0.60, 0.67]),
+    depth: 0.55,
+    from: Object.freeze([520, 640]),
+    drift: Object.freeze([0.0147, 0.006]),
+});
+/**
+ * COULOIRS THROUGH THE CAP (2026-10-03). On the hero massif the crest strip's convexity is
+ * scaled by the FALL-LINE field: [in a couloir, on a rib]. The snow fingers only moved the
+ * SNOWLINE; above it the strip still followed the relief's round ~450 u bumps, so from the
+ * chapter-5 climb — close under the cone, looking up it — the summit wore camouflage blobs.
+ * Now a couloir holds its snow over all but the sharpest bumps and a rib sheds a little more, so
+ * the rock patches are cut into rib-shaped pieces by snow tongues running down from the summit.
+ * (Tried and rejected, both by capture: BIASING the convexity changed nothing — the bumps
+ * saturate the strip's window; REPLACING it with the fall line drew a pinstriped stone tent.)
+ */
+const GROUND_SNOW_FALL_LINE = Object.freeze([0.25, 1.35]);
 /**
  * Must match the bake's floor, or `openness` never reaches 0 in the deepest hollow.
  *
@@ -1535,7 +1565,16 @@ export function createOdysseyWorld({
         // melted wax. Narrow windows give white snow and grey rock with a painted boundary.
         const wSnow = smoothstep(float(620), float(730), snowHeight)
             .mul(float(1).sub(smoothstep(float(0.62), float(0.76), slope)))
-            .mul(float(1).sub(smoothstep(float(0.18), float(0.40), crest).mul(float(GROUND_SNOW_CREST_STRIP))));
+            .mul(float(1).sub(smoothstep(
+                float(0.18),
+                float(0.40),
+                // `couloir` is +1 down a couloir, -1 on a rib, and already 0 off the massif.
+                crest.mul(mix(
+                    float(1),
+                    mix(float(GROUND_SNOW_FALL_LINE[1]), float(GROUND_SNOW_FALL_LINE[0]), couloir.mul(0.5).add(0.5)),
+                    heroW,
+                )),
+            ).mul(float(GROUND_SNOW_CREST_STRIP))));
         // The SLOPE half takes the same patch rule as the altitude half below: on the massif's
         // mid flanks (slope 0.2-0.35, the whole ch4 view) a 0.17..0.40 ramp made every fragment
         // part stone, part grass — the khaki. Off the massif the ramp is kept as it was.
@@ -1788,13 +1827,26 @@ export function createOdysseyWorld({
          * RATIO is produced in exactly one place — `value`.
          */
         const ndl = max(dot(normal, uSunDir), 0);
+        // Drifting cloud shadows on the upper massif (see GROUND_CLOUD_SHADOW).
+        const cloudLight = q.cloudShadows
+            ? float(1).sub(
+                smoothstep(
+                    float(GROUND_CLOUD_SHADOW.window[0]),
+                    float(GROUND_CLOUD_SHADOW.window[1]),
+                    texture(detailTex, positionWorld.xz.div(GROUND_CLOUD_SHADOW.world)
+                        .add(vec2(uTime.mul(GROUND_CLOUD_SHADOW.drift[0]), uTime.mul(GROUND_CLOUD_SHADOW.drift[1])))).a,
+                )
+                    .mul(smoothstep(float(GROUND_CLOUD_SHADOW.from[0]), float(GROUND_CLOUD_SHADOW.from[1]), height))
+                    .mul(GROUND_CLOUD_SHADOW.depth),
+            )
+            : float(1);
         // Lambert, S-shaped. The shoulders group the terminator into masses (the Ghibli law);
         // the middle keeps the mid-tones a rolling landform needs. See the palette's terminator
         // note for the two remaps that tried to replace Lambert and measured worse than it.
         const lightAmt = smoothstep(
             float(ODYSSEY_GROUND_SHADE.terminator[0]),
             float(ODYSSEY_GROUND_SHADE.terminator[1]),
-            clamp(ndl.mul(sunVis), 0, 1),
+            clamp(ndl.mul(sunVis).mul(cloudLight), 0, 1),
         ).toVar();
         const albLuma = dot(albedo, vec3(...ODYSSEY_GROUND_LUMA)).toVar();
         const mineralW = clamp(kRock.add(kSnow), 0, 1).toVar();
@@ -1902,6 +1954,10 @@ export function createOdysseyWorld({
     const uFadeZenith = uniform(0);
     const uFadeHorizon = uniform(0);
     const uLimbGlow = uniform(0);
+    // The chapter-6 aurora's live glow (0..1), handed in by the board: as its curtains rise OUT OF
+    // the airglow line, the line yields to them (owner 2026-10-02: "it feels like we have two
+    // different auroras" — a straight green line under the curtains read as a second one).
+    const uAuroraGlow = uniform(0);
     // How far the departure has dissolved the cloud FIELD into the cloud sea below (item 10).
     const uFieldGone = uniform(0);
     const toOutputFaded = (c, fadeAmt) => {
@@ -2055,7 +2111,8 @@ export function createOdysseyWorld({
         If(uLimbGlow.greaterThan(0.0001), () => {
             const limbBand = exp(skyDir.y.sub(0.01).div(0.045).pow(2).negate());
             const airglowBand = exp(skyDir.y.sub(0.075).div(0.012).pow(2).negate());
-            out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45)))
+            const airglowYield = float(1).sub(uAuroraGlow.mul(0.8));
+            out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45).mul(airglowYield)))
                 .mul(uLimbGlow)
                 .mul(uOutputScale)
                 .mul(float(1).sub(uSubmerged))));
@@ -3142,11 +3199,19 @@ export function createOdysseyWorld({
     // A bounded Lissajous, not a straight translation: three incommensurate terms keep a mass
     // inside a small volume forever, so drift can never walk a cloud into the rail or out of
     // the composition the clearance validator signed off.
+    // ...except the summit's banner cloud, which holds its station (CLOUD_FIELD_ANCHOR): the
+    // drift is scaled by the mass centre's distance from the anchoring massif's axis.
+    const cfAnchorMassif = ODYSSEY_MASSIFS.find((m) => m.id === CLOUD_FIELD_ANCHOR.massif);
+    const cfAnchor = smoothstep(
+        float(CLOUD_FIELD_ANCHOR.radius[0]),
+        float(CLOUD_FIELD_ANCHOR.radius[1]),
+        length(cfCentre.xz.sub(vec2(cfAnchorMassif.x, cfAnchorMassif.z))),
+    );
     const cfDrift = vec3(
         sin(uTime.mul(cfW).add(cfPhase)).mul(FIELD_DRIFT_XZ),
         sin(uTime.mul(cfW.mul(0.61)).add(cfPhase.mul(1.7))).mul(FIELD_DRIFT_Y),
         cos(uTime.mul(cfW.mul(0.83)).add(cfPhase.mul(0.6))).mul(FIELD_DRIFT_XZ * 0.82),
-    ).toVar('cfDrift');
+    ).mul(cfAnchor).toVar('cfDrift');
     // THE DRIFTED WORLD POSITION, carried explicitly. `positionNode` replaces the vertex
     // position, but `positionWorld` is built from the ORIGINAL local position — so a colour
     // graph reading `positionWorld` would shade, fog and fade the mass at the place it used to
@@ -3194,7 +3259,12 @@ export function createOdysseyWorld({
     // bodies — the deck opens sky between masses instead of holding full form to the end).
     // Written as another PLAIN term inside cfOffset so the vertex position and the `cfWorld`
     // varying stay in the exact agreement the note above paid for.
-    const cfThinPull = positionLocal.sub(cfCentre).mul(uWorldThin.mul(-FIELD_THIN_SHRINK));
+    // ...and the DEPARTURE now finishes the job the same way (2026-10-02): as `uFieldGone` rises
+    // each mass keeps shrinking toward its centre until it is gone, instead of dissolving into a
+    // per-pixel stipple — a screen-space scatter of kept pixels that read as grainy noise over the
+    // limb in captures (p 0.71-0.72) and as sparkle in motion. `keep` is the surviving fraction.
+    const cfKeep = float(1).sub(uWorldThin.mul(FIELD_THIN_SHRINK)).mul(float(1).sub(uFieldGone.mul(0.97)));
+    const cfThinPull = positionLocal.sub(cfCentre).mul(cfKeep.sub(1));
     const cfOffset = cfDrift.add(cfBreath).add(cfThinPull);
     const cfWorld = varying(positionLocal.add(cfOffset), 'cfWorld');
     const cfGeoN = normalWorld.toVar('fieldGeoN');
@@ -3319,10 +3389,9 @@ export function createOdysseyWorld({
     const cfFade = smoothstep(float(FIELD_FADE_NEAR), float(FIELD_FADE_FAR), cfEyeDist);
     const cfHash = fract(sin(dot(screenUV.mul(vec2(1927.0, 1083.0)), vec2(12.9898, 78.233)))
         .mul(43758.5453));
-    // ...and the same stipple sinks the masses into the cloud sea as the departure completes
-    // (item 10): faded toward the void they read as dark pebbles on the bright sea (capture,
-    // ch5 0.97), so they dissolve out instead — no blend state, the opaque path as before.
-    fieldMat.opacityNode = tslStep(cfHash, cfFade.mul(float(1).sub(uFieldGone)));
+    // (The departure no longer uses this stipple — it shrinks each mass away in the position
+    // term, see cfKeep. The stipple remains only for masses passing near the eye.)
+    fieldMat.opacityNode = tslStep(cfHash, cfFade);
     // alphaTest WITHOUT `transparent`: r181 discards on it regardless, so the mesh stays in
     // the opaque queue and emits no blend state.
     fieldMat.alphaTest = 0.5;
@@ -4489,6 +4558,13 @@ export function createOdysseyWorld({
          * `state.lifePresence`) fades in by the quench density. Consumed by the next update();
          * a frame without a call is the neutral ocean. See `odysseyQuenchCarry`.
          */
+        /**
+         * THE AIRGLOW YIELDS TO THE AURORA. `setAuroraGlow(g)` (0..1, the chapter-6 band's live
+         * glow, from the board) dims the airglow line as the curtains rise out of it.
+         */
+        setAuroraGlow(glow) {
+            uAuroraGlow.value = Math.min(Math.max(Number.isFinite(glow) ? glow : 0, 0), 1);
+        },
         setQuenchCarry(t) {
             quenchT = Math.min(Math.max(Number.isFinite(t) ? t : 1, 0), 1);
             quenchFresh = true;

@@ -37,6 +37,7 @@ import {
 } from './composition/odyssey-steam-quench.js';
 import { cloudBankHalfWidth, createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { createWhalePass } from './composition/odyssey-whale-pass.js';
+import { createSummitBirds } from './composition/odyssey-summit-birds.js';
 import { sampleColourScript } from './odyssey-colour-script.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
@@ -448,6 +449,7 @@ export class OdysseyBoardController {
         this.whalePass = null;
         this.cloudBank = null;
         this._cloudBankBoundary = NaN;
+        this.summitBirds = null;
         // WAVE -1 (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §5): GPU-time profiling on its own
         // flag. It used to ride on ?odysseyAAA=1, which meant a measurement run also had to
         // enable the debug overlay — and then measured a frame with the overlay in it.
@@ -2698,6 +2700,21 @@ export class OdysseyBoardController {
                     console.warn('[OdysseyBoard] cloud bank unavailable (non-fatal):', error);
                     this.cloudBank = null;
                 }
+                // THE SUMMIT BIRDS — a kettle soaring beside the chapter-5 mountain (see
+                // composition/odyssey-summit-birds.js). One opaque instanced draw, created here
+                // so the board-presentation compile below builds its pipeline before the reveal;
+                // after that it is uniforms only. BISECT LEVER: ?odysseyNoBirds=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoBirds')) {
+                        this.summitBirds = createSummitBirds({
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                        });
+                        this.scene.add(this.summitBirds.mesh);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] summit birds unavailable (non-fatal):', error);
+                    this.summitBirds = null;
+                }
                 this.environmentManager?.setAtmosphereOwned(true);
                 this.thresholdDirector = new ChapterThresholdDirector(this.scene, this.pathRenderer?.pathCurve, {
                     chapterPositions: this.presentationLayout?.chapterPositions,
@@ -3617,8 +3634,19 @@ export class OdysseyBoardController {
             const hi = this._cloudBankBoundary + bankHalf;
             const inWindow = cameraProgress > lo && cameraProgress < hi;
             this.cloudBank.mesh.visible = inWindow;
-            if (inWindow) this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo));
+            if (inWindow) {
+                // The aurora that lights the cloud tops is chapter 6's band, read live (one frame
+                // late — the environments update after this — which is invisible on a glow ramp).
+                const auroraBand = this.environmentManager?.environments?.get(6)?.group?.userData?.auroraBridge;
+                const auroraGlow = auroraBand?.visible ? (auroraBand.userData?.uGlow?.value ?? 0) : 0;
+                this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo), auroraGlow);
+                // ...and the world's airglow line yields to the curtains rising out of it.
+                this.oneWorld?.setAuroraGlow?.(auroraGlow);
+            }
         }
+
+        // The summit birds: time-driven (they wheel), revealed by progress; hidden elsewhere.
+        if (this.summitBirds) this.summitBirds.update(this.time, cameraProgress);
 
         // WAVE 5: release the deferred breach stinger ON the constant — the frame the eye
         // breaks the surface, not the frame the ecotone begins (see _handleChapterSeam).
@@ -4584,6 +4612,10 @@ export class OdysseyBoardController {
         if (this.whalePass) {
             this.whalePass.dispose();
             this.whalePass = null;
+        }
+        if (this.summitBirds) {
+            this.summitBirds.dispose();
+            this.summitBirds = null;
         }
         this.corridorField = null;
         this.thresholdDirector?.dispose?.();
