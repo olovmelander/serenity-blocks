@@ -23,7 +23,7 @@ Do not treat this as a blind delete list. The plan below separates low-risk clea
 Before cleanup:
 
 1. Create a branch, for example `cleanup/repository-files`.
-2. Keep `README.md`, `CONTRIBUTING.md`, `CREDITS.md`, `HOW_TO_RUN.md`, `PHASER_QUICKSTART.md`, `RECOMMENDATIONS.md`, `game_description.md`, `single_player_death.md`, and music prompt docs.
+2. Keep `README.md`, `CONTRIBUTING.md`, `CREDITS.md`, `HOW_TO_RUN.md`, `PHASER_QUICKSTART.md`, `RECOMMENDATIONS.md`, `game_description.md`, `single_player_death.md`, and music prompt docs. *(Later note: `RECOMMENDATIONS.md` was deleted on 2026-10-03 — it described code that no longer exists.)*
 3. Keep docs used by tests or source comments as living references.
 4. Keep live assets under `src/themes/**`, `public/assets/music/**`, `public/textures/**`, and theme-specific `assets/` directories unless a per-asset reference audit proves otherwise.
 5. Prefer `git rm --cached` plus `.gitignore` for generated outputs and raw working directories that may still be useful locally.
@@ -104,7 +104,7 @@ Archive candidate groups:
 
 Do not archive:
 
-- `README.md`, `CONTRIBUTING.md`, `CREDITS.md`, `HOW_TO_RUN.md`, `PHASER_QUICKSTART.md`, `RECOMMENDATIONS.md`.
+- `README.md`, `CONTRIBUTING.md`, `CREDITS.md`, `HOW_TO_RUN.md`, `PHASER_QUICKSTART.md`, `RECOMMENDATIONS.md` *(deleted on 2026-10-03, see the note under Safety Rules)*.
 - Active untracked plans visible in the current worktree: `docs/ODYSSEY_CINEMATIC_JOURNEY_PLAN.md`, `docs/gameplay-effects-plan.md`, `docs/quadra-adoption-plan.md`, and the existing `docs/repository-review-plan.md`.
 - Docs read by tests as fixtures.
 - Source-cited art direction docs unless their source references are removed first.

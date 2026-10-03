@@ -1,3 +1,10 @@
+> **STATUS (verified 2026-10-03): PARTLY EXECUTED — Waves 0, 1, 2 and 2b landed 2026-08-13/14
+> in `0c544cd1`, `9d5044a0`, `e29cfe3c`, `63ff7b5d`, `e98b4737` and `8a28bee6`. This is a
+> record, not a backlog.** Waves 3–5 (shore grammar, signatures, underside) are still
+> unchecked in §6b and were not built from this plan; the sea and its shore were reworked in
+> the 2026-10 masterpiece pass instead, so do not resume them from here. Current entry point:
+> [ODYSSEY_MASTERPIECE_PASS_2026-10.md](ODYSSEY_MASTERPIECE_PASS_2026-10.md) §2–§3.
+
 # Odyssey — the Ghibli Water (plan, 2026-08-13)
 
 **Brief (user, verbatim):** *"Now we need to work on the water surface using water shaders from
@@ -5,7 +12,8 @@ threejs webgpu r183 (i think r183 is the correct one, right me if i am wrong). I
 to have this studio ghibli style. Do research online, investigate, plan and help me improve the
 water surface in act II."*
 
-**Status: PLAN ONLY. No production code has been written for it.**
+**Status when written (2026-08-13): plan only. Superseded by the banner above — Waves 0–2b
+have shipped since (tracker in §6b).**
 
 ---
 
