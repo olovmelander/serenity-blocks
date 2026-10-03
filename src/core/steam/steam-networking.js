@@ -78,6 +78,8 @@ export class SteamNetworking {
         this.matchNonce = null;
         this.sendSeqByChannel = new Map();
         this.recvSeqByPeer = new Map();
+        /** @type {Map<string, string>} last NET_HELLO handshake nonce seen per sender */
+        this.helloNonceByPeer = new Map();
         /** @type {Map<string, BinaryStateSnapshotV7>} */
         this.incomingSnapshotBaselines = new Map();
         this.lastResyncRequestAt = new Map(); // per-peer cooldown so a burst of bad deltas can't spam resyncs
@@ -127,6 +129,7 @@ export class SteamNetworking {
             sendFailures: 0,
             decodeFailures: 0,
             validationFailures: 0,
+            peerSessionRestarts: 0, // rejoining peers whose send counters restarted
             roleValidationDropsByType: /** @type {Record<string, number>} */ ({}),
             staleDeltasDropped: 0, // deltas superseded by a newer keyframe (silently ignored)
             keyframesSent: 0,
@@ -1568,6 +1571,7 @@ export class SteamNetworking {
         this.acceptedProtocolPeers.clear();
         this.sendSeqByChannel.clear();
         this.recvSeqByPeer.clear();
+        this.helloNonceByPeer.clear();
     }
 
     _resetLobbySession() {
@@ -1772,13 +1776,44 @@ export class SteamNetworking {
         // equal, so existing behavior is unchanged.)
         const seqKey = `${fromSteamId}:${envelope.channel ?? channel}`;
         const lastSeq = this.recvSeqByPeer.get(seqKey) ?? -1;
+        const helloNonce = this._helloHandshakeNonce(envelope);
         if (typeof envelope.seq === 'number' && envelope.seq <= lastSeq) {
-            return false;
+            // A peer that left and rejoined (or relaunched) restarts its send
+            // counters at 1 while this side still holds the old session's
+            // high-water mark, so its NET_HELLO looked like a replay and was
+            // dropped on every retry — the joiner waited forever. A hello carrying
+            // a handshake nonce not yet seen from that sender is a new transport
+            // session: forget the old session's sequences and let it negotiate.
+            // Retries of one join share a nonce, so a late duplicate stays dropped.
+            if (!this.isHost || !helloNonce || this.helloNonceByPeer.get(fromSteamId) === helloNonce) {
+                return false;
+            }
+            this._forgetPeerReceiveSequences(fromSteamId);
+            this.packetStats.peerSessionRestarts += 1;
         }
         if (typeof envelope.seq === 'number') {
             this.recvSeqByPeer.set(seqKey, envelope.seq);
         }
+        if (helloNonce) this.helloNonceByPeer.set(fromSteamId, helloNonce);
         return true;
+    }
+
+    /**
+     * @param {{ msgType?: string, payload?: any }} envelope
+     * @returns {string|null} the join-attempt nonce of a NET_HELLO, else null
+     */
+    _helloHandshakeNonce(envelope) {
+        if (envelope.msgType !== MessageTypes.NET_HELLO) return null;
+        const nonce = envelope.payload?.handshakeNonce;
+        return typeof nonce === 'string' && nonce.length > 0 && nonce.length <= 128 ? nonce : null;
+    }
+
+    /** @param {string} peerSteamId */
+    _forgetPeerReceiveSequences(peerSteamId) {
+        const prefix = `${peerSteamId}:`;
+        Array.from(this.recvSeqByPeer.keys()).forEach((key) => {
+            if (key.startsWith(prefix)) this.recvSeqByPeer.delete(key);
+        });
     }
 
     _sendNetError(targetSteamId, code, originalMsgType) {
