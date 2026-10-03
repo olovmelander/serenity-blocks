@@ -88,7 +88,8 @@
     -webkit-background-clip: text;
     background-clip: text;
     filter: drop-shadow(0 0 18px rgba(var(--cs-accent-rgb), 0.30));
-    animation: cs-shimmer 8s ease-in-out infinite;
+    background-position: 40% center;
+    animation: none;
 }
 
 .level-select-title {
@@ -1217,8 +1218,8 @@
 }
 
 @keyframes ody-surface-in {
-    from { opacity: 0; filter: blur(6px); }
-    to { opacity: 1; filter: blur(0); }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 @keyframes ody-hud-in {

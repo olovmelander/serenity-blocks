@@ -11,9 +11,12 @@ import { MultiPlayerState } from '../../src/core/multi-player-state.js';
 const moduleMocks = vi.hoisted(() => ({
     spawnPiece: vi.fn(),
     transitionCountdown: vi.fn(),
+    phaserGame: vi.fn(),
 }));
 
-vi.mock('phaser', () => ({ default: {} }));
+vi.mock('phaser', () => ({
+    default: { Game: moduleMocks.phaserGame, WEBGL: 'webgl', Scale: { FIT: 1, CENTER_BOTH: 1 } },
+}));
 vi.mock('../../src/rendering/phaser/board-juice.js', () => ({ BoardJuice: vi.fn() }));
 vi.mock('../../src/ui/cinematic-loading-overlay.js', () => ({
     dismissCinematicLoadingOverlay: vi.fn(() => Promise.resolve()),
@@ -420,5 +423,95 @@ describe('LocalMultiplayerMode loop ownership', () => {
         mode.multiplayerState.players[3][field] = value;
 
         expect(mode._checkMatchWinCondition('player1')).toBe(true);
+    });
+});
+
+describe('LocalMultiplayerMode Phaser owners', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+        moduleMocks.phaserGame.mockReset();
+    });
+
+    function creationMode(numPlayers = 4) {
+        const mode = Object.create(LocalMultiplayerMode.prototype);
+        mode.isActive = true;
+        mode.matchConfig = { numPlayers };
+        mode.phaserGames = [];
+        mode._boardCreationGeneration = 0;
+        mode.deps = { BoardSceneClass: class {}, frameRateController: { targetFPS: 30 } };
+        mode._calculateDynamicBlockSize = () => 40;
+        mode._updateBoardCSSVariables = vi.fn();
+        mode._initBoardJuice = vi.fn();
+        return mode;
+    }
+
+    it('destroys all four unique owners once and clears aliases before reuse', () => {
+        const mode = creationMode();
+        const games = Array.from({ length: 4 }, () => ({ destroy: vi.fn() }));
+        mode.phaserGames = games;
+        games.forEach((game, i) => {
+            mode[`p${i + 1}PhaserGame`] = game;
+            mode[`p${i + 1}BoardScene`] = {};
+        });
+        mode._destroySeparatePhaserGames();
+        mode._destroySeparatePhaserGames();
+        games.forEach((game) => expect(game.destroy).toHaveBeenCalledExactlyOnceWith(true));
+        expect(mode.phaserGames).toEqual([]);
+        expect(mode.boardScenes).toEqual([]);
+        for (let i = 1; i <= 4; i++) {
+            expect(mode[`p${i}PhaserGame`]).toBeNull();
+            expect(mode[`p${i}BoardScene`]).toBeNull();
+        }
+    });
+
+    it('publishes each game before its first await and cancels without creating more games', async () => {
+        vi.useFakeTimers();
+        const mode = creationMode();
+        const game = { destroy: vi.fn(), scene: { add: vi.fn() } };
+        moduleMocks.phaserGame.mockImplementation(function makeGame() { return game; });
+        const creating = mode._createSeparatePhaserGames();
+        expect(mode.phaserGames).toEqual([game]);
+        expect(moduleMocks.phaserGame.mock.calls[0][0].fps.limit).toBe(30);
+        mode._destroySeparatePhaserGames();
+        mode.isActive = false;
+        await vi.advanceTimersByTimeAsync(500);
+        expect(await creating).toBe(false);
+        expect(game.destroy).toHaveBeenCalledExactlyOnceWith(true);
+        expect(game.scene.add).not.toHaveBeenCalled();
+        expect(moduleMocks.phaserGame).toHaveBeenCalledTimes(1);
+        expect(mode._initBoardJuice).not.toHaveBeenCalled();
+    });
+
+    it('cleans earlier owners if a later player renderer fails to construct', async () => {
+        vi.useFakeTimers();
+        const mode = creationMode();
+        const games = Array.from({ length: 2 }, () => ({ destroy: vi.fn(), scene: { add: vi.fn() } }));
+        let created = 0;
+        moduleMocks.phaserGame.mockImplementation(function makeGame() {
+            if (created === 2) throw new Error('renderer failed');
+            return games[created++];
+        });
+        const rejected = expect(mode._createSeparatePhaserGames()).rejects.toThrow('renderer failed');
+        await vi.advanceTimersByTimeAsync(500);
+        await rejected;
+        games.forEach((game) => expect(game.destroy).toHaveBeenCalledExactlyOnceWith(true));
+        expect(mode.phaserGames).toEqual([]);
+        expect(mode.boardScenes).toEqual([]);
+    });
+
+    it('does not pause a replacement single-player board after UI creation was cancelled', async () => {
+        const mode = creationMode();
+        mode.playerNextCanvases = new Map();
+        mode._updatePlayerLayout = vi.fn();
+        mode._initStandingsHUD = vi.fn();
+        mode.onResize = vi.fn();
+        mode._createSeparatePhaserGames = vi.fn(async () => false);
+        mode._pauseSinglePlayerScene = vi.fn();
+        vi.stubGlobal('document', {
+            getElementById: () => ({ style: {} }), querySelector: () => null,
+        });
+        await mode._setupMultiplayerUI();
+        expect(mode._pauseSinglePlayerScene).not.toHaveBeenCalled();
     });
 });

@@ -18,8 +18,8 @@ body.start-modal-open .game-mode-card {
     --accent: #7fdcff;
     --accent-rgb: 127, 220, 255;
     /* live, JS-driven interaction vars */
-    --mx: 50%;
-    --my: 50%;
+    --spotlight-x: 0px;
+    --spotlight-y: 0px;
     --rx: 0deg;
     --ry: 0deg;
     --lift: 0px;
@@ -75,9 +75,8 @@ body.start-modal-open .game-mode-card {
 }
 
 @keyframes cs-card-reveal {
-    from { opacity: 0; translate: 0 22px; scale: 0.95; filter: blur(8px); }
-    60%  { filter: blur(0); }
-    to   { opacity: 1; translate: 0 0;  scale: 1;    filter: blur(0); }
+    from { opacity: 0; translate: 0 22px; scale: 0.95; }
+    to   { opacity: 1; translate: 0 0; scale: 1; }
 }
 
 /* Logo is child 1; the six cards are children 2..7 — stagger their reveal */
@@ -92,10 +91,13 @@ body.start-modal-open .game-mode-card:nth-child(7) { animation-delay: 0.36s; }
 body.start-modal-open .game-mode-card::before {
     content: '';
     position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: radial-gradient(240px circle at var(--mx) var(--my),
+    top: 50%;
+    left: 50%;
+    width: 480px;
+    height: 480px;
+    background: radial-gradient(240px circle at center,
             rgba(var(--accent-rgb), 0.22), transparent 60%);
+    transform: translate3d(calc(-50% + var(--spotlight-x)), calc(-50% + var(--spotlight-y)), 0);
     opacity: 0;
     transition: opacity 0.45s ease;
     pointer-events: none;
@@ -106,6 +108,7 @@ body.start-modal-open .game-mode-card:not(.steam-disabled):hover::before,
 body.start-modal-open .game-mode-card:not(.steam-disabled).gamepad-focused::before,
 body.start-modal-open .game-mode-card:not(.steam-disabled):focus-visible::before {
     opacity: 1;
+    will-change: transform, opacity;
 }
 
 /* ---- Hover / pointer lift + tilt (JS feeds --rx/--ry/--mx/--my) ------------- */
@@ -143,22 +146,19 @@ body.start-modal-open .game-mode-card:not(.steam-disabled):focus-visible {
         0 0 0 2px rgba(var(--accent-rgb), 0.95),
         0 0 0 7px rgba(var(--accent-rgb), 0.22),
         inset 0 1px 0 rgba(255, 255, 255, 0.10);
-    animation: cs-focus-pulse 1.9s ease-in-out infinite;
+    /* The accessible ring stays solid; a prepainted inner glow carries the pulse. */
+    animation: none;
 }
 
-@keyframes cs-focus-pulse {
-    0%, 100% { box-shadow:
-        0 34px 84px rgba(0, 0, 0, 0.55),
-        0 0 46px rgba(var(--accent-rgb), 0.40),
-        0 0 0 2px rgba(var(--accent-rgb), 0.95),
-        0 0 0 7px rgba(var(--accent-rgb), 0.22),
-        inset 0 1px 0 rgba(255, 255, 255, 0.10); }
-    50% { box-shadow:
-        0 34px 84px rgba(0, 0, 0, 0.55),
-        0 0 60px rgba(var(--accent-rgb), 0.55),
-        0 0 0 2px rgba(var(--accent-rgb), 1),
-        0 0 0 10px rgba(var(--accent-rgb), 0.12),
-        inset 0 1px 0 rgba(255, 255, 255, 0.10); }
+body.start-modal-open .game-mode-card:not(.steam-disabled).gamepad-focused .mode-card-glow,
+body.start-modal-open .game-mode-card:not(.steam-disabled):focus-visible .mode-card-glow {
+    animation: cs-focus-glow 1.9s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes cs-focus-glow {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 0.8; }
 }
 
 /* ---- Accent glow blob (existing element, re-tinted) ------------------------- */
@@ -380,7 +380,8 @@ body.start-modal-open .cs-local-link {
     opacity: 0.42;
     stroke-dasharray: 0.38 0.62;
     stroke-dashoffset: 0;
-    animation: cs-local-link-idle 3.8s ease-in-out infinite;
+    /* Idle strokes stay painted; the ready beat still traces on interaction. */
+    animation: none;
 }
 
 @keyframes cs-local-primary-idle {
@@ -443,7 +444,7 @@ body.start-modal-open .cs-online-orbit {
     opacity: 0.46;
     stroke-dasharray: 0.18 0.82;
     stroke-dashoffset: 0;
-    animation: cs-online-orbit-idle 5s linear infinite;
+    animation: none;
 }
 
 body.start-modal-open .cs-online-packet {
@@ -490,7 +491,7 @@ body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam
 body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled).gamepad-focused .cs-online-orbit,
 body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled):focus-visible .cs-online-orbit {
     opacity: 0.95;
-    animation-duration: 0.9s;
+    animation: cs-online-orbit-idle 0.9s linear 2;
 }
 
 body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled):hover .cs-online-packet,
@@ -592,7 +593,7 @@ body.start-modal-open .game-mode-card[data-mode="serenity"]:focus-visible .cs-se
 body.start-modal-open .cs-infinity-path {
     stroke-dasharray: 1;
     stroke-dashoffset: 0;
-    animation: cs-infinity-trace 5s linear infinite;
+    animation: none;
 }
 
 @keyframes cs-infinity-trace {
@@ -603,7 +604,7 @@ body.start-modal-open .cs-infinity-path {
 body.start-modal-open .game-mode-card[data-mode="infinity"]:hover .cs-infinity-path,
 body.start-modal-open .game-mode-card[data-mode="infinity"].gamepad-focused .cs-infinity-path,
 body.start-modal-open .game-mode-card[data-mode="infinity"]:focus-visible .cs-infinity-path {
-    animation-duration: 1.8s;
+    animation: cs-infinity-trace 1.8s linear 1;
 }
 
 /* --- Odyssey: ascent path draws, dots pop, arrow fades up --- */

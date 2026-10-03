@@ -64,8 +64,8 @@
     border: 1px solid rgba(var(--cs-accent-rgb), 0.28);
     border-radius: 24px;
     color: var(--cs-text);
-    backdrop-filter: blur(18px) saturate(135%);
-    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     box-shadow:
         0 28px 78px var(--cs-shadow),
         0 0 0 1px rgba(255, 255, 255, 0.04),
@@ -108,21 +108,19 @@
 }
 
 body.electron-app #settings-modal .modal-content {
-    backdrop-filter: blur(8px) saturate(120%);
-    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 @keyframes cs-settings-pop {
     from {
         opacity: 0;
         transform: translateY(14px) scale(0.985);
-        filter: blur(6px);
     }
 
     to {
         opacity: 1;
         transform: translateY(0) scale(1);
-        filter: blur(0);
     }
 }
 
@@ -158,17 +156,8 @@ body.electron-app #settings-modal .modal-content {
     letter-spacing: 0.08em;
     text-shadow: none;
     filter: drop-shadow(0 0 18px rgba(var(--cs-accent-rgb), 0.34));
-    animation: cs-settings-title 8s ease-in-out infinite;
-}
-
-@keyframes cs-settings-title {
-    0%, 100% {
-        background-position: 0% center;
-    }
-
-    50% {
-        background-position: 200% center;
-    }
+    background-position: 40% center;
+    animation: none;
 }
 
 #settings-modal .modal-close-btn {
@@ -184,8 +173,8 @@ body.electron-app #settings-modal .modal-content {
     box-shadow:
         0 10px 28px rgba(0, 0, 0, 0.35),
         inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(10px) saturate(130%);
-    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     transition:
         transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
         border-color 0.26s ease,
@@ -217,8 +206,8 @@ body.electron-app #settings-modal .modal-content {
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.045),
         0 12px 32px rgba(0, 0, 0, 0.16);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 #settings-modal .settings-tab {
@@ -589,13 +578,11 @@ body.electron-app #settings-modal .modal-content {
     from {
         opacity: 0;
         transform: translateY(8px);
-        filter: blur(4px);
     }
 
     to {
         opacity: 1;
         transform: translateY(0);
-        filter: blur(0);
     }
 }
 
