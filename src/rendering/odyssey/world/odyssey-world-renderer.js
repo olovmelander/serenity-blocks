@@ -155,6 +155,17 @@ const GROUND_SNOW_SHADE = Object.freeze([0.80, 0.99, 1.32]);
  */
 const GROUND_SNOW_CREST_STRIP = 0.75;
 /**
+ * COULOIRS THROUGH THE CAP (2026-10-03). On the hero massif the crest strip's convexity is
+ * scaled by the FALL-LINE field: [in a couloir, on a rib]. The snow fingers only moved the
+ * SNOWLINE; above it the strip still followed the relief's round ~450 u bumps, so from the
+ * chapter-5 climb — close under the cone, looking up it — the summit wore camouflage blobs.
+ * Now a couloir holds its snow over all but the sharpest bumps and a rib sheds a little more, so
+ * the rock patches are cut into rib-shaped pieces by snow tongues running down from the summit.
+ * (Tried and rejected, both by capture: BIASING the convexity changed nothing — the bumps
+ * saturate the strip's window; REPLACING it with the fall line drew a pinstriped stone tent.)
+ */
+const GROUND_SNOW_FALL_LINE = Object.freeze([0.25, 1.35]);
+/**
  * Must match the bake's floor, or `openness` never reaches 0 in the deepest hollow.
  *
  * (A `GROUND_AO_STRENGTH` multiply over the whole lit result lived beside this. It is gone:
@@ -1535,7 +1546,16 @@ export function createOdysseyWorld({
         // melted wax. Narrow windows give white snow and grey rock with a painted boundary.
         const wSnow = smoothstep(float(620), float(730), snowHeight)
             .mul(float(1).sub(smoothstep(float(0.62), float(0.76), slope)))
-            .mul(float(1).sub(smoothstep(float(0.18), float(0.40), crest).mul(float(GROUND_SNOW_CREST_STRIP))));
+            .mul(float(1).sub(smoothstep(
+                float(0.18),
+                float(0.40),
+                // `couloir` is +1 down a couloir, -1 on a rib, and already 0 off the massif.
+                crest.mul(mix(
+                    float(1),
+                    mix(float(GROUND_SNOW_FALL_LINE[1]), float(GROUND_SNOW_FALL_LINE[0]), couloir.mul(0.5).add(0.5)),
+                    heroW,
+                )),
+            ).mul(float(GROUND_SNOW_CREST_STRIP))));
         // The SLOPE half takes the same patch rule as the altitude half below: on the massif's
         // mid flanks (slope 0.2-0.35, the whole ch4 view) a 0.17..0.40 ramp made every fragment
         // part stone, part grass — the khaki. Off the massif the ramp is kept as it was.

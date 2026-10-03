@@ -412,6 +412,41 @@ const CHAPTER_5_EXIT_FRAMING = Object.freeze({
     camUp: 2.2,
     camForward: -0.2,
 });
+/**
+ * A LIFT AND TWO SHOTS (2026-10-03, owner: improve chapter 5's experience and composition).
+ *
+ * A real-camera replay of the climb found the chapter's middle was ONE frame held for 0.2 of
+ * progress. The base arc above levels the view to the horizon and past it (in game: pitch 37 deg
+ * at lift-off, 6 by p 0.45, -5 at p 0.55, -19 passing the summit) while the rail keeps climbing,
+ * so the node the camera stood on sat ON the top edge of the screen, the next one above it, the
+ * summit was cut off by the top edge and the rail ran dead centre. The player could not see where
+ * the climb went.
+ *
+ * ⚠️ SOLVE THESE ON THE IN-GAME CAMERA: the BEYOND profile's `drift` (0.7) shortens the look-ahead
+ * and lowers the pitch by ~9 deg against a bare controller (drift 1). The first lift (14 deg) was
+ * solved without it and left every node on the top edge in the first in-game capture.
+ *
+ * These are ANGULAR moves on top of the base arc. Windows are chapter-local progress ([from, to]
+ * ramps in and out); all are zero at lift-off and zero again before the 5->6 hand-off begins:
+ *   - `lift`     tilts the view up the face for the whole climb: the node underfoot at y ~0.5,
+ *                the next at 0.6-0.8, the summit mid-frame, and — passing the summit, where the
+ *                base arc looked DOWN — a level look across the world from the shoulder (L34).
+ *   - `lookOut`  at L31: pan right off the face, across the open island, on a wider lens.
+ *   - `summit`   at L32-L33: pan back past the rail onto the summit, on a longer lens; it looms.
+ */
+export const CHAPTER_5_SHOTS = Object.freeze({
+    lift: Object.freeze({
+        in: Object.freeze([0.17, 0.25]), out: Object.freeze([0.80, 0.90]), pitchDeg: 23, yawDeg: 0, fovOffset: 0,
+    }),
+    lookOut: Object.freeze({
+        in: Object.freeze([0.29, 0.36]), out: Object.freeze([0.41, 0.47]), pitchDeg: -4, yawDeg: 16, fovOffset: 4,
+    }),
+    summit: Object.freeze({
+        in: Object.freeze([0.43, 0.49]), out: Object.freeze([0.64, 0.72]), pitchDeg: 0, yawDeg: -12, fovOffset: -4,
+    }),
+});
+const CHAPTER_5_SHOT_LIST = Object.values(CHAPTER_5_SHOTS);
+
 function resolveChapter5Framing(t) {
     const clamped = THREE.MathUtils.clamp(t, 0, 1);
     const toCanopy = THREE.MathUtils.smoothstep(clamped, 0.12, 0.56);
@@ -425,6 +460,14 @@ function resolveChapter5Framing(t) {
             toCanopy,
         );
         out[key] = THREE.MathUtils.lerp(entryToBase, CHAPTER_5_EXIT_FRAMING[key], toExit);
+    }
+    for (let i = 0; i < CHAPTER_5_SHOT_LIST.length; i += 1) {
+        const shot = CHAPTER_5_SHOT_LIST[i];
+        const weight = THREE.MathUtils.smoothstep(clamped, shot.in[0], shot.in[1])
+            * (1 - THREE.MathUtils.smoothstep(clamped, shot.out[0], shot.out[1]));
+        out.pitchDeg += shot.pitchDeg * weight;
+        out.yawDeg += shot.yawDeg * weight;
+        out.fovOffset += shot.fovOffset * weight;
     }
     return out;
 }

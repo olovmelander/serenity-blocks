@@ -18,6 +18,17 @@
  *   - `strata`    the far row. Small on screen, cheap, and the thing that makes the horizon
  *                 feel inhabited — the job The Witness gives its painted cutout quads.
  *
+ * THREE LEVELS FOR THE CLIMB (2026-10-03, owner-approved: "move a few of chapter 5's clouds").
+ * Every mass used to share one base level (830-1075), which is right for a sky seen from the
+ * ground — and from the chapter-5 climb (eye 560 -> 1100) it put the whole field in ONE ROW at
+ * the horizon, with empty sky above the summit and nothing below the eye. Six masses moved:
+ *   - F4, F5, F6 and O04 DOWN to bases 540-620: a valley layer over the island's north-east,
+ *     seen from above from the mountain's shoulder (terrain under them tops out at 280-394);
+ *   - F1 and F3 UP to 1340-1420 and off the summit's axis: two towers that stand above the
+ *     summit's shoulders in the climb's shots (F1 upper left, F3 upper right).
+ * Solved against a real-camera replay of the climb's stations; the rest of the table, and the
+ * retired heroes' other placements, are unchanged.
+ *
  * CLEARANCE IS A SURFACE DISTANCE, PER ROLE — see `CLOUD_FIELD_CLEARANCE` and
  * `validateCloudFieldClearance`. The heroes used CENTRE distance, which cannot do the job: a
  * mass 700 u away by centre but 880 u wide still swallows the camera, and Wave 0's ch5 probe
@@ -50,24 +61,24 @@ export const CLOUD_FIELD_CLEARANCE = Object.freeze({
  * A future mass added at `near` must come out of another `near`, not be appended.
  */
 export const ODYSSEY_CLOUD_FIELD_SPECS = Object.freeze([
-    // ── FRAMING — the retired heroes' placements, verbatim ────────────────────────────
+    // ── FRAMING — the retired heroes' placements (six re-levelled 2026-10-03, see above) ──
     Object.freeze({
-        id: 'F1-summit-tower', role: 'framing', lod: 'near', x: -320, base: 860, z: -2250, w: 640, h: 330, yaw: 0.4, seed: 11.3,
+        id: 'F1-summit-tower', role: 'framing', lod: 'near', x: -900, base: 1340, z: -2000, w: 640, h: 330, yaw: 0.4, seed: 11.3,
     }),
     Object.freeze({
         id: 'F2-left-flank', role: 'framing', lod: 'near', x: -1750, base: 830, z: -2050, w: 700, h: 300, yaw: 1.9, seed: 27.1,
     }),
     Object.freeze({
-        id: 'F3-deep-ahead', role: 'framing', lod: 'near', x: -750, base: 900, z: -3150, w: 880, h: 380, yaw: 2.6, seed: 58.2,
+        id: 'F3-deep-ahead', role: 'framing', lod: 'near', x: 820, base: 1420, z: -2450, w: 880, h: 380, yaw: 2.6, seed: 58.2,
     }),
     Object.freeze({
-        id: 'F4-right-flank', role: 'framing', lod: 'near', x: 620, base: 845, z: -2150, w: 600, h: 280, yaw: -0.8, seed: 43.6,
+        id: 'F4-right-flank', role: 'framing', lod: 'near', x: 620, base: 560, z: -2150, w: 600, h: 280, yaw: -0.8, seed: 43.6,
     }),
     Object.freeze({
-        id: 'F5-far-right', role: 'framing', lod: 'near', x: 1450, base: 875, z: -3050, w: 820, h: 320, yaw: -2.1, seed: 71.9,
+        id: 'F5-far-right', role: 'framing', lod: 'near', x: 1450, base: 600, z: -3050, w: 820, h: 320, yaw: -2.1, seed: 71.9,
     }),
     Object.freeze({
-        id: 'F6-ascent-right', role: 'framing', lod: 'near', x: 1550, base: 855, z: -1000, w: 620, h: 290, yaw: 1.2, seed: 86.4,
+        id: 'F6-ascent-right', role: 'framing', lod: 'near', x: 1550, base: 540, z: -1000, w: 620, h: 290, yaw: 1.2, seed: 86.4,
     }),
 
     // ── OVERHEAD — the middle distance the heroes left empty ──────────────────────────
@@ -81,7 +92,7 @@ export const ODYSSEY_CLOUD_FIELD_SPECS = Object.freeze([
         id: 'O03', role: 'overhead', lod: 'mid', x: 900, base: 910, z: -520, w: 540, h: 250, yaw: -1.4, seed: 133.9,
     }),
     Object.freeze({
-        id: 'O04', role: 'overhead', lod: 'mid', x: 2250, base: 880, z: -1900, w: 580, h: 260, yaw: 0.2, seed: 149.4,
+        id: 'O04', role: 'overhead', lod: 'mid', x: 2250, base: 620, z: -1900, w: 580, h: 260, yaw: 0.2, seed: 149.4,
     }),
     Object.freeze({
         id: 'O05', role: 'overhead', lod: 'near', x: -2600, base: 925, z: -2750, w: 1080, h: 330, yaw: 1.7, seed: 164.8,

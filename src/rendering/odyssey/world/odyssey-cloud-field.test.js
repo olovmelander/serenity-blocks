@@ -149,18 +149,20 @@ describe('cloud field composition', () => {
         build.geometry.dispose();
     });
 
-    it('keeps the six framing placements identical to the owner-approved heroes', () => {
+    it('keeps the six framing placements exactly as the owner approved them', () => {
         const framing = ODYSSEY_CLOUD_FIELD_SPECS.filter((s) => s.role === 'framing');
         expect(framing).toHaveLength(6);
-        // Guards the deliberate decision to re-author geometry WITHOUT re-authoring
-        // composition, so a failure of the new sky is attributable to one of the two.
+        // Guards the composition against accidental edits. The table is the retired heroes'
+        // (owner-approved 2026-08-13) as RE-LEVELLED on 2026-10-03 with the owner's go-ahead to
+        // move a few of chapter 5's clouds: F1 and F3 raised off the summit's axis, F4-F6 lowered
+        // into a valley layer (see the spec file's header). Sizes are untouched.
         expect(framing.map((s) => [s.x, s.base, s.z, s.w, s.h])).toEqual([
-            [-320, 860, -2250, 640, 330],
+            [-900, 1340, -2000, 640, 330],
             [-1750, 830, -2050, 700, 300],
-            [-750, 900, -3150, 880, 380],
-            [620, 845, -2150, 600, 280],
-            [1450, 875, -3050, 820, 320],
-            [1550, 855, -1000, 620, 290],
+            [820, 1420, -2450, 880, 380],
+            [620, 560, -2150, 600, 280],
+            [1450, 600, -3050, 820, 320],
+            [1550, 540, -1000, 620, 290],
         ]);
     });
 });
