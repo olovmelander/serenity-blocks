@@ -1308,6 +1308,13 @@ export class InfinityMode extends BaseGameMode {
         if (this.boardScene.cameraSettings.manualControl) return;
         if (!this.gameState || !this.gameState.board) return;
         if (this.gameState.board.length >= this.gameState.maxRows) return;
+        // An in-flight cascade owns pre-expansion row indices: its full-line list
+        // and gravity grid were captured before the clear animation. Expanding now
+        // shifts every piece down by the added rows underneath it, so it deletes the
+        // wrong row and then clears the real one as a phantom extra wave. The draw
+        // callback runs every frame; the first one after the cascade settles expands.
+        // (The fixed-tick path defers the same way in afterTick.)
+        if (this.gameState.isProcessingPhysics) return;
 
         // Find the highest row with PLACED blocks (smallest row number)
         const highestBlockRow = this._findHighestBlockRow();

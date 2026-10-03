@@ -33,9 +33,10 @@ Playground contract: **[src/playground/README.md](src/playground/README.md)**.
 
 ## AI SFX generation: use the shared local wrapper
 
-When generating Serenity Blocks sound-effect candidates, use the shared Stable Audio 3 Small-SFX wrapper:
-
-`C:\AI\sfx-foundry\generate-sfx.cmd -Set Zen -Event move -Variants 8`
-
-Do not call Stable Audio directly from ad hoc commands unless you are repairing the wrapper itself. Full workflow:
+**Currently unavailable.** The shared Stable Audio 3 Small-SFX wrapper
+(`C:\AI\sfx-foundry\generate-sfx.cmd`) lived on a dev machine that is gone — see the banner
+in **[docs/ASSET_PIPELINE_BLACKWELL.md](docs/ASSET_PIPELINE_BLACKWELL.md)**. `C:\AI` does
+not exist on the current machine. Do not call the wrapper, and do not try to rebuild or
+reinstall it or Stable Audio. If a task needs generated SFX, stop and ask the user. The
+dormant workflow is kept for reference in
 **[docs/SFX_GENERATION_WORKFLOW.md](docs/SFX_GENERATION_WORKFLOW.md)**.

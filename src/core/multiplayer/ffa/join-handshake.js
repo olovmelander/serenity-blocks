@@ -112,6 +112,20 @@ function rejectHello(game, msg, result) {
     }, options);
 }
 
+/**
+ * Record the join-attempt nonce a peer announced with. Returns true when it
+ * replaces a different one — the peer restarted its client and is joining again,
+ * rather than retrying one announce (retries share a nonce).
+ * @param {any} game @param {string} steamId @param {unknown} nonce
+ */
+function noteJoinNonce(game, steamId, nonce) {
+    if (typeof nonce !== 'string' || !nonce) return false;
+    if (!game._joinNonceByPeer) game._joinNonceByPeer = new Map();
+    const previous = game._joinNonceByPeer.get(steamId);
+    game._joinNonceByPeer.set(steamId, nonce);
+    return previous !== undefined && previous !== nonce;
+}
+
 /** @param {any} game @param {any} registry */
 export function registerJoinHandshakeHandlers(game, registry) {
     registry.register(MessageTypes.NET_HELLO, (msg) => {
@@ -160,6 +174,8 @@ export function registerJoinHandshakeHandlers(game, registry) {
             buildWelcomePayload(game, result, 'ok', msg.data?.handshakeNonce ?? null),
         );
 
+        const rejoined = noteJoinNonce(game, msg.from, msg.data?.handshakeNonce);
+
         if (existingPlayer?.isDisconnected) {
             clearTimeout(existingPlayer.disconnectTimeout);
             existingPlayer.isDisconnected = false;
@@ -168,7 +184,16 @@ export function registerJoinHandshakeHandlers(game, registry) {
             routeFfaResync(game, msg.from, 'reconnect');
             return;
         }
-        if (existingPlayer || existingSpectator) return;
+        if (existingPlayer || existingSpectator) {
+            // A roster member announcing with a NEW join nonce restarted its client
+            // before the host noticed it was gone. It holds no roster or match state,
+            // so a bare WELCOME would leave it waiting forever: treat it as a reconnect.
+            if (rejoined) {
+                game.broadcastPlayerList();
+                routeFfaResync(game, msg.from, 'rejoin');
+            }
+            return;
+        }
 
         if (msg.data?.asSpectator) {
             game._registerSpectator(msg.from, msg.data?.name || 'Spectator');

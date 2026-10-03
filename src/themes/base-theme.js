@@ -872,6 +872,10 @@ export class BaseTheme {
             document.querySelectorAll('.theme-container').forEach((container) => {
                 container.classList.remove('active');
             });
+            // Inline opacity/visibility outrank `.active`; clear them exactly as the
+            // visible start() branch does, so a resumed theme is always revealed.
+            themeContainer.style?.removeProperty?.('opacity');
+            themeContainer.style?.removeProperty?.('visibility');
             themeContainer.classList.add('active');
         }
 

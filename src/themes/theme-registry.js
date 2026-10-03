@@ -556,6 +556,10 @@ export function ensureThemeContainer(themeId) {
         container = document.createElement('div');
         container.id = containerId;
         container.className = 'theme-container';
+        // No inline opacity/visibility: the `.theme-container` class already hides
+        // the div and `.active` reveals it. An inline `opacity: 0` here outranked
+        // `.active`, so a theme without a static div (parhelion, serenity-warp)
+        // stayed invisible after a hidden boot pre-warm was resumed.
         Object.assign(container.style, {
             position: 'fixed',
             top: '0',
@@ -564,7 +568,6 @@ export function ensureThemeContainer(themeId) {
             height: '100%',
             zIndex: '-1',
             pointerEvents: 'none',
-            opacity: '0',
         });
         if (document.body.firstChild) {
             document.body.insertBefore(container, document.body.firstChild);

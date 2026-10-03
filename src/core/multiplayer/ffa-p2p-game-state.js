@@ -68,6 +68,7 @@ import {
     shouldDropLiveSnapshotDuringDownload,
     tickResyncTransfer,
 } from './ffa/resync-coordinator.js';
+import { handleFfaAttackRequest } from './ffa/attack-request.js';
 import { createNetworkHandlerRegistry } from './ffa/network-handler-registry.js';
 import { createFfaResyncContext } from './ffa/resync-context.js';
 import * as resyncRequest from './ffa/resync-request-handler.js';
@@ -932,30 +933,9 @@ export class FFAGameStateP2P {
             console.log(`💥 ${msg.data.fromName} sent ${msg.data.totalLines} lines to ${msg.data.targetCount} players`);
         });
 
-        // Handle attack requests from peers (host routes attacks)
-        registry.register(MessageTypes.GAME_ATTACK_REQUEST, (msg) => {
-            if (!this.isHost) return; // Only host routes attacks
-
-            const attackerSteamId = msg.from; // from is set by steam-networking
-            const { cascadeSummary } = msg.data;
-
-            if (attackerSteamId && cascadeSummary) {
-                if (this._authoritativeAttacksEnabled) {
-                    this._recordNetEvent?.('attack_request_ignored', {
-                        attackerSteamId,
-                        reason: 'authoritative_attacks',
-                        cascadeSummary,
-                    });
-                    return;
-                }
-                console.log(`⚔️ Routing attack from peer ${attackerSteamId}`);
-                this._recordNetEvent?.('attack_request', {
-                    attackerSteamId,
-                    cascadeSummary,
-                });
-                this.attackRouter.routeAttack(attackerSteamId, cascadeSummary);
-            }
-        });
+        // Peer attack requests are untrusted wire data: validated, round-fenced and
+        // rate-limited in ffa/attack-request.js before the host routes them.
+        registry.register(MessageTypes.GAME_ATTACK_REQUEST, (msg) => handleFfaAttackRequest(this, msg));
 
         registry.register(MessageTypes.GAME_ROUND_RESTART, (msg) => handleFfaRoundRestart(this, msg));
 
@@ -3175,6 +3155,7 @@ export class FFAGameStateP2P {
             // Peers send attack info to host
             this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_ATTACK_REQUEST, {
                 cascadeSummary,
+                roundGeneration: this.roundGeneration, // host drops requests from a finished round
                 timestamp: Date.now(),
             });
             return;

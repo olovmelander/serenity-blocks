@@ -1,7 +1,18 @@
+> **STATUS (verified 2026-10-03): MOSTLY EXECUTED — landed in `e8df4db2` (2026-07-28). This
+> is a record, not a backlog.** In the tree today: P0-4 (hard drops deferred, not discarded —
+> `src/core/multiplayer/ffa/input-defer.js`), P0-5 (snapshots keep flowing mid-cascade),
+> P0-8 (no whole-world `structuredClone`), P0-7 as a narrower fix (a whole-cell piece hash,
+> so the dirty-check holds) and the chunked-base64 half of P0-6. **Not built:** the batched
+> receive/send IPC of P0-6 (no `steam:readP2PPackets`; the poll is still one
+> `steam:readP2PPacket` invoke per packet) and P0-7's rect cache / render-frame drive. Check
+> the code before picking either up. Current entry point:
+> [docs/ONLINE_MP_PERFORMANCE_REVIEW_2026-07-18.md](docs/ONLINE_MP_PERFORMANCE_REVIEW_2026-07-18.md).
+
 # PLAN-mp-hitch-and-frame-hygiene — remove MP-only hitch classes and per-frame waste
 
-**Rank: 2 of 5. Do after PLAN-mp-host-input-latency (they touch the same files; that plan's
-line-ceiling guardrail applies here too).**
+**Rank when written (2026-07-18): 2 of 5, after PLAN-mp-host-input-latency (they touch the
+same files; that plan's line-ceiling guardrail applies here too) — mostly done, see the
+banner above.**
 Source of truth: `docs/ONLINE_MP_PERFORMANCE_REVIEW_2026-07-18.md` §2.4–2.9 and P0 items
 4–8. Read those sections in full first.
 

@@ -765,5 +765,5 @@ Within any wave, chapters are independent and can be parallelized; seams are not
 
 - This plan: `docs/ODYSSEY_JOURNEY_CREATIVE_IMPLEMENTATION_PLAN.md` (assembled from the chapter work orders above).
 - Capture baseline: `artifacts/odyssey/journey/` — 201 frames across 8 chapters plus `journey-console.log`.
-- Prior planning record (still useful for rationale; superseded where stated): `ODYSSEY_AAA_MASTER_PLAN.md`, `ODYSSEY_VISUAL_COHESION_MASTER_PLAN.md`, `ODYSSEY_CHAPTER_BY_CHAPTER_IMPROVEMENT_PLAN.md`, `ODYSSEY_PERFORMANCE_OPTIMIZATION_PLAN.md`, `ODYSSEY_EARTH_CORE_AAA_PLAN.md`, `ODYSSEY_CINEMATIC_JOURNEY_PLAN.md`, and the commissioning brief `ODYSSEY_CREATIVE_DIRECTOR_IMPLEMENTATION_PROMPT.md`.
+- Prior planning record (still useful for rationale; superseded where stated): `ODYSSEY_AAA_MASTER_PLAN.md`, `ODYSSEY_VISUAL_COHESION_MASTER_PLAN.md`, `ODYSSEY_CHAPTER_BY_CHAPTER_IMPROVEMENT_PLAN.md`, `ODYSSEY_PERFORMANCE_OPTIMIZATION_PLAN.md`, `ODYSSEY_EARTH_CORE_AAA_PLAN.md`, `ODYSSEY_CINEMATIC_JOURNEY_PLAN.md`, and the commissioning brief `archive/2026-10-agent-prompts/ODYSSEY_CREATIVE_DIRECTOR_IMPLEMENTATION_PROMPT.md` (archived 2026-10-03 — a historical prompt, not instructions).
 

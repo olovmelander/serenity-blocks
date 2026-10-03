@@ -1,62 +1,53 @@
 # Contributing to Serenity Blocks
 
-Thank you for your interest in improving Serenity Blocks! This guide will help you contribute performance optimizations effectively.
+Serenity Blocks is a falling-block puzzle game. Phaser 4 renders the board, three.js renders
+the themes and Odyssey mode (WebGPU/TSL for most surfaces), and the game ships as an Electron
+desktop app.
 
-## Performance Optimization Task
+## Setup
 
-Your task is to identify and fix a single, verifiable performance bottleneck related to animations, backgrounds, or theme rendering in this repository. The goal is to improve performance while preserving the artistic style, atmosphere, and gameplay feel. Please follow these steps meticulously:
+You need Node.js 20 or newer (CI runs Node 24).
 
-### 1. Codebase Analysis & Bottleneck Identification
+```bash
+npm install
+npm run dev              # Vite dev server; open the URL it prints
+npm run dev:playground   # the WebGPU/TSL effect playground (/playground.html)
+```
 
-- Systematically analyze code responsible for background rendering, animations, or theme effects.
-- Look for inefficient rendering loops, redundant calculations, texture overdraw, or memory-heavy effects.
-- Focus on optimizations that reduce frame drops and stutters without changing how the animations and visuals look to the player.
-- **Do not attempt to re-optimize anything that has already been documented in the [optimization-reports](optimization-reports/) folder.**
+## Before you open a pull request
 
-### 2. Detailed Performance Report
+Run the main checks a pull request is gated on:
 
-Before making changes, provide a concise report including:
+```bash
+npm run typecheck
+npm run lint:ci          # ESLint error-count ratchet: the count may not go up
+npm test                 # Vitest unit suite
+```
 
-- The file and line number(s) where the performance bottleneck is located.
-- A clear description of how this code impacts performance (e.g., slow background animation updates, heavy texture processing).
-- Your proposed strategy for making it more efficient while preserving the original themes and animation fidelity.
+CI runs a few more gates on every pull request (architecture fitness, module boundaries,
+release gates); `.github/workflows/pages.yml` lists them.
 
-### 3. Targeted Optimization Implementation
+**Pull-request CI does not run the build.** The `build` job (the Vite build plus the
+boot-closure guard) runs only after a push to `main`, so run it yourself before merging:
 
-- Implement the most direct and clean fix for the identified bottleneck.
-- Ensure the background animations and themes look identical to players after the optimization.
-- Avoid unrelated changes to gameplay mechanics or non-performance-related code.
+```bash
+npm run build
+```
 
-### 4. Verification Through Testing & Measurement
+## Rules for specific kinds of change
 
-To validate your optimization, you must:
+- **Visual changes** (a theme under `src/themes/`, an Odyssey chapter under
+  `src/rendering/odyssey/`, a playground effect): follow
+  [docs/WEBGPU_THREEJS_WORKFLOW.md](docs/WEBGPU_THREEJS_WORKFLOW.md). A clean build is not
+  proof that it looks right; the change is done once it has been checked in a screenshot
+  with a clean console
+  ([ADR-0007](docs/adr/0007-webgpu-tsl-definition-of-done.md)).
+- **Performance claims**: a number goes into a plan, a budget or a commit message only when
+  it comes from a verified instrument and a content-matched comparison
+  ([ADR-0016](docs/adr/0016-perf-claims-require-a-verified-instrument.md)).
+- **Structural changes**: start at
+  [docs/ARCHITECTURE_INDEX.md](docs/ARCHITECTURE_INDEX.md) and
+  [docs/adr/](docs/adr/README.md). The ADRs record decisions that are not reopened
+  casually.
 
-- Write a test case or benchmark that highlights the slowdown before your fix and shows improvement after.
-- Run the full test suite to ensure no regressions in other systems.
-- If possible, provide before/after performance metrics (e.g., FPS stability, reduced memory/CPU/GPU load).
-
-### 5. Documentation
-
-When finished, add a new markdown file in the [optimization-reports](optimization-reports/) folder.
-
-- Each optimization must have its own new report file so previous work is not overwritten.
-- Always use the [optimization-reports/template.md](optimization-reports/template.md) file as the base structure for your report.
-- Use a clear, descriptive filename that indicates what was optimized. Examples:
-  - `rainy-window-optimization.md`
-  - `particle-buffer-optimization.md`
-  - `wolfhour-canvas-caching.md`
-
-Each report should summarize:
-
-- The bottleneck found.
-- The optimization applied.
-- The measured improvement.
-
-## Additional Resources
-
-- See [RECOMMENDATIONS.md](RECOMMENDATIONS.md) for general performance optimization recommendations
-- Review existing reports in [optimization-reports/](optimization-reports/) to avoid duplicate work and learn from previous optimizations
-
-## Questions?
-
-If you have questions about the contribution process or need clarification on the performance optimization workflow, please open an issue.
+Instructions for AI coding agents live in `CLAUDE.md` (Claude Code) and `AGENTS.md` (Codex).
