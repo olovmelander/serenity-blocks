@@ -24,7 +24,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const DUAL_STATE_ALLOWLIST = [
     'astral-weave', 'chiral-gold',
     'cosmic-noir', 'fluid-dreams', 'ice-temple', 'lunara',
-    'neon-district', 'neon-dusk', 'ocean', 'stellar-drift',
+    'neon-district', 'ocean', 'stellar-drift',
     'stellar-velocity', 'golden-forest', 'winter', 'wolfhour',
 ];
 
