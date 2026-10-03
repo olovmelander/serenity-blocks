@@ -52,6 +52,19 @@ describe('ensureThemeContainer (plan §2.7)', () => {
         expect(body.children[0]).toBe(container);
     });
 
+    it('never hides a lazily created container inline, so `.active` can reveal it', () => {
+        // parhelion and serenity-warp have no static div. An inline opacity:0 beat the
+        // `.theme-container.active` rule: after a hidden boot pre-warm, resume() added
+        // `.active` and the theme still rendered into an invisible container.
+        fakeDom();
+        for (const id of ['parhelion', 'serenity-warp']) {
+            const container = ensureThemeContainer(id);
+            expect(container.className).toBe('theme-container');
+            expect(container.style).not.toHaveProperty('opacity');
+            expect(container.style).not.toHaveProperty('visibility');
+        }
+    });
+
     it('is idempotent — second call returns the first creation', () => {
         fakeDom();
         const first = ensureThemeContainer('ocean');
