@@ -15,6 +15,13 @@ export class MusicTab {
         this.songs = [];
         this.updateInterval = null;
         this.reconcilePromise = null;
+        this.active = false;
+        this.destroyed = false;
+        this.nodes = {};
+        this.domAbortController = new AbortController();
+        this.audioElement = null;
+        this.audioAbortController = null;
+        this.pendingTimeouts = new Set();
         this.init();
     }
 
@@ -27,19 +34,20 @@ export class MusicTab {
         this.audibleSong = this.getAudibleTrackKey() || this.currentSong;
         this.render();
         this.attachEventListeners();
-        this.startProgressTracking();
         this.listenForTrackChanges();
         this.listenForAudioEvents();
 
         // Sync initial state with actual audio element (with small delay for audio loading)
-        setTimeout(() => this.syncWithAudioState(), 100);
+        this.setActive(this.hub.isOpen && this.hub.currentTab === 'music');
+        if (this.active) this.scheduleSync();
     }
 
     /**
      * Renders the music tab content
      */
     render() {
-        const container = document.getElementById('tab-music');
+        const container = this.hub.panel?.querySelector('#tab-music') || document.getElementById('tab-music');
+        this.container = container;
         if (!container) {
             console.error('[MusicTab] Container not found');
             return;
@@ -110,12 +118,12 @@ export class MusicTab {
                                 <input
                                     type="range"
                                     class="volume-slider"
-                                    id="music-volume"
+                                    id="hub-music-volume"
                                     min="0"
                                     max="100"
                                     value="${Math.round(this.soundManager.musicVolume * 100)}"
                                 >
-                                <span class="volume-value" id="music-volume-value">
+                                <span class="volume-value" id="hub-music-volume-value">
                                     ${Math.round(this.soundManager.musicVolume * 100)}%
                                 </span>
                             </div>
@@ -130,12 +138,12 @@ export class MusicTab {
                                 <input
                                     type="range"
                                     class="volume-slider"
-                                    id="sfx-volume"
+                                    id="hub-sfx-volume"
                                     min="0"
                                     max="100"
                                     value="${Math.round(this.soundManager.sfxVolume * 100)}"
                                 >
-                                <span class="volume-value" id="sfx-volume-value">
+                                <span class="volume-value" id="hub-sfx-volume-value">
                                     ${Math.round(this.soundManager.sfxVolume * 100)}%
                                 </span>
                             </div>
@@ -167,6 +175,45 @@ export class MusicTab {
                 </div>
             </div>
         `;
+        this.cacheNodes();
+    }
+
+    getNode(id) {
+        if (!Object.prototype.hasOwnProperty.call(this.nodes, id)) {
+            this.nodes[id] = this.container?.querySelector(`#${id}`) || null;
+        }
+        return this.nodes[id];
+    }
+
+    cacheNodes() {
+        this.nodes = {};
+        ['play-pause', 'prev-track', 'next-track', 'mute-toggle',
+            'hub-music-volume', 'hub-music-volume-value', 'hub-sfx-volume', 'hub-sfx-volume-value',
+            'current-track-title', 'current-time', 'total-time', 'progress-fill', 'progress-handle',
+        ].forEach((id) => this.getNode(id));
+        this.nodes.progressBar = this.container?.querySelector('.progress-bar-container');
+        this.nodes.vinylDisc = this.container?.querySelector('.vinyl-disc');
+        const fill = this.nodes['progress-fill'];
+        if (fill) {
+            fill.style.width = '100%';
+            fill.style.transformOrigin = 'left center';
+            fill.style.transition = 'transform 0.1s linear';
+            fill.style.transform = 'scaleX(0)';
+        }
+        const handle = this.nodes['progress-handle'];
+        if (handle) handle.style.transition = 'transform 0.1s linear';
+        if (typeof ResizeObserver !== 'undefined' && this.nodes.progressBar) {
+            this.resizeObserver = new ResizeObserver(([entry]) => {
+                this.progressWidth = entry.contentRect.width;
+                this.lastProgress = null;
+                if (this.active) this.updateProgressBar();
+            });
+            this.resizeObserver.observe(this.nodes.progressBar);
+        }
+    }
+
+    listen(target, type, handler, options = {}) {
+        target?.addEventListener(type, handler, { ...options, signal: this.domAbortController.signal });
     }
 
     /**
@@ -201,84 +248,103 @@ export class MusicTab {
      */
     attachEventListeners() {
         // Play/Pause button
-        const playPauseBtn = document.getElementById('play-pause');
+        const playPauseBtn = this.getNode('play-pause');
         if (playPauseBtn) {
-            playPauseBtn.addEventListener('click', () => this.togglePlayPause());
+            this.listen(playPauseBtn, 'click', () => this.togglePlayPause());
         }
 
         // Previous track button
-        const prevBtn = document.getElementById('prev-track');
+        const prevBtn = this.getNode('prev-track');
         if (prevBtn) {
-            prevBtn.addEventListener('click', () => this.previousTrack());
+            this.listen(prevBtn, 'click', () => this.previousTrack());
         }
 
         // Next track button
-        const nextBtn = document.getElementById('next-track');
+        const nextBtn = this.getNode('next-track');
         if (nextBtn) {
-            nextBtn.addEventListener('click', () => this.nextTrack());
+            this.listen(nextBtn, 'click', () => this.nextTrack());
         }
 
+        const clearDrag = () => {
+            document.body.classList.remove('serenity-volume-dragging');
+            this.dragAbortController?.abort();
+            this.dragAbortController = null;
+        };
+        this.clearVolumeDrag = clearDrag;
         const setVolumeDragActive = (slider) => {
-            const clearDrag = () => document.body.classList.remove('serenity-volume-dragging');
-
-            slider.addEventListener('pointerdown', () => {
+            this.listen(slider, 'pointerdown', () => {
+                clearDrag();
                 document.body.classList.add('serenity-volume-dragging');
-                document.addEventListener('pointerup', clearDrag, { once: true });
-                document.addEventListener('pointercancel', clearDrag, { once: true });
-                window.addEventListener('blur', clearDrag, { once: true });
+                this.dragAbortController = new AbortController();
+                const { signal } = this.dragAbortController;
+                document.addEventListener('pointerup', clearDrag, { signal });
+                document.addEventListener('pointercancel', clearDrag, { signal });
+                window.addEventListener('blur', clearDrag, { signal });
             });
-
-            slider.addEventListener('blur', clearDrag);
+            this.listen(slider, 'blur', clearDrag);
+            this.listen(slider, 'change', () => this.serenityMode.deps?.settingsManager?.flushPendingSave?.());
         };
 
         // Music volume slider
-        const musicVolumeSlider = document.getElementById('music-volume');
+        const musicVolumeSlider = this.getNode('hub-music-volume');
         if (musicVolumeSlider) {
             setVolumeDragActive(musicVolumeSlider);
-            musicVolumeSlider.addEventListener('input', (e) => {
-                const volume = parseInt(e.target.value) / 100;
-                this.soundManager.setMusicVolume(volume);
-                document.getElementById('music-volume-value').textContent = `${e.target.value}%`;
-
-                // Save to settings
-                this.serenityMode.deps.settingsManager.update({ musicVolume: volume });
+            this.listen(musicVolumeSlider, 'input', (e) => {
+                const volume = parseInt(e.target.value, 10) / 100;
+                this.previewVolume('musicVolume', volume);
+                this.getNode('hub-music-volume-value').textContent = `${e.target.value}%`;
             });
         }
 
         // SFX volume slider
-        const sfxVolumeSlider = document.getElementById('sfx-volume');
+        const sfxVolumeSlider = this.getNode('hub-sfx-volume');
         if (sfxVolumeSlider) {
             setVolumeDragActive(sfxVolumeSlider);
-            sfxVolumeSlider.addEventListener('input', (e) => {
-                const volume = parseInt(e.target.value) / 100;
-                this.soundManager.setSFXVolume(volume);
-                document.getElementById('sfx-volume-value').textContent = `${e.target.value}%`;
-
-                // Save to settings
-                this.serenityMode.deps.settingsManager.update({ sfxVolume: volume });
+            this.listen(sfxVolumeSlider, 'input', (e) => {
+                const volume = parseInt(e.target.value, 10) / 100;
+                this.previewVolume('sfxVolume', volume);
+                this.getNode('hub-sfx-volume-value').textContent = `${e.target.value}%`;
             });
         }
 
         // Mute toggle button
-        const muteBtn = document.getElementById('mute-toggle');
+        const muteBtn = this.getNode('mute-toggle');
         if (muteBtn) {
-            muteBtn.addEventListener('click', () => this.toggleMute());
+            this.listen(muteBtn, 'click', () => this.toggleMute());
         }
 
         // Progress bar scrubbing
-        const progressBar = document.querySelector('.progress-bar-container');
+        const { progressBar } = this.nodes;
         if (progressBar) {
-            progressBar.addEventListener('click', (e) => this.seekToPosition(e));
+            this.listen(progressBar, 'click', (e) => this.seekToPosition(e));
         }
 
         // Playlist items
-        const playlistItems = document.querySelectorAll('.playlist-item');
+        const playlistItems = this.container?.querySelectorAll('.playlist-item') || [];
         playlistItems.forEach((item) => {
-            item.addEventListener('click', () => {
+            this.listen(item, 'click', () => {
                 const trackKey = item.dataset.track;
                 this.selectTrack(trackKey);
             });
         });
+    }
+
+    previewVolume(key, volume) {
+        const settingsManager = this.serenityMode.deps?.settingsManager;
+        if (settingsManager?.update) {
+            settingsManager.update({ [key]: volume });
+            if (settingsManager.scheduleSave) settingsManager.scheduleSave();
+            else settingsManager.save?.();
+        } else if (key === 'musicVolume') this.soundManager.setMusicVolume(volume);
+        else this.soundManager.setSFXVolume(volume);
+    }
+
+    scheduleSync() {
+        const timer = setTimeout(() => {
+            this.pendingTimeouts.delete(timer);
+            if (this.active && !this.destroyed) this.syncWithAudioState();
+        }, 100);
+        this.pendingTimeouts.add(timer);
     }
 
     /**
@@ -322,11 +388,7 @@ export class MusicTab {
     nextTrack() {
         this.soundManager.nextTrack();
         // Update UI after a short delay to ensure soundManager has updated
-        setTimeout(() => {
-            this.currentSong = this.soundManager.musicTrack;
-            this.updatePlaylist();
-            this.syncWithAudioState();
-        }, 100);
+        this.scheduleSync();
     }
 
     /**
@@ -348,7 +410,7 @@ export class MusicTab {
      */
     toggleMute() {
         const isMuted = this.soundManager.toggleMute();
-        const muteBtn = document.getElementById('mute-toggle');
+        const muteBtn = this.getNode('mute-toggle');
         if (!muteBtn) return;
 
         const muteIcon = muteBtn.querySelector('.mute-icon');
@@ -392,9 +454,9 @@ export class MusicTab {
      * Updates the now playing display
      */
     updateNowPlaying() {
-        const titleElement = document.getElementById('current-track-title');
+        const titleElement = this.getNode('current-track-title');
         if (titleElement) {
-            titleElement.textContent = this.getCurrentSongName(this.audibleSong || this.currentSong);
+            this.setLabel(titleElement, this.getCurrentSongName(this.audibleSong || this.currentSong));
         }
     }
 
@@ -402,10 +464,12 @@ export class MusicTab {
      * Updates the playlist active state
      */
     updatePlaylist() {
-        const playlistItems = document.querySelectorAll('.playlist-item');
+        const playlistItems = this.container?.querySelectorAll('.playlist-item') || [];
         playlistItems.forEach((item) => {
             const trackKey = item.dataset.track;
-            if (trackKey === this.currentSong) {
+            const isActive = trackKey === this.currentSong;
+            if (item.classList.contains('active') === isActive) return;
+            if (isActive) {
                 item.classList.add('active');
                 item.querySelector('.playlist-item-icon').innerHTML = `<span class="playing-indicator">${csIcon('equalizer', 16)}</span>`;
             } else {
@@ -420,10 +484,11 @@ export class MusicTab {
      * @param {boolean} isPlaying - Whether music is playing
      */
     updatePlayPauseButton(isPlaying) {
-        const playPauseBtn = document.getElementById('play-pause');
-        if (playPauseBtn) {
+        const playPauseBtn = this.getNode('play-pause');
+        if (playPauseBtn && this.lastPlaying !== isPlaying) {
+            this.lastPlaying = isPlaying;
             const icon = playPauseBtn.querySelector('.control-icon');
-            icon.innerHTML = csIcon(isPlaying ? 'pause' : 'play', 22);
+            if (icon) icon.innerHTML = csIcon(isPlaying ? 'pause' : 'play', 22);
             playPauseBtn.title = isPlaying ? 'Pause' : 'Play';
         }
     }
@@ -433,7 +498,7 @@ export class MusicTab {
      * @param {boolean} isPlaying - Whether music is playing
      */
     updateVinylAnimation(isPlaying) {
-        const vinylDisc = document.querySelector('.vinyl-disc');
+        const { vinylDisc } = this.nodes;
         if (vinylDisc) {
             if (isPlaying) {
                 vinylDisc.classList.add('spinning');
@@ -446,96 +511,87 @@ export class MusicTab {
     /**
      * Starts tracking playback progress
      */
-    startProgressTracking() {
-        // Clear any existing interval
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
+    setActive(active) {
+        this.active = Boolean(active) && !this.destroyed;
+        if (this.active) {
+            this.progressWidth = this.nodes.progressBar?.clientWidth || this.progressWidth || 0;
+            this.lastProgress = null;
+            this.syncWithAudioState();
+            this.syncVolumeControls();
+        } else {
+            this.stopProgressTracking();
+            this.updateVinylAnimation(false);
+            this.clearVolumeDrag?.();
+            this.pendingTimeouts.forEach((timer) => clearTimeout(timer));
+            this.pendingTimeouts.clear();
+            this.serenityMode.deps?.settingsManager?.flushPendingSave?.();
         }
+    }
 
-        // Update progress every 100ms
+    syncVolumeControls() {
+        const settings = this.serenityMode.deps?.settingsManager?.get?.() || this.soundManager;
+        [['musicVolume', 'hub-music'], ['sfxVolume', 'hub-sfx']].forEach(([key, prefix]) => {
+            const slider = this.getNode(`${prefix}-volume`);
+            const value = this.getNode(`${prefix}-volume-value`);
+            const percent = Math.round(settings[key] * 100);
+            if (slider) slider.value = percent;
+            if (value) this.setLabel(value, `${percent}%`);
+        });
+    }
+
+    startProgressTracking() {
+        const { audioElement: audio } = this.soundManager;
+        if (!this.active || this.destroyed || !audio || audio.paused || audio.ended) {
+            this.stopProgressTracking();
+            return;
+        }
+        if (this.updateInterval !== null) return;
         this.updateInterval = setInterval(() => {
-            this.updateProgressBar();
+            if (!this.active || this.soundManager.audioElement?.paused) this.stopProgressTracking();
+            else this.updateProgressBar();
         }, 100);
     }
 
-    /**
-     * Updates the progress bar and time displays
-     */
-    updateProgressBar() {
-        const { audioElement } = this.soundManager;
-
-        // If no audio element exists, reset to zero
-        if (!audioElement) {
-            this.resetProgressBar();
-            return;
-        }
-
-        // Wait for duration to be available (audio is loading)
-        if (!audioElement.duration || !isFinite(audioElement.duration)) {
-            // Show loading state (only log once per second to avoid spam)
-            if (!this.lastLoadingLogTime || Date.now() - this.lastLoadingLogTime > 1000) {
-                console.log('[MusicTab] Waiting for audio duration...', audioElement.readyState);
-                this.lastLoadingLogTime = Date.now();
-            }
-            const currentTimeDisplay = document.getElementById('current-time');
-            const totalTimeDisplay = document.getElementById('total-time');
-            if (currentTimeDisplay && totalTimeDisplay) {
-                currentTimeDisplay.textContent = '0:00';
-                totalTimeDisplay.textContent = '--:--';
-            }
-            return;
-        }
-
-        const { currentTime } = audioElement;
-        const { duration } = audioElement;
-        const percentage = (currentTime / duration) * 100;
-
-        // Update progress bar
-        const progressFill = document.getElementById('progress-fill');
-        const progressHandle = document.getElementById('progress-handle');
-        if (progressFill && progressHandle) {
-            progressFill.style.width = `${percentage}%`;
-            progressHandle.style.left = `${percentage}%`;
-        } else {
-            // Log if elements are missing (only once per second)
-            if (!this.lastMissingElementsLog || Date.now() - this.lastMissingElementsLog > 1000) {
-                console.warn('[MusicTab] Progress elements not found:', { progressFill: !!progressFill, progressHandle: !!progressHandle });
-                this.lastMissingElementsLog = Date.now();
-            }
-        }
-
-        // Update time displays
-        const currentTimeDisplay = document.getElementById('current-time');
-        const totalTimeDisplay = document.getElementById('total-time');
-        if (currentTimeDisplay && totalTimeDisplay) {
-            currentTimeDisplay.textContent = this.formatTime(currentTime);
-            totalTimeDisplay.textContent = this.formatTime(duration);
-        } else {
-            // Log if elements are missing (only once per second)
-            if (!this.lastMissingTimeLog || Date.now() - this.lastMissingTimeLog > 1000) {
-                console.warn('[MusicTab] Time display elements not found:', { currentTimeDisplay: !!currentTimeDisplay, totalTimeDisplay: !!totalTimeDisplay });
-                this.lastMissingTimeLog = Date.now();
-            }
-        }
+    stopProgressTracking() {
+        if (this.updateInterval !== null) clearInterval(this.updateInterval);
+        this.updateInterval = null;
     }
 
-    /**
-     * Resets the progress bar to zero
-     */
-    resetProgressBar() {
-        const progressFill = document.getElementById('progress-fill');
-        const progressHandle = document.getElementById('progress-handle');
-        if (progressFill && progressHandle) {
-            progressFill.style.width = '0%';
-            progressHandle.style.left = '0%';
-        }
+    setLabel(node, text) {
+        if (node && node.textContent !== text) node.textContent = text;
+    }
 
-        const currentTimeDisplay = document.getElementById('current-time');
-        const totalTimeDisplay = document.getElementById('total-time');
-        if (currentTimeDisplay && totalTimeDisplay) {
-            currentTimeDisplay.textContent = '0:00';
-            totalTimeDisplay.textContent = '0:00';
+    updateProgressBar() {
+        if (!this.active || this.destroyed) return;
+        const { audioElement } = this.soundManager;
+        if (!audioElement) {
+            this.resetProgressBar();
+            this.stopProgressTracking();
+            return;
         }
+        const { duration } = audioElement;
+        const loaded = Number.isFinite(duration) && duration > 0;
+        const currentTime = Number.isFinite(audioElement.currentTime) ? audioElement.currentTime : 0;
+        const progress = loaded ? Math.max(0, Math.min(1, currentTime / duration)) : 0;
+        if (progress !== this.lastProgress) {
+            this.lastProgress = progress;
+            const fill = this.getNode('progress-fill');
+            const handle = this.getNode('progress-handle');
+            if (fill) fill.style.transform = `scaleX(${progress})`;
+            if (handle) handle.style.transform = `translateX(${progress * (this.progressWidth || 0)}px) translate(-50%, -50%)`;
+        }
+        this.setLabel(this.getNode('current-time'), this.formatTime(currentTime));
+        this.setLabel(this.getNode('total-time'), loaded ? this.formatTime(duration) : '--:--');
+    }
+
+    resetProgressBar() {
+        const fill = this.getNode('progress-fill');
+        const handle = this.getNode('progress-handle');
+        if (fill) fill.style.transform = 'scaleX(0)';
+        if (handle) handle.style.transform = 'translate(-50%, -50%)';
+        this.lastProgress = 0;
+        this.setLabel(this.getNode('current-time'), '0:00');
+        this.setLabel(this.getNode('total-time'), '0:00');
     }
 
     /**
@@ -544,7 +600,7 @@ export class MusicTab {
      * @returns {string} Formatted time string
      */
     formatTime(seconds) {
-        if (!isFinite(seconds)) return '0:00';
+        if (!Number.isFinite(seconds)) return '0:00';
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -607,65 +663,41 @@ export class MusicTab {
      * Listen for track changes from external sources (like keyboard shortcut)
      */
     listenForTrackChanges() {
-        this.trackChangeHandler = (event) => {
-            const { trackName } = event.detail;
-            if (trackName && trackName !== this.currentSong) {
-                console.log('[MusicTab] External track change detected:', trackName);
-                this.currentSong = trackName;
+        this.trackChangeHandler = () => {
+            this.currentSong = this.soundManager.musicTrack;
+            if (this.active) {
                 this.updatePlaylist();
-
-                // Sync play/pause state when track changes
-                const { audioElement } = this.soundManager;
-                if (audioElement) {
-                    const isPlaying = !audioElement.paused;
-                    this.updatePlayPauseButton(isPlaying);
-                    this.updateVinylAnimation(isPlaying);
-                }
+                this.syncWithAudioState();
             }
-
-            this.syncWithAudioState();
         };
-
-        window.addEventListener('musicTrackChanged', this.trackChangeHandler);
-        console.log('[MusicTab] Listening for track changes');
+        this.listen(window, 'musicTrackChanged', this.trackChangeHandler);
+        this.listen(window, 'settingsChanged', (event) => {
+            if (this.active && (event.detail?.musicVolume !== undefined || event.detail?.sfxVolume !== undefined)) {
+                this.syncVolumeControls();
+            }
+        });
+        this.listen(document, 'visibilitychange', () => {
+            this.setActive(!document.hidden && this.hub.isOpen && this.hub.currentTab === 'music');
+        });
+        this.listen(window, 'pagehide', () => {
+            this.setActive(false);
+        });
     }
 
-    /**
-     * Listen for audio element events (play, pause, loadedmetadata)
-     */
     listenForAudioEvents() {
         const { audioElement } = this.soundManager;
-
-        if (!audioElement) {
-            console.log('[MusicTab] No audio element - will sync on next update');
-            return;
-        }
-
-        // Play event - sync UI when audio starts playing
-        this.audioPlayHandler = () => {
-            console.log('[MusicTab] Audio play event detected');
-            this.updatePlayPauseButton(true);
-            this.updateVinylAnimation(true);
+        if (this.audioElement === audioElement) return;
+        this.audioAbortController?.abort();
+        this.audioElement = audioElement;
+        this.audioAbortController = new AbortController();
+        if (!audioElement) return;
+        const { signal } = this.audioAbortController;
+        const sync = () => {
+            if (this.active) this.syncWithAudioState();
         };
-
-        // Pause event - sync UI when audio pauses
-        this.audioPauseHandler = () => {
-            console.log('[MusicTab] Audio pause event detected');
-            this.updatePlayPauseButton(false);
-            this.updateVinylAnimation(false);
-        };
-
-        // Loadedmetadata event - sync progress bar when metadata loads
-        this.audioLoadedMetadataHandler = () => {
-            console.log('[MusicTab] Audio metadata loaded');
-            this.updateProgressBar();
-        };
-
-        audioElement.addEventListener('play', this.audioPlayHandler);
-        audioElement.addEventListener('pause', this.audioPauseHandler);
-        audioElement.addEventListener('loadedmetadata', this.audioLoadedMetadataHandler);
-
-        console.log('[MusicTab] Audio event listeners attached');
+        ['play', 'pause', 'ended', 'loadedmetadata', 'seeked'].forEach((type) => {
+            audioElement.addEventListener(type, sync, { signal });
+        });
     }
 
     /**
@@ -673,6 +705,8 @@ export class MusicTab {
      * Called on initialization to ensure UI matches reality
      */
     syncWithAudioState() {
+        if (!this.active || this.destroyed) return;
+        this.listenForAudioEvents();
         const { audioElement } = this.soundManager;
 
         if (!audioElement) {
@@ -680,14 +714,15 @@ export class MusicTab {
             this.updatePlayPauseButton(false);
             this.updateVinylAnimation(false);
             this.resetProgressBar();
+            this.stopProgressTracking();
             return;
         }
 
         // Sync play/pause state
-        const isPlaying = !audioElement.paused;
-        console.log('[MusicTab] Syncing with audio state - isPlaying:', isPlaying, 'currentTime:', audioElement.currentTime, 'duration:', audioElement.duration);
+        const isPlaying = !audioElement.paused && !audioElement.ended;
+
         this.updatePlayPauseButton(isPlaying);
-        this.updateVinylAnimation(isPlaying);
+        this.updateVinylAnimation(isPlaying && !this.soundManager.isMuted);
 
         // Selected track is UI state; audible track is derived from the audio source.
         const selectedTrack = this.soundManager.musicTrack;
@@ -714,43 +749,22 @@ export class MusicTab {
             this.reconcileTrackMismatch();
         }
 
-        // Immediately update progress bar
         this.updateProgressBar();
+        this.startProgressTracking();
     }
 
     /**
      * Cleans up the music tab
      */
     destroy() {
-        // Clear progress tracking interval
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
-        }
-
-        // Remove track change listener
-        if (this.trackChangeHandler) {
-            window.removeEventListener('musicTrackChanged', this.trackChangeHandler);
-            this.trackChangeHandler = null;
-        }
-
-        // Remove audio element event listeners
-        const audioElement = this.soundManager?.audioElement;
-        if (audioElement) {
-            if (this.audioPlayHandler) {
-                audioElement.removeEventListener('play', this.audioPlayHandler);
-                this.audioPlayHandler = null;
-            }
-            if (this.audioPauseHandler) {
-                audioElement.removeEventListener('pause', this.audioPauseHandler);
-                this.audioPauseHandler = null;
-            }
-            if (this.audioLoadedMetadataHandler) {
-                audioElement.removeEventListener('loadedmetadata', this.audioLoadedMetadataHandler);
-                this.audioLoadedMetadataHandler = null;
-            }
-        }
-
-        console.log('[MusicTab] Destroyed and cleaned up');
+        this.setActive(false);
+        this.destroyed = true;
+        this.domAbortController.abort();
+        this.audioAbortController?.abort();
+        this.resizeObserver?.disconnect();
+        this.pendingTimeouts.forEach((timer) => clearTimeout(timer));
+        this.pendingTimeouts.clear();
+        this.nodes = {};
+        this.container = null;
     }
 }

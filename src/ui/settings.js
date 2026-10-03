@@ -257,6 +257,40 @@ function applyCursorSettingDefaults(settings) {
     };
 }
 
+const BINDING_SANITIZERS = {
+    keyBindings: sanitizePlayer1KeyBindings,
+    player2KeyBindings: sanitizePlayer2KeyBindings,
+    serenityKeyBindings: sanitizeSerenityKeyBindings,
+    serenityGamepadBindings: sanitizeSerenityGamepadBindings,
+};
+
+const CURSOR_SETTING_KEYS = [
+    'customCursorEnabled', 'customCursorIntensity',
+    'customCursorVisibilityPreset', 'customCursorReducedMotion',
+];
+
+// Settings contain scalar values and flat binding maps. Compare only changed
+// fields without serializing unrelated controls on every slider input.
+function settingValuesEqual(a, b) {
+    if (Object.is(a, b)) return true;
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every((key) => Object.is(a[key], b[key]));
+}
+
+function snapshotSettings(settings) {
+    return Object.fromEntries(Object.entries(settings).map(([key, value]) => [
+        key, value && typeof value === 'object' ? { ...value } : value,
+    ]));
+}
+
+const captureSessions = new WeakMap();
+
+export function cancelSettingsCapture(settingsManager) {
+    const cancel = captureSessions.get(settingsManager);
+    if (cancel) cancel();
+}
+
 /**
  * Settings manager class
  */
@@ -265,6 +299,17 @@ export class SettingsManager {
         this.settings = applyCursorSettingDefaults({ ...DEFAULT_CONFIG });
         this.STORAGE_KEY = 'serenityBlocksSettings';
         this.didLoadFromStorage = false;
+        this.dirtyKeys = new Set();
+        this.saveTimer = null;
+        this.lastSavedJSON = null;
+        this.lastSavedSettings = null;
+        this.normalizedBindings = Object.fromEntries(
+            Object.entries(BINDING_SANITIZERS).map(([key, sanitize]) => {
+                this.settings[key] = sanitize(this.settings[key]);
+                return [key, this.settings[key]];
+            }),
+        );
+        this.uiAbortController = null;
     }
 
     /**
@@ -281,59 +326,35 @@ export class SettingsManager {
      * @param {boolean} emit - Whether to emit change event
      */
     update(newSettings, emit = true) {
-        const oldSettings = { ...this.settings };
         const previousSettings = this.settings;
-        this.settings = { ...this.settings, ...newSettings };
+        const nextSettings = { ...previousSettings, ...newSettings };
+        const touchedKeys = new Set(Object.keys(newSettings));
 
-        if (newSettings.keyBindings) {
-            this.settings.keyBindings = sanitizePlayer1KeyBindings({
-                ...previousSettings.keyBindings,
-                ...newSettings.keyBindings,
-            });
-        } else {
-            this.settings.keyBindings = sanitizePlayer1KeyBindings(this.settings.keyBindings);
-        }
-
-        if (newSettings.player2KeyBindings) {
-            this.settings.player2KeyBindings = sanitizePlayer2KeyBindings({
-                ...previousSettings.player2KeyBindings,
-                ...newSettings.player2KeyBindings,
-            });
-        } else {
-            this.settings.player2KeyBindings = sanitizePlayer2KeyBindings(this.settings.player2KeyBindings);
-        }
-
-        if (newSettings.serenityKeyBindings) {
-            this.settings.serenityKeyBindings = sanitizeSerenityKeyBindings({
-                ...previousSettings.serenityKeyBindings,
-                ...newSettings.serenityKeyBindings,
-            });
-        } else {
-            this.settings.serenityKeyBindings = sanitizeSerenityKeyBindings(this.settings.serenityKeyBindings);
-        }
-
-        if (newSettings.serenityGamepadBindings) {
-            this.settings.serenityGamepadBindings = sanitizeSerenityGamepadBindings({
-                ...previousSettings.serenityGamepadBindings,
-                ...newSettings.serenityGamepadBindings,
-            });
-        } else {
-            this.settings.serenityGamepadBindings = sanitizeSerenityGamepadBindings(this.settings.serenityGamepadBindings);
-        }
-
-        this.settings = applyCursorSettingDefaults(this.settings);
-
-        // Emit settings changed event
-        if (emit && typeof window !== 'undefined') {
-            const changes = this.getChanges(oldSettings, this.settings);
-            if (Object.keys(changes).length > 0) {
-                window.dispatchEvent(
-                    new CustomEvent('settingsChanged', {
-                        detail: changes,
-                    }),
-                );
+        Object.entries(BINDING_SANITIZERS).forEach(([key, sanitize]) => {
+            if (Object.prototype.hasOwnProperty.call(newSettings, key)
+                || previousSettings[key] !== this.normalizedBindings[key]) {
+                nextSettings[key] = sanitize({ ...previousSettings[key], ...newSettings[key] });
+                this.normalizedBindings[key] = nextSettings[key];
+                touchedKeys.add(key);
             }
+        });
+        if (CURSOR_SETTING_KEYS.some((key) => touchedKeys.has(key))) {
+            Object.assign(nextSettings, normalizeCursorSettings(nextSettings));
+            CURSOR_SETTING_KEYS.forEach((key) => touchedKeys.add(key));
         }
+
+        const changes = {};
+        touchedKeys.forEach((key) => {
+            if (!settingValuesEqual(previousSettings[key], nextSettings[key])) {
+                changes[key] = nextSettings[key];
+                this.dirtyKeys.add(key);
+            }
+        });
+        this.settings = nextSettings;
+        if (emit && typeof window !== 'undefined' && Object.keys(changes).length > 0) {
+            window.dispatchEvent(new CustomEvent('settingsChanged', { detail: changes }));
+        }
+        return changes;
     }
 
     /**
@@ -344,11 +365,11 @@ export class SettingsManager {
      */
     getChanges(oldSettings, newSettings) {
         const changes = {};
-        for (const key in newSettings) {
-            if (JSON.stringify(oldSettings[key]) !== JSON.stringify(newSettings[key])) {
+        Object.keys(newSettings).forEach((key) => {
+            if (!settingValuesEqual(oldSettings[key], newSettings[key])) {
                 changes[key] = newSettings[key];
             }
-        }
+        });
         return changes;
     }
 
@@ -356,17 +377,59 @@ export class SettingsManager {
      * Saves settings to localStorage
      */
     save({ emitEvent = true } = {}) {
+        if (this.saveTimer !== null) {
+            clearTimeout(this.saveTimer);
+            this.saveTimer = null;
+        }
         try {
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.settings));
+            const json = JSON.stringify(this.settings);
+            if (json === this.lastSavedJSON) {
+                this.dirtyKeys.clear();
+                return false;
+            }
+            const dirtyKeys = this.lastSavedSettings
+                ? Object.keys(this.getChanges(this.lastSavedSettings, this.settings))
+                : Object.keys(this.settings);
+            localStorage.setItem(this.STORAGE_KEY, json);
+            this.lastSavedJSON = json;
+            this.lastSavedSettings = snapshotSettings(this.settings);
+            this.dirtyKeys.clear();
             if (emitEvent) {
                 eventBus.emit(EVENTS.SETTINGS_CHANGED, {
                     settings: { ...this.settings },
+                    dirtyKeys,
+                    categories: [...new Set(dirtyKeys.map((key) => (
+                        key.endsWith('Bindings') ? 'keybinds' : 'settings'
+                    )))],
                     source: 'local',
                 });
             }
+            return true;
         } catch (error) {
             console.error('Failed to save settings:', error);
+            return false;
         }
+    }
+
+    /** Apply controls live; persist one final value after the drag settles. */
+    scheduleSave(delay = 180) {
+        if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+        this.saveTimer = setTimeout(() => {
+            this.saveTimer = null;
+            this.save();
+        }, delay);
+    }
+
+    flushPendingSave() {
+        if (this.saveTimer !== null || this.dirtyKeys.size > 0) return this.save();
+        return false;
+    }
+
+    dispose() {
+        cancelSettingsCapture(this);
+        this.flushPendingSave();
+        this.uiAbortController?.abort();
+        this.uiAbortController = null;
     }
 
     /**
@@ -379,6 +442,8 @@ export class SettingsManager {
             const saved = localStorage.getItem(this.STORAGE_KEY);
             if (saved) {
                 const loaded = JSON.parse(saved);
+                this.lastSavedJSON = saved;
+                this.lastSavedSettings = { ...loaded };
                 const loadedKeyBindings = loaded.keyBindings || {};
                 const loadedP2KeyBindings = loaded.player2KeyBindings || {};
                 const loadedSerenityKeyBindings = loaded.serenityKeyBindings || {};
@@ -418,6 +483,9 @@ export class SettingsManager {
                 };
                 this.settings = applyCursorSettingDefaults(this.settings);
                 this.didLoadFromStorage = true;
+                this.normalizedBindings = Object.fromEntries(
+                    Object.keys(BINDING_SANITIZERS).map((key) => [key, this.settings[key]]),
+                );
 
                 const keyBindingsChanged = JSON.stringify(loadedKeyBindings) !== JSON.stringify(sanitizedKeyBindings);
                 const player2BindingsChanged = JSON.stringify(loadedP2KeyBindings) !== JSON.stringify(sanitizedP2KeyBindings);
@@ -451,6 +519,8 @@ export class SettingsManager {
         } catch (error) {
             console.error('Failed to load settings:', error);
         }
+        if (this.didLoadFromStorage) this.lastSavedSettings = snapshotSettings(this.settings);
+        this.dirtyKeys.clear();
         return this.settings;
     }
 
@@ -643,69 +713,70 @@ function getGamepadBindingContext(elementId) {
  * @param {Function} updateCallback - Callback to update controls display
  */
 export function handleGamepadBinding(element, settingsManager, updateCallback) {
-    const elementId = element.id;
-    let settings = settingsManager.get();
-
-    const { action, bindingsKey, defaultBindings } = getGamepadBindingContext(elementId);
-    let currentBindings = settings[bindingsKey];
-
-    if (!currentBindings) {
-        currentBindings = { ...defaultBindings };
-        settingsManager.update({ [bindingsKey]: currentBindings }, false);
-        settingsManager.save();
-        settings = settingsManager.get();
-    }
-
-    // Listen for gamepad button press
-    const pollInterval = setInterval(() => {
-        const gamepads = navigator.getGamepads();
-        for (let i = 0; i < gamepads.length; i++) {
-            const gamepad = gamepads[i];
+    cancelSettingsCapture(settingsManager);
+    const { action, bindingsKey, defaultBindings } = getGamepadBindingContext(element.id);
+    const currentBindings = settingsManager.get()[bindingsKey] || defaultBindings;
+    let pollInterval = null;
+    let timeout = null;
+    const cancel = () => {
+        clearInterval(pollInterval);
+        clearTimeout(timeout);
+        element.classList.remove('listening');
+        const button = (settingsManager.get()[bindingsKey] || defaultBindings)[action];
+        element.textContent = GAMEPAD_BUTTON_NAMES[button] || `Button ${button}`;
+        if (captureSessions.get(settingsManager) === cancel) captureSessions.delete(settingsManager);
+    };
+    captureSessions.set(settingsManager, cancel);
+    element.classList.add('listening');
+    element.textContent = 'Press a button...';
+    pollInterval = setInterval(() => {
+        const gamepads = navigator.getGamepads?.() || [];
+        for (const gamepad of gamepads) {
             if (!gamepad) continue;
-
-            // Check all buttons
-            for (let btnIndex = 0; btnIndex < gamepad.buttons.length; btnIndex++) {
-                const button = gamepad.buttons[btnIndex];
-                if (button.pressed || button.value > 0.3) {
-                    // Check if button is already used for another action
-                    if (Object.values(currentBindings).includes(btnIndex) && currentBindings[action] !== btnIndex) {
-                        // Revert to original button
-                        const originalButton = currentBindings[action];
-                        element.textContent = GAMEPAD_BUTTON_NAMES[originalButton] || `Button ${originalButton}`;
-                        element.classList.remove('listening');
-                        clearInterval(pollInterval);
-                        return;
-                    }
-
-                    // Set new button binding
-                    const newBindings = {
-                        ...settings[bindingsKey],
-                        [action]: btnIndex,
-                    };
-
-                    settingsManager.update({ [bindingsKey]: newBindings });
-                    element.textContent = GAMEPAD_BUTTON_NAMES[btnIndex] || `Button ${btnIndex}`;
-                    element.classList.remove('listening');
-                    clearInterval(pollInterval);
-
+            for (let index = 0; index < gamepad.buttons.length; index++) {
+                const button = gamepad.buttons[index];
+                if (!(button.pressed || button.value > 0.3)) continue;
+                if (!Object.values(currentBindings).includes(index) || currentBindings[action] === index) {
+                    settingsManager.update({
+                        [bindingsKey]: {
+                            ...(settingsManager.get()[bindingsKey] || defaultBindings), [action]: index,
+                        },
+                    });
                     settingsManager.save();
                     if (updateCallback) updateCallback();
-                    return;
                 }
+                cancel();
+                return;
             }
         }
-    }, 50); // Poll at 20 FPS
+    }, 50);
+    timeout = setTimeout(cancel, 10000);
+    return cancel;
+}
 
-    // Timeout after 10 seconds
-    setTimeout(() => {
-        if (element.classList.contains('listening')) {
-            const latestBindings = settingsManager.get()[bindingsKey] || currentBindings;
-            const fallbackButton = latestBindings[action];
-            element.textContent = GAMEPAD_BUTTON_NAMES[fallbackButton] || `Button ${fallbackButton}`;
-            element.classList.remove('listening');
-            clearInterval(pollInterval);
-        }
-    }, 10000);
+export function startKeyboardBindingCapture(element, settingsManager, updateCallback) {
+    cancelSettingsCapture(settingsManager);
+    const { action, bindingsKey, defaultBindings } = getKeyboardBindingContext(element.id);
+    let timeout = null;
+    let onKeydown = null;
+    const cancel = () => {
+        document.removeEventListener('keydown', onKeydown);
+        clearTimeout(timeout);
+        element.classList.remove('listening');
+        element.textContent = (settingsManager.get()[bindingsKey] || defaultBindings)[action];
+        if (captureSessions.get(settingsManager) === cancel) captureSessions.delete(settingsManager);
+    };
+    onKeydown = (event) => {
+        if (event.key === 'Escape') event.preventDefault();
+        else handleKeybinding(event, element, settingsManager, updateCallback);
+        cancel();
+    };
+    captureSessions.set(settingsManager, cancel);
+    element.classList.add('listening');
+    element.textContent = 'Press a key...';
+    document.addEventListener('keydown', onKeydown);
+    timeout = setTimeout(cancel, 10000);
+    return cancel;
 }
 
 /**
@@ -838,6 +909,27 @@ export function setupControlsSubTabs() {
  * @param {Object} callbacks - Callback functions
  */
 export function initializeSettingsUI(settingsManager, callbacks) {
+    cancelSettingsCapture(settingsManager);
+    settingsManager.uiAbortController?.abort();
+    const controller = new AbortController();
+    settingsManager.uiAbortController = controller;
+    const listen = (target, type, handler, options = {}) => {
+        target.addEventListener(type, handler, { ...options, signal: controller.signal });
+    };
+    const finishInteraction = () => {
+        cancelSettingsCapture(settingsManager);
+        settingsManager.flushPendingSave?.();
+    };
+    if (typeof window !== 'undefined') {
+        listen(window, 'modalHidden', (event) => {
+            if (event.detail?.modalName === 'settings') finishInteraction();
+        });
+        listen(window, 'pagehide', finishInteraction);
+    }
+    const persistSlider = () => {
+        if (settingsManager.scheduleSave) settingsManager.scheduleSave();
+        else settingsManager.save();
+    };
     let settings = settingsManager.get();
 
     let bindingsUpdated = false;
@@ -860,7 +952,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     const detectControllersBtn = document.getElementById('detect-controllers');
     if (detectControllersBtn) {
-        detectControllersBtn.addEventListener('click', () => {
+        listen(detectControllersBtn, 'click', () => {
             if (callbacks && typeof callbacks.onGamepadRescan === 'function') {
                 callbacks.onGamepadRescan();
             }
@@ -869,7 +961,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     const resetBindingsBtn = document.getElementById('reset-all-bindings');
     if (resetBindingsBtn) {
-        resetBindingsBtn.addEventListener('click', () => {
+        listen(resetBindingsBtn, 'click', () => {
             if (callbacks && typeof callbacks.onResetGamepadBindings === 'function') {
                 callbacks.onResetGamepadBindings();
             }
@@ -906,7 +998,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     };
 
     document.querySelectorAll('[data-reset-target]').forEach((button) => {
-        button.addEventListener('click', () => {
+        listen(button, 'click', () => {
             const target = button.getAttribute('data-reset-target');
             const handler = bindingResetHandlers[target];
             if (handler) {
@@ -919,7 +1011,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Change Game Mode button - returns to start modal
     const changeGameModeBtn = document.getElementById('change-game-mode-btn');
     if (changeGameModeBtn) {
-        changeGameModeBtn.addEventListener('click', () => {
+        listen(changeGameModeBtn, 'click', () => {
             console.log('[Settings] Change Game Mode button clicked');
             if (callbacks && callbacks.onChangeGameMode) {
                 callbacks.onChangeGameMode();
@@ -936,12 +1028,12 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         slider.value = Number.isFinite(initialValue) ? initialValue : fallbackValue;
         value.textContent = slider.value;
 
-        slider.addEventListener('input', (event) => {
+        listen(slider, 'input', (event) => {
             const parsedValue = parseInt(event.target.value, 10);
             const numericValue = Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
             settingsManager.update({ [settingKey]: numericValue });
             value.textContent = String(numericValue);
-            settingsManager.save();
+            persistSlider();
         });
     };
 
@@ -956,14 +1048,11 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         musicVolumeSlider.value = settings.musicVolume * 100;
         musicVolumeValue.textContent = Math.round(settings.musicVolume * 100);
 
-        musicVolumeSlider.addEventListener('input', (e) => {
-            const volume = parseInt(e.target.value) / 100;
+        listen(musicVolumeSlider, 'input', (e) => {
+            const volume = parseInt(e.target.value, 10) / 100;
             settingsManager.update({ musicVolume: volume });
-            if (callbacks.onMusicVolumeChange) {
-                callbacks.onMusicVolumeChange(volume);
-            }
             musicVolumeValue.textContent = e.target.value;
-            settingsManager.save();
+            persistSlider();
         });
     }
 
@@ -974,14 +1063,33 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         sfxVolumeSlider.value = settings.sfxVolume * 100;
         sfxVolumeValue.textContent = Math.round(settings.sfxVolume * 100);
 
-        sfxVolumeSlider.addEventListener('input', (e) => {
-            const volume = parseInt(e.target.value) / 100;
+        listen(sfxVolumeSlider, 'input', (e) => {
+            const volume = parseInt(e.target.value, 10) / 100;
             settingsManager.update({ sfxVolume: volume });
-            if (callbacks.onSfxVolumeChange) {
-                callbacks.onSfxVolumeChange(volume);
-            }
             sfxVolumeValue.textContent = e.target.value;
-            settingsManager.save();
+            persistSlider();
+        });
+    }
+
+    const syncVolumeControls = () => {
+        const latest = settingsManager.get();
+        [[musicVolumeSlider, musicVolumeValue, latest.musicVolume],
+            [sfxVolumeSlider, sfxVolumeValue, latest.sfxVolume]].forEach(([slider, value, volume]) => {
+            const percent = String(Math.round(volume * 100));
+            if (slider && String(slider.value) !== percent) slider.value = percent;
+            if (value && value.textContent !== percent) value.textContent = percent;
+        });
+    };
+    if (typeof window !== 'undefined') {
+        listen(window, 'modalShown', (event) => {
+            if (event.detail?.modalName === 'settings') syncVolumeControls();
+        });
+        listen(window, 'settingsChanged', (event) => {
+            const changes = event.detail || {};
+            if ((changes.musicVolume !== undefined || changes.sfxVolume !== undefined)
+                && document.getElementById('settings-modal')?.classList.contains('visible')) {
+                syncVolumeControls();
+            }
         });
     }
 
@@ -992,11 +1100,11 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         randomThemeIntervalSlider.value = settings.randomThemeInterval;
         randomThemeIntervalValue.textContent = settings.randomThemeInterval;
 
-        randomThemeIntervalSlider.addEventListener('input', (e) => {
-            const interval = parseInt(e.target.value);
+        listen(randomThemeIntervalSlider, 'input', (e) => {
+            const interval = parseInt(e.target.value, 10);
             settingsManager.update({ randomThemeInterval: interval });
             randomThemeIntervalValue.textContent = e.target.value;
-            settingsManager.save();
+            persistSlider();
         });
     }
 
@@ -1016,7 +1124,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
         handleModeChange(settings.backgroundMode);
 
-        bgModeSelect.addEventListener('change', (e) => {
+        listen(bgModeSelect, 'change', (e) => {
             const mode = e.target.value;
             settingsManager.update({ backgroundMode: mode });
 
@@ -1030,7 +1138,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
         // Sync UI with external settings changes
         if (typeof window !== 'undefined') {
-            window.addEventListener('settingsChanged', (e) => {
+            listen(window, 'settingsChanged', (e) => {
                 const changes = e.detail;
                 const currentSettings = settingsManager.get();
                 if (changes.backgroundMode !== undefined) {
@@ -1046,7 +1154,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (themeLinkedSfxSelect) {
         themeLinkedSfxSelect.checked = !!(settings.themeLinkedSfx ?? false);
 
-        themeLinkedSfxSelect.addEventListener('change', (e) => {
+        listen(themeLinkedSfxSelect, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ themeLinkedSfx: enabled });
             settingsManager.save();
@@ -1064,7 +1172,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (pieceLockRippleSelect) {
         pieceLockRippleSelect.checked = !!settings.pieceLockRipple;
 
-        pieceLockRippleSelect.addEventListener('change', (e) => {
+        listen(pieceLockRippleSelect, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ pieceLockRipple: enabled });
             settingsManager.save();
@@ -1076,7 +1184,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (comboPopupSelect) {
         comboPopupSelect.checked = !!settings.comboPopupEffect;
 
-        comboPopupSelect.addEventListener('change', (e) => {
+        listen(comboPopupSelect, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ comboPopupEffect: enabled });
             settingsManager.save();
@@ -1088,7 +1196,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (lineClearEffectsSelect) {
         lineClearEffectsSelect.checked = !!settings.lineClearEffects;
 
-        lineClearEffectsSelect.addEventListener('change', (e) => {
+        listen(lineClearEffectsSelect, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ lineClearEffects: enabled });
             settingsManager.save();
@@ -1100,7 +1208,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (backgroundComboEffectsSelect) {
         backgroundComboEffectsSelect.checked = !!settings.backgroundComboEffects;
 
-        backgroundComboEffectsSelect.addEventListener('change', (e) => {
+        listen(backgroundComboEffectsSelect, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ backgroundComboEffects: enabled });
             settingsManager.save();
@@ -1112,7 +1220,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (themeBasedTetrominosSelect) {
         themeBasedTetrominosSelect.checked = !!(settings.themeBasedTetrominos ?? true);
 
-        themeBasedTetrominosSelect.addEventListener('change', (e) => {
+        listen(themeBasedTetrominosSelect, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ themeBasedTetrominos: enabled });
             settingsManager.save();
@@ -1125,7 +1233,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (sfxSetSelect) {
         sfxSetSelect.value = settings.soundSet || 'Zen';
 
-        sfxSetSelect.addEventListener('change', (e) => {
+        listen(sfxSetSelect, 'change', (e) => {
             const soundSet = e.target.value;
             settingsManager.update({ soundSet });
 
@@ -1142,7 +1250,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (themeLinkedSelect) {
         themeLinkedSelect.checked = !!settings.themeLinkedMode;
 
-        themeLinkedSelect.addEventListener('change', (e) => {
+        listen(themeLinkedSelect, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ themeLinkedMode: enabled });
 
@@ -1159,7 +1267,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (autoThemeChangeSelect) {
         autoThemeChangeSelect.checked = !!settings.autoThemeChange;
 
-        autoThemeChangeSelect.addEventListener('change', (e) => {
+        listen(autoThemeChangeSelect, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ autoThemeChange: enabled });
 
@@ -1176,7 +1284,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (gamepadEnabledSelect) {
         gamepadEnabledSelect.value = settings.gamepadEnabled ? 'true' : 'false';
 
-        gamepadEnabledSelect.addEventListener('change', (e) => {
+        listen(gamepadEnabledSelect, 'change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ gamepadEnabled: enabled });
 
@@ -1196,7 +1304,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (displayModeSelect) {
         displayModeSelect.value = settings.displayMode || 'windowed';
 
-        displayModeSelect.addEventListener('change', (e) => {
+        listen(displayModeSelect, 'change', (e) => {
             const displayMode = e.target.value;
             settingsManager.update({ displayMode });
             settingsManager.save();
@@ -1213,7 +1321,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (graphicsQualitySelect) {
         graphicsQualitySelect.value = settings.effectQuality || 'High';
 
-        graphicsQualitySelect.addEventListener('change', (e) => {
+        listen(graphicsQualitySelect, 'change', (e) => {
             const quality = e.target.value;
             settingsManager.update({ effectQuality: quality });
             settingsManager.save();
@@ -1234,8 +1342,8 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (fpsTargetSelect) {
         fpsTargetSelect.value = String(settings.targetFrameRate || 60);
 
-        fpsTargetSelect.addEventListener('change', (e) => {
-            const fps = parseInt(e.target.value);
+        listen(fpsTargetSelect, 'change', (e) => {
+            const fps = parseInt(e.target.value, 10);
             settingsManager.update({ targetFrameRate: fps });
             settingsManager.save();
 
@@ -1252,7 +1360,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (vsyncToggle) {
         vsyncToggle.checked = (settings.vsyncEnabled ?? true);
 
-        vsyncToggle.addEventListener('change', (e) => {
+        listen(vsyncToggle, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ vsyncEnabled: enabled });
             settingsManager.save();
@@ -1270,7 +1378,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (antialiasToggle) {
         antialiasToggle.checked = (settings.enableAntialiasing ?? true);
 
-        antialiasToggle.addEventListener('change', (e) => {
+        listen(antialiasToggle, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ enableAntialiasing: enabled });
             settingsManager.save();
@@ -1289,7 +1397,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (showFPSCounter) {
         showFPSCounter.checked = !!settings.showFPSCounter;
 
-        showFPSCounter.addEventListener('change', (e) => {
+        listen(showFPSCounter, 'change', (e) => {
             const show = e.target.checked;
             settingsManager.update({ showFPSCounter: show });
             settingsManager.save();
@@ -1319,7 +1427,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         customCursorEnabledSelect.checked = (settings.customCursorEnabled ?? true);
         syncCustomCursorControlAvailability(customCursorEnabledSelect.checked);
 
-        customCursorEnabledSelect.addEventListener('change', (e) => {
+        listen(customCursorEnabledSelect, 'change', (e) => {
             const enabled = e.target.checked;
             settingsManager.update({ customCursorEnabled: enabled });
             settingsManager.save();
@@ -1329,7 +1437,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     if (customCursorIntensitySelect) {
         customCursorIntensitySelect.value = settings.customCursorIntensity || 'standard';
-        customCursorIntensitySelect.addEventListener('change', (e) => {
+        listen(customCursorIntensitySelect, 'change', (e) => {
             settingsManager.update({ customCursorIntensity: e.target.value });
             settingsManager.save();
         });
@@ -1337,7 +1445,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     if (customCursorVisibilitySelect) {
         customCursorVisibilitySelect.value = settings.customCursorVisibilityPreset || 'standard';
-        customCursorVisibilitySelect.addEventListener('change', (e) => {
+        listen(customCursorVisibilitySelect, 'change', (e) => {
             settingsManager.update({ customCursorVisibilityPreset: e.target.value });
             settingsManager.save();
         });
@@ -1345,7 +1453,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     if (customCursorMotionSelect) {
         customCursorMotionSelect.value = settings.customCursorReducedMotion || 'system';
-        customCursorMotionSelect.addEventListener('change', (e) => {
+        listen(customCursorMotionSelect, 'change', (e) => {
             settingsManager.update({ customCursorReducedMotion: e.target.value });
             settingsManager.save();
         });
@@ -1372,13 +1480,13 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         renderQualitySlider.value = currentPercent;
         renderQualityValue.textContent = `${currentPercent}% (${getRenderQualityLabel(currentPercent)})`;
 
-        renderQualitySlider.addEventListener('input', (e) => {
-            const percent = parseInt(e.target.value);
+        listen(renderQualitySlider, 'input', (e) => {
+            const percent = parseInt(e.target.value, 10);
             const scale = percent / 100;
             renderQualityValue.textContent = `${percent}% (${getRenderQualityLabel(percent)})`;
 
             settingsManager.update({ renderScale: scale });
-            settingsManager.save();
+            persistSlider();
 
             console.log(`[Settings] Render quality changed to: ${percent}% (${getRenderQualityLabel(percent)})`);
 
@@ -1394,7 +1502,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (backgroundTabBehaviorSelect) {
         backgroundTabBehaviorSelect.value = settings.backgroundTabBehavior || 'reduce';
 
-        backgroundTabBehaviorSelect.addEventListener('change', (e) => {
+        listen(backgroundTabBehaviorSelect, 'change', (e) => {
             const behavior = e.target.value;
             settingsManager.update({ backgroundTabBehavior: behavior });
             settingsManager.save();
@@ -1562,7 +1670,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
                 }
             });
 
-            openDevToolsBtn.addEventListener('click', async () => {
+            listen(openDevToolsBtn, 'click', async () => {
                 clearPendingDevToolsRequest();
                 openDevToolsBtn.disabled = true;
                 openDevToolsBtn.textContent = usesExternalDebugger ? 'Opening Debugger...' : 'Opening...';
@@ -1645,8 +1753,8 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         gamepadDeadzoneSlider.value = Math.round(settings.gamepadDeadzone * 100);
         gamepadDeadzoneValue.textContent = Math.round(settings.gamepadDeadzone * 100);
 
-        gamepadDeadzoneSlider.addEventListener('input', (e) => {
-            const deadzone = parseInt(e.target.value) / 100;
+        listen(gamepadDeadzoneSlider, 'input', (e) => {
+            const deadzone = parseInt(e.target.value, 10) / 100;
             settingsManager.update({ gamepadDeadzone: deadzone });
 
             if (callbacks.onGamepadDeadzoneChange) {
@@ -1654,7 +1762,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             }
 
             gamepadDeadzoneValue.textContent = e.target.value;
-            settingsManager.save();
+            persistSlider();
         });
     }
 
@@ -1668,59 +1776,32 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             input.textContent = currentBindings[context.action];
         }
 
-        input.addEventListener('click', () => {
-            input.classList.add('listening');
-            input.textContent = 'Press a key...';
-
-            // Add temporary keydown listener
-            const keydownHandler = (event) => {
-                if (input.classList.contains('listening')) {
-                    handleKeybinding(event, input, settingsManager, () => {
-                        const refreshedSettings = settingsManager.get();
-                        updateControlsDisplay(refreshedSettings);
-                        updateSerenityControlsDisplay(refreshedSettings);
-                    });
-                    document.removeEventListener('keydown', keydownHandler);
-                }
-            };
-
-            document.addEventListener('keydown', keydownHandler);
+        listen(input, 'click', () => {
+            startKeyboardBindingCapture(input, settingsManager, () => {
+                const refreshedSettings = settingsManager.get();
+                updateControlsDisplay(refreshedSettings);
+                updateSerenityControlsDisplay(refreshedSettings);
+            });
         });
     });
 
-    // Initialize gamepad bindings listeners
     const gamepadInputs = document.querySelectorAll('.gamepad-input');
     gamepadInputs.forEach((input) => {
         const context = getGamepadBindingContext(input.id);
         const currentBindings = settings[context.bindingsKey] || context.defaultBindings;
-
-        if (currentBindings && currentBindings[context.action] !== undefined) {
-            const buttonIndex = currentBindings[context.action];
-            input.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
-        }
-
-        input.addEventListener('click', () => {
-            // Clear other listening inputs
-            document.querySelectorAll('.gamepad-input.listening').forEach((el) => {
-                const otherContext = getGamepadBindingContext(el.id);
-                const latestSettings = settingsManager.get();
-                const otherBindings = latestSettings[otherContext.bindingsKey] || otherContext.defaultBindings;
-                const otherButtonIndex = otherBindings?.[otherContext.action];
-                if (otherButtonIndex !== undefined) {
-                    el.textContent = GAMEPAD_BUTTON_NAMES[otherButtonIndex] || `Button ${otherButtonIndex}`;
-                }
-                el.classList.remove('listening');
-            });
-
-            input.classList.add('listening');
-            input.textContent = 'Press a button...';
-
+        const button = currentBindings[context.action];
+        input.textContent = GAMEPAD_BUTTON_NAMES[button] || `Button ${button}`;
+        listen(input, 'click', () => {
             handleGamepadBinding(input, settingsManager, () => {
                 const refreshedSettings = settingsManager.get();
                 updateGamepadControlsDisplay(refreshedSettings);
                 updateSerenityControlsDisplay(refreshedSettings);
             });
         });
+    });
+
+    document.querySelectorAll('#settings-modal input[type="range"]').forEach((slider) => {
+        listen(slider, 'change', () => settingsManager.flushPendingSave?.());
     });
 
     // Update controls display
