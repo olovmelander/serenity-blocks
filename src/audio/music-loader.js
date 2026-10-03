@@ -8,12 +8,23 @@
  * @type {Array<Object>}
  */
 let availableSongs = [];
+let pendingSongsLoad = null;
 
 /**
  * Loads songs from the songs.json file
  * @returns {Promise<Array<Object>>} Array of song objects
  */
-export async function loadSongs() {
+export function loadSongs() {
+    if (pendingSongsLoad) return pendingSongsLoad;
+
+    const pending = loadSongsManifest().finally(() => {
+        if (pendingSongsLoad === pending) pendingSongsLoad = null;
+    });
+    pendingSongsLoad = pending;
+    return pending;
+}
+
+async function loadSongsManifest() {
     try {
         // Relative path (matches Vite `base: './'`) so the manifest resolves under BOTH
         // http:// dev AND the packaged Electron file:// origin. A leading-slash '/assets/…'

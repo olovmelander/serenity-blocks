@@ -135,24 +135,17 @@ export function calculateTopRow(gameState) {
     }
 
     const board = gameState.board || gameState.boardGrid;
-    let topRow = board.length; // Start with max (bottom)
-
     // Scan from top to bottom
     for (let r = 0; r < board.length; r++) {
         for (let c = 0; c < board[r].length; c++) {
             if (board[r][c] !== null) {
-                topRow = Math.min(topRow, r);
-                break; // Found block in this row, move to next row
+                return r; // Later rows cannot be higher than this first occupied row.
             }
         }
     }
 
-    // If no blocks found, return bottom
-    if (topRow === board.length) {
-        return board.length - 1;
-    }
-
-    return topRow;
+    // Preserve the bottom-row convention for empty boards (including an empty array).
+    return board.length - 1;
 }
 
 /**

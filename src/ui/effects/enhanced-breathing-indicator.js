@@ -675,7 +675,7 @@ export class EnhancedBreathingIndicator {
         // Update text if enabled
         if (this.showText) {
             // Center text ALWAYS shows phase text (Breathe In/Out/Hold)
-            this.textPrompt.textContent = phaseText;
+            this._writeText(this.textPrompt, phaseText);
 
             // Floating text shows custom prompt (handled in setPrompt)
             // No drift animation needed for fixed position
@@ -714,17 +714,43 @@ export class EnhancedBreathingIndicator {
         const scale = 0.3 + intensity * 0.7;
 
         // Apply transforms
-        this.outerRing.style.transform = `translate(-50%, -50%) scale(${scale * 1.3})`;
-        this.outerRing.style.opacity = intensity * 0.3;
+        this._writeStyle(this.outerRing, 'transform', `translate(-50%, -50%) scale(${scale * 1.3})`);
+        this._writeStyle(this.outerRing, 'opacity', intensity * 0.3);
 
-        this.middleRing.style.transform = `translate(-50%, -50%) scale(${scale})`;
-        this.middleRing.style.opacity = intensity * 0.5;
+        this._writeStyle(this.middleRing, 'transform', `translate(-50%, -50%) scale(${scale})`);
+        this._writeStyle(this.middleRing, 'opacity', intensity * 0.5);
 
-        this.innerRing.style.transform = `translate(-50%, -50%) scale(${scale * 0.7})`;
-        this.innerRing.style.opacity = intensity * 0.7;
+        this._writeStyle(this.innerRing, 'transform', `translate(-50%, -50%) scale(${scale * 0.7})`);
+        this._writeStyle(this.innerRing, 'opacity', intensity * 0.7);
 
-        this.coreCircle.style.transform = `translate(-50%, -50%) scale(${scale * 0.5})`;
-        this.coreCircle.style.opacity = intensity;
+        this._writeStyle(this.coreCircle, 'transform', `translate(-50%, -50%) scale(${scale * 0.5})`);
+        this._writeStyle(this.coreCircle, 'opacity', intensity);
+    }
+
+    _presentationFor(node) {
+        if (!this._presentationCache) this._presentationCache = new WeakMap();
+        let values = this._presentationCache.get(node);
+        if (!values) {
+            values = Object.create(null);
+            this._presentationCache.set(node, values);
+        }
+        return values;
+    }
+
+    _writeStyle(node, property, value) {
+        const values = this._presentationFor(node);
+        const text = String(value);
+        if (values[property] === text) return;
+        if (property.startsWith('--')) node.style.setProperty(property, text);
+        else node.style[property] = text;
+        values[property] = text;
+    }
+
+    _writeText(node, text) {
+        const values = this._presentationFor(node);
+        if (values.text === text) return;
+        node.textContent = text;
+        values.text = text;
     }
 
     /**
@@ -741,12 +767,10 @@ export class EnhancedBreathingIndicator {
      */
     _updateColors(progress) {
         const { color } = this.technique;
-        const baseColor = `${color.r}, ${color.g}, ${color.b}`;
-
         // Update CSS custom properties for dynamic colors
-        this.indicator.style.setProperty('--breath-color-r', color.r);
-        this.indicator.style.setProperty('--breath-color-g', color.g);
-        this.indicator.style.setProperty('--breath-color-b', color.b);
+        this._writeStyle(this.indicator, '--breath-color-r', color.r);
+        this._writeStyle(this.indicator, '--breath-color-g', color.g);
+        this._writeStyle(this.indicator, '--breath-color-b', color.b);
 
         // Adjust brightness based on phase
         let brightness = 1.0;
@@ -756,7 +780,7 @@ export class EnhancedBreathingIndicator {
             brightness = 1.0 - progress * 0.3;
         }
 
-        this.indicator.style.setProperty('--breath-brightness', brightness);
+        this._writeStyle(this.indicator, '--breath-brightness', brightness);
     }
 
     /**
@@ -982,8 +1006,9 @@ export class EnhancedBreathingIndicator {
      */
     showProgress(show) {
         if (this.progressContainer) {
-            this.progressContainer.style.display = show ? 'flex' : 'none';
+            this._writeStyle(this.progressContainer, 'display', show ? 'flex' : 'none');
             this._progressState.visible = show;
+            if (show && this._latestProgress) this._renderProgress(this._latestProgress);
         }
     }
 
@@ -1000,14 +1025,19 @@ export class EnhancedBreathingIndicator {
      */
     updateProgress(data) {
         if (!this.progressContainer) return;
+        this._latestProgress = { ...this._latestProgress, ...data };
+        if (this._progressState.visible === false) return;
+        this._renderProgress(this._latestProgress);
+    }
 
+    _renderProgress(data) {
         // Update round indicator
         if (data.round !== undefined && data.totalRounds !== undefined) {
             if (data.round === 0) {
                 // Don't show text for round 0 phases (grounding/integration) - existing floating text handles it
-                this.roundIndicator.textContent = '';
+                this._writeText(this.roundIndicator, '');
             } else {
-                this.roundIndicator.textContent = `ROUND ${data.round}/${data.totalRounds}`;
+                this._writeText(this.roundIndicator, `ROUND ${data.round}/${data.totalRounds}`);
             }
         }
 
@@ -1023,13 +1053,17 @@ export class EnhancedBreathingIndicator {
 
         // Update progress bar
         if (data.sessionProgress !== undefined) {
-            this.progressBarFill.style.width = `${Math.min(100, data.sessionProgress * 100)}%`;
+            this._writeStyle(this.progressBarFill, 'width', `${Math.min(100, data.sessionProgress * 100)}%`);
         }
 
         // Update progress bar color to match session theme
         if (data.sessionColor) {
             const { r, g, b } = data.sessionColor;
-            this.progressBarFill.style.background = `linear-gradient(90deg, rgb(${r}, ${g}, ${b}), rgba(${r}, ${g}, ${b}, 0.6))`;
+            this._writeStyle(
+                this.progressBarFill,
+                'background',
+                `linear-gradient(90deg, rgb(${r}, ${g}, ${b}), rgba(${r}, ${g}, ${b}, 0.6))`,
+            );
         }
     }
 
@@ -1041,6 +1075,8 @@ export class EnhancedBreathingIndicator {
     _createBreathDots(count) {
         if (!this.breathDotsContainer) return;
         this.breathDotsContainer.innerHTML = '';
+        this._breathDots = [];
+        this._renderedBreathCount = undefined;
 
         // Limit visible dots for high breath counts
         const maxDots = 20;
@@ -1061,6 +1097,7 @@ export class EnhancedBreathingIndicator {
                 transition: background 0.3s ease, transform 0.2s ease;
             `;
             this.breathDotsContainer.appendChild(dot);
+            this._breathDots.push(dot);
         }
     }
 
@@ -1071,9 +1108,10 @@ export class EnhancedBreathingIndicator {
      */
     _updateBreathDots(currentBreath) {
         if (!this.breathDotsContainer) return;
-
-        const dots = this.breathDotsContainer.querySelectorAll('.breath-dot');
-        const groupSize = parseInt(dots[0]?.dataset.group) || 1;
+        if (this._renderedBreathCount === currentBreath) return;
+        const dots = this._breathDots
+            || (this._breathDots = Array.from(this.breathDotsContainer.querySelectorAll('.breath-dot')));
+        const groupSize = parseInt(dots[0]?.dataset.group, 10) || 1;
 
         dots.forEach((dot, index) => {
             const dotThreshold = (index + 1) * groupSize;
@@ -1081,19 +1119,20 @@ export class EnhancedBreathingIndicator {
             const isActive = currentBreath >= index * groupSize && currentBreath < dotThreshold;
 
             if (isComplete) {
-                dot.style.background = 'rgba(255, 255, 255, 0.9)';
-                dot.style.transform = 'scale(1)';
-                dot.style.boxShadow = '0 0 8px rgba(255, 255, 255, 0.5)';
+                this._writeStyle(dot, 'background', 'rgba(255, 255, 255, 0.9)');
+                this._writeStyle(dot, 'transform', 'scale(1)');
+                this._writeStyle(dot, 'boxShadow', '0 0 8px rgba(255, 255, 255, 0.5)');
             } else if (isActive) {
-                dot.style.background = 'rgba(255, 255, 255, 0.5)';
-                dot.style.transform = 'scale(1.2)';
-                dot.style.boxShadow = '0 0 12px rgba(255, 255, 255, 0.7)';
+                this._writeStyle(dot, 'background', 'rgba(255, 255, 255, 0.5)');
+                this._writeStyle(dot, 'transform', 'scale(1.2)');
+                this._writeStyle(dot, 'boxShadow', '0 0 12px rgba(255, 255, 255, 0.7)');
             } else {
-                dot.style.background = 'rgba(255, 255, 255, 0.2)';
-                dot.style.transform = 'scale(1)';
-                dot.style.boxShadow = 'none';
+                this._writeStyle(dot, 'background', 'rgba(255, 255, 255, 0.2)');
+                this._writeStyle(dot, 'transform', 'scale(1)');
+                this._writeStyle(dot, 'boxShadow', 'none');
             }
         });
+        this._renderedBreathCount = currentBreath;
     }
 }
 
