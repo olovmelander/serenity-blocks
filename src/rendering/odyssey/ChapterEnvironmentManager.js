@@ -720,6 +720,9 @@ export class ChapterEnvironmentManager {
      * @param {number} chapterId
      */
     async createChapterEnvironment(chapterId) {
+        // A disposed manager builds nothing: a chapter created after teardown would
+        // never be freed and would claim lights from the shared chapter light pool.
+        if (this._disposed) return null;
         // Skip if already loaded
         if (this.environments.has(chapterId)) {
             return this.environments.get(chapterId).group;
@@ -731,6 +734,7 @@ export class ChapterEnvironmentManager {
         if (this.suppressedChapters.has(chapterId)) return null;
 
         const def = await loadChapterModule(chapterId);
+        if (this._disposed) return null; // torn down while the module was loading
 
         if (!def) {
             console.warn(`[ChapterEnvironmentManager] No module for chapter ${chapterId}`);
@@ -977,6 +981,7 @@ export class ChapterEnvironmentManager {
 
         let index = 0;
         const loadNext = () => {
+            if (this._disposed) return; // dispose() ends the chain; nothing reschedules
             if (index >= remaining.length) {
                 console.log('[ChapterEnvironmentManager] All chapters loaded in background');
                 return;
@@ -989,6 +994,7 @@ export class ChapterEnvironmentManager {
 
             const chapterId = remaining[index++];
             this.createChapterEnvironment(chapterId).then(async () => {
+                if (this._disposed) return;
                 // Update visibility after loading so the new environment shows if camera is there
                 this.updateVisibility(this.cameraProgress, { mode: 'progress' });
                 if (onEnvironmentCreated) {
@@ -1658,6 +1664,7 @@ export class ChapterEnvironmentManager {
      * Dispose of all environments
      */
     dispose() {
+        this._disposed = true; // stops loadChaptersInBackground and in-flight creations
         // Full teardown reuses the eviction path's complete walk (§2 #7): frees textures +
         // uniform-textures + render targets the old body leaked, and skips fromSharedGltfCache
         // meshes so mode teardown no longer corrupts the module-level GLB cache (manta/whale/

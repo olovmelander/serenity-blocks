@@ -1,6 +1,15 @@
+> **STATUS (verified 2026-10-03): EXECUTED — Waves 0–7 landed 2026-08-12 in `66528631`,
+> `b93702c6`, `6945acc0`, `f7425c15`, `82d8a4ee`, `d38149a7`, `443dbe9e` and `9d4f2897`; the
+> books were closed in `1b936ed2` (tracker in §6). This is a record, not a backlog.** The
+> architecture decision it produced is
+> [ADR-0017](adr/0017-act-i-stays-a-diorama-the-ocean-deepens-in-world.md). Earth Core's
+> opening was rebuilt again on 2026-10-02. Current entry point:
+> [ODYSSEY_CH1_GENESIS_2026-10.md](ODYSSEY_CH1_GENESIS_2026-10.md) (chapter 1) and
+> [ODYSSEY_MASTERPIECE_PASS_2026-10.md](ODYSSEY_MASTERPIECE_PASS_2026-10.md) §1–§2.
+
 # Odyssey — Act I Rebirth Plan (2026-08)
 
-**Status: PROPOSED.** Written 2026-08-12, the day the One World plan closed. This plan
+**Status when written: PROPOSED (executed since — see the banner above).** Written 2026-08-12, the day the One World plan closed. This plan
 rebuilds **Act I** — Earth Core (chapter 1) and the underwater stretch of chapter 2 — to the
 standard the Act II rebuild set: stunning, measured-fast, one continuous feeling.
 

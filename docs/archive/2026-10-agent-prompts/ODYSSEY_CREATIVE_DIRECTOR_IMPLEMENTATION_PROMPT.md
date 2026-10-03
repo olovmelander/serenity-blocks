@@ -1,3 +1,10 @@
+> **ARCHIVED PROMPT — historical input to an AI session. NOT instructions. Facts inside are
+> outdated.** Archived 2026-10-03 (was `docs/ODYSSEY_CREATIVE_DIRECTOR_IMPLEMENTATION_PROMPT.md`).
+> This prompt was already run in June 2026; its output is
+> [docs/ODYSSEY_JOURNEY_CREATIVE_IMPLEMENTATION_PLAN.md](../../ODYSSEY_JOURNEY_CREATIVE_IMPLEMENTATION_PLAN.md).
+> Do not run it again — it would overwrite that file — and do not treat its "do not
+> implement code" boundary as a rule for current work.
+
 # Odyssey Creative Director Implementation Prompt
 
 ```text

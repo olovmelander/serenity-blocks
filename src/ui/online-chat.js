@@ -37,10 +37,18 @@ export class OnlineChat {
         }
 
         if (this.inputEl) {
-            this.inputEl.onkeypress = (e) => {
+            // Keys typed here are chat, not gameplay: keep them away from the global
+            // game-input handlers (same isolation as the lobby and results chats).
+            // Enter sends and hands the keyboard back to the game; Escape just leaves.
+            this.inputEl.onkeydown = (e) => {
                 if (e.key === 'Enter') {
+                    e.preventDefault();
                     this._handleSend();
+                    this.inputEl.blur();
+                } else if (e.key === 'Escape') {
+                    this.inputEl.blur();
                 }
+                e.stopPropagation();
             };
         }
     }
@@ -179,6 +187,6 @@ export class OnlineChat {
     destroy() {
         this.clear();
         if (this.sendBtn) this.sendBtn.onclick = null;
-        if (this.inputEl) this.inputEl.onkeypress = null;
+        if (this.inputEl) this.inputEl.onkeydown = null;
     }
 }

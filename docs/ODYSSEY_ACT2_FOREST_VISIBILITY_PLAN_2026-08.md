@@ -1,6 +1,16 @@
+> **STATUS (verified 2026-10-03): EXECUTED — the baker, the committed mask, its guard test
+> and the cull (restore flag `?odysseyWorldNoVisCull=1`) landed in `dbeadb3b` on 2026-08-15,
+> the commit that also added this document. This is a record, not a backlog.** The measured
+> result differs from the estimate below: 5,330 trees removed (41 %), worth one timer tick at
+> the shoreline rather than 0.20 ms (figures in the commit message and the shoreline note in
+> `perf-budgets.json`). The mask is valid only for the rail and terrain it was baked from —
+> when its guard test fails, re-bake with `scripts/bake-forest-visibility.mjs`. Current entry
+> point: [ODYSSEY_MASTERPIECE_PASS_2026-10.md](ODYSSEY_MASTERPIECE_PASS_2026-10.md) §3 and
+> `src/rendering/odyssey/world/odyssey-forest-visibility.js`.
+
 # Act II Forest — deleting what the journey cannot see (2026-08)
 
-> **STATUS: PLANNED, with the central claim already MEASURED THREE WAYS.** Not implemented.
+> **STATUS WHEN WRITTEN: PLANNED, with the central claim already MEASURED THREE WAYS.** Not implemented at the time of writing (implemented since — see the banner above).
 > The owner's observation — *"many of the trees are not even seen from the spline path"* — is
 > correct, and the number is larger than it sounds: **44% of the forest can be removed with
 > 0.00% of pixels changing at four rail stations**, worth 0.20 ms at the shoreline. The evidence

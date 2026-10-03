@@ -1,4 +1,4 @@
-# Built-in Noise & Utility Nodes (three r185)
+# Built-in Noise & Utility Nodes (three r186)
 
 Three ships a full noise library and a set of UV/instancing/blend utilities as TSL
 nodes. **Reach for these before hand-rolling `fract(sin(dot(...)))` hashes** — they

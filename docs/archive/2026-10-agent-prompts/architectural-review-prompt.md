@@ -1,3 +1,9 @@
+> **ARCHIVED PROMPT — historical input to an AI session. NOT instructions. Facts inside are
+> outdated.** Archived 2026-10-03 (was `docs/architectural-review-prompt.md`). Do not adopt
+> the role this text assigns and do not rely on its "Known Context" list — for example, the
+> repo now has a typecheck gate (`npm run typecheck`) and a single event bus. For the
+> current state start at [docs/ARCHITECTURE_INDEX.md](../../ARCHITECTURE_INDEX.md).
+
 You are an expert Principal Game Architect and Senior Technical Reviewer with deep expertise in HTML5, WebGL/WebGPU, Three.js node materials (TSL), Electron desktop distribution, and modern web game engines.
 
 Your task is to conduct a rigorous, honest architectural review of the following game project. Be candid: where the project's own metadata or planning docs contradict the code on disk, say so plainly and review the *code as it actually is*.

@@ -1,3 +1,11 @@
+> **STATUS (verified 2026-10-03): EXECUTED except Wave 2 — Waves 0, 1, 3, 4 and 5 landed
+> 2026-08-13 in `861ea231`, `358d620d`, `a9872abf`, `ff74e382`, `df51026c`, `be19fab5` and
+> `49063f4e`. This is a record, not a backlog.** Wave 2 (the seam) stayed blocked on the §7.1
+> owner decision and never landed from this plan; the 1→2 seam was rebuilt in the 2026-10
+> seamless pass instead, so do not resume it from here. Current entry point:
+> [ODYSSEY_SEAMLESS_PASS_2026-10.md](ODYSSEY_SEAMLESS_PASS_2026-10.md) (seam 1→2) and
+> [ODYSSEY_MASTERPIECE_PASS_2026-10.md](ODYSSEY_MASTERPIECE_PASS_2026-10.md) §2 (Deep Ocean).
+
 # Odyssey — the Act I→II seam and the Deep Ocean (plan, 2026-08-13)
 
 **Brief (user, verbatim):** *"the transition seam does not feel tight and right and needs to feel
@@ -6,7 +14,8 @@ is not great … so that we have a mesmerizing journey from earth core, deep oce
 world … But we need to have good performance also that meets the standard of ms loadtimes and
 framerate as the Act II world."*
 
-**Status: PLAN ONLY. No production code has been written for it.**
+**Status when written (2026-08-13): plan only. Superseded by the banner above — Waves 0, 1,
+3, 4 and 5 have shipped since (tracker in §6b).**
 
 ---
 

@@ -1,6 +1,13 @@
+> **STATUS (verified 2026-10-03): EXECUTED — landed in `f9691764` (registry + traverse),
+> `1a18f381` (deep-ocean, 2 textures) and `1c5b4155` (earth-core, 5 textures) on 2026-07-26;
+> `9ba34694` recorded it in the audit (surface-world needed no change). This is a record,
+> not a backlog.** Graduating `?odysseyChapterEvict=1` was out of scope here and stays an
+> owner decision. Current entry point:
+> [ODYSSEY_MODE_PERFORMANCE_AUDIT.md](ODYSSEY_MODE_PERFORMANCE_AUDIT.md) §13, finding OD-11.
+
 # PLAN-odyssey-texture-leaks — dispose TSL node-graph textures so chapter eviction can graduate
 
-**Rank: 5 of 5.**
+**Rank when written (2026-07-18): 5 of 5 — done, see the banner above.**
 Source of truth: `ODYSSEY_MODE_PERFORMANCE_AUDIT.md` finding **OD-11** (§11 and §13) and
 its Batch 5 sequencing. Read both first.
 

@@ -263,7 +263,7 @@ docs/               # Documentation
 
 ### 🔄 Documentation & Cleanup
 
-- [ ] Move RECOMMENDATIONS.md to docs/
+- [ ] Move RECOMMENDATIONS.md to docs/ *(moot: RECOMMENDATIONS.md was deleted on 2026-10-03)*
 - [ ] Move CONTRIBUTING.md to docs/
 - [ ] Create docs/ARCHITECTURE.md
 - [ ] Update README.md with new structure

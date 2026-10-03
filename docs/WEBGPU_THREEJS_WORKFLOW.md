@@ -96,8 +96,12 @@ reference → iterate → port into the theme.**
   [`src/playground/README.md`](../src/playground/README.md).
 - Decoupled from the game on purpose: it reuses only the leaf utils `computeScenePixelRatio`
   + `gpuResilience` and does **not** touch `BaseTheme`, theme DOM containers, or the eventBus.
-- Production build: `playground.html` is registered in `vite.config.js`
-  (`build.rollupOptions.input`) so `vite build` emits `dist/playground.html`.
+- Dev-only: `playground.html` is **not** a production build input. It was removed from
+  `build.rollupOptions.input` in `vite.config.js` on 2026-08-21 (its static graph reaches
+  every effect and, through them, the Odyssey chapter modules, which broke the game's lazy
+  chapter loads), so `vite build` emits no `dist/playground.html`. Run it on the Vite dev
+  server (`npm run dev:playground`); the capture scripts do the same. Do not re-add it as
+  a build input.
 
 ---
 
@@ -142,12 +146,11 @@ working precedent for KTX2 asset loading.
 
 ## Where assets come from (optional)
 
-Authoring is code-first. When a theme needs **art** (a backdrop, a prop GLB), the C:\AI
-workspace is still wired up as MCP servers (`comfyui`, `blender`):
-
-- **Backdrops / textures** → ComfyUI MCP (FLUX/Qwen → export, transcode to KTX2 if large).
-- **3D props** → Blender MCP (also fronts Poly Haven / Sketchfab / Hyper3D), or
-  hand-import CC0 GLBs.
+Authoring is code-first. When a theme needs **art** (a backdrop, a prop GLB), hand-import a
+commercial-safe asset. The ComfyUI and Blender MCP servers this section used to describe
+lived under `C:\AI` on a machine that is gone (see the banner in
+[ASSET_PIPELINE_BLACKWELL.md](ASSET_PIPELINE_BLACKWELL.md)); they are not configured on the
+current machine, so do not assume they exist.
 
 **Licensing is a hard rule:** only commercial-safe assets — CC0, CC-BY (with attribution),
 MIT, Apache. The user is in the EU, so Tencent/Hunyuan-licensed models are off-limits.
@@ -161,14 +164,27 @@ Record provenance + license in a per-theme `ATTRIBUTION.md` next to the asset (t
 ## Skill contents (for reference)
 
 ```
-.claude/skills/webgpu-threejs-tsl/
-  SKILL.md          # entry point, auto-loaded
+.claude/skills/webgpu-threejs-tsl/   # the copy you edit (Claude Code loads it)
+.agents/skills/webgpu-threejs-tsl/   # byte-for-byte mirror (Codex and Antigravity load it)
+  SKILL.md          # entry point, auto-loaded; carries the three version stamp
   REFERENCE.md      # API quick-reference
   docs/             # core-concepts, materials, compute-shaders, post-processing,
+                    #   noise-and-utility-nodes, scene-techniques, performance,
                     #   wgsl-integration, limits-and-features, device-loss
   examples/         # basic-setup, custom-material, earth-shader, particle-system, post-processing
   templates/        # webgpu-project, compute-shader
 ```
 
-Updating the skill: re-pull from the upstream repo and copy
-`skills/webgpu-threejs-tsl` over `.claude/skills/webgpu-threejs-tsl`.
+Updating the skill:
+
+1. Edit the `.claude/skills/webgpu-threejs-tsl/` copy.
+2. Mirror it byte-for-byte to `.agents/skills/webgpu-threejs-tsl/` (same files, same
+   bytes). `tests/unit/agent-skill-mirror.test.js` fails when the two copies differ, and
+   when the old orphan copy at `.agents/webgpu-threejs-tsl/` reappears.
+3. At every three.js bump, re-stamp the three version in the skill in the bump commit and
+   re-verify the migration-sensitive APIs against the installed package
+   ([ADR-0018](adr/0018-three-js-pinning-and-upgrade-protocol.md)).
+
+Do **not** re-pull the upstream repo over it. This copy has diverged from upstream on
+purpose: it carries the repo-specific rules and the checks made against the pinned three
+(0.186.1 today), and an upstream copy would silently replace them.

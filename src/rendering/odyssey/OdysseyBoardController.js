@@ -569,6 +569,10 @@ export class OdysseyBoardController {
         // State
         this.isActive = false;
         this.isRenderingPaused = false;
+        // Set once by dispose(). Every self-rescheduling loop checks it: isActive ===
+        // false also means "parked", so a disposed board used to keep polling (and
+        // stay reachable, with its whole scene) for the rest of the session.
+        this._disposed = false;
         this.animationFrameId = null;
         this.time = 0;
         this.selectedLevelId = null;
@@ -699,10 +703,11 @@ export class OdysseyBoardController {
         this.presentationLayout = derivePresentationLayout();
         this.interactionAttached = false;
         // Debounce resize to prevent F11/fullscreen freeze from sync GPU ops
-        let resizeTimer;
+        this._resizeTimer = null;
         const debouncedResize = () => {
-            clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(() => this.onResize(), 150);
+            clearTimeout(this._resizeTimer);
+            if (this._disposed) return;
+            this._resizeTimer = setTimeout(() => this.onResize(), 150);
         };
         this.boundHandlers = {
             mousemove: this.onMouseMove.bind(this),
@@ -1232,6 +1237,11 @@ export class OdysseyBoardController {
         await this._warmUpJourney();
         trace.end('warmup');
 
+        // dispose() during the build (mode exit, GPU-loss route-out, a Steam invite)
+        // must win: activating here revived a torn-down board as a render loop over a
+        // disposed renderer, plus the background loaders below.
+        if (this._disposed) return;
+
         this.isActive = true;
         this.animate();
         if (this.backgroundChapterLoadingEnabled) {
@@ -1483,6 +1493,7 @@ export class OdysseyBoardController {
     }
 
     _canRunBackgroundTask() {
+        if (this._disposed) return false;
         // Interaction-idle + camera-settled are the "user isn't busy" gate; frame-health is the
         // "board isn't already stuttering" gate — the three background paths (creation, prewarm,
         // render-warm) all funnel through here, so this one term backpressures every speculative
@@ -1571,7 +1582,7 @@ export class OdysseyBoardController {
     }
 
     _schedulePrewarmDrain(delayMs = 120) {
-        if (this.prewarmDrainTimer || this.prewarmQueue.length === 0) return;
+        if (this._disposed || this.prewarmDrainTimer || this.prewarmQueue.length === 0) return;
 
         this.prewarmDrainTimer = setTimeout(() => {
             this.prewarmDrainTimer = null;
@@ -1582,7 +1593,7 @@ export class OdysseyBoardController {
     }
 
     async _drainPrewarmQueue() {
-        if (this.isPrewarming || this.prewarmQueue.length === 0) return;
+        if (this._disposed || this.isPrewarming || this.prewarmQueue.length === 0) return;
         // A drain that fires while the board is not yet active (the pre-reveal warm queues
         // chapters via _ensureBoundaryAssets) must RESCHEDULE, not dead-end: the old plain
         // return left the queued ids stuck in the dedupe set with no timer, so their
@@ -1663,7 +1674,7 @@ export class OdysseyBoardController {
      * @private
      */
     startDeferredBackgroundLoading({ delayMs = 0 } = {}) {
-        if (!this.backgroundChapterLoadingEnabled || !this.environmentManager) return;
+        if (this._disposed || !this.backgroundChapterLoadingEnabled || !this.environmentManager) return;
         if (this._backgroundChapterLoadingStarted) return;
 
         const delay = Number.isFinite(delayMs) ? Math.max(0, delayMs) : 0;
@@ -1743,6 +1754,9 @@ export class OdysseyBoardController {
 
         let idx = 0;
         const step = () => {
+            // A disposed board ends the sweep. Without this exit the parked-board poll
+            // below ran every 500 ms forever and pinned the whole controller in memory.
+            if (this._disposed) return;
             if (!this.isActive || this.isRenderingPaused) {
                 setTimeout(step, 500);
                 return;
@@ -4181,7 +4195,7 @@ export class OdysseyBoardController {
      * Resume board rendering loop after a pause.
      */
     resumeRendering() {
-        if (!this.isRenderingPaused) return;
+        if (this._disposed || !this.isRenderingPaused) return;
         if (!this.renderer || !this.scene || !this.camera) return;
 
         this.isRenderingPaused = false;
@@ -4557,8 +4571,11 @@ export class OdysseyBoardController {
      * Cleanup and dispose
      */
     dispose() {
+        this._disposed = true;
         this.isActive = false;
         this.isRenderingPaused = false;
+        clearTimeout(this._resizeTimer);
+        this._resizeTimer = null;
         this._gpuSurfaceUnregister?.();
         this._gpuSurfaceUnregister = null;
         this._gpuMonitorUnsub?.();
