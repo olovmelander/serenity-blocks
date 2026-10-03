@@ -17,6 +17,11 @@ export class LobbyBrowser {
 
         this.container = null;
         this.refreshInterval = null;
+        this.refreshPromise = null;
+        this.refreshGeneration = 0;
+        this.visibilityGeneration = 0;
+        this.isVisible = false;
+        this.destroyed = false;
         this.lobbies = [];
 
         this.createUI();
@@ -166,8 +171,18 @@ export class LobbyBrowser {
    * Show the lobby browser
    */
     async show() {
+        if (this.destroyed) return;
+        if (this.isVisible) {
+            await this.refresh();
+            return;
+        }
+        this.isVisible = true;
+        this.visibilityGeneration += 1;
+        const generation = this.visibilityGeneration;
         this.container.classList.remove('hidden');
         await this.refresh();
+        // A closed/replaced browser must not acquire a timer after Steam replies.
+        if (!this.isVisible || this.destroyed || generation !== this.visibilityGeneration) return;
 
         // Auto-refresh every 5 seconds. Clear any prior handle first so a second
         // show() (e.g. the ?localMp=browse cold start, where mode-activate already
@@ -182,7 +197,9 @@ export class LobbyBrowser {
    * Hide the lobby browser
    */
     hide() {
-        this.container.classList.add('hidden');
+        this.isVisible = false;
+        this.visibilityGeneration += 1;
+        this.container?.classList.add('hidden');
 
         // Stop auto-refresh
         if (this.refreshInterval) {
@@ -207,20 +224,32 @@ export class LobbyBrowser {
     /**
    * Refresh lobby list
    */
-    async refresh() {
-        try {
-            // Get lobbies from Steam
-            this.lobbies = await this.steam.getLobbies();
-
-            // Update UI
-            this.renderLobbies();
-
-            // Update count
-            const countEl = this.container.querySelector('#lobby-count');
-            countEl.textContent = this.lobbies.length;
-        } catch (err) {
-            console.error('Failed to refresh lobbies:', err);
+    refresh() {
+        if (this.destroyed) return Promise.resolve();
+        const generation = this.visibilityGeneration;
+        if (this.refreshPromise) {
+            if (this.refreshGeneration === generation) return this.refreshPromise;
+            // Reopening waits for the retired request before fetching fresh data;
+            // repeated refresh clicks never overlap Steam requests.
+            return this.refreshPromise.then(() => {
+                if (!this.destroyed && generation === this.visibilityGeneration) return this.refresh();
+                return undefined;
+            });
         }
+        this.refreshGeneration = generation;
+        this.refreshPromise = Promise.resolve()
+            .then(() => this.steam.getLobbies())
+            .then((lobbies) => {
+                if (this.destroyed || generation !== this.visibilityGeneration) return;
+                this.lobbies = lobbies;
+                this.renderLobbies();
+                const countEl = this.container.querySelector('#lobby-count');
+                const count = String(this.lobbies.length);
+                if (countEl.textContent !== count) countEl.textContent = count;
+            })
+            .catch((err) => console.error('Failed to refresh lobbies:', err))
+            .finally(() => { this.refreshPromise = null; });
+        return this.refreshPromise;
     }
 
     /**
@@ -228,6 +257,12 @@ export class LobbyBrowser {
    */
     renderLobbies() {
         const listEl = this.container.querySelector('#lobby-list');
+        const signature = JSON.stringify(this.lobbies.map((lobby) => [
+            lobby.id, lobby.name, lobby.hostName, lobby.maxPlayers || 8,
+            this.getPlayerCount(lobby), this.getLobbyStatus(lobby), lobby.endCondition || 'frags',
+        ]));
+        if (signature === this.lastLobbyRenderSignature) return;
+        this.lastLobbyRenderSignature = signature;
 
         if (this.lobbies.length === 0) {
             listEl.innerHTML = `
@@ -385,12 +420,9 @@ export class LobbyBrowser {
    * Destroy the lobby browser
    */
     destroy() {
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-        }
-
-        if (this.container) {
-            this.container.remove();
-        }
+        this.hide();
+        this.destroyed = true;
+        this.container?.remove();
+        this.container = null;
     }
 }

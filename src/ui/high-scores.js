@@ -394,10 +394,22 @@ export class HighScoreManager {
         });
 
         const trimmed = deduped.slice(0, 100);
-        await this._clearStore(this.STORES.HIGH_SCORES);
-        for (const entry of trimmed) {
-            await this._addToStore(this.STORES.HIGH_SCORES, entry);
-        }
+        // One commit prevents repeated transaction overhead and keeps the old
+        // scores intact if any imported record fails to write.
+        await new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readwrite');
+            transaction.oncomplete = () => resolve();
+            transaction.onabort = () => reject(transaction.error || new Error('High score import aborted'));
+            transaction.onerror = () => reject(transaction.error);
+            try {
+                const store = transaction.objectStore(this.STORES.HIGH_SCORES);
+                store.clear();
+                for (const entry of trimmed) store.add(entry);
+            } catch (error) {
+                transaction.abort();
+                reject(error);
+            }
+        });
         return trimmed.length;
     }
 
