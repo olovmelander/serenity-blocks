@@ -19,6 +19,7 @@ export class FrameRateController {
         this.actualFPS = 0;
         this.fpsHistory = [];
         this.maxFPSHistory = 120;
+        this.fpsHistoryStats = { average: 0, min: 0, max: 0 };
 
         // Hybrid loop state
         this.isRunning = false;
@@ -245,6 +246,17 @@ export class FrameRateController {
                 if (this.fpsHistory.length > this.maxFPSHistory) {
                     this.fpsHistory.shift();
                 }
+                let sum = 0;
+                let min = Infinity;
+                let max = -Infinity;
+                for (const value of this.fpsHistory) {
+                    sum += value;
+                    min = Math.min(min, value);
+                    max = Math.max(max, value);
+                }
+                this.fpsHistoryStats = {
+                    average: Math.round(sum / this.fpsHistory.length), min, max,
+                };
             }
         }
 
@@ -259,6 +271,7 @@ export class FrameRateController {
         this.actualFPS = 0;
         this.lastStatsUpdate = performance.now();
         this.fpsHistory = [];
+        this.fpsHistoryStats = { average: 0, min: 0, max: 0 };
     }
 
     /**
@@ -266,17 +279,14 @@ export class FrameRateController {
      * @returns {{current:number, average:number, min:number, max:number, logicUPS:number}}
      */
     getStats() {
-        const history = this.fpsHistory.length > 0 ? this.fpsHistory : [this.actualFPS || 0];
-        const current = this.actualFPS || history[history.length - 1] || 0;
-        const average = history.length
-            ? Math.round(history.reduce((sum, value) => sum + value, 0) / history.length)
-            : 0;
+        const hasHistory = this.fpsHistory.length > 0;
+        const current = this.actualFPS || this.fpsHistory[this.fpsHistory.length - 1] || 0;
 
         return {
             current,
-            average,
-            min: history.length ? Math.min(...history) : 0,
-            max: history.length ? Math.max(...history) : 0,
+            average: hasHistory ? this.fpsHistoryStats.average : current,
+            min: hasHistory ? this.fpsHistoryStats.min : current,
+            max: hasHistory ? this.fpsHistoryStats.max : current,
             logicUPS: this.logicUpdatesPerSecond, // Logic updates per second (for hybrid mode)
         };
     }

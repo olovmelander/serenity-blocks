@@ -126,9 +126,10 @@ export class DemoManager {
 
     /**
      * List demos with optional filtering and sorting
+     * @param {{includeReplayData?: boolean}} options - Omit recording payloads for menu cards.
      * @returns {Promise<Array>} List of demos
      */
-    async listDemos() {
+    async listDemos({ includeReplayData = true } = {}) {
         if (!this.db) await this.init();
 
         return new Promise((resolve, reject) => {
@@ -142,10 +143,13 @@ export class DemoManager {
                 const cursor = event.target.result;
                 if (cursor) {
                     const demo = cursor.value;
-                    // Apply filters here if needed
-                    demos.push({
-                        id: cursor.key,
-                        ...demo,
+                    // Menu cards must not retain input/checkpoint payloads for
+                    // every recording. Playback and sharing load one by ID.
+                    demos.push(includeReplayData ? { ...demo, id: cursor.primaryKey } : {
+                        id: cursor.primaryKey,
+                        timestamp: demo.timestamp,
+                        gameMode: demo.gameMode,
+                        metadata: demo.metadata,
                     });
                     cursor.continue();
                 } else {

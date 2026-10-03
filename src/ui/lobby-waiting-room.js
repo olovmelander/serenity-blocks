@@ -18,6 +18,8 @@ export class LobbyWaitingRoom {
         this.onLeaveLobby = onLeaveLobby;
         this.container = null;
         this.updateInterval = null;
+        this.initialUpdateTimeout = null;
+        this.isVisible = false;
 
         this.createUI();
     }
@@ -283,6 +285,8 @@ export class LobbyWaitingRoom {
             console.error('❌ Waiting room container not created');
             return;
         }
+        if (this.isVisible) return;
+        this.isVisible = true;
 
         if (!this.gameState) {
             console.warn('⚠️ No game state set for waiting room');
@@ -292,7 +296,9 @@ export class LobbyWaitingRoom {
         this.container.classList.remove('hidden');
 
         // Update UI after a brief delay to ensure DOM is ready
-        setTimeout(() => {
+        this.initialUpdateTimeout = setTimeout(() => {
+            this.initialUpdateTimeout = null;
+            if (!this.isVisible || !this.container) return;
             this.updateUI();
 
             // Load chat history
@@ -340,7 +346,13 @@ export class LobbyWaitingRoom {
  * Hide the waiting room
  */
     hide() {
-        this.container.classList.add('hidden');
+        this.isVisible = false;
+        this.container?.classList.add('hidden');
+
+        if (this.initialUpdateTimeout) {
+            clearTimeout(this.initialUpdateTimeout);
+            this.initialUpdateTimeout = null;
+        }
 
         if (this.updateInterval) {
             clearInterval(this.updateInterval);
@@ -821,12 +833,8 @@ export class LobbyWaitingRoom {
  * Destroy the waiting room
  */
     destroy() {
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-        }
-
-        if (this.container) {
-            this.container.remove();
-        }
+        this.hide();
+        this.container?.remove();
+        this.container = null;
     }
 }

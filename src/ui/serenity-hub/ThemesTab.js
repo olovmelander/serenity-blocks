@@ -7,7 +7,6 @@ import { THEME_REGISTRY } from '../../themes/theme-registry.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { TORNADO_PARAM_DEFAULTS, TORNADO_PARAM_RANGES } from '../../themes/tornado/params.ts';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
-import { debounce } from '../../utils/performance-utils.js';
 import { scrollHubElementIntoView } from './hub-scroll-utils.js';
 import {
     resolveDesktopHubThemeThumbnailUrl,
@@ -106,12 +105,15 @@ export function applyThemeCardFilter(cards, visibleThemeIds) {
 
     cards.forEach((card) => {
         const isVisible = visibleIdSet.has(card?.dataset?.theme);
-        card.hidden = !isVisible;
-        card.setAttribute?.('aria-hidden', isVisible ? 'false' : 'true');
-        if ('tabIndex' in card) {
-            card.tabIndex = isVisible ? 0 : -1;
+        const hidden = !isVisible;
+        const ariaHidden = String(hidden);
+        if (card.hidden !== hidden) card.hidden = hidden;
+        if (card.getAttribute?.('aria-hidden') !== ariaHidden) card.setAttribute?.('aria-hidden', ariaHidden);
+        const tabIndex = isVisible ? 0 : -1;
+        if ('tabIndex' in card && card.tabIndex !== tabIndex) card.tabIndex = tabIndex;
+        if (card.classList?.contains?.('is-filtered-out') !== hidden) {
+            card.classList?.toggle?.('is-filtered-out', hidden);
         }
-        card.classList?.toggle?.('is-filtered-out', !isVisible);
         if (isVisible) {
             visibleCount += 1;
         }
@@ -235,6 +237,13 @@ export class ThemesTab {
         this.hubIconsReadyRecorded = false;
         this.themeCardElements = new Map();
         this.emptyStateElement = null;
+        this.active = false;
+        this.destroyed = false;
+        this.renderedTheme = this.currentTheme;
+        this.filterDirty = false;
+        this.searchTimer = null;
+        this.iconBatchFrame = null;
+        this.domAbortController = new AbortController();
 
         this.init();
     }
@@ -249,7 +258,7 @@ export class ThemesTab {
         this.render();
         this.attachEventListeners();
         this.listenForThemeChanges();
-        this.hydrateVisibleThemeCardIcons();
+        this.setActive(this.hub.isOpen && this.hub.currentTab === 'themes' && !document.hidden);
         console.log('[ThemesTab] Initialized with', this.themes.length, 'themes, current theme:', this.currentTheme);
     }
 
@@ -412,7 +421,8 @@ export class ThemesTab {
      * Renders the themes tab content
      */
     render() {
-        const container = document.getElementById('tab-themes');
+        const container = this.hub.panel?.querySelector('#tab-themes') || document.getElementById('tab-themes');
+        this.tabContainer = container;
         if (!container) {
             console.error('[ThemesTab] Container not found');
             return;
@@ -466,6 +476,7 @@ export class ThemesTab {
             </div>
         `;
 
+        this.badgeElement = container.querySelector('.badge-text');
         this.populateThemeGrid();
 
         // Phase 5: cursor-follow spotlight + parallax tilt on theme cards
@@ -654,7 +665,7 @@ export class ThemesTab {
      * Attach event listeners
      */
     attachEventListeners() {
-        this.tabContainer = document.getElementById('tab-themes');
+        this.tabContainer ||= document.getElementById('tab-themes');
         if (!this.tabContainer) {
             console.warn('[ThemesTab] Tab container not found when attaching listeners');
             return;
@@ -693,7 +704,7 @@ export class ThemesTab {
             }
         };
 
-        this.tabContainer.addEventListener('click', this.tabClickHandler);
+        this.tabContainer.addEventListener('click', this.tabClickHandler, { signal: this.domAbortController?.signal });
         this.tabKeydownHandler = (event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return;
             const themeCard = event.target?.closest?.('.theme-card');
@@ -708,7 +719,7 @@ export class ThemesTab {
                 });
             }
         };
-        this.tabContainer.addEventListener('keydown', this.tabKeydownHandler);
+        this.tabContainer.addEventListener('keydown', this.tabKeydownHandler, { signal: this.domAbortController?.signal });
         this.iconLoadHandler = (event) => {
             const icon = event.target;
             this.markThemeIconReady(icon);
@@ -727,8 +738,8 @@ export class ThemesTab {
                 && icon.dataset.iconFallbackTried !== 'true') {
                 icon.dataset.iconFallbackTried = 'true';
                 icon.dataset.iconLoadSource = 'bundled';
-                icon.addEventListener('load', this.iconLoadHandler, { once: true });
-                icon.addEventListener('error', this.iconErrorHandler, { once: true });
+                icon.addEventListener('load', this.iconLoadHandler, { once: true, signal: this.domAbortController?.signal });
+                icon.addEventListener('error', this.iconErrorHandler, { once: true, signal: this.domAbortController?.signal });
                 icon.src = bundledSrc;
                 this.syncThemeIconReadyState(icon);
                 return;
@@ -745,21 +756,23 @@ export class ThemesTab {
         // Wire up search input
         const searchInput = this.tabContainer.querySelector('#themes-search-input');
         if (searchInput) {
-            this.debouncedSearchHandler = debounce((value) => {
-                this.searchQuery = value;
-                this.refreshThemeGrid();
-            }, 90);
-
-            this.searchInputHandler = (e) => {
-                this.debouncedSearchHandler(e.target.value);
+            this.searchInputHandler = (event) => {
+                this.searchQuery = event.target.value;
+                this.filterDirty = true;
+                if (this.searchTimer !== null) clearTimeout(this.searchTimer);
+                this.searchTimer = setTimeout(() => {
+                    this.searchTimer = null;
+                    if (this.active && !this.destroyed) this.refreshThemeGrid();
+                }, 90);
             };
-            searchInput.addEventListener('input', this.searchInputHandler);
+            searchInput.addEventListener('input', this.searchInputHandler, { signal: this.domAbortController?.signal });
         }
 
         this.attachThemeParamListeners();
     }
 
     markThemeIconReady(icon) {
+        if (this.destroyed) return false;
         if (!icon?.matches?.('.theme-icon-img[data-theme-icon-src]')) {
             return false;
         }
@@ -834,6 +847,12 @@ export class ThemesTab {
     }
 
     refreshThemeGrid() {
+        if (this.destroyed) return;
+        if (!this.active) {
+            this.filterDirty = true;
+            return;
+        }
+        this.filterDirty = false;
         const cards = Array.from(this.themeCardElements.values());
         if (cards.length === 0) {
             return;
@@ -848,10 +867,8 @@ export class ThemesTab {
     }
 
     hydrateVisibleThemeCardIcons() {
-        if (this.iconObserver) {
-            this.iconObserver.disconnect();
-            this.iconObserver = null;
-        }
+        this.cancelIconHydration();
+        if (!this.active || this.destroyed) return;
 
         const cards = Array.from(this.themeCardElements.values()).filter((card) => !card.hidden);
         if (cards.length === 0) {
@@ -891,8 +908,8 @@ export class ThemesTab {
             icon.loading = highPriority ? 'eager' : 'lazy';
             icon.decoding = highPriority ? 'sync' : 'async';
             icon.setAttribute('fetchpriority', highPriority ? 'high' : 'low');
-            icon.addEventListener('load', this.iconLoadHandler, { once: true });
-            icon.addEventListener('error', this.iconErrorHandler, { once: true });
+            icon.addEventListener('load', this.iconLoadHandler, { once: true, signal: this.domAbortController?.signal });
+            icon.addEventListener('error', this.iconErrorHandler, { once: true, signal: this.domAbortController?.signal });
             icon.src = src;
             this.syncThemeIconReadyState(icon);
         };
@@ -935,16 +952,18 @@ export class ThemesTab {
                 const BATCH_SIZE = 8;
                 let idx = 0;
                 const loadBatch = () => {
+                    this.iconBatchFrame = null;
+                    if (!this.active || this.destroyed) return;
                     const end = Math.min(idx + BATCH_SIZE, deferred.length);
                     for (let i = idx; i < end; i++) {
                         loadIcon(deferred[i]);
                     }
                     idx = end;
                     if (idx < deferred.length) {
-                        requestAnimationFrame(loadBatch);
+                        this.iconBatchFrame = requestAnimationFrame(loadBatch);
                     }
                 };
-                requestAnimationFrame(loadBatch);
+                this.iconBatchFrame = requestAnimationFrame(loadBatch);
             }
             return;
         }
@@ -1015,7 +1034,7 @@ export class ThemesTab {
         // A newer card activation owns the UI/settings commit. The manager
         // coalesces rapid requests, so an older caller must not persist an
         // intermediate theme and enqueue it again through settingsChanged.
-        if (selectionGeneration !== this.themeSelectionGeneration) {
+        if (this.destroyed || selectionGeneration !== this.themeSelectionGeneration) {
             return;
         }
 
@@ -1039,10 +1058,12 @@ export class ThemesTab {
             );
         }
 
-        // Update UI
-        this.updateThemeSelection();
-        this.updateCurrentThemeBadge();
-        this.refreshThemeParams();
+        // A hidden tab retains data and catches up when activated.
+        if (this.active !== false) {
+            this.updateThemeSelection();
+            this.updateCurrentThemeBadge();
+            this.refreshThemeParams();
+        }
     }
 
     /**
@@ -1059,6 +1080,7 @@ export class ThemesTab {
 
         // Apply theme
         await this.selectTheme(randomTheme.id);
+        if (this.destroyed || this.active === false) return;
 
         // Scroll to the theme card
         const card = this.tabContainer?.querySelector(`.theme-card[data-theme="${randomTheme.id}"]`)
@@ -1072,50 +1094,33 @@ export class ThemesTab {
      * Update theme selection in UI
      */
     updateThemeSelection() {
-        // Search within the themes tab container specifically
-        const tabContainer = document.getElementById('tab-themes');
-        if (!tabContainer) {
-            console.warn('[ThemesTab] Tab container not found!');
-            return;
-        }
-
-        const cards = tabContainer.querySelectorAll('.theme-card');
-
+        if (this.destroyed || this.active === false) return;
+        const cards = new Set([
+            this.themeCardElements?.get(this.renderedTheme),
+            this.themeCardElements?.get(this.currentTheme),
+        ]);
         cards.forEach((card) => {
-            const themeId = card.dataset.theme;
-            const isActive = themeId === this.currentTheme;
-
+            if (!card) return;
+            const isActive = card.dataset.theme === this.currentTheme;
             card.classList.toggle('active', isActive);
             card.setAttribute('aria-pressed', String(isActive));
-
-            // Update active indicator
             const swatch = card.querySelector('.theme-swatch');
             if (!swatch) return;
-
-            const existingIndicator = swatch.querySelector('.active-indicator');
-
-            if (isActive && !existingIndicator) {
-                const indicator = document.createElement('div');
-                indicator.className = 'active-indicator';
-                indicator.innerHTML = csIcon('check', 14);
-                swatch.appendChild(indicator);
-            } else if (!isActive && existingIndicator) {
-                existingIndicator.remove();
-            }
+            const indicator = swatch.querySelector('.active-indicator');
+            if (isActive && !indicator) {
+                const nextIndicator = document.createElement('div');
+                nextIndicator.className = 'active-indicator';
+                nextIndicator.innerHTML = csIcon('check', 14);
+                swatch.appendChild(nextIndicator);
+            } else if (!isActive && indicator) indicator.remove();
         });
+        this.renderedTheme = this.currentTheme;
     }
 
-    /**
-     * Update current theme badge
-     */
     updateCurrentThemeBadge() {
-        const tabContainer = document.getElementById('tab-themes');
-        if (!tabContainer) return;
-
-        const badge = tabContainer.querySelector('.badge-text');
-        if (badge) {
-            badge.textContent = `Current: ${this.getCurrentThemeDisplayName()}`;
-        }
+        const badge = this.badgeElement;
+        const text = `Current: ${this.getCurrentThemeDisplayName()}`;
+        if (badge && badge.textContent !== text) badge.textContent = text;
     }
 
     /**
@@ -1127,9 +1132,7 @@ export class ThemesTab {
             if (themeName && themeName !== this.currentTheme) {
                 console.log('[ThemesTab] External theme change detected:', themeName);
                 this.currentTheme = themeName;
-                this.updateThemeSelection();
-                this.updateCurrentThemeBadge();
-                this.refreshThemeParams();
+                if (this.active) this.syncSelectionUI();
             }
         };
 
@@ -1144,12 +1147,36 @@ export class ThemesTab {
      */
     refreshCurrentTheme() {
         const activeTheme = this.themeManager.activeThemeName;
-        if (activeTheme && activeTheme !== this.currentTheme) {
-            console.log('[ThemesTab] Refreshing theme:', activeTheme);
-            this.currentTheme = activeTheme;
-            this.updateThemeSelection();
-            this.updateCurrentThemeBadge();
-            this.refreshThemeParams();
+        if (activeTheme) this.currentTheme = activeTheme;
+        if (this.active && this.currentTheme !== this.renderedTheme) this.syncSelectionUI();
+    }
+
+    syncSelectionUI() {
+        if (!this.active || this.destroyed) return;
+        this.updateThemeSelection();
+        this.updateCurrentThemeBadge();
+        this.refreshThemeParams();
+    }
+
+    cancelIconHydration() {
+        if (this.iconBatchFrame !== null) cancelAnimationFrame(this.iconBatchFrame);
+        this.iconBatchFrame = null;
+        this.iconObserver?.disconnect();
+        this.iconObserver = null;
+    }
+
+    setActive(active) {
+        const nextActive = Boolean(active) && !this.destroyed;
+        if (nextActive === this.active) return;
+        this.active = nextActive;
+        if (this.active) {
+            this.refreshCurrentTheme();
+            if (this.filterDirty) this.refreshThemeGrid();
+            else this.hydrateVisibleThemeCardIcons();
+        } else {
+            this.cancelIconHydration();
+            if (this.searchTimer !== null) clearTimeout(this.searchTimer);
+            this.searchTimer = null;
         }
     }
 
@@ -1157,6 +1184,9 @@ export class ThemesTab {
      * Cleanup
      */
     destroy() {
+        this.setActive(false);
+        this.destroyed = true;
+        this.domAbortController?.abort();
         if (this.tabContainer && this.tabClickHandler) {
             this.tabContainer.removeEventListener('click', this.tabClickHandler);
             this.tabClickHandler = null;

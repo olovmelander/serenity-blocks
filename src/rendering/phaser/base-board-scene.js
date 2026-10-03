@@ -10,6 +10,17 @@ import { TetrominoStyleManager } from '../tetromino-style-manager.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
 const DEFAULT_SHAKE_INTENSITY = 0.002;
+const DEFAULT_PIECE_EFFECTS = {
+    gradient: true,
+    highlight: 0.18,
+    shadow: 0.18,
+    rim: true,
+    rimAlpha: 0.42,
+    rimWidthFactor: 0.05,
+    gloss: true,
+    glossAlpha: 0.22,
+};
+const MATTE_PIECE_EFFECTS = { gradient: false, rim: false, gloss: false };
 
 let cachedBaseClass = null;
 let cachedPhaserRef = null;
@@ -101,6 +112,10 @@ export function createBaseBoardScene(
             this._presentationPaused = false;
             this._presentationCovered = false;
             this._pieceGeometryCache = new WeakMap();
+            this._cellRectScratch = {
+                px: 0, py: 0, w: 0, h: 0,
+            };
+            this._visibleRowRangeCache = null;
             this._invalidatePresentation = () => { this._boardDirty = true; };
             this._reducedMotionQuery = null;
 
@@ -132,6 +147,7 @@ export function createBaseBoardScene(
                 this._lastBoardGridRef = null;
                 this._lastBoardVersion = -1;
                 this._lastVisibleRowRange = null;
+                this._visibleRowRangeCache = null;
                 this._ensureStyleManager();
                 this._reducedMotionQuery = typeof window !== 'undefined'
                     ? window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null : null;
@@ -291,10 +307,7 @@ export function createBaseBoardScene(
             const clampedDefaultStart = Math.min(Math.max(defaultStart, 0), totalRows);
 
             if (!this.cameraSettings) {
-                return {
-                    startRow: clampedDefaultStart,
-                    endRow: totalRows,
-                };
+                return this._cachedVisibleRowRange(clampedDefaultStart, totalRows);
             }
 
             const topRow = Math.max(
@@ -312,7 +325,15 @@ export function createBaseBoardScene(
                 endRow = Math.min(totalRows, startRow + visibleRows);
             }
 
-            return { startRow, endRow };
+            return this._cachedVisibleRowRange(startRow, endRow);
+        }
+
+        _cachedVisibleRowRange(startRow, endRow) {
+            const previous = this._visibleRowRangeCache;
+            if (!previous || previous.startRow !== startRow || previous.endRow !== endRow) {
+                this._visibleRowRangeCache = { startRow, endRow };
+            }
+            return this._visibleRowRangeCache;
         }
 
         setEffectQuality(level) {
@@ -704,8 +725,6 @@ export function createBaseBoardScene(
             const currentTopRow = Math.max(0, Math.min(this.cameraSettings.currentTopRow, maxTopRow));
             const centerY = currentTopRow * blockSize + (visibleRows * blockSize) / 2;
 
-            this.updateCameraBounds();
-
             const { width } = this.getBoardDimensions();
             camera.centerOn(width / 2, centerY);
 
@@ -1066,32 +1085,30 @@ export function createBaseBoardScene(
 
             const skipHiddenRows = !this.gameState?.isInfinityMode;
 
-            pieces
-                .filter((piece) => piece?.isAnimating && typeof piece.animationOffset === 'number' && piece.animationOffset !== 0)
-                .forEach((piece) => {
-                    let colorValue = piece.color;
-                    const isGarbage = piece.type === 'GARBAGE' || piece.type === 'CLEAN_GARBAGE';
-                    const isCustomColor = piece.color && piece.color !== '#808080';
-                    if (!isGarbage || !isCustomColor) {
-                        colorValue = this.getThemedColor(piece.type, piece.color);
-                    }
-                    const colorInt = this.colorToInt(colorValue);
-                    // Garbage stays matte (no gradient/rim); playable pieces get depth.
-                    const fx = isGarbage
-                        ? { gradient: false, rim: false, gloss: false }
-                        : this._pieceFx(piece.type);
-                    // Animated pieces shift by a fractional animationOffset.
-                    this.drawFusedPiece(
-                        this.pieceGraphics,
-                        piece.shape,
-                        piece.x,
-                        piece.y + piece.animationOffset,
-                        colorInt,
-                        {
-                            alpha: 1, fx, gloss: false, skipHiddenRows,
-                        },
-                    );
-                });
+            for (const piece of pieces) {
+                if (!piece?.isAnimating || typeof piece.animationOffset !== 'number'
+                    || piece.animationOffset === 0) continue;
+                let colorValue = piece.color;
+                const isGarbage = piece.type === 'GARBAGE' || piece.type === 'CLEAN_GARBAGE';
+                const isCustomColor = piece.color && piece.color !== '#808080';
+                if (!isGarbage || !isCustomColor) {
+                    colorValue = this.getThemedColor(piece.type, piece.color);
+                }
+                const colorInt = this.colorToInt(colorValue);
+                // Garbage stays matte (no gradient/rim); playable pieces get depth.
+                const fx = isGarbage ? MATTE_PIECE_EFFECTS : this._pieceFx(piece.type);
+                // Animated pieces shift by a fractional animationOffset.
+                this.drawFusedPiece(
+                    this.pieceGraphics,
+                    piece.shape,
+                    piece.x,
+                    piece.y + piece.animationOffset,
+                    colorInt,
+                    {
+                        alpha: 1, fx, gloss: false, skipHiddenRows,
+                    },
+                );
+            }
         }
 
         drawGhostPiece() {
@@ -1254,22 +1271,12 @@ export function createBaseBoardScene(
         _pieceFx(pieceType) {
             // NOTE: keep these in sync with the Canvas-2D next-queue values in
             // canvas-drawing-utils.js (PIECE_DEPTH) so previews match the board.
-            const DEF = {
-                gradient: true,
-                highlight: 0.18, // lighten amount (0..1) at top-left
-                shadow: 0.18, // darken amount (0..1) at bottom-right
-                rim: true,
-                rimAlpha: 0.42,
-                rimWidthFactor: 0.05,
-                gloss: true,
-                glossAlpha: 0.22,
-            };
             try {
                 if (this.styleManager?.getPhaserEffects) {
                     return this.styleManager.getPhaserEffects(pieceType);
                 }
             } catch (e) { /* ignore */ }
-            return DEF;
+            return DEFAULT_PIECE_EFFECTS;
         }
 
         /** Shade an int color: amount>0 lightens, amount<0 darkens. */
@@ -1343,22 +1350,57 @@ export function createBaseBoardScene(
             if (!geometry) {
                 const present = this._presentCells(shape, originY, skipHiddenRows);
                 const cells = Array.from(present, (cell) => cell.split(',').map(Number));
-                geometry = { present, cells, loops: this.traceLoops(present, 0, 0) };
+                geometry = {
+                    present,
+                    cells,
+                    bounds: this._cellBounds(cells),
+                    loops: this.traceLoops(present, 0, 0),
+                    bodyStyle: null,
+                };
                 variants.set(key, geometry);
             }
             return geometry;
         }
 
         /** Pixel rect for a local cell, with 0.5px overlap to fuse seams. */
-        _cellRect(originX, originY, lx, ly) {
+        _cellRect(originX, originY, lx, ly, target = {}) {
             const bs = this.blockSize;
-            const px = Math.round((originX + lx) * bs);
-            const py = Math.round((originY + ly) * bs);
-            const w = Math.round((originX + lx + 1) * bs) - px;
-            const h = Math.round((originY + ly + 1) * bs) - py;
+            target.px = Math.round((originX + lx) * bs);
+            target.py = Math.round((originY + ly) * bs);
+            target.w = Math.round((originX + lx + 1) * bs) - target.px;
+            target.h = Math.round((originY + ly + 1) * bs) - target.py;
+            return target;
+        }
+
+        _cellBounds(cells) {
+            let minLx = Infinity; let minLy = Infinity; let maxLx = -Infinity; let maxLy = -Infinity;
+            for (const [lx, ly] of cells) {
+                if (lx < minLx) minLx = lx;
+                if (ly < minLy) minLy = ly;
+                if (lx > maxLx) maxLx = lx;
+                if (ly > maxLy) maxLy = ly;
+            }
             return {
-                px, py, w, h,
+                minLx, minLy, bw: (maxLx - minLx + 1) || 1, bh: (maxLy - minLy + 1) || 1,
             };
+        }
+
+        _fusedGradientColors(cells, bounds, colorInt, fx) {
+            const {
+                minLx, minLy, bw, bh,
+            } = bounds;
+            const cTL = this._shadeColor(colorInt, fx.highlight);
+            const cBR = this._shadeColor(colorInt, -fx.shadow);
+            return cells.map(([lx, ly]) => {
+                const u0 = (lx - minLx) / bw; const u1 = (lx - minLx + 1) / bw;
+                const v0 = (ly - minLy) / bh; const v1 = (ly - minLy + 1) / bh;
+                return [
+                    this._bilerpColor(cTL, colorInt, colorInt, cBR, u0, v0),
+                    this._bilerpColor(cTL, colorInt, colorInt, cBR, u1, v0),
+                    this._bilerpColor(cTL, colorInt, colorInt, cBR, u0, v1),
+                    this._bilerpColor(cTL, colorInt, colorInt, cBR, u1, v1),
+                ];
+            });
         }
 
         /**
@@ -1366,39 +1408,45 @@ export function createBaseBoardScene(
          * topology-proof. Optional continuous TL→BR gradient across the whole
          * shape (computed in piece-bbox space so it never breaks at a cell edge).
          */
-        fillFusedBody(graphics, presentSet, originX, originY, colorInt, alpha, fx, cachedCells = null) {
+        fillFusedBody(
+            graphics,
+            presentSet,
+            originX,
+            originY,
+            colorInt,
+            alpha,
+            fx,
+            cachedCells = null,
+            cachedGeometry = null,
+        ) {
             if (!graphics || presentSet.size === 0) return;
             const cells = cachedCells || Array.from(presentSet, (key) => key.split(',').map(Number));
-            let minLx = Infinity; let minLy = Infinity; let maxLx = -Infinity; let maxLy = -Infinity;
-            cells.forEach(([lx, ly]) => {
-                if (lx < minLx) minLx = lx;
-                if (ly < minLy) minLy = ly;
-                if (lx > maxLx) maxLx = lx;
-                if (ly > maxLy) maxLy = ly;
-            });
-            const bw = (maxLx - minLx + 1) || 1;
-            const bh = (maxLy - minLy + 1) || 1;
+            const bounds = cachedGeometry?.bounds || this._cellBounds(cells);
             const useGradient = fx && fx.gradient;
-
-            // bbox corner tints for the diagonal light ramp
-            const cTL = useGradient ? this._shadeColor(colorInt, fx.highlight) : colorInt;
-            const cBR = useGradient ? this._shadeColor(colorInt, -fx.shadow) : colorInt;
-            const cTR = colorInt;
-            const cBL = colorInt;
+            let colors = null;
+            if (useGradient) {
+                let style = cachedGeometry?.bodyStyle;
+                if (!style || style.colorInt !== colorInt || style.highlight !== fx.highlight
+                    || style.shadow !== fx.shadow) {
+                    style = {
+                        colorInt,
+                        highlight: fx.highlight,
+                        shadow: fx.shadow,
+                        colors: this._fusedGradientColors(cells, bounds, colorInt, fx),
+                    };
+                    if (cachedGeometry) cachedGeometry.bodyStyle = style;
+                }
+                ({ colors } = style);
+            }
 
             if (!useGradient) graphics.fillStyle(colorInt, alpha);
 
-            cells.forEach(([lx, ly]) => {
+            cells.forEach(([lx, ly], index) => {
                 const {
                     px, py, w, h,
-                } = this._cellRect(originX, originY, lx, ly);
+                } = this._cellRect(originX, originY, lx, ly, this._cellRectScratch);
                 if (useGradient) {
-                    const u0 = (lx - minLx) / bw; const u1 = (lx - minLx + 1) / bw;
-                    const v0 = (ly - minLy) / bh; const v1 = (ly - minLy + 1) / bh;
-                    const tl = this._bilerpColor(cTL, cTR, cBL, cBR, u0, v0);
-                    const tr = this._bilerpColor(cTL, cTR, cBL, cBR, u1, v0);
-                    const bl = this._bilerpColor(cTL, cTR, cBL, cBR, u0, v1);
-                    const br = this._bilerpColor(cTL, cTR, cBL, cBR, u1, v1);
+                    const [tl, tr, bl, br] = colors[index];
                     graphics.fillGradientStyle(tl, tr, bl, br, alpha, alpha, alpha, alpha);
                 }
                 graphics.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
@@ -1410,16 +1458,11 @@ export function createBaseBoardScene(
          * top of the shape, fading to nothing by the vertical midpoint. ADD blend.
          * Continuous across cells (no seams).
          */
-        glossPass(graphics, presentSet, originX, originY, glossAlpha, cachedCells = null) {
+        glossPass(graphics, presentSet, originX, originY, glossAlpha, cachedCells = null, cachedGeometry = null) {
             if (!graphics || presentSet.size === 0 || glossAlpha <= 0) return;
             const PhaserRef = window.Phaser;
-            let minLy = Infinity; let maxLy = -Infinity;
             const cells = cachedCells || Array.from(presentSet, (key) => key.split(',').map(Number));
-            cells.forEach(([, ly]) => {
-                if (ly < minLy) minLy = ly;
-                if (ly > maxLy) maxLy = ly;
-            });
-            const bh = (maxLy - minLy + 1) || 1;
+            const { minLy, bh } = cachedGeometry?.bounds || this._cellBounds(cells);
             const sheenSpan = Math.max(1, bh * 0.55); // sheen reaches ~55% down
             const alphaAt = (ly) => {
                 const t = (ly - minLy) / sheenSpan;
@@ -1434,7 +1477,7 @@ export function createBaseBoardScene(
                 if (aTop <= 0 && aBot <= 0) return;
                 const {
                     px, py, w, h,
-                } = this._cellRect(originX, originY, lx, ly);
+                } = this._cellRect(originX, originY, lx, ly, this._cellRectScratch);
                 graphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, aTop, aTop, aBot, aBot);
                 graphics.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
             });
@@ -1563,9 +1606,9 @@ export function createBaseBoardScene(
             const geometry = this._getPieceGeometry(shape, originY, skipHiddenRows);
             const { present } = geometry;
             if (present.size === 0) return;
-            this.fillFusedBody(graphics, present, originX, originY, colorInt, alpha, fx, geometry.cells);
+            this.fillFusedBody(graphics, present, originX, originY, colorInt, alpha, fx, geometry.cells, geometry);
             if (gloss && fx && fx.gloss) {
-                this.glossPass(graphics, present, originX, originY, fx.glossAlpha, geometry.cells);
+                this.glossPass(graphics, present, originX, originY, fx.glossAlpha, geometry.cells, geometry);
             }
             if (fx && fx.rim) {
                 const width = Math.max(1, this.blockSize * fx.rimWidthFactor);
@@ -1760,6 +1803,7 @@ export function createBaseBoardScene(
             this._firstRenderEmitted = false;
             this.gameState = null;
             this._pieceGeometryCache = new WeakMap();
+            this._visibleRowRangeCache = null;
         }
 
         _emitFirstRender() {

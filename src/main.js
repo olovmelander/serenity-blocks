@@ -1709,8 +1709,7 @@ class SerenityBlocks {
 
         if (this.fpsCounter.element) {
             this.fpsCounter.element.classList.add('hidden'); // Hide legacy counter
-            this.updateFPSCounter(performance.now(), { recordFrame: false });
-            this.startFPSMonitor();
+            this.stopFPSMonitor();
             console.log('[FPS] Enhanced performance monitor shown');
         }
     }
