@@ -31,7 +31,7 @@ import {
 } from './odyssey-ground-palette.js';
 import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
-import { ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
+import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
 import { buildForestTreeGeometry } from './odyssey-forest-geometry.js';
 import { forestLodDistanceForTier, getForestSpecies } from './odyssey-forest-species.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
@@ -3199,11 +3199,19 @@ export function createOdysseyWorld({
     // A bounded Lissajous, not a straight translation: three incommensurate terms keep a mass
     // inside a small volume forever, so drift can never walk a cloud into the rail or out of
     // the composition the clearance validator signed off.
+    // ...except the summit's banner cloud, which holds its station (CLOUD_FIELD_ANCHOR): the
+    // drift is scaled by the mass centre's distance from the anchoring massif's axis.
+    const cfAnchorMassif = ODYSSEY_MASSIFS.find((m) => m.id === CLOUD_FIELD_ANCHOR.massif);
+    const cfAnchor = smoothstep(
+        float(CLOUD_FIELD_ANCHOR.radius[0]),
+        float(CLOUD_FIELD_ANCHOR.radius[1]),
+        length(cfCentre.xz.sub(vec2(cfAnchorMassif.x, cfAnchorMassif.z))),
+    );
     const cfDrift = vec3(
         sin(uTime.mul(cfW).add(cfPhase)).mul(FIELD_DRIFT_XZ),
         sin(uTime.mul(cfW.mul(0.61)).add(cfPhase.mul(1.7))).mul(FIELD_DRIFT_Y),
         cos(uTime.mul(cfW.mul(0.83)).add(cfPhase.mul(0.6))).mul(FIELD_DRIFT_XZ * 0.82),
-    ).toVar('cfDrift');
+    ).mul(cfAnchor).toVar('cfDrift');
     // THE DRIFTED WORLD POSITION, carried explicitly. `positionNode` replaces the vertex
     // position, but `positionWorld` is built from the ORIGINAL local position — so a colour
     // graph reading `positionWorld` would shade, fog and fade the mass at the place it used to
