@@ -7,7 +7,14 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const root = new URL('../../', import.meta.url);
-const baselineCommit = 'b52959f';
+const recordedBaselineCommit = 'b52959f';
+const baselineTree = '071fd7a4856e288abc892fe6a2c3f9d2a165195b';
+// Connector publication can recreate commit metadata with the same file tree.
+// Resolve by the tree fingerprint so a fresh clone can reproduce this probe.
+const baselineCommit = execFileSync('git', ['log', '--all', '--format=%H %T'], {
+    cwd: fileURLToPath(root), encoding: 'utf8',
+}).split('\n').find((line) => line.endsWith(` ${baselineTree}`))?.split(' ')[0];
+if (!baselineCommit) throw new Error(`Audit baseline tree ${baselineTree} is unavailable; fetch the full history.`);
 const files = ['src/utils/performance-monitor.js', 'src/ui/effects/enhanced-breathing-indicator.js', 'src/core/infinity-grid.js'];
 const originalLog = console.log;
 console.log = () => {};
@@ -81,6 +88,8 @@ try {
     const result = {
         instrument: 'Actual methods with counted substitutes; no timing/FPS claim. Counter result summaries are read after counted collection.',
         baselineCommit,
+        recordedBaselineCommit,
+        baselineTree,
         sources,
         before: [probe(before), probe(before)],
         after: [probe(after), probe(after)],
