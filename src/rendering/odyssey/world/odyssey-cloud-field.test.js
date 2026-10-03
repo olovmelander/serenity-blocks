@@ -8,8 +8,13 @@ import {
     sculptCloudMass,
     validateCloudFieldClearance,
 } from './odyssey-cloud-field.js';
-import { CLOUD_FIELD_CLEARANCE, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
+import {
+    CLOUD_FIELD_ANCHOR,
+    CLOUD_FIELD_CLEARANCE,
+    ODYSSEY_CLOUD_FIELD_SPECS,
+} from './odyssey-cloud-field-specs.js';
 import { getOdysseyPathPointAt } from '../path-utils.js';
+import { ODYSSEY_MASSIFS, odysseyWorldHeight } from './odyssey-world-height.js';
 
 // The REAL rail, densely sampled — but ONLY across the window in which the world is drawn.
 //
@@ -149,6 +154,60 @@ describe('cloud field composition', () => {
         build.geometry.dispose();
     });
 
+    it('floats every mass clear of the terrain under it — except the banner, which clings', () => {
+        // The valley layer (bases 540-690) made this a real question: a mass lowered over a hill
+        // would be cut by it. Sampled across each footprint against the live height field.
+        const terrainUnder = (spec) => {
+            const heights = [];
+            for (let a = 0; a < 12; a += 1) {
+                for (let ring = 0; ring <= 2; ring += 1) {
+                    const reach = (spec.w / 2) * (ring / 2);
+                    heights.push(odysseyWorldHeight(
+                        spec.x + (Math.cos((a * Math.PI) / 6) * reach),
+                        spec.z + (Math.sin((a * Math.PI) / 6) * reach),
+                    ));
+                }
+            }
+            return Math.max(...heights);
+        };
+        ODYSSEY_CLOUD_FIELD_SPECS.forEach((spec) => {
+            const top = terrainUnder(spec);
+            if (spec.role === 'banner') {
+                // By design it touches the summit it streams from, and nothing else.
+                expect(spec.base - top, `${spec.id} sits on the summit`).toBeGreaterThan(-40);
+                return;
+            }
+            expect(spec.base - top, `${spec.id} base ${spec.base} over terrain ${top.toFixed(0)}`)
+                .toBeGreaterThan(100);
+        });
+    });
+
+    it('anchors the banner cloud on the hero summit, on the side the rail never visits', () => {
+        const hero = ODYSSEY_MASSIFS.find((m) => m.id === 'hero');
+        const banner = ODYSSEY_CLOUD_FIELD_SPECS.filter((s) => s.role === 'banner');
+        expect(banner.length).toBeGreaterThanOrEqual(2);
+        const root = banner[0];
+        // Its upwind end reaches the summit (centre within ~0.75 w of the axis)...
+        expect(Math.hypot(root.x - hero.x, root.z - hero.z)).toBeLessThan(root.w * 0.75);
+        // ...it is ANCHORED (no drift), and it is the only thing that is: every other mass's
+        // centre lies outside the anchor radius, so the rest of the sky still wanders.
+        const anchor = ODYSSEY_MASSIFS.find((m) => m.id === CLOUD_FIELD_ANCHOR.massif);
+        ODYSSEY_CLOUD_FIELD_SPECS.forEach((spec) => {
+            const out = Math.hypot(spec.x - anchor.x, spec.z - anchor.z);
+            if (spec.role === 'banner') {
+                expect(out, `${spec.id} inside the anchor`).toBeLessThan(CLOUD_FIELD_ANCHOR.radius[0]);
+            } else {
+                expect(out, `${spec.id} outside the anchor`).toBeGreaterThan(CLOUD_FIELD_ANCHOR.radius[1]);
+            }
+        });
+        // ...and every banner mass is further from the rail than the summit's axis is: lee side.
+        const axisToRail = Math.min(...RAIL.map((pt) => Math.hypot(pt.x - hero.x, pt.z - hero.z)));
+        banner.forEach((spec) => {
+            const toRail = Math.min(...RAIL.map((pt) => Math.hypot(pt.x - spec.x, pt.z - spec.z)));
+            expect(toRail, spec.id).toBeGreaterThan(axisToRail);
+        });
+    });
+
     it('keeps the six framing placements exactly as the owner approved them', () => {
         const framing = ODYSSEY_CLOUD_FIELD_SPECS.filter((s) => s.role === 'framing');
         expect(framing).toHaveLength(6);
@@ -157,7 +216,7 @@ describe('cloud field composition', () => {
         // move a few of chapter 5's clouds: F1 and F3 raised off the summit's axis, F4-F6 lowered
         // into a valley layer (see the spec file's header). Sizes are untouched.
         expect(framing.map((s) => [s.x, s.base, s.z, s.w, s.h])).toEqual([
-            [-900, 1340, -2000, 640, 330],
+            [-1140, 1700, -2050, 640, 330],
             [-1750, 830, -2050, 700, 300],
             [820, 1420, -2450, 880, 380],
             [620, 560, -2150, 600, 280],
