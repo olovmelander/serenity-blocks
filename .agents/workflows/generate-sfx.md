@@ -2,6 +2,14 @@
 description: Generate Serenity Blocks SFX candidates with local Stable Audio 3 Small-SFX
 ---
 
+> **STOP — check before doing anything else.** This workflow only works where
+> `C:\AI\sfx-foundry\generate-sfx.cmd` exists. Check it first
+> (`Test-Path 'C:\AI\sfx-foundry\generate-sfx.cmd'`). If the file is missing, **stop and
+> tell the user that SFX generation is unavailable.** Do not attempt to reinstall or
+> rebuild the wrapper, Stable Audio or `C:\AI`, and do not generate audio any other way.
+> (As of 2026-10-03 it is missing on the current dev machine: the machine that hosted
+> `C:\AI` is gone — see the banner in `docs/ASSET_PIPELINE_BLACKWELL.md`.)
+
 When the user invokes this workflow, use `.agents/skills/stable-audio-sfx/SKILL.md` and call:
 
 ```powershell
