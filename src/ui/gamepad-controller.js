@@ -80,6 +80,19 @@ const DEFAULT_SERENITY_GAMEPAD_BINDINGS = {
     navigateRight: BUTTON_MAP.D_RIGHT,
 };
 
+const GAMEPLAY_BINDING_ACTIONS = Object.freeze(Object.keys(DEFAULT_GAMEPAD_CONFIG));
+
+function ownBindingsMatch(bindings, cached) {
+    const snapshot = cached.values;
+    let keyCount = 0;
+    for (const key of Reflect.ownKeys(Object(bindings))) {
+        if (!Object.prototype.propertyIsEnumerable.call(bindings, key)) continue;
+        keyCount += 1;
+        if (!Object.hasOwn(snapshot, key) || !Object.is(bindings[key], snapshot[key])) return false;
+    }
+    return keyCount === cached.keyCount;
+}
+
 /**
  * Convert custom bindings to gamepad config format
  */
@@ -170,6 +183,8 @@ export class GamepadController {
 
         // Custom bindings for each player
         this.customBindings = [null, null, null, null];
+        this.bindingConfigCache = [null, null, null, null];
+        this.serenityBindingCache = null;
 
         // Menu navigation state
         this.menuNavigationEnabled = false;
@@ -1716,8 +1731,7 @@ export class GamepadController {
         }
 
         // Use custom bindings if available, otherwise use default
-        const customBinding = this.customBindings[slot];
-        const config = convertBindingsToConfig(customBinding);
+        const config = this.getGameplayBindingConfig(slot);
 
         // If no game actions set, we're done (START button handling is already done above)
         if (!this.gameActions) {
@@ -2090,7 +2104,37 @@ export class GamepadController {
         this.customBindings[1] = player2Bindings;
         this.customBindings[2] = player3Bindings;
         this.customBindings[3] = player4Bindings;
+        this.bindingConfigCache.fill(null);
         console.log('[Gamepad] Updated custom bindings');
+    }
+
+    getGameplayBindingConfig(slot) {
+        const bindings = this.customBindings[slot];
+        if (!bindings) {
+            this.bindingConfigCache[slot] = null;
+            return DEFAULT_GAMEPAD_CONFIG;
+        }
+
+        const cached = this.bindingConfigCache[slot];
+        let unchanged = cached?.source === bindings;
+        if (unchanged) {
+            for (const action of GAMEPLAY_BINDING_ACTIONS) {
+                if (!Object.is(bindings[action], cached.values[action])) {
+                    unchanged = false;
+                    break;
+                }
+            }
+        }
+        if (unchanged) return cached.config;
+
+        // Callers can mutate saved binding objects in place before saving. A
+        // value snapshot keeps those edits live without allocating eight nested
+        // configuration objects for each unchanged controller poll.
+        const values = {};
+        for (const action of GAMEPLAY_BINDING_ACTIONS) values[action] = bindings[action];
+        const config = convertBindingsToConfig(values);
+        this.bindingConfigCache[slot] = { source: bindings, values, config };
+        return config;
     }
 
     /**
@@ -2115,12 +2159,26 @@ export class GamepadController {
     getSerenityGamepadBindings() {
         const savedBindings = window.settingsManager?.get?.()?.serenityGamepadBindings
             || window.settings?.serenityGamepadBindings
-            || {};
+            || null;
 
-        return {
+        const cached = this.serenityBindingCache;
+        if (cached?.source === savedBindings
+            && (!savedBindings || ownBindingsMatch(savedBindings, cached))) {
+            return cached.bindings;
+        }
+
+        const values = { ...savedBindings };
+        const bindings = {
             ...DEFAULT_SERENITY_GAMEPAD_BINDINGS,
-            ...savedBindings,
+            ...values,
         };
+        this.serenityBindingCache = {
+            source: savedBindings,
+            values,
+            bindings,
+            keyCount: Reflect.ownKeys(values).length,
+        };
+        return bindings;
     }
 
     isSerenityButtonPressed(gamepad, bindings, action) {
@@ -2314,6 +2372,8 @@ export class GamepadController {
         this.clearFixedTickInput({ dropPhysicalLatches: true });
         this.fixedTickInputAdapter = null;
         this.disableSerenityMode();
+        this.bindingConfigCache.fill(null);
+        this.serenityBindingCache = null;
         window.removeEventListener('gamepadconnected', this.handleGamepadConnected);
         window.removeEventListener('gamepaddisconnected', this.handleGamepadDisconnected);
         document.removeEventListener('visibilitychange', this.handleVisibilityChange);

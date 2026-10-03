@@ -55,12 +55,12 @@ describe('SteamNetworking P2P poll lifecycle (SB-02)', () => {
         network.startP2PPolling();
         const first = network.pollInterval;
 
-        // Re-arming without a stop replaces (not duplicates) the interval —
-        // pre-existing guard against double-init.
+        // An active start is idempotent: retain the sole interval and drain
+        // owner rather than replacing either during double-init.
         const clearSpy = vi.spyOn(globalThis, 'clearInterval');
         network.startP2PPolling();
-        expect(clearSpy).toHaveBeenCalledWith(first);
-        expect(network.pollInterval).toBeTruthy();
+        expect(clearSpy).not.toHaveBeenCalled();
+        expect(network.pollInterval).toBe(first);
 
         network.stopP2PPolling();
         expect(network.pollInterval).toBeNull();

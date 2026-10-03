@@ -14,6 +14,14 @@ import { createSoundSets, SoundEffectPlayer } from './sound-effects.js';
 import { AudioAnalyzer } from './audio-analyzer.js';
 import { random } from '../utils/helpers.js';
 
+const NOISE_CACHE_BYTES = 4 * 1024 * 1024;
+const ONE_SHOT_CACHE_BYTES = 16 * 1024 * 1024;
+const AUDIO_CACHE_ENTRIES = 16;
+
+function audioBufferBytes(buffer) {
+    return buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT;
+}
+
 function clampUnitVolume(value, fallback = 1.0) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) {
@@ -40,6 +48,7 @@ export class SoundManager {
         this.playPromise = null; // Track pending play promise to avoid AbortError
         this.trackNames = [];
         this.songsData = [];
+        this.pendingTrackInitialization = null;
         this.themeLinkSuspended = false;
         this.pendingThemeLinkedTrack = null;
         this.pendingTrackKey = null;
@@ -54,6 +63,8 @@ export class SoundManager {
         this.trackFadeOutMs = 2500;
         this.trackFadeInMs = 2000;
         this.volumeFadeFrame = null;
+        this.volumeFadeKind = null;
+        this.volumeFadeResolve = null;
         this.volumeFadeToken = 0;
         this.musicGainNode = null;
         this.musicGainWired = false;
@@ -64,6 +75,13 @@ export class SoundManager {
         this.lastAnalyzerBootstrapAtMs = 0;
         this.analyzerBootstrapCooldownMs = 800;
         this._deferredAnalysisHandle = null;
+        this._deferredAnalysisKind = null;
+        this.audioResourceToken = 0;
+        this.oneShotBuffers = new Map();
+        this.oneShotLoads = new Map();
+        this.noiseBuffers = new Map();
+        this.activeAudioVoices = new Set();
+        this.soundEffectTimers = new Set();
         this.lastAnalyzerBootstrapError = null;
         this.lastAudioAnalysis = {
             bassEnergy: 0,
@@ -113,12 +131,21 @@ export class SoundManager {
             this.musicGainNode = this.audioContext.createGain();
             this.musicGainNode.gain.value = this.getMusicVolume();
             this.ensureSfxBus();
-            this.soundSets = createSoundSets(this.createTone.bind(this), this.createRichTone.bind(this));
+            const scheduleSfx = this.scheduleSoundEffect.bind(this);
+            const canPlaySfx = this.canPlaySoundEffect.bind(this);
+            this.soundSets = createSoundSets(
+                this.createTone.bind(this),
+                this.createRichTone.bind(this),
+                scheduleSfx,
+                canPlaySfx,
+            );
             this.sfxPlayer = new SoundEffectPlayer(
                 this.soundSets,
                 this.soundSet,
                 this.createTone.bind(this),
                 this.createRichTone.bind(this),
+                scheduleSfx,
+                canPlaySfx,
             );
         }
         this.bindRuntimeAudioHooks();
@@ -194,40 +221,143 @@ export class SoundManager {
             if (!this.audioContext || this.isMuted) return;
             const resolved = this.normalizeAudioUrl(url) || url;
 
-            if (!this.oneShotBuffers) this.oneShotBuffers = new Map();
-            let buffer = this.oneShotBuffers.get(resolved);
-            if (!buffer) {
-                const encoded = await new Promise((resolve, reject) => {
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('GET', resolved, true);
-                    xhr.responseType = 'arraybuffer';
-                    xhr.onload = () => {
-                        if (xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300)) {
-                            resolve(xhr.response);
-                        } else {
-                            reject(new Error(`HTTP ${xhr.status} for ${resolved}`));
-                        }
-                    };
-                    xhr.onerror = () => reject(new Error(`network error for ${resolved}`));
-                    xhr.send();
-                });
-                buffer = await this.audioContext.decodeAudioData(encoded);
-                this.oneShotBuffers.set(resolved, buffer);
-            }
+            const { audioContext } = this;
+            const resourceToken = this.audioResourceToken;
+            const buffer = await this.loadOneShotBuffer(resolved, audioContext);
 
             // Re-check after the async load/decode (mute could have flipped meanwhile).
-            if (this.isMuted || !this.audioContext) return;
+            if (!buffer || this.isMuted || this.audioContext !== audioContext
+                || this.audioResourceToken !== resourceToken) return;
 
-            const source = this.audioContext.createBufferSource();
+            const source = audioContext.createBufferSource();
             source.buffer = buffer;
-            const gain = this.audioContext.createGain();
+            const gain = audioContext.createGain();
             gain.gain.value = clampUnitVolume(options.volume ?? 1, 1) * this.getSfxVolume();
             source.connect(gain);
-            gain.connect(this.getToneDestination(false) || this.audioContext.destination);
+            gain.connect(this.getToneDestination(false) || audioContext.destination);
+            this.trackAudioVoice([source], [source, gain]);
             source.start();
         } catch (error) {
-            console.warn('[SoundManager] one-shot file play failed:', url, error);
+            if (error?.name !== 'AbortError') {
+                console.warn('[SoundManager] one-shot file play failed:', url, error);
+            }
         }
+    }
+
+    /** Share cold fetch/decode work; late results cannot repopulate a torn-down context. */
+    loadOneShotBuffer(url, audioContext) {
+        const cached = this.oneShotBuffers.get(url);
+        if (cached) {
+            this.oneShotBuffers.delete(url);
+            this.oneShotBuffers.set(url, cached);
+            return Promise.resolve(cached);
+        }
+        const pending = this.oneShotLoads.get(url);
+        if (pending) return pending.promise;
+
+        const resourceToken = this.audioResourceToken;
+        const entry = { promise: null, abort: null };
+        const encodedPromise = new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const abort = () => {
+                const error = new Error('One-shot audio load cancelled');
+                error.name = 'AbortError';
+                reject(error);
+            };
+            entry.abort = () => {
+                try { xhr.abort(); } finally { abort(); }
+            };
+            xhr.open('GET', url, true);
+            xhr.responseType = 'arraybuffer';
+            xhr.onload = () => {
+                if (xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300)) resolve(xhr.response);
+                else reject(new Error(`HTTP ${xhr.status} for ${url}`));
+            };
+            xhr.onerror = () => reject(new Error(`network error for ${url}`));
+            xhr.onabort = abort;
+            xhr.send();
+        });
+        entry.promise = encodedPromise.then(async (encoded) => {
+            if (this.audioContext !== audioContext || this.audioResourceToken !== resourceToken) return null;
+            const buffer = await audioContext.decodeAudioData(encoded);
+            if (this.audioContext !== audioContext || this.audioResourceToken !== resourceToken) return null;
+            this.retainAudioBuffer(this.oneShotBuffers, url, buffer, ONE_SHOT_CACHE_BYTES);
+            return buffer;
+        }).finally(() => {
+            if (this.oneShotLoads.get(url) === entry) this.oneShotLoads.delete(url);
+        });
+        this.oneShotLoads.set(url, entry);
+        return entry.promise;
+    }
+
+    /** Small LRU caches bound retained PCM without affecting sources already playing. */
+    retainAudioBuffer(cache, key, buffer, byteBudget) {
+        const bytes = audioBufferBytes(buffer);
+        if (bytes > byteBudget) return;
+        cache.delete(key);
+        let retainedBytes = 0;
+        for (const cached of cache.values()) retainedBytes += audioBufferBytes(cached);
+        while (cache.size && (retainedBytes + bytes > byteBudget || cache.size >= AUDIO_CACHE_ENTRIES)) {
+            const oldest = cache.keys().next().value;
+            retainedBytes -= audioBufferBytes(cache.get(oldest));
+            cache.delete(oldest);
+        }
+        cache.set(key, buffer);
+    }
+
+    /** Disconnect each finished voice, including all gains/filters it owns. */
+    trackAudioVoice(sources, nodes, onended = null) {
+        let remaining = sources.length;
+        const voice = { stop: null };
+        const connectedNodes = new Set(nodes);
+        const disconnect = () => {
+            for (const source of sources) source.onended = null;
+            for (const node of connectedNodes) {
+                try { node.disconnect(); } catch { /* already disconnected */ }
+            }
+            connectedNodes.clear();
+            this.activeAudioVoices.delete(voice);
+        };
+        voice.stop = () => {
+            for (const source of sources) {
+                source.onended = null;
+                try { source.stop(); } catch { /* already stopped */ }
+            }
+            disconnect();
+        };
+        if (!remaining) {
+            disconnect();
+            return;
+        }
+        this.activeAudioVoices.add(voice);
+        sources.forEach((source) => {
+            source.onended = (event) => {
+                source.onended = null;
+                try { source.disconnect(); } catch { /* already disconnected */ }
+                connectedNodes.delete(source);
+                remaining -= 1;
+                if (remaining === 0) {
+                    disconnect();
+                    if (onended) onended(event);
+                }
+            };
+        });
+    }
+
+    canPlaySoundEffect() {
+        return Boolean(this.audioContext) && !this.isMuted && this.getSfxVolume() > 0;
+    }
+
+    /** Keep the original note delays and gain-at-play behavior under one teardown owner. */
+    scheduleSoundEffect(callback, delayMs = 0) {
+        if (!this.canPlaySoundEffect()) return null;
+        const resourceToken = this.audioResourceToken;
+        const timer = setTimeout(() => {
+            this.soundEffectTimers.delete(timer);
+            if (resourceToken === this.audioResourceToken && this.canPlaySoundEffect()) callback();
+        }, delayMs);
+        this.soundEffectTimers.add(timer);
+        return timer;
     }
 
     bindRuntimeAudioHooks() {
@@ -293,12 +423,15 @@ export class SoundManager {
         }
         const run = () => {
             this._deferredAnalysisHandle = null;
+            this._deferredAnalysisKind = null;
             if (!this.audioElement) return;
             this.ensureAudioAnalysisReady({ force: true });
         };
         if (typeof window.requestIdleCallback === 'function') {
+            this._deferredAnalysisKind = 'idle';
             this._deferredAnalysisHandle = window.requestIdleCallback(run, { timeout: 2500 });
         } else {
+            this._deferredAnalysisKind = 'timeout';
             this._deferredAnalysisHandle = setTimeout(run, 1200);
         }
     }
@@ -471,7 +604,50 @@ export class SoundManager {
         osc.start();
         osc.stop(this.audioContext.currentTime + duration);
 
-        if (onended) osc.onended = onended;
+        this.trackAudioVoice([osc], [osc, gain], onended);
+    }
+
+    /** Reuse random noise beds, retaining the existing white/pink synthesis and level. */
+    getNoiseBuffer(type, duration) {
+        const { sampleRate } = this.audioContext;
+        const requiredFrames = Math.max(1, Math.ceil(sampleRate * duration));
+        // Power-of-two lengths share work across nearby envelopes and leave room for
+        // a fresh random offset on every play. No looping seam enters the envelope.
+        const bufferSize = 2 ** Math.ceil(Math.log2(requiredFrames));
+        const noiseType = type === 'pink' ? 'pink' : 'white';
+        const key = `${sampleRate}:${noiseType}:${bufferSize}`;
+        const cached = this.noiseBuffers.get(key);
+        if (cached) {
+            this.noiseBuffers.delete(key);
+            this.noiseBuffers.set(key, cached);
+            return cached;
+        }
+        const buffer = this.audioContext.createBuffer(1, bufferSize, sampleRate);
+        const data = buffer.getChannelData(0);
+        if (noiseType === 'pink') {
+            let b0 = 0.0;
+            let b1 = 0.0;
+            let b2 = 0.0;
+            let b3 = 0.0;
+            let b4 = 0.0;
+            let b5 = 0.0;
+            let b6 = 0.0;
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                b0 = 0.99886 * b0 + white * 0.0555179;
+                b1 = 0.99332 * b1 + white * 0.0750759;
+                b2 = 0.96900 * b2 + white * 0.1538520;
+                b3 = 0.86650 * b3 + white * 0.3104856;
+                b4 = 0.55000 * b4 + white * 0.5329522;
+                b5 = -0.7616 * b5 - white * 0.0168980;
+                data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+                b6 = white * 0.115926;
+            }
+        } else {
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        }
+        this.retainAudioBuffer(this.noiseBuffers, key, buffer, NOISE_CACHE_BYTES);
+        return buffer;
     }
 
     /**
@@ -498,6 +674,8 @@ export class SoundManager {
         const now = this.audioContext.currentTime;
         const masterGain = this.audioContext.createGain();
         masterGain.connect(this.getToneDestination(isMusic));
+        const nodes = [masterGain];
+        const sources = [];
 
         // Master Envelope
         masterGain.gain.setValueAtTime(0, now);
@@ -535,6 +713,7 @@ export class SoundManager {
 
             biquadFilter.connect(masterGain);
             destination = biquadFilter;
+            nodes.push(biquadFilter);
         }
 
         // Oscillators
@@ -550,6 +729,8 @@ export class SoundManager {
 
             osc.connect(oscGain);
             oscGain.connect(destination);
+            nodes.push(osc, oscGain);
+            sources.push(osc);
 
             const startTime = now + (oscDef.delay || 0);
             osc.start(startTime);
@@ -559,37 +740,7 @@ export class SoundManager {
         // Noise
         if (noise) {
             const totalDuration = duration + (envelope.release || 0);
-            const bufferSize = this.audioContext.sampleRate * totalDuration;
-            const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
-            const data = buffer.getChannelData(0);
-
-            if (noise.type === 'pink') {
-                // Pink noise approximation
-                let b0 = 0.0;
-                let b1 = 0.0;
-                let b2 = 0.0;
-                let b3 = 0.0;
-                let b4 = 0.0;
-                let b5 = 0.0;
-                let b6 = 0.0;
-                for (let i = 0; i < bufferSize; i++) {
-                    const white = Math.random() * 2 - 1;
-                    b0 = 0.99886 * b0 + white * 0.0555179;
-                    b1 = 0.99332 * b1 + white * 0.0750759;
-                    b2 = 0.96900 * b2 + white * 0.1538520;
-                    b3 = 0.86650 * b3 + white * 0.3104856;
-                    b4 = 0.55000 * b4 + white * 0.5329522;
-                    b5 = -0.7616 * b5 - white * 0.0168980;
-                    data[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
-                    data[i] *= 0.11;
-                    b6 = white * 0.115926;
-                }
-            } else {
-                // White noise
-                for (let i = 0; i < bufferSize; i++) {
-                    data[i] = Math.random() * 2 - 1;
-                }
-            }
+            const buffer = this.getNoiseBuffer(noise.type, totalDuration);
 
             const noiseSource = this.audioContext.createBufferSource();
             noiseSource.buffer = buffer;
@@ -598,29 +749,44 @@ export class SoundManager {
 
             noiseSource.connect(noiseGain);
             noiseGain.connect(destination);
-            noiseSource.start(now);
+            nodes.push(noiseSource, noiseGain);
+            sources.push(noiseSource);
+            const offset = Math.random() * Math.max(0, buffer.duration - totalDuration);
+            noiseSource.start(now, offset);
+            noiseSource.stop(now + totalDuration);
         }
+        this.trackAudioVoice(sources, nodes);
     }
 
     /**
      * Initializes tracks from songs.json
      * @returns {Promise<SoundManager>} Returns this for chaining
      */
-    async initializeTracks() {
-        const songs = await loadSongs();
-        this.songsData = songs;
-        this.trackNames = songs.map((song) => nameToKey(song.name));
+    initializeTracks() {
+        if (this.pendingTrackInitialization) return this.pendingTrackInitialization;
+        const resourceToken = this.audioResourceToken;
+        const pending = loadSongs().then((songs) => {
+            // Teardown retires this owner even if the shared manifest fetch is
+            // still useful to another manager or a replacement initialization.
+            if (resourceToken !== this.audioResourceToken) return this;
+            this.songsData = songs;
+            this.trackNames = songs.map((song) => nameToKey(song.name));
 
-        // Set default track if current doesn't exist
-        if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
-            this.musicTrack = this.trackNames[0];
-        }
+            // Set default track if current doesn't exist
+            if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
+                this.musicTrack = this.trackNames[0];
+            }
 
-        // Populate the dropdown
-        this.populateMusicDropdown();
-        this.preloadDefaultTrack();
+            // Populate the dropdown
+            this.populateMusicDropdown();
+            this.preloadDefaultTrack();
 
-        return this;
+            return this;
+        }).finally(() => {
+            if (this.pendingTrackInitialization === pending) this.pendingTrackInitialization = null;
+        });
+        this.pendingTrackInitialization = pending;
+        return pending;
     }
 
     /**
@@ -823,62 +989,64 @@ export class SoundManager {
         // Preload new audio source during fade-out to eliminate the silence gap.
         // The browser caches the fetched data so the subsequent src swap is instant.
         let preloadElement = null;
-        if (isSourceSwitch) {
-            preloadElement = new Audio();
-            preloadElement.preload = 'auto';
-            preloadElement.src = filename;
-            preloadElement.load();
+        try {
+            if (isSourceSwitch) {
+                preloadElement = new Audio();
+                preloadElement.preload = 'auto';
+                preloadElement.src = filename;
+                preloadElement.load();
+            }
+
+            if (useFade && isSourceSwitch && isPlaying && !this.isMuted) {
+                await this.fadeMusicVolume(0, fadeOutMs);
+            } else {
+                this.cancelMusicVolumeFade();
+            }
+
+            this.assertTrackRequestIsCurrent(requestToken);
+            await this.pauseAudioElement(true);
+            this.assertTrackRequestIsCurrent(requestToken);
+
+            if (isSourceSwitch) {
+                this.audioElement.src = filename;
+            }
+
+            const shouldFadeIn = useFade && isSourceSwitch && !this.isMuted;
+            this.setAudioElementVolume(shouldFadeIn ? 0 : this.getMusicVolume());
+            this.audioElement.muted = this.isMuted;
+            this.audioElement.loop = false;
+
+            // The analyser (music-reactive visuals) needs the AudioContext; the music does not. On a
+            // cold boot `new AudioContext()` blocks the main thread while the audio service starts —
+            // measured 346 ms on the menu's first track (Electron CPU profile, 2026-08-21; 60 ms in a
+            // bare window, the rest is contention with the GPU process starting alongside). So the
+            // FIRST context is created at idle, after the track is already playing; once it exists
+            // the analyser attaches synchronously as before.
+            if (this.audioContext) {
+                this.ensureAudioAnalysisReady({ force: true });
+            } else {
+                this.scheduleDeferredAudioAnalysis();
+            }
+
+            this.playPromise = this.audioElement.play();
+            if (this.playPromise !== undefined) {
+                await this.playPromise;
+            }
+
+            this.assertTrackRequestIsCurrent(requestToken);
+
+            if (shouldFadeIn) {
+                await this.fadeMusicVolume(this.getMusicVolume(), fadeInMs);
+            }
+
+            this.lastAppliedTrackKey = this.getActualTrackKey() || trackKey || null;
+        } finally {
+            // Superseded switches must release their preloader too.
+            if (preloadElement) {
+                preloadElement.src = '';
+                preloadElement.load();
+            }
         }
-
-        if (useFade && isSourceSwitch && isPlaying && !this.isMuted) {
-            await this.fadeMusicVolume(0, fadeOutMs);
-        } else {
-            this.cancelMusicVolumeFade();
-        }
-
-        this.assertTrackRequestIsCurrent(requestToken);
-        await this.pauseAudioElement(true);
-        this.assertTrackRequestIsCurrent(requestToken);
-
-        if (isSourceSwitch) {
-            this.audioElement.src = filename;
-        }
-
-        // Clean up preload element (browser keeps data cached)
-        if (preloadElement) {
-            preloadElement.src = '';
-            preloadElement = null;
-        }
-
-        const shouldFadeIn = useFade && isSourceSwitch && !this.isMuted;
-        this.setAudioElementVolume(shouldFadeIn ? 0 : this.getMusicVolume());
-        this.audioElement.muted = this.isMuted;
-        this.audioElement.loop = false;
-
-        // The analyser (music-reactive visuals) needs the AudioContext; the music does not. On a
-        // cold boot `new AudioContext()` blocks the main thread while the audio service starts —
-        // measured 346 ms on the menu's first track (Electron CPU profile, 2026-08-21; 60 ms in a
-        // bare window, the rest is contention with the GPU process starting alongside). So the
-        // FIRST context is created at idle, after the track is already playing; once it exists
-        // the analyser attaches synchronously as before.
-        if (this.audioContext) {
-            this.ensureAudioAnalysisReady({ force: true });
-        } else {
-            this.scheduleDeferredAudioAnalysis();
-        }
-
-        this.playPromise = this.audioElement.play();
-        if (this.playPromise !== undefined) {
-            await this.playPromise;
-        }
-
-        this.assertTrackRequestIsCurrent(requestToken);
-
-        if (shouldFadeIn) {
-            await this.fadeMusicVolume(this.getMusicVolume(), fadeInMs);
-        }
-
-        this.lastAppliedTrackKey = this.getActualTrackKey() || trackKey || null;
     }
 
     /**
@@ -1077,7 +1245,7 @@ export class SoundManager {
         if (!this.audioContext) {
             this.resumeAudioContext();
         }
-        if (!this.audioContext || this.isMuted) return;
+        if (!this.canPlaySoundEffect()) return;
 
         const intensity = clampUnitVolume(options.intensity ?? 1, 1);
         const volume = 0.32 * intensity;
@@ -1087,7 +1255,7 @@ export class SoundManager {
                 volume: (params.volume ?? volume) * intensity,
             });
             if (delayMs > 0) {
-                setTimeout(run, delayMs);
+                this.scheduleSoundEffect(run, delayMs);
             } else {
                 run();
             }
@@ -1322,16 +1490,20 @@ export class SoundManager {
     cancelMusicVolumeFade() {
         this.volumeFadeToken += 1;
         if (this.volumeFadeFrame !== null) {
-            // Web Audio path uses setTimeout; rAF path uses requestAnimationFrame.
-            // Both accept numeric IDs safely, so call both to cover either case.
-            clearTimeout(this.volumeFadeFrame);
-            cancelAnimationFrame(this.volumeFadeFrame);
+            if (this.volumeFadeKind === 'timeout') clearTimeout(this.volumeFadeFrame);
+            else cancelAnimationFrame(this.volumeFadeFrame);
             this.volumeFadeFrame = null;
         }
+        this.volumeFadeKind = null;
+        const resolve = this.volumeFadeResolve;
+        this.volumeFadeResolve = null;
         // Cancel any in-progress Web Audio gain ramps
         if (this.musicGainNode && this.musicGainWired && this.audioContext) {
             this.musicGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
         }
+        // A switch may be awaiting this fade. Cancelling the scheduler must settle
+        // its Promise too, so token checks and the next queued switch can proceed.
+        if (resolve) resolve();
     }
 
     getMusicVolume() {
@@ -1365,16 +1537,17 @@ export class SoundManager {
 
     fadeMusicVolume(targetVolume, durationMs = 0) {
         if (!this.audioElement) {
+            this.cancelMusicVolumeFade();
             return Promise.resolve();
         }
 
         const clampedTarget = Math.max(0, Math.min(1, targetVolume));
+        this.cancelMusicVolumeFade();
         if (!Number.isFinite(durationMs) || durationMs <= 0) {
             this.setAudioElementVolume(clampedTarget);
             return Promise.resolve();
         }
 
-        this.cancelMusicVolumeFade();
         const token = this.volumeFadeToken;
         const startVolume = this._getCurrentMusicVolume();
 
@@ -1402,11 +1575,16 @@ export class SoundManager {
             this.audioElement.volume = 1.0;
 
             return new Promise((resolve) => {
+                this.volumeFadeResolve = resolve;
+                this.volumeFadeKind = 'timeout';
                 const checkInterval = setTimeout(() => {
                     // Snap to exact target when done
                     if (token === this.volumeFadeToken) {
                         gain.cancelScheduledValues(this.audioContext.currentTime);
                         gain.value = clampedTarget;
+                        this.volumeFadeFrame = null;
+                        this.volumeFadeKind = null;
+                        this.volumeFadeResolve = null;
                     }
                     resolve();
                 }, durationMs + 50);
@@ -1418,6 +1596,8 @@ export class SoundManager {
         // Fallback: requestAnimationFrame with ease-out curve
         const startTime = performance.now();
         return new Promise((resolve) => {
+            this.volumeFadeResolve = resolve;
+            this.volumeFadeKind = 'raf';
             const tick = (now) => {
                 if (token !== this.volumeFadeToken) {
                     resolve();
@@ -1425,6 +1605,8 @@ export class SoundManager {
                 }
                 if (!this.audioElement) {
                     this.volumeFadeFrame = null;
+                    this.volumeFadeKind = null;
+                    this.volumeFadeResolve = null;
                     resolve();
                     return;
                 }
@@ -1435,6 +1617,8 @@ export class SoundManager {
 
                 if (progress >= 1) {
                     this.volumeFadeFrame = null;
+                    this.volumeFadeKind = null;
+                    this.volumeFadeResolve = null;
                     this.setAudioElementVolume(clampedTarget);
                     resolve();
                     return;
@@ -1518,6 +1702,9 @@ export class SoundManager {
 
         this.pendingTrackKey = requestedTrackKey;
         const requestToken = ++this.trackRequestToken;
+        // Wake a superseded switch immediately instead of making the newest selection
+        // wait through its old fade. The awakened switch exits at its token check.
+        this.cancelMusicVolumeFade();
 
         this.trackSwitchPromise = this.trackSwitchPromise
             .catch(() => { })
@@ -1596,10 +1783,12 @@ export class SoundManager {
         }
 
         if (this.audioElement) {
+            const { audioElement } = this;
             // Wait for any pending play promise before pausing to avoid AbortError
             const doPause = () => {
-                this.audioElement.pause();
-                this.audioElement.currentTime = 0;
+                if (this.audioElement !== audioElement) return;
+                audioElement.pause();
+                audioElement.currentTime = 0;
                 this.setAudioElementVolume(this.getMusicVolume());
             };
 
@@ -1643,7 +1832,23 @@ export class SoundManager {
     }
 
     cleanup() {
+        this.audioResourceToken += 1;
+        this.pendingTrackInitialization = null;
+        for (const timer of this.soundEffectTimers) clearTimeout(timer);
+        this.soundEffectTimers.clear();
         this.stopBackgroundMusic();
+        if (this._deferredAnalysisHandle !== null) {
+            if (this._deferredAnalysisKind === 'idle') window.cancelIdleCallback?.(this._deferredAnalysisHandle);
+            else clearTimeout(this._deferredAnalysisHandle);
+            this._deferredAnalysisHandle = null;
+            this._deferredAnalysisKind = null;
+        }
+        for (const load of this.oneShotLoads.values()) load.abort?.();
+        this.oneShotLoads.clear();
+        this.oneShotBuffers.clear();
+        this.noiseBuffers.clear();
+        for (const voice of this.activeAudioVoices) voice.stop();
+        this.activeAudioVoices.clear();
         this.disposeAudioAnalysis();
         this.unbindRuntimeAudioHooks();
 

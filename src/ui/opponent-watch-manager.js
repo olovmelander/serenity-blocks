@@ -56,6 +56,9 @@ export class OpponentWatchManager {
         // {garbageMeter, garbageFill, garbageSegments} for the spotlight's pending-garbage bar.
         this._spotlightGarbage = null;
         this._spotlightGarbageSig = null;
+        this._spotlightLayout = null;
+        this._spotlightResizeObserver = null;
+        this._spotlightVisibilityObserver = null;
         this.autoWatchEnabled = true;
         this.autoWatchSignature = '';
         this.selectionSignature = '';
@@ -247,6 +250,7 @@ export class OpponentWatchManager {
      * Dynamically measures actual chrome from the DOM for pixel-perfect sizing.
      */
     _handleResize() {
+        this._invalidateSpotlightLayout();
         if (!this.container) return;
 
         // Container may BE the .watch-grid element or may wrap it
@@ -842,6 +846,11 @@ export class OpponentWatchManager {
      */
     setSpotlight(canvasEl, { onChange, garbage } = {}) {
         if (!canvasEl) return;
+        this._spotlightResizeObserver?.disconnect();
+        this._spotlightResizeObserver = null;
+        this._spotlightVisibilityObserver?.disconnect();
+        this._spotlightVisibilityObserver = null;
+        this._spotlightLayout = null;
         this.spotlightCanvas = canvasEl;
         this.spotlightCtx = canvasEl.getContext('2d');
         this.spotlightMode = true;
@@ -855,6 +864,7 @@ export class OpponentWatchManager {
         this._spotlightSig = null;
         this._spotlightShownId = null;
         this._spotlightHeaderSig = null;
+        this._resizeSpotlight();
     }
 
     /**
@@ -866,6 +876,7 @@ export class OpponentWatchManager {
         if (!id) return;
         this.spotlightPlayerId = id;
         this._spotlightSig = null; // force a repaint
+        this._invalidateSpotlightLayout();
         const player = this._getPlayerById(id);
         if (player) {
             this._spotlightShownId = id;
@@ -875,6 +886,7 @@ export class OpponentWatchManager {
                 try { this.onSpotlightChange(player); } catch (e) { /* label update is non-essential */ }
             }
         }
+        this._resizeSpotlight();
     }
 
     /** The player object the spotlight should currently show (explicit pick, else a default). */
@@ -911,19 +923,69 @@ export class OpponentWatchManager {
      * runaway height (canvas sized by width → 2× tall → overflow). availH is bounded by the
      * viewport so a transient inflated layout can't blow it up.
      */
+    _invalidateSpotlightLayout() {
+        if (this._spotlightLayout) this._spotlightLayout.dirty = true;
+        this._spotlightSig = null;
+    }
+
     _resizeSpotlight() {
         const canvas = this.spotlightCanvas;
+        if (!canvas) return;
+        let layout = this._spotlightLayout;
+        const detached = (node) => node?.isConnected === false;
+        const moved = (node) => node?.contains && !node.contains(canvas);
+        if (!layout || layout.canvas !== canvas || detached(layout.card)
+            || moved(layout.stage) || moved(layout.panel)) {
+            this._spotlightResizeObserver?.disconnect();
+            this._spotlightResizeObserver = null;
+            this._spotlightVisibilityObserver?.disconnect();
+            this._spotlightVisibilityObserver = null;
+            const stage = canvas.closest('.spectator-spotlight-stage') || canvas.parentElement;
+            const panel = canvas.closest('.main-board-panel');
+            const card = document.getElementById('online-player-card');
+            layout = {
+                canvas, stage, panel, card, dirty: true,
+            };
+            this._spotlightLayout = layout;
+            if (typeof ResizeObserver !== 'undefined') {
+                this._spotlightResizeObserver = new ResizeObserver(() => {
+                    if (this._spotlightLayout === layout) this._invalidateSpotlightLayout();
+                });
+                if (stage) this._spotlightResizeObserver.observe(stage);
+                if (panel && panel !== stage) this._spotlightResizeObserver.observe(panel);
+            }
+            // The mode shows/hides this container with inline display and switches its
+            // spectator classes. Invalidate before the next RAF rather than waiting for
+            // the ResizeObserver delivery that follows that frame's layout.
+            const visibilityRoot = panel?.closest?.('#online-multiplayer-container') || panel;
+            if (visibilityRoot && typeof MutationObserver !== 'undefined') {
+                this._spotlightVisibilityObserver = new MutationObserver(() => {
+                    if (this._spotlightLayout === layout) this._invalidateSpotlightLayout();
+                });
+                this._spotlightVisibilityObserver.observe(visibilityRoot, {
+                    attributes: true, attributeFilter: ['class', 'style', 'hidden'],
+                });
+            }
+        }
+        // Rewiring the meter changes the width reserved beside the canvas, even when
+        // the surrounding panel itself has not resized.
+        const meter = this._spotlightGarbage?.garbageMeter;
+        if (layout.garbage !== this._spotlightGarbage || layout.meter !== meter) {
+            layout.garbage = this._spotlightGarbage;
+            layout.meter = meter;
+            layout.dirty = true;
+        }
+        if (!layout.dirty) return;
+        layout.dirty = false;
         // The canvas now sits inside a board-row (garbage bar + canvas), so measure the STAGE
         // by class, not parentElement (which is the row), for the height/runaway-safe sizing.
-        const stage = canvas?.closest('.spectator-spotlight-stage') || canvas?.parentElement;
-        if (!canvas || !stage) return;
+        const { stage, panel, card } = layout;
+        if (!stage) return;
         // Measure WIDTH from the stable center column (.main-board-panel — a fixed grid track,
         // its width is layout-driven not content-driven) and HEIGHT from the stage (flex:1, it
         // already excludes the header/hint). We must NOT take width from the stage: we shrink the
         // card to hug the board below, which shrinks the stage, which would feed back into a
         // stage-based width measurement (the documented spotlight runaway). The column is constant.
-        const panel = canvas.closest('.main-board-panel');
-        const card = document.getElementById('online-player-card');
         const fullW = panel ? panel.clientWidth : stage.clientWidth;
         // Reserve room for the pending-garbage bar (20px) + its gap (6px) beside the board so
         // the board + bar together fit the column instead of overflowing it.
@@ -945,6 +1007,7 @@ export class OpponentWatchManager {
         if (canvas.style.width !== `${w}px` || canvas.style.height !== `${h}px`) {
             canvas.style.setProperty('width', `${w}px`, 'important');
             canvas.style.setProperty('height', `${h}px`, 'important');
+            this._spotlightSig = null;
         }
         // Hug the board: shrink the card toward the board width (it's centered by the panel's
         // justify-content) so there are no wide transparent side-gaps showing the theme through
@@ -958,14 +1021,17 @@ export class OpponentWatchManager {
     /** Render the spotlight player's board onto the large main-board canvas. */
     _renderSpotlight() {
         if (!this.spotlightCtx) return;
-        this._resizeSpotlight();
         const player = this._resolveSpotlightPlayer();
-        if (!player) return;
+        if (!player) {
+            this._resizeSpotlight();
+            return;
+        }
 
         const pid = this._getPlayerId(player);
         if (pid !== this._spotlightShownId) {
             this._spotlightShownId = pid;
             this._spotlightSig = null;
+            this._invalidateSpotlightLayout();
             this._highlightSpotlightBoard(pid);
         }
         // Fire onChange on player switch AND when the header values (frags/alive) change, so
@@ -976,7 +1042,9 @@ export class OpponentWatchManager {
             if (typeof this.onSpotlightChange === 'function') {
                 try { this.onSpotlightChange(player); } catch (e) { /* non-essential */ }
             }
+            this._invalidateSpotlightLayout();
         }
+        this._resizeSpotlight();
 
         // Pending-garbage meter (mirrors the main board's bar) — updated before the board
         // dirty-check so it stays live even when the board itself hasn't changed this frame.
@@ -1004,13 +1072,6 @@ export class OpponentWatchManager {
     _updateSpotlightGarbage(player) {
         const g = this._spotlightGarbage;
         if (!g || !g.garbageFill || !player) return;
-        const q = player.garbageQueue;
-        const amount = (q && typeof q.getTotalLines === 'function')
-            ? q.getTotalLines()
-            : Number(player.garbagePending ?? player.pendingGarbage ?? 0);
-        const sig = `${this._getPlayerId(player)}|${amount}|${q?.entries?.length || 0}`;
-        if (sig === this._spotlightGarbageSig) return;
-        this._spotlightGarbageSig = sig;
         this._updateGarbageMeter(g, player);
     }
 
@@ -1280,6 +1341,7 @@ export class OpponentWatchManager {
             if (!stateId) return;
             const board = this.playerBoards.get(stateId);
             if (board) {
+                const hud = this._getBoardHudNodes(board);
                 this._maybeTriggerSettledBoardPulse(stateId, board, state);
 
                 // PERF: Dirty-checking - only redraw if state changed
@@ -1313,71 +1375,75 @@ export class OpponentWatchManager {
                 const isWaiting = state.awaitingSpawn === true;
                 const isDead = state.isAlive === false && !isWaiting;
                 const wasDead = board.isEliminated === true;
+                if (isWaiting || board.isWaiting) this._setBoardClass(board, 'waiting', isWaiting);
 
                 // Waiting overlay (idempotent). Switching to waiting clears any stale death overlay.
                 if (isWaiting && !board.isWaiting) {
                     board.isWaiting = true;
                     if (wasDead) { board.isEliminated = false; this._clearOpponentDeathState(board); }
                     this.setOpponentDeadState(stateId, false);
-                    board.element.classList.remove('dead');
-                    board.element.classList.add('waiting');
+                    this._setBoardClass(board, 'dead', false);
+                    this._setBoardClass(board, 'waiting', true);
                     this._showOpponentWaitingOverlay(board);
                 } else if (!isWaiting && board.isWaiting) {
                     board.isWaiting = false;
-                    board.element.classList.remove('waiting');
+                    this._setBoardClass(board, 'waiting', false);
                     this._clearOpponentWaitingOverlay(board);
                 }
 
                 if (!isWaiting) {
                     if (isDead && !wasDead) {
                         board.isEliminated = true;
-                        board.element.classList.add('dead');
+                        this._setBoardClass(board, 'dead', true);
                         this.setOpponentDeadState(stateId, true);
                         this._showOpponentDeathAnimation(board);
                     } else if (!isDead && wasDead) {
                         board.isEliminated = false;
-                        board.element.classList.remove('dead');
+                        this._setBoardClass(board, 'dead', false);
                         this.setOpponentDeadState(stateId, false);
                         this._clearOpponentDeathState(board);
                     } else if (isDead) {
-                        board.element.classList.add('dead');
+                        this._setBoardClass(board, 'dead', true);
                         this.setOpponentDeadState(stateId, true);
                         this._ensureOpponentDeathOverlay(board);
                     } else {
-                        board.element.classList.remove('dead');
+                        this._setBoardClass(board, 'dead', false);
                         this.setOpponentDeadState(stateId, false);
                     }
                 }
 
                 // Update disconnect status
-                if (state.isDisconnected) {
-                    this._showDisconnectOverlay(board);
-                } else {
-                    this._hideDisconnectOverlay(board);
+                const isDisconnected = Boolean(state.isDisconnected);
+                if (hud.disconnected !== isDisconnected) {
+                    hud.disconnected = isDisconnected;
+                    if (isDisconnected) this._showDisconnectOverlay(board);
+                    else this._hideDisconnectOverlay(board);
                 }
 
                 // Update frags display
-                const fragsEl = board.element.querySelector('.opponent-frags');
-                if (fragsEl) {
-                    fragsEl.textContent = `⚔️ ${state.frags || 0}`;
+                const frags = `⚔️ ${state.frags || 0}`;
+                if (hud.fragsEl && hud.frags !== frags) {
+                    hud.fragsEl.textContent = frags;
+                    hud.frags = frags;
                 }
 
                 // Apply player color: subtle outer card + prominent inner grid border
-                if (state.color) {
+                if (state.color && hud.color !== state.color) {
                     const c = state.color;
+                    hud.color = c;
                     // Outer card stays subtle — just a gentle glow
                     board.element.style.boxShadow = `0 0 20px ${c}25, inset 0 0 12px ${c}0a`;
                     board.element.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${c}08)`;
 
                     // Inner grid canvas border is the prominent player-colored frame
-                    const gridCanvas = board.element.querySelector('canvas.opponent-grid');
+                    const { gridCanvas } = hud;
                     if (gridCanvas) {
                         gridCanvas.style.borderRightColor = c;
                         gridCanvas.style.borderBottomColor = c;
                         gridCanvas.style.borderLeftColor = c;
                     }
 
-                    const highlightPiece = board.element.querySelector('.opponent-next-piece.highlight');
+                    const { highlightPiece } = hud;
                     if (highlightPiece) {
                         highlightPiece.style.borderColor = c;
                     }
@@ -1389,6 +1455,63 @@ export class OpponentWatchManager {
 
         // Update selection list
         this._updateSelectionList(playerStates);
+    }
+
+    _getBoardHudNodes(board) {
+        const { element } = board;
+        let { _hud: hud } = board;
+        const owns = (node) => !node || !element.contains || element.contains(node);
+        const sameElement = hud?.element === element;
+        if (sameElement && hud.complete && owns(hud.fragsEl) && owns(hud.gridCanvas)
+            && owns(hud.highlightPiece) && owns(board.garbageMeter)
+            && owns(board.garbageFill) && owns(board.garbageSegments) && owns(board.frame)
+            && (!board.nextCtxs || board.nextCtxs.every((ctx) => owns(ctx.canvas)))) return hud;
+
+        const garbageRequired = Boolean(hud?.garbageRequired
+            || board.garbageMeter || board.garbageFill || board.garbageSegments);
+        hud = {
+            element,
+            garbageRequired,
+            fragsEl: element.querySelector('.opponent-frags'),
+            gridCanvas: element.querySelector('canvas.opponent-grid'),
+            highlightPiece: element.querySelector('.opponent-next-piece.highlight'),
+            classes: {},
+        };
+        const rewire = (key, selector) => {
+            if ((!sameElement && board._hud) || !owns(board[key])
+                || (garbageRequired && key !== 'frame' && !board[key])) {
+                board[key] = element.querySelector(selector);
+            }
+        };
+        rewire('garbageMeter', '.opponent-garbage-meter');
+        rewire('garbageFill', '.opponent-garbage-fill');
+        rewire('garbageSegments', '.opponent-garbage-segments');
+        rewire('frame', '.opponent-grid-frame');
+        if (board._hud && element.querySelectorAll
+            && (!sameElement || board.nextCtxs?.some((ctx) => !owns(ctx.canvas)))) {
+            board.nextCtxs = Array.from(element.querySelectorAll('.opponent-next-piece canvas'))
+                .map((canvas) => canvas.getContext('2d'));
+            this._lastNextPieces?.delete(board.playerKey);
+        }
+        if (hud.gridCanvas && board.canvas !== hud.gridCanvas) {
+            board.canvas = hud.gridCanvas;
+            if (hud.gridCanvas.getContext) board.ctx = hud.gridCanvas.getContext('2d');
+            this._renderSigs?.delete(board.playerKey);
+        }
+        // A card can temporarily lose a child during replacement. Retry incomplete
+        // markup until it is restored instead of retaining a cached null forever.
+        hud.complete = Boolean(hud.fragsEl && hud.gridCanvas && hud.highlightPiece
+            && (!garbageRequired || (board.garbageMeter && board.garbageFill && board.garbageSegments)));
+        board._hud = hud;
+        return hud;
+    }
+
+    _setBoardClass(board, name, enabled) {
+        const { classes } = board._hud;
+        if (classes[name] === enabled) return;
+        classes[name] = enabled;
+        if (enabled) board.element.classList.add(name);
+        else board.element.classList.remove(name);
     }
 
     /**
@@ -1460,16 +1583,48 @@ export class OpponentWatchManager {
         const amount = isQueue ? queue.getTotalLines() : Number(rawAmount || 0);
         const percentage = Math.min(100, (amount / 20) * 100);
 
-        board.garbageFill.style.height = `${percentage}%`;
+        let shown = board._garbageShown;
+        if (!shown || shown.fill !== board.garbageFill || shown.meter !== board.garbageMeter
+            || shown.segments !== board.garbageSegments) {
+            shown = { fill: board.garbageFill, meter: board.garbageMeter, segments: board.garbageSegments };
+            board._garbageShown = shown;
+        }
+        const height = `${percentage}%`;
+        if (shown.height !== height) {
+            board.garbageFill.style.height = height;
+            shown.height = height;
+        }
 
         if (board.garbageSegments) {
-            this._renderGarbageSegments(board.garbageSegments, isQueue ? queue : null, amount);
+            // Compare rendered values rather than queue identity/length: snapshots may
+            // allocate equivalent queues, or mutate a colour/type at the same total.
+            const signature = this._getGarbageSignature(isQueue ? queue : null, amount);
+            if (shown.signature !== signature) {
+                this._renderGarbageSegments(board.garbageSegments, isQueue ? queue : null, amount);
+                shown.signature = signature;
+            }
         }
 
         if (board.garbageMeter) {
-            board.garbageMeter.classList.toggle('pending', amount > 0);
-            board.garbageMeter.classList.toggle('warning', amount >= 8);
+            const pending = amount > 0;
+            const warning = amount >= 8;
+            if (shown.pending !== pending) board.garbageMeter.classList.toggle('pending', pending);
+            if (shown.warning !== warning) board.garbageMeter.classList.toggle('warning', warning);
+            shown.pending = pending;
+            shown.warning = warning;
         }
+    }
+
+    _getGarbageSignature(queue, amount) {
+        let signature = String(amount);
+        if (queue && amount > 0) {
+            queue.entries.forEach((entry) => {
+                if (entry.type !== 'line') return;
+                const color = String(entry.color || '#808080');
+                signature += `|${color.length}:${color}`;
+            });
+        }
+        return signature;
     }
 
     _renderGarbageSegments(container, garbageQueue, totalLines) {
@@ -2156,6 +2311,11 @@ export class OpponentWatchManager {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
         }
+        this._spotlightResizeObserver?.disconnect();
+        this._spotlightResizeObserver = null;
+        this._spotlightVisibilityObserver?.disconnect();
+        this._spotlightVisibilityObserver = null;
+        this._spotlightLayout = null;
 
         this._boardEffects.forEach((fx) => { try { fx.destroy(); } catch (e) { /* noop */ } });
         this._boardEffects.clear();

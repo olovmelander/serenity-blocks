@@ -100,4 +100,18 @@ describe('Odyssey results modal compatibility', () => {
         expect(findByClass(modal, 'steam-leaderboard-panel')).not.toBeNull();
         expect(mountLeaderboard).toHaveBeenCalledOnce();
     });
+
+    it('retires the owned Steam panel once when either close action dismisses the modal', () => {
+        vi.spyOn(SteamLeaderboardPanel.prototype, 'mount').mockImplementation(() => {});
+        const destroy = vi.spyOn(SteamLeaderboardPanel.prototype, 'destroy').mockImplementation(() => {});
+        const onClose = vi.fn();
+        const modal = createModal({ onClose });
+        const keyHandler = document.addEventListener.mock.calls.find(([type]) => type === 'keydown')[1];
+        const event = { key: 'Enter', preventDefault: vi.fn(), stopPropagation: vi.fn() };
+        keyHandler(event);
+        keyHandler(event);
+        expect(destroy).toHaveBeenCalledOnce();
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(modal.remove).toHaveBeenCalledOnce();
+    });
 });

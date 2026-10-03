@@ -44,12 +44,14 @@ export class TetrominoStyleManager {
      * @param {Object} themeManager - Theme manager instance
      * @param {Object} settingsManager - Settings manager instance
      */
-    constructor(themeManager, settingsManager) {
+    constructor(themeManager, settingsManager, onChange = null) {
         this.themeManager = themeManager;
         this.settingsManager = settingsManager;
 
         this.cachedConfig = null;
         this.eventUnsubscribers = [];
+        this.onChange = onChange;
+        this.cachedPhaserEffects = null;
     }
 
     /**
@@ -57,6 +59,7 @@ export class TetrominoStyleManager {
      * Sets up event listeners for theme and settings changes
      */
     init() {
+        if (this.eventUnsubscribers.length > 0) return;
         this._cacheCurrentStyle();
 
         // Listen for theme changes (from eventBus)
@@ -66,7 +69,8 @@ export class TetrominoStyleManager {
 
         // Listen for settings changes (from window CustomEvent)
         const settingsHandler = (event) => {
-            if (event.detail && event.detail.themeBasedTetrominos !== undefined) {
+            if (event.detail && (event.detail.themeBasedTetrominos !== undefined
+                || event.detail.reducedMotion !== undefined)) {
                 this._onSettingsChanged();
             }
         };
@@ -109,6 +113,7 @@ export class TetrominoStyleManager {
      */
     getPhaserEffects(pieceType) {
         if (!this.cachedConfig) this._cacheCurrentStyle();
+        if (this.cachedPhaserEffects) return this.cachedPhaserEffects;
         const cfg = this.cachedConfig || DEFAULT_CONFIG;
         const eff = cfg.effects || {};
 
@@ -130,11 +135,12 @@ export class TetrominoStyleManager {
             base.gloss = false;
         }
 
-        return {
+        this.cachedPhaserEffects = {
             ...base,
             ...(eff.phaser || {}),
             ...((cfg.rendererOverrides && cfg.rendererOverrides.phaser) || {}),
         };
+        return this.cachedPhaserEffects;
     }
 
     /**
@@ -164,6 +170,7 @@ export class TetrominoStyleManager {
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         this.cachedConfig = null;
+        this.cachedPhaserEffects = null;
     }
 
     // ============================================================================
@@ -211,6 +218,7 @@ export class TetrominoStyleManager {
      * @private
      */
     _cacheCurrentStyle() {
+        this.cachedPhaserEffects = null;
         const settingsManager = this._resolveSettingsManager();
         const themeManager = this._resolveThemeManager();
 
@@ -222,6 +230,7 @@ export class TetrominoStyleManager {
 
             if (themeConfig) {
                 this.cachedConfig = this._validateConfig(themeConfig);
+                this.onChange?.();
                 console.log('🎨 Tetromino style: Theme-based', themeManager.activeTheme.name);
                 return;
             }
@@ -229,6 +238,7 @@ export class TetrominoStyleManager {
 
         // Fallback to default
         this.cachedConfig = DEFAULT_CONFIG;
+        this.onChange?.();
         console.log('🎨 Tetromino style: Default colors');
     }
 

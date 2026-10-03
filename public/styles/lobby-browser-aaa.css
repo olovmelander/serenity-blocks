@@ -15,8 +15,8 @@
 /* ---- Backdrop -------------------------------------------------------------- */
 #lobby-browser .lobby-browser-overlay {
     background: radial-gradient(120% 90% at 50% 35%, rgba(6, 8, 20, 0.50), rgba(2, 3, 10, 0.80) 100%);
-    backdrop-filter: blur(12px) saturate(120%);
-    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 /* ---- Panel ---------------------------------------------------------------- */
@@ -30,8 +30,8 @@
         radial-gradient(100% 55% at 50% -12%, rgba(var(--cs-accent-rgb), 0.13), transparent 60%),
         radial-gradient(70% 70% at 8% 0%, rgba(114, 137, 255, 0.10), transparent 60%),
         linear-gradient(180deg, rgba(16, 20, 38, 0.95) 0%, rgba(8, 10, 23, 0.97) 100%);
-    backdrop-filter: blur(18px) saturate(135%);
-    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     box-shadow:
         0 28px 78px rgba(0, 0, 0, 0.58),
         0 0 0 1px rgba(255, 255, 255, 0.04),
@@ -41,8 +41,8 @@
 }
 
 @keyframes lb-pop {
-    from { opacity: 0; transform: translateY(14px) scale(0.985); filter: blur(6px); }
-    to   { opacity: 1; transform: translateY(0) scale(1);        filter: blur(0); }
+    from { opacity: 0; transform: translateY(14px) scale(0.985); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* ---- Header: aurora title + accent divider -------------------------------- */
@@ -59,7 +59,8 @@
     -webkit-text-fill-color: transparent;
     color: transparent;
     filter: drop-shadow(0 0 16px rgba(var(--cs-accent-rgb), 0.30));
-    animation: cs-shimmer 8s ease-in-out infinite;
+    background-position: 40% center;
+    animation: none;
 }
 
 /* (shimmer keyframe consolidated into cosmic-tokens.css → cs-shimmer) */

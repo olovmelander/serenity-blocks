@@ -104,7 +104,6 @@ export class AudioAnalyzer {
         this.analyserNode.smoothingTimeConstant = this.options.smoothingTimeConstant;
 
         this.frequencyData = new Uint8Array(this.analyserNode.frequencyBinCount);
-        this.timeDomainData = new Uint8Array(this.analyserNode.fftSize);
 
         this.bandBins = {
             bass: toBinRange(
@@ -208,7 +207,6 @@ export class AudioAnalyzer {
         }
 
         this.analyserNode.getByteFrequencyData(this.frequencyData);
-        this.analyserNode.getByteTimeDomainData(this.timeDomainData);
 
         const bassRaw = averageRange(
             this.frequencyData,
@@ -335,7 +333,6 @@ export class AudioAnalyzer {
         this.mediaSourceNode = null;
         this.analyserNode = null;
         this.frequencyData = null;
-        this.timeDomainData = null;
         this.audioContext = null;
         this.audioElement = null;
     }
