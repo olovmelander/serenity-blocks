@@ -68,3 +68,5 @@ Movement, gravity, rotation, collision, lock delay, input repeat and stacking ru
 This pass does not migrate replay metadata into a separate IndexedDB store, replace the long frame-history array with a ring, or rewrite stack flood-fill coordinates. Those are further opportunities that need separate evidence/compatibility work. Theme and GPU profiling remain outside scope.
 
 The retained [shared operation probe](../reports/core-ui-pass3/shared-work-probe.mjs) compares the baseline and candidate directly. Run `node reports/core-ui-pass3/shared-work-probe.mjs` to reproduce its counter, breathing and top-row work counts.
+
+Recorded commit IDs refer to the local audit history. If publication recreates commit metadata, the shared probe resolves the identical baseline file tree by its fingerprint (`071fd7a4856e288abc892fe6a2c3f9d2a165195b`), so a full clone can still reproduce the measurements.
