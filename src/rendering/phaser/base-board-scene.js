@@ -10,6 +10,17 @@ import { TetrominoStyleManager } from '../tetromino-style-manager.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
 const DEFAULT_SHAKE_INTENSITY = 0.002;
+const DEFAULT_PIECE_EFFECTS = {
+    gradient: true,
+    highlight: 0.18,
+    shadow: 0.18,
+    rim: true,
+    rimAlpha: 0.42,
+    rimWidthFactor: 0.05,
+    gloss: true,
+    glossAlpha: 0.22,
+};
+const MATTE_PIECE_EFFECTS = { gradient: false, rim: false, gloss: false };
 
 let cachedBaseClass = null;
 let cachedPhaserRef = null;
@@ -96,13 +107,22 @@ export function createBaseBoardScene(
             this._firstRenderEmitted = false;
 
             // Initialize Tetromino Style Manager for theme-based tetromino colors
-            this.styleManager = new TetrominoStyleManager(
-                typeof window !== 'undefined' ? window.themeManager : null,
-                typeof window !== 'undefined' ? window.settingsManager : null,
-            );
-            if (this.styleManager) {
-                this.styleManager.init();
-            }
+            this.styleManager = null;
+            this._lifecycleActive = false;
+            this._presentationPaused = false;
+            this._presentationCovered = false;
+            this._pieceGeometryCache = new WeakMap();
+            this._cellRectScratch = {
+                px: 0, py: 0, w: 0, h: 0,
+            };
+            this._visibleRowRangeCache = null;
+            this._activePieceBodyCache = null;
+            this._animatedPieces = [];
+            this._animatedPiecesState = null;
+            this._animatedPiecesDirty = true;
+            this._blindOverlayCache = null;
+            this._invalidatePresentation = () => { this._boardDirty = true; };
+            this._reducedMotionQuery = null;
 
             // No caching needed - simple is better
         }
@@ -125,6 +145,27 @@ export function createBaseBoardScene(
          */
         create() {
             try {
+                this._lifecycleActive = true;
+                this._presentationPaused = false;
+                this._presentationCovered = false;
+                this._boardDirty = true;
+                this._lastBoardGridRef = null;
+                this._lastBoardVersion = -1;
+                this._lastVisibleRowRange = null;
+                this._visibleRowRangeCache = null;
+                this._activePieceBodyCache = null;
+                this._animatedPieces.length = 0;
+                this._animatedPiecesState = null;
+                this._animatedPiecesDirty = true;
+                this._blindOverlayCache = null;
+                this._ensureStyleManager();
+                this._reducedMotionQuery = typeof window !== 'undefined'
+                    ? window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null : null;
+                this._reducedMotionQuery?.addEventListener?.('change', this._invalidatePresentation);
+                // Phaser emits events; it does not call user shutdown() methods.
+                this.events?.once?.('shutdown', this.shutdown, this);
+                this.events?.off?.('destroy', this._handleDestroy, this);
+                this.events?.once?.('destroy', this._handleDestroy, this);
                 this.createGraphicsLayers();
                 this.configureCamera();
                 this.registerResizeHandler();
@@ -144,9 +185,14 @@ export function createBaseBoardScene(
         update(time, delta) {
             // eslint-disable-line no-unused-vars
             // Performance monitoring - mark frame start
-            performanceMonitor.updateStart();
-
             if (!this.gameState) return;
+            this._checkBoardDirty();
+            this._checkVisibleRowRangeDirty();
+            // Keep the last board commands visible while a pausable game is
+            // covered. Online games and Infinity exploration never set this.
+            if ((this._presentationPaused || this._presentationCovered)
+                && !this._boardDirty && !this.gameState.forceDraw) return;
+            performanceMonitor.updateStart();
 
             // PERFORMANCE: Periodic cleanup to prevent memory leaks
             // This fixes the time-based FPS degradation issue
@@ -160,9 +206,6 @@ export function createBaseBoardScene(
             // Only redraw static content (locked pieces) when board actually changes
             try {
                 // Check if board content has changed (piece locked, lines cleared, etc.)
-                this._checkBoardDirty();
-                this._checkVisibleRowRangeDirty();
-
                 // Static layer (boardGraphics): only clear and redraw when board changes
                 if (this._boardDirty) {
                     this.boardGraphics?.clear();
@@ -171,8 +214,8 @@ export function createBaseBoardScene(
                 // Dynamic layer (pieceGraphics): always clear for current piece/ghost updates
                 this.pieceGraphics?.clear();
                 this.effectsGraphics?.clear();
-                // Blind veil is dynamic (alpha fades each frame); always clear.
-                this.blindGraphics?.clear();
+                // The blind layer owns its invalidation: only its last quarter
+                // fades, so the opaque plateau can keep the same commands.
 
                 performanceMonitor.updateEnd();
                 performanceMonitor.renderStart();
@@ -193,6 +236,32 @@ export function createBaseBoardScene(
             } catch (error) {
                 console.error('[BaseBoardScene] Error in update loop:', error);
             }
+        }
+
+        setPresentationPaused(paused) {
+            if (this._presentationPaused === Boolean(paused)) return;
+            this._presentationPaused = Boolean(paused);
+            if (!paused) this._boardDirty = true;
+        }
+
+        setPresentationCovered(covered) {
+            if (this._presentationCovered === Boolean(covered)) return;
+            this._presentationCovered = Boolean(covered);
+            if (!covered) this._boardDirty = true;
+        }
+
+        _ensureStyleManager() {
+            if (this.styleManager) return;
+            this.styleManager = new TetrominoStyleManager(
+                typeof window !== 'undefined' ? window.themeManager : null,
+                typeof window !== 'undefined' ? window.settingsManager : null,
+                this._invalidatePresentation,
+            );
+            this.styleManager.init();
+        }
+
+        _handleDestroy() {
+            if (this._lifecycleActive) this.shutdown();
         }
 
         /**
@@ -234,6 +303,7 @@ export function createBaseBoardScene(
          */
         markBoardDirty() {
             this._boardDirty = true;
+            this._animatedPiecesDirty = true;
         }
 
         /**
@@ -248,10 +318,7 @@ export function createBaseBoardScene(
             const clampedDefaultStart = Math.min(Math.max(defaultStart, 0), totalRows);
 
             if (!this.cameraSettings) {
-                return {
-                    startRow: clampedDefaultStart,
-                    endRow: totalRows,
-                };
+                return this._cachedVisibleRowRange(clampedDefaultStart, totalRows);
             }
 
             const topRow = Math.max(
@@ -269,7 +336,15 @@ export function createBaseBoardScene(
                 endRow = Math.min(totalRows, startRow + visibleRows);
             }
 
-            return { startRow, endRow };
+            return this._cachedVisibleRowRange(startRow, endRow);
+        }
+
+        _cachedVisibleRowRange(startRow, endRow) {
+            const previous = this._visibleRowRangeCache;
+            if (!previous || previous.startRow !== startRow || previous.endRow !== endRow) {
+                this._visibleRowRangeCache = { startRow, endRow };
+            }
+            return this._visibleRowRangeCache;
         }
 
         setEffectQuality(level) {
@@ -661,8 +736,6 @@ export function createBaseBoardScene(
             const currentTopRow = Math.max(0, Math.min(this.cameraSettings.currentTopRow, maxTopRow));
             const centerY = currentTopRow * blockSize + (visibleRows * blockSize) / 2;
 
-            this.updateCameraBounds();
-
             const { width } = this.getBoardDimensions();
             camera.centerOn(width / 2, centerY);
 
@@ -721,7 +794,7 @@ export function createBaseBoardScene(
          * Listen to Phaser scale events and adjust camera zoom/position.
          */
         registerResizeHandler() {
-            // No-op. The FIT scale mode handles this automatically.
+            this.scale?.on?.('resize', this._invalidatePresentation);
         }
 
         renderGameState() {
@@ -747,7 +820,7 @@ export function createBaseBoardScene(
                 this.drawCurrentPiece();
             }
 
-            // Quadra blind veil — drawn every frame (alpha fades); the blind layer
+            // Quadra blind veil — refreshed when its effective alpha changes; the blind layer
             // sits below the piece layer so the active piece/ghost stay visible.
             this.drawBlindOverlay();
         }
@@ -765,7 +838,7 @@ export function createBaseBoardScene(
 
         /**
          * Draws the Quadra blind blackout from gameState.blindTimers onto the
-         * dedicated (dynamic, always-cleared) blind layer.
+         * dedicated blind layer. Identical effective alpha/geometry retains its commands.
          *   - full blind (field):   veil the whole visible locked stack
          *   - partial blind (pending): veil only the garbage rows
          * Render-only: never touches board/collision state.
@@ -774,11 +847,15 @@ export function createBaseBoardScene(
             const layer = this.blindGraphics;
             const gs = this.gameState;
             const bt = gs?.blindTimers;
-            if (!layer || !bt) return;
+            if (!layer) return;
 
-            const fieldActive = (bt.field || 0) > 0;
-            const pendingActive = (bt.pending || 0) > 0;
-            if (!fieldActive && !pendingActive) return;
+            const fieldActive = (bt?.field || 0) > 0;
+            const pendingActive = (bt?.pending || 0) > 0;
+            if (!fieldActive && !pendingActive) {
+                if (this._blindOverlayCache) layer.clear();
+                this._blindOverlayCache = null;
+                return;
+            }
 
             const { startRow, endRow } = this.getVisibleRowRange();
             const isInfinity = !!gs.isInfinityMode;
@@ -786,12 +863,27 @@ export function createBaseBoardScene(
             const bs = this.blockSize;
             const VEIL = 0x05070d; // near-black with a faint cool tint
             const MAX_ALPHA = 0.92;
+            const mode = fieldActive ? 'field' : 'pending';
+            const remaining = fieldActive ? bt.field : bt.pending;
+            const maximum = fieldActive ? bt.fieldMax : bt.pendingMax;
+            const ratio = maximum > 0 ? remaining / maximum : 1;
+            const alpha = MAX_ALPHA * this._blindFade(ratio);
+            const grid = gs.boardGrid;
+            const version = gs.boardVersion ?? 0;
+            const cached = this._blindOverlayCache;
+            if (cached && cached.layer === layer && cached.mode === mode && cached.alpha === alpha
+                && cached.minRow === minRow && cached.endRow === endRow
+                && cached.bs === bs && cached.cols === this.cols
+                && (fieldActive || (cached.grid === grid && cached.version === version && !this._boardDirty))) return;
+
+            layer.clear();
+            this._blindOverlayCache = {
+                layer, mode, alpha, minRow, endRow, bs, cols: this.cols, grid, version,
+            };
+            if (alpha <= 0) return;
 
             if (fieldActive) {
                 // FULL BLIND: one rect over the whole visible play area.
-                const ratio = bt.fieldMax > 0 ? bt.field / bt.fieldMax : 1;
-                const alpha = MAX_ALPHA * this._blindFade(ratio);
-                if (alpha <= 0) return;
                 const y = Math.round(minRow * bs);
                 const h = Math.round(endRow * bs) - y;
                 layer.fillStyle(VEIL, alpha);
@@ -800,11 +892,7 @@ export function createBaseBoardScene(
             }
 
             // PARTIAL BLIND: veil only garbage cells in the locked stack.
-            const grid = gs.boardGrid;
             if (!grid) return;
-            const ratio = bt.pendingMax > 0 ? bt.pending / bt.pendingMax : 1;
-            const alpha = MAX_ALPHA * this._blindFade(ratio);
-            if (alpha <= 0) return;
             layer.fillStyle(VEIL, alpha);
             for (let worldY = minRow; worldY < endRow; worldY++) {
                 const row = grid[worldY];
@@ -870,6 +958,21 @@ export function createBaseBoardScene(
             // darker). A pure function of worldY, so vertically/horizontally adjacent
             // same-color cells always match at their shared edge → zero seams.
             const shadeAt = (worldY) => 0.1 * (1 - 2 * ((worldY - startRow) / range));
+            // A row boundary has the same shade for every cell of one color.
+            // Reuse it across adjacent cells/rows within this dirty-stack draw.
+            if (!this._poolShadeCache) this._poolShadeCache = new Map();
+            const shadeCache = this._poolShadeCache;
+            shadeCache.clear();
+            const shadeColorAt = (colorInt, worldY) => {
+                let rows = shadeCache.get(colorInt);
+                if (!rows) {
+                    rows = [];
+                    shadeCache.set(colorInt, rows);
+                }
+                const index = worldY - startRow;
+                if (rows[index] === undefined) rows[index] = this._shadeColor(colorInt, shadeAt(worldY));
+                return rows[index];
+            };
 
             // ---- Body: per-cell overlapping rects (seamless, topology-proof) ----
             for (let worldY = minRow; worldY < endRow; worldY++) {
@@ -886,8 +989,8 @@ export function createBaseBoardScene(
                     if (isGarbage) {
                         staticLayer.fillStyle(colorInt, 1); // matte
                     } else {
-                        const top = this._shadeColor(colorInt, shadeAt(worldY));
-                        const bot = this._shadeColor(colorInt, shadeAt(worldY + 1));
+                        const top = shadeColorAt(colorInt, worldY);
+                        const bot = shadeColorAt(colorInt, worldY + 1);
                         staticLayer.fillGradientStyle(top, top, bot, bot, 1, 1, 1, 1);
                     }
                     staticLayer.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
@@ -1019,36 +1122,58 @@ export function createBaseBoardScene(
 
         drawAnimatedPieces() {
             const pieces = this.gameState?.lockedPieces;
-            if (!pieces) return;
+            const gs = this.gameState;
+            const previous = this._animatedPiecesState;
+            const version = gs?.boardVersion ?? 0;
+            // Board writers already invalidate render/collision caches when
+            // mutating locked pieces in place. Also fence snapshot replacement,
+            // including replacements whose board version happens to collide.
+            if (this._animatedPiecesDirty || !previous || previous.owner !== gs
+                || previous.pieces !== pieces || previous.grid !== gs?.boardGrid
+                || previous.version !== version || previous.length !== pieces?.length) {
+                this._animatedPieces.length = 0;
+                if (pieces) {
+                    for (const piece of pieces) {
+                        // Keep zero-offset candidates until their owner marks
+                        // the animation complete; a later tick may start motion.
+                        if (piece?.isAnimating) this._animatedPieces.push(piece);
+                    }
+                }
+                this._animatedPiecesState = {
+                    owner: gs, pieces, grid: gs?.boardGrid, version, length: pieces?.length,
+                };
+                this._animatedPiecesDirty = false;
+            }
 
             const skipHiddenRows = !this.gameState?.isInfinityMode;
 
-            pieces
-                .filter((piece) => piece?.isAnimating && typeof piece.animationOffset === 'number' && piece.animationOffset !== 0)
-                .forEach((piece) => {
-                    let colorValue = piece.color;
-                    const isGarbage = piece.type === 'GARBAGE' || piece.type === 'CLEAN_GARBAGE';
-                    const isCustomColor = piece.color && piece.color !== '#808080';
-                    if (!isGarbage || !isCustomColor) {
-                        colorValue = this.getThemedColor(piece.type, piece.color);
-                    }
-                    const colorInt = this.colorToInt(colorValue);
-                    // Garbage stays matte (no gradient/rim); playable pieces get depth.
-                    const fx = isGarbage
-                        ? { gradient: false, rim: false, gloss: false }
-                        : this._pieceFx(piece.type);
-                    // Animated pieces shift by a fractional animationOffset.
-                    this.drawFusedPiece(
-                        this.pieceGraphics,
-                        piece.shape,
-                        piece.x,
-                        piece.y + piece.animationOffset,
-                        colorInt,
-                        {
-                            alpha: 1, fx, gloss: false, skipHiddenRows,
-                        },
-                    );
-                });
+            let activeCount = 0;
+            for (const piece of this._animatedPieces) {
+                if (!piece.isAnimating) continue;
+                this._animatedPieces[activeCount++] = piece;
+                if (typeof piece.animationOffset !== 'number' || piece.animationOffset === 0) continue;
+                let colorValue = piece.color;
+                const isGarbage = piece.type === 'GARBAGE' || piece.type === 'CLEAN_GARBAGE';
+                const isCustomColor = piece.color && piece.color !== '#808080';
+                if (!isGarbage || !isCustomColor) {
+                    colorValue = this.getThemedColor(piece.type, piece.color);
+                }
+                const colorInt = this.colorToInt(colorValue);
+                // Garbage stays matte (no gradient/rim); playable pieces get depth.
+                const fx = isGarbage ? MATTE_PIECE_EFFECTS : this._pieceFx(piece.type);
+                // Animated pieces shift by a fractional animationOffset.
+                this.drawFusedPiece(
+                    this.pieceGraphics,
+                    piece.shape,
+                    piece.x,
+                    piece.y + piece.animationOffset,
+                    colorInt,
+                    {
+                        alpha: 1, fx, gloss: false, skipHiddenRows,
+                    },
+                );
+            }
+            this._animatedPieces.length = activeCount;
         }
 
         drawGhostPiece() {
@@ -1069,18 +1194,18 @@ export function createBaseBoardScene(
             const pulse = this._reducedMotion() ? 0.5 : this._getPulseIntensity(pieceCenterX, pieceCenterY);
             const alpha = minAlpha + (maxAlpha - minAlpha) * pulse;
 
-            const present = this._presentCells(piece.shape, ghostY, skipHiddenRows);
-            const loops = this.traceLoops(present, piece.x, ghostY);
+            const geometry = this._getPieceGeometry(piece.shape, ghostY, skipHiddenRows);
             // Translucent fill MUST use the single contour polygon — per-cell rects
             // double-cover at their overlap and produce brighter internal seam lines.
-            this.fillContour(this.pieceGraphics, loops, 0xffffff, alpha);
+            this.fillContour(this.pieceGraphics, geometry.loops, 0xffffff, alpha, piece.x * this.blockSize, ghostY * this.blockSize);
             // A faint cyan outer outline is the ghost's only edge treatment.
-            this.strokeLoops(this.pieceGraphics, loops, 0x64c8ff, 1, alpha * 0.7);
+            this.strokeLoops(this.pieceGraphics, geometry.loops, 0x64c8ff, 1, alpha * 0.7, piece.x * this.blockSize, ghostY * this.blockSize);
         }
 
         drawCurrentPiece() {
             const piece = this.gameState?.currentPiece;
             if (!piece) return;
+            const { x, y } = piece;
 
             const themedColor = this.getThemedColor(piece.type, piece.color);
             const colorInt = this.colorToInt(themedColor);
@@ -1089,9 +1214,56 @@ export function createBaseBoardScene(
 
             // Active piece gets the full premium treatment: continuous gradient,
             // top gloss sheen, and an outer rim — all on the fused silhouette only.
-            this.drawFusedPiece(this.pieceGraphics, piece.shape, piece.x, piece.y, colorInt, {
-                alpha: 1, fx, gloss: true, skipHiddenRows,
-            });
+            const layer = this.pieceGraphics;
+            const buffer = layer?.commandBuffer;
+            if (!Array.isArray(buffer)) {
+                this.drawFusedPiece(layer, piece.shape, piece.x, piece.y, colorInt, {
+                    alpha: 1, fx, gloss: true, skipHiddenRows,
+                });
+                return;
+            }
+            const geometry = this._getPieceGeometry(piece.shape, y, skipHiddenRows);
+            const { present, cells } = geometry;
+            if (geometry.present.size === 0) return;
+            const previous = this._activePieceBodyCache;
+            // Phaser documents commandBuffer as its rendering command array.
+            // Retain one body/gloss segment in that SAME Graphics object. The
+            // ghost/animated pieces still precede it and GPU command order and
+            // layer count stay unchanged. Rim uses public lineStyle to preserve
+            // Phaser's line-width bookkeeping for any subsequent drawing.
+            if (previous && previous.layer === layer && previous.geometry === geometry
+                && previous.x === x && previous.y === y && previous.colorInt === colorInt
+                && previous.gradient === fx?.gradient && previous.highlight === fx?.highlight
+                && previous.shadow === fx?.shadow && previous.gloss === fx?.gloss
+                && previous.glossAlpha === fx?.glossAlpha) {
+                for (const command of previous.commands) buffer.push(command);
+            } else {
+                const start = buffer.length;
+                this.fillFusedBody(layer, present, x, y, colorInt, 1, fx, cells, geometry);
+                if (fx?.gloss) {
+                    this.glossPass(layer, present, x, y, fx.glossAlpha, cells, geometry);
+                }
+                // One active tetromino needs only a small segment. Custom huge
+                // shapes retain the normal path without duplicating large data.
+                this._activePieceBodyCache = buffer.length - start <= 4096 ? {
+                    layer,
+                    geometry,
+                    x,
+                    y,
+                    colorInt,
+                    gradient: fx?.gradient,
+                    highlight: fx?.highlight,
+                    shadow: fx?.shadow,
+                    gloss: fx?.gloss,
+                    glossAlpha: fx?.glossAlpha,
+                    commands: buffer.slice(start),
+                } : null;
+            }
+            if (fx?.rim) {
+                const bs = this.blockSize;
+                const width = Math.max(1, bs * fx.rimWidthFactor);
+                this.strokeLoops(layer, geometry.loops, 0xffffff, width, fx.rimAlpha, x * bs, y * bs);
+            }
         }
 
         /**
@@ -1199,9 +1371,7 @@ export function createBaseBoardScene(
             try {
                 if (typeof window !== 'undefined') {
                     if (window.settingsManager?.get?.().reducedMotion) return true;
-                    if (typeof window.matchMedia === 'function') {
-                        return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-                    }
+                    return this._reducedMotionQuery?.matches ?? false;
                 }
             } catch (e) { /* ignore */ }
             return false;
@@ -1214,22 +1384,12 @@ export function createBaseBoardScene(
         _pieceFx(pieceType) {
             // NOTE: keep these in sync with the Canvas-2D next-queue values in
             // canvas-drawing-utils.js (PIECE_DEPTH) so previews match the board.
-            const DEF = {
-                gradient: true,
-                highlight: 0.18, // lighten amount (0..1) at top-left
-                shadow: 0.18, // darken amount (0..1) at bottom-right
-                rim: true,
-                rimAlpha: 0.42,
-                rimWidthFactor: 0.05,
-                gloss: true,
-                glossAlpha: 0.22,
-            };
             try {
                 if (this.styleManager?.getPhaserEffects) {
-                    return { ...DEF, ...this.styleManager.getPhaserEffects(pieceType) };
+                    return this.styleManager.getPhaserEffects(pieceType);
                 }
             } catch (e) { /* ignore */ }
-            return DEF;
+            return DEFAULT_PIECE_EFFECTS;
         }
 
         /** Shade an int color: amount>0 lightens, amount<0 darkens. */
@@ -1274,16 +1434,86 @@ export function createBaseBoardScene(
             return set;
         }
 
+        /** Cache topology in local coordinates; movement changes only translation. */
+        _getPieceGeometry(shape, originY, skipHiddenRows) {
+            const firstRow = skipHiddenRows ? Math.max(0, Math.ceil(this.hiddenRows - originY)) : 0;
+            // Cascade animation can edit a locked shape in place. Compare its
+            // snapshot without allocating on unchanged moving-piece frames.
+            let cached = this._pieceGeometryCache.get(shape);
+            let unchanged = cached && cached.rows.length === shape.length;
+            for (let y = 0; unchanged && y < shape.length; y++) {
+                const row = shape[y];
+                const previous = cached.rows[y];
+                unchanged = row?.length === previous?.length;
+                for (let x = 0; unchanged && x < (row?.length || 0); x++) {
+                    if (row[x] !== previous[x]) unchanged = false;
+                }
+            }
+            if (!unchanged) {
+                cached = { rows: shape.map((row) => row?.slice()), blockSize: this.blockSize, variants: new Map() };
+                this._pieceGeometryCache.set(shape, cached);
+            }
+            if (cached.blockSize !== this.blockSize) {
+                cached.blockSize = this.blockSize;
+                cached.variants.clear();
+            }
+            const { variants } = cached;
+            const key = Math.min(firstRow, shape.length);
+            let geometry = variants.get(key);
+            if (!geometry) {
+                const present = this._presentCells(shape, originY, skipHiddenRows);
+                const cells = Array.from(present, (cell) => cell.split(',').map(Number));
+                geometry = {
+                    present,
+                    cells,
+                    bounds: this._cellBounds(cells),
+                    loops: this.traceLoops(present, 0, 0),
+                    bodyStyle: null,
+                };
+                variants.set(key, geometry);
+            }
+            return geometry;
+        }
+
         /** Pixel rect for a local cell, with 0.5px overlap to fuse seams. */
-        _cellRect(originX, originY, lx, ly) {
+        _cellRect(originX, originY, lx, ly, target = {}) {
             const bs = this.blockSize;
-            const px = Math.round((originX + lx) * bs);
-            const py = Math.round((originY + ly) * bs);
-            const w = Math.round((originX + lx + 1) * bs) - px;
-            const h = Math.round((originY + ly + 1) * bs) - py;
+            target.px = Math.round((originX + lx) * bs);
+            target.py = Math.round((originY + ly) * bs);
+            target.w = Math.round((originX + lx + 1) * bs) - target.px;
+            target.h = Math.round((originY + ly + 1) * bs) - target.py;
+            return target;
+        }
+
+        _cellBounds(cells) {
+            let minLx = Infinity; let minLy = Infinity; let maxLx = -Infinity; let maxLy = -Infinity;
+            for (const [lx, ly] of cells) {
+                if (lx < minLx) minLx = lx;
+                if (ly < minLy) minLy = ly;
+                if (lx > maxLx) maxLx = lx;
+                if (ly > maxLy) maxLy = ly;
+            }
             return {
-                px, py, w, h,
+                minLx, minLy, bw: (maxLx - minLx + 1) || 1, bh: (maxLy - minLy + 1) || 1,
             };
+        }
+
+        _fusedGradientColors(cells, bounds, colorInt, fx) {
+            const {
+                minLx, minLy, bw, bh,
+            } = bounds;
+            const cTL = this._shadeColor(colorInt, fx.highlight);
+            const cBR = this._shadeColor(colorInt, -fx.shadow);
+            return cells.map(([lx, ly]) => {
+                const u0 = (lx - minLx) / bw; const u1 = (lx - minLx + 1) / bw;
+                const v0 = (ly - minLy) / bh; const v1 = (ly - minLy + 1) / bh;
+                return [
+                    this._bilerpColor(cTL, colorInt, colorInt, cBR, u0, v0),
+                    this._bilerpColor(cTL, colorInt, colorInt, cBR, u1, v0),
+                    this._bilerpColor(cTL, colorInt, colorInt, cBR, u0, v1),
+                    this._bilerpColor(cTL, colorInt, colorInt, cBR, u1, v1),
+                ];
+            });
         }
 
         /**
@@ -1291,41 +1521,45 @@ export function createBaseBoardScene(
          * topology-proof. Optional continuous TL→BR gradient across the whole
          * shape (computed in piece-bbox space so it never breaks at a cell edge).
          */
-        fillFusedBody(graphics, presentSet, originX, originY, colorInt, alpha, fx) {
+        fillFusedBody(
+            graphics,
+            presentSet,
+            originX,
+            originY,
+            colorInt,
+            alpha,
+            fx,
+            cachedCells = null,
+            cachedGeometry = null,
+        ) {
             if (!graphics || presentSet.size === 0) return;
-            const cells = [];
-            let minLx = Infinity; let minLy = Infinity; let maxLx = -Infinity; let maxLy = -Infinity;
-            presentSet.forEach((key) => {
-                const [lx, ly] = key.split(',').map(Number);
-                cells.push([lx, ly]);
-                if (lx < minLx) minLx = lx;
-                if (ly < minLy) minLy = ly;
-                if (lx > maxLx) maxLx = lx;
-                if (ly > maxLy) maxLy = ly;
-            });
-            const bw = (maxLx - minLx + 1) || 1;
-            const bh = (maxLy - minLy + 1) || 1;
+            const cells = cachedCells || Array.from(presentSet, (key) => key.split(',').map(Number));
+            const bounds = cachedGeometry?.bounds || this._cellBounds(cells);
             const useGradient = fx && fx.gradient;
-
-            // bbox corner tints for the diagonal light ramp
-            const cTL = useGradient ? this._shadeColor(colorInt, fx.highlight) : colorInt;
-            const cBR = useGradient ? this._shadeColor(colorInt, -fx.shadow) : colorInt;
-            const cTR = colorInt;
-            const cBL = colorInt;
+            let colors = null;
+            if (useGradient) {
+                let style = cachedGeometry?.bodyStyle;
+                if (!style || style.colorInt !== colorInt || style.highlight !== fx.highlight
+                    || style.shadow !== fx.shadow) {
+                    style = {
+                        colorInt,
+                        highlight: fx.highlight,
+                        shadow: fx.shadow,
+                        colors: this._fusedGradientColors(cells, bounds, colorInt, fx),
+                    };
+                    if (cachedGeometry) cachedGeometry.bodyStyle = style;
+                }
+                ({ colors } = style);
+            }
 
             if (!useGradient) graphics.fillStyle(colorInt, alpha);
 
-            cells.forEach(([lx, ly]) => {
+            cells.forEach(([lx, ly], index) => {
                 const {
                     px, py, w, h,
-                } = this._cellRect(originX, originY, lx, ly);
+                } = this._cellRect(originX, originY, lx, ly, this._cellRectScratch);
                 if (useGradient) {
-                    const u0 = (lx - minLx) / bw; const u1 = (lx - minLx + 1) / bw;
-                    const v0 = (ly - minLy) / bh; const v1 = (ly - minLy + 1) / bh;
-                    const tl = this._bilerpColor(cTL, cTR, cBL, cBR, u0, v0);
-                    const tr = this._bilerpColor(cTL, cTR, cBL, cBR, u1, v0);
-                    const bl = this._bilerpColor(cTL, cTR, cBL, cBR, u0, v1);
-                    const br = this._bilerpColor(cTL, cTR, cBL, cBR, u1, v1);
+                    const [tl, tr, bl, br] = colors[index];
                     graphics.fillGradientStyle(tl, tr, bl, br, alpha, alpha, alpha, alpha);
                 }
                 graphics.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
@@ -1337,16 +1571,11 @@ export function createBaseBoardScene(
          * top of the shape, fading to nothing by the vertical midpoint. ADD blend.
          * Continuous across cells (no seams).
          */
-        glossPass(graphics, presentSet, originX, originY, glossAlpha) {
+        glossPass(graphics, presentSet, originX, originY, glossAlpha, cachedCells = null, cachedGeometry = null) {
             if (!graphics || presentSet.size === 0 || glossAlpha <= 0) return;
             const PhaserRef = window.Phaser;
-            let minLy = Infinity; let maxLy = -Infinity;
-            presentSet.forEach((key) => {
-                const ly = Number(key.split(',')[1]);
-                if (ly < minLy) minLy = ly;
-                if (ly > maxLy) maxLy = ly;
-            });
-            const bh = (maxLy - minLy + 1) || 1;
+            const cells = cachedCells || Array.from(presentSet, (key) => key.split(',').map(Number));
+            const { minLy, bh } = cachedGeometry?.bounds || this._cellBounds(cells);
             const sheenSpan = Math.max(1, bh * 0.55); // sheen reaches ~55% down
             const alphaAt = (ly) => {
                 const t = (ly - minLy) / sheenSpan;
@@ -1355,14 +1584,13 @@ export function createBaseBoardScene(
             if (graphics.setBlendMode && PhaserRef?.BlendModes?.ADD) {
                 graphics.setBlendMode(PhaserRef.BlendModes.ADD);
             }
-            presentSet.forEach((key) => {
-                const [lx, ly] = key.split(',').map(Number);
+            cells.forEach(([lx, ly]) => {
                 const aTop = alphaAt(ly);
                 const aBot = alphaAt(ly + 1);
                 if (aTop <= 0 && aBot <= 0) return;
                 const {
                     px, py, w, h,
-                } = this._cellRect(originX, originY, lx, ly);
+                } = this._cellRect(originX, originY, lx, ly, this._cellRectScratch);
                 graphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, aTop, aTop, aBot, aBot);
                 graphics.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
             });
@@ -1449,14 +1677,14 @@ export function createBaseBoardScene(
         }
 
         /** Stroke one or more perimeter loops (the outer rim). */
-        strokeLoops(graphics, loops, colorInt, width, alpha) {
+        strokeLoops(graphics, loops, colorInt, width, alpha, offsetX = 0, offsetY = 0) {
             if (!graphics || !loops || loops.length === 0 || alpha <= 0) return;
             graphics.lineStyle(width, colorInt, alpha);
             loops.forEach((loop) => {
                 if (loop.length < 2) return;
                 graphics.beginPath();
-                graphics.moveTo(loop[0].x, loop[0].y);
-                for (let i = 1; i < loop.length; i++) graphics.lineTo(loop[i].x, loop[i].y);
+                graphics.moveTo(loop[0].x + offsetX, loop[0].y + offsetY);
+                for (let i = 1; i < loop.length; i++) graphics.lineTo(loop[i].x + offsetX, loop[i].y + offsetY);
                 graphics.closePath();
                 graphics.strokePath();
             });
@@ -1467,14 +1695,14 @@ export function createBaseBoardScene(
          * per-cell rect fill, this is correct for TRANSLUCENT fills (the ghost),
          * where overlapping rects would double-cover and show brighter seam lines.
          */
-        fillContour(graphics, loops, colorInt, alpha) {
+        fillContour(graphics, loops, colorInt, alpha, offsetX = 0, offsetY = 0) {
             if (!graphics || !loops || loops.length === 0 || alpha <= 0) return;
             graphics.fillStyle(colorInt, alpha);
             graphics.beginPath();
             loops.forEach((loop) => {
                 if (loop.length < 3) return;
-                graphics.moveTo(loop[0].x, loop[0].y);
-                for (let i = 1; i < loop.length; i++) graphics.lineTo(loop[i].x, loop[i].y);
+                graphics.moveTo(loop[0].x + offsetX, loop[0].y + offsetY);
+                for (let i = 1; i < loop.length; i++) graphics.lineTo(loop[i].x + offsetX, loop[i].y + offsetY);
                 graphics.closePath();
             });
             graphics.fillPath();
@@ -1488,16 +1716,16 @@ export function createBaseBoardScene(
             const {
                 alpha = 1, fx = null, gloss = false, skipHiddenRows = true,
             } = opts;
-            const present = this._presentCells(shape, originY, skipHiddenRows);
+            const geometry = this._getPieceGeometry(shape, originY, skipHiddenRows);
+            const { present } = geometry;
             if (present.size === 0) return;
-            this.fillFusedBody(graphics, present, originX, originY, colorInt, alpha, fx);
+            this.fillFusedBody(graphics, present, originX, originY, colorInt, alpha, fx, geometry.cells, geometry);
             if (gloss && fx && fx.gloss) {
-                this.glossPass(graphics, present, originX, originY, fx.glossAlpha);
+                this.glossPass(graphics, present, originX, originY, fx.glossAlpha, geometry.cells, geometry);
             }
             if (fx && fx.rim) {
-                const loops = this.traceLoops(present, originX, originY);
                 const width = Math.max(1, this.blockSize * fx.rimWidthFactor);
-                this.strokeLoops(graphics, loops, 0xffffff, width, fx.rimAlpha * alpha);
+                this.strokeLoops(graphics, geometry.loops, 0xffffff, width, fx.rimAlpha * alpha, originX * this.blockSize, originY * this.blockSize);
             }
         }
 
@@ -1672,9 +1900,10 @@ export function createBaseBoardScene(
          * Remove listeners on shutdown.
          */
         shutdown() {
-            if (this.scale) {
-                this.scale.off('resize');
-            }
+            this._lifecycleActive = false;
+            this.scale?.off?.('resize', this._invalidatePresentation);
+            this._reducedMotionQuery?.removeEventListener?.('change', this._invalidatePresentation);
+            this._reducedMotionQuery = null;
 
             // Cleanup style manager
             if (this.styleManager) {
@@ -1685,6 +1914,14 @@ export function createBaseBoardScene(
             // Final cleanup on shutdown
             this._performPeriodicCleanup();
             this._firstRenderEmitted = false;
+            this.gameState = null;
+            this._pieceGeometryCache = new WeakMap();
+            this._visibleRowRangeCache = null;
+            this._activePieceBodyCache = null;
+            this._animatedPieces.length = 0;
+            this._animatedPiecesState = null;
+            this._animatedPiecesDirty = true;
+            this._blindOverlayCache = null;
         }
 
         _emitFirstRender() {

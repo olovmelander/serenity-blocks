@@ -113,6 +113,7 @@ export class BoardJuice {
         this._rafId = null;
         this._lastTime = 0;
         this._running = false;
+        this._lastTransform = null;
         this._boundTick = this._tick.bind(this);
 
         // Enable GPU acceleration
@@ -214,7 +215,7 @@ export class BoardJuice {
             && this.scaleY.isAtRest();
 
         if (atRest) {
-            this.element.style.transform = '';
+            this._applyTransform('');
             this._running = false;
             return;
         }
@@ -227,11 +228,20 @@ export class BoardJuice {
         const sy = 1 + clamp(this.scaleY.value, -this.maxScale, this.maxScale);
 
         // Apply CSS transform
-        this.element.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) `
+        const transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) `
             + `rotate(${rot.toFixed(3)}deg) `
             + `scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
+        this._applyTransform(transform);
 
         this._rafId = requestAnimationFrame(this._boundTick);
+    }
+
+    _applyTransform(transform) {
+        // Spring motion can outlast the precision of the displayed values.
+        // Keep advancing it while avoiding an unchanged DOM style assignment.
+        if (transform === this._lastTransform) return;
+        this.element.style.transform = transform;
+        this._lastTransform = transform;
     }
 
     // ─── Lifecycle ────────────────────────────────────────────
@@ -246,6 +256,7 @@ export class BoardJuice {
         if (this.element) {
             this.element.style.transform = '';
         }
+        this._lastTransform = null;
     }
 
     /** Cleanup: stop animation loop and remove CSS */
@@ -262,6 +273,7 @@ export class BoardJuice {
             this.element.style.transformOrigin = '';
         }
         this.element = null;
+        this._lastTransform = null;
         console.log('[BoardJuice] Destroyed');
     }
 }

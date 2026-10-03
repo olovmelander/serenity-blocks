@@ -1,0 +1,861 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-03",
+  "baselineCommit": "6080857e4f223e3719ae470cffae8f33d6e463e5",
+  "scope": "Shared UI, audio lifecycle, Phaser CPU drawing, input, transport and storage. No theme implementation or WebGPU changes.",
+  "measurementLimit": "Operation counts, lifecycle assertions, exact Graphics command parity and returned serialized data sizes. These are not whole-game FPS, GPU-time or heap measurements.",
+  "sourceSha256": {
+    "public/styles/custom-cursor.css": {
+      "baseline": "bbbc1a130e2aa4e5ee1be1907dc911cabf2556dfe80ed9736101fd78ef75ca8b",
+      "optimized": "def1ebebe134eab55e2727d5fe0f0156fdeab9dce1c0cae1d5802856728ea8b5"
+    },
+    "src/audio/sound-effects.js": {
+      "baseline": "703fc2b47ec47d1db80f694af85b4cf75fb841388759fad266d066bd7fa0a950",
+      "optimized": "24d7e145bffeced2a1fa1a24ba443e17303d982c0b96361ac46e6aeca1b71d8c"
+    },
+    "src/audio/sound-manager.js": {
+      "baseline": "bd598c4a732665d459853c05da0a91e18966282a671ffd77b638b4356340a6f2",
+      "optimized": "d33b307e86e8f93a9280eaf1e84499eb760815e06571f82689b15d1f1d6e114c"
+    },
+    "src/core/demo/DemoManager.js": {
+      "baseline": "ac75939ca7d38fd40bf7e68ad065b6ef66f4d7bfe580bf2f0b3ba025ab22826d",
+      "optimized": "56fd8eeba0dccf2364c302cb95d68d3415137422f553c65721a5ecfeabeb6d91"
+    },
+    "src/core/frame-rate-controller.js": {
+      "baseline": "5887394bca32434d3092aa088c39f48e887faa2c8a4c4ca566c6d53148966c09",
+      "optimized": "21dbc39b6c2e6fb1f82a2e2cfe1d182cd6a7bc5f3e9ad72cf4e1f08d0b14bc92"
+    },
+    "src/core/steam/steam-networking.js": {
+      "baseline": "b578f8be21f8d6b6e9b41fb62a944bd6d584d7f497097c6b718d4041cb27c07e",
+      "optimized": "ae7e355ec152e0681f0331867df9b28dc7c24269d7fd4ade1e2adc27e57665a0"
+    },
+    "src/main.js": {
+      "baseline": "7f21ea6990886a5b39f6b9236200ae57634e1cb728699d5fbef09b01eb927051",
+      "optimized": "ab0c61e8ff5a60560a1b43b32df713c4e38ae46212bc200d9fb1f1e4d63f433c"
+    },
+    "src/rendering/phaser/base-board-scene.js": {
+      "baseline": "ad7915c9ea31cac3d52c9415d14be3c6368c86ecc2510931d1560cfb7d2b9707",
+      "optimized": "05b610e7fb6e429dbb19f48f3568cdd573310d5cf77e4c51d07fecbe61373f0e"
+    },
+    "src/rendering/phaser/board-juice.js": {
+      "baseline": "f802cda9b8403d01a74416b677d66d011c9fd9525b76807025218c33aa884e58",
+      "optimized": "c315f49f41f7607d9da36d0455eb1744b2f00b2793dd6d441b2759c396fa6418"
+    },
+    "src/rendering/phaser/shared-effects.js": {
+      "baseline": "69a34b0ce88e2d84dfecb6b2e3a47ce11e81d471d68920a3ab4a6c8b26b290d0",
+      "optimized": "f45b37e852f048a32d42a374271d1b7f3c41a8e8dcddefabdfb71ee6a7653bf0"
+    },
+    "src/ui/components/cosmic-select.js": {
+      "baseline": "c993e95f52fe7a68c84c7fd298209b017ae35a4c8c9270397e30e4e1e1ea2391",
+      "optimized": "b5a339b89a1ddcc494c521cb96685aad1bcb310066b9afe9fc3aa83027d9e474"
+    },
+    "src/ui/components/custom-cursor.js": {
+      "baseline": "32f64324b8e3fee04ba93af4fbb66a0984aee5cab6f2686cb00775dcc4c144f6",
+      "optimized": "2e422f9668e4a741d0e3bd1df4e8a4dadb23b14af1dd35bb017817202d666cd0"
+    },
+    "src/ui/demo-browser.js": {
+      "baseline": "9b4954b8dfef2177e9897568817debd176946c2406f48f5feb7eacb4a6aa1b60",
+      "optimized": "7866af365ac2ab4237f97f40c0e6ffe40788d21bd8de1565098243d4c99ace60"
+    },
+    "src/ui/effects/breathwork-audio-manager.js": {
+      "baseline": "a55a88c5c58ac82b008bb12d5c65d07987f3c9fa8a53acaf5484ee457c6abc9d",
+      "optimized": "0dbe46fadd67d822feb5deac55150982b3cfd2076ea3f1d4d7d2ca2a1c47c568"
+    },
+    "src/ui/effects/breathwork-session-manager.js": {
+      "baseline": "8ad3fba51a6eaf03f5efbebd401ecfbc73de4e58d3e5fe0ab59f0d01d76153ca",
+      "optimized": "00d1f1caef826f15b8ad17a1facb7451c63e377903933f8603279fec63e0f017"
+    },
+    "src/ui/gamepad-controller.js": {
+      "baseline": "b49e39e7b66be605c3bde0aa0c43c65cfb282a7c2e37f3b1ed6dd8289f519da7",
+      "optimized": "3ce96baa8cec30bccbe83ad97eeb0c81935841ba5d57487516d0197471bc714f"
+    },
+    "src/ui/high-scores.js": {
+      "baseline": "041b71924ddf9c84d30170a3a17df8a2d8343e545cc27adcb7fbd3802e2ccccb",
+      "optimized": "1b4cc48383ce5f85e99227d9cb9aaa41c8fa41ba6057869ceea5bbacbc7f93ac"
+    },
+    "src/ui/lobby-browser.js": {
+      "baseline": "e43318e01f8c5be806b85960834d4b15dad52fb6983d5a1a8806dface3233560",
+      "optimized": "eccd63f0724d0fd79fd3134617732b957a25d4e1874cd5168a826b0c86b1e08c"
+    },
+    "src/ui/lobby-waiting-room.js": {
+      "baseline": "264f315cbbe16aa19fcd20c71903ef6c50c7a15613d3e280e8accebc5c02c0fb",
+      "optimized": "c8730b11accdbdc2454fa1f63aa267b6de81945f85c69b949aa713878d7571e8"
+    },
+    "src/ui/multiplayer-scoreboard-overlay.js": {
+      "baseline": "d1090fd583112f2b46573cbf0901d0b5018364057e0d8fb00ffd43d2edf3bd2c",
+      "optimized": "f607a349be401222b569a7e175dd4e2cd236f79f733c40b3d3b04e9a8b557052"
+    },
+    "src/ui/serenity-hub/SerenityHub.js": {
+      "baseline": "d98c2b8c85b0e5a53ec3761934e5700cc701ba5a0e5c52d792dbcf9a49d9aae3",
+      "optimized": "a54b99071f31f7dba9a5ee72fa78612d840ace04a3eea26392de8e86ea2ba6e3"
+    },
+    "src/ui/serenity-hub/SessionsTab.js": {
+      "baseline": "ffafabb88cdcdd1fb6cd7104a3fa977dca33602e00a6cfdf0ab2826e77706390",
+      "optimized": "05c73e45a6b5928d34239507f217c1da10be146e2feda9649695dd803c3dcb66"
+    },
+    "src/ui/serenity-hub/ThemesTab.js": {
+      "baseline": "97ef2202e37e306b15a407802d8ef3dd5e917b1eb98fd5a579b71bf39bf8371b",
+      "optimized": "b2af4c34624abe71355c87c3c0902a0debcae45dc8d2067c152b6f45f160c0d4"
+    }
+  },
+  "menus": {
+    "baseline": {
+      "mode": "baseline",
+      "instrument": "Chromium 153, actual UI modules/CSS in isolated fixture; operation counts/lifecycle assertions, not game FPS.",
+      "optionBatch": {
+        "nativeOptionAdditions": 40,
+        "refreshes": 40,
+        "themedOptionAdditions": 3200,
+        "treeQueries": 3240,
+        "finalThemedOptions": 80
+      },
+      "comboSemantics": {
+        "classChanges": 2,
+        "reopened": true,
+        "closed": true,
+        "value": "1",
+        "ariaExpanded": "false"
+      },
+      "overlayScroll": {
+        "scrollEvents": 60,
+        "positionStyleMutations": 0,
+        "anchorReadsBeforeRaf": 120,
+        "anchorReadsAfterRaf": 120,
+        "insideScrollReads": 0,
+        "overlayOpen": true,
+        "placement": {
+          "left": "81px",
+          "top": "310.219px"
+        },
+        "anchor": {
+          "left": 81,
+          "bottom": 306.21875
+        }
+      },
+      "overlaySemantics": {
+        "disabledValue": "a",
+        "chosenValue": "b",
+        "changes": 1,
+        "closed": true,
+        "noLateOverlay": true,
+        "nativeRestored": true
+      },
+      "hiddenScoreboard": {
+        "snapshots": 40,
+        "players": 8,
+        "hidden": {
+          "rebuilds": 40,
+          "comparisons": 680
+        },
+        "shown": {
+          "rebuilds": 40,
+          "comparisons": 680,
+          "latestScorePresent": true,
+          "rows": 8
+        }
+      },
+      "lobbyLateClose": {
+        "renders": 1,
+        "intervalAfterClose": true,
+        "hidden": true
+      },
+      "lobbyWork": {
+        "refreshClicks": 30,
+        "simultaneousRequests": 31,
+        "unchangedSnapshots": 30,
+        "unchangedRebuilds": 30,
+        "retainedFocus": false,
+        "capacityUpdated": true
+      },
+      "waitingRoom": {
+        "repeated": {
+          "intervals": 2,
+          "subscriptions": 2
+        },
+        "hidden": {
+          "intervals": 1,
+          "subscriptions": 1
+        }
+      },
+      "errors": []
+    },
+    "optimized": {
+      "mode": "after",
+      "instrument": "Chromium 153, actual UI modules/CSS in isolated fixture; operation counts/lifecycle assertions, not game FPS.",
+      "optionBatch": {
+        "nativeOptionAdditions": 40,
+        "refreshes": 1,
+        "themedOptionAdditions": 80,
+        "treeQueries": 0,
+        "finalThemedOptions": 80
+      },
+      "comboSemantics": {
+        "classChanges": 2,
+        "reopened": true,
+        "closed": true,
+        "value": "1",
+        "ariaExpanded": "false"
+      },
+      "overlayScroll": {
+        "scrollEvents": 60,
+        "positionStyleMutations": 0,
+        "anchorReadsBeforeRaf": 0,
+        "anchorReadsAfterRaf": 1,
+        "insideScrollReads": 0,
+        "overlayOpen": true,
+        "placement": {
+          "left": "81px",
+          "top": "310.219px"
+        },
+        "anchor": {
+          "left": 81,
+          "bottom": 306.21875
+        }
+      },
+      "overlaySemantics": {
+        "disabledValue": "a",
+        "chosenValue": "b",
+        "changes": 1,
+        "closed": true,
+        "noLateOverlay": true,
+        "nativeRestored": true
+      },
+      "hiddenScoreboard": {
+        "snapshots": 40,
+        "players": 8,
+        "hidden": {
+          "rebuilds": 0,
+          "comparisons": 0
+        },
+        "shown": {
+          "rebuilds": 1,
+          "comparisons": 17,
+          "latestScorePresent": true,
+          "rows": 8
+        }
+      },
+      "lobbyLateClose": {
+        "renders": 0,
+        "intervalAfterClose": false,
+        "hidden": true
+      },
+      "lobbyWork": {
+        "refreshClicks": 30,
+        "simultaneousRequests": 1,
+        "unchangedSnapshots": 30,
+        "unchangedRebuilds": 1,
+        "retainedFocus": true,
+        "capacityUpdated": true
+      },
+      "waitingRoom": {
+        "repeated": {
+          "intervals": 1,
+          "subscriptions": 1
+        },
+        "hidden": {
+          "intervals": 0,
+          "subscriptions": 0
+        }
+      },
+      "errors": [],
+      "assertions": "passed"
+    }
+  },
+  "storageAndFrameStatistics": {
+    "instrument": "Real Chromium IndexedDB and actual modules; deterministic operation counts and returned data size, not full-app FPS or heap measurements.",
+    "results": [
+      {
+        "mode": "baseline",
+        "replayCards": 200,
+        "retainedReplayEventsAndCheckpoints": 101600,
+        "serializedCardBytes": 4889583,
+        "latestCardId": 200,
+        "loadedReplayInputs": 500,
+        "highScoreImportTransactions": 101,
+        "importedScores": 100,
+        "topScore": 99,
+        "rollbackError": null,
+        "rollbackPreservedScores": true,
+        "historyTraversalsFor240Reads": 720
+      },
+      {
+        "mode": "after",
+        "replayCards": 200,
+        "retainedReplayEventsAndCheckpoints": 0,
+        "serializedCardBytes": 20183,
+        "latestCardId": 200,
+        "loadedReplayInputs": 500,
+        "highScoreImportTransactions": 1,
+        "importedScores": 100,
+        "topScore": 99,
+        "rollbackError": "DataCloneError",
+        "rollbackPreservedScores": true,
+        "historyTraversalsFor240Reads": 0
+      }
+    ],
+    "errors": [],
+    "assertions": "passed"
+  },
+  "phaserDrawing": {
+    "baselineCommit": "6080857",
+    "sourceHashes": {
+      "before": "ad7915c9ea31cac3d52c9415d14be3c6368c86ecc2510931d1560cfb7d2b9707",
+      "after": "05b610e7fb6e429dbb19f48f3568cdd573310d5cf77e4c51d07fecbe61373f0e"
+    },
+    "scope": "CPU work and exact Graphics commands; no FPS/GPU claim",
+    "frames": 120,
+    "baseline": {
+      "counters": {
+        "bilinearColorSamples": 1920,
+        "cellRects": 960,
+        "distinctCellRectObjects": 960,
+        "commands": 3840
+      },
+      "commandsDigest": "f4bfb2e1152c3504890ce236cb93f7c8eeed487a1fab06cc9bf048199e111cdc",
+      "samples": [
+        {
+          "name": "T-standard",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "x": 3,
+          "y": 8,
+          "color": 11023028,
+          "bs": 40,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 32,
+          "digest": "314ef1bd2b666d2e2dfacb98f1cb581b5ebf820c788aa7b54656bd41bf3f5a11"
+        },
+        {
+          "name": "T-fractional",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "x": 3.5,
+          "y": 8.25,
+          "color": 11023028,
+          "bs": 37.5,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 32,
+          "digest": "290bc65402203ab1a863ce57698823d0fa27cae8969cd15b3196fe673a6a0cb8"
+        },
+        {
+          "name": "T-hidden-clipped",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "x": 3,
+          "y": 3,
+          "color": 11023028,
+          "bs": 40,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 26,
+          "digest": "586c6bf22372f3d4b03ccc6c3832beab3c3891738d074695f22e02eee0478e4e"
+        },
+        {
+          "name": "T-new-color",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "x": 3,
+          "y": 8,
+          "color": 3254120,
+          "bs": 40,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 32,
+          "digest": "d38872b46db7c2b666808c7ef7bba43089d7515ba5f465f39b9a61be12590074"
+        },
+        {
+          "name": "L-new-effects",
+          "shape": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "x": 3.1,
+          "y": 4.7,
+          "color": 16609578,
+          "bs": 37.5,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.35,
+            "shadow": 0.07,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.41
+          },
+          "commandCount": 28,
+          "digest": "41ba8b919ba58c6f2b34a482f6860e86b130b0ba945f0a0cab7a240a619c9a72"
+        },
+        {
+          "name": "I-no-depth",
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "x": 3,
+          "y": 6,
+          "color": 9601197,
+          "bs": 40,
+          "fx": {
+            "gradient": false,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": false,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": false,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 5,
+          "digest": "bfe6b9995d99f674773f4fbd4f137a1f1838334b91c2fab93faf5708b0f2e388"
+        },
+        {
+          "name": "disconnected",
+          "shape": [
+            [
+              1,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0
+            ]
+          ],
+          "x": 3,
+          "y": 6,
+          "color": 9600750,
+          "bs": 40,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 31,
+          "digest": "2c67af6a86f8d3dc2fcda86e6b0aad770ea1ef59899702457ac0591f792ed9c7"
+        },
+        {
+          "name": "empty-clipped",
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "x": 3,
+          "y": 3,
+          "color": 9601197,
+          "bs": 40,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 0,
+          "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      ]
+    },
+    "optimized": {
+      "counters": {
+        "bilinearColorSamples": 16,
+        "cellRects": 960,
+        "distinctCellRectObjects": 1,
+        "commands": 3840
+      },
+      "commandsDigest": "f4bfb2e1152c3504890ce236cb93f7c8eeed487a1fab06cc9bf048199e111cdc",
+      "samples": [
+        {
+          "name": "T-standard",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "x": 3,
+          "y": 8,
+          "color": 11023028,
+          "bs": 40,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 32,
+          "digest": "314ef1bd2b666d2e2dfacb98f1cb581b5ebf820c788aa7b54656bd41bf3f5a11"
+        },
+        {
+          "name": "T-fractional",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "x": 3.5,
+          "y": 8.25,
+          "color": 11023028,
+          "bs": 37.5,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 32,
+          "digest": "290bc65402203ab1a863ce57698823d0fa27cae8969cd15b3196fe673a6a0cb8"
+        },
+        {
+          "name": "T-hidden-clipped",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "x": 3,
+          "y": 3,
+          "color": 11023028,
+          "bs": 40,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 26,
+          "digest": "586c6bf22372f3d4b03ccc6c3832beab3c3891738d074695f22e02eee0478e4e"
+        },
+        {
+          "name": "T-new-color",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "x": 3,
+          "y": 8,
+          "color": 3254120,
+          "bs": 40,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 32,
+          "digest": "d38872b46db7c2b666808c7ef7bba43089d7515ba5f465f39b9a61be12590074"
+        },
+        {
+          "name": "L-new-effects",
+          "shape": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "x": 3.1,
+          "y": 4.7,
+          "color": 16609578,
+          "bs": 37.5,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.35,
+            "shadow": 0.07,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.41
+          },
+          "commandCount": 28,
+          "digest": "41ba8b919ba58c6f2b34a482f6860e86b130b0ba945f0a0cab7a240a619c9a72"
+        },
+        {
+          "name": "I-no-depth",
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "x": 3,
+          "y": 6,
+          "color": 9601197,
+          "bs": 40,
+          "fx": {
+            "gradient": false,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": false,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": false,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 5,
+          "digest": "bfe6b9995d99f674773f4fbd4f137a1f1838334b91c2fab93faf5708b0f2e388"
+        },
+        {
+          "name": "disconnected",
+          "shape": [
+            [
+              1,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0
+            ]
+          ],
+          "x": 3,
+          "y": 6,
+          "color": 9600750,
+          "bs": 40,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 31,
+          "digest": "2c67af6a86f8d3dc2fcda86e6b0aad770ea1ef59899702457ac0591f792ed9c7"
+        },
+        {
+          "name": "empty-clipped",
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "x": 3,
+          "y": 3,
+          "color": 9601197,
+          "bs": 40,
+          "fx": {
+            "gradient": true,
+            "highlight": 0.18,
+            "shadow": 0.18,
+            "rim": true,
+            "rimAlpha": 0.42,
+            "rimWidthFactor": 0.05,
+            "gloss": true,
+            "glossAlpha": 0.22
+          },
+          "commandCount": 0,
+          "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      ]
+    },
+    "exactCommandsMatch": true
+  },
+  "regressionWorkloads": {
+    "disabledSoundEffects": {
+      "triggers": 60,
+      "profile": "Zen line-clear",
+      "baselineDelayedNoteTimers": 180,
+      "optimizedDelayedNoteTimers": 0,
+      "test": "tests/unit/sound-manager-performance-lifecycle.test.js"
+    },
+    "hiddenSessionsHud": {
+      "callbacks": 100,
+      "optimizedSelectorReads": 0,
+      "optimizedLabelWrites": 0,
+      "optimizedStyleWrites": 0,
+      "test": "tests/unit/serenity-hub-hidden-work.test.js"
+    },
+    "unchangedVisibleSessionsHud": {
+      "callbacksAfterPriming": 50,
+      "optimizedSelectorReads": 0,
+      "optimizedLabelWrites": 0,
+      "optimizedStyleWrites": 0,
+      "test": "tests/unit/serenity-hub-hidden-work.test.js"
+    },
+    "gamepadBindingCache": {
+      "unchangedPolls": 400,
+      "test": "tests/unit/gamepad-binding-cache.test.js"
+    },
+    "p2pPolling": {
+      "pollPeriodMs": 16,
+      "maxOutstandingReadsPerActiveGeneration": 1,
+      "test": "tests/unit/steam-networking-poll-lifecycle.test.js"
+    }
+  },
+  "validation": {
+    "testFiles": 459,
+    "testsPassed": 4898,
+    "addedFollowupRegressions": 96,
+    "addedCursorRegressions": 11,
+    "build": "passed",
+    "bootClosure": "passed",
+    "typecheck": "passed",
+    "tsCoverageRatchet": "passed",
+    "lintRatchet": {
+      "previousErrors": 1261,
+      "errors": 1253
+    },
+    "architectureFitness": "passed; main line ceiling 5668 to 5667",
+    "dependencyBoundaries": "passed",
+    "themeLifecycle": "passed",
+    "performanceBudgetGate": "passed; no new GPU candidate",
+    "developmentReleaseGates": "passed",
+    "productionDependencyVulnerabilities": 0
+  }
+}

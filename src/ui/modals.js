@@ -13,6 +13,80 @@ import {
 import { csIcon } from './components/cosmic-icons.js';
 import { normalizeWheelDeltaToPixels } from '../utils/wheel-routing.js';
 
+const MENU_SURFACES = '.modal, .serenity-hub-panel, .match-config-modal, #lobby-browser';
+
+/** Suspend decoration only on menu surfaces covered by a higher menu. */
+export function updateMenuCoverage(documentRoot = document) {
+    const surfaces = Array.from(documentRoot.querySelectorAll?.(MENU_SURFACES) || []);
+    const visible = surfaces.filter((surface) => {
+        if (surface.classList.contains('modal')) return surface.classList.contains('visible');
+        if (surface.id === 'serenity-hub-panel') return surface.classList.contains('open');
+        return !surface.classList.contains('hidden');
+    });
+    const view = documentRoot.defaultView || globalThis.window;
+    const getLayer = (surface) => {
+        const layer = Number.parseInt(view?.getComputedStyle?.(surface)?.zIndex, 10);
+        if (Number.isFinite(layer)) return layer;
+        if (surface.id === 'settings-modal') return 2100;
+        if (surface.id === 'serenity-hub-panel') return 2000;
+        return 1000;
+    };
+    let topSurface = null;
+    let topLayer = -Infinity;
+    visible.forEach((surface) => {
+        const layer = getLayer(surface);
+        // A later sibling paints above an earlier sibling at the same layer.
+        if (layer >= topLayer) {
+            topSurface = surface;
+            topLayer = layer;
+        }
+    });
+    surfaces.forEach((surface) => {
+        surface.classList.toggle('menu-covered', visible.includes(surface) && surface !== topSurface);
+    });
+    const startMenu = surfaces.find((surface) => surface.id === 'start-modal');
+    documentRoot.body?.classList.toggle('start-modal-covered', !!startMenu?.classList.contains('menu-covered'));
+    return surfaces;
+}
+
+/** Watch menu roots, not their animated descendants or pointer-driven styles. */
+export function createMenuCoverageController(documentRoot = document) {
+    let trackedSurfaces = null;
+    const view = documentRoot.defaultView || globalThis.window;
+    const Observer = view?.MutationObserver || globalThis.MutationObserver;
+    let observer = null;
+    const refresh = () => {
+        const surfaces = updateMenuCoverage(documentRoot);
+        if (!observer || (surfaces.length === trackedSurfaces?.length
+            && surfaces.every((surface, index) => surface === trackedSurfaces[index]))) return;
+        observer.disconnect();
+        // Menu controllers append their root directly to body when first opened.
+        if (documentRoot.body) observer.observe(documentRoot.body, { childList: true });
+        surfaces.forEach((surface) => observer.observe(surface, {
+            attributes: true,
+            attributeFilter: ['class', 'style', 'hidden'],
+        }));
+        trackedSurfaces = surfaces;
+    };
+    observer = Observer ? new Observer(refresh) : null;
+    ['modalShown', 'modalHidden', 'serenityHubVisibilityChange'].forEach((type) => {
+        view?.addEventListener?.(type, refresh);
+    });
+    refresh();
+    return {
+        refresh,
+        destroy() {
+            observer?.disconnect();
+            ['modalShown', 'modalHidden', 'serenityHubVisibilityChange'].forEach((type) => {
+                view?.removeEventListener?.(type, refresh);
+            });
+            (trackedSurfaces || []).forEach((surface) => surface.classList.remove('menu-covered'));
+            documentRoot.body?.classList.remove('start-modal-covered');
+            trackedSurfaces = [];
+        },
+    };
+}
+
 /**
  * Modal manager class
  */
@@ -26,6 +100,8 @@ export class ModalManager {
             highScores: document.getElementById('high-scores-modal'),
         };
         this.gamepadController = gamepadController;
+        this.menuCoverage = createMenuCoverageController();
+        this.gameOverLeaderboardPanel = null;
     }
 
     /**
@@ -43,6 +119,7 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.add('visible');
+            if (modalName === 'gameOver') this.gameOverLeaderboardPanel?.show();
             if (modalName === 'start') {
                 document.body.classList.add('start-modal-open');
                 // Show replays icon when start modal is open
@@ -56,6 +133,7 @@ export class ModalManager {
                     highscoresIcon.classList.add('visible');
                 }
             }
+            this.menuCoverage.refresh();
             window.dispatchEvent(new CustomEvent('modalShown', { detail: { modalName } }));
 
             // Enable menu navigation when modal opens
@@ -73,6 +151,7 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.remove('visible');
+            if (modalName === 'gameOver') this.gameOverLeaderboardPanel?.hide();
             if (modalName === 'start') {
                 document.body.classList.remove('start-modal-open');
                 // Hide replays icon when start modal closes
@@ -86,6 +165,7 @@ export class ModalManager {
                     highscoresIcon.classList.remove('visible');
                 }
             }
+            this.menuCoverage.refresh();
             window.dispatchEvent(new CustomEvent('modalHidden', { detail: { modalName } }));
 
             // Disable menu navigation when modal closes
@@ -110,6 +190,12 @@ export class ModalManager {
      */
     hideAll() {
         Object.keys(this.modals).forEach((name) => this.hide(name));
+    }
+
+    destroy() {
+        this.gameOverLeaderboardPanel?.destroy();
+        this.gameOverLeaderboardPanel = null;
+        this.menuCoverage.destroy();
     }
 }
 
@@ -151,6 +237,8 @@ export async function showGameOverModal(
     if (!shouldPresent()) {
         return false;
     }
+    modalManager.gameOverLeaderboardPanel?.destroy();
+    modalManager.gameOverLeaderboardPanel = null;
 
     // Calculate speed multiplier
     const LEVEL_SPEEDS = [
@@ -424,6 +512,7 @@ export async function showGameOverModal(
             });
 
             leaderboardPanel.mount(leaderboardHost);
+            modalManager.gameOverLeaderboardPanel = leaderboardPanel;
         }
     } catch (error) {
         if (!shouldPresent()) {

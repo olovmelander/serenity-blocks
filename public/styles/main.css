@@ -11761,7 +11761,9 @@ body.phaser-multiplayer-active #p2-canvas {
     justify-content: center;
     align-items: center;
     background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(15px);
+    /* The dark scrim separates menus without resampling the live full viewport. */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s ease, visibility 0.3s ease;
@@ -11781,14 +11783,15 @@ body.phaser-multiplayer-active #p2-canvas {
     z-index: 2100;
 }
 
-/* Electron: reduce expensive modal backdrop blur */
+/* Keep the shared modal scrim equally bounded in desktop builds. */
 body.electron-app .modal {
-    backdrop-filter: blur(4px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 body.electron-app #settings-modal .modal-content {
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 body.electron-app .modal:not(.visible) .modal-content,
@@ -11879,6 +11882,17 @@ body.electron-app #settings-modal:not(.visible) .modal-content {
     animation-play-state: paused;
 }
 
+/* Coverage is maintained on menu roots by ModalManager, including nested menus.
+ * Preserve every animation's phase so uncovering a menu never replays its entrance. */
+.menu-covered,
+.menu-covered *,
+.menu-covered::before,
+.menu-covered::after,
+.menu-covered *::before,
+.menu-covered *::after {
+    animation-play-state: paused !important;
+}
+
 @keyframes modalSlideIn {
     from {
         opacity: 0;
@@ -11940,8 +11954,8 @@ body.electron-app #settings-modal:not(.visible) .modal-content {
     display: flex;
     flex-direction: column;
     background: rgba(15, 23, 42, 0.85);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     border: 1px solid rgba(139, 92, 246, 0.3);
     box-shadow:
         0 0 0 1px rgba(139, 92, 246, 0.1),

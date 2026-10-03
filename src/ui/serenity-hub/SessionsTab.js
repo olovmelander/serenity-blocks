@@ -18,6 +18,12 @@ export class SessionsTab {
         this.activeSessionData = null;
         this.selectedIntention = null;
         this.pendingSessionId = null;
+        this.active = false;
+        this.destroyed = false;
+        this.abortController = new AbortController();
+        this.pendingTimers = new Map();
+        this.countdownGeneration = 0;
+        this.hudNodes = null;
 
         // Intention options for each session type
         this.INTENTIONS = {
@@ -353,7 +359,7 @@ export class SessionsTab {
 
         // Start buttons - now show prep screen
         this.container.querySelectorAll('.start-session-btn').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
+            this.listen(btn, 'click', (e) => {
                 const sessionId = e.target.dataset.session;
                 this.showPrepScreen(sessionId);
             });
@@ -362,7 +368,7 @@ export class SessionsTab {
         // Stop button
         const stopBtn = this.container.querySelector('.stop-session-btn');
         if (stopBtn) {
-            stopBtn.addEventListener('click', () => {
+            this.listen(stopBtn, 'click', () => {
                 this.stopSession();
             });
         }
@@ -370,7 +376,7 @@ export class SessionsTab {
         // Prep screen close button
         const closeBtn = this.container.querySelector('.prep-close-btn');
         if (closeBtn) {
-            closeBtn.addEventListener('click', () => {
+            this.listen(closeBtn, 'click', () => {
                 this.hidePrepScreen();
             });
         }
@@ -378,7 +384,7 @@ export class SessionsTab {
         // Begin button
         const beginBtn = this.container.querySelector('.prep-begin-btn');
         if (beginBtn) {
-            beginBtn.addEventListener('click', () => {
+            this.listen(beginBtn, 'click', () => {
                 this.startCountdown();
             });
         }
@@ -386,7 +392,7 @@ export class SessionsTab {
         // Skip intention button
         const skipBtn = this.container.querySelector('.prep-skip-btn');
         if (skipBtn) {
-            skipBtn.addEventListener('click', () => {
+            this.listen(skipBtn, 'click', () => {
                 this.selectedIntention = { id: 'none', label: 'Present Moment' };
                 this.startCountdown();
             });
@@ -397,6 +403,8 @@ export class SessionsTab {
      * Show the preparation screen for a session
      */
     showPrepScreen(sessionId) {
+        if (this.destroyed) return;
+        this.cancelPendingUI();
         this.pendingSessionId = sessionId;
         this.selectedIntention = null;
 
@@ -461,7 +469,7 @@ export class SessionsTab {
 
             // Add click listeners to intention cards
             intentionGrid.querySelectorAll('.intention-card').forEach((card) => {
-                card.addEventListener('click', () => {
+                this.listen(card, 'click', () => {
                     this.selectIntention(card.dataset.intention, sessionId);
                 });
             });
@@ -476,17 +484,18 @@ export class SessionsTab {
 
         // Show prep screen with animation
         prepOverlay.style.display = 'flex';
-        setTimeout(() => prepOverlay.classList.add('visible'), 10);
+        this.scheduleUI(() => prepOverlay.classList.add('visible'), 10);
     }
 
     /**
      * Hide the preparation screen
      */
     hidePrepScreen() {
+        this.cancelPendingUI();
         const prepOverlay = this.container.querySelector('.session-prep-overlay');
         if (prepOverlay) {
             prepOverlay.classList.remove('visible');
-            setTimeout(() => {
+            this.scheduleUI(() => {
                 prepOverlay.style.display = 'none';
             }, 300);
         }
@@ -527,10 +536,85 @@ export class SessionsTab {
         }
     }
 
+    listen(target, type, handler) {
+        target.addEventListener(type, handler, { signal: this.abortController.signal });
+    }
+
+    scheduleUI(callback, delay) {
+        const timer = setTimeout(() => {
+            this.pendingTimers.delete(timer);
+            if (!this.destroyed) callback();
+        }, delay);
+        this.pendingTimers.set(timer, null);
+        return timer;
+    }
+
+    waitForCountdown(delay) {
+        return new Promise((resolve) => {
+            const timer = setTimeout(() => {
+                this.pendingTimers.delete(timer);
+                resolve(true);
+            }, delay);
+            this.pendingTimers.set(timer, resolve);
+        });
+    }
+
+    cancelPendingUI() {
+        this.countdownGeneration += 1;
+        this.pendingTimers.forEach((resolve, timer) => {
+            clearTimeout(timer);
+            resolve?.(false);
+        });
+        this.pendingTimers.clear();
+        const countdown = this.container?.querySelector('.session-countdown-overlay');
+        countdown?.classList.remove('visible');
+        this.setStyle(countdown, 'display', 'none');
+    }
+
+    setActive(active) {
+        this.active = Boolean(active) && !this.destroyed;
+        if (this.active) {
+            const { overlay } = this.getHUDNodes();
+            if (overlay) overlay.style.display = this.activeSessionData ? 'flex' : 'none';
+            if (this.activeSessionData) this.updateHUD(this.activeSessionData);
+        }
+    }
+
+    getHUDNodes() {
+        if (this.hudNodes) return this.hudNodes;
+        const overlay = this.container?.querySelector('.active-session-overlay');
+        const hud = overlay?.querySelector('.session-hud');
+        const selectors = ['session-name', 'session-round', 'phase-timer', 'phase-label',
+            'progress-fill', 'breath-counter', 'breath-current', 'breath-total',
+            'phase-fill', 'guidance-main', 'guidance-sub'];
+        this.hudNodes = { overlay, hud };
+        selectors.forEach((name) => { this.hudNodes[name] = hud?.querySelector(`.${name}`); });
+        const fill = this.hudNodes['phase-fill'];
+        if (fill) {
+            fill.style.width = '100%';
+            fill.style.transformOrigin = 'left center';
+            fill.style.transition = 'transform 0.2s ease';
+            fill.style.transform = 'scaleX(0)';
+        }
+        return this.hudNodes;
+    }
+
+    setLabel(node, value) {
+        const text = String(value);
+        if (node && node.textContent !== text) node.textContent = text;
+    }
+
+    setStyle(node, key, value) {
+        if (node && node.style[key] !== value) node.style[key] = value;
+    }
+
     /**
      * Start the countdown before session
      */
     async startCountdown() {
+        this.cancelPendingUI();
+        const generation = this.countdownGeneration;
+        const sessionId = this.pendingSessionId;
         const prepOverlay = this.container.querySelector('.session-prep-overlay');
         const countdownOverlay = this.container.querySelector('.session-countdown-overlay');
         const countdownNumber = this.container.querySelector('.countdown-number');
@@ -540,7 +624,7 @@ export class SessionsTab {
         if (!countdownOverlay || !countdownNumber) return;
 
         // Apply session theme
-        const sessionType = this.pendingSessionId.toLowerCase();
+        const sessionType = sessionId.toLowerCase();
         countdownOverlay.className = `session-countdown-overlay ${sessionType}`;
 
         // Set intention text
@@ -554,7 +638,7 @@ export class SessionsTab {
             prepOverlay.style.display = 'none';
         }
         countdownOverlay.style.display = 'flex';
-        setTimeout(() => countdownOverlay.classList.add('visible'), 10);
+        this.scheduleUI(() => countdownOverlay.classList.add('visible'), 10);
 
         // Countdown sequence
         const messages = [
@@ -570,18 +654,18 @@ export class SessionsTab {
             countdownNumber.className = 'countdown-number pulse';
             if (countdownMessage) countdownMessage.textContent = messages[i];
 
-            // Force reflow for animation
-            void countdownNumber.offsetWidth;
-            countdownNumber.classList.add('pulse');
-
-            await new Promise((resolve) => setTimeout(resolve, i === 3 ? 800 : 1000));
+            // Countdown beats are intentionally sequential; cancellation resolves
+            // the pending wait so teardown cannot strand this async flow.
+            // eslint-disable-next-line no-await-in-loop
+            const elapsed = await this.waitForCountdown(i === 3 ? 800 : 1000);
+            if (!elapsed || this.destroyed || generation !== this.countdownGeneration) return;
         }
 
         // Hide countdown, start session
         countdownOverlay.classList.remove('visible');
-        setTimeout(() => {
+        this.scheduleUI(() => {
             countdownOverlay.style.display = 'none';
-            this.startSession(this.pendingSessionId);
+            this.startSession(sessionId);
         }, 300);
     }
 
@@ -599,86 +683,43 @@ export class SessionsTab {
      * Progress is 0-1
      */
     updateProgressRing(progress) {
-        const fill = this.container.querySelector('.progress-fill');
-        if (fill) {
-            // Circle circumference is 2 * PI * 45 ≈ 283
-            const offset = 283 * (1 - progress);
-            fill.style.strokeDashoffset = offset;
-        }
+        if (!this.active || this.destroyed) return;
+        this.setStyle(this.getHUDNodes()['progress-fill'], 'strokeDashoffset', String(283 * (1 - progress)));
     }
 
-    /**
-     * Update the HUD with current session progress
-     */
+    /** Cache the latest state even while the session runs outside the Hub. */
     updateHUD(progress) {
-        if (!progress) return;
-
-        const overlay = this.container.querySelector('.active-session-overlay');
-        const hud = overlay?.querySelector('.session-hud');
+        if (!progress || this.destroyed) return;
+        this.activeSessionData = progress;
+        if (!this.active) return;
+        const nodes = this.getHUDNodes();
+        const { hud } = nodes;
         if (!hud) return;
-
-        // Apply session theme class
-        hud.className = `session-hud ${progress.sessionId?.toLowerCase() || ''}`;
-
-        // Session name and round
-        const sessionName = hud.querySelector('.session-name');
-        const sessionRound = hud.querySelector('.session-round');
-        if (sessionName) sessionName.textContent = progress.sessionName || 'Session';
-        if (sessionRound) {
-            if (progress.round > 0) {
-                sessionRound.textContent = `Round ${progress.round} of ${progress.totalRounds}`;
-                sessionRound.style.display = 'block';
-            } else {
-                sessionRound.style.display = 'none';
-            }
-        }
-
-        // Timer
-        const timer = hud.querySelector('.phase-timer');
-        if (timer) {
-            timer.textContent = this.formatTime(progress.remainingTime);
-        }
-
-        // Phase label
-        const phaseLabel = hud.querySelector('.phase-label');
-        if (phaseLabel) {
-            phaseLabel.textContent = progress.phaseLabel || 'Breathe';
-        }
-
-        // Progress ring
+        const className = `session-hud ${progress.sessionId?.toLowerCase() || ''}`;
+        if (hud.className !== className) hud.className = className;
+        this.setLabel(nodes['session-name'], progress.sessionName || 'Session');
+        this.setLabel(nodes['session-round'], `Round ${progress.round} of ${progress.totalRounds}`);
+        this.setStyle(nodes['session-round'], 'display', progress.round > 0 ? 'block' : 'none');
+        this.setLabel(nodes['phase-timer'], this.formatTime(progress.remainingTime));
+        this.setLabel(nodes['phase-label'], progress.phaseLabel || 'Breathe');
         this.updateProgressRing(progress.phaseProgress);
-
-        // Breath counter visibility and values
-        const breathCounter = hud.querySelector('.breath-counter');
-        if (breathCounter) {
-            if (progress.isActivePhase) {
-                breathCounter.classList.add('visible');
-                const current = breathCounter.querySelector('.breath-current');
-                const total = breathCounter.querySelector('.breath-total');
-                if (current) current.textContent = progress.breathCount || 0;
-                if (total) total.textContent = progress.totalBreaths || 0;
-            } else {
-                breathCounter.classList.remove('visible');
-            }
+        const breathCounter = nodes['breath-counter'];
+        const activePhase = Boolean(progress.isActivePhase);
+        if (breathCounter?.classList.contains('visible') !== activePhase) {
+            breathCounter?.classList.toggle('visible', activePhase);
         }
-
-        // Phase progress bar
-        const phaseFill = hud.querySelector('.phase-fill');
-        if (phaseFill) {
-            phaseFill.style.width = `${progress.phaseProgress * 100}%`;
+        if (progress.isActivePhase) {
+            this.setLabel(nodes['breath-current'], progress.breathCount || 0);
+            this.setLabel(nodes['breath-total'], progress.totalBreaths || 0);
         }
-
-        // Guidance text
-        const guidanceMain = hud.querySelector('.guidance-main');
-        const guidanceSub = hud.querySelector('.guidance-sub');
-        if (guidanceMain) guidanceMain.textContent = progress.prompt || '';
-        if (guidanceSub) {
-            guidanceSub.textContent = progress.subPrompt || '';
-            guidanceSub.style.display = progress.subPrompt ? 'block' : 'none';
-        }
+        this.setStyle(nodes['phase-fill'], 'transform', `scaleX(${progress.phaseProgress})`);
+        this.setLabel(nodes['guidance-main'], progress.prompt || '');
+        this.setLabel(nodes['guidance-sub'], progress.subPrompt || '');
+        this.setStyle(nodes['guidance-sub'], 'display', progress.subPrompt ? 'block' : 'none');
     }
 
     startSession(sessionId) {
+        if (this.destroyed) return;
         // Hide hub to show the breathing indicator
         this.hub.hide();
 
@@ -693,11 +734,11 @@ export class SessionsTab {
             sessionId,
             (progress) => {
                 // On Progress - update HUD
-                this.activeSessionData = progress;
                 this.updateHUD(progress);
             },
             (stats) => {
                 // On Complete
+                if (this.destroyed) return;
                 if (overlay) overlay.style.display = 'none';
                 this.activeSessionData = null;
 
@@ -711,6 +752,7 @@ export class SessionsTab {
     }
 
     stopSession() {
+        this.cancelPendingUI();
         this.sessionManager.stopSession();
         const overlay = this.container.querySelector('.active-session-overlay');
         if (overlay) overlay.style.display = 'none';
@@ -720,6 +762,17 @@ export class SessionsTab {
     /**
      * Show a brief completion message
      */
+    destroy() {
+        if (this.destroyed) return;
+        this.destroyed = true;
+        this.active = false;
+        this.cancelPendingUI();
+        this.abortController.abort();
+        this.activeSessionData = null;
+        this.hudNodes = null;
+        this.container = null;
+    }
+
     showCompletionMessage(stats) {
         // For now, just log. Could be enhanced with a modal
         console.log(`[SessionsTab] Completed ${stats.sessionName} in ${this.formatTime(stats.totalDuration)}`);

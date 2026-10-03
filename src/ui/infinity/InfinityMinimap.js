@@ -4,7 +4,7 @@
  * Allows click-to-jump navigation and shows height milestones
  */
 
-import { calculateTopRow, calculateBuildHeight } from '../../core/infinity-grid.js';
+import { calculateTopRow } from '../../core/infinity-grid.js';
 
 /**
  * InfinityMinimap - Visual overview of entire build
@@ -61,12 +61,17 @@ export class InfinityMinimap {
         // Height milestones (computed from maxRows)
         this.milestones = [];
 
-        // PERFORMANCE: Dirty flag system to prevent unnecessary redraws
-        // Only render when something actually changed
-        this.lastCameraRow = null;
-        this.lastBuildHeight = null;
-        this.lastTopRow = null;
-        this.lastLockedPiecesCount = 0;
+        // Static raster layers sit on either side of the animated scanline.
+        // The visible canvas still renders its scanline and viewport pulse every 16ms.
+        this.backgroundLayer = null;
+        this.crtLayer = null;
+        this.labelLayout = null;
+        this.buildFill = null;
+        this.lastBorderColor = null;
+        this.lastGlowColor = null;
+        this.lastProgressTopRow = null;
+        this.lastProgressMaxRows = null;
+        this.hideTimeout = null;
 
         // PERFORMANCE: Time-based throttling to prevent excessive renders
         // Note: Using 16ms (~60fps) to support smooth pulsing animation
@@ -295,6 +300,8 @@ export class InfinityMinimap {
      * Show minimap (always visible, no entrance animation)
      */
     show() {
+        clearTimeout(this.hideTimeout);
+        this.hideTimeout = null;
         const host = this.options.container || document.getElementById('single-player-container');
 
         if (host && this.container.parentElement !== host) {
@@ -305,6 +312,9 @@ export class InfinityMinimap {
         this.container.style.display = 'block';
         this.container.style.transform = 'translateX(0) scale(1)';
         this.container.style.opacity = '0.8';
+
+        // Hidden updates retain the latest model without raster work.
+        this.render();
 
         console.log('[InfinityMinimap] Shown');
     }
@@ -323,9 +333,11 @@ export class InfinityMinimap {
         this._triggerActivationPulse();
 
         // Actually hide after animation completes
-        setTimeout(() => {
+        clearTimeout(this.hideTimeout);
+        this.hideTimeout = setTimeout(() => {
             this.container.style.display = 'none';
             this.container.style.animation = 'none';
+            this.hideTimeout = null;
         }, 400);
 
         console.log('[InfinityMinimap] Hidden with animation');
@@ -392,7 +404,7 @@ export class InfinityMinimap {
 
     /**
      * Update minimap with current game state
-     * PERFORMANCE OPTIMIZED: Only renders when state actually changes
+     * Static layers are reused while scanline and viewport animations remain live.
      * @param {Object} gameState - Current game state
      * @param {number} cameraRow - Current camera row position
      * @param {number} visibleRows - Number of visible rows in viewport
@@ -400,90 +412,76 @@ export class InfinityMinimap {
     update(gameState, cameraRow, visibleRows) {
         if (!gameState) return;
 
+        this.gameState = gameState;
+        this.cameraRow = cameraRow;
+        this.visibleRows = visibleRows;
+
+        // Keep the latest state for reopening, but skip all hidden canvas work.
+        if (this.container.style.display === 'none') return;
+
         // PERFORMANCE CRITICAL: Time-based throttling
-        // Don't even check for changes more than 10 times per second
+        // Keep the existing 16ms animation cadence.
         const now = performance.now();
         if (now - this.lastUpdateTime < this.updateInterval) {
             return; // Skip this update entirely
         }
 
-        // PERFORMANCE: Calculate current state values ONLY after throttle check
-        const buildHeight = calculateBuildHeight(gameState);
+        // Scan once, including in-place mutations; piece counts are not an invalidation token.
         const topRow = calculateTopRow(gameState);
-        const lockedPiecesCount = gameState.lockedPieces?.length || 0;
-
-        // PERFORMANCE: Only render if something actually changed
-        // Note: Always render to support pulsing animation, but throttled by updateInterval
-        const shouldRender = this.lastCameraRow !== cameraRow
-            || this.lastBuildHeight !== buildHeight
-            || this.lastTopRow !== topRow
-            || this.lastLockedPiecesCount !== lockedPiecesCount
-            || this.gameState === null // First render
-            || true; // Always render for smooth animations (throttled by updateInterval)
-
-        if (shouldRender) {
-            this.gameState = gameState;
-            this.cameraRow = cameraRow;
-            this.visibleRows = visibleRows;
-
-            // Cache current values
-            this.lastCameraRow = cameraRow;
-            this.lastBuildHeight = buildHeight;
-            this.lastTopRow = topRow;
-            this.lastLockedPiecesCount = lockedPiecesCount;
-            this.lastUpdateTime = now; // Update timestamp only when we actually render
-
-            this.render();
-        }
+        this.lastUpdateTime = now;
+        this.render(topRow);
     }
 
     /**
      * Render minimap
      * @private
      */
-    render() {
+    render(boardTopRow = null) {
         if (!this.gameState || !this.ctx) return;
 
         const { width, height } = this.canvas;
         const { ctx } = this;
         const maxRows = this._getMaxRows();
         const rowOffset = this._getRowOffset(maxRows);
+        const topRow = rowOffset + (boardTopRow ?? calculateTopRow(this.gameState));
+        const totalRows = maxRows;
+        const pixelsPerRow = height / totalRows;
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
 
-        // Draw background
-        ctx.fillStyle = 'rgba(20, 20, 30, 0.8)';
-        ctx.fillRect(0, 0, width, height);
-
-        // Draw subtle background texture
-        this._drawBackgroundTexture(ctx, width, height);
+        const background = this._getBackgroundLayer(width, height);
+        ctx.drawImage(background.canvas, 0, 0);
 
         // Draw animated scanline effect
         this._drawScanlineEffect(ctx, width, height);
 
-        const totalRows = maxRows;
-        const pixelsPerRow = height / totalRows;
-
-        // Update border color based on progress
-        const topRow = rowOffset + calculateTopRow(this.gameState);
-        const borderColor = this._getBorderColor(topRow, maxRows);
-        const glowColor = this._getBorderGlowColor(topRow, maxRows);
-
-        this.container.style.borderColor = borderColor;
-        this.container.style.boxShadow = `
+        // Progress colors are independent of the live scanline and viewport pulse.
+        if (topRow !== this.lastProgressTopRow || maxRows !== this.lastProgressMaxRows) {
+            const borderColor = this._getBorderColor(topRow, maxRows);
+            const glowColor = this._getBorderGlowColor(topRow, maxRows);
+            if (borderColor !== this.lastBorderColor) {
+                this.container.style.borderColor = borderColor;
+                this.lastBorderColor = borderColor;
+            }
+            if (glowColor !== this.lastGlowColor) {
+                this.container.style.boxShadow = `
             0 14px 40px rgba(10, 16, 30, 0.5),
             inset 0 0 24px ${glowColor}
         `;
+                this.lastGlowColor = glowColor;
+            }
+            this.lastProgressTopRow = topRow;
+            this.lastProgressMaxRows = maxRows;
+        }
 
-        // Draw height milestones
-        this.milestones = this._buildMilestones(maxRows);
+        // Keep CRT above the scanline. Paint labels/build directly in their original order:
+        // precomposing those translucent overlapping elements changes pixel rounding.
+        const crt = this._getCRTLayer(width, height);
+        ctx.drawImage(crt.canvas, 0, 0);
+        this._prepareLabelLayout(maxRows);
         this._drawMilestones(ctx, width, height, totalRows, pixelsPerRow);
-
-        // Draw row labels
         this._drawRowLabels(ctx, width, height, totalRows, pixelsPerRow, maxRows);
-
-        // Draw build (blocks)
         this._drawBuild(ctx, width, height, totalRows, pixelsPerRow, topRow);
 
         // Draw viewport indicator
@@ -491,6 +489,56 @@ export class InfinityMinimap {
 
         // Draw top row indicator
         this._drawTopRowIndicator(ctx, width, height, totalRows, pixelsPerRow, topRow);
+    }
+
+    _createRasterLayer(width, height) {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        return {
+            canvas, ctx: canvas.getContext('2d'), width, height,
+        };
+    }
+
+    _getBackgroundLayer(width, height) {
+        if (!this.backgroundLayer
+            || this.backgroundLayer.width !== width || this.backgroundLayer.height !== height) {
+            this.backgroundLayer = this._createRasterLayer(width, height);
+            const { ctx } = this.backgroundLayer;
+            ctx.fillStyle = 'rgba(20, 20, 30, 0.8)';
+            ctx.fillRect(0, 0, width, height);
+            this._drawBackgroundTexture(ctx, width, height);
+        }
+        return this.backgroundLayer;
+    }
+
+    _getCRTLayer(width, height) {
+        if (!this.crtLayer || this.crtLayer.width !== width || this.crtLayer.height !== height) {
+            this.crtLayer = this._createRasterLayer(width, height);
+            this._drawCRTTexture(this.crtLayer.ctx, width, height);
+        }
+        return this.crtLayer;
+    }
+
+    _prepareLabelLayout(maxRows) {
+        if (this.labelLayout?.maxRows === maxRows) return;
+        this.milestones = this._buildMilestones(maxRows);
+        const normalizedMax = Math.max(1, maxRows);
+        const step = Math.max(1, Math.floor(normalizedMax / 4));
+        const rawRows = [0, step, step * 2, step * 3, normalizedMax];
+        const uniqueRows = [];
+        rawRows.forEach((row) => {
+            if (!uniqueRows.includes(row)) uniqueRows.push(row);
+        });
+        this.labelLayout = {
+            maxRows,
+            labels: uniqueRows.map((row) => {
+                let color = '#c4b5fd';
+                if (row === 0) color = '#ffffff';
+                else if (row === normalizedMax) color = '#fcd17a';
+                return { row, text: row.toString(), color };
+            }),
+        };
     }
 
     _getMaxRows() {
@@ -569,7 +617,9 @@ export class InfinityMinimap {
 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, scanlineY - 40, width, 80);
+    }
 
+    _drawCRTTexture(ctx, width, height) {
         // Static scanlines (CRT effect)
         ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
         for (let y = 0; y < height; y += 4) {
@@ -698,26 +748,12 @@ export class InfinityMinimap {
      * @private
      */
     _drawRowLabels(ctx, width, height, totalRows, pixelsPerRow, maxRows) {
-        const normalizedMax = Math.max(1, maxRows);
-        const step = Math.max(1, Math.floor(normalizedMax / 4));
-        const rawRows = [0, step, step * 2, step * 3, normalizedMax];
-        const uniqueRows = [];
-        rawRows.forEach((row) => {
-            if (!uniqueRows.includes(row)) {
-                uniqueRows.push(row);
-            }
-        });
-
-        const labels = uniqueRows.map((row) => ({
-            row,
-            text: row.toString(),
-            color: row === 0 ? '#ffffff' : row === normalizedMax ? '#fcd17a' : '#c4b5fd',
-        }));
+        this._prepareLabelLayout(maxRows);
 
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'right';
 
-        labels.forEach(({ row, text, color }) => {
+        this.labelLayout.labels.forEach(({ row, text, color }) => {
             if (row <= totalRows) {
                 // Row 0 at top (y=0), Row maxRows at bottom (y=height)
                 const y = row * pixelsPerRow;
@@ -742,8 +778,6 @@ export class InfinityMinimap {
      * @private
      */
     _drawBuild(ctx, width, height, totalRows, pixelsPerRow, topRow) {
-        const { board } = this.gameState;
-
         // Sample blocks for minimap (can't draw every single block at this scale)
         // Draw a simplified representation using actual row positions
         // Only draw if there are blocks on the board
@@ -758,12 +792,18 @@ export class InfinityMinimap {
         const bottomY = totalRows * pixelsPerRow;
         const fillHeight = bottomY - topY;
 
-        // Create gradient for depth effect
-        const gradient = ctx.createLinearGradient(0, topY, 0, bottomY);
-        gradient.addColorStop(0, 'rgba(167, 139, 250, 0.7)');
-        gradient.addColorStop(1, 'rgba(110, 80, 190, 0.85)');
+        // Cache preparation only; painting directly preserves original alpha composition.
+        if (!this.buildFill || this.buildFill.ctx !== ctx
+            || this.buildFill.topY !== topY || this.buildFill.bottomY !== bottomY) {
+            const gradient = ctx.createLinearGradient(0, topY, 0, bottomY);
+            gradient.addColorStop(0, 'rgba(167, 139, 250, 0.7)');
+            gradient.addColorStop(1, 'rgba(110, 80, 190, 0.85)');
+            this.buildFill = {
+                ctx, topY, bottomY, gradient,
+            };
+        }
 
-        ctx.fillStyle = gradient;
+        ctx.fillStyle = this.buildFill.gradient;
         ctx.fillRect(2, topY, width - 4, fillHeight);
 
         // Add outline
@@ -1049,6 +1089,12 @@ export class InfinityMinimap {
      * Destroy minimap and clean up
      */
     destroy() {
+        clearTimeout(this.hideTimeout);
+        this.hideTimeout = null;
+        this.backgroundLayer = null;
+        this.crtLayer = null;
+        this.labelLayout = null;
+        this.buildFill = null;
         // Remove event listeners
         this.canvas.removeEventListener('click', this.handleClick);
         this.canvas.removeEventListener('mousedown', this.handleMouseDown);

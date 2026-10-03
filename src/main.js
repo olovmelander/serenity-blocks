@@ -49,6 +49,7 @@ import {
 import { updateNextQueue, drawPiece as drawNextPiece } from './ui/next-queue-ui.js';
 import { WebGLRenderer } from './rendering/renderer.js';
 import { createBoardScene } from './rendering/phaser/board-scene.js';
+import { applyPhaserFrameRate, phaserFrameRateConfig, installPhaserPresentationClock } from './rendering/phaser/frame-rate-policy.js';
 import { createBackgroundScene } from './rendering/phaser/background-scene.js';
 import { createMultiplayerBoardScene } from './rendering/phaser/multiplayer/board-panel.js';
 import { eventBus, EVENTS } from './events/event-bus.js';
@@ -56,6 +57,7 @@ import {
     emitLineClear, emitCombo, emitPieceLock, emitHardDrop,
 } from './events/gameplay-events.js';
 import { initViewportBroadcaster } from './utils/viewport.js';
+import { cleanupApplication } from './utils/application-cleanup.js';
 import { normalizeQuality } from './utils/quality.js';
 import { DisplayManager } from './core/display-manager.js';
 import { FrameRateController } from './core/frame-rate-controller.js';
@@ -961,12 +963,13 @@ class SerenityBlocks {
             this.frameRateController.setTargetFPS(targetFrameRate || 0);
             this.frameRateController.resetStats();
 
-            // Update Phaser game FPS target if game exists
-            if (this.phaserGame && this.phaserGame.loop) {
-                const actualTarget = targetFrameRate || 60; // Default to 60 if unlimited
-                this.phaserGame.loop.targetFps = actualTarget;
-                console.log(`[FrameRate] Updated Phaser FPS target to ${actualTarget}`);
-            }
+            const mode = this.gameModeManager?.getCurrentMode?.();
+            const games = new Set([
+                this.phaserGame,
+                mode?.mainPhaserGame,
+                ...(mode?.phaserGames || []),
+            ]);
+            games.forEach((game) => applyPhaserFrameRate(game, targetFrameRate || 0));
 
             this.backgroundScene?.setTargetFrameRate?.(targetFrameRate || 60);
 
@@ -1457,10 +1460,7 @@ class SerenityBlocks {
             audio: { noAudio: true },
 
             // Frame rate target
-            fps: {
-                target: 60,
-                forceSetTimeOut: false,
-            },
+            fps: phaserFrameRateConfig(this.getResolvedDesktopSettings().targetFrameRate ?? 60),
 
             // Register initial scenes (multiplayer scenes added dynamically)
             scene: [BoardScene, BackgroundScene],
@@ -1491,6 +1491,7 @@ class SerenityBlocks {
             // Post-boot callback for scene initialization
             callbacks: {
                 postBoot: (game) => {
+                    installPhaserPresentationClock(game);
                     console.log('[Phaser 4 Init] Post-boot callback started');
 
                     // Validate scene manager
@@ -1708,8 +1709,7 @@ class SerenityBlocks {
 
         if (this.fpsCounter.element) {
             this.fpsCounter.element.classList.add('hidden'); // Hide legacy counter
-            this.updateFPSCounter(performance.now(), { recordFrame: false });
-            this.startFPSMonitor();
+            this.stopFPSMonitor();
             console.log('[FPS] Enhanced performance monitor shown');
         }
     }
@@ -2376,6 +2376,7 @@ class SerenityBlocks {
         console.log('[Main] Initializing global Serenity Hub...');
         this.globalSerenityHubInitPromise = (async () => {
             const { SerenityHub } = await import('./ui/serenity-hub/SerenityHub.js');
+            if (this.isCleaningUp) return null;
 
             const hubWrapper = {
                 deps: {
@@ -2951,6 +2952,34 @@ class SerenityBlocks {
             this.themeManager.suspendThemes();
         };
         window.addEventListener('modalShown', startModalShownHandler);
+        const boardCovers = new Set();
+        const updateCoveredBoards = () => {
+            const mode = this.gameModeManager?.getCurrentMode?.();
+            const pausableBoardMode = ['single', 'local-multiplayer', 'infinity'].includes(mode?.getModeId?.());
+            const covered = pausableBoardMode && mode?.isPaused && boardCovers.size > 0;
+            const scenes = new Set([
+                mode?.boardScene,
+                mode?._getBoardScene?.(),
+                ...(mode?.boardScenes || []),
+            ]);
+            scenes.forEach((scene) => scene?.setPresentationCovered?.(covered));
+        };
+        const boardModalShownHandler = (event) => {
+            boardCovers.add(event?.detail?.modalName);
+            updateCoveredBoards();
+        };
+        const boardModalHiddenHandler = (event) => {
+            boardCovers.delete(event?.detail?.modalName);
+            updateCoveredBoards();
+        };
+        const boardHubVisibilityHandler = (event) => {
+            if (event?.detail?.visible) boardCovers.add('serenity-hub');
+            else boardCovers.delete('serenity-hub');
+            updateCoveredBoards();
+        };
+        window.addEventListener('modalShown', boardModalShownHandler);
+        window.addEventListener('modalHidden', boardModalHiddenHandler);
+        window.addEventListener('serenityHubVisibilityChange', boardHubVisibilityHandler);
 
         // REMOVED: "Press any key" auto-start mechanism
         // Now using explicit "START GAME" button for better UX
@@ -2963,6 +2992,9 @@ class SerenityBlocks {
             window.removeEventListener('startGameWithMode', startGameWithModeHandler);
             window.removeEventListener('gameModeChanged', gameModeHandler);
             window.removeEventListener('modalShown', startModalShownHandler);
+            window.removeEventListener('modalShown', boardModalShownHandler);
+            window.removeEventListener('modalHidden', boardModalHiddenHandler);
+            window.removeEventListener('serenityHubVisibilityChange', boardHubVisibilityHandler);
         });
     }
 
@@ -3026,12 +3058,6 @@ class SerenityBlocks {
 
         // Initialize settings UI (includes tab switching)
         initializeSettingsUI(this.settingsManager, {
-            onMusicVolumeChange: (volume) => {
-                this.soundManager.setMusicVolume(volume);
-            },
-            onSfxVolumeChange: (volume) => {
-                this.soundManager.setSFXVolume(volume);
-            },
             onSoundSetChange: (soundSet) => {
                 console.log('[Main] Sound set changed to:', soundSet);
                 this.soundManager.setSoundSet(soundSet);
@@ -4866,46 +4892,7 @@ class SerenityBlocks {
      * Cleanup and destroy application
      */
     cleanup() {
-        if (this.isCleaningUp) {
-            return;
-        }
-        this.isCleaningUp = true;
-
-        const cleanupHandlers = this.cleanupHandlers.splice(0);
-        cleanupHandlers.forEach((handler) => {
-            try {
-                handler?.();
-            } catch (error) {
-                console.warn('[Main] Cleanup handler failed:', error);
-            }
-        });
-
-        // Stop game loop
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-
-        // Cleanup Phaser
-        if (this.phaserGame) {
-            this.phaserGame.destroy(true);
-            this.phaserGame = null;
-            this.boardScene = null;
-        }
-
-        // Cleanup managers
-        if (this.themeManager) {
-            this.themeManager.cleanup();
-        }
-        if (this.inputController) {
-            this.inputController.cleanup();
-        }
-        if (this.soundManager) {
-            this.soundManager.cleanup();
-        }
-
-        this.isInitialized = false;
-        console.log('🧹 Application cleaned up');
+        return cleanupApplication(this);
     }
 }
 

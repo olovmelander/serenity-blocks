@@ -1,7 +1,7 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
-import { showGameOverModal } from '../../src/ui/modals.js';
+import { ModalManager, showGameOverModal } from '../../src/ui/modals.js';
 import { SteamLeaderboardPanel } from '../../src/ui/components/steam-leaderboard-panel.js';
 
 function createModalHarness() {
@@ -149,6 +149,34 @@ describe('game-over modal result compatibility', () => {
         expect(await presentation).toBe(false);
         expect(harness.finalStats.innerHTML).toBe('');
         expect(harness.modalManager.show).not.toHaveBeenCalled();
+    });
+
+    it('retires the previous ranked panel before replacing it with experimental results', async () => {
+        const harness = createModalHarness();
+        const previous = { destroy: vi.fn() };
+        harness.modalManager.gameOverLeaderboardPanel = previous;
+        await showGameOverModal(harness.modalManager, createResultState(), {}, {}, { includeLegacyResults: false });
+        expect(previous.destroy).toHaveBeenCalledOnce();
+        expect(harness.modalManager.gameOverLeaderboardPanel).toBeNull();
+    });
+
+    it('connects the panel presentation lifecycle to game-over modal visibility and manager teardown', () => {
+        vi.stubGlobal('CustomEvent', class {});
+        vi.stubGlobal('window', { dispatchEvent: vi.fn() });
+        const panel = { show: vi.fn(), hide: vi.fn(), destroy: vi.fn() };
+        const manager = Object.create(ModalManager.prototype);
+        Object.assign(manager, {
+            modals: { gameOver: { classList: { add: vi.fn(), remove: vi.fn() } } },
+            menuCoverage: { refresh: vi.fn(), destroy: vi.fn() },
+            gameOverLeaderboardPanel: panel,
+        });
+        manager.show('gameOver');
+        manager.hide('gameOver');
+        manager.destroy();
+        expect(panel.show).toHaveBeenCalledOnce();
+        expect(panel.hide).toHaveBeenCalledOnce();
+        expect(panel.destroy).toHaveBeenCalledOnce();
+        expect(manager.gameOverLeaderboardPanel).toBeNull();
     });
 });
 

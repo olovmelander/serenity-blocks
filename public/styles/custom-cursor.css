@@ -21,6 +21,8 @@
 
 .custom-cursor-container.is-visible[data-pointer-activity="active"] {
     opacity: 1;
+    /* Reappearing on input is immediate; the inactive state still fades out. */
+    transition-duration: 0ms;
 }
 
 .custom-cursor-container.is-visible[data-pointer-activity="inactive"] {
@@ -44,6 +46,7 @@
     height: 0;
     pointer-events: none;
     will-change: transform;
+    transition: none;
 }
 
 .custom-cursor-motion-shell {

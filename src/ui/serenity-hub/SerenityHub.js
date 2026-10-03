@@ -432,6 +432,11 @@ export class SerenityHub {
             }
         };
         document.addEventListener('keydown', this.documentKeydownHandler, { signal });
+        document.addEventListener('visibilitychange', () => {
+            const visible = this.isOpen && !document.hidden;
+            this.themesTab?.setActive(visible && this.currentTab === 'themes');
+            this.sessionsTab?.setActive(visible && this.currentTab === 'sessions');
+        }, { signal });
 
         // Panel mouse enter/leave handlers
         this.panelMouseEnterHandler = () => {
@@ -558,6 +563,9 @@ export class SerenityHub {
     switchTab(tabName) {
         if (this.currentTab === tabName) return;
 
+        this.musicTab?.setActive(false);
+        this.themesTab?.setActive(false);
+        this.sessionsTab?.setActive(false);
         this.currentTab = tabName;
 
         // Update tab buttons
@@ -643,12 +651,14 @@ export class SerenityHub {
 
         // Refresh theme tab if it's already loaded (in case theme changed externally)
         if (tabName === 'themes' && this.themesTab) {
-            this.themesTab.refreshCurrentTheme();
+            this.themesTab.setActive(this.isOpen && this.currentTab === 'themes' && !document.hidden);
         }
+
+        this.sessionsTab?.setActive(this.isOpen && this.currentTab === 'sessions' && !document.hidden);
 
         // Refresh music tab if it's already loaded (in case music state changed)
         if (tabName === 'music' && this.musicTab) {
-            this.musicTab.syncWithAudioState();
+            this.musicTab.setActive(this.isOpen && this.currentTab === 'music' && !document.hidden);
         }
     }
 
@@ -743,6 +753,9 @@ export class SerenityHub {
         }
 
         this.isOpen = false;
+        this.musicTab?.setActive(false);
+        this.themesTab?.setActive(false);
+        this.sessionsTab?.setActive(false);
         this.clearScrollPerformanceMode();
 
         // Notify Serenity Mode to restore quality
@@ -1194,6 +1207,11 @@ export class SerenityHub {
             }
             this.themesTab = null;
         }
+
+        this.sessionsTab?.destroy();
+        this.sessionsTab = null;
+        this.sessionManager?.destroy?.();
+        this.sessionManager = null;
 
         // Null out AbortController and references (Phase 6.1: Null Reference Cleanup)
         this.abortController = null;

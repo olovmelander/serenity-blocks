@@ -68,28 +68,6 @@ const INTERACTIVE_SELECTOR = [
     '.odyssey-navigator-icon',
 ].join(', ');
 
-const MAGNETIC_SELECTOR = [
-    'a[href]',
-    'button',
-    'input',
-    'summary',
-    'select',
-    '.cosmic-select__trigger',
-    '.cosmic-segmented__seg',
-    '[role="button"]',
-    '.clickable',
-    '.setting-button',
-    '.controls-subtab',
-    '.controls-nav-action',
-    '.hub-tab',
-    '.theme-card',
-    '.playlist-item',
-    '.technique-card',
-    '.game-mode-card',
-    '.serenity-hub-icon',
-    '.floating-settings-btn',
-].join(', ');
-
 const TEXT_SELECTOR = [
     'input:not([type="button"]):not([type="checkbox"]):not([type="color"]):not([type="file"])'
         + ':not([type="hidden"]):not([type="image"]):not([type="radio"]):not([type="range"])'
@@ -111,17 +89,6 @@ const DISABLED_SELECTOR = [
     '.steam-disabled',
 ].join(', ');
 
-const PRECISION_ZONE_SELECTOR = [
-    'canvas',
-    'svg[data-disable-cursor-magnetism="true"]',
-    '#background-canvas',
-    '.phaser-board-container',
-    '.theme-container',
-    '.odyssey-layout-editor-panel',
-    '.odyssey-layout-editor-overlay',
-    '[data-disable-cursor-magnetism="true"]',
-].join(', ');
-
 const INLINE_CURSOR_STATE_MAP = Object.freeze({
     default: CURSOR_STATES.DEFAULT,
     pointer: CURSOR_STATES.INTERACTIVE,
@@ -134,30 +101,24 @@ const INLINE_CURSOR_STATE_MAP = Object.freeze({
 
 const INTENSITY_CONFIG = Object.freeze({
     low: {
-        lerp: 0.2,
         trailPoints: 10,
         trailAlpha: 0.42,
         trailRadius: 16,
         burstCount: 5,
-        magnetism: 0.1,
         maxStretch: 0.12,
     },
     standard: {
-        lerp: 0.17,
         trailPoints: 16,
         trailAlpha: 0.56,
         trailRadius: 20,
         burstCount: 8,
-        magnetism: 0.18,
         maxStretch: 0.18,
     },
     high: {
-        lerp: 0.145,
         trailPoints: 24,
         trailAlpha: 0.68,
         trailRadius: 26,
         burstCount: 12,
-        magnetism: 0.26,
         maxStretch: 0.24,
     },
 });
@@ -277,71 +238,24 @@ function findInlineCursorOverride(element) {
 }
 
 function resolveCursorStateFromTarget(target) {
-    if (!isElement(target)) {
-        return {
-            state: CURSOR_STATES.DEFAULT,
-            magneticElement: null,
-            precisionZone: false,
-        };
-    }
+    if (!isElement(target)) return CURSOR_STATES.DEFAULT;
 
     const inlineState = findInlineCursorOverride(target);
-    const precisionZone = !!closest(target, PRECISION_ZONE_SELECTOR);
 
     if (inlineState === CURSOR_STATES.GRABBING || inlineState === CURSOR_STATES.GRAB) {
-        return {
-            state: inlineState,
-            magneticElement: null,
-            precisionZone,
-        };
+        return inlineState;
     }
 
     if (closest(target, DISABLED_SELECTOR) || inlineState === CURSOR_STATES.DISABLED) {
-        return {
-            state: CURSOR_STATES.DISABLED,
-            magneticElement: null,
-            precisionZone,
-        };
+        return CURSOR_STATES.DISABLED;
     }
 
     if (closest(target, TEXT_SELECTOR) || inlineState === CURSOR_STATES.TEXT || target.isContentEditable) {
-        return {
-            state: CURSOR_STATES.TEXT,
-            magneticElement: null,
-            precisionZone,
-        };
+        return CURSOR_STATES.TEXT;
     }
 
-    const magneticElement = closest(target, MAGNETIC_SELECTOR);
-    if (magneticElement) {
-        return {
-            state: inlineState || CURSOR_STATES.INTERACTIVE,
-            magneticElement: precisionZone ? null : magneticElement,
-            precisionZone,
-        };
-    }
-
-    if (inlineState) {
-        return {
-            state: inlineState,
-            magneticElement: null,
-            precisionZone,
-        };
-    }
-
-    if (closest(target, INTERACTIVE_SELECTOR)) {
-        return {
-            state: CURSOR_STATES.INTERACTIVE,
-            magneticElement: null,
-            precisionZone,
-        };
-    }
-
-    return {
-        state: CURSOR_STATES.DEFAULT,
-        magneticElement: null,
-        precisionZone,
-    };
+    if (inlineState) return inlineState;
+    return closest(target, INTERACTIVE_SELECTOR) ? CURSOR_STATES.INTERACTIVE : CURSOR_STATES.DEFAULT;
 }
 
 function isFinePointerEnvironment() {
@@ -359,6 +273,8 @@ export class CustomCursor {
         this.container = null;
         this.cursor = null;
         this.motionShell = null;
+        this.cursorTransform = null;
+        this.motionShellTransform = null;
         this.trailCanvas = null;
         this.ctx = null;
         this.abortController = null;
@@ -389,19 +305,19 @@ export class CustomCursor {
 
         this.pos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
         this.target = { x: this.pos.x, y: this.pos.y };
+        this.lastMotionPosition = { x: this.pos.x, y: this.pos.y };
         this.velocity = { x: 0, y: 0 };
         this.pointerTarget = null;
         this.pointerType = 'mouse';
         this.semanticState = CURSOR_STATES.DEFAULT;
         this.renderState = CURSOR_STATES.HIDDEN;
-        this.activeMagneticElement = null;
-        this.activeMagneticRect = null;
         this.lastFrameTime = null;
         this.lastPointerActivity = 0;
         this.gamepadSuppressed = false;
         this.lastSuppressionCheck = 0;
 
         this.trailPoints = [];
+        this.trailPainted = false;
         this.burstParticles = [];
         this.themeId = 'cosmic-noir';
         this.palette = resolveCursorPalette(this.themeId);
@@ -502,6 +418,8 @@ export class CustomCursor {
             </div>
         `;
         this.motionShell = this.cursor.querySelector('.custom-cursor-motion-shell');
+        this.cursorTransform = null;
+        this.motionShellTransform = null;
 
         this.container.appendChild(this.trailCanvas);
         this.container.appendChild(this.cursor);
@@ -528,7 +446,7 @@ export class CustomCursor {
                 this.onPointerLeaveWindow();
             }
         }, { signal, passive: true });
-        window.addEventListener('resize', () => { this.updateCanvasSize(); this.refreshMagneticRect(); }, { signal, passive: true });
+        window.addEventListener('resize', () => this.updateCanvasSize(), { signal, passive: true });
         window.addEventListener('blur', () => this.onPointerLeaveWindow(), { signal, passive: true });
         window.addEventListener('modalShown', () => this.refreshModalState(), { signal, passive: true });
         window.addEventListener('modalHidden', () => this.refreshModalState(), { signal, passive: true });
@@ -670,11 +588,7 @@ export class CustomCursor {
         // pointermove resuming means any native popup has closed.
         this.nativePopupOpen = false;
         this.pointerType = event.pointerType || 'mouse';
-        this.pointerInsideWindow = true;
-        this.lastPointerActivity = performance.now();
-        this.target.x = event.clientX;
-        this.target.y = event.clientY;
-        this.setVisible(true);
+        this.updatePointerPosition(event);
         this.updatePointerTarget(event.target);
         this.syncPresentation();
         this.scheduleAnimationFrame(true);
@@ -685,10 +599,7 @@ export class CustomCursor {
 
         this.pointerDown = true;
         this.pointerType = event.pointerType || this.pointerType;
-        this.pointerInsideWindow = true;
-        this.lastPointerActivity = performance.now();
-        this.target.x = event.clientX;
-        this.target.y = event.clientY;
+        this.updatePointerPosition(event);
         this.updatePointerTarget(event.target);
 
         const intensity = INTENSITY_CONFIG[this.settings.customCursorIntensity];
@@ -701,7 +612,7 @@ export class CustomCursor {
         this.pointerDown = false;
         if (event && !(event.pointerType && event.pointerType === 'touch')) {
             this.pointerType = event.pointerType || this.pointerType;
-            this.lastPointerActivity = performance.now();
+            this.updatePointerPosition(event);
             this.updatePointerTarget(event.target);
         }
         this.syncPresentation();
@@ -721,27 +632,33 @@ export class CustomCursor {
         this.scheduleAnimationFrame(true);
     }
 
+    updatePointerPosition(event) {
+        const resetMotion = !this.pointerInsideWindow;
+        this.pointerInsideWindow = true;
+        this.baseVisible = true;
+        this.gamepadSuppressed = false;
+        this.lastPointerActivity = performance.now();
+        this.target.x = event.clientX;
+        this.target.y = event.clientY;
+        this.pos.x = event.clientX;
+        this.pos.y = event.clientY;
+        if (resetMotion) {
+            this.lastMotionPosition.x = this.pos.x;
+            this.lastMotionPosition.y = this.pos.y;
+            this.velocity.x = 0;
+            this.velocity.y = 0;
+        }
+        // The hit point follows input immediately; only decorative effects wait
+        // for RAF. State resolution must never delay or displace this transform.
+        this.updateCursorPosition();
+    }
+
     updatePointerTarget(target) {
         this.pointerTarget = isElement(target)
             ? target
             : document.elementFromPoint(this.target.x, this.target.y);
 
-        const resolved = resolveCursorStateFromTarget(this.pointerTarget);
-        this.semanticState = resolved.state;
-        this.activeMagneticElement = resolved.magneticElement;
-        // Cache the magnetic element's rect on pointer move (these reads happen BEFORE the
-        // per-frame syncPresentation() DOM writes, so they don't thrash). updateMotion() reuses
-        // it every frame instead of calling getBoundingClientRect() itself — that per-frame read,
-        // landing right after syncPresentation() mutated classes/dataset, forced a synchronous
-        // layout on every animation frame while magnetism was active (measured ~1s of forced
-        // reflow over a 16s trace and a global FPS tax on every theme).
-        this.refreshMagneticRect();
-    }
-
-    refreshMagneticRect() {
-        this.activeMagneticRect = this.activeMagneticElement
-            ? this.activeMagneticElement.getBoundingClientRect()
-            : null;
+        this.semanticState = resolveCursorStateFromTarget(this.pointerTarget);
     }
 
     syncBodyContext() {
@@ -855,16 +772,24 @@ export class CustomCursor {
         const pointerActivity = isRenderable && this.isPointerInactive(timestamp)
             ? 'inactive'
             : 'active';
-        this.container.classList.toggle('is-visible', isRenderable);
-        this.container.dataset.semanticState = this.semanticState;
-        this.container.dataset.renderState = this.renderState;
-        this.container.dataset.modalActive = this.modalActive ? 'true' : 'false';
-        this.container.dataset.pointerActivity = pointerActivity;
+        if (this.container.classList.contains('is-visible') !== isRenderable) {
+            this.container.classList.toggle('is-visible', isRenderable);
+        }
+        this.setPresentationData('semanticState', this.semanticState);
+        this.setPresentationData('renderState', this.renderState);
+        this.setPresentationData('modalActive', this.modalActive ? 'true' : 'false');
+        this.setPresentationData('pointerActivity', pointerActivity);
 
-        document.body.classList.toggle('custom-cursor-active', isRenderable);
+        if (document.body.classList.contains('custom-cursor-active') !== isRenderable) {
+            document.body.classList.toggle('custom-cursor-active', isRenderable);
+        }
         if (isRenderable || this.trailPoints.length > 0 || this.burstParticles.length > 0) {
             this.scheduleAnimationFrame();
         }
+    }
+
+    setPresentationData(key, value) {
+        if (this.container.dataset[key] !== value) this.container.dataset[key] = value;
     }
 
     updateCanvasSize() {
@@ -902,34 +827,28 @@ export class CustomCursor {
         }
     }
 
-    updateMotion(deltaMs) {
-        const intensity = INTENSITY_CONFIG[this.settings.customCursorIntensity];
-        const magneticPull = { x: 0, y: 0 };
-
-        if (this.activeMagneticElement && this.activeMagneticRect && !this.prefersReducedMotion) {
-            // Reuse the rect cached on pointer move / resize — never read layout in the
-            // per-frame loop (that read, after syncPresentation()'s DOM writes, forced a reflow).
-            const rect = this.activeMagneticRect;
-            const centerX = rect.left + (rect.width / 2);
-            const centerY = rect.top + (rect.height / 2);
-            magneticPull.x = (centerX - this.target.x) * intensity.magnetism;
-            magneticPull.y = (centerY - this.target.y) * intensity.magnetism;
-        }
-
-        const finalTargetX = this.target.x + magneticPull.x;
-        const finalTargetY = this.target.y + magneticPull.y;
-        const prevX = this.pos.x;
-        const prevY = this.pos.y;
-
-        const lerpFactor = 1 - ((1 - intensity.lerp) ** Math.max(1, deltaMs / 16.667));
-        this.pos.x += (finalTargetX - this.pos.x) * lerpFactor;
-        this.pos.y += (finalTargetY - this.pos.y) * lerpFactor;
-        this.velocity.x = this.pos.x - prevX;
-        this.velocity.y = this.pos.y - prevY;
+    updateMotion() {
+        this.pos.x = this.target.x;
+        this.pos.y = this.target.y;
+        this.velocity.x = this.pos.x - this.lastMotionPosition.x;
+        this.velocity.y = this.pos.y - this.lastMotionPosition.y;
+        this.lastMotionPosition.x = this.pos.x;
+        this.lastMotionPosition.y = this.pos.y;
     }
 
     updateTrail(deltaMs) {
         if (!this.ctx || !this.trailCanvas) return;
+
+        const moving = this.velocity.x !== 0 || this.velocity.y !== 0;
+        const emitPoint = moving && !this.isPointerInactive();
+        if (!this.shouldRender()) {
+            if (this.trailPainted) this.ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+            this.trailPoints.length = 0;
+            this.burstParticles.length = 0;
+            this.trailPainted = false;
+            return;
+        }
+        if (!emitPoint && this.trailPoints.length === 0 && this.burstParticles.length === 0) return;
 
         const intensity = INTENSITY_CONFIG[this.settings.customCursorIntensity];
         const primary = hexToRgbParts(this.palette.primary);
@@ -939,18 +858,12 @@ export class CustomCursor {
         const trailLifeDecay = reducedMotion ? 0.13 : 0.085;
 
         this.ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-        if (!this.shouldRender()) {
-            this.trailPoints = [];
-            this.burstParticles = [];
-            return;
-        }
-
         const speed = Math.hypot(this.velocity.x, this.velocity.y);
         const trailBudget = reducedMotion
             ? Math.max(5, Math.floor(intensity.trailPoints * 0.45))
             : intensity.trailPoints;
 
-        if (!reducedMotion || this.trailPoints.length === 0) {
+        if (emitPoint && (!reducedMotion || this.trailPoints.length === 0)) {
             this.trailPoints.push({
                 x: this.pos.x,
                 y: this.pos.y,
@@ -1013,6 +926,15 @@ export class CustomCursor {
             this.ctx.arc(particle.x, particle.y, particle.radius * (0.8 + particle.life), 0, Math.PI * 2);
             this.ctx.fill();
         }
+        this.trailPainted = this.trailPoints.length > 0 || this.burstParticles.length > 0;
+    }
+
+    updateCursorPosition() {
+        if (!this.cursor) return;
+        const transform = `translate3d(${this.pos.x}px, ${this.pos.y}px, 0)`;
+        if (this.cursorTransform === transform) return;
+        this.cursor.style.transform = transform;
+        this.cursorTransform = transform;
     }
 
     updateCursorVisuals() {
@@ -1026,8 +948,12 @@ export class CustomCursor {
             : 1 + clamp(speed * 0.015, 0, intensity.maxStretch);
         const squash = this.prefersReducedMotion ? 1 : clamp(1 / stretch, 0.82, 1);
 
-        this.cursor.style.transform = `translate3d(${this.pos.x}px, ${this.pos.y}px, 0) rotate(${rotation}deg)`;
-        this.motionShell.style.transform = `translate(-50%, -50%) scale(${stretch}, ${squash})`;
+        this.updateCursorPosition();
+        const transform = `translate(-50%, -50%) rotate(${rotation}deg) scale(${stretch}, ${squash})`;
+        if (this.motionShellTransform !== transform) {
+            this.motionShell.style.transform = transform;
+            this.motionShellTransform = transform;
+        }
     }
 
     animate(timestamp = performance.now()) {
@@ -1045,7 +971,7 @@ export class CustomCursor {
         }
 
         this.syncPresentation(timestamp);
-        this.updateMotion(deltaMs);
+        this.updateMotion();
         this.updateCursorVisuals();
         this.updateTrail(deltaMs);
 
