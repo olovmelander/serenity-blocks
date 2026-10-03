@@ -1,4 +1,3 @@
-import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { MultiPlayerState, PLAYER_COLORS, TEAM_COLORS } from '../multi-player-state.js';
@@ -29,7 +28,7 @@ import {
     dismissCinematicLoadingOverlay,
     transitionCinematicLoadingOverlayToCountdown,
 } from '../../ui/cinematic-loading-overlay.js';
-import { createBoardScene } from '../../rendering/phaser/board-scene.js';
+import { createLocalMultiplayerBoards, destroyLocalMultiplayerBoards } from '../../rendering/phaser/local-board-hosts.js';
 import {
     captureLocalMultiplayerClock,
     captureLocalMultiplayerRound,
@@ -75,6 +74,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.p2PhaserGame = null;
         this.p1BoardScene = null;
         this.p2BoardScene = null;
+        this.phaserGames = [];
+        this._boardCreationGeneration = 0;
 
         // Canvas references for next pieces
         this.p1NextCanvases = [];
@@ -194,6 +195,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 this._removeInputWrappers();
                 this.configuredForStart = false;
             }
+            if (this.matchConfig === config) this._destroySeparatePhaserGames();
             await this._dismissMatchStartLoadingOverlay({ fadeOutMs: 300, minVisibleMs: 0 });
             alert(`Failed to start local multiplayer match: ${error.message}`);
         }
@@ -212,6 +214,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.isActive = false;
         this.isRunning = false;
         this.isPaused = false;
+        this._destroySeparatePhaserGames();
 
         // Reset configuration
         this.matchConfig = null;
@@ -283,7 +286,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.onResize();
 
         // Create separate Phaser game instances for each player
-        await this._createSeparatePhaserGames();
+        const boardsCreated = await this._createSeparatePhaserGames();
+        if (!boardsCreated) return;
 
         // Pause single player scene
         this._pauseSinglePlayerScene();
@@ -618,7 +622,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     async onDeactivate() {
         this._startGeneration += 1;
+        // Retire in-flight board creation before the first teardown await.
+        this._boardCreationGeneration += 1;
         await super.onDeactivate();
+        this._destroySeparatePhaserGames();
 
         console.log('[LocalMultiplayer] Deactivating...');
         await this._dismissMatchStartLoadingOverlay({ fadeOutMs: 200, minVisibleMs: 0 });
@@ -641,18 +648,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Deactivate Phaser multiplayer UI
         this._deactivatePhaserMultiplayerUI();
-
-        // Destroy separate Phaser game instances
-        if (this.p1PhaserGame) {
-            this.p1PhaserGame.destroy(true);
-            this.p1PhaserGame = null;
-            this.p1BoardScene = null;
-        }
-        if (this.p2PhaserGame) {
-            this.p2PhaserGame.destroy(true);
-            this.p2PhaserGame = null;
-            this.p2BoardScene = null;
-        }
 
         // Clean up BoardJuice
         for (let i = 1; i <= 4; i++) {
@@ -1812,117 +1807,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @private
      */
     async _createSeparatePhaserGames() {
-        const numPlayers = this.matchConfig?.numPlayers || 2;
-        console.log(`[LocalMultiplayer] Creating separate Phaser instances for ${numPlayers} players...`);
+        return createLocalMultiplayerBoards(this);
+    }
 
-        let BoardScene = this.deps.BoardSceneClass
-            || this.deps.MultiplayerBoardSceneClass
-            || this.deps.phaserGame?.BoardSceneClass
-            || this.deps.phaserGame?.MultiplayerBoardSceneClass;
-
-        if (!BoardScene) {
-            console.log('[LocalMultiplayer] BoardSceneClass not found, attempting dynamic creation...');
-            try {
-                BoardScene = createBoardScene(Phaser);
-            } catch (err) {
-                console.error('[LocalMultiplayer] Failed to dynamically generate BoardScene class:', err);
-            }
-        }
-
-        if (!BoardScene) {
-            throw new Error('BoardScene or MultiplayerBoardScene class not available');
-        }
-
-        console.log('[LocalMultiplayer] Using scene class:', BoardScene.name || 'BoardScene');
-
-        // Game configuration for each player
-        // Calculate dynamic block size
-        const blockSize = this._calculateDynamicBlockSize();
-        this.currentBlockSize = blockSize;
-        console.log(`[LocalMultiplayer] Using dynamic block size: ${blockSize} px`);
-
-        // Update CSS variables immediately
-        this._updateBoardCSSVariables(blockSize);
-
-        // Game configuration for each player
-        // Use a fixed internal resolution based on standard 40px blocks
-        // This ensures all drawing logic (tetrominos, effects) works as designed
-        const FIXED_BLOCK_SIZE = 40;
-        const internalWidth = COLS * FIXED_BLOCK_SIZE;
-        const internalHeight = ROWS * FIXED_BLOCK_SIZE;
-
-        const createGameConfig = (parent) => ({
-            width: internalWidth,
-            height: internalHeight,
-            parent,
-            type: Phaser.WEBGL,
-            transparent: true,
-            audio: { noAudio: true },
-            banner: false,
-            fps: { target: 60 },
-            scale: {
-                mode: Phaser.Scale.FIT, // Scale the canvas to fit the parent container
-                autoCenter: Phaser.Scale.CENTER_BOTH,
-                width: internalWidth,
-                height: internalHeight,
-            },
-        });
-
-        // Arrays to store Phaser games and scenes
-        this.phaserGames = [];
-        this.boardScenes = [];
-
-        // Create Phaser instance for each player
-        for (let i = 1; i <= numPlayers; i++) {
-            console.log(`[LocalMultiplayer] Creating Player ${i} Phaser game...`);
-
-            const phaserGame = new Phaser.Game(createGameConfig(`p${i}-phaser-container`));
-
-            // Wait for game to initialize
-            await new Promise((resolve) => setTimeout(resolve, 100));
-
-            // Add and start BoardScene
-            const sceneKey = `P${i}Board`; // Removed space
-            // Pass FIXED_BLOCK_SIZE so the scene draws at internal resolution
-            const boardScene = new BoardScene(sceneKey, { blockSize: FIXED_BLOCK_SIZE });
-            phaserGame.scene.add(sceneKey, boardScene, true);
-            console.log(`[LocalMultiplayer] Player ${i} scene created: `, boardScene.scene?.key);
-
-            // Store references
-            this.phaserGames.push(phaserGame);
-            this.boardScenes.push(boardScene);
-
-            // Also maintain legacy p1/p2 references for backwards compatibility
-            if (i === 1) {
-                this.p1PhaserGame = phaserGame;
-                this.p1BoardScene = boardScene;
-            } else if (i === 2) {
-                this.p2PhaserGame = phaserGame;
-                this.p2BoardScene = boardScene;
-            } else if (i === 3) {
-                this.p3PhaserGame = phaserGame;
-                this.p3BoardScene = boardScene;
-            } else if (i === 4) {
-                this.p4PhaserGame = phaserGame;
-                this.p4BoardScene = boardScene;
-            }
-        }
-
-        // Wait for all scenes to fully initialize
-        await new Promise((resolve) => setTimeout(resolve, 200));
-
-        // Apply the user's effect-quality tier. These per-player scenes never
-        // received it before — they ran at the BaseBoardScene default 'High'
-        // regardless of the setting.
-        const quality = this.deps.settingsManager?.get?.().effectQuality;
-        if (quality) {
-            this.boardScenes.forEach((scene) => scene?.setEffectQuality?.(quality));
-        }
-
-        // Initialize BoardJuice for each player's canvas
-        this._initBoardJuice();
-
-        console.log(`[LocalMultiplayer] ${numPlayers} Phaser instances created successfully`);
+    _destroySeparatePhaserGames() {
+        destroyLocalMultiplayerBoards(this);
     }
 
     /**

@@ -309,20 +309,9 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                 this.activeGraphics = [];
             }
 
-            // Remove custom textures from cache
-            const customTextures = [
-                'blockTexture',
-                'ghostTexture',
-                'gridTexture',
-                this.lineClearParticleKey,
-                this.commonParticleKey,
-                'common-circle-4px',
-            ];
-            customTextures.forEach((key) => {
-                if (key && this.textures && this.textures.exists(key)) {
-                    this.textures.remove(key);
-                }
-            });
+            // Procedural textures belong to this game's TextureManager and
+            // may be shared by sibling scenes. Retain them across restarts;
+            // Phaser releases the texture cache when the game is destroyed.
 
             // Destroy graphics layers
             if (this.boardGraphics) {

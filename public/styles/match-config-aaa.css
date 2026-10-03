@@ -29,8 +29,8 @@
 /* ---- Backdrop -------------------------------------------------------------- */
 .match-config-modal .match-config-overlay {
     background: radial-gradient(120% 90% at 50% 35%, rgba(6, 8, 20, 0.50), rgba(2, 3, 10, 0.78) 100%);
-    backdrop-filter: blur(12px) saturate(120%);
-    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 /* ---- Panel: cosmic glass --------------------------------------------------- */
@@ -41,8 +41,8 @@
         radial-gradient(100% 60% at 50% -15%, rgba(var(--cs-accent-rgb), 0.13), transparent 60%),
         radial-gradient(70% 70% at 8% 0%, rgba(114, 137, 255, 0.10), transparent 60%),
         linear-gradient(180deg, rgba(16, 20, 38, 0.95) 0%, rgba(8, 10, 23, 0.97) 100%);
-    backdrop-filter: blur(18px) saturate(135%);
-    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     box-shadow:
         0 28px 78px rgba(0, 0, 0, 0.58),
         0 0 0 1px rgba(255, 255, 255, 0.04),
@@ -80,7 +80,8 @@
     -webkit-text-fill-color: transparent;
     color: transparent;
     filter: drop-shadow(0 0 16px rgba(var(--cs-accent-rgb), 0.30));
-    animation: cs-shimmer 8s ease-in-out infinite;
+    background-position: 40% center;
+    animation: none;
 }
 
 .match-config-modal .lmc .match-config-header h2 {

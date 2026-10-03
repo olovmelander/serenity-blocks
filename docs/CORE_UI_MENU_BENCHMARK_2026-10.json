@@ -1,0 +1,534 @@
+{
+  "date": "2026-10-03",
+  "baselineCommit": "3d50d88e83e5ffbfe0be63387b6df49b043f4877",
+  "fixedRevision": "perf/core-ui-audit-fixes: same-branch menu changes before final commit",
+  "browserVersion": "153.0.8010.0",
+  "viewport": "1280x720 DPR1",
+  "scope": "Real index.html, CSS and ModalManager; bootstrap scripts removed. Themes, game canvas and audio excluded. Electron profile applies electron-app CSS in Chromium, not packaged Electron.",
+  "procedure": "Load fonts; settle 1000ms; each condition settles 600ms then samples requestAnimationFrame intervals for 2500ms. Repeat conditions in reverse order. Same software Chromium runner and viewport for baseline and fixed code. No tests or build run concurrently with capture.",
+  "limitation": "Diagnostic UI rendering workload only. Not end-to-end game FPS or a benchmark of user hardware. Values must not be used as an FPS guarantee.",
+  "profiles": [
+    {
+      "profile": "Browser CSS rules",
+      "baseline": [
+        {
+          "run": 1,
+          "name": "main-menu",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": false,
+            "infiniteRunning": 101,
+            "startInfiniteRunning": 27,
+            "blurSurfaces": [
+              {
+                "element": "modal-content",
+                "blur": "blur(18px) saturate(1.35)"
+              },
+              {
+                "element": "close-settings",
+                "blur": "blur(10px) saturate(1.3)"
+              },
+              {
+                "element": "settings-tabs",
+                "blur": "blur(10px)"
+              },
+              {
+                "element": "settings-modal",
+                "blur": "blur(15px)"
+              }
+            ]
+          },
+          "metrics": {
+            "TaskDuration": 0.463463,
+            "LayoutDuration": 0.056813,
+            "RecalcStyleDuration": 0.14993399999999998,
+            "LayoutCount": 151,
+            "RecalcStyleCount": 151
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.665706666666665,
+            "p95": 16.700000000000728
+          }
+        },
+        {
+          "run": 1,
+          "name": "settings-stacked",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": true,
+            "infiniteRunning": 101,
+            "startInfiniteRunning": 27,
+            "blurSurfaces": [
+              {
+                "element": "modal-content",
+                "blur": "blur(18px) saturate(1.35)"
+              },
+              {
+                "element": "close-settings",
+                "blur": "blur(10px) saturate(1.3)"
+              },
+              {
+                "element": "settings-tabs",
+                "blur": "blur(10px)"
+              },
+              {
+                "element": "settings-modal",
+                "blur": "blur(15px)"
+              }
+            ]
+          },
+          "metrics": {
+            "TaskDuration": 0.17316900000000002,
+            "LayoutDuration": 0.039923,
+            "RecalcStyleDuration": 0.050925000000000026,
+            "LayoutCount": 45,
+            "RecalcStyleCount": 45
+          },
+          "frame": {
+            "n": 44,
+            "mean": 57.19440909090909,
+            "p95": 116.59999999999945
+          }
+        },
+        {
+          "run": 2,
+          "name": "settings-stacked",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": true,
+            "infiniteRunning": 101,
+            "startInfiniteRunning": 27,
+            "blurSurfaces": [
+              {
+                "element": "modal-content",
+                "blur": "blur(18px) saturate(1.35)"
+              },
+              {
+                "element": "close-settings",
+                "blur": "blur(10px) saturate(1.3)"
+              },
+              {
+                "element": "settings-tabs",
+                "blur": "blur(10px)"
+              },
+              {
+                "element": "settings-modal",
+                "blur": "blur(15px)"
+              }
+            ]
+          },
+          "metrics": {
+            "TaskDuration": 0.169454,
+            "LayoutDuration": 0.019475999999999993,
+            "RecalcStyleDuration": 0.05189299999999997,
+            "LayoutCount": 47,
+            "RecalcStyleCount": 47
+          },
+          "frame": {
+            "n": 45,
+            "mean": 56.29555555555554,
+            "p95": 116.59999999999854
+          }
+        },
+        {
+          "run": 2,
+          "name": "main-menu",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": false,
+            "infiniteRunning": 101,
+            "startInfiniteRunning": 27,
+            "blurSurfaces": [
+              {
+                "element": "modal-content",
+                "blur": "blur(18px) saturate(1.35)"
+              },
+              {
+                "element": "close-settings",
+                "blur": "blur(10px) saturate(1.3)"
+              },
+              {
+                "element": "settings-tabs",
+                "blur": "blur(10px)"
+              },
+              {
+                "element": "settings-modal",
+                "blur": "blur(15px)"
+              }
+            ]
+          },
+          "metrics": {
+            "TaskDuration": 0.4064620000000003,
+            "LayoutDuration": 0.05141100000000004,
+            "RecalcStyleDuration": 0.129583,
+            "LayoutCount": 151,
+            "RecalcStyleCount": 150
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.776533333333305,
+            "p95": 16.700000000004366
+          }
+        }
+      ],
+      "fixed": [
+        {
+          "run": 1,
+          "name": "main-menu",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": false,
+            "infiniteRunning": 93,
+            "startInfiniteRunning": 24,
+            "blurSurfaces": []
+          },
+          "metrics": {
+            "TaskDuration": 0.37038000000000004,
+            "LayoutDuration": 0.050011,
+            "RecalcStyleDuration": 0.121916,
+            "LayoutCount": 151,
+            "RecalcStyleCount": 151
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.665786666666666,
+            "p95": 16.799999999999272
+          }
+        },
+        {
+          "run": 1,
+          "name": "settings-stacked",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": true,
+            "infiniteRunning": 69,
+            "startInfiniteRunning": 0,
+            "blurSurfaces": []
+          },
+          "metrics": {
+            "TaskDuration": 0.270312,
+            "LayoutDuration": 0.024925000000000003,
+            "RecalcStyleDuration": 0.08423399999999998,
+            "LayoutCount": 151,
+            "RecalcStyleCount": 151
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.665786666666662,
+            "p95": 16.700000000000728
+          }
+        },
+        {
+          "run": 2,
+          "name": "settings-stacked",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": true,
+            "infiniteRunning": 69,
+            "startInfiniteRunning": 0,
+            "blurSurfaces": []
+          },
+          "metrics": {
+            "TaskDuration": 0.2646869999999999,
+            "LayoutDuration": 0.026119999999999977,
+            "RecalcStyleDuration": 0.0825499999999999,
+            "LayoutCount": 152,
+            "RecalcStyleCount": 152
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.665653333333346,
+            "p95": 16.799999999999272
+          }
+        },
+        {
+          "run": 2,
+          "name": "main-menu",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": false,
+            "infiniteRunning": 93,
+            "startInfiniteRunning": 24,
+            "blurSurfaces": []
+          },
+          "metrics": {
+            "TaskDuration": 0.34006599999999976,
+            "LayoutDuration": 0.046404,
+            "RecalcStyleDuration": 0.10341099999999992,
+            "LayoutCount": 151,
+            "RecalcStyleCount": 151
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.665226666666666,
+            "p95": 16.700000000004366
+          }
+        }
+      ],
+      "baselineErrors": [],
+      "fixedErrors": []
+    },
+    {
+      "profile": "Electron CSS rules (browser engine, not packaged Electron)",
+      "baseline": [
+        {
+          "run": 1,
+          "name": "main-menu",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": false,
+            "infiniteRunning": 102,
+            "startInfiniteRunning": 28,
+            "blurSurfaces": [
+              {
+                "element": "modal-content",
+                "blur": "blur(8px) saturate(1.2)"
+              },
+              {
+                "element": "close-settings",
+                "blur": "blur(10px) saturate(1.3)"
+              },
+              {
+                "element": "settings-tabs",
+                "blur": "blur(10px)"
+              },
+              {
+                "element": "settings-modal",
+                "blur": "blur(4px)"
+              }
+            ]
+          },
+          "metrics": {
+            "TaskDuration": 0.41239799999999993,
+            "LayoutDuration": 0.04958800000000001,
+            "RecalcStyleDuration": 0.132731,
+            "LayoutCount": 151,
+            "RecalcStyleCount": 151
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.665866666666663,
+            "p95": 16.700000000000273
+          }
+        },
+        {
+          "run": 1,
+          "name": "settings-stacked",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": true,
+            "infiniteRunning": 102,
+            "startInfiniteRunning": 28,
+            "blurSurfaces": [
+              {
+                "element": "modal-content",
+                "blur": "blur(8px) saturate(1.2)"
+              },
+              {
+                "element": "close-settings",
+                "blur": "blur(10px) saturate(1.3)"
+              },
+              {
+                "element": "settings-tabs",
+                "blur": "blur(10px)"
+              },
+              {
+                "element": "settings-modal",
+                "blur": "blur(4px)"
+              }
+            ]
+          },
+          "metrics": {
+            "TaskDuration": 0.15737800000000002,
+            "LayoutDuration": 0.018217999999999998,
+            "RecalcStyleDuration": 0.053801000000000015,
+            "LayoutCount": 47,
+            "RecalcStyleCount": 46
+          },
+          "frame": {
+            "n": 45,
+            "mean": 54.44320000000001,
+            "p95": 66.69999999999982
+          }
+        },
+        {
+          "run": 2,
+          "name": "settings-stacked",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": true,
+            "infiniteRunning": 102,
+            "startInfiniteRunning": 28,
+            "blurSurfaces": [
+              {
+                "element": "modal-content",
+                "blur": "blur(8px) saturate(1.2)"
+              },
+              {
+                "element": "close-settings",
+                "blur": "blur(10px) saturate(1.3)"
+              },
+              {
+                "element": "settings-tabs",
+                "blur": "blur(10px)"
+              },
+              {
+                "element": "settings-modal",
+                "blur": "blur(4px)"
+              }
+            ]
+          },
+          "metrics": {
+            "TaskDuration": 0.15201300000000018,
+            "LayoutDuration": 0.01664500000000002,
+            "RecalcStyleDuration": 0.05051300000000003,
+            "LayoutCount": 46,
+            "RecalcStyleCount": 46
+          },
+          "frame": {
+            "n": 45,
+            "mean": 55.17960000000005,
+            "p95": 100.10000000000036
+          }
+        },
+        {
+          "run": 2,
+          "name": "main-menu",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": false,
+            "infiniteRunning": 102,
+            "startInfiniteRunning": 28,
+            "blurSurfaces": [
+              {
+                "element": "modal-content",
+                "blur": "blur(8px) saturate(1.2)"
+              },
+              {
+                "element": "close-settings",
+                "blur": "blur(10px) saturate(1.3)"
+              },
+              {
+                "element": "settings-tabs",
+                "blur": "blur(10px)"
+              },
+              {
+                "element": "settings-modal",
+                "blur": "blur(4px)"
+              }
+            ]
+          },
+          "metrics": {
+            "TaskDuration": 0.48870400000000025,
+            "LayoutDuration": 0.05899399999999999,
+            "RecalcStyleDuration": 0.14972300000000005,
+            "LayoutCount": 151,
+            "RecalcStyleCount": 151
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.66581333333333,
+            "p95": 16.799999999999272
+          }
+        }
+      ],
+      "fixed": [
+        {
+          "run": 1,
+          "name": "main-menu",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": false,
+            "infiniteRunning": 94,
+            "startInfiniteRunning": 25,
+            "blurSurfaces": []
+          },
+          "metrics": {
+            "TaskDuration": 0.444777,
+            "LayoutDuration": 0.073488,
+            "RecalcStyleDuration": 0.125905,
+            "LayoutCount": 152,
+            "RecalcStyleCount": 152
+          },
+          "frame": {
+            "n": 151,
+            "mean": 16.665403973509935,
+            "p95": 16.799999999999727
+          }
+        },
+        {
+          "run": 1,
+          "name": "settings-stacked",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": true,
+            "infiniteRunning": 69,
+            "startInfiniteRunning": 0,
+            "blurSurfaces": []
+          },
+          "metrics": {
+            "TaskDuration": 0.30974,
+            "LayoutDuration": 0.027556999999999998,
+            "RecalcStyleDuration": 0.09627200000000002,
+            "LayoutCount": 151,
+            "RecalcStyleCount": 151
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.665639999999996,
+            "p95": 16.800000000000182
+          }
+        },
+        {
+          "run": 2,
+          "name": "settings-stacked",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": true,
+            "infiniteRunning": 69,
+            "startInfiniteRunning": 0,
+            "blurSurfaces": []
+          },
+          "metrics": {
+            "TaskDuration": 0.24097600000000008,
+            "LayoutDuration": 0.022403000000000006,
+            "RecalcStyleDuration": 0.07559899999999997,
+            "LayoutCount": 151,
+            "RecalcStyleCount": 151
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.665639999999996,
+            "p95": 16.799999999999272
+          }
+        },
+        {
+          "run": 2,
+          "name": "main-menu",
+          "snapshot": {
+            "startVisible": true,
+            "settingsVisible": false,
+            "infiniteRunning": 94,
+            "startInfiniteRunning": 25,
+            "blurSurfaces": []
+          },
+          "metrics": {
+            "TaskDuration": 0.3526150000000001,
+            "LayoutDuration": 0.04518099999999997,
+            "RecalcStyleDuration": 0.107981,
+            "LayoutCount": 151,
+            "RecalcStyleCount": 151
+          },
+          "frame": {
+            "n": 150,
+            "mean": 16.665573333333327,
+            "p95": 16.700000000000728
+          }
+        }
+      ],
+      "baselineErrors": [],
+      "fixedErrors": []
+    }
+  ]
+}
