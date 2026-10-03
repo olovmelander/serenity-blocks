@@ -93,6 +93,7 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
         detailScales: 2,
         cavity: 0.30,
         ridgeRock: 0.16,
+        cloudShadows: true,
     },
     low: {
         gridN: 96,
@@ -105,6 +106,7 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
         detailScales: 1,
         cavity: 0.24,
         ridgeRock: 0.12,
+        cloudShadows: false,
     },
 });
 
@@ -154,6 +156,23 @@ const GROUND_SNOW_SHADE = Object.freeze([0.80, 0.99, 1.32]);
  * smooth white cone when the silhouette cannot help.
  */
 const GROUND_SNOW_CREST_STRIP = 0.75;
+/**
+ * CLOUD SHADOWS ON THE MASSIF (2026-10-03). The world's sun stands BEHIND the chapter-5 camera,
+ * so the face it climbs is front-lit and carried no shadow shapes at all. Soft shadows of the
+ * cumulus now drift across the upper mountain: the cloud noise the deck reads (detail texture,
+ * alpha), sampled at `world` units per tile and scrolled downwind, takes `depth` of the direct
+ * light where it is dense (`window`, set against the channel's measured p50 0.55 / p90 0.71).
+ * Snow in that shade takes its ice-blue from the shade model, so the white cone gets large,
+ * slow blue shapes. Above `from` only — the lowlands, chapters 3-4's subject, are untouched —
+ * and on the high tier only (ODYSSEY_WORLD_QUALITY.cloudShadows): one extra fetch per fragment.
+ */
+const GROUND_CLOUD_SHADOW = Object.freeze({
+    world: 400,
+    window: Object.freeze([0.60, 0.67]),
+    depth: 0.55,
+    from: Object.freeze([520, 640]),
+    drift: Object.freeze([0.0147, 0.006]),
+});
 /**
  * COULOIRS THROUGH THE CAP (2026-10-03). On the hero massif the crest strip's convexity is
  * scaled by the FALL-LINE field: [in a couloir, on a rib]. The snow fingers only moved the
@@ -1808,13 +1827,26 @@ export function createOdysseyWorld({
          * RATIO is produced in exactly one place — `value`.
          */
         const ndl = max(dot(normal, uSunDir), 0);
+        // Drifting cloud shadows on the upper massif (see GROUND_CLOUD_SHADOW).
+        const cloudLight = q.cloudShadows
+            ? float(1).sub(
+                smoothstep(
+                    float(GROUND_CLOUD_SHADOW.window[0]),
+                    float(GROUND_CLOUD_SHADOW.window[1]),
+                    texture(detailTex, positionWorld.xz.div(GROUND_CLOUD_SHADOW.world)
+                        .add(vec2(uTime.mul(GROUND_CLOUD_SHADOW.drift[0]), uTime.mul(GROUND_CLOUD_SHADOW.drift[1])))).a,
+                )
+                    .mul(smoothstep(float(GROUND_CLOUD_SHADOW.from[0]), float(GROUND_CLOUD_SHADOW.from[1]), height))
+                    .mul(GROUND_CLOUD_SHADOW.depth),
+            )
+            : float(1);
         // Lambert, S-shaped. The shoulders group the terminator into masses (the Ghibli law);
         // the middle keeps the mid-tones a rolling landform needs. See the palette's terminator
         // note for the two remaps that tried to replace Lambert and measured worse than it.
         const lightAmt = smoothstep(
             float(ODYSSEY_GROUND_SHADE.terminator[0]),
             float(ODYSSEY_GROUND_SHADE.terminator[1]),
-            clamp(ndl.mul(sunVis), 0, 1),
+            clamp(ndl.mul(sunVis).mul(cloudLight), 0, 1),
         ).toVar();
         const albLuma = dot(albedo, vec3(...ODYSSEY_GROUND_LUMA)).toVar();
         const mineralW = clamp(kRock.add(kSnow), 0, 1).toVar();
