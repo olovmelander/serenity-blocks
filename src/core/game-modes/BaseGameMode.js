@@ -126,6 +126,7 @@ export class BaseGameMode {
         const sim = this._getPausableGameState();
         if (sim) sim.isPaused = true;
         if (this.usingHybridLoop) this.deps?.frameRateController?.pauseHybridLoop?.();
+        if (sim && !this.isInExplorationMode) this._setBoardPresentationPaused(true);
     }
 
     /**
@@ -146,6 +147,16 @@ export class BaseGameMode {
             sim.lastTime = performance.now();
         }
         if (this.usingHybridLoop) this.deps?.frameRateController?.resumeHybridLoop?.();
+        this._setBoardPresentationPaused(false);
+    }
+
+    _setBoardPresentationPaused(paused) {
+        const scenes = new Set([
+            this.boardScene,
+            this._getBoardScene?.(),
+            ...(this.boardScenes || []),
+        ]);
+        scenes.forEach((scene) => scene?.setPresentationPaused?.(paused));
     }
 
     /**

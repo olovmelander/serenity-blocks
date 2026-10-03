@@ -1962,7 +1962,7 @@ export class SharedEffects {
         // Remove oldest graphics if we've hit the limit
         while (this.activeGraphics.length >= this.maxGraphicsObjects) {
             const old = this.activeGraphics.shift();
-            if (old && !old.scene) { // Check if not already destroyed
+            if (old?.scene) { // A live Phaser object still belongs to its scene.
                 try {
                     old.destroy();
                 } catch (e) {
@@ -1985,7 +1985,7 @@ export class SharedEffects {
         // Remove oldest text if we've hit the limit
         while (this.activeTextObjects.length >= this.maxTextObjects) {
             const old = this.activeTextObjects.shift();
-            if (old && !old.scene) { // Check if not already destroyed
+            if (old?.scene) { // A live Phaser object still belongs to its scene.
                 try {
                     old.destroy();
                 } catch (e) {

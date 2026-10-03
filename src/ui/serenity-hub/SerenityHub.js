@@ -558,6 +558,7 @@ export class SerenityHub {
     switchTab(tabName) {
         if (this.currentTab === tabName) return;
 
+        this.musicTab?.setActive(false);
         this.currentTab = tabName;
 
         // Update tab buttons
@@ -648,7 +649,7 @@ export class SerenityHub {
 
         // Refresh music tab if it's already loaded (in case music state changed)
         if (tabName === 'music' && this.musicTab) {
-            this.musicTab.syncWithAudioState();
+            this.musicTab.setActive(this.isOpen && this.currentTab === 'music' && !document.hidden);
         }
     }
 
@@ -743,6 +744,7 @@ export class SerenityHub {
         }
 
         this.isOpen = false;
+        this.musicTab?.setActive(false);
         this.clearScrollPerformanceMode();
 
         // Notify Serenity Mode to restore quality

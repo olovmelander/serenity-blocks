@@ -1,10 +1,9 @@
 import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
+import { phaserBoardRuntimeConfig } from '../../rendering/phaser/frame-rate-policy.js';
 import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.js';
-import {
-    GAME_MODES, COLS, ROWS,
-} from '../constants.js';
+import { GAME_MODES, COLS, ROWS } from '../constants.js';
 import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
@@ -1021,7 +1020,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Create Phaser game for local player
         // Use Scale.NONE and let CSS handle sizing - matches single player approach
         this.mainPhaserGame = new Phaser.Game({
-            type: Phaser.WEBGL,
+            ...phaserBoardRuntimeConfig(this.deps, Phaser.WEBGL),
             parent: container,
             width: internalWidth,
             height: internalHeight,

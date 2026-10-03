@@ -96,13 +96,13 @@ export function createBaseBoardScene(
             this._firstRenderEmitted = false;
 
             // Initialize Tetromino Style Manager for theme-based tetromino colors
-            this.styleManager = new TetrominoStyleManager(
-                typeof window !== 'undefined' ? window.themeManager : null,
-                typeof window !== 'undefined' ? window.settingsManager : null,
-            );
-            if (this.styleManager) {
-                this.styleManager.init();
-            }
+            this.styleManager = null;
+            this._lifecycleActive = false;
+            this._presentationPaused = false;
+            this._presentationCovered = false;
+            this._pieceGeometryCache = new WeakMap();
+            this._invalidatePresentation = () => { this._boardDirty = true; };
+            this._reducedMotionQuery = null;
 
             // No caching needed - simple is better
         }
@@ -125,6 +125,21 @@ export function createBaseBoardScene(
          */
         create() {
             try {
+                this._lifecycleActive = true;
+                this._presentationPaused = false;
+                this._presentationCovered = false;
+                this._boardDirty = true;
+                this._lastBoardGridRef = null;
+                this._lastBoardVersion = -1;
+                this._lastVisibleRowRange = null;
+                this._ensureStyleManager();
+                this._reducedMotionQuery = typeof window !== 'undefined'
+                    ? window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null : null;
+                this._reducedMotionQuery?.addEventListener?.('change', this._invalidatePresentation);
+                // Phaser emits events; it does not call user shutdown() methods.
+                this.events?.once?.('shutdown', this.shutdown, this);
+                this.events?.off?.('destroy', this._handleDestroy, this);
+                this.events?.once?.('destroy', this._handleDestroy, this);
                 this.createGraphicsLayers();
                 this.configureCamera();
                 this.registerResizeHandler();
@@ -144,9 +159,14 @@ export function createBaseBoardScene(
         update(time, delta) {
             // eslint-disable-line no-unused-vars
             // Performance monitoring - mark frame start
-            performanceMonitor.updateStart();
-
             if (!this.gameState) return;
+            this._checkBoardDirty();
+            this._checkVisibleRowRangeDirty();
+            // Keep the last board commands visible while a pausable game is
+            // covered. Online games and Infinity exploration never set this.
+            if ((this._presentationPaused || this._presentationCovered)
+                && !this._boardDirty && !this.gameState.forceDraw) return;
+            performanceMonitor.updateStart();
 
             // PERFORMANCE: Periodic cleanup to prevent memory leaks
             // This fixes the time-based FPS degradation issue
@@ -160,9 +180,6 @@ export function createBaseBoardScene(
             // Only redraw static content (locked pieces) when board actually changes
             try {
                 // Check if board content has changed (piece locked, lines cleared, etc.)
-                this._checkBoardDirty();
-                this._checkVisibleRowRangeDirty();
-
                 // Static layer (boardGraphics): only clear and redraw when board changes
                 if (this._boardDirty) {
                     this.boardGraphics?.clear();
@@ -193,6 +210,32 @@ export function createBaseBoardScene(
             } catch (error) {
                 console.error('[BaseBoardScene] Error in update loop:', error);
             }
+        }
+
+        setPresentationPaused(paused) {
+            if (this._presentationPaused === Boolean(paused)) return;
+            this._presentationPaused = Boolean(paused);
+            if (!paused) this._boardDirty = true;
+        }
+
+        setPresentationCovered(covered) {
+            if (this._presentationCovered === Boolean(covered)) return;
+            this._presentationCovered = Boolean(covered);
+            if (!covered) this._boardDirty = true;
+        }
+
+        _ensureStyleManager() {
+            if (this.styleManager) return;
+            this.styleManager = new TetrominoStyleManager(
+                typeof window !== 'undefined' ? window.themeManager : null,
+                typeof window !== 'undefined' ? window.settingsManager : null,
+                this._invalidatePresentation,
+            );
+            this.styleManager.init();
+        }
+
+        _handleDestroy() {
+            if (this._lifecycleActive) this.shutdown();
         }
 
         /**
@@ -721,7 +764,7 @@ export function createBaseBoardScene(
          * Listen to Phaser scale events and adjust camera zoom/position.
          */
         registerResizeHandler() {
-            // No-op. The FIT scale mode handles this automatically.
+            this.scale?.on?.('resize', this._invalidatePresentation);
         }
 
         renderGameState() {
@@ -1069,13 +1112,12 @@ export function createBaseBoardScene(
             const pulse = this._reducedMotion() ? 0.5 : this._getPulseIntensity(pieceCenterX, pieceCenterY);
             const alpha = minAlpha + (maxAlpha - minAlpha) * pulse;
 
-            const present = this._presentCells(piece.shape, ghostY, skipHiddenRows);
-            const loops = this.traceLoops(present, piece.x, ghostY);
+            const geometry = this._getPieceGeometry(piece.shape, ghostY, skipHiddenRows);
             // Translucent fill MUST use the single contour polygon — per-cell rects
             // double-cover at their overlap and produce brighter internal seam lines.
-            this.fillContour(this.pieceGraphics, loops, 0xffffff, alpha);
+            this.fillContour(this.pieceGraphics, geometry.loops, 0xffffff, alpha, piece.x * this.blockSize, ghostY * this.blockSize);
             // A faint cyan outer outline is the ghost's only edge treatment.
-            this.strokeLoops(this.pieceGraphics, loops, 0x64c8ff, 1, alpha * 0.7);
+            this.strokeLoops(this.pieceGraphics, geometry.loops, 0x64c8ff, 1, alpha * 0.7, piece.x * this.blockSize, ghostY * this.blockSize);
         }
 
         drawCurrentPiece() {
@@ -1199,9 +1241,7 @@ export function createBaseBoardScene(
             try {
                 if (typeof window !== 'undefined') {
                     if (window.settingsManager?.get?.().reducedMotion) return true;
-                    if (typeof window.matchMedia === 'function') {
-                        return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-                    }
+                    return this._reducedMotionQuery?.matches ?? false;
                 }
             } catch (e) { /* ignore */ }
             return false;
@@ -1226,7 +1266,7 @@ export function createBaseBoardScene(
             };
             try {
                 if (this.styleManager?.getPhaserEffects) {
-                    return { ...DEF, ...this.styleManager.getPhaserEffects(pieceType) };
+                    return this.styleManager.getPhaserEffects(pieceType);
                 }
             } catch (e) { /* ignore */ }
             return DEF;
@@ -1274,6 +1314,41 @@ export function createBaseBoardScene(
             return set;
         }
 
+        /** Cache topology in local coordinates; movement changes only translation. */
+        _getPieceGeometry(shape, originY, skipHiddenRows) {
+            const firstRow = skipHiddenRows ? Math.max(0, Math.ceil(this.hiddenRows - originY)) : 0;
+            // Cascade animation can edit a locked shape in place. Compare its
+            // snapshot without allocating on unchanged moving-piece frames.
+            let cached = this._pieceGeometryCache.get(shape);
+            let unchanged = cached && cached.rows.length === shape.length;
+            for (let y = 0; unchanged && y < shape.length; y++) {
+                const row = shape[y];
+                const previous = cached.rows[y];
+                unchanged = row?.length === previous?.length;
+                for (let x = 0; unchanged && x < (row?.length || 0); x++) {
+                    if (row[x] !== previous[x]) unchanged = false;
+                }
+            }
+            if (!unchanged) {
+                cached = { rows: shape.map((row) => row?.slice()), blockSize: this.blockSize, variants: new Map() };
+                this._pieceGeometryCache.set(shape, cached);
+            }
+            if (cached.blockSize !== this.blockSize) {
+                cached.blockSize = this.blockSize;
+                cached.variants.clear();
+            }
+            const { variants } = cached;
+            const key = Math.min(firstRow, shape.length);
+            let geometry = variants.get(key);
+            if (!geometry) {
+                const present = this._presentCells(shape, originY, skipHiddenRows);
+                const cells = Array.from(present, (cell) => cell.split(',').map(Number));
+                geometry = { present, cells, loops: this.traceLoops(present, 0, 0) };
+                variants.set(key, geometry);
+            }
+            return geometry;
+        }
+
         /** Pixel rect for a local cell, with 0.5px overlap to fuse seams. */
         _cellRect(originX, originY, lx, ly) {
             const bs = this.blockSize;
@@ -1291,13 +1366,11 @@ export function createBaseBoardScene(
          * topology-proof. Optional continuous TL→BR gradient across the whole
          * shape (computed in piece-bbox space so it never breaks at a cell edge).
          */
-        fillFusedBody(graphics, presentSet, originX, originY, colorInt, alpha, fx) {
+        fillFusedBody(graphics, presentSet, originX, originY, colorInt, alpha, fx, cachedCells = null) {
             if (!graphics || presentSet.size === 0) return;
-            const cells = [];
+            const cells = cachedCells || Array.from(presentSet, (key) => key.split(',').map(Number));
             let minLx = Infinity; let minLy = Infinity; let maxLx = -Infinity; let maxLy = -Infinity;
-            presentSet.forEach((key) => {
-                const [lx, ly] = key.split(',').map(Number);
-                cells.push([lx, ly]);
+            cells.forEach(([lx, ly]) => {
                 if (lx < minLx) minLx = lx;
                 if (ly < minLy) minLy = ly;
                 if (lx > maxLx) maxLx = lx;
@@ -1337,12 +1410,12 @@ export function createBaseBoardScene(
          * top of the shape, fading to nothing by the vertical midpoint. ADD blend.
          * Continuous across cells (no seams).
          */
-        glossPass(graphics, presentSet, originX, originY, glossAlpha) {
+        glossPass(graphics, presentSet, originX, originY, glossAlpha, cachedCells = null) {
             if (!graphics || presentSet.size === 0 || glossAlpha <= 0) return;
             const PhaserRef = window.Phaser;
             let minLy = Infinity; let maxLy = -Infinity;
-            presentSet.forEach((key) => {
-                const ly = Number(key.split(',')[1]);
+            const cells = cachedCells || Array.from(presentSet, (key) => key.split(',').map(Number));
+            cells.forEach(([, ly]) => {
                 if (ly < minLy) minLy = ly;
                 if (ly > maxLy) maxLy = ly;
             });
@@ -1355,8 +1428,7 @@ export function createBaseBoardScene(
             if (graphics.setBlendMode && PhaserRef?.BlendModes?.ADD) {
                 graphics.setBlendMode(PhaserRef.BlendModes.ADD);
             }
-            presentSet.forEach((key) => {
-                const [lx, ly] = key.split(',').map(Number);
+            cells.forEach(([lx, ly]) => {
                 const aTop = alphaAt(ly);
                 const aBot = alphaAt(ly + 1);
                 if (aTop <= 0 && aBot <= 0) return;
@@ -1449,14 +1521,14 @@ export function createBaseBoardScene(
         }
 
         /** Stroke one or more perimeter loops (the outer rim). */
-        strokeLoops(graphics, loops, colorInt, width, alpha) {
+        strokeLoops(graphics, loops, colorInt, width, alpha, offsetX = 0, offsetY = 0) {
             if (!graphics || !loops || loops.length === 0 || alpha <= 0) return;
             graphics.lineStyle(width, colorInt, alpha);
             loops.forEach((loop) => {
                 if (loop.length < 2) return;
                 graphics.beginPath();
-                graphics.moveTo(loop[0].x, loop[0].y);
-                for (let i = 1; i < loop.length; i++) graphics.lineTo(loop[i].x, loop[i].y);
+                graphics.moveTo(loop[0].x + offsetX, loop[0].y + offsetY);
+                for (let i = 1; i < loop.length; i++) graphics.lineTo(loop[i].x + offsetX, loop[i].y + offsetY);
                 graphics.closePath();
                 graphics.strokePath();
             });
@@ -1467,14 +1539,14 @@ export function createBaseBoardScene(
          * per-cell rect fill, this is correct for TRANSLUCENT fills (the ghost),
          * where overlapping rects would double-cover and show brighter seam lines.
          */
-        fillContour(graphics, loops, colorInt, alpha) {
+        fillContour(graphics, loops, colorInt, alpha, offsetX = 0, offsetY = 0) {
             if (!graphics || !loops || loops.length === 0 || alpha <= 0) return;
             graphics.fillStyle(colorInt, alpha);
             graphics.beginPath();
             loops.forEach((loop) => {
                 if (loop.length < 3) return;
-                graphics.moveTo(loop[0].x, loop[0].y);
-                for (let i = 1; i < loop.length; i++) graphics.lineTo(loop[i].x, loop[i].y);
+                graphics.moveTo(loop[0].x + offsetX, loop[0].y + offsetY);
+                for (let i = 1; i < loop.length; i++) graphics.lineTo(loop[i].x + offsetX, loop[i].y + offsetY);
                 graphics.closePath();
             });
             graphics.fillPath();
@@ -1488,16 +1560,16 @@ export function createBaseBoardScene(
             const {
                 alpha = 1, fx = null, gloss = false, skipHiddenRows = true,
             } = opts;
-            const present = this._presentCells(shape, originY, skipHiddenRows);
+            const geometry = this._getPieceGeometry(shape, originY, skipHiddenRows);
+            const { present } = geometry;
             if (present.size === 0) return;
-            this.fillFusedBody(graphics, present, originX, originY, colorInt, alpha, fx);
+            this.fillFusedBody(graphics, present, originX, originY, colorInt, alpha, fx, geometry.cells);
             if (gloss && fx && fx.gloss) {
-                this.glossPass(graphics, present, originX, originY, fx.glossAlpha);
+                this.glossPass(graphics, present, originX, originY, fx.glossAlpha, geometry.cells);
             }
             if (fx && fx.rim) {
-                const loops = this.traceLoops(present, originX, originY);
                 const width = Math.max(1, this.blockSize * fx.rimWidthFactor);
-                this.strokeLoops(graphics, loops, 0xffffff, width, fx.rimAlpha * alpha);
+                this.strokeLoops(graphics, geometry.loops, 0xffffff, width, fx.rimAlpha * alpha, originX * this.blockSize, originY * this.blockSize);
             }
         }
 
@@ -1672,9 +1744,10 @@ export function createBaseBoardScene(
          * Remove listeners on shutdown.
          */
         shutdown() {
-            if (this.scale) {
-                this.scale.off('resize');
-            }
+            this._lifecycleActive = false;
+            this.scale?.off?.('resize', this._invalidatePresentation);
+            this._reducedMotionQuery?.removeEventListener?.('change', this._invalidatePresentation);
+            this._reducedMotionQuery = null;
 
             // Cleanup style manager
             if (this.styleManager) {
@@ -1685,6 +1758,8 @@ export function createBaseBoardScene(
             // Final cleanup on shutdown
             this._performPeriodicCleanup();
             this._firstRenderEmitted = false;
+            this.gameState = null;
+            this._pieceGeometryCache = new WeakMap();
         }
 
         _emitFirstRender() {

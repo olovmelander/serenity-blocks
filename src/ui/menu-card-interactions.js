@@ -2,7 +2,7 @@
  * @fileoverview Cosmic Serenity main-menu card micro-interactions.
  *
  * Three desktop "feel" layers on top of public/styles/menu-aaa.css:
- *   1. Cursor-follow spotlight  → writes --mx / --my (% within the card)
+ *   1. Cursor-follow spotlight  → translates a prepainted gradient layer
  *   2. Parallax 3D tilt         → writes --rx / --ry (degrees), composited by CSS
  *   3. Audio juice              → warm, soft tonal cues (eased-in sine bodies,
  *                                 low-passed, no transient/click): a gentle hum
@@ -50,25 +50,45 @@ function getSound() {
 
 // Soft warm tone — pure/triangle sine with an eased fade-in and a long gentle
 // tail. Optional small pitch glide. No transients/noise: warmth, not click.
-function playBody(ctx, dest, {
+function playBody(ctx, bus, {
     startFreq, endFreq = startFreq, type = 'sine', attack, decay, gain,
 }) {
     const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(startFreq, now);
-    if (endFreq !== startFreq) {
-        osc.frequency.exponentialRampToValueAtTime(endFreq, now + decay);
+    const releaseVoice = bus.retainVoice();
+    let osc;
+    let g;
+    let released = false;
+    const cleanup = () => {
+        if (released) return;
+        released = true;
+        if (osc) {
+            osc.onended = null;
+            osc.disconnect();
+        }
+        g?.disconnect();
+        releaseVoice();
+    };
+    try {
+        osc = ctx.createOscillator();
+        g = ctx.createGain();
+        osc.onended = cleanup;
+        osc.type = type;
+        osc.frequency.setValueAtTime(startFreq, now);
+        if (endFreq !== startFreq) {
+            osc.frequency.exponentialRampToValueAtTime(endFreq, now + decay);
+        }
+        g.gain.setValueAtTime(0.0001, now);
+        // Gentle eased swell in, then a smooth exponential tail out.
+        g.gain.linearRampToValueAtTime(gain, now + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + decay);
+        osc.connect(g);
+        g.connect(bus.input);
+        osc.start(now);
+        osc.stop(now + decay + 0.05);
+    } catch (error) {
+        cleanup();
+        throw error;
     }
-    g.gain.setValueAtTime(0.0001, now);
-    // Gentle eased swell in, then a smooth exponential tail out.
-    g.gain.linearRampToValueAtTime(gain, now + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + decay);
-    osc.connect(g);
-    g.connect(dest);
-    osc.start(now);
-    osc.stop(now + decay + 0.05);
 }
 
 // Master bus for one cue: warm low-pass to round off the highs, master volume.
@@ -83,7 +103,20 @@ function cueBus(ctx, { cutoff, volume }) {
     master.gain.value = volume * sfx;
     filter.connect(master);
     master.connect(ctx.destination);
-    return filter;
+    let activeVoices = 0;
+    return {
+        input: filter,
+        retainVoice() {
+            activeVoices += 1;
+            return () => {
+                activeVoices -= 1;
+                if (activeVoices === 0) {
+                    filter.disconnect();
+                    master.disconnect();
+                }
+            };
+        },
+    };
 }
 
 function playHover(card) {
@@ -148,10 +181,10 @@ function bindCard(card) {
 
     const apply = () => {
         frame = 0;
-        if (!pending) return;
+        if (!pending || !rect || document.body.classList.contains('start-modal-covered')) return;
         const { px, py } = pending;
-        card.style.setProperty('--mx', `${(px * 100).toFixed(1)}%`);
-        card.style.setProperty('--my', `${(py * 100).toFixed(1)}%`);
+        card.style.setProperty('--spotlight-x', `${((px - 0.5) * rect.width).toFixed(1)}px`);
+        card.style.setProperty('--spotlight-y', `${((py - 0.5) * rect.height).toFixed(1)}px`);
         if (!reducedMotion.matches) {
             card.style.setProperty('--ry', `${((px - 0.5) * 2 * MAX_TILT_DEG).toFixed(2)}deg`);
             card.style.setProperty('--rx', `${((0.5 - py) * 2 * MAX_TILT_DEG).toFixed(2)}deg`);
@@ -159,6 +192,7 @@ function bindCard(card) {
     };
 
     const onMove = (event) => {
+        if (document.body.classList.contains('start-modal-covered')) return;
         if (!rect) refresh();
         const px = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
         const py = Math.min(Math.max((event.clientY - rect.top) / rect.height, 0), 1);
@@ -170,8 +204,8 @@ function bindCard(card) {
         if (frame) { cancelAnimationFrame(frame); frame = 0; }
         rect = null;
         pending = null;
-        card.style.setProperty('--mx', '50%');
-        card.style.setProperty('--my', '50%');
+        card.style.setProperty('--spotlight-x', '0px');
+        card.style.setProperty('--spotlight-y', '0px');
         card.style.setProperty('--rx', '0deg');
         card.style.setProperty('--ry', '0deg');
     };
