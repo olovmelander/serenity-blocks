@@ -53,6 +53,14 @@ const STATION_SETTLE_MS = Math.max(0, Number.parseInt(args.settle || process.env
 // manager can re-enable it. For finding which layer owns a look; never for shipped captures.
 const HIDE_NAMES = String(args.hide || '').split(',').map((s) => s.trim()).filter(Boolean);
 const KEEP_EXISTING = args.keep || process.env.ODYSSEY_CAPTURE_KEEP === '1';
+// `--envTime=<s>` pins the ENVIRONMENT MANAGER's own clock (ChapterEnvironmentManager.time). It
+// is a different clock from `--time` (bc.time): the manager accumulates its own dt, so in this
+// harness it sits near zero and anything a chapter schedules on it is photographed at its first
+// instant — chapter 6's comet sweeps a 70 s chord on that clock and was at s = 0 (faded out) in
+// every capture ever taken.
+const ENV_TIME = Number.isFinite(Number.parseFloat(args.envTime))
+    ? Number.parseFloat(args.envTime)
+    : null;
 const FORCE_WEBGL = args.forceWebgl || args['force-webgl'] || process.env.ODYSSEY_CAPTURE_FORCE_WEBGL === '1';
 // PHASE LOCK. Without it this harness is not comparable run to run: every animated uniform
 // rides `boardController.time`, which advances with wall clock, so the same station sampled
@@ -447,6 +455,8 @@ async function settleAtPosition(win, position, options = {}) {
             bc.nodeManager?.setCameraProgress(pos);
             bc.nodeManager?.update(1 / 60, directorState?.node?.focalPulse ?? 0);
             bc.atmosphere?.update(bc.camera, directorState);
+            const envTime = ${ENV_TIME === null ? 'null' : ENV_TIME};
+            if (envTime !== null && bc.environmentManager) bc.environmentManager.time = envTime;
             bc.environmentManager?.update(1 / 60, bc.camera, pos, directorState);
             bc.pathRenderer?.update?.(1 / 60, directorState);
             bc.thresholdDirector?.update?.(1 / 60, bc.camera, directorState);

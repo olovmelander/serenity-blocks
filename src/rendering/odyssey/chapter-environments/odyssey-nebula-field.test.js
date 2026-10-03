@@ -40,7 +40,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe('ch6 nebula field — six authored masses as luminous gas', () => {
+describe('ch6 nebula field — the authored masses as luminous gas', () => {
     it('the corridor axis keeps its clearance through the travel window (SDF-at-rail)', () => {
         // The rule that replaced centre-distance in the cloud-field plan: a mass 700 u
         // away by centre but 900 u wide still swallows the camera. Violations carry
@@ -64,15 +64,21 @@ describe('ch6 nebula field — six authored masses as luminous gas', () => {
             expect(material.depthWrite).toBe(false);
             expect(material.blending).toBe(THREE.AdditiveBlending);
             expect(material.opacityNode).toBeTruthy();
-            // Proxy hulls carry their gas volume (centre + radii + palette index): four
-            // vertex buffers, far from the 8-buffer ceiling.
+            // Proxy hulls carry their gas volume (centre + radii + palette index) and their
+            // mass's reveal beat: five vertex buffers, well under the 8-buffer ceiling.
             expect(Object.keys(geometry.attributes).sort())
-                .toEqual(['aGasCentre', 'aGasShape', 'normal', 'position']);
+                .toEqual(['aGasBeat', 'aGasCentre', 'aGasShape', 'normal', 'position']);
         });
-        // Size hierarchy is real: 1 hero + 2 medium + 2 witnesses + pillar.
+        // Every mass has a beat inside the chapter, and the sweeping wisp leads the wall.
+        ODYSSEY_NEBULA_FIELD_SPECS.forEach((spec) => {
+            expect(spec.beat[0]).toBeGreaterThan(0);
+            expect(spec.beat[1]).toBeGreaterThan(spec.beat[0]);
+            expect(spec.beat[1]).toBeLessThan(0.85);
+        });
+        // Size hierarchy is real (2026-10-03: four masses — a wall, two reefs, one near wisp).
         const widths = ODYSSEY_NEBULA_FIELD_SPECS.map((s) => s.w).sort((a, b) => a - b);
         expect(widths[widths.length - 1] / widths[0]).toBeGreaterThan(6);
-        // Triangle budget: 6 masses x 3 volumes x a 320-face proxy hull.
+        // Triangle budget: 4 masses x 5 volumes x a 320-face proxy hull.
         expect(field.triangles).toBeGreaterThan(3000);
         expect(field.triangles).toBeLessThan(9000);
     });

@@ -1,5 +1,6 @@
 /**
- * @fileoverview Ch6 nebula field — six authored masses, rendered as LUMINOUS GAS.
+ * @fileoverview Ch6 nebula field — the authored masses (four since the 2026-10-03
+ * re-composition, see odyssey-nebula-field-specs.js), rendered as LUMINOUS GAS.
  *
  * HISTORY. Wave 3 (2026-08-15) retired the additive FBM sprite tiers for SIX authored masses
  * sculpted by the shipped Act II cloud-field sculptor and painted OPAQUE (2-band wrap lighting,
@@ -28,6 +29,11 @@
  * Blending is ADDITIVE (order-independent — the draw and every other additive layer in the
  * chapter composite correctly in any order). FrontSide on closed hulls keeps the overdraw to
  * one layer per volume; satellites overlapping their primary is where a mass is densest.
+ *
+ * STAGING (2026-10-03). Each mass fades in on its own BEAT of the chapter (`aGasBeat` x
+ * `uBeat`), every mass is lit from the black hole's side (`uKey`), and in the chapter's last
+ * beat — the pull — the fine structure streams toward the hole and warms (`uPull`,
+ * `uPullPhase`). All uniforms: nothing here recompiles a pipeline.
  *
  * REVEAL: still deliberately NOT in the chapter's `entryContinuity` buckets — those write
  * `material.opacity`, which an opacityNode overrides (r181+). The field group exposes ONE
@@ -59,24 +65,21 @@ import {
 //
 // The chapter's register is cool (indigo grade) with gilded accents, so the palette walks
 // blue-violet → magenta → rose with gold/amber as the accent — never a rainbow.
+// RE-PALETTED 2026-10-03: ONE family — indigo, violet, rose — with amber only as the accent the
+// black hole's light puts on the filaments. Six hues (rose, cyan, purple, blue, magenta, teal)
+// read as a rainbow of stickers; lower chroma and one family read as one sky.
 const GAS_PALETTE = Object.freeze({
     'S1-witness-near': {
-        body: 0xc85a86, core: 0xffe2c0, accent: 0x6ad0d8, glow: 0.90, dust: 0.70,
-    },
-    'S2-witness-mid': {
-        body: 0x3a9cc0, core: 0xe0fbff, accent: 0xffa8c8, glow: 0.85, dust: 0.70,
+        body: 0x94508e, core: 0xffe0d0, accent: 0xffb070, glow: 0.80, dust: 0.70,
     },
     'N1-reef-left': {
-        body: 0x7a46b8, core: 0xffb0d8, accent: 0xffc878, glow: 0.85, dust: 0.85,
+        body: 0x6a44a8, core: 0xdcc4f4, accent: 0xffc078, glow: 0.64, dust: 0.85,
     },
     'N2-reef-right': {
-        body: 0x4658c8, core: 0xd0d0ff, accent: 0xffb868, glow: 0.80, dust: 0.85,
-    },
-    'N5-pillar': {
-        body: 0xb04a78, core: 0xffe6c0, accent: 0x7090ff, glow: 0.85, dust: 0.95,
+        body: 0x3f4eae, core: 0xc8d2ff, accent: 0xe8a0c8, glow: 0.70, dust: 0.85,
     },
     'N4-hero-veil': {
-        body: 0x2a74a0, core: 0xc0f0ff, accent: 0xe08ab8, glow: 0.70, dust: 0.80,
+        body: 0x3a56a6, core: 0xc4d4ff, accent: 0xffa468, glow: 0.78, dust: 0.90,
     },
 });
 const GAS_PALETTE_FALLBACK = Object.freeze({
@@ -136,20 +139,29 @@ export function resolveNebulaGasVolumes(spec) {
     const tall = spec.h > spec.w * 1.6;
     const cosY = Math.cos(spec.yaw || 0);
     const sinY = Math.sin(spec.yaw || 0);
-    for (let i = 0; i < 2; i += 1) {
-        const side = i === 0 ? -1 : 1;
-        const s = 0.52 + (rng() * 0.2);
-        // A tall mass (the pillar) stacks its satellites up its axis; a wide one spreads them
-        // along its yawed long axis.
-        const along = tall ? (rng() - 0.5) * 0.4 * rx : side * (0.38 + (rng() * 0.18)) * rx;
-        const lift = tall ? side * (0.42 + (rng() * 0.12)) * ry : (rng() - 0.4) * 0.45 * ry;
+    // A CURVED, TAPERED SPINE (2026-10-03): an inner pair and a smaller, flatter outer pair of
+    // satellites strung along the mass's long axis on a gentle arc. Primary + two satellites
+    // gave every mass the same convex cotton-ball silhouette; the outer pair draws it out into
+    // a streaming shape with thin ends.
+    const arc = (rng() - 0.5) * 0.9;
+    for (let i = 0; i < 4; i += 1) {
+        const side = i % 2 === 0 ? -1 : 1;
+        const outer = i >= 2;
+        const s = outer ? 0.34 + (rng() * 0.12) : 0.54 + (rng() * 0.18);
+        const reach = outer ? 0.9 + (rng() * 0.22) : 0.4 + (rng() * 0.16);
+        // A tall mass stacks its satellites up its axis; a wide one strings them along its
+        // yawed long axis.
+        const along = tall ? (rng() - 0.5) * 0.4 * rx : side * reach * rx;
+        const lift = tall
+            ? side * (outer ? 0.85 : 0.45) * ry
+            : (((rng() - 0.4) * 0.35) + (arc * reach * reach)) * ry;
         const depth = (rng() - 0.5) * 0.5 * rz;
         volumes.push({
             cx: cx + (along * cosY) - (depth * sinY),
             cy: cy + lift,
             cz: cz + (along * sinY) + (depth * cosY),
-            rx: rx * s,
-            ry: ry * s * (tall ? 0.7 : 0.9),
+            rx: rx * s * (outer ? 1.3 : 1),
+            ry: ry * s * (tall ? 0.7 : 0.9) * (outer ? 0.72 : 1),
             rz: rz * s,
         });
     }
@@ -208,13 +220,18 @@ function buildGasGeometry(specs, specIndexById) {
     const perVolume = unitPos.count;
     const volumes = [];
     specs.forEach((spec) => {
-        resolveNebulaGasVolumes(spec).forEach((v) => volumes.push({ ...v, index: specIndexById.get(spec.id) ?? 0 }));
+        resolveNebulaGasVolumes(spec).forEach((v) => volumes.push({
+            ...v,
+            index: specIndexById.get(spec.id) ?? 0,
+            beat: spec.beat ?? [0, 0.001],
+        }));
     });
     const n = volumes.length * perVolume;
     const position = new Float32Array(n * 3);
     const normal = new Float32Array(n * 3);
     const centre = new Float32Array(n * 3);
     const shape = new Float32Array(n * 4);
+    const beat = new Float32Array(n * 2);
     let o = 0;
     volumes.forEach((v) => {
         const hx = v.rx * NEBULA_PROXY_MARGIN;
@@ -242,6 +259,8 @@ function buildGasGeometry(specs, specIndexById) {
             shape[(o * 4) + 1] = v.ry;
             shape[(o * 4) + 2] = v.rz;
             shape[(o * 4) + 3] = v.index;
+            beat[o * 2] = v.beat[0];
+            beat[(o * 2) + 1] = v.beat[1];
             o += 1;
         }
     });
@@ -251,6 +270,8 @@ function buildGasGeometry(specs, specIndexById) {
     geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
     geometry.setAttribute('aGasCentre', new THREE.BufferAttribute(centre, 3));
     geometry.setAttribute('aGasShape', new THREE.BufferAttribute(shape, 4));
+    // Each mass's reveal window, in chapter-local progress (the spec's `beat`).
+    geometry.setAttribute('aGasBeat', new THREE.BufferAttribute(beat, 2));
     geometry.computeBoundingSphere();
     return { geometry, triangles: n / 3, volumes: volumes.length };
 }
@@ -292,7 +313,16 @@ export const NEBULA_OCTAVES = Object.freeze({
 // fbm3/ridged3 are NOT normalised: amplitude sums for 1-4 octaves are 0.5/0.75/0.875/0.9375.
 const OCTAVE_SUM = [0, 0.5, 0.75, 0.875, 0.9375];
 
-function buildGasMaterial(uReveal, uTime, palette, tier = 'high') {
+function buildGasMaterial(uReveal, uTime, palette, tier = 'high', drive = {}) {
+    // The chapter's beat (chapter-local progress) and the KEY: the black hole's position in the
+    // corridor frame — the one light every mass is painted by.
+    const uBeat = drive.uBeat ?? uniform(1);
+    const uKey = drive.uKey ?? uniform(new THREE.Vector3(-300, 300, -1200));
+    // THE PULL (the chapter's last beat): `uPull` 0..1 warms the lit gas toward the disk's amber;
+    // `uPullPhase` is how far the gas's FINE structure has streamed toward the hole (accumulated
+    // by the chapter, so easing the pull in never jumps the pattern).
+    const uPull = drive.uPull ?? uniform(0);
+    const uPullPhase = drive.uPullPhase ?? uniform(0);
     const octaves = NEBULA_OCTAVES[tier] ?? NEBULA_OCTAVES.high;
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.FrontSide });
     material.transparent = true;
@@ -311,6 +341,11 @@ function buildGasMaterial(uReveal, uTime, palette, tier = 'high') {
     const body = varying(palette.uBody.element(index));
     const core = varying(palette.uCore.element(index));
     const accent = varying(palette.uAccent.element(index));
+    // PER-MASS BEAT: each mass fades in across its own window of the chapter.
+    const gasBeat = attribute('aGasBeat', 'vec2');
+    const beatReveal = varying(smoothstep(gasBeat.x, gasBeat.y, uBeat), 'vNebulaBeat');
+    // Direction from this volume to the key (corridor-local), per vertex.
+    const keyDir = varying(normalize(uKey.sub(C)), 'vNebulaKey');
 
     // ── THICKNESS: the view ray through the volume's ellipsoid (corridor-local frame) ──
     // `positionLocal` IS the corridor-local hull point (the mesh carries no transform of its
@@ -365,12 +400,16 @@ function buildGasMaterial(uReveal, uTime, palette, tier = 'high') {
     const laneFold = float(1.0).sub(laneNoise.mul(2.0).sub(1.0).abs());
     const lane = laneFold.mul(laneFold).mul(0.75);
     // fbm3's octave walk written out: octave 1 analytic, octaves 2+ from the lattice.
+    // THE PULL streams only the DETAIL octaves and the filaments toward the key: a mass's
+    // silhouette is its first octave's particular values (see above), so that one stays put and
+    // the wisps flow across it — gas being drawn off the cloud, not the cloud re-dealt.
+    const qFlow = qw.sub(keyDir.mul(uPullPhase));
     let gasField = noise3(qw).mul(0.5);
     for (let octave = 1; octave < octaves.gas; octave += 1) {
-        gasField = gasField.add(latticeNoise3(qw.mul(2.03 ** octave)).mul(0.5 ** (octave + 1)));
+        gasField = gasField.add(latticeNoise3(qFlow.mul(2.03 ** octave)).mul(0.5 ** (octave + 1)));
     }
     const gas = smoothstep(0.28, 0.72, gasField.mul(0.9375 / OCTAVE_SUM[octaves.gas]));
-    const fil = ridged3(qw.mul(1.4).add(11.0), octaves.filaments, latticeNoise3)
+    const fil = ridged3(qFlow.mul(1.4).add(11.0), octaves.filaments, latticeNoise3)
         .mul(0.875 / OCTAVE_SUM[octaves.filaments]);
 
     // EROSION, bounded by the ellipsoid: the rim only reaches out where the noise is dense,
@@ -385,14 +424,23 @@ function buildGasMaterial(uReveal, uTime, palette, tier = 'high') {
     // the thick middle where a real dust lane is seen against the most glow.
     const dust = smoothstep(0.30, 0.52, lane).mul(smoothstep(0.20, 0.70, thick)).mul(core.w);
 
-    // Rim → body → core value ladder. The rim keeps the body's hue, darker and a touch cooler
-    // (a strong hue shift drew a blue outline round every mass); the body brightens toward the
-    // thick middle so each mass glows from inside.
+    // PAINTED BY ONE LIGHT (2026-10-03). The glow used to follow THICKNESS — every mass
+    // brightest in its middle, like a lit cotton ball — and that, with six hues, is what read
+    // as stickers. Now each mass is lit from the black hole's side: `lit` is how far the point
+    // of the ray nearest the mass's centre leans toward the key. The lit face carries the pale
+    // core tone and the amber filaments; the far side falls to the dim, cooler rim tone and the
+    // dust lanes bite hardest there. A small heart remains so the thick middle still glows.
+    const lit = smoothstep(-0.55, 0.75, dot(normalize(mid.add(surface.mul(0.35))), keyDir));
     const rim = body.xyz.mul(vec3(0.42, 0.45, 0.58));
-    let emission = mix(rim, body.xyz, density).mul(density.mul(thick.mul(0.18).add(0.08)));
-    emission = emission.add(core.xyz.mul(heart).mul(0.20));
-    emission = emission.add(accent.xyz.mul(filaments).mul(0.12));
-    emission = emission.mul(float(1.0).sub(dust.mul(0.92)));
+    let emission = mix(rim, body.xyz, density).mul(density.mul(thick.mul(0.10).add(0.05)));
+    // In the pull the lit face warms toward the accretion disk's amber and the filaments —
+    // the gas being drawn off — brighten.
+    const litTone = mix(mix(body.xyz, core.xyz, 0.5), vec3(1.0, 0.62, 0.32), uPull.mul(0.4));
+    emission = emission.add(litTone.mul(density).mul(lit).mul(thick.mul(0.6).add(0.4)).mul(0.17));
+    emission = emission.add(core.xyz.mul(heart).mul(0.06));
+    emission = emission.add(accent.xyz.mul(filaments).mul(lit.mul(0.8).add(0.2))
+        .mul(uPull.mul(0.08).add(0.13)));
+    emission = emission.mul(float(1.0).sub(dust.mul(mix(float(0.95), float(0.6), lit))));
 
     // Backstop fade on the hull itself (it is already empty there by construction). Its ramp
     // has to end INSIDE the facing range where hull rays still miss the gas: a ray grazing the
@@ -403,7 +451,7 @@ function buildGasMaterial(uReveal, uTime, palette, tier = 'high') {
     const proxyFade = smoothstep(0.0, 0.2, facing);
 
     material.colorNode = emission.mul(body.w).mul(proxyFade);
-    material.opacityNode = uReveal;
+    material.opacityNode = uReveal.mul(beatReveal);
     return material;
 }
 
@@ -422,7 +470,13 @@ export function createNebulaFieldTSL({ uTime = null, qualityTier = 'high' } = {}
     // additive, composite in any order — so every volume of every mass is one geometry on
     // one material. `paint` still picks each mass's palette fallback.
     const built = buildGasGeometry(specs, specIndexById);
-    const material = buildGasMaterial(uReveal, time, palette, resolveQualityTier(qualityTier));
+    const uBeat = uniform(1);
+    const uKey = uniform(new THREE.Vector3(-300, 300, -1200));
+    const uPull = uniform(0);
+    const uPullPhase = uniform(0);
+    const material = buildGasMaterial(uReveal, time, palette, resolveQualityTier(qualityTier), {
+        uBeat, uKey, uPull, uPullPhase,
+    });
     const mesh = new THREE.Mesh(built.geometry, material);
     mesh.name = 'nebula-field-gas';
     // A merged mesh spanning the corridor: the camera lives inside its bounds for most of
@@ -434,6 +488,13 @@ export function createNebulaFieldTSL({ uTime = null, qualityTier = 'high' } = {}
     const masses = specs.length;
 
     group.userData.uReveal = uReveal;
+    // The chapter ticks these: `uBeat` = chapter-local progress (per-mass reveal windows read
+    // it), `uKey` = the black hole's position in the corridor frame (the light the gas takes).
+    group.userData.uBeat = uBeat;
+    group.userData.uKey = uKey;
+    // The pull (the chapter's last beat): strength 0..1 and the accumulated stream distance.
+    group.userData.uPull = uPull;
+    group.userData.uPullPhase = uPullPhase;
     group.userData.triangles = triangles;
     group.userData.masses = masses;
     return {

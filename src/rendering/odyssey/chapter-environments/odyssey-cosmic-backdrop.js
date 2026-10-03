@@ -31,8 +31,19 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    dot, float, mix, texture as textureNode, uniform, uv, vec2, vec3,
+    dot, float, mix, texture as textureNode, uniform, uv, vec3,
 } from 'three/tsl';
+
+/**
+ * THE MILKY WAY'S PLANE (its normal), shared by the dome's baked glow and the star sprites'
+ * band share (cosmic-expanse.js CH6_STARFIELD) so the two are ONE band. Re-seated 2026-10-03
+ * from (0.4, 0.18, 1.0): on the real camera that axis ran the star band straight down the screen
+ * centre — behind the ribbon and the level nodes — for the whole chapter. This one (solved against
+ * a real-camera replay at p 0.76-0.85) lays the band as a stable DIAGONAL from the upper left
+ * (-0.5, 1.0) through the centre (0.1, 0.1) to the lower right (0.85, -1.0): it passes behind the
+ * black hole's final seat and behind the gas giant, a leading line to the destination.
+ */
+export const GALACTIC_BAND_AXIS = Object.freeze([0.01, -0.75, -0.66]);
 
 export const COSMIC_BACKDROP_DEFAULTS = Object.freeze({
     // 1024×512 (~260 ms CPU, once, at chapter creation inside the warmup path): at
@@ -47,8 +58,8 @@ export const COSMIC_BACKDROP_DEFAULTS = Object.freeze({
     // ever pure black" fails silently if the lift rounds to zero.
     floorBottom: [0.004, 0.004, 0.012],
     floorTop: [0.010, 0.007, 0.030],
-    // Galactic lane axis — the incumbent's tilted dust plane, verbatim.
-    bandAxis: [0.4, 0.18, 1.0],
+    // Galactic lane axis: the Milky Way's plane normal (see GALACTIC_BAND_AXIS).
+    bandAxis: GALACTIC_BAND_AXIS,
 });
 
 // ── Seeded integer-bit-mix value noise (CPU) ─────────────────────────────────────
@@ -118,6 +129,8 @@ function ridged3(x, y, z, octaves, seed) {
  *             height: number, bakeMs: number }}
  */
 export function bakeCosmicBackdropTexture(options = {}) {
+    // NOTE dx below: three's SphereGeometry seats its vertices at x = -cos(phi) sin(theta)
+    // (SphereGeometry.js), so the direction a texel is SEEN in has a negative cosine.
     const {
         width, height, seed, floorBottom, floorTop, bandAxis,
     } = { ...COSMIC_BACKDROP_DEFAULTS, ...options };
@@ -139,7 +152,13 @@ export function bakeCosmicBackdropTexture(options = {}) {
         for (let ix = 0; ix < width; ix += 1) {
             const u = (ix + 0.5) / width;
             const phi = 2 * Math.PI * u;
-            const dx = sinTheta * Math.cos(phi);
+            // ⚠️ MIRROR FIX (2026-10-03). This was `+sinTheta * cos(phi)`, the mirror image of
+            // where three's sphere actually puts the texel — so the dome's galactic glow sat on
+            // the plane with normal (-x, y, z) while the star sprites sat on (x, y, z): the
+            // "faint glow UNDER the stars" was never under them. In game it read as a grey
+            // vertical smear at the right edge of every chapter-6 frame (real-camera replay:
+            // ndc x 0.80-1.0), with the star band alone down the centre.
+            const dx = -sinTheta * Math.cos(phi);
             const dz = sinTheta * Math.sin(phi);
 
             // Floor gradient — the void is never RGB-zero.
@@ -174,11 +193,13 @@ export function bakeCosmicBackdropTexture(options = {}) {
             // star sprites (45% of the far tier sits on it and gives the Milky Way its grain),
             // never a grey smoke shape of its own once the corrected grade shows faint values.
             const band = (bandWide * 0.05 + bandCore * (0.085 + 0.065 * clump)) * riftCut;
-            // Warm cream spine, cool blue wings — chroma stays LOW (the masses own colour).
+            // Warm spine, blue wings. (2026-10-03: with the band now IN frame — it sat mirrored
+            // at the screen edge before — cream-and-grey read as a beam of grey smoke. The wings
+            // are a clear starlight blue and the spine a warm gold-white.)
             const warmT = Math.min(1, bandCore * 1.2);
-            r += band * (0.50 + 0.38 * warmT);
-            g += band * (0.52 + 0.26 * warmT);
-            b += band * (0.78 - 0.10 * warmT);
+            r += band * (0.34 + 0.62 * warmT);
+            g += band * (0.46 + 0.38 * warmT);
+            b += band * (0.92 - 0.22 * warmT);
 
             // Faint nebulosity off the band: two soft families on separate seeds, gated by a
             // low-frequency macro so whole regions of the sky stay empty.
@@ -219,16 +240,19 @@ export function bakeCosmicBackdropTexture(options = {}) {
 /**
  * The baked void dome — same contract as the retired FBM dome (BackSide sphere 2400,
  * renderOrder −100, depthWrite off, opacity driven by uVoidSkyOpacity, energy
- * breathing) with the field read from the bake and a slow seamless uv drift standing
- * in for the old lattice drift.
+ * breathing) with the field read from the bake. The sky does not drift (see below).
  */
+// eslint-disable-next-line no-unused-vars -- uTime stays in the signature for callers
 export function createBakedVoidSkyTSL(uTime, uEnergy, uOpacity = uniform(1), bakeOptions = {}) {
-    const time = uTime ?? uniform(0);
     const energy = uEnergy ?? uniform(0.3);
     const bake = bakeCosmicBackdropTexture(bakeOptions);
 
     const material = new THREE.MeshBasicNodeMaterial();
-    const drift = uv().add(vec2(time.mul(0.0004), 0));
+    // NO DRIFT (2026-10-03). The dome used to scroll at uv + time * 0.0004 (0.14 deg/s on the
+    // manager's clock): the glow slid away from the star band it belongs under, so where the
+    // Milky Way sat depended on how long the session had been running. The sky is fixed now
+    // (`uTime` stays in the signature for callers and is unused).
+    const drift = uv();
     // §3b rule 4 (three grayscale value bands): the dome must sit ONE BAND BELOW the
     // sculpted masses or depth collapses. RE-TUNED 2026-08-16 against a GROUND-TRUTH
     // capture (real board, real grade): 0.62 alone was measured too hot — the game's
@@ -238,7 +262,8 @@ export function createBakedVoidSkyTSL(uTime, uEnergy, uOpacity = uniform(1), bak
     // own luma, so the backdrop reads as depth rather than as a rival subject.
     const baked = textureNode(bake.texture, drift).rgb.mul(energy.mul(0.5).add(0.7));
     const bakedLuma = dot(baked, vec3(0.2126, 0.7152, 0.0722));
-    material.colorNode = mix(baked, vec3(bakedLuma), float(0.34)).mul(0.45);
+    // Desaturation 0.34 -> 0.16 (2026-10-03): the Milky Way keeps its blue-and-gold.
+    material.colorNode = mix(baked, vec3(bakedLuma), float(0.16)).mul(0.45);
     material.opacityNode = uOpacity;
     material.side = THREE.BackSide;
     material.depthWrite = false;
