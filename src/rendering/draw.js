@@ -53,6 +53,10 @@ function getComboColor(comboCount) {
 }
 
 let nextPieceStyleManager = null;
+let nextPieceStyleRevision = 0;
+const nextCanvasDraws = new WeakMap();
+const watchedNextCanvases = new WeakSet();
+const fallbackNextStyles = new Map();
 
 function getNextPieceStyleManager() {
     if (nextPieceStyleManager) {
@@ -67,7 +71,9 @@ function getNextPieceStyleManager() {
         return null;
     }
 
-    nextPieceStyleManager = new TetrominoStyleManager(themeManager, settingsManager);
+    nextPieceStyleManager = new TetrominoStyleManager(themeManager, settingsManager, () => {
+        nextPieceStyleRevision += 1;
+    });
     nextPieceStyleManager.init();
     return nextPieceStyleManager;
 }
@@ -91,6 +97,25 @@ function createFallbackStyle(color) {
     };
 }
 
+function getPreviewStyleState(styleConfig) {
+    const effects = { ...styleConfig.effects, ...styleConfig.rendererOverrides?.canvas };
+    const { renderMode } = styleConfig;
+    // Snapshot only fields consumed by the canvas renderer, including mutable
+    // gradient stops. A style can be edited in place between queue updates.
+    const signature = JSON.stringify([
+        styleConfig.color, renderMode, effects.outline, effects.outlineWidth, effects.outlineColor,
+        renderMode === 'glow' ? [
+            effects.glowRadius, effects.glowIntensity, effects.glowColor,
+            effects.pulse, effects.pulseSpeed, effects.pulseAmplitude,
+        ] : null,
+        renderMode === 'gradient' ? [
+            effects.gradientType,
+            effects.gradientStops?.map((stop) => [stop.offset, stop.color, stop.opacity]),
+        ] : null,
+    ]);
+    return { signature, animated: renderMode === 'glow' && effects.pulse };
+}
+
 /**
  * Draws the next pieces in their preview canvases
  * @param {Array<HTMLCanvasElement>} nextCanvases - Array of canvas elements for next pieces
@@ -98,22 +123,63 @@ function createFallbackStyle(color) {
  */
 export function drawNextPieces(nextCanvases, nextPieces = []) {
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const styleManager = getNextPieceStyleManager();
+    // Complete layout reads before resizing or drawing any preview canvas.
+    const previews = nextCanvases.map((canv) => {
+        if (!(canv instanceof HTMLCanvasElement)) return null;
+        return {
+            canv,
+            slot: canv.closest('.player-next-piece, .next-queue-piece'),
+            displayWidth: canv.clientWidth || canv.width || 0,
+            displayHeight: canv.clientHeight || canv.height || 0,
+        };
+    });
 
-    nextCanvases.forEach((canv, idx) => {
-        if (!(canv instanceof HTMLCanvasElement)) {
-            return;
-        }
+    previews.forEach((preview, idx) => {
+        if (!preview) return;
+        const {
+            canv, slot, displayWidth, displayHeight,
+        } = preview;
 
         const ctx = canv.getContext('2d');
         if (!ctx) return;
+        if (!watchedNextCanvases.has(canv)) {
+            watchedNextCanvases.add(canv);
+            canv.addEventListener('contextrestored', () => {
+                const previous = nextCanvasDraws.get(canv);
+                nextCanvasDraws.delete(canv);
+                if (!previous) return;
+                const restoredCanvases = Array(previous.index + 1).fill(null);
+                const restoredPieces = Array(previous.index + 1).fill(null);
+                restoredCanvases[previous.index] = canv;
+                restoredPieces[previous.index] = previous.nextKey;
+                drawNextPieces(restoredCanvases, restoredPieces);
+            });
+        }
 
-        const slot = canv.closest('.player-next-piece, .next-queue-piece');
         const nextKey = nextPieces[idx];
-
-        const displayWidth = canv.clientWidth || canv.width || 0;
-        const displayHeight = canv.clientHeight || canv.height || 0;
+        if (!fallbackNextStyles.has(nextKey)) {
+            fallbackNextStyles.set(nextKey, createFallbackStyle(COLORS[nextKey] || '#808080'));
+        }
+        const styleConfig = styleManager?.getStyleForPiece(nextKey) ?? fallbackNextStyles.get(nextKey);
+        const styleState = getPreviewStyleState(styleConfig);
+        const last = nextCanvasDraws.get(canv);
         const renderWidth = Math.max(1, Math.round(displayWidth * dpr));
         const renderHeight = Math.max(1, Math.round(displayHeight * dpr));
+        if (!styleState.animated && last?.nextKey === nextKey && last.displayWidth === displayWidth
+            && last.displayHeight === displayHeight && last.dpr === dpr && last.index === idx
+            && last.styleSignature === styleState.signature
+            && last.revision === nextPieceStyleRevision
+            && canv.width === renderWidth && canv.height === renderHeight) return;
+        nextCanvasDraws.set(canv, {
+            nextKey,
+            displayWidth,
+            displayHeight,
+            dpr,
+            index: idx,
+            styleSignature: styleState.signature,
+            revision: nextPieceStyleRevision,
+        });
 
         if (canv.width !== renderWidth || canv.height !== renderHeight) {
             canv.width = renderWidth;
@@ -135,10 +201,6 @@ export function drawNextPieces(nextCanvases, nextPieces = []) {
         if (slot) slot.classList.remove('empty');
 
         const shape = SHAPES[nextKey];
-        const styleManager = getNextPieceStyleManager();
-        const fallbackColor = COLORS[nextKey] || '#808080';
-        const styleConfig = styleManager?.getStyleForPiece(nextKey) ?? createFallbackStyle(fallbackColor);
-
         const rows = shape.length;
         const cols = shape[0].length;
 
@@ -642,12 +704,11 @@ export function updateStats(stats) {
         statElements.ppm = document.getElementById('ppm');
     }
 
-    // Helper to trigger pulse animation
+    // Restart all changed stat animations with one shared layout barrier.
+    const pulseElements = [];
     const pulseElement = (el) => {
         if (!el) return;
-        el.classList.remove('pulse');
-        void el.offsetWidth; // Trigger reflow
-        el.classList.add('pulse');
+        pulseElements.push(el);
     };
 
     // PERFORMANCE: Only update if values changed
@@ -724,5 +785,10 @@ export function updateStats(stats) {
                 pulseElement(statElements.ppm);
             }
         }
+    }
+    if (pulseElements.length > 0) {
+        pulseElements.forEach((el) => el.classList.remove('pulse'));
+        void pulseElements[0].offsetWidth;
+        pulseElements.forEach((el) => el.classList.add('pulse'));
     }
 }

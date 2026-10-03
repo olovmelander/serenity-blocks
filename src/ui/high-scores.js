@@ -115,20 +115,58 @@ export class HighScoreManager {
             gameRecord.demoId = scoreData.demoId;
         }
 
-        // Save to high scores
-        await this._addToStore(this.STORES.HIGH_SCORES, gameRecord);
-
-        // Save to game history
-        await this._addToStore(this.STORES.GAME_HISTORY, gameRecord);
-
-        // Trim high scores to top 100
-        await this._trimHighScores(100);
-
-        // Trim game history to last 50 games
-        await this._trimGameHistory(50);
-
-        // Update statistics
-        await this._updateStatistics(gameRecord);
+        // Store, trim and aggregate in the same transaction. Concurrent saves
+        // serialize their statistics reads and no partial game survives failure.
+        await new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(Object.values(this.STORES), 'readwrite');
+            let failure = null;
+            const abort = (error) => {
+                failure = error;
+                transaction.abort();
+            };
+            transaction.oncomplete = () => resolve();
+            transaction.onabort = () => reject(failure || transaction.error || new Error('Score save aborted'));
+            transaction.onerror = (event) => {
+                failure = failure || event.target.error || transaction.error;
+            };
+            try {
+                const scores = transaction.objectStore(this.STORES.HIGH_SCORES);
+                const history = transaction.objectStore(this.STORES.GAME_HISTORY);
+                const statistics = transaction.objectStore(this.STORES.STATISTICS);
+                scores.add(gameRecord);
+                history.add(gameRecord);
+                this._trimStore(scores, 'score', 100);
+                this._trimStore(history, 'timestamp', 50);
+                const request = statistics.get('stats');
+                request.onsuccess = () => {
+                    try {
+                        const stats = request.result || {
+                            id: 'stats',
+                            totalGames: 0,
+                            totalScore: 0,
+                            totalLines: 0,
+                            highestScore: 0,
+                            highestLevel: 0,
+                            bestScorePerLevel: {},
+                        };
+                        stats.totalGames++;
+                        stats.totalScore += gameRecord.score;
+                        stats.totalLines += gameRecord.lines;
+                        stats.highestScore = Math.max(stats.highestScore, gameRecord.score);
+                        stats.highestLevel = Math.max(stats.highestLevel, gameRecord.level);
+                        if (!stats.bestScorePerLevel[gameRecord.level]
+                            || gameRecord.score > stats.bestScorePerLevel[gameRecord.level]) {
+                            stats.bestScorePerLevel[gameRecord.level] = gameRecord.score;
+                        }
+                        statistics.put(stats);
+                    } catch (error) {
+                        abort(error);
+                    }
+                };
+            } catch (error) {
+                abort(error);
+            }
+        });
 
         eventBus.emit(EVENTS.HIGH_SCORE_SAVED, {
             record: gameRecord,
@@ -253,95 +291,25 @@ export class HighScoreManager {
     // Private helper methods
 
     /**
-     * Adds a record to a store
+     * Trims a store inside its caller's transaction without reading retained values.
      * @private
      */
-    async _addToStore(storeName, data) {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([storeName], 'readwrite');
-            const store = transaction.objectStore(storeName);
-            const request = store.add(data);
-
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    /**
-     * Trims high scores to keep only top N
-     * @private
-     */
-    async _trimHighScores(limit) {
-        const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readwrite');
-        const store = transaction.objectStore(this.STORES.HIGH_SCORES);
-        const index = store.index('score');
-        const request = index.openCursor(null, 'prev');
-
-        let count = 0;
+    _trimStore(store, indexName, limit) {
+        const request = store.index(indexName).openKeyCursor(null, 'prev');
+        let skippedRetained = false;
         request.onsuccess = (event) => {
             const cursor = event.target.result;
-            if (cursor) {
-                count++;
-                if (count > limit) {
-                    cursor.delete();
-                }
-                cursor.continue();
+            if (!cursor) return;
+            if (!skippedRetained && limit > 0) {
+                skippedRetained = true;
+                cursor.advance(limit);
+                return;
             }
+            // An index key cursor cannot delete; delete by its primary key so
+            // tied scores/timestamps retain the existing descending ID order.
+            store.delete(cursor.primaryKey);
+            cursor.continue();
         };
-    }
-
-    /**
-     * Trims game history to keep only last N games
-     * @private
-     */
-    async _trimGameHistory(limit) {
-        const transaction = this.db.transaction([this.STORES.GAME_HISTORY], 'readwrite');
-        const store = transaction.objectStore(this.STORES.GAME_HISTORY);
-        const index = store.index('timestamp');
-        const request = index.openCursor(null, 'prev');
-
-        let count = 0;
-        request.onsuccess = (event) => {
-            const cursor = event.target.result;
-            if (cursor) {
-                count++;
-                if (count > limit) {
-                    cursor.delete();
-                }
-                cursor.continue();
-            }
-        };
-    }
-
-    /**
-     * Updates aggregate statistics after a game
-     * @private
-     */
-    async _updateStatistics(gameRecord) {
-        const stats = await this.getStatistics();
-
-        stats.totalGames++;
-        stats.totalScore += gameRecord.score;
-        stats.totalLines += gameRecord.lines;
-        stats.highestScore = Math.max(stats.highestScore, gameRecord.score);
-        stats.highestLevel = Math.max(stats.highestLevel, gameRecord.level);
-
-        // Track best score per level
-        if (
-            !stats.bestScorePerLevel[gameRecord.level]
-            || gameRecord.score > stats.bestScorePerLevel[gameRecord.level]
-        ) {
-            stats.bestScorePerLevel[gameRecord.level] = gameRecord.score;
-        }
-
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([this.STORES.STATISTICS], 'readwrite');
-            const store = transaction.objectStore(this.STORES.STATISTICS);
-            const request = store.put(stats);
-
-            request.onsuccess = () => resolve(stats);
-            request.onerror = () => reject(request.error);
-        });
     }
 
     // ============================================================

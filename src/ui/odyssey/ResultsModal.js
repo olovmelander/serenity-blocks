@@ -35,6 +35,7 @@ export function createResultsModal({
     formatTime,
     includeLegacyResults = true,
 }) {
+    let leaderboardPanel = null;
     const modal = document.createElement('div');
     modal.id = 'odyssey-results-modal';
     modal.style.cssText = `
@@ -177,7 +178,7 @@ export function createResultsModal({
         const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${levelId}`;
         const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
 
-        const leaderboardPanel = new SteamLeaderboardPanel({
+        leaderboardPanel = new SteamLeaderboardPanel({
             title: 'Odyssey Leaderboards',
             boards: [
                 {
@@ -249,6 +250,7 @@ export function createResultsModal({
         if (closed) return;
         closed = true;
         document.removeEventListener('keydown', onKeyDown, true);
+        leaderboardPanel?.destroy();
         modal.remove();
         onClose();
     };

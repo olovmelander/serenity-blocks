@@ -28,6 +28,9 @@ import {
 const SPEED_CHOICES = [0.5, 1, 2, 4];
 const DEMO_COMMAND_ACTIONS = new Set(['move', 'rotate', 'softDrop', 'hardDrop']);
 const DEMO_ROTATION_DIRECTIONS = new Set(['left', 'right', 'flip']);
+// Explicit seeks keep all simulation work, but must leave room for browser input.
+const SEEK_SLICE_OPERATIONS = 120;
+const SEEK_SLICE_MS = 8;
 
 function isValidDemoCommand(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
@@ -228,14 +231,16 @@ export class DemoPlayer {
         if (!this.isPlaying || this.isPaused) return;
         this._syncPlayhead();
         this.isPaused = true;
-        if (this.gameState) this.gameState.isPaused = true;
+        // A seek simulates an unpaused board; controls choose its final pause
+        // state without dropping simulation work between cooperative slices.
+        if (this.gameState && !this.isSeeking) this.gameState.isPaused = true;
     }
 
     resumePlayback() {
         if (!this.isPlaying || !this.isPaused) return;
         this.lastWallTime = nowMs();
         this.isPaused = false;
-        if (this.gameState) this.gameState.isPaused = false;
+        if (this.gameState && !this.isSeeking) this.gameState.isPaused = false;
     }
 
     /**
@@ -285,8 +290,13 @@ export class DemoPlayer {
 
         this._cancelScheduledFrame();
         const token = ++this.seekToken;
+        const owner = {
+            token,
+            gameState: this.gameState,
+            demo: this.demo,
+            callbacks: this.callbacks,
+        };
         const targetMs = clamp(Number(targetTime) || 0, 0, this.getDuration());
-        const wasPaused = this.isPaused;
 
         this._syncPlayhead();
         this.isSeeking = true;
@@ -294,6 +304,11 @@ export class DemoPlayer {
         this.gameState.isReplay = true;
         this.gameState.suppressExternalInput = true;
         this.gameState.isPaused = false;
+
+        // A replacement seek must not reset a board still being mutated by the
+        // preceding input's cascade continuation.
+        await this._waitForPhysics(owner);
+        if (!this._ownsReplay(owner)) return;
 
         const checkpoint = this._findCheckpoint(targetMs);
         if (checkpoint) {
@@ -312,19 +327,25 @@ export class DemoPlayer {
             this._resetState();
         }
 
-        await this._advanceTo(targetMs, { muted: true, seeking: true, token });
-        if (token !== this.seekToken) return;
+        await this._advanceTo(targetMs, {
+            muted: true,
+            seeking: true,
+            cooperativeSeek: true,
+            token,
+        });
+        if (!this._ownsReplay(owner)) return;
 
         this.playheadMs = targetMs;
         this.lastWallTime = nowMs();
         this.isSeeking = false;
-        this.isPaused = wasPaused;
         this.gameState.isSeeking = false;
-        this.gameState.isPaused = wasPaused;
+        this.gameState.isPaused = this.isPaused;
         this.gameState.forceDraw = true;
 
         if (this.callbacks.updateStats) this.callbacks.updateStats();
+        if (!this._ownsReplay(owner)) return;
         if (this.callbacks.drawCallback) this.callbacks.drawCallback();
+        if (!this._ownsReplay(owner)) return;
         if (this.isPlaying && !this.isPaused) {
             this._scheduleLoop();
         }
@@ -333,6 +354,12 @@ export class DemoPlayer {
     async _loop() {
         if (!this.isPlaying) return;
         const token = this.seekToken;
+        const owner = {
+            token,
+            gameState: this.gameState,
+            demo: this.demo,
+            callbacks: this.callbacks,
+        };
 
         if (!this.isPaused) {
             this._syncPlayhead();
@@ -349,7 +376,7 @@ export class DemoPlayer {
                 token,
             });
 
-            if (token !== this.seekToken || !this.isPlaying) return;
+            if (!this._ownsReplay(owner) || !this.isPlaying) return;
 
             if (this.gameState) {
                 this.gameState.isSeeking = false;
@@ -385,16 +412,39 @@ export class DemoPlayer {
         this.animationId = null;
     }
 
+    // Replay commands, cascades and cooperative yields must remain serial.
+    /* eslint-disable no-await-in-loop */
     async _advanceTo(targetTime, options = {}) {
         const {
             muted = false,
             seeking = false,
+            cooperativeSeek = false,
             token = this.seekToken,
         } = options;
-        const callbacks = muted || seeking ? this._getMutedCallbacks() : this.callbacks;
+        const owner = {
+            token,
+            gameState: this.gameState,
+            demo: this.demo,
+            callbacks: this.callbacks,
+        };
+        const originalCallbacks = muted || seeking ? this._getMutedCallbacks() : this.callbacks;
+        // Normal playback (including speed changes) keeps its existing callback
+        // cadence. Explicit seeks publish the completed board/stats once in seek().
+        const callbacks = cooperativeSeek ? {
+            ...originalCallbacks,
+            drawCallback: null,
+            updateStats: null,
+            updateStatsCallback: null,
+            physicsCallbacks: Object.fromEntries(Object.entries(originalCallbacks.physicsCallbacks || {})
+                .map(([name, callback]) => [name, typeof callback === 'function'
+                    ? (...args) => (this._ownsReplay(owner) ? callback(...args) : undefined)
+                    : callback])),
+        } : originalCallbacks;
         const epsilon = 0.0001;
+        let operations = 0;
+        let sliceStart = cooperativeSeek ? nowMs() : 0;
 
-        while (this.isPlaying && token === this.seekToken && this.lastSimulatedTime + epsilon < targetTime) {
+        while (this.isPlaying && this._ownsReplay(owner) && this.lastSimulatedTime + epsilon < targetTime) {
             if (this.gameState?.isGameOver) break;
 
             const nextInput = this.demo.inputs[this.currentInputIndex];
@@ -402,42 +452,81 @@ export class DemoPlayer {
 
             if (nextInput && nextInputTime <= this.lastSimulatedTime + epsilon) {
                 await this._applyInput(nextInput, callbacks, { muted: muted || seeking });
+                if (!this._ownsReplay(owner)) return;
                 this.currentInputIndex++;
-                await this._waitForPhysics();
-                this._captureRuntimeCheckpoint();
-                continue;
+            } else {
+                const stepTime = Math.min(
+                    targetTime,
+                    nextInputTime,
+                    this.lastSimulatedTime + this.tickMs,
+                );
+
+                if (stepTime <= this.lastSimulatedTime + epsilon) {
+                    break;
+                }
+
+                this.gameState.isSeeking = seeking;
+                updateGame(stepTime, this.gameState, callbacks);
+                if (!this._ownsReplay(owner)) return;
+                this.lastSimulatedTime = stepTime;
             }
 
-            const stepTime = Math.min(
-                targetTime,
-                nextInputTime,
-                this.lastSimulatedTime + this.tickMs,
-            );
-
-            if (stepTime <= this.lastSimulatedTime + epsilon) {
-                break;
-            }
-
-            this.gameState.isSeeking = seeking;
-            updateGame(stepTime, this.gameState, callbacks);
-            this.lastSimulatedTime = stepTime;
-            await this._waitForPhysics();
+            await this._waitForPhysics(owner);
+            if (!this._ownsReplay(owner)) return;
             this._captureRuntimeCheckpoint();
+            operations++;
+            if (cooperativeSeek && (
+                operations >= SEEK_SLICE_OPERATIONS || nowMs() - sliceStart >= SEEK_SLICE_MS
+            )) {
+                // Yield only after complete input/physics/checkpoint boundaries;
+                // wall time never becomes replay simulation debt or skipped ticks.
+                await this._yieldSeekTask();
+                if (!this._ownsReplay(owner)) return;
+                operations = 0;
+                sliceStart = nowMs();
+            }
         }
 
         while (
             this.isPlaying
-            && token === this.seekToken
+            && this._ownsReplay(owner)
             && this.currentInputIndex < this.demo.inputs.length
             && this.demo.inputs[this.currentInputIndex].t <= targetTime + epsilon
         ) {
             const input = this.demo.inputs[this.currentInputIndex];
             if (input.t > this.lastSimulatedTime + epsilon) break;
             await this._applyInput(input, callbacks, { muted: muted || seeking });
+            if (!this._ownsReplay(owner)) return;
             this.currentInputIndex++;
-            await this._waitForPhysics();
+            await this._waitForPhysics(owner);
+            if (!this._ownsReplay(owner)) return;
             this._captureRuntimeCheckpoint();
+            operations++;
+            if (cooperativeSeek && (
+                operations >= SEEK_SLICE_OPERATIONS || nowMs() - sliceStart >= SEEK_SLICE_MS
+            )) {
+                await this._yieldSeekTask();
+                if (!this._ownsReplay(owner)) return;
+                operations = 0;
+                sliceStart = nowMs();
+            }
         }
+    }
+    /* eslint-enable no-await-in-loop */
+
+    _ownsReplay({
+        token, gameState, demo, callbacks,
+    }) {
+        return token === this.seekToken
+            && gameState === this.gameState
+            && demo === this.demo
+            && callbacks === this.callbacks;
+    }
+
+    _yieldSeekTask() {
+        return new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
     }
 
     async _applyInput(input, callbacks, options = {}) {
@@ -502,21 +591,25 @@ export class DemoPlayer {
         this.lastSimulatedTime = Math.max(this.lastSimulatedTime || 0, alignedTime);
     }
 
-    async _waitForPhysics() {
-        if (!this.gameState?.latestPhysicsPromise) return;
+    async _waitForPhysics(owner) {
+        const { gameState } = owner;
+        const pendingPhysics = gameState?.latestPhysicsPromise;
+        if (!pendingPhysics) return;
 
         try {
-            await this.gameState.latestPhysicsPromise;
+            await pendingPhysics;
         } catch (error) {
             console.warn('[DemoPlayer] Physics rejected during replay:', error);
         } finally {
-            this.gameState.latestPhysicsPromise = null;
-            this.gameState.isProcessingPhysics = false;
-            if (this.gameState.isReplay && Number.isFinite(this.gameState.simTimeMs)) {
-                this.lastSimulatedTime = Math.max(
-                    this.lastSimulatedTime || 0,
-                    this.gameState.simTimeMs,
-                );
+            if (this._ownsReplay(owner) && gameState.latestPhysicsPromise === pendingPhysics) {
+                gameState.latestPhysicsPromise = null;
+                gameState.isProcessingPhysics = false;
+                if (gameState.isReplay && Number.isFinite(gameState.simTimeMs)) {
+                    this.lastSimulatedTime = Math.max(
+                        this.lastSimulatedTime || 0,
+                        gameState.simTimeMs,
+                    );
+                }
             }
         }
     }

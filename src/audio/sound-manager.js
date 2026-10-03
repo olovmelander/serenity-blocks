@@ -48,6 +48,7 @@ export class SoundManager {
         this.playPromise = null; // Track pending play promise to avoid AbortError
         this.trackNames = [];
         this.songsData = [];
+        this.pendingTrackInitialization = null;
         this.themeLinkSuspended = false;
         this.pendingThemeLinkedTrack = null;
         this.pendingTrackKey = null;
@@ -761,21 +762,31 @@ export class SoundManager {
      * Initializes tracks from songs.json
      * @returns {Promise<SoundManager>} Returns this for chaining
      */
-    async initializeTracks() {
-        const songs = await loadSongs();
-        this.songsData = songs;
-        this.trackNames = songs.map((song) => nameToKey(song.name));
+    initializeTracks() {
+        if (this.pendingTrackInitialization) return this.pendingTrackInitialization;
+        const resourceToken = this.audioResourceToken;
+        const pending = loadSongs().then((songs) => {
+            // Teardown retires this owner even if the shared manifest fetch is
+            // still useful to another manager or a replacement initialization.
+            if (resourceToken !== this.audioResourceToken) return this;
+            this.songsData = songs;
+            this.trackNames = songs.map((song) => nameToKey(song.name));
 
-        // Set default track if current doesn't exist
-        if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
-            this.musicTrack = this.trackNames[0];
-        }
+            // Set default track if current doesn't exist
+            if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
+                this.musicTrack = this.trackNames[0];
+            }
 
-        // Populate the dropdown
-        this.populateMusicDropdown();
-        this.preloadDefaultTrack();
+            // Populate the dropdown
+            this.populateMusicDropdown();
+            this.preloadDefaultTrack();
 
-        return this;
+            return this;
+        }).finally(() => {
+            if (this.pendingTrackInitialization === pending) this.pendingTrackInitialization = null;
+        });
+        this.pendingTrackInitialization = pending;
+        return pending;
     }
 
     /**
@@ -1822,6 +1833,7 @@ export class SoundManager {
 
     cleanup() {
         this.audioResourceToken += 1;
+        this.pendingTrackInitialization = null;
         for (const timer of this.soundEffectTimers) clearTimeout(timer);
         this.soundEffectTimers.clear();
         this.stopBackgroundMusic();

@@ -116,6 +116,11 @@ export function createBaseBoardScene(
                 px: 0, py: 0, w: 0, h: 0,
             };
             this._visibleRowRangeCache = null;
+            this._activePieceBodyCache = null;
+            this._animatedPieces = [];
+            this._animatedPiecesState = null;
+            this._animatedPiecesDirty = true;
+            this._blindOverlayCache = null;
             this._invalidatePresentation = () => { this._boardDirty = true; };
             this._reducedMotionQuery = null;
 
@@ -148,6 +153,11 @@ export function createBaseBoardScene(
                 this._lastBoardVersion = -1;
                 this._lastVisibleRowRange = null;
                 this._visibleRowRangeCache = null;
+                this._activePieceBodyCache = null;
+                this._animatedPieces.length = 0;
+                this._animatedPiecesState = null;
+                this._animatedPiecesDirty = true;
+                this._blindOverlayCache = null;
                 this._ensureStyleManager();
                 this._reducedMotionQuery = typeof window !== 'undefined'
                     ? window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null : null;
@@ -204,8 +214,8 @@ export function createBaseBoardScene(
                 // Dynamic layer (pieceGraphics): always clear for current piece/ghost updates
                 this.pieceGraphics?.clear();
                 this.effectsGraphics?.clear();
-                // Blind veil is dynamic (alpha fades each frame); always clear.
-                this.blindGraphics?.clear();
+                // The blind layer owns its invalidation: only its last quarter
+                // fades, so the opaque plateau can keep the same commands.
 
                 performanceMonitor.updateEnd();
                 performanceMonitor.renderStart();
@@ -293,6 +303,7 @@ export function createBaseBoardScene(
          */
         markBoardDirty() {
             this._boardDirty = true;
+            this._animatedPiecesDirty = true;
         }
 
         /**
@@ -809,7 +820,7 @@ export function createBaseBoardScene(
                 this.drawCurrentPiece();
             }
 
-            // Quadra blind veil — drawn every frame (alpha fades); the blind layer
+            // Quadra blind veil — refreshed when its effective alpha changes; the blind layer
             // sits below the piece layer so the active piece/ghost stay visible.
             this.drawBlindOverlay();
         }
@@ -827,7 +838,7 @@ export function createBaseBoardScene(
 
         /**
          * Draws the Quadra blind blackout from gameState.blindTimers onto the
-         * dedicated (dynamic, always-cleared) blind layer.
+         * dedicated blind layer. Identical effective alpha/geometry retains its commands.
          *   - full blind (field):   veil the whole visible locked stack
          *   - partial blind (pending): veil only the garbage rows
          * Render-only: never touches board/collision state.
@@ -836,11 +847,15 @@ export function createBaseBoardScene(
             const layer = this.blindGraphics;
             const gs = this.gameState;
             const bt = gs?.blindTimers;
-            if (!layer || !bt) return;
+            if (!layer) return;
 
-            const fieldActive = (bt.field || 0) > 0;
-            const pendingActive = (bt.pending || 0) > 0;
-            if (!fieldActive && !pendingActive) return;
+            const fieldActive = (bt?.field || 0) > 0;
+            const pendingActive = (bt?.pending || 0) > 0;
+            if (!fieldActive && !pendingActive) {
+                if (this._blindOverlayCache) layer.clear();
+                this._blindOverlayCache = null;
+                return;
+            }
 
             const { startRow, endRow } = this.getVisibleRowRange();
             const isInfinity = !!gs.isInfinityMode;
@@ -848,12 +863,27 @@ export function createBaseBoardScene(
             const bs = this.blockSize;
             const VEIL = 0x05070d; // near-black with a faint cool tint
             const MAX_ALPHA = 0.92;
+            const mode = fieldActive ? 'field' : 'pending';
+            const remaining = fieldActive ? bt.field : bt.pending;
+            const maximum = fieldActive ? bt.fieldMax : bt.pendingMax;
+            const ratio = maximum > 0 ? remaining / maximum : 1;
+            const alpha = MAX_ALPHA * this._blindFade(ratio);
+            const grid = gs.boardGrid;
+            const version = gs.boardVersion ?? 0;
+            const cached = this._blindOverlayCache;
+            if (cached && cached.layer === layer && cached.mode === mode && cached.alpha === alpha
+                && cached.minRow === minRow && cached.endRow === endRow
+                && cached.bs === bs && cached.cols === this.cols
+                && (fieldActive || (cached.grid === grid && cached.version === version && !this._boardDirty))) return;
+
+            layer.clear();
+            this._blindOverlayCache = {
+                layer, mode, alpha, minRow, endRow, bs, cols: this.cols, grid, version,
+            };
+            if (alpha <= 0) return;
 
             if (fieldActive) {
                 // FULL BLIND: one rect over the whole visible play area.
-                const ratio = bt.fieldMax > 0 ? bt.field / bt.fieldMax : 1;
-                const alpha = MAX_ALPHA * this._blindFade(ratio);
-                if (alpha <= 0) return;
                 const y = Math.round(minRow * bs);
                 const h = Math.round(endRow * bs) - y;
                 layer.fillStyle(VEIL, alpha);
@@ -862,11 +892,7 @@ export function createBaseBoardScene(
             }
 
             // PARTIAL BLIND: veil only garbage cells in the locked stack.
-            const grid = gs.boardGrid;
             if (!grid) return;
-            const ratio = bt.pendingMax > 0 ? bt.pending / bt.pendingMax : 1;
-            const alpha = MAX_ALPHA * this._blindFade(ratio);
-            if (alpha <= 0) return;
             layer.fillStyle(VEIL, alpha);
             for (let worldY = minRow; worldY < endRow; worldY++) {
                 const row = grid[worldY];
@@ -932,6 +958,21 @@ export function createBaseBoardScene(
             // darker). A pure function of worldY, so vertically/horizontally adjacent
             // same-color cells always match at their shared edge → zero seams.
             const shadeAt = (worldY) => 0.1 * (1 - 2 * ((worldY - startRow) / range));
+            // A row boundary has the same shade for every cell of one color.
+            // Reuse it across adjacent cells/rows within this dirty-stack draw.
+            if (!this._poolShadeCache) this._poolShadeCache = new Map();
+            const shadeCache = this._poolShadeCache;
+            shadeCache.clear();
+            const shadeColorAt = (colorInt, worldY) => {
+                let rows = shadeCache.get(colorInt);
+                if (!rows) {
+                    rows = [];
+                    shadeCache.set(colorInt, rows);
+                }
+                const index = worldY - startRow;
+                if (rows[index] === undefined) rows[index] = this._shadeColor(colorInt, shadeAt(worldY));
+                return rows[index];
+            };
 
             // ---- Body: per-cell overlapping rects (seamless, topology-proof) ----
             for (let worldY = minRow; worldY < endRow; worldY++) {
@@ -948,8 +989,8 @@ export function createBaseBoardScene(
                     if (isGarbage) {
                         staticLayer.fillStyle(colorInt, 1); // matte
                     } else {
-                        const top = this._shadeColor(colorInt, shadeAt(worldY));
-                        const bot = this._shadeColor(colorInt, shadeAt(worldY + 1));
+                        const top = shadeColorAt(colorInt, worldY);
+                        const bot = shadeColorAt(colorInt, worldY + 1);
                         staticLayer.fillGradientStyle(top, top, bot, bot, 1, 1, 1, 1);
                     }
                     staticLayer.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
@@ -1081,13 +1122,36 @@ export function createBaseBoardScene(
 
         drawAnimatedPieces() {
             const pieces = this.gameState?.lockedPieces;
-            if (!pieces) return;
+            const gs = this.gameState;
+            const previous = this._animatedPiecesState;
+            const version = gs?.boardVersion ?? 0;
+            // Board writers already invalidate render/collision caches when
+            // mutating locked pieces in place. Also fence snapshot replacement,
+            // including replacements whose board version happens to collide.
+            if (this._animatedPiecesDirty || !previous || previous.owner !== gs
+                || previous.pieces !== pieces || previous.grid !== gs?.boardGrid
+                || previous.version !== version || previous.length !== pieces?.length) {
+                this._animatedPieces.length = 0;
+                if (pieces) {
+                    for (const piece of pieces) {
+                        // Keep zero-offset candidates until their owner marks
+                        // the animation complete; a later tick may start motion.
+                        if (piece?.isAnimating) this._animatedPieces.push(piece);
+                    }
+                }
+                this._animatedPiecesState = {
+                    owner: gs, pieces, grid: gs?.boardGrid, version, length: pieces?.length,
+                };
+                this._animatedPiecesDirty = false;
+            }
 
             const skipHiddenRows = !this.gameState?.isInfinityMode;
 
-            for (const piece of pieces) {
-                if (!piece?.isAnimating || typeof piece.animationOffset !== 'number'
-                    || piece.animationOffset === 0) continue;
+            let activeCount = 0;
+            for (const piece of this._animatedPieces) {
+                if (!piece.isAnimating) continue;
+                this._animatedPieces[activeCount++] = piece;
+                if (typeof piece.animationOffset !== 'number' || piece.animationOffset === 0) continue;
                 let colorValue = piece.color;
                 const isGarbage = piece.type === 'GARBAGE' || piece.type === 'CLEAN_GARBAGE';
                 const isCustomColor = piece.color && piece.color !== '#808080';
@@ -1109,6 +1173,7 @@ export function createBaseBoardScene(
                     },
                 );
             }
+            this._animatedPieces.length = activeCount;
         }
 
         drawGhostPiece() {
@@ -1140,6 +1205,7 @@ export function createBaseBoardScene(
         drawCurrentPiece() {
             const piece = this.gameState?.currentPiece;
             if (!piece) return;
+            const { x, y } = piece;
 
             const themedColor = this.getThemedColor(piece.type, piece.color);
             const colorInt = this.colorToInt(themedColor);
@@ -1148,9 +1214,56 @@ export function createBaseBoardScene(
 
             // Active piece gets the full premium treatment: continuous gradient,
             // top gloss sheen, and an outer rim — all on the fused silhouette only.
-            this.drawFusedPiece(this.pieceGraphics, piece.shape, piece.x, piece.y, colorInt, {
-                alpha: 1, fx, gloss: true, skipHiddenRows,
-            });
+            const layer = this.pieceGraphics;
+            const buffer = layer?.commandBuffer;
+            if (!Array.isArray(buffer)) {
+                this.drawFusedPiece(layer, piece.shape, piece.x, piece.y, colorInt, {
+                    alpha: 1, fx, gloss: true, skipHiddenRows,
+                });
+                return;
+            }
+            const geometry = this._getPieceGeometry(piece.shape, y, skipHiddenRows);
+            const { present, cells } = geometry;
+            if (geometry.present.size === 0) return;
+            const previous = this._activePieceBodyCache;
+            // Phaser documents commandBuffer as its rendering command array.
+            // Retain one body/gloss segment in that SAME Graphics object. The
+            // ghost/animated pieces still precede it and GPU command order and
+            // layer count stay unchanged. Rim uses public lineStyle to preserve
+            // Phaser's line-width bookkeeping for any subsequent drawing.
+            if (previous && previous.layer === layer && previous.geometry === geometry
+                && previous.x === x && previous.y === y && previous.colorInt === colorInt
+                && previous.gradient === fx?.gradient && previous.highlight === fx?.highlight
+                && previous.shadow === fx?.shadow && previous.gloss === fx?.gloss
+                && previous.glossAlpha === fx?.glossAlpha) {
+                for (const command of previous.commands) buffer.push(command);
+            } else {
+                const start = buffer.length;
+                this.fillFusedBody(layer, present, x, y, colorInt, 1, fx, cells, geometry);
+                if (fx?.gloss) {
+                    this.glossPass(layer, present, x, y, fx.glossAlpha, cells, geometry);
+                }
+                // One active tetromino needs only a small segment. Custom huge
+                // shapes retain the normal path without duplicating large data.
+                this._activePieceBodyCache = buffer.length - start <= 4096 ? {
+                    layer,
+                    geometry,
+                    x,
+                    y,
+                    colorInt,
+                    gradient: fx?.gradient,
+                    highlight: fx?.highlight,
+                    shadow: fx?.shadow,
+                    gloss: fx?.gloss,
+                    glossAlpha: fx?.glossAlpha,
+                    commands: buffer.slice(start),
+                } : null;
+            }
+            if (fx?.rim) {
+                const bs = this.blockSize;
+                const width = Math.max(1, bs * fx.rimWidthFactor);
+                this.strokeLoops(layer, geometry.loops, 0xffffff, width, fx.rimAlpha, x * bs, y * bs);
+            }
         }
 
         /**
@@ -1804,6 +1917,11 @@ export function createBaseBoardScene(
             this.gameState = null;
             this._pieceGeometryCache = new WeakMap();
             this._visibleRowRangeCache = null;
+            this._activePieceBodyCache = null;
+            this._animatedPieces.length = 0;
+            this._animatedPiecesState = null;
+            this._animatedPiecesDirty = true;
+            this._blindOverlayCache = null;
         }
 
         _emitFirstRender() {
