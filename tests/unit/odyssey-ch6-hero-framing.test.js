@@ -52,8 +52,11 @@ function createRealController() {
     });
     // The director eases the camera toward the act profile at runtime; pin it so the
     // frame under test is the settled BEYOND framing rather than a transient blend.
+    // `drift` too: it scales the look-ahead, and a bare controller (drift 1) pitches several
+    // degrees higher than the game does (calibrated against in-game captures, 2026-10-03).
     controller.directorCamera.followDistance = BEYOND.followDistance;
     controller.directorCamera.fovBase = BEYOND.fovBase;
+    controller.directorCamera.drift = BEYOND.drift;
     return { controller, layout };
 }
 
