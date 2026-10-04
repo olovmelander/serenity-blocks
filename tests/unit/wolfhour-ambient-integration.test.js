@@ -52,6 +52,61 @@ describe('Wolfhour ambient integration', () => {
         expect(theme.celestialSky.starCount).toBeGreaterThan(0);
     });
 
+    it.each(['Minimal', 'Low', 'High'])('keeps the modern landscape and lunar reactions on WebGL2 at %s', (quality) => {
+        const theme = createTheme(quality);
+        theme.isWebGPU = false;
+        theme.isWebGL = true;
+        theme.createAmbientScene();
+
+        expect(theme.celestialSky).toBeTruthy();
+        expect(theme.alpineLandscape).toBeTruthy();
+        expect(theme.starfield).toBeNull();
+        expect(theme.mountains).toEqual([]);
+        expect(theme.shouldUseCompute()).toBe(false);
+        const materials = [];
+        theme.scene.traverse((object) => {
+            if (object.material) materials.push(object.material);
+        });
+        expect(materials.length).toBeGreaterThan(0);
+        expect(materials.every((material) => material.isNodeMaterial)).toBe(true);
+
+        theme.time = 5;
+        theme.triggerLunarReaction({ strength: 0.7, duration: 1.5 });
+        theme.time = 5.3;
+        theme.updateLunarReaction();
+        expect(theme.moonNodeData.uniforms.uPulse.value).toBeGreaterThan(0);
+        expect(() => theme.updateEffects(1 / 60)).not.toThrow();
+    });
+
+    it('uses compatible node materials for every reactive effect on WebGL2', () => {
+        const theme = createTheme();
+        theme.isWebGPU = false;
+        theme.isWebGL = true;
+        theme.createAmbientScene();
+        theme.ensureSharedGeometries();
+        const effects = [
+            theme.buildStarBurstEffect(),
+            theme.buildCelestialBeamEffect(),
+            theme.buildCosmicRiftEffect(),
+            theme.buildCosmicWaveEffect(),
+            theme.buildMeteorEffect(),
+            theme.buildMeteorCrashEffect(),
+        ];
+        try {
+            for (const effect of effects) {
+                effect.traverse((object) => {
+                    if (object.material) expect(object.material.isNodeMaterial).toBe(true);
+                });
+            }
+            expect(effects[0].isInstancedMesh).toBe(true);
+            expect(effects[0].count).toBe(30);
+        } finally {
+            for (const effect of effects) {
+                effect.traverse((object) => theme.disposeObjectResources(object));
+            }
+        }
+    });
+
     it('updates and expires real lunar uniforms while the shared effect energy decays', () => {
         const theme = createTheme();
         theme.createAmbientScene();
