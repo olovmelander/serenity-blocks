@@ -30,7 +30,7 @@ vi.mock('../../src/ui/threejs-intro-renderer-webgpu.js', () => ({
         }
 
         init() {
-            return rendererMocks.webgpuInit();
+            return rendererMocks.webgpuInit(this.canvas);
         }
 
         destroy() {
@@ -47,7 +47,7 @@ vi.mock('../../src/ui/threejs-intro-renderer.js', () => ({
         }
 
         init() {
-            return rendererMocks.webglInit();
+            return rendererMocks.webglInit(this.canvas);
         }
 
         destroy() {
@@ -488,6 +488,53 @@ describe('intro startup reliability', () => {
         await Promise.resolve();
         expect(rendererMocks.webgpuDestroy).toHaveBeenCalledWith(canvas);
     });
+
+    it.each(['false', 'rejection'])('recovers a context-bound canvas after WebGPU init %s', async (failure) => {
+        installDom();
+        vi.stubGlobal('navigator', { gpu: {} });
+        rendererMocks.webgpuInit.mockImplementation((canvas) => {
+            canvas.contextType = 'webgpu';
+            return failure === 'false'
+                ? Promise.resolve(false)
+                : Promise.reject(new Error('Mobile GPU device unavailable'));
+        });
+        // A browser canvas cannot switch context types, even after dispose().
+        rendererMocks.webglInit.mockImplementation((canvas) => canvas.contextType !== 'webgpu');
+        const { IntroAnimation } = await import('../../src/ui/intro-animation.js');
+        const intro = new IntroAnimation();
+        const container = createElement('div');
+        const canvas = createElement('canvas');
+        canvas.id = 'intro-webgl-canvas';
+        canvas.style.cssText = 'position:absolute;inset:0;';
+        container.appendChild(canvas);
+        intro.threeCanvas = canvas;
+
+        await expect(intro.initRenderer(canvas)).resolves.toBe('webgl');
+
+        expect(rendererMocks.webgpuDestroy).toHaveBeenCalledWith(canvas);
+        expect(intro.threeCanvas).not.toBe(canvas);
+        expect(intro.threeCanvas.id).toBe(canvas.id);
+        expect(intro.threeCanvas.style.cssText).toBe(canvas.style.cssText);
+        expect(rendererMocks.webglCanvases).toEqual([intro.threeCanvas]);
+        expect(container.contains(canvas)).toBe(false);
+        expect(intro.isWebGPU).toBe(false);
+        expect(intro.threeRenderer).toBeTruthy();
+    });
+
+    it('honors forceWebGL for the intro as well as the theme and boot reveal', async () => {
+        installDom();
+        vi.stubGlobal('window', { location: { search: '?forceWebGL=1' } });
+        vi.stubGlobal('navigator', { gpu: {} });
+        const { IntroAnimation } = await import('../../src/ui/intro-animation.js');
+        const intro = new IntroAnimation();
+        const canvas = createElement('canvas');
+        intro.threeCanvas = canvas;
+
+        await expect(intro.initRenderer(canvas)).resolves.toBe('webgl');
+
+        expect(rendererMocks.webgpuInit).not.toHaveBeenCalled();
+        expect(rendererMocks.webglCanvases).toEqual([canvas]);
+    });
 });
 
 describe('startup pipeline state machine', () => {
@@ -705,6 +752,30 @@ describe('startup pipeline state machine', () => {
 });
 
 describe('boot warp startup decision', () => {
+    it('declines the GPU transition after the intro has fallen back to WebGL', async () => {
+        const { waitForIntroRendererDecision } = await import('../../src/ui/boot-warp-startup.js');
+
+        await expect(waitForIntroRendererDecision({
+            rendererReady: Promise.resolve(),
+            getWebGPUDevice: () => null,
+        })).resolves.toEqual({
+            canAttemptWarp: false,
+            reason: 'intro-webgpu-unavailable',
+        });
+    });
+
+    it('allows the GPU transition once the intro has a device to share', async () => {
+        const { waitForIntroRendererDecision } = await import('../../src/ui/boot-warp-startup.js');
+
+        await expect(waitForIntroRendererDecision({
+            rendererReady: Promise.resolve(),
+            getWebGPUDevice: () => ({ queue: {} }),
+        })).resolves.toEqual({
+            canAttemptWarp: true,
+            reason: 'intro-renderer-settled',
+        });
+    });
+
     it('defaults the aurora opening to 3200ms and clamps short URL overrides', async () => {
         const {
             BOOT_WARP_DEFAULT_DURATION_MS,
@@ -1179,6 +1250,36 @@ describe('boot warp startup decision', () => {
         shellDismissal.resolve();
         await result.surfaceReadyPromise;
         expect(surfaceReady).toBe(true);
+    });
+
+    it('reveals the WebGL intro without allocating or retrying a GPU transition', async () => {
+        vi.stubGlobal('navigator', { gpu: {} });
+        const { playBootWarpStartupSequence } = await import(
+            '../../src/ui/boot-warp-orchestrator.js'
+        );
+        const dismissStartupShell = vi.fn();
+        const startupPipeline = {
+            signal: new AbortController().signal,
+            waitForStep: (value) => Promise.resolve(value),
+            trackVisual: vi.fn(),
+            releaseVisual: vi.fn(),
+            disposeVisuals: vi.fn(),
+        };
+
+        const result = await playBootWarpStartupSequence({
+            introAnimation: {
+                rendererReady: Promise.resolve(),
+                getWebGPUDevice: () => null,
+                postponeTitleSafety: vi.fn(),
+            },
+            dismissStartupShell,
+            startupPipeline,
+        });
+
+        expect(result.status).toBe('css-fallback');
+        expect(dismissStartupShell).toHaveBeenCalledWith('intro-begin');
+        expect(startupPipeline.trackVisual).not.toHaveBeenCalled();
+        expect(rendererMocks.bootRendererInit).not.toHaveBeenCalled();
     });
 });
 

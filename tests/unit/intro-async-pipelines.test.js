@@ -97,6 +97,40 @@ function makeIntroVisual({ computeFrameSkip = 1, particles = true, tetrominos = 
     return visual;
 }
 
+describe('intro renderer: unavailable native backend cleanup', () => {
+    it('awaits fallback renderer disposal and releases ownership before outer destroy', async () => {
+        vi.stubGlobal('navigator', { deviceMemory: 8, hardwareConcurrency: 8 });
+        vi.stubGlobal('window', { innerWidth: 390, innerHeight: 844 });
+        const disposal = deferred();
+        const initSpy = vi.spyOn(THREE.WebGPURenderer.prototype, 'init').mockImplementation(async function init() {
+            this.backend = { isWebGLBackend: true };
+        });
+        const disposeSpy = vi.spyOn(THREE.WebGPURenderer.prototype, 'dispose').mockReturnValue(disposal.promise);
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        try {
+            const visual = new ThreeJSIntroRendererWebGPU({ width: 390, height: 844, style: {} });
+            const init = visual.init();
+            await Promise.resolve();
+            expect(disposeSpy).toHaveBeenCalledTimes(1);
+            expect(visual.renderer).toBeTruthy();
+
+            disposal.resolve();
+            await expect(init).resolves.toBe(false);
+            expect(visual.renderer).toBeNull();
+            expect(visual.getDevice()).toBeNull();
+
+            visual.destroy();
+            expect(disposeSpy).toHaveBeenCalledTimes(1);
+        } finally {
+            initSpy.mockRestore();
+            disposeSpy.mockRestore();
+            warnSpy.mockRestore();
+            vi.unstubAllGlobals();
+        }
+    });
+});
+
 describe('intro renderer: async compute compile + dispatch gate', () => {
     let warnSpy;
     // Only the intro's own compile warning: three also warns (once) that THREE.Clock is deprecated.
