@@ -1,0 +1,59 @@
+{
+  "state": {
+    "ready": true,
+    "error": null,
+    "backend": "WebGL2",
+    "diagnostics": {
+      "quality": "High",
+      "renderPath": "webgl2-node-post",
+      "phase": "IDLE",
+      "materialAudit": {
+        "ready": false,
+        "materialCount": 32,
+        "issues": [
+          {
+            "severity": "error",
+            "code": "MISSING_MRT_ROLE",
+            "message": "Material is missing mrtRole metadata required for MRT readiness.",
+            "materialUuid": "21cd1893-09cf-43d5-b45b-96eddd6a3a8d",
+            "materialName": "",
+            "materialType": "LineBasicMaterial",
+            "objectName": "stellar-velocity-warp-streak-lines"
+          },
+          {
+            "severity": "error",
+            "code": "MISSING_BLOOM_WEIGHT",
+            "message": "Material is missing a numeric bloomWeight metadata value.",
+            "materialUuid": "21cd1893-09cf-43d5-b45b-96eddd6a3a8d",
+            "materialName": "",
+            "materialType": "LineBasicMaterial",
+            "objectName": "stellar-velocity-warp-streak-lines"
+          },
+          {
+            "severity": "error",
+            "code": "MISSING_MRT_ROLE",
+            "message": "Material is missing mrtRole metadata required for MRT readiness.",
+            "materialUuid": "cbbef389-3d8d-4b6d-81c5-c84d34ce38c3",
+            "materialName": "",
+            "materialType": "MeshBasicMaterial",
+            "objectName": "stellar-velocity-tunnel-lattice"
+          },
+          {
+            "severity": "error",
+            "code": "MISSING_BLOOM_WEIGHT",
+            "message": "Material is missing a numeric bloomWeight metadata value.",
+            "materialUuid": "cbbef389-3d8d-4b6d-81c5-c84d34ce38c3",
+            "materialName": "",
+            "materialType": "MeshBasicMaterial",
+            "objectName": "stellar-velocity-tunnel-lattice"
+          }
+        ]
+      }
+    }
+  },
+  "errors": [],
+  "warnings": [
+    "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+    "[StellarVelocity] Material audit report {ready: false, materialCount: 32, issues: Array(4)}"
+  ]
+}
