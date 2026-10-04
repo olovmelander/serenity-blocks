@@ -1,0 +1,1258 @@
+{
+  "bootstrap": {
+    "mode": "single",
+    "theme": "stellar-drift",
+    "lifecycle": "running"
+  },
+  "checks": {
+    "realBoard": true,
+    "webgl": true,
+    "eventsVisible": true,
+    "pauseFreezesTime": true,
+    "pausedEventIgnored": true,
+    "resumeAdvances": true,
+    "qualityDeferred": true,
+    "qualityRebuilt": true,
+    "qualityRestored": true,
+    "restartReleased": true,
+    "restartRunning": true,
+    "switchReleased": true,
+    "returnRunning": true,
+    "consoleClean": true
+  },
+  "pauseBefore": {
+    "pauseResult": true,
+    "theme": "stellar-drift",
+    "isActive": true,
+    "isPaused": true,
+    "lifecycle": "paused",
+    "generation": 2,
+    "time": 7.999999999999977,
+    "quality": "Low",
+    "backend": "WebGL2",
+    "post": {
+      "quality": "Low",
+      "disabled": true,
+      "useMRT": false
+    },
+    "frame": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0,
+      "arcs": [],
+      "comets": []
+    },
+    "render": {
+      "calls": 40,
+      "frameCalls": 4,
+      "drawCalls": 32,
+      "triangles": 57110,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "board": {
+      "x": 21.5,
+      "y": 45,
+      "width": 347,
+      "height": 756
+    },
+    "boardCanvasCount": 1,
+    "themeCanvasCount": 1,
+    "activeContainers": [
+      "stellar-drift-theme"
+    ],
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 0.46208530805687204
+    },
+    "cssLayers": [
+      {
+        "id": "BODY",
+        "className": "startup-intro-skipped phaser-hud-ready",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgb(12, 10, 26)",
+        "display": "flex",
+        "zIndex": "auto"
+      },
+      {
+        "id": "DIV",
+        "className": "background-container",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "-1"
+      },
+      {
+        "id": "background-canvas",
+        "className": "",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "10"
+      },
+      {
+        "id": "stellar-drift-theme",
+        "className": "theme-container active",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "1"
+      },
+      {
+        "id": "single-player-container",
+        "className": "game-container single-player-layout",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "flex",
+        "zIndex": "1"
+      }
+    ]
+  },
+  "pauseAfter": {
+    "theme": "stellar-drift",
+    "isActive": true,
+    "isPaused": true,
+    "lifecycle": "paused",
+    "generation": 2,
+    "time": 7.999999999999977,
+    "quality": "Low",
+    "backend": "WebGL2",
+    "post": {
+      "quality": "Low",
+      "disabled": true,
+      "useMRT": false
+    },
+    "frame": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0,
+      "arcs": [],
+      "comets": []
+    },
+    "render": {
+      "calls": 40,
+      "frameCalls": 4,
+      "drawCalls": 32,
+      "triangles": 57110,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "board": {
+      "x": 21.5,
+      "y": 45,
+      "width": 347,
+      "height": 756
+    },
+    "boardCanvasCount": 1,
+    "themeCanvasCount": 1,
+    "activeContainers": [
+      "stellar-drift-theme"
+    ],
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 0.46208530805687204
+    },
+    "cssLayers": [
+      {
+        "id": "BODY",
+        "className": "startup-intro-skipped phaser-hud-ready",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgb(12, 10, 26)",
+        "display": "flex",
+        "zIndex": "auto"
+      },
+      {
+        "id": "DIV",
+        "className": "background-container",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "-1"
+      },
+      {
+        "id": "background-canvas",
+        "className": "",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "10"
+      },
+      {
+        "id": "stellar-drift-theme",
+        "className": "theme-container active",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "1"
+      },
+      {
+        "id": "single-player-container",
+        "className": "game-container single-player-layout",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "flex",
+        "zIndex": "1"
+      }
+    ]
+  },
+  "resume": {
+    "resumeResult": true,
+    "theme": "stellar-drift",
+    "isActive": true,
+    "isPaused": false,
+    "lifecycle": "running",
+    "generation": 2,
+    "time": 7.999999999999977,
+    "quality": "Low",
+    "backend": "WebGL2",
+    "post": {
+      "quality": "Low",
+      "disabled": true,
+      "useMRT": false
+    },
+    "frame": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0,
+      "arcs": [],
+      "comets": []
+    },
+    "render": {
+      "calls": 40,
+      "frameCalls": 4,
+      "drawCalls": 32,
+      "triangles": 57110,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "board": {
+      "x": 21.5,
+      "y": 45,
+      "width": 347,
+      "height": 756
+    },
+    "boardCanvasCount": 1,
+    "themeCanvasCount": 1,
+    "activeContainers": [
+      "stellar-drift-theme"
+    ],
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 0.46208530805687204
+    },
+    "cssLayers": [
+      {
+        "id": "BODY",
+        "className": "startup-intro-skipped phaser-hud-ready",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgb(12, 10, 26)",
+        "display": "flex",
+        "zIndex": "auto"
+      },
+      {
+        "id": "DIV",
+        "className": "background-container",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "-1"
+      },
+      {
+        "id": "background-canvas",
+        "className": "",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "10"
+      },
+      {
+        "id": "stellar-drift-theme",
+        "className": "theme-container active",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "1"
+      },
+      {
+        "id": "single-player-container",
+        "className": "game-container single-player-layout",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "flex",
+        "zIndex": "1"
+      }
+    ]
+  },
+  "resumed": {
+    "theme": "stellar-drift",
+    "isActive": true,
+    "isPaused": false,
+    "lifecycle": "running",
+    "generation": 2,
+    "time": 8.149999999999979,
+    "quality": "Low",
+    "backend": "WebGL2",
+    "post": {
+      "quality": "Low",
+      "disabled": true,
+      "useMRT": false
+    },
+    "frame": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0,
+      "arcs": [],
+      "comets": []
+    },
+    "render": {
+      "calls": 48,
+      "frameCalls": 12,
+      "drawCalls": 96,
+      "triangles": 171330,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "board": {
+      "x": 21.5,
+      "y": 45,
+      "width": 347,
+      "height": 756
+    },
+    "boardCanvasCount": 1,
+    "themeCanvasCount": 1,
+    "activeContainers": [
+      "stellar-drift-theme"
+    ],
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 0.46208530805687204
+    },
+    "cssLayers": [
+      {
+        "id": "BODY",
+        "className": "startup-intro-skipped phaser-hud-ready",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgb(12, 10, 26)",
+        "display": "flex",
+        "zIndex": "auto"
+      },
+      {
+        "id": "DIV",
+        "className": "background-container",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "-1"
+      },
+      {
+        "id": "background-canvas",
+        "className": "",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "10"
+      },
+      {
+        "id": "stellar-drift-theme",
+        "className": "theme-container active",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "1"
+      },
+      {
+        "id": "single-player-container",
+        "className": "game-container single-player-layout",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "flex",
+        "zIndex": "1"
+      }
+    ]
+  },
+  "qualityBefore": {
+    "theme": "stellar-drift",
+    "isActive": true,
+    "isPaused": true,
+    "lifecycle": "paused",
+    "generation": 2,
+    "time": 8.149999999999979,
+    "quality": "Low",
+    "backend": "WebGL2",
+    "post": {
+      "quality": "Low",
+      "disabled": true,
+      "useMRT": false
+    },
+    "frame": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0,
+      "arcs": [],
+      "comets": []
+    },
+    "render": {
+      "calls": 48,
+      "frameCalls": 12,
+      "drawCalls": 96,
+      "triangles": 171330,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "board": {
+      "x": 21.5,
+      "y": 45,
+      "width": 347,
+      "height": 756
+    },
+    "boardCanvasCount": 1,
+    "themeCanvasCount": 1,
+    "activeContainers": [
+      "stellar-drift-theme"
+    ],
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 0.46208530805687204
+    },
+    "cssLayers": [
+      {
+        "id": "BODY",
+        "className": "startup-intro-skipped phaser-hud-ready",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgb(12, 10, 26)",
+        "display": "flex",
+        "zIndex": "auto"
+      },
+      {
+        "id": "DIV",
+        "className": "background-container",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "-1"
+      },
+      {
+        "id": "background-canvas",
+        "className": "",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "10"
+      },
+      {
+        "id": "stellar-drift-theme",
+        "className": "theme-container active",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "1"
+      },
+      {
+        "id": "single-player-container",
+        "className": "game-container single-player-layout",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "flex",
+        "zIndex": "1"
+      }
+    ]
+  },
+  "qualityParked": {
+    "rebuildPending": true,
+    "theme": "stellar-drift",
+    "isActive": true,
+    "isPaused": true,
+    "lifecycle": "paused",
+    "generation": 2,
+    "time": 8.149999999999979,
+    "quality": "Low",
+    "backend": "WebGL2",
+    "post": {
+      "quality": "Low",
+      "disabled": true,
+      "useMRT": false
+    },
+    "frame": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0,
+      "arcs": [],
+      "comets": []
+    },
+    "render": {
+      "calls": 48,
+      "frameCalls": 12,
+      "drawCalls": 96,
+      "triangles": 171330,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "board": {
+      "x": 21.5,
+      "y": 45,
+      "width": 347,
+      "height": 756
+    },
+    "boardCanvasCount": 1,
+    "themeCanvasCount": 1,
+    "activeContainers": [
+      "stellar-drift-theme"
+    ],
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 0.46208530805687204
+    },
+    "cssLayers": [
+      {
+        "id": "BODY",
+        "className": "startup-intro-skipped phaser-hud-ready",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgb(12, 10, 26)",
+        "display": "flex",
+        "zIndex": "auto"
+      },
+      {
+        "id": "DIV",
+        "className": "background-container",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "-1"
+      },
+      {
+        "id": "background-canvas",
+        "className": "",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "10"
+      },
+      {
+        "id": "stellar-drift-theme",
+        "className": "theme-container active",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "1"
+      },
+      {
+        "id": "single-player-container",
+        "className": "game-container single-player-layout",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "flex",
+        "zIndex": "1"
+      }
+    ]
+  },
+  "qualityRebuilt": {
+    "theme": "stellar-drift",
+    "isActive": true,
+    "isPaused": false,
+    "lifecycle": "running",
+    "generation": 6,
+    "time": 0.0831999999999971,
+    "quality": "Medium",
+    "backend": "WebGL2",
+    "post": {
+      "quality": "Medium",
+      "disabled": false,
+      "useMRT": false
+    },
+    "frame": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0,
+      "arcs": [],
+      "comets": []
+    },
+    "render": {
+      "calls": 56,
+      "frameCalls": 14,
+      "drawCalls": 30,
+      "triangles": 36335,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "board": {
+      "x": 21.5,
+      "y": 45,
+      "width": 347,
+      "height": 756
+    },
+    "boardCanvasCount": 1,
+    "themeCanvasCount": 1,
+    "activeContainers": [
+      "stellar-drift-theme"
+    ],
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 0.46208530805687204
+    },
+    "cssLayers": [
+      {
+        "id": "BODY",
+        "className": "startup-intro-skipped phaser-hud-ready",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgb(12, 10, 26)",
+        "display": "flex",
+        "zIndex": "auto"
+      },
+      {
+        "id": "DIV",
+        "className": "background-container",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "-1"
+      },
+      {
+        "id": "background-canvas",
+        "className": "",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "10"
+      },
+      {
+        "id": "stellar-drift-theme",
+        "className": "theme-container active",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "1"
+      },
+      {
+        "id": "single-player-container",
+        "className": "game-container single-player-layout",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "flex",
+        "zIndex": "1"
+      }
+    ]
+  },
+  "qualityRestored": {
+    "theme": "stellar-drift",
+    "isActive": true,
+    "isPaused": false,
+    "lifecycle": "running",
+    "generation": 10,
+    "time": 0.06670000000000437,
+    "quality": "Low",
+    "backend": "WebGL2",
+    "post": {
+      "quality": "Low",
+      "disabled": true,
+      "useMRT": false
+    },
+    "frame": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0,
+      "arcs": [],
+      "comets": []
+    },
+    "render": {
+      "calls": 6,
+      "frameCalls": 2,
+      "drawCalls": 16,
+      "triangles": 28555,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "board": {
+      "x": 21.5,
+      "y": 45,
+      "width": 347,
+      "height": 756
+    },
+    "boardCanvasCount": 1,
+    "themeCanvasCount": 1,
+    "activeContainers": [
+      "stellar-drift-theme"
+    ],
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 0.46208530805687204
+    },
+    "cssLayers": [
+      {
+        "id": "BODY",
+        "className": "startup-intro-skipped phaser-hud-ready",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgb(12, 10, 26)",
+        "display": "flex",
+        "zIndex": "auto"
+      },
+      {
+        "id": "DIV",
+        "className": "background-container",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "-1"
+      },
+      {
+        "id": "background-canvas",
+        "className": "",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "10"
+      },
+      {
+        "id": "stellar-drift-theme",
+        "className": "theme-container active",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "1"
+      },
+      {
+        "id": "single-player-container",
+        "className": "game-container single-player-layout",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "flex",
+        "zIndex": "1"
+      }
+    ]
+  },
+  "restart": {
+    "before": {
+      "theme": "stellar-drift",
+      "isActive": true,
+      "isPaused": false,
+      "lifecycle": "running",
+      "generation": 10,
+      "time": 0.06670000000000437,
+      "quality": "Low",
+      "backend": "WebGL2",
+      "post": {
+        "quality": "Low",
+        "disabled": true,
+        "useMRT": false
+      },
+      "frame": {
+        "rim": 0,
+        "aurora": 0,
+        "dust": 0,
+        "stars": 0,
+        "glow": 0,
+        "impact": 0,
+        "arcs": [],
+        "comets": []
+      },
+      "render": {
+        "calls": 6,
+        "frameCalls": 2,
+        "drawCalls": 16,
+        "triangles": 28555,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "board": {
+        "x": 21.5,
+        "y": 45,
+        "width": 347,
+        "height": 756
+      },
+      "boardCanvasCount": 1,
+      "themeCanvasCount": 1,
+      "activeContainers": [
+        "stellar-drift-theme"
+      ],
+      "camera": {
+        "position": [
+          0,
+          0,
+          45
+        ],
+        "fov": 48,
+        "aspect": 0.46208530805687204
+      },
+      "cssLayers": [
+        {
+          "id": "BODY",
+          "className": "startup-intro-skipped phaser-hud-ready",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgb(12, 10, 26)",
+          "display": "flex",
+          "zIndex": "auto"
+        },
+        {
+          "id": "DIV",
+          "className": "background-container",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "block",
+          "zIndex": "-1"
+        },
+        {
+          "id": "background-canvas",
+          "className": "",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "block",
+          "zIndex": "10"
+        },
+        {
+          "id": "stellar-drift-theme",
+          "className": "theme-container active",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "block",
+          "zIndex": "1"
+        },
+        {
+          "id": "single-player-container",
+          "className": "game-container single-player-layout",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "flex",
+          "zIndex": "1"
+        }
+      ]
+    },
+    "stopped": {
+      "renderer": true,
+      "atmosphere": true,
+      "reactions": true,
+      "canvasCount": 0
+    },
+    "after": {
+      "theme": "stellar-drift",
+      "isActive": true,
+      "isPaused": false,
+      "lifecycle": "running",
+      "generation": 14,
+      "time": 0,
+      "quality": "Low",
+      "backend": "WebGL2",
+      "post": {
+        "quality": "Low",
+        "disabled": true,
+        "useMRT": false
+      },
+      "frame": {
+        "rim": 0,
+        "aurora": 0,
+        "dust": 0,
+        "stars": 0,
+        "glow": 0,
+        "impact": 0,
+        "arcs": [],
+        "comets": []
+      },
+      "render": {
+        "calls": 0,
+        "frameCalls": 0,
+        "drawCalls": 0,
+        "triangles": 0,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "board": {
+        "x": 21.5,
+        "y": 45,
+        "width": 347,
+        "height": 756
+      },
+      "boardCanvasCount": 1,
+      "themeCanvasCount": 1,
+      "activeContainers": [
+        "stellar-drift-theme"
+      ],
+      "camera": {
+        "position": [
+          0,
+          0,
+          45
+        ],
+        "fov": 48,
+        "aspect": 0.46208530805687204
+      },
+      "cssLayers": [
+        {
+          "id": "BODY",
+          "className": "startup-intro-skipped phaser-hud-ready",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgb(12, 10, 26)",
+          "display": "flex",
+          "zIndex": "auto"
+        },
+        {
+          "id": "DIV",
+          "className": "background-container",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "block",
+          "zIndex": "-1"
+        },
+        {
+          "id": "background-canvas",
+          "className": "",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "block",
+          "zIndex": "10"
+        },
+        {
+          "id": "stellar-drift-theme",
+          "className": "theme-container active",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "block",
+          "zIndex": "1"
+        },
+        {
+          "id": "single-player-container",
+          "className": "game-container single-player-layout",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "flex",
+          "zIndex": "1"
+        }
+      ]
+    }
+  },
+  "switchResult": {
+    "away": {
+      "activeName": "forest",
+      "driftDisposed": true,
+      "driftCanvasCount": 0
+    },
+    "returned": {
+      "theme": "stellar-drift",
+      "isActive": true,
+      "isPaused": false,
+      "lifecycle": "running",
+      "generation": 2,
+      "time": 0,
+      "quality": "Low",
+      "backend": "WebGL2",
+      "post": {
+        "quality": "Low",
+        "disabled": true,
+        "useMRT": false
+      },
+      "frame": {
+        "rim": 0,
+        "aurora": 0,
+        "dust": 0,
+        "stars": 0,
+        "glow": 0,
+        "impact": 0,
+        "arcs": [],
+        "comets": []
+      },
+      "render": {
+        "calls": 0,
+        "frameCalls": 0,
+        "drawCalls": 0,
+        "triangles": 0,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "board": {
+        "x": 21.5,
+        "y": 45,
+        "width": 347,
+        "height": 756
+      },
+      "boardCanvasCount": 1,
+      "themeCanvasCount": 1,
+      "activeContainers": [
+        "stellar-drift-theme"
+      ],
+      "camera": {
+        "position": [
+          0,
+          0,
+          45
+        ],
+        "fov": 48,
+        "aspect": 0.46208530805687204
+      },
+      "cssLayers": [
+        {
+          "id": "BODY",
+          "className": "startup-intro-skipped phaser-hud-ready",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgb(12, 10, 26)",
+          "display": "flex",
+          "zIndex": "auto"
+        },
+        {
+          "id": "DIV",
+          "className": "background-container",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "block",
+          "zIndex": "-1"
+        },
+        {
+          "id": "background-canvas",
+          "className": "",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "block",
+          "zIndex": "10"
+        },
+        {
+          "id": "stellar-drift-theme",
+          "className": "theme-container active",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "block",
+          "zIndex": "1"
+        },
+        {
+          "id": "single-player-container",
+          "className": "game-container single-player-layout",
+          "opacity": "1",
+          "filter": "none",
+          "background": "rgba(0, 0, 0, 0)",
+          "display": "flex",
+          "zIndex": "1"
+        }
+      ]
+    }
+  },
+  "returned": {
+    "theme": "stellar-drift",
+    "isActive": true,
+    "isPaused": false,
+    "lifecycle": "running",
+    "generation": 2,
+    "time": 0.40009999999999857,
+    "quality": "Low",
+    "backend": "WebGL2",
+    "post": {
+      "quality": "Low",
+      "disabled": true,
+      "useMRT": false
+    },
+    "frame": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0,
+      "arcs": [],
+      "comets": []
+    },
+    "render": {
+      "calls": 30,
+      "frameCalls": 2,
+      "drawCalls": 16,
+      "triangles": 28555,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "board": {
+      "x": 21.5,
+      "y": 45,
+      "width": 347,
+      "height": 756
+    },
+    "boardCanvasCount": 1,
+    "themeCanvasCount": 1,
+    "activeContainers": [
+      "stellar-drift-theme"
+    ],
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 0.46208530805687204
+    },
+    "cssLayers": [
+      {
+        "id": "BODY",
+        "className": "startup-intro-skipped phaser-hud-ready",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgb(12, 10, 26)",
+        "display": "flex",
+        "zIndex": "auto"
+      },
+      {
+        "id": "DIV",
+        "className": "background-container",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "-1"
+      },
+      {
+        "id": "background-canvas",
+        "className": "",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "10"
+      },
+      {
+        "id": "stellar-drift-theme",
+        "className": "theme-container active",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "block",
+        "zIndex": "1"
+      },
+      {
+        "id": "single-player-container",
+        "className": "game-container single-player-layout",
+        "opacity": "1",
+        "filter": "none",
+        "background": "rgba(0, 0, 0, 0)",
+        "display": "flex",
+        "zIndex": "1"
+      }
+    ]
+  },
+  "errors": [],
+  "warnings": [
+    "[BaseTheme] Theme already active or paused, stopping before restart: stellar-drift",
+    "[BaseTheme] Theme already active or paused, stopping before restart: stellar-drift"
+  ]
+}

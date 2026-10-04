@@ -1,0 +1,105 @@
+{
+  "ready": true,
+  "diagnostics": {
+    "quality": "High",
+    "disabled": false,
+    "useMRT": true,
+    "arcs": 0,
+    "comets": 0,
+    "stars": 1900,
+    "meteorCount": 300,
+    "dust": 900,
+    "analyticMotion": true,
+    "backend": "WebGPU",
+    "time": 8,
+    "seed": 187,
+    "event": "idle",
+    "combo": 9,
+    "eventAge": 0.35,
+    "render": {
+      "calls": 14,
+      "frameCalls": 14,
+      "drawCalls": 33,
+      "triangles": 46021,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "memory": {
+      "attributes": 34,
+      "attributesSize": 335936,
+      "geometries": 15,
+      "indexAttributes": 13,
+      "indexAttributesSize": 271464,
+      "indirectStorageAttributes": 0,
+      "indirectStorageAttributesSize": 0,
+      "programs": 38,
+      "programsSize": 74277,
+      "readbackBuffers": 0,
+      "readbackBuffersSize": 0,
+      "renderTargets": 13,
+      "storageAttributes": 0,
+      "storageAttributesSize": 0,
+      "textures": 18,
+      "texturesSize": 45024634,
+      "uniformBuffers": 58,
+      "uniformBuffersSize": 4768,
+      "total": 45711079
+    },
+    "width": 1440,
+    "height": 900,
+    "readbackBytes": 5299072,
+    "rowStride": 5888,
+    "directOutput": false,
+    "maxColorAttachments": 8,
+    "reaction": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0
+    },
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 1.6
+    },
+    "scene": [
+      {
+        "name": "stellar-drift-planet-system",
+        "visible": true
+      },
+      {
+        "name": "",
+        "visible": true
+      },
+      {
+        "name": "stellar-drift-starfield",
+        "visible": true
+      },
+      {
+        "name": "stellar-drift-distant-moon",
+        "visible": true
+      },
+      {
+        "name": "stellar-drift-inner-moon",
+        "visible": true
+      }
+    ],
+    "pixelStats": {
+      "min": 8,
+      "max": 254,
+      "meanPeak": 93.22230709876543,
+      "clippedWhiteFraction": 0.000003858024691358025
+    },
+    "gpuErrors": []
+  },
+  "gpuErrors": [],
+  "errors": [],
+  "warnings": []
+}
