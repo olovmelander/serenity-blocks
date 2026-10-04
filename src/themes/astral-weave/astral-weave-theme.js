@@ -390,6 +390,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.flowCompute = null;
         this.dustCompute = null;
         this.burstCompute = null;
+        this.cpuBurstSimulation = null;
 
         this.resizeHandler = null;
         this.qualityChangeHandler = null;
@@ -467,6 +468,10 @@ export default class AstralWeaveTheme extends BaseTheme {
 
     getBaselinePresetOrder() {
         return [...BASELINE_PRESET_ORDER];
+    }
+
+    get usesNodeMaterials() {
+        return this.renderer?.isWebGPURenderer === true;
     }
 
     getWebGPUBillboardBudget() {
@@ -583,7 +588,9 @@ export default class AstralWeaveTheme extends BaseTheme {
         const container = this.ensureContainer();
         const rendererReady = await this.initRenderer(container, ownerGeneration);
         if (!rendererReady) {
-            console.error('[AstralWeave] Failed to initialize renderer');
+            if (ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete) {
+                console.error('[AstralWeave] Failed to initialize renderer');
+            }
             return;
         }
 
@@ -624,55 +631,32 @@ export default class AstralWeaveTheme extends BaseTheme {
             supportsCompute: false,
         };
 
-        if (!this.flags.forceWebGL && navigator.gpu) {
-            try {
-                const renderer = new THREE_WEBGPU.WebGPURenderer({
-                    antialias: this.getAntialiasEnabled(),
-                    alpha: false,
-                    preserveDrawingBuffer: this.flags.baseline === true,
-                    powerPreference: 'high-performance',
-                });
-                await this.initializeRendererCandidate(renderer, {
-                    label: 'Astral Weave WebGPU renderer init',
-                    ownerGeneration,
-                });
-                if (renderer.backend?.isWebGPUBackend === true) {
-                    selectedRenderer = renderer;
-                    this.isWebGPU = true;
-                    this.capabilities.webgpu = true;
-                    this.capabilities.maxColorAttachments = renderer.capabilities?.maxColorAttachments ?? 8;
-                    this.capabilities.supportsPost = true;
-                    this.capabilities.supportsMRT = this.capabilities.maxColorAttachments > 1;
-                    this.capabilities.supportsCompute = typeof renderer.compute === 'function';
-                } else {
-                    renderer.dispose();
-                    renderer.forceContextLoss?.();
-                    renderer.domElement?.remove?.();
-                }
-            } catch (error) {
-                if (!ownsLifecycle()) return false;
-                console.warn('[AstralWeave] WebGPU init failed, using WebGL fallback:', error);
-            }
-        }
-
-        if (!selectedRenderer) {
+        const forceWebGL = this.flags.forceWebGL === true
+            || typeof navigator === 'undefined' || !navigator.gpu;
+        const makeRenderer = (webglOnly) => new THREE_WEBGPU.WebGPURenderer({
+            antialias: this.getAntialiasEnabled(),
+            alpha: false,
+            forceWebGL: webglOnly,
+            powerPreference: 'high-performance',
+        });
+        selectedRenderer = makeRenderer(forceWebGL);
+        try {
+            await this.initializeRendererCandidate(selectedRenderer, {
+                label: 'Astral Weave node renderer init',
+                ownerGeneration,
+            });
+        } catch (error) {
             if (!ownsLifecycle()) return false;
+            if (forceWebGL) throw error;
+            console.warn('[AstralWeave] Native init failed; retrying WebGL2.', error);
+            selectedRenderer = makeRenderer(true);
             try {
-                selectedRenderer = new THREE.WebGLRenderer({
-                    antialias: this.getAntialiasEnabled(),
-                    alpha: false,
-                    powerPreference: 'high-performance',
-                    preserveDrawingBuffer: this.flags.baseline === true,
+                await this.initializeRendererCandidate(selectedRenderer, {
+                    label: 'Astral Weave WebGL2 node renderer init', ownerGeneration,
                 });
-                this.isWebGL = true;
-                this.capabilities.webgl = true;
-                this.capabilities.supportsPost = true;
-                this.capabilities.supportsMRT = false;
-                this.capabilities.supportsCompute = false;
-                this.capabilities.maxColorAttachments = 1;
-            } catch (error) {
-                console.error('[AstralWeave] WebGL init failed:', error);
-                return false;
+            } catch (fallbackError) {
+                if (!ownsLifecycle()) return false;
+                throw fallbackError;
             }
         }
 
@@ -681,6 +665,16 @@ export default class AstralWeaveTheme extends BaseTheme {
             return false;
         }
         this.renderer = selectedRenderer;
+        this.isWebGPU = selectedRenderer.backend?.isWebGPUBackend === true;
+        this.isWebGL = selectedRenderer.backend?.isWebGLBackend === true;
+        this.capabilities = {
+            webgpu: this.isWebGPU,
+            webgl: this.isWebGL,
+            maxColorAttachments: this.isWebGPU ? 8 : 1,
+            supportsPost: this.usesNodeMaterials,
+            supportsMRT: this.isWebGPU,
+            supportsCompute: this.isWebGPU && typeof selectedRenderer.compute === 'function',
+        };
         this.flags.usePost = this.capabilities.supportsPost
             && this.qualityPreset.enablePost === true
             && !this.flags.noPost;
@@ -718,12 +712,17 @@ export default class AstralWeaveTheme extends BaseTheme {
             };
         }
 
-        this.webglContextLostHandler = (event) => {
-            event.preventDefault();
-            if (!ownsLifecycle() || this.renderer !== rendererAtRegistration) return;
-            this.handleDeviceLost(event, ownerGeneration, rendererAtRegistration);
-        };
-        this.renderer.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler, false);
+        this.setupRendererResilience(rendererAtRegistration, {
+            onContextRestored: () => {
+                // Base start() owns serialized recovery for active themes. A
+                // local rebuild would race its async renderer retirement.
+                if (this._contextRestoreUnsub) return;
+                if (!ownsLifecycle() || this.renderer !== rendererAtRegistration) return;
+                this.createScene(ownerGeneration).catch((error) => {
+                    console.error('[AstralWeave] Context recovery failed:', error);
+                });
+            },
+        });
         return true;
     }
 
@@ -732,7 +731,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.computeFactories = null;
         this.postFactories = null;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.materialFactories = AstralWeaveMaterialFactories;
 
             if (this.materialFactories && this.flags.useCompute) {
@@ -847,7 +846,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.rootGroup.add(this.nexusGroup);
         this.nexusNodeData = [];
 
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const coreGeo = new THREE.IcosahedronGeometry(1.75, 3);
             const shellGeo = new THREE.TorusKnotGeometry(2.95, 0.13, 180, 20, 2, 3);
             const haloGeo = new THREE.TorusGeometry(4.35, 0.17, 12, 96);
@@ -1014,7 +1013,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             let nodeData = null;
 
             const speed = 0.12 + (i % 3) * 0.06;
-            if (this.isWebGPU && this.materialFactories?.createAstralLightShaftNodeMaterial) {
+            if (this.usesNodeMaterials && this.materialFactories?.createAstralLightShaftNodeMaterial) {
                 nodeData = this.materialFactories.createAstralLightShaftNodeMaterial({
                     colorA: this.palette.cyan,
                     colorB: this.palette.magenta,
@@ -1112,7 +1111,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 
         let material = null;
-        if (this.isWebGPU && this.materialFactories?.createAstralConstellationNodeMaterial) {
+        if (this.usesNodeMaterials && this.materialFactories?.createAstralConstellationNodeMaterial) {
             this.constellationNodeData = this.materialFactories.createAstralConstellationNodeMaterial({
                 colorA: this.palette.cyan,
                 colorB: this.palette.magenta,
@@ -1191,7 +1190,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             let material = null;
             let nodeData = null;
 
-            if (this.isWebGPU && this.materialFactories) {
+            if (this.usesNodeMaterials && this.materialFactories) {
                 nodeData = this.materialFactories.createAstralRibbonNodeMaterial({
                     colorA: colors[0],
                     colorB: colors[1],
@@ -1287,7 +1286,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
 
         let material = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             this.starfieldNodeData = this.materialFactories.createAstralStarfieldNodeMaterial({
                 pixelRatio: this.renderer.getPixelRatio(),
                 diffractionStrength: this.activeQualityLevel === 'Medium' ? 0.18 : 0.3,
@@ -1327,7 +1326,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             let material = null;
             let nodeData = null;
 
-            if (this.isWebGPU && this.materialFactories) {
+            if (this.usesNodeMaterials && this.materialFactories) {
                 nodeData = this.materialFactories.createAstralNebulaNodeMaterial({
                     texture: this.textures.nebula,
                     opacity: 0.06 + this.random() * 0.03,
@@ -1427,7 +1426,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         }
 
         let material = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             this.flowNodeData = this.materialFactories.createAstralFlowParticleNodeMaterial({
                 pixelRatio: this.renderer.getPixelRatio(),
                 flowCompute: this.flowCompute,
@@ -1508,7 +1507,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         }
 
         let material = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             this.dustNodeData = this.materialFactories.createAstralFlowParticleNodeMaterial({
                 pixelRatio: this.renderer.getPixelRatio(),
                 flowCompute: this.dustCompute,
@@ -1540,7 +1539,7 @@ export default class AstralWeaveTheme extends BaseTheme {
     }
 
     createBurstParticles() {
-        if (!(this.isWebGPU && this.materialFactories)) return;
+        if (!(this.usesNodeMaterials && this.materialFactories)) return;
 
         const particleCounts = this.getActiveParticleCounts();
         const count = particleCounts.burst;
@@ -1566,6 +1565,11 @@ export default class AstralWeaveTheme extends BaseTheme {
                 () => this.random(),
             );
             this.burstCompute.createComputeNode();
+        } else {
+            this.cpuBurstSimulation = new AstralWeaveComputeFactories.AstralWeaveBurstCompute(
+                count,
+                () => this.random(),
+            );
         }
 
         this.burstNodeData = this.materialFactories.createAstralBurstNodeMaterial({
@@ -1582,6 +1586,16 @@ export default class AstralWeaveTheme extends BaseTheme {
             aSize: { array: sizes, itemSize: 1 },
             aSeed: { array: seeds, itemSize: 1 },
         });
+        if (this.cpuBurstSimulation) {
+            this.burstParticles.geometry.setAttribute(
+                'aBurstPosition',
+                new THREE.InstancedBufferAttribute(this.cpuBurstSimulation.positionData, 4),
+            );
+            this.burstParticles.geometry.setAttribute(
+                'aBurstMisc',
+                new THREE.InstancedBufferAttribute(this.cpuBurstSimulation.miscData, 4),
+            );
+        }
         this.burstParticles.frustumCulled = false;
         this.burstParticles.renderOrder = 20;
         this.scene.add(this.burstParticles);
@@ -1597,7 +1611,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             let mesh = null;
             let uniforms = null;
 
-            if (this.isWebGPU && this.materialFactories) {
+            if (this.usesNodeMaterials && this.materialFactories) {
                 const nodeData = this.materialFactories.createAstralShockwaveNodeMaterial({
                     colorA: this.palette.cyan,
                     colorB: this.palette.magenta,
@@ -1671,7 +1685,7 @@ export default class AstralWeaveTheme extends BaseTheme {
 
     configureRendererColorPipeline() {
         if (!this.renderer) return;
-        const postOwnsToneMapping = this.isWebGPU && this.flags.usePost && this.postProcessing;
+        const postOwnsToneMapping = this.usesNodeMaterials && this.flags.usePost && this.postProcessing;
         if (postOwnsToneMapping) {
             this.renderer.toneMapping = THREE.NoToneMapping;
             this.renderer.toneMappingExposure = 1;
@@ -1809,6 +1823,11 @@ export default class AstralWeaveTheme extends BaseTheme {
     }
 
     updateCompute(delta, signals) {
+        if (this.cpuBurstSimulation) {
+            this.cpuBurstSimulation.updateCpu(delta, { gravity: -11.5, drag: 0.985 });
+            this.burstParticles.geometry.attributes.aBurstPosition.needsUpdate = true;
+            this.burstParticles.geometry.attributes.aBurstMisc.needsUpdate = true;
+        }
         if (!(this.isWebGPU && this.renderer?.compute)) return;
 
         this._tmpNexusWorld = this._tmpNexusWorld || new THREE.Vector3();
@@ -1916,7 +1935,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             copyUniformValue(uniforms?.opacity, 1 - mesh.userData.progress);
         });
 
-        if (!this.isWebGPU) {
+        if (!this.usesNodeMaterials) {
             this.ribbonMeshes.forEach((mesh) => {
                 if (mesh.material?.uniforms?.time) mesh.material.uniforms.time.value = this.time;
                 if (mesh.material?.uniforms?.intensity) mesh.material.uniforms.intensity.value = 1 + effectMix * 0.16;
@@ -1932,7 +1951,7 @@ export default class AstralWeaveTheme extends BaseTheme {
                     if (shaft.material?.uniforms?.time) shaft.material.uniforms.time.value = this.time;
                     if (shaft.material?.uniforms?.opacity) {
                         // Base opacity mod speedZ to differentiate, multiplied by linePulse impact
-                        shaft.material.uniforms.opacity.value = (0.045 + (shaft.userData.rotSpeedZ * 10.0 % 0.015)) * (1.0 + signals.linePulse * 0.4);
+                        shaft.material.uniforms.opacity.value = (0.045 + ((shaft.userData.rotSpeedZ * 10.0) % 0.015)) * (1.0 + signals.linePulse * 0.4);
                     }
                 });
             }
@@ -1957,9 +1976,10 @@ export default class AstralWeaveTheme extends BaseTheme {
         const nexusWorld = this.getNexusWorldPosition(new THREE.Vector3());
         const dustWorld = this.getDustWorldPosition(new THREE.Vector3());
 
-        if (this.burstCompute) {
+        const burstSystem = this.burstCompute || this.cpuBurstSimulation;
+        if (burstSystem) {
             if (bursts.flowShards > 0) {
-                this.burstCompute.spawnBurst(bursts.flowShards, nexusWorld, {
+                burstSystem.spawnBurst(bursts.flowShards, nexusWorld, {
                     spread: 5.5,
                     verticalBoost: 5.2,
                     speedMin: 3.8,
@@ -1967,7 +1987,7 @@ export default class AstralWeaveTheme extends BaseTheme {
                 });
             }
             if (bursts.dustPops > 0) {
-                this.burstCompute.spawnBurst(bursts.dustPops, dustWorld, {
+                burstSystem.spawnBurst(bursts.dustPops, dustWorld, {
                     spread: 6.5,
                     verticalBoost: 3.2,
                     speedMin: 1.8,
@@ -2438,6 +2458,7 @@ export default class AstralWeaveTheme extends BaseTheme {
     }
 
     cleanupRuntime() {
+        this.removeRendererResilience();
         this.clearEventSubscriptions();
         this.removeResizeListener();
         this.teardownQualityListener();
@@ -2458,9 +2479,11 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.flowCompute?.dispose?.();
         this.dustCompute?.dispose?.();
         this.burstCompute?.dispose?.();
+        this.cpuBurstSimulation?.dispose?.();
         this.flowCompute = null;
         this.dustCompute = null;
         this.burstCompute = null;
+        this.cpuBurstSimulation = null;
 
         if (this.renderer?.domElement && this.webglContextLostHandler) {
             this.renderer.domElement.removeEventListener('webglcontextlost', this.webglContextLostHandler, false);
@@ -2485,12 +2508,8 @@ export default class AstralWeaveTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            const { domElement } = this.renderer;
-            this.renderer.onDeviceLost = null;
-            this.renderer.dispose?.();
-            if (domElement?.parentNode) {
-                domElement.parentNode.removeChild(domElement);
-            }
+            this.renderer.onDeviceLost = () => {};
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         }
 
         this.disposeTextures();

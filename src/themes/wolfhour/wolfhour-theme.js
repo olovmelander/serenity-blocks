@@ -5351,7 +5351,7 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.onDeviceLost = null;
+            this.renderer.onDeviceLost = () => {};
             this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer.domElement.remove();
             this.renderer = null;

@@ -272,10 +272,6 @@ export default class MoonlitForestTheme extends BaseTheme {
         if (canAttemptWebGPU) {
             try {
                 renderer = await this.createRendererCandidate(false, ownerGeneration);
-                if (renderer.backend?.isWebGPUBackend !== true) {
-                    renderer.dispose();
-                    renderer = null;
-                }
             } catch (error) {
                 if (generation !== this.runtimeGeneration
                     || ownerGeneration !== this.lifecycleGeneration
@@ -306,7 +302,7 @@ export default class MoonlitForestTheme extends BaseTheme {
             || ownerGeneration !== this.lifecycleGeneration
             || !this.isActive
             || this.cleanupComplete) {
-            renderer.dispose();
+            await this.disposeRenderer(renderer, { nullInstance: false });
             return false;
         }
 

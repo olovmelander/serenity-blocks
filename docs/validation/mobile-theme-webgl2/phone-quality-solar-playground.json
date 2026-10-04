@@ -1,0 +1,95 @@
+{
+  "effect": "solar-eclipse-mobile",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "quality": "Minimal",
+  "time": 8,
+  "errors": [],
+  "warnings": [
+    "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+    "[.WebGL-0x221c0017da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x221c0017da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x221c0017da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x221c0017da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+  ],
+  "logs": [
+    "[SolarEclipse] Theme constructed",
+    "[SolarEclipse] Renderer initialized",
+    "[SolarEclipse] Blood-Moon style starfield created with 800 stars",
+    "[SolarEclipse] Nebula clouds created",
+    "[SolarEclipse] 3D Sun with plasma shader and glow layers created",
+    "[SolarEclipse] 3D Moon with crater texture created - will drift into eclipse position",
+    "[SolarEclipse] 3D Corona particles created: 100",
+    "[SolarEclipse] 3D Flare particles created: 50",
+    "[SolarEclipse] Eclipse sparks pool created with 2 systems, 150 particles each",
+    "[SolarEclipse] Solar tendrils created",
+    "[SolarEclipse] Diamond ring effect updated (large geometry)",
+    "[SolarEclipse] Lens flares created",
+    "[SolarEclipse] Ambient particles created: 80",
+    "[playground:boot] effect mounted, first applyFrame +0.00s",
+    "[playground:boot] first update applied, first render +0.00s",
+    "[playground:boot] first render returned +0.03s"
+  ],
+  "state": {
+    "classicCandidate": {
+      "renderer": "WebGLRenderer",
+      "backend": "WebGL2",
+      "frame": 7,
+      "render": {
+        "frame": 7,
+        "calls": 20,
+        "triangles": 982,
+        "points": 1930,
+        "lines": 0
+      },
+      "canvas": {
+        "width": 351,
+        "height": 759
+      },
+      "camera": {
+        "zoom": 0.5415817104153435,
+        "aspect": 0.46208530805687204,
+        "position": [
+          -121.75331031566768,
+          105.31830883925552,
+          894.955858082769
+        ]
+      },
+      "glError": 0
+    },
+    "raw": null,
+    "ready": true,
+    "error": null,
+    "backend": "WebGL2",
+    "frame": 8,
+    "render": {
+      "calls": 2,
+      "frameCalls": 0,
+      "drawCalls": 0,
+      "triangles": 0,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "meshes": 0,
+    "nodeMaterials": 0,
+    "diagnostics": null,
+    "canvas": {
+      "width": 487,
+      "height": 1055
+    }
+  },
+  "status": "pass",
+  "environment": {
+    "deviceScaleFactor": 3,
+    "navigatorGPU": false,
+    "forceWebGL": true,
+    "canonicalSetting": {
+      "effectQuality": "Minimal"
+    },
+    "globalRenderScale": 1,
+    "rendererPixelRatio": 0.9
+  }
+}

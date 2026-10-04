@@ -173,6 +173,7 @@ const FOG_COLOR_DUSK = new THREE.Color(0xff8060);
 
 // Scratch color for per-frame fog blending (fully overwritten each updateFog call)
 const _fogColor = new THREE.Color();
+const _celestialViewPosition = new THREE.Vector3();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Theme Class
@@ -889,7 +890,8 @@ export default class SunsetTheme extends BaseTheme {
         this.dayProgress = (this.dayProgress + this.cycleSpeed * delta) % 1.0;
         this.uniforms.dayProgress.value = this.dayProgress;
 
-        // Update sun position based on day progress
+        // Frame celestial bodies against this frame's camera pose.
+        this.updateCameraDrift(elapsed, delta);
         this.updateSunPosition();
 
         // Decay sun intensity back to normal
@@ -900,9 +902,6 @@ export default class SunsetTheme extends BaseTheme {
                 delta * 2.0,
             );
         }
-
-        // Camera drift
-        this.updateCameraDrift(elapsed, delta);
 
         // Update effects
         this.updateShockwaves(delta);
@@ -939,6 +938,22 @@ export default class SunsetTheme extends BaseTheme {
         }
     }
 
+    fitCelestialToPortrait(position, radius) {
+        if (!this.camera || this.camera.aspect >= 1) return;
+
+        // Retain the desktop arc, but keep the luminous core inside narrow
+        // portrait views, including camera sway and focal breathing.
+        this.camera.updateMatrixWorld();
+        _celestialViewPosition.copy(position).applyMatrix4(this.camera.matrixWorldInverse);
+        const depth = -_celestialViewPosition.z;
+        if (depth <= 0) return;
+        const halfWidth = depth * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5))
+            * this.camera.aspect;
+        const limit = Math.max(0, halfWidth - radius * 1.5);
+        _celestialViewPosition.x = THREE.MathUtils.clamp(_celestialViewPosition.x, -limit, limit);
+        position.copy(_celestialViewPosition.applyMatrix4(this.camera.matrixWorld));
+    }
+
     updateSunPosition() {
         // Sun traces a proper arc across the sky and below the horizon
         // The arc goes from east (dawn) to west (sunset) and dips below at night
@@ -954,6 +969,7 @@ export default class SunsetTheme extends BaseTheme {
         const y = Math.sin(angle) * 70 - 15; // Peak +55, Dip -85
 
         this.sunPosition.set(x, y, -100);
+        this.fitCelestialToPortrait(this.sunPosition, 8);
 
         // Update sun mesh and glow layers
         if (this.sun) {
@@ -1005,6 +1021,7 @@ export default class SunsetTheme extends BaseTheme {
         const moonY = Math.sin(moonAngle) * 75 - 25;
 
         this.moonPosition.set(moonX, moonY, -120);
+        this.fitCelestialToPortrait(this.moonPosition, 8);
 
         // Moon visibility - only visible when above horizon AND sun is down
         // Horizon is around Y = -30
@@ -1430,6 +1447,7 @@ export default class SunsetTheme extends BaseTheme {
 
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
+        this.updateSunPosition();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
 
         // Update post-processing
@@ -1538,8 +1556,8 @@ export default class SunsetTheme extends BaseTheme {
     }
 
     createStars() {
-        // Use High Quality settings from Blood Moon as baseline (35k stars) or respect preset
-        const count = this.activePreset.starCount >= 20000 ? this.activePreset.starCount : 35000;
+        // Keep the authored quality budget for the full 3D starfield.
+        const count = this.activePreset?.starCount ?? 35000;
         const geometry = new THREE.BufferGeometry();
 
         const positions = new Float32Array(count * 3);

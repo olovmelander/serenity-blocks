@@ -48,6 +48,7 @@ import firUrl from '../../shared/assets/fir_lod.glb?url';
 // every theme using it, so this adds no bytes beyond what sakura already ships.
 import sakuraLandscapeUrl from '../../shared/assets/landscape-glb.glb?url';
 
+const DRACO_DECODER_PATH = `${import.meta.env.BASE_URL || '/'}assets/vendor/draco/`;
 const TAU = Math.PI * 2;
 const MOON_DIRECTION = [-0.36, 0.82, -0.44];
 
@@ -397,7 +398,7 @@ export function createKoiPondForest({
 
     const loader = new GLTFLoader();
     const draco = new DRACOLoader();
-    draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    draco.setDecoderPath(DRACO_DECODER_PATH);
     loader.setDRACOLoader(draco);
 
     const matrix = new THREE.Matrix4();

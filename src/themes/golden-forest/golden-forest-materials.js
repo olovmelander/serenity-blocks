@@ -128,6 +128,8 @@ export function createSkyNodeMaterial(params = {}) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.side = THREE.BackSide;
+    // The sky is the source of atmospheric color, beyond the fogged geometry.
+    material.fog = false;
     material.depthWrite = false;
     material.colorNode = color;
     material.emissiveNode = color.mul(0.14);
@@ -207,6 +209,8 @@ export function createSunNodeMaterial(params = {}) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.transparent = true;
+    // Preserve the distant light source; its halo supplies the sunset haze.
+    material.fog = false;
     material.blending = THREE.AdditiveBlending;
     material.depthWrite = false;
     material.colorNode = color;

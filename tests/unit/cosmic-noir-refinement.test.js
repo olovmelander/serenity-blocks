@@ -97,6 +97,7 @@ describe('Cosmic Noir choreography', () => {
     it('maintains the physical sprite flash size throughout its fade', () => {
         const theme = runtime();
         theme.isWebGPU = true;
+        theme.usesNodeMaterials = true;
         theme.createComboFlashLayer(280);
         applyNoirFlashScale(theme.comboFlash, 0.8);
         expect(theme.comboFlash.scale.x).toBeCloseTo(756 * 1.52);

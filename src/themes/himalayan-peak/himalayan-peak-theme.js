@@ -12,6 +12,7 @@
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { BaseTheme } from '../base-theme.js';
+import { initializeThemeNodeRenderer } from '../shared/node-renderer.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { HIMALAYAN_PEAK_TETROMINOS } from './himalayan-peak-tetrominos.js';
@@ -136,48 +137,18 @@ export default class HimalayanPeakTheme extends BaseTheme {
             return;
         }
 
-        if (!navigator.gpu) {
-            console.warn('[HimalayanPeak] No WebGPU — fallback message (WebGL path is Phase 5)');
-            container.innerHTML = '<div style="color:#c8d2f0;text-align:center;padding:2em;'
-                + 'font-family:sans-serif;">Himalayan Peak requires WebGPU. Try Chrome 113+ or Safari 26+.</div>';
-            return;
-        }
-
         const w = window.innerWidth;
         const h = window.innerHeight;
-
-        const renderer = new THREE.WebGPURenderer({
+        const renderer = await initializeThemeNodeRenderer(this, {
             antialias: this.getAntialiasEnabled(),
             alpha: false,
             powerPreference: 'high-performance',
-        });
-        try {
-            await this.initializeRendererCandidate(renderer, {
-                timeoutMs: 4000,
-                label: 'Himalayan Peak WebGPU renderer init',
-                ownerGeneration,
-            });
-            if (renderer.backend?.isWebGPUBackend !== true) {
-                throw new Error('WebGPU backend not active after init');
-            }
-        } catch (err) {
-            if (ownerGeneration !== this.lifecycleGeneration
-                || !this.isActive
-                || this.cleanupComplete) return;
-            console.error('[HimalayanPeak] WebGPU init failed:', err);
-            this.disposeRenderer(renderer, { nullInstance: false });
-            container.innerHTML = '<div style="color:#c8d2f0;text-align:center;padding:2em;'
-                + `font-family:sans-serif;">WebGPU initialization failed: ${err.message}</div>`;
-            return;
-        }
-
-        if (ownerGeneration !== this.lifecycleGeneration
-            || !this.isActive
-            || this.cleanupComplete) {
-            this.disposeRenderer(renderer, { nullInstance: false });
-            return;
-        }
+        }, { ownerGeneration, label: 'Himalayan Peak' });
+        if (!renderer) return;
         this.renderer = renderer;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: renderer.backend?.isWebGPUBackend === true ? renderer.backend.device : null,
+        });
 
         this.renderer.setPixelRatio(this.getEffectivePixelRatio(2));
         this.renderer.setSize(w, h);
@@ -373,6 +344,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
     stop() {
         super.stop();
+        this.removeRendererResilience();
         for (const unsub of this.eventUnsubscribers) {
             try { unsub?.(); } catch (e) { /* ignore */ }
         }

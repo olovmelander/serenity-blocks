@@ -18,6 +18,7 @@
 import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
+import { getEffectsEnabled, getRenderScale, normalizeQuality } from '../../utils/quality.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { create as createBioluminescence2Scene } from '../../playground/effects/bioluminescence-2.effect.js';
 import { BIOLUMINESCENCE_2_TETROMINOS } from './bioluminescence-2-tetrominos.js';
@@ -51,6 +52,14 @@ export default class Bioluminescence2Theme extends BaseTheme {
         this.eventUnsubscribers = [];
     }
 
+    getSceneParams() {
+        const params = new URLSearchParams(window.location.search);
+        const quality = normalizeQuality(window.settings?.effectQuality || params.get('quality'));
+        if (!params.has('density')) params.set('density', String(getRenderScale(quality)));
+        if (!getEffectsEnabled(quality).bloom) params.set('nobloom', '1');
+        return params;
+    }
+
     async createScene(ownerGeneration = this.lifecycleGeneration) {
         const container = document.getElementById(`${this.name}-theme`);
         if (!container) {
@@ -76,7 +85,7 @@ export default class Bioluminescence2Theme extends BaseTheme {
             camera: this.camera,
             renderer: this.renderer,
             sizes: { width, height },
-            params: new URLSearchParams(window.location.search),
+            params: this.getSceneParams(),
         });
 
         this.setupResize();

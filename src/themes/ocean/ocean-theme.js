@@ -962,6 +962,7 @@ export default class OceanTheme extends BaseTheme {
             active: this.isActive === true,
             backend: this.getBackendLabel(),
             isWebGPU: this.isWebGPU === true,
+            usesNodeMaterials: this.usesNodeMaterials,
             artDirection,
             flags: {
                 forceWebGL: this.flags?.forceWebGL === true,
@@ -978,7 +979,7 @@ export default class OceanTheme extends BaseTheme {
             post: {
                 enabled: post?.enabled === true,
                 className: post?.constructor?.name || null,
-                dofEnabled: preset.dofEnabled === true && this.isWebGPU === true,
+                dofEnabled: preset.dofEnabled === true && this.usesNodeMaterials === true,
                 dofStrength: roundMetric(post?.uDofStrength?.value ?? 0, 4),
                 dofMaxRadius: roundMetric(post?.uDofMaxRadius?.value ?? 0, 5),
                 dofDeadZone: roundMetric(post?.uDofDeadZone?.value ?? 0, 5),
@@ -998,8 +999,8 @@ export default class OceanTheme extends BaseTheme {
             compute: {
                 requested: preset.useGPUCompute === true,
                 fish: 'cpu-deferred',
-                plankton: this.isWebGPU ? 'vertex-shader-billboards' : 'vertex-shader-points',
-                bubbles: this.isWebGPU ? 'vertex-shader-billboards' : 'vertex-shader-points',
+                plankton: this.usesNodeMaterials ? 'vertex-shader-billboards' : 'vertex-shader-points',
+                bubbles: this.usesNodeMaterials ? 'vertex-shader-billboards' : 'vertex-shader-points',
                 storageBufferFish: false,
             },
             visuals: {
@@ -1012,13 +1013,13 @@ export default class OceanTheme extends BaseTheme {
                 biomeSilhouettes: biomeSilhouetteCount,
                 kelpCurtains: kelpCurtainCount,
                 atmosphereAssets: this.atmosphereSystem?.collectSignoff?.() ?? null,
-                refractionEnabled: preset.refractionEnabled === true && this.isWebGPU === true,
+                refractionEnabled: preset.refractionEnabled === true && this.usesNodeMaterials === true,
                 refractionSource:
                     post?.uRefractionStrength?.value > 0 ? 'post-screen-space' : 'disabled',
                 chromaticEdge: preset.chromaticEdge ?? 0,
                 shaftStrength: preset.shaftStrength ?? atmosphere.rayStrength ?? 0,
                 godRaySamples: preset.godRaySamples ?? atmosphere.rayCount ?? 0,
-                particlePrimitive: this.isWebGPU ? 'billboard-quad' : 'points',
+                particlePrimitive: this.usesNodeMaterials ? 'billboard-quad' : 'points',
                 webgpuPointSprites: false,
             },
             counts: {
@@ -1084,7 +1085,7 @@ export default class OceanTheme extends BaseTheme {
         const resolvedQuality = this.qualityPresets[quality] ? quality : 'High';
         this.currentQuality = resolvedQuality;
         this.activePreset = this.qualityPresets[resolvedQuality];
-        if (this.isWebGPU && this.scene) {
+        if (this.usesNodeMaterials && this.scene) {
             this.scene.fogNode = createOceanFogNode(resolvedQuality);
         }
         if (this.isActive && this.scene) this.rebuildScene();
@@ -1181,51 +1182,49 @@ export default class OceanTheme extends BaseTheme {
     /**
      * Try WebGPU first, fall back to WebGL2 (mirrors black-hole-theme.js)
      */
+    get usesNodeMaterials() {
+        return this.renderer ? this.renderer.isWebGPURenderer === true : this.isWebGPU === true;
+    }
+
     async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
         const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
-            && this.isActive
-            && !this.cleanupComplete;
-        let webgpuRenderer = null;
-        let renderer = null;
-
+            && this.isActive && !this.cleanupComplete;
+        const createCandidate = async (forceWebGL) => {
+            const candidate = new THREE_WEBGPU.WebGPURenderer({
+                antialias: this.getAntialiasEnabled(),
+                alpha: false,
+                powerPreference: 'high-performance',
+                forceWebGL,
+            });
+            return this.initializeRendererCandidate(candidate, {
+                label: `Ocean ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            });
+        };
+        let renderer;
         this.webglFallbackClamped = false;
         this.webglFallbackClampedFromQuality = null;
-
-        if (!this.flags.forceWebGL) {
-            try {
-                webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
-                    antialias: this.getAntialiasEnabled(),
-                    alpha: false,
-                    powerPreference: 'high-performance',
-                });
-                await this.initializeRendererCandidate(webgpuRenderer, {
-                    label: 'Ocean WebGPU renderer init',
-                    ownerGeneration,
-                });
-            } catch (error) {
-                if (!ownsLifecycle()) return false;
-                console.warn('🌊 [Ocean] WebGPU init failed, falling back to WebGL2:', error);
-                if (webgpuRenderer) {
-                    webgpuRenderer.dispose();
-                    webgpuRenderer = null;
-                }
-            }
-        } else {
-            console.log('🌊 [Ocean] forceWebGL=1 active; skipping WebGPU init');
+        const forceWebGL = this.flags.forceWebGL
+            || typeof navigator === 'undefined' || !navigator.gpu;
+        try {
+            renderer = await createCandidate(forceWebGL);
+        } catch (error) {
+            if (!ownsLifecycle()) return false;
+            if (forceWebGL) throw error;
+            console.warn('🌊 [Ocean] WebGPU init failed, trying WebGL2:', error);
+            renderer = await createCandidate(true);
         }
-
-        if (webgpuRenderer && webgpuRenderer.backend?.isWebGPUBackend === true) {
-            renderer = webgpuRenderer;
-            this.isWebGPU = true;
+        if (!ownsLifecycle()) {
+            await this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
+        }
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        if (this.isWebGPU) {
             renderer.onDeviceLost = (info) => {
                 if (!ownsLifecycle() || this.renderer !== renderer) return;
-                // A WebGPU device loss is terminal for this renderer. Halt the
-                // theme's render loop so it stops driving three's error-scope
-                // polling against a dead device (unhandled popErrorScope
-                // rejections every frame otherwise). Gameplay is unaffected —
-                // the backdrop simply freezes until the theme is switched.
                 console.error('🌊 [Ocean] WebGPU device lost — halting theme rendering:', info);
                 this.animationLoopStarted = false;
                 if (this.animationFrameId) {
@@ -1233,51 +1232,20 @@ export default class OceanTheme extends BaseTheme {
                     this.animationFrameId = null;
                 }
             };
-        } else {
-            if (webgpuRenderer) webgpuRenderer.dispose();
-            if (!ownsLifecycle()) return false;
-            renderer = new THREE.WebGLRenderer({
-                antialias: this.getAntialiasEnabled(),
-                alpha: false,
-                powerPreference: 'high-performance',
-            });
-            this.isWebGPU = false;
         }
-
-        if (!ownsLifecycle()) {
-            this.disposeRenderer(renderer, { nullInstance: false });
-            return false;
-        }
-        this.renderer = renderer;
-
         console.log(`🌊 [Ocean] Using ${this.isWebGPU ? 'WebGPU' : 'WebGL2'} backend`);
-
-        this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        // Tropical-cyan clear, slightly deeper than the fog so the horizon
-        // dome reads as bright water rather than featureless overcast.
-        this.renderer.setClearColor(OCEAN_WATER_COLOR);
-
-        if (!this.isWebGPU) {
-            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            this.renderer.toneMappingExposure = 1.12;
-        }
-
-        const canvas = this.renderer.domElement;
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(this.getEffectivePixelRatio());
+        renderer.setClearColor(OCEAN_WATER_COLOR);
+        const canvas = renderer.domElement;
         canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none';
         container.appendChild(canvas);
-
-        // Clamp WebGL fallback to Medium quality max
-        if (!this.isWebGPU) {
-            const maxWebGL = ['Minimal', 'Low', 'Medium'];
-            if (!maxWebGL.includes(this.currentQuality)) {
-                this.webglFallbackClamped = true;
-                this.webglFallbackClampedFromQuality = this.currentQuality;
-                console.warn('🌊 [Ocean] WebGL fallback: clamping quality to Medium');
-                this.applyQualityPreset('Medium');
-            }
-        }
+        this.removeRendererResilience();
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+            onContextLost: () => console.warn('🌊 [Ocean] GPU context lost'),
+            onContextRestored: () => console.log('🌊 [Ocean] GPU context restored'),
+        });
         return true;
     }
 
@@ -1304,7 +1272,7 @@ export default class OceanTheme extends BaseTheme {
             // Tropical-cyan fog tuned between dark mood and washed-out — slightly
             // deeper hue + a touch more density so the distance has visible
             // atmospheric falloff instead of reading as a uniform pale dome.
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
             // Ordered clear/silhouette/far ranges plus authored canyon and reef
             // density zones. Lower tiers compile fewer ellipsoid masks.
                 this.scene.fogNode = createOceanFogNode(this.currentQuality);
@@ -1321,12 +1289,6 @@ export default class OceanTheme extends BaseTheme {
             );
             this.camera.position.set(0, 20, 80);
             this.camera.lookAt(0, 5, 0);
-
-            // Wire GPU resilience (mirrors black-hole)
-            this.setupRendererResilience(this.renderer, {
-                onContextLost: () => console.warn('🌊 [Ocean] GPU context lost'),
-                onContextRestored: () => console.log('🌊 [Ocean] GPU context restored'),
-            });
 
             this.buildScene();
             this.setupEventListeners();
@@ -1371,7 +1333,7 @@ export default class OceanTheme extends BaseTheme {
         // build below — moves shader compile cost off the first render frame.
         this.isPrewarming = true;
         let criticalCompile = Promise.resolve();
-        if (this.isWebGPU && this.renderer?.compileAsync) {
+        if (this.usesNodeMaterials && this.renderer?.compileAsync) {
             const restoreEffects = this.gameplayEffects?.prepareForCompile?.();
             try {
                 criticalCompile = this.renderer.compileAsync(this.scene, this.camera)
@@ -1462,7 +1424,7 @@ export default class OceanTheme extends BaseTheme {
                     token === this._sceneBuildToken
                     && this.scene
                     && this.renderer
-                    && this.isWebGPU
+                    && this.usesNodeMaterials
                     && this.renderer.compileAsync
                 ) {
                     await this.renderer.compileAsync(this.scene, this.camera);
@@ -1520,6 +1482,7 @@ export default class OceanTheme extends BaseTheme {
             preset: this.activePreset,
             getSeabedHeight: this.getSeabedHeight.bind(this),
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             // Diagnostic skip flags — let us A/B which atmosphere component
             // drives the 16 ms `ocean.renderTotal` cost spike.
             skipFlags: {
@@ -1562,7 +1525,7 @@ export default class OceanTheme extends BaseTheme {
         const geometry = new THREE.PlaneGeometry(500, 500, 64, 64);
         geometry.rotateX(Math.PI / 2);
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const refractionEnabled = this.activePreset?.refractionEnabled === true;
             const shaftStrength = this.activePreset?.atmosphere?.rayStrength ?? 0;
             const material = createWaterSurfaceNodeMaterial({
@@ -1929,7 +1892,7 @@ export default class OceanTheme extends BaseTheme {
         }
         geometry.computeVertexNormals();
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const material = createSeabedNodeMaterial({
                 rippleStrength: this.activePreset.rippleNormalStrength ?? 1.6,
                 causticStrength: this.activePreset.causticStrength ?? 0.55,
@@ -2250,7 +2213,7 @@ export default class OceanTheme extends BaseTheme {
         bladeGeometry.setIndex(bladeIndices);
         bladeGeometry.computeVertexNormals();
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const bladeMaterial = createSeaweedNodeMaterial({ currentStrength: 0.5 });
             const seaweedMesh = new THREE.InstancedMesh(bladeGeometry, bladeMaterial, count);
             const phases = new Float32Array(count);
@@ -2645,7 +2608,7 @@ export default class OceanTheme extends BaseTheme {
             return this.nudgeOutOfReadabilityZone(x, z, 140);
         };
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const meadowMaterial = createSeagrassMeadowNodeMaterial({ currentStrength: 0.5 });
             const meadowMesh = new THREE.InstancedMesh(bladeGeometry, meadowMaterial, count);
             const phases = new Float32Array(count);
@@ -2856,7 +2819,7 @@ export default class OceanTheme extends BaseTheme {
             this.scene.add(this.coralGroup);
             return;
         }
-        const material = this.isWebGPU
+        const material = this.usesNodeMaterials
             ? createModularCoralNodeMaterial()
             : new THREE.MeshStandardMaterial({
                 color: 0xffffff,
@@ -2880,7 +2843,7 @@ export default class OceanTheme extends BaseTheme {
             moduleCount: 6,
             ...batch.userData.metrics,
         };
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this._tslUniforms = this._tslUniforms || [];
             this._tslUniforms.push(material.userData);
         }
@@ -3080,7 +3043,7 @@ export default class OceanTheme extends BaseTheme {
 
         typeNames.forEach((typeName) => {
             const colorBuckets = buckets[typeName];
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 // WS 4.2 pattern: the 6 colour buckets for this geometry differ
                 // only by a tint, so collapse them into ONE InstancedMesh that
                 // carries the tint per-instance via `aInstanceColor`. Up to 48
@@ -3155,6 +3118,7 @@ export default class OceanTheme extends BaseTheme {
             getSeabedHeight: this.getSeabedHeight.bind(this),
             isPointOccupied: this.isPointOccupied.bind(this),
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
         });
         this.fishSystem.init();
     }
@@ -3235,6 +3199,7 @@ export default class OceanTheme extends BaseTheme {
             totalCount: count,
             qualityTier,
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             getSeabedHeight: this.getSeabedHeight.bind(this),
             isPointOccupied: this.isPointOccupied.bind(this),
             getFishSystem: () => this.fishSystem,
@@ -3248,6 +3213,7 @@ export default class OceanTheme extends BaseTheme {
             scene: this.scene,
             camera: this.camera,
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             preset: this.activePreset,
             quality: this.currentQuality,
             getSeabedHeight: this.getSeabedHeight.bind(this),
@@ -3266,6 +3232,7 @@ export default class OceanTheme extends BaseTheme {
             preset: this.activePreset,
             quality: this.currentQuality,
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             getSeabedHeight: this.getSeabedHeight.bind(this),
             getPost: () => this.oceanPost,
             getFishSystem: () => this.fishSystem,
@@ -3317,7 +3284,7 @@ export default class OceanTheme extends BaseTheme {
             positions, phases, sizes, count,
         };
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             geometry.dispose();
             const billboardGeometry = new THREE.PlaneGeometry(1, 1, 1, 1);
             billboardGeometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
@@ -3406,7 +3373,7 @@ export default class OceanTheme extends BaseTheme {
         try {
             gltf = await loadGltfCached(OCEAN_JELLYFISH_MODEL_URL);
             if (!ownsScene()) return;
-            const mesh = createOceanJellyfishModels(gltf, population, { isWebGPU: this.isWebGPU });
+            const mesh = createOceanJellyfishModels(gltf, population, { usesNodeMaterials: this.usesNodeMaterials });
             updateOceanJellyfishModels(mesh, this.clock?.elapsedTime ?? 0, this.glowIntensity);
             fallback.removeFromParent();
             this.uniformsToUpdate = this.uniformsToUpdate.filter((entry) => entry !== fallback.material.uniforms);
@@ -3416,7 +3383,7 @@ export default class OceanTheme extends BaseTheme {
             fallback.material.dispose();
             this.jellyfishMesh = mesh;
             scene.add(mesh);
-            if (this.isWebGPU) this._tslUniforms.push(mesh.material.userData);
+            if (this.usesNodeMaterials) this._tslUniforms.push(mesh.material.userData);
             this._lastUniformBroadcast = null;
         } catch (error) {
             if (ownsScene()) console.warn('[Ocean] Blender jellyfish unavailable; keeping fallback:', error);
@@ -3459,7 +3426,7 @@ export default class OceanTheme extends BaseTheme {
         geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             geometry.dispose();
             this.planktonData = {
                 positions, phases, sizes, count,
@@ -3592,7 +3559,7 @@ export default class OceanTheme extends BaseTheme {
         geometry.setAttribute('aColumnSpread', new THREE.BufferAttribute(columnSpread, 1));
         geometry.setAttribute('aMicro', new THREE.BufferAttribute(micro, 1));
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             geometry.dispose();
             this.bubbleBillboardData = {
                 positions,
@@ -3817,7 +3784,7 @@ export default class OceanTheme extends BaseTheme {
     setupPostProcessing() {
         const post = this.activePreset?.postProcessing;
         const postEnabled = post?.postProcessingEnabled ?? (post?.bloom || post?.grade);
-        if (this.isWebGPU && postEnabled) {
+        if (this.usesNodeMaterials && postEnabled) {
             // WebGPU TSL pipeline
             try {
                 const preset = this.activePreset ?? {};
@@ -3827,7 +3794,7 @@ export default class OceanTheme extends BaseTheme {
                     // scene pass. Ocean's previous selective-MRT path dropped
                     // much of that depth layering on WebGPU; color-source bloom
                     // is both cheaper and visually faithful here.
-                    useMRT: post.useMRT === true,
+                    useMRT: this.isWebGPU && post.useMRT === true,
                     bloomStrength: post.bloom ? (post.bloomStrength ?? 0.1) : 0.0,
                     bloomRadius: post.bloomRadius ?? 0.5,
                     bloomThreshold: post.bloomThreshold ?? 0.85,
@@ -4046,7 +4013,7 @@ export default class OceanTheme extends BaseTheme {
         if (jellyfishPhase && modeledJellyfish) {
             updateOceanJellyfishModels(this.jellyfishMesh, time, this.glowIntensity);
         }
-        if (!this.isWebGPU || !this.camera) return;
+        if (!this.usesNodeMaterials || !this.camera) return;
 
         // Debug skip flags fully suppress the per-population update path even
         // when the mesh still exists in the scene — lets us measure pure CPU
@@ -5014,6 +4981,7 @@ export default class OceanTheme extends BaseTheme {
     // CLEANUP
     // ═══════════════════════════════════════════════════════════════════════════
     stop() {
+        this.removeRendererResilience();
         this.uninstallSignoffHelper();
         this.animationLoopStarted = false;
 
@@ -5034,6 +5002,7 @@ export default class OceanTheme extends BaseTheme {
         this.disposeSceneContents();
 
         if (this.renderer) {
+            this.renderer.onDeviceLost = () => undefined;
             this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer = null;
         }

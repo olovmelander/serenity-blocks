@@ -115,8 +115,8 @@ function cloneNormalizedGeometry(source) {
     return geometry;
 }
 
-function createModelMaterial(isWebGPU) {
-    const MaterialClass = isWebGPU ? THREE.MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
+function createModelMaterial(usesNodeMaterials) {
+    const MaterialClass = usesNodeMaterials ? THREE.MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
     const material = new MaterialClass({
         color: new THREE.Color().setRGB(0.72, 0.96, 0.90),
         vertexColors: true,
@@ -128,9 +128,9 @@ function createModelMaterial(isWebGPU) {
         side: THREE.DoubleSide,
         forceSinglePass: true,
     });
-    const uTime = isWebGPU ? uniform(0) : { value: 0 };
-    const uGlowIntensity = isWebGPU ? uniform(0.8) : { value: 0.8 };
-    if (isWebGPU) {
+    const uTime = usesNodeMaterials ? uniform(0) : { value: 0 };
+    const uGlowIntensity = usesNodeMaterials ? uniform(0.8) : { value: 0.8 };
+    if (usesNodeMaterials) {
         const viewDirection = normalize(cameraPosition.sub(positionWorld));
         const rim = pow(float(1).sub(abs(dot(normalWorld, viewDirection))).clamp(0, 1), float(3));
         const bell = float(1).sub(smoothstep(float(0.48), float(0.68), vertexAttribute('color', 'vec4').a));
@@ -149,7 +149,7 @@ function createModelMaterial(isWebGPU) {
  * Update on Ocean's existing jellyfish CPU phase. Dispose with the exported
  * helper (also available as mesh.userData.dispose) to release the morph texture.
  */
-export function createOceanJellyfishModels(gltf, population, { isWebGPU = true } = {}) {
+export function createOceanJellyfishModels(gltf, population, { isWebGPU = true, usesNodeMaterials = isWebGPU } = {}) {
     const sources = [];
     gltf?.scene?.traverse((child) => {
         if (child.isMesh && child.geometry?.attributes.position) sources.push(child);
@@ -172,7 +172,7 @@ export function createOceanJellyfishModels(gltf, population, { isWebGPU = true }
     }
     gltf.scene.updateWorldMatrix(true, true);
     const geometry = cloneNormalizedGeometry(source);
-    const material = createModelMaterial(isWebGPU);
+    const material = createModelMaterial(usesNodeMaterials);
     const mesh = new THREE.InstancedMesh(geometry, material, count);
     mesh.name = 'OceanBlenderJellyfish';
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -195,7 +195,7 @@ export function createOceanJellyfishModels(gltf, population, { isWebGPU = true }
     const sampler = createOceanMorphSampler(source, clip);
     mesh.userData.authoredMorphAnimation = sampler.authored;
     animationStates.set(mesh, {
-        population, sampler, dummy: new THREE.Object3D(), isWebGPU, influenceSource,
+        population, sampler, dummy: new THREE.Object3D(), usesNodeMaterials, influenceSource,
     });
     updateOceanJellyfishModels(mesh, 0, 0.8);
 
@@ -232,11 +232,11 @@ export function updateOceanJellyfishModels(mesh, time, glow = 0.8) {
     const {
         population: {
             positions, phases, sizes, count,
-        }, sampler, dummy, isWebGPU, influenceSource,
+        }, sampler, dummy, usesNodeMaterials, influenceSource,
     } = state;
     mesh.material.userData.uTime.value = time;
     mesh.material.userData.uGlowIntensity.value = glow;
-    if (!isWebGPU) mesh.material.emissiveIntensity = 0.8 + glow * 0.2;
+    if (!usesNodeMaterials) mesh.material.emissiveIntensity = 0.8 + glow * 0.2;
     for (let index = 0; index < count; index += 1) {
         const phase = phases[index];
         const offset = index * 3;

@@ -62,7 +62,7 @@ const POISSON_TAPS = [
 export class OceanPost {
     constructor(renderer, scene, camera, params = {}) {
         this.renderer = renderer;
-        this.useMRT = params.useMRT ?? true;
+        this.useMRT = renderer?.backend?.isWebGPUBackend === true && (params.useMRT ?? true);
         this.sceneScale = params.sceneScale ?? 1.0;
         this.bloomScale = params.bloomScale ?? 0.6;
         this.postProcessing = new THREE_GPU.RenderPipeline(renderer);

@@ -56,6 +56,19 @@ Note: the previously-bundled `0QuazDeckard…` car textures (unreferenced by any
 
 ---
 
+## 1c. Apache-2.0 bundled utilities
+
+**Draco** glTF geometry decoders under `public/assets/vendor/draco/` are from
+**Google's Draco project**, bundled unchanged from the pinned Three.js 0.186.1
+package (`examples/jsm/libs/draco/gltf/`). Koi Pond uses these decoders to load its
+compressed authored tree meshes without an external decoder download. Source:
+https://github.com/google/draco
+
+The full Apache License 2.0 text, upstream README, and file hashes are included
+beside the decoder files in `public/assets/vendor/draco/`.
+
+---
+
 ## 2. CC0 / Public-Domain assets (attribution not required, credited as good practice)
 
 - **Poly Haven** (CC0) — texture/HDRI detail maps used luminance-only in several themes:

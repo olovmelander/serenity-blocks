@@ -184,6 +184,9 @@ export default class NebulaFlowTheme extends BaseTheme {
      * Get configuration based on quality setting
      */
     getConfig(quality) {
+        // The shared UI has six tiers; this fluid scene has four authored budgets.
+        const normalized = String(quality || 'medium').trim().toLowerCase();
+        const selected = { minimal: 'low', ultra: 'high' }[normalized] || normalized;
         // Quality presets with distinct visual differences
         const presets = {
             low: {
@@ -263,10 +266,10 @@ export default class NebulaFlowTheme extends BaseTheme {
             high: 0.85,
             extreme: 1.0,
         };
-        this.currentQualityMultiplier = this.qualityMultipliers[quality] || this.qualityMultipliers.medium;
+        this.currentQualityMultiplier = this.qualityMultipliers[selected] || this.qualityMultipliers.medium;
 
-        const config = presets[quality] || presets.medium;
-        console.log(`[NebulaFlow] Applying ${quality} quality preset (multiplier: ${this.currentQualityMultiplier})`);
+        const config = presets[selected] || presets.medium;
+        console.log(`[NebulaFlow] Applying ${selected} quality preset (multiplier: ${this.currentQualityMultiplier})`);
 
         return {
             ...config,
@@ -285,8 +288,8 @@ export default class NebulaFlowTheme extends BaseTheme {
      */
     getQualitySetting() {
         if (typeof window !== 'undefined' && window.settings) {
-            const quality = window.settings.effectQuality || 'Medium';
-            return quality.toLowerCase();
+            const quality = window.settings.effectQuality || window.settings.graphicsQuality || 'Medium';
+            return String(quality).trim().toLowerCase();
         }
         return 'medium';
     }

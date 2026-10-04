@@ -85,13 +85,23 @@ export function create({
     const hemi = new THREE.HemisphereLight(0xc4e6ae, 0x394530, 0.64);
     scene.add(ambient, sun, sun.target, hemi);
     const atmosphere = new OceanAtmosphereSystem({
-        scene, camera, preset, getSeabedHeight: getReefSeabedHeight, isWebGPU: true,
+        scene,
+        camera,
+        preset,
+        getSeabedHeight: getReefSeabedHeight,
+        isWebGPU: renderer.backend?.isWebGPUBackend === true,
+        usesNodeMaterials: true,
     });
     atmosphere.initCritical();
     atmosphere.initDeferred();
     applyReefComposition(atmosphere);
     const fish = new OceanFishSystem({
-        scene, camera, preset, getSeabedHeight: getReefSeabedHeight, isWebGPU: true,
+        scene,
+        camera,
+        preset,
+        getSeabedHeight: getReefSeabedHeight,
+        isWebGPU: renderer.backend?.isWebGPUBackend === true,
+        usesNodeMaterials: true,
     });
     fish.init();
     const particles = createOceanReefParticles({

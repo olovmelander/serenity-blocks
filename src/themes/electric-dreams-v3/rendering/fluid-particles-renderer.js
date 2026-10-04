@@ -27,6 +27,7 @@ import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
     Fn,
+    attribute,
     cameraProjectionMatrix,
     cameraViewMatrix,
     float,
@@ -72,12 +73,18 @@ export function createFluidParticlesRenderer(sim, options = {}) {
     // Vertex node: read particle position from storage, build a billboard.
     // Billboards face the camera by transforming the local quad corners
     // into camera-space and offsetting in clip-space.
-    const positions = storage(positionBuffer, 'vec4', count);
-    const colors = storage(colorBuffer, 'vec4', count);
+    if (sim.isCPU) {
+        geometry.setAttribute('aFluidPosition', positionBuffer);
+        geometry.setAttribute('aFluidColor', colorBuffer);
+    }
+    const particlePosition = sim.isCPU ? attribute('aFluidPosition', 'vec4')
+        : storage(positionBuffer, 'vec4', count).element(instanceIndex);
+    const particleColor = sim.isCPU ? attribute('aFluidColor', 'vec4')
+        : storage(colorBuffer, 'vec4', count).element(instanceIndex);
 
     const vertexNode = Fn(() => {
-        const pdata = positions.element(instanceIndex).toVar();
-        const cdata = colors.element(instanceIndex).toVar();
+        const pdata = particlePosition.toVar();
+        const cdata = particleColor.toVar();
 
         const particlePos = pdata.xyz.toVar();
         const age = pdata.w.toVar();
@@ -105,8 +112,8 @@ export function createFluidParticlesRenderer(sim, options = {}) {
 
     // Fragment node: radial alpha falloff + iridescent color blend.
     const fragmentNode = Fn(() => {
-        const cdata = colors.element(instanceIndex).toVar();
-        const pdata = positions.element(instanceIndex).toVar();
+        const cdata = particleColor.toVar();
+        const pdata = particlePosition.toVar();
         const baseColor = cdata.xyz.toVar();
         const energy = cdata.w.toVar();
         const age = pdata.w.toVar();

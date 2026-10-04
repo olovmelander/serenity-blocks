@@ -173,6 +173,7 @@ export const tendrilVertexShader = `
     uniform float uTime;
     uniform float uIntensity;
     uniform vec3 uBasePosition;
+    uniform float uPixelRatio;
     
     varying float vProgress;
     varying float vAlpha;
@@ -196,7 +197,10 @@ export const tendrilVertexShader = `
         vAlpha = 1.0 - pow(aProgress, 2.0);
         vAlpha *= 0.8 + 0.2 * sin(uTime * 3.0);
         
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+        // Points need an explicit size; keep these flare ropes small and stable.
+        gl_PointSize = clamp(4.0 * uPixelRatio * (300.0 / max(1.0, -mvPosition.z)), 1.0, max(1.0, 12.0 * uPixelRatio));
+        gl_Position = projectionMatrix * mvPosition;
     }
 `;
 

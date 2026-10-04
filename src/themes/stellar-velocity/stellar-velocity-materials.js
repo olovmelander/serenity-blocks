@@ -2,8 +2,8 @@
  * Stellar Velocity - Material Factories (Phase 3)
  *
  * Dual-path strategy:
- * - WebGPU: Node materials (TSL) where available.
- * - WebGL: Existing shader/material fallbacks for visual parity and resilience.
+ * - Node renderer (WebGPU or WebGL2 backend): the same TSL materials.
+ * - Classic WebGLRenderer: legacy shader/material fallbacks.
  */
 
 import * as THREE from 'three';
@@ -58,6 +58,10 @@ export const STELLAR_VELOCITY_BLOOM_WEIGHTS = {
 
 // WebGPU path must not depend on large point primitives for signature visuals.
 const WEBGPU_POINT_SIZE_CAP_PX = 1;
+
+function usesNodeMaterials(params) {
+    return params.usesNodeMaterials ?? params.isWebGPU === true;
+}
 
 function resolveColor(color, fallback = 0xffffff) {
     if (color?.isColor) return color.clone();
@@ -223,7 +227,7 @@ function createStarfieldShaderMaterial(params = {}) {
 }
 
 export function createStellarVelocityStarfieldMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStarfieldNodeMaterial(params);
     }
     return createStarfieldShaderMaterial(params);
@@ -309,7 +313,7 @@ function createWarpCoreShaderMaterial(params = {}) {
 }
 
 export function createStellarVelocityWarpCoreMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createWarpCoreNodeMaterial(params);
     }
     return createWarpCoreShaderMaterial(params);
@@ -436,7 +440,7 @@ function createNebulaShaderMaterial(params = {}) {
 }
 
 export function createStellarVelocityNebulaMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createNebulaNodeMaterial(params);
     }
     return createNebulaShaderMaterial(params);
@@ -511,7 +515,7 @@ function createAsteroidFallbackMaterial(params = {}) {
 }
 
 export function createStellarVelocityAsteroidMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createAsteroidNodeMaterial(params);
     }
     return createAsteroidFallbackMaterial(params);
@@ -576,7 +580,7 @@ function createEnergyRingFallbackMaterial(params = {}) {
 }
 
 export function createStellarVelocityEnergyRingMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createEnergyRingNodeMaterial(params);
     }
     return createEnergyRingFallbackMaterial(params);
@@ -686,7 +690,7 @@ function createBurstParticleFallbackMaterial(params = {}) {
 }
 
 export function createStellarVelocityBurstParticleMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createBurstParticleNodeMaterial(params);
     }
     return createBurstParticleFallbackMaterial(params);
@@ -744,7 +748,7 @@ function createShockwaveFallbackMaterial(params = {}) {
 }
 
 export function createStellarVelocityShockwaveMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createShockwaveNodeMaterial(params);
     }
     return createShockwaveFallbackMaterial(params);
@@ -834,7 +838,7 @@ function createCoreGlowFallbackMaterial(params = {}) {
 }
 
 export function createStellarVelocityCoreGlowMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createCoreGlowSpriteNodeMaterial(params);
     }
     return createCoreGlowFallbackMaterial(params);
