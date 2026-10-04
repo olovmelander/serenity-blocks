@@ -1,0 +1,191 @@
+{
+  "beforeCommit": "7161370",
+  "comparisons": {
+    "native-idle.png": {
+      "before": {
+        "meanRGB": [
+          71.448,
+          77.972,
+          87.953
+        ],
+        "meanPeak": 93.22230709876543,
+        "meanChannelSpan": 27.671887345679007,
+        "meanHSVSaturation": 0.4651635284976374,
+        "clippedWhiteFraction": 3.858024691358025e-06
+      },
+      "after": {
+        "meanRGB": [
+          68.158,
+          69.921,
+          92.578
+        ],
+        "meanPeak": 108.89431944444446,
+        "meanChannelSpan": 64.24425848765432,
+        "meanHSVSaturation": 0.6768690928767508,
+        "clippedWhiteFraction": 3.858024691358025e-06
+      },
+      "planetCrop": {
+        "rect": [
+          100,
+          300,
+          420,
+          680
+        ],
+        "before": {
+          "meanRGB": [
+            179.951,
+            162.036,
+            159.913
+          ],
+          "meanPeak": 179.95088815789475,
+          "meanChannelSpan": 20.37123355263158,
+          "meanHSVSaturation": 0.12130477896432228,
+          "clippedWhiteFraction": 0.0
+        },
+        "after": {
+          "meanRGB": [
+            189.634,
+            135.605,
+            110.221
+          ],
+          "meanPeak": 190.33619243421055,
+          "meanChannelSpan": 90.42994243421055,
+          "meanHSVSaturation": 0.4971109561487184,
+          "clippedWhiteFraction": 0.0
+        }
+      }
+    },
+    "native-combo.png": {
+      "before": {
+        "meanRGB": [
+          72.25,
+          79.247,
+          89.437
+        ],
+        "meanPeak": 94.37968672839506,
+        "meanChannelSpan": 27.736111882716052,
+        "meanHSVSaturation": 0.46329085854380203,
+        "clippedWhiteFraction": 4.6296296296296296e-06
+      },
+      "after": {
+        "meanRGB": [
+          69.006,
+          71.524,
+          94.477
+        ],
+        "meanPeak": 110.0589035493827,
+        "meanChannelSpan": 63.65029475308641,
+        "meanHSVSaturation": 0.6675705526213598,
+        "clippedWhiteFraction": 3.858024691358025e-06
+      },
+      "planetCrop": {
+        "rect": [
+          100,
+          300,
+          420,
+          680
+        ],
+        "before": {
+          "meanRGB": [
+            180.352,
+            163.073,
+            161.389
+          ],
+          "meanPeak": 180.3520805921053,
+          "meanChannelSpan": 19.44344572368421,
+          "meanHSVSaturation": 0.11409524590061279,
+          "clippedWhiteFraction": 0.0
+        },
+        "after": {
+          "meanRGB": [
+            190.01,
+            137.178,
+            113.005
+          ],
+          "meanPeak": 190.78938322368424,
+          "meanChannelSpan": 88.02948190789473,
+          "meanHSVSaturation": 0.4801473330463693,
+          "clippedWhiteFraction": 0.0
+        }
+      }
+    },
+    "production-desktop-idle-raw.png": {
+      "before": {
+        "meanRGB": [
+          70.395,
+          77.071,
+          87.175
+        ],
+        "meanPeak": 92.35009722222222,
+        "meanChannelSpan": 27.756880401234568,
+        "meanHSVSaturation": 0.46780463132347583,
+        "clippedWhiteFraction": 2.3148148148148148e-06
+      },
+      "after": {
+        "meanRGB": [
+          67.211,
+          69.269,
+          92.107
+        ],
+        "meanPeak": 108.1224351851852,
+        "meanChannelSpan": 64.05221836419753,
+        "meanHSVSaturation": 0.6780193074415517,
+        "clippedWhiteFraction": 2.3148148148148148e-06
+      },
+      "planetCrop": {
+        "rect": [
+          100,
+          300,
+          420,
+          680
+        ],
+        "before": {
+          "meanRGB": [
+            177.433,
+            159.548,
+            157.428
+          ],
+          "meanPeak": 177.43286184210527,
+          "meanChannelSpan": 20.349144736842106,
+          "meanHSVSaturation": 0.12352322979677169,
+          "clippedWhiteFraction": 0.0
+        },
+        "after": {
+          "meanRGB": [
+            187.045,
+            133.27,
+            108.225
+          ],
+          "meanPeak": 187.75447368421058,
+          "meanChannelSpan": 89.75981085526317,
+          "meanHSVSaturation": 0.5016641227551714,
+          "clippedWhiteFraction": 0.0
+        }
+      }
+    },
+    "production-portrait-idle-raw.png": {
+      "before": {
+        "meanRGB": [
+          45.841,
+          50.467,
+          67.118
+        ],
+        "meanPeak": 68.98661081269776,
+        "meanChannelSpan": 25.67383609412595,
+        "meanHSVSaturation": 0.4555837237621306,
+        "clippedWhiteFraction": 0.0
+      },
+      "after": {
+        "meanRGB": [
+          53.783,
+          46.859,
+          85.294
+        ],
+        "meanPeak": 90.76581121508657,
+        "meanChannelSpan": 52.65254176848379,
+        "meanHSVSaturation": 0.622316772374225,
+        "clippedWhiteFraction": 0.0
+      }
+    }
+  }
+}

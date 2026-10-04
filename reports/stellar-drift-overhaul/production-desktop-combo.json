@@ -1,0 +1,177 @@
+{
+  "event": "combo",
+  "theme": "stellar-drift",
+  "isActive": true,
+  "isPaused": false,
+  "lifecycle": "running",
+  "generation": 2,
+  "time": 7.999999999999977,
+  "quality": "High",
+  "backend": "WebGL2",
+  "post": {
+    "quality": "High",
+    "disabled": false,
+    "useMRT": false
+  },
+  "frame": {
+    "rim": 0.3018423584370428,
+    "aurora": 0.22459010943001134,
+    "dust": 0.22888374770123165,
+    "stars": 0.05812241200235861,
+    "glow": 0.129233950870271,
+    "impact": 0.21651628113526358,
+    "arcs": [
+      {
+        "id": 0,
+        "active": true,
+        "angle": 5.971450110226154,
+        "direction": 1,
+        "age": 1.7999999999999936,
+        "duration": 2.5,
+        "strength": 0.7604903413535089,
+        "seed": 0.7496699245541838,
+        "kind": "combo",
+        "impacted": false,
+        "progress": 0.7199999999999974
+      },
+      {
+        "id": 1,
+        "active": true,
+        "angle": 5.600136698683041,
+        "direction": -1,
+        "age": 1.659999999999994,
+        "duration": 2.5,
+        "strength": 0.7604903413535089,
+        "seed": 0.09438014403292182,
+        "kind": "combo",
+        "impacted": false,
+        "progress": 0.6639999999999976
+      }
+    ],
+    "comets": [
+      {
+        "id": 0,
+        "active": true,
+        "angle": 0.25786701016348346,
+        "direction": 1,
+        "age": 1.7999999999999936,
+        "duration": 2.15,
+        "strength": 0.7662746758325816,
+        "seed": 0.9318887174211248,
+        "kind": "combo",
+        "impacted": true,
+        "progress": 0.8372093023255784,
+        "impactProgress": 0.72,
+        "impactAge": 0.2519999999999938
+      },
+      {
+        "id": 1,
+        "active": true,
+        "angle": 4.4502663834648,
+        "direction": -1,
+        "age": 1.5599999999999934,
+        "duration": 2.33,
+        "strength": 0.7662746758325816,
+        "seed": 0.9412079903978052,
+        "kind": "combo",
+        "impacted": false,
+        "progress": 0.6695278969957053,
+        "impactProgress": 0.72,
+        "impactAge": 0
+      },
+      {
+        "id": 2,
+        "active": true,
+        "angle": 2.430586456149264,
+        "direction": 1,
+        "age": 1.3199999999999932,
+        "duration": 2.51,
+        "strength": 0.7662746758325816,
+        "seed": 0.2087577160493827,
+        "kind": "combo",
+        "impacted": false,
+        "progress": 0.5258964143426268,
+        "impactProgress": 0.72,
+        "impactAge": 0
+      }
+    ]
+  },
+  "render": {
+    "calls": 283,
+    "frameCalls": 14,
+    "drawCalls": 33,
+    "triangles": 46021,
+    "points": 0,
+    "lines": 0,
+    "timestamp": 0
+  },
+  "board": {
+    "x": 545,
+    "y": 76.5,
+    "width": 350,
+    "height": 762
+  },
+  "boardCanvasCount": 1,
+  "themeCanvasCount": 1,
+  "activeContainers": [
+    "stellar-drift-theme"
+  ],
+  "camera": {
+    "position": [
+      0,
+      0,
+      45
+    ],
+    "fov": 48,
+    "aspect": 1.6
+  },
+  "cssLayers": [
+    {
+      "id": "BODY",
+      "className": "startup-intro-skipped phaser-hud-ready",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgb(12, 10, 26)",
+      "display": "flex",
+      "zIndex": "auto"
+    },
+    {
+      "id": "DIV",
+      "className": "background-container",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "-1"
+    },
+    {
+      "id": "background-canvas",
+      "className": "",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "10"
+    },
+    {
+      "id": "stellar-drift-theme",
+      "className": "theme-container active",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "1"
+    },
+    {
+      "id": "single-player-container",
+      "className": "game-container single-player-layout",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "flex",
+      "zIndex": "1"
+    }
+  ],
+  "errors": [],
+  "warnings": []
+}

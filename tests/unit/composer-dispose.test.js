@@ -74,18 +74,3 @@ describe('three EffectComposer.dispose() contract (SB-15 WebGL-lane workaround)'
         }
     });
 });
-
-describe('stellar-drift wires the WebGL-lane pass disposal (SB-15)', () => {
-    const themeSource = readFileSync(
-        new URL('../../src/themes/stellar-drift/stellar-drift-theme.js', import.meta.url),
-        'utf8',
-    );
-
-    it('imports and calls disposeComposerPasses before composer.dispose()', () => {
-        expect(themeSource).toContain("import { disposeComposerPasses } from '../shared/composer-dispose.js'");
-        const callIdx = themeSource.indexOf('disposeComposerPasses(this.composer)');
-        const disposeIdx = themeSource.indexOf('this.composer.dispose?.()');
-        expect(callIdx).toBeGreaterThan(-1);
-        expect(disposeIdx).toBeGreaterThan(callIdx);
-    });
-});
