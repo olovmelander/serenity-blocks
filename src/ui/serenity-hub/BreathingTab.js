@@ -2,13 +2,64 @@
  * BreathingTab - Breathing techniques control panel
  *
  * Provides visual interface for:
- * - 7 breathing techniques with unique cards
+ * - 12 illustrated breathing worlds with clear rhythm counts
  * - Toggle breathing guide on/off
  * - Technique information display
  * - Settings (text prompts, auto-start)
  */
 
 import { csIcon } from '../components/cosmic-icons.js';
+
+const EXPERIENCE_DETAILS = {
+    'deep-relaxation': {
+        atmosphere: 'Northern light',
+        description: 'Silken aurora curtains gather over a quiet horizon, opening with each inhale.',
+    },
+    'box-breathing': {
+        atmosphere: 'Luminous symmetry',
+        description: 'Golden geometry and violet light trace a balanced rhythm through four equal phases.',
+    },
+    'calm-sleep': {
+        atmosphere: 'Silver stillness',
+        description: 'A silver moon floats above shimmering water, with a long, unhurried release.',
+    },
+    energizing: {
+        atmosphere: 'Radiant warmth',
+        description: 'A glowing sun unfurls its corona in amber, gold, and soft orange light.',
+    },
+    coherence: {
+        atmosphere: 'Rose radiance',
+        description: 'Rose light expands and returns in an even rhythm, surrounded by delicate luminous trails.',
+    },
+    triangle: {
+        atmosphere: 'Prismatic light',
+        description: 'A suspended crystal bends cyan, pink, and gold into a three-part rhythm.',
+    },
+    'wim-hof': {
+        atmosphere: 'Ember current',
+        description: 'Warm embers rise from a molten landscape, following the shortest rhythm in the collection.',
+    },
+    'ocean-breath': {
+        atmosphere: 'Tidal flow',
+        description: 'Layers of turquoise water swell and recede, carrying an uninterrupted inhale and exhale.',
+    },
+    'zen-garden': {
+        atmosphere: 'Quiet ripples',
+        description: 'Soft sand contours, smooth stones, and drifting petals frame a spacious, measured cycle.',
+    },
+    'cosmic-breath': {
+        atmosphere: 'Celestial drift',
+        description: 'Violet nebula ribbons and distant stars spiral around a glowing celestial centre.',
+    },
+    'forest-breath': {
+        atmosphere: 'Emerald sanctuary',
+        description: 'A layered forest opens into emerald light, with fireflies moving between the trees.',
+    },
+    'electric-storm': {
+        atmosphere: 'Blue atmosphere',
+        description: 'Electric-blue clouds, violet currents, and fine rain surround a shifting rhythm.',
+    },
+};
 
 export class BreathingTab {
     constructor(hubInstance, breathingIndicator) {
@@ -24,6 +75,9 @@ export class BreathingTab {
         this.gridClickHandler = null;
         this.textToggleHandler = null;
         this.autoStartToggleHandler = null;
+        this.interactionKeydownHandler = null;
+        this.sessionButtonHandler = null;
+        this.container = null;
 
         this.init();
     }
@@ -46,12 +100,16 @@ export class BreathingTab {
         // Convert techniques object to array with metadata
         const techniques = Object.keys(this.breathingIndicator.techniques).map((id) => {
             const tech = this.breathingIndicator.techniques[id];
+            const experience = EXPERIENCE_DETAILS[id] || {};
             return {
                 id,
                 name: tech.name,
                 pattern: tech.pattern,
-                description: tech.description,
+                description: experience.description || tech.description,
+                atmosphere: experience.atmosphere || 'Living light',
                 color: tech.color,
+                secondaryColor: tech.secondaryColor || tech.color,
+                tertiaryColor: tech.tertiaryColor || tech.color,
                 // Create emoji based on technique type
                 emoji: this.getTechniqueEmoji(id),
             };
@@ -95,6 +153,24 @@ export class BreathingTab {
         return formatted;
     }
 
+    renderRhythm(pattern) {
+        const labels = ['In', 'Hold', 'Out', 'Rest'];
+        return pattern.map((count, index) => (count > 0 ? `
+            <span class="breath-rhythm-step" data-phase="${index}">
+                <span class="breath-rhythm-label">${labels[index]}</span>
+                <span class="breath-rhythm-count">${count}<small>s</small></span>
+            </span>
+        ` : '')).join('');
+    }
+
+    applyPalette(node, technique) {
+        const rgb = (color) => `${color.r}, ${color.g}, ${color.b}`;
+        node.style.setProperty('--experience-rgb', rgb(technique.color));
+        node.style.setProperty('--experience-primary', `rgb(${rgb(technique.color)})`);
+        node.style.setProperty('--experience-secondary', `rgb(${rgb(technique.secondaryColor)})`);
+        node.style.setProperty('--experience-tertiary', `rgb(${rgb(technique.tertiaryColor)})`);
+    }
+
     /**
    * Render the breathing tab
    */
@@ -104,6 +180,7 @@ export class BreathingTab {
             console.error('[BreathingTab] Container not found');
             return;
         }
+        this.container = container;
 
         // Clear loading message
         container.innerHTML = '';
@@ -114,6 +191,7 @@ export class BreathingTab {
 
         // Toggle switch section
         const toggleSection = this.createToggleSection();
+        const sessionNotice = this.createGuidedSessionNotice();
 
         // Techniques grid
         const techniqueGrid = this.createTechniqueGrid();
@@ -125,6 +203,7 @@ export class BreathingTab {
         const settingsSection = this.createSettingsSection();
 
         content.appendChild(toggleSection);
+        content.appendChild(sessionNotice);
         content.appendChild(techniqueGrid);
         content.appendChild(infoDisplay);
         content.appendChild(settingsSection);
@@ -137,24 +216,45 @@ export class BreathingTab {
    */
     createToggleSection() {
         const section = document.createElement('div');
-        section.className = 'breathing-toggle-section';
+        section.className = 'breathing-toggle-section breath-library-intro';
 
         const isActive = this.serenityMode.breathingIndicatorActive;
+        const isGuided = this.breathingIndicator.isExternallyControlled;
+        const statusText = isActive ? 'Guide is on · Follow the light at your own pace'
+            : 'Choose a world, then turn on the guide to follow its light.';
 
         section.innerHTML = `
       <div class="breathing-toggle-header">
-        <h3 class="section-title">Breathing Guide</h3>
+        <div>
+          <span class="breath-library-eyebrow">Twelve living worlds</span>
+          <h3 class="section-title">Find your rhythm</h3>
+        </div>
         <label class="toggle-switch">
-          <input type="checkbox" id="breathing-guide-toggle" ${isActive ? 'checked' : ''}>
+          <input type="checkbox" id="breathing-guide-toggle" aria-label="Show breathing guide"
+            ${isActive ? 'checked' : ''} ${isGuided ? 'disabled' : ''}>
           <span class="toggle-slider"></span>
         </label>
       </div>
       <p class="section-description">
-        ${isActive ? `<span class="cs-inline-icon">${csIcon('check', 13)}</span> Active` : 'Start the breathing guide to begin your practice'}
+        ${statusText}
       </p>
     `;
 
         return section;
+    }
+
+    createGuidedSessionNotice() {
+        const notice = document.createElement('div');
+        notice.className = 'breath-guided-session-notice';
+        notice.hidden = !this.breathingIndicator.isExternallyControlled;
+        notice.innerHTML = `
+            <div>
+                <span class="breath-library-eyebrow">Guided session in progress</span>
+                <p>Your session controls the rhythm. Return to Sessions to review or end it.</p>
+            </div>
+            <button type="button" class="breath-open-sessions">Open Sessions</button>
+        `;
+        return notice;
     }
 
     /**
@@ -166,11 +266,12 @@ export class BreathingTab {
 
         const title = document.createElement('h3');
         title.className = 'section-title';
-        title.textContent = 'Choose Your Technique';
+        title.textContent = 'Choose your atmosphere';
 
         const grid = document.createElement('div');
         grid.className = 'technique-grid';
         grid.id = 'breathing-technique-grid';
+        grid.setAttribute('aria-label', 'Breathing worlds');
 
         // Create card for each technique
         this.techniques.forEach((technique) => {
@@ -188,30 +289,33 @@ export class BreathingTab {
    * Create individual technique card
    */
     createTechniqueCard(technique) {
-        const card = document.createElement('div');
-        card.className = 'technique-card';
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.disabled = Boolean(this.breathingIndicator.isExternallyControlled);
+        card.className = 'technique-card breath-experience-card';
         card.dataset.techniqueId = technique.id;
-        card.setAttribute('tabindex', '0');
 
         // Check if this is the current technique
         const isActive = this.breathingIndicator.currentTechnique === technique.id;
         if (isActive) {
             card.classList.add('active');
         }
-
-        // Get RGB color
-        const { r, g, b } = technique.color;
-        const colorStyle = `rgb(${r}, ${g}, ${b})`;
+        card.setAttribute('aria-pressed', String(isActive));
+        card.setAttribute('aria-label', `${technique.name}. ${this.formatPattern(technique.pattern)}.`);
+        this.applyPalette(card, technique);
 
         card.innerHTML = `
-      <div class="technique-icon" style="background: linear-gradient(135deg, ${colorStyle}, rgba(${r}, ${g}, ${b}, 0.6));">
-        <span class="technique-emoji">${technique.emoji}</span>
-      </div>
-      <div class="technique-info">
-        <div class="technique-name">${technique.name}</div>
-        <div class="technique-pattern-mini">${technique.pattern.join('-')}</div>
-      </div>
-      ${isActive ? '<div class="active-indicator">●</div>' : ''}
+      <span class="breath-art" data-world="${technique.id}" aria-hidden="true">
+        <span class="breath-art-orb"></span>
+        <span class="breath-art-line"></span>
+        <span class="breath-art-particles"></span>
+      </span>
+      <span class="breath-card-selection" aria-hidden="true">${csIcon('check', 12)}<span>Selected</span></span>
+      <span class="technique-info">
+        <span class="technique-name">${technique.name}</span>
+        <span class="breath-card-atmosphere">${technique.atmosphere}</span>
+      </span>
+      <span class="breath-rhythm" aria-hidden="true">${this.renderRhythm(technique.pattern)}</span>
     `;
 
         return card;
@@ -224,22 +328,14 @@ export class BreathingTab {
         const section = document.createElement('div');
         section.className = 'technique-info-display';
         section.id = 'breathing-info-display';
+        section.setAttribute('aria-live', 'polite');
 
         // Get current technique
         const currentTech = this.techniques.find(
             (t) => t.id === this.breathingIndicator.currentTechnique,
         ) || this.techniques[0];
 
-        section.innerHTML = `
-      <div class="info-header">
-        <span class="info-emoji">${currentTech.emoji}</span>
-        <h4 class="info-title">${currentTech.name}</h4>
-      </div>
-      <p class="info-description">${currentTech.description}</p>
-      <div class="info-pattern">
-        <strong>Pattern:</strong> ${this.formatPattern(currentTech.pattern)}
-      </div>
-    `;
+        if (currentTech) this.renderInfoDisplay(section, currentTech);
 
         return section;
     }
@@ -278,6 +374,16 @@ export class BreathingTab {
    * Attach event listeners
    */
     attachEventListeners() {
+        // Keep native button/checkbox activation from also toggling the global guide shortcut.
+        this.interactionKeydownHandler = (event) => {
+            if (event.key !== ' ' && event.key !== 'Enter') return;
+            const control = event.target.closest('button, input');
+            if (control && this.container.contains(control)) event.stopPropagation();
+        };
+        this.container?.addEventListener('keydown', this.interactionKeydownHandler);
+        this.sessionButtonHandler = () => this.hub.switchTab('sessions');
+        this.container?.querySelector('.breath-open-sessions')?.addEventListener('click', this.sessionButtonHandler);
+
         // Store handler references for cleanup
         this.toggleHandler = (e) => {
             this.toggleBreathingGuide(e.target.checked);
@@ -285,7 +391,7 @@ export class BreathingTab {
 
         this.gridClickHandler = (e) => {
             const card = e.target.closest('.technique-card');
-            if (card) {
+            if (card && this.container.contains(card)) {
                 const { techniqueId } = card.dataset;
                 this.selectTechnique(techniqueId);
             }
@@ -328,26 +434,33 @@ export class BreathingTab {
    * Toggle breathing guide on/off
    */
     toggleBreathingGuide(enabled) {
-        if (enabled) {
-            this.serenityMode._showBreathingIndicator();
+        if (this.breathingIndicator.isExternallyControlled) return;
+        const modeHandler = enabled ? this.serenityMode._showBreathingIndicator
+            : this.serenityMode._hideBreathingIndicator;
+        if (typeof modeHandler === 'function') {
+            modeHandler.call(this.serenityMode);
+        } else if (enabled) {
+            this.breathingIndicator.start();
         } else {
-            this.serenityMode._hideBreathingIndicator();
+            this.breathingIndicator.stop();
         }
 
-        // Update UI
-        this.updateToggleUI(enabled);
+        const active = Boolean(this.breathingIndicator.isActive);
+        this.serenityMode.breathingIndicatorActive = active;
+        this.refresh();
+        this.serenityMode.deps.settingsManager.update({ breathingGuideEnabled: active });
     }
 
     /**
    * Update toggle UI state
    */
     updateToggleUI(enabled) {
-        const description = document.querySelector('.breathing-toggle-section .section-description');
+        const description = this.container?.querySelector('.breathing-toggle-section .section-description');
         if (description) {
             if (enabled) {
-                description.innerHTML = `<span class="cs-inline-icon">${csIcon('check', 13)}</span> Active - Follow the breathing rhythm`;
+                description.textContent = 'Guide is on · Follow the light at your own pace';
             } else {
-                description.textContent = 'Start the breathing guide to begin your practice';
+                description.textContent = 'Choose a world, then turn on the guide to follow its light.';
             }
         }
     }
@@ -356,6 +469,8 @@ export class BreathingTab {
    * Select a breathing technique
    */
     selectTechnique(techniqueId) {
+        if (this.breathingIndicator.isExternallyControlled) return;
+        if (!this.techniques.some((technique) => technique.id === techniqueId)) return;
         // Update breathing indicator
         if (this.breathingIndicator) {
             this.breathingIndicator.setTechnique(techniqueId);
@@ -378,22 +493,12 @@ export class BreathingTab {
    */
     updateActiveCard(techniqueId) {
         // Remove active class from all cards
-        const cards = document.querySelectorAll('.technique-card');
+        const cards = this.container?.querySelectorAll('.technique-card') || [];
         cards.forEach((card) => {
-            card.classList.remove('active');
-            const indicator = card.querySelector('.active-indicator');
-            if (indicator) indicator.remove();
+            const isActive = card.dataset.techniqueId === techniqueId;
+            card.classList.toggle('active', isActive);
+            card.setAttribute('aria-pressed', String(isActive));
         });
-
-        // Add active class to selected card
-        const activeCard = document.querySelector(`[data-technique-id="${techniqueId}"]`);
-        if (activeCard) {
-            activeCard.classList.add('active');
-            const indicator = document.createElement('div');
-            indicator.className = 'active-indicator';
-            indicator.textContent = '●';
-            activeCard.appendChild(indicator);
-        }
     }
 
     /**
@@ -403,25 +508,49 @@ export class BreathingTab {
         const technique = this.techniques.find((t) => t.id === techniqueId);
         if (!technique) return;
 
-        const infoDisplay = document.getElementById('breathing-info-display');
+        const infoDisplay = this.container?.querySelector('#breathing-info-display');
         if (!infoDisplay) return;
+        this.renderInfoDisplay(infoDisplay, technique);
+    }
 
+    renderInfoDisplay(infoDisplay, technique) {
+        this.applyPalette(infoDisplay, technique);
+        const cycleSeconds = technique.pattern.reduce((total, count) => total + count, 0);
         infoDisplay.innerHTML = `
       <div class="info-header">
-        <span class="info-emoji">${technique.emoji}</span>
-        <h4 class="info-title">${technique.name}</h4>
+        <span class="info-emoji" aria-hidden="true">${technique.emoji}</span>
+        <div>
+          <span class="breath-library-eyebrow">Your selected world</span>
+          <h4 class="info-title">${technique.name}</h4>
+        </div>
+        <span class="breath-cycle-duration">${cycleSeconds}s<span>per cycle</span></span>
       </div>
       <p class="info-description">${technique.description}</p>
-      <div class="info-pattern">
-        <strong>Pattern:</strong> ${this.formatPattern(technique.pattern)}
+      <div class="breath-rhythm breath-rhythm-detail" aria-label="${this.formatPattern(technique.pattern)}">
+        ${this.renderRhythm(technique.pattern)}
       </div>
     `;
+    }
 
-        // Animate the update
-        infoDisplay.style.animation = 'none';
-        setTimeout(() => {
-            infoDisplay.style.animation = 'tab-content-fade 0.3s ease';
-        }, 10);
+    refresh() {
+        if (!this.breathingIndicator || !this.container) return;
+        this.updateSessionLock();
+        const techniqueId = this.breathingIndicator.currentTechnique;
+        this.updateActiveCard(techniqueId);
+        this.updateInfoDisplay(techniqueId);
+        const toggle = this.container.querySelector('#breathing-guide-toggle');
+        const enabled = this.breathingIndicator.isActive;
+        if (toggle) toggle.checked = enabled;
+        this.updateToggleUI(enabled);
+    }
+
+    updateSessionLock() {
+        const controlled = Boolean(this.breathingIndicator.isExternallyControlled);
+        const notice = this.container?.querySelector('.breath-guided-session-notice');
+        if (notice) notice.hidden = !controlled;
+        const toggle = this.container?.querySelector('#breathing-guide-toggle');
+        if (toggle) toggle.disabled = controlled;
+        this.container?.querySelectorAll('.technique-card').forEach((card) => { card.disabled = controlled; });
     }
 
     /**
@@ -442,6 +571,9 @@ export class BreathingTab {
    * Cleanup
    */
     destroy() {
+        this.container?.removeEventListener('keydown', this.interactionKeydownHandler);
+        this.container?.querySelector('.breath-open-sessions')
+            ?.removeEventListener('click', this.sessionButtonHandler);
         // Remove event listeners explicitly
         const toggle = document.getElementById('breathing-guide-toggle');
         if (toggle && this.toggleHandler) {
@@ -468,10 +600,13 @@ export class BreathingTab {
         this.gridClickHandler = null;
         this.textToggleHandler = null;
         this.autoStartToggleHandler = null;
+        this.interactionKeydownHandler = null;
+        this.sessionButtonHandler = null;
         this.hub = null;
         this.breathingIndicator = null;
         this.serenityMode = null;
         this.techniques = null;
+        this.container = null;
 
         console.log('✅ [BreathingTab] Destroyed - all listeners removed');
     }

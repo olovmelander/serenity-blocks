@@ -1,0 +1,560 @@
+/* Static, illustrated previews: the breathing clock belongs to the live guide. */
+#serenity-hub-panel .breathing-tab-content {
+    gap: 22px;
+}
+
+#serenity-hub-panel .breath-library-intro {
+    padding: 20px;
+    border-radius: 18px;
+    background:
+        radial-gradient(ellipse at 10% 0%, rgba(80, 200, 255, 0.13), transparent 65%),
+        linear-gradient(135deg, rgba(28, 33, 57, 0.7), rgba(11, 16, 30, 0.7));
+}
+
+#serenity-hub-panel .breath-library-eyebrow {
+    display: block;
+    margin-bottom: 5px;
+    color: #a8bed9;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.7px;
+    text-transform: uppercase;
+}
+
+#serenity-hub-panel .breath-library-intro .section-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: -0.4px;
+}
+
+#serenity-hub-panel .breath-library-intro .section-description {
+    margin-top: 12px;
+    max-width: 390px;
+    color: #b6c6db;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+#serenity-hub-panel .breath-guided-session-notice {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1px solid rgba(111, 179, 214, 0.25);
+    border-radius: 12px;
+    background: rgba(41, 103, 133, 0.1);
+}
+
+#serenity-hub-panel .breath-guided-session-notice[hidden] {
+    display: none;
+}
+
+#serenity-hub-panel .breath-guided-session-notice p {
+    margin: 0;
+    color: #b7c9df;
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+#serenity-hub-panel .breath-open-sessions {
+    flex-shrink: 0;
+    padding: 9px 12px;
+    border: 1px solid rgba(152, 213, 244, 0.45);
+    border-radius: 8px;
+    background: rgba(63, 118, 155, 0.25);
+    color: #dff3ff;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+#serenity-hub-panel .breath-open-sessions:focus-visible {
+    outline: 2px solid #e9f5ff;
+    outline-offset: 3px;
+}
+
+#serenity-hub-panel .breath-experience-card:disabled,
+#serenity-hub-panel .breath-experience-card:disabled:hover {
+    opacity: 0.55;
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+}
+
+#serenity-hub-panel .breathing-tab-content .technique-section {
+    margin-top: 0;
+}
+
+#serenity-hub-panel .breathing-tab-content .technique-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+#serenity-hub-panel .breath-experience-card {
+    appearance: none;
+    isolation: isolate;
+    min-width: 0;
+    min-height: 0;
+    padding: 10px;
+    gap: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(176, 198, 220, 0.12);
+    border-radius: 16px;
+    background: linear-gradient(160deg, rgba(33, 43, 64, 0.55), rgba(9, 14, 27, 0.8));
+    font: inherit;
+    text-align: left;
+    color: #eef6ff;
+    transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+#serenity-hub-panel .breath-experience-card:hover {
+    border-color: rgba(var(--experience-rgb), 0.6);
+    background: linear-gradient(160deg, rgba(var(--experience-rgb), 0.1), rgba(9, 14, 27, 0.9));
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px);
+}
+
+#serenity-hub-panel .breath-experience-card.active {
+    border-color: rgba(var(--experience-rgb), 0.75);
+    background: linear-gradient(160deg, rgba(var(--experience-rgb), 0.12), rgba(9, 14, 27, 0.9));
+    box-shadow: inset 0 0 0 1px rgba(var(--experience-rgb), 0.15), 0 5px 18px rgba(0, 0, 0, 0.2);
+}
+
+#serenity-hub-panel .breath-experience-card:focus-visible,
+#serenity-hub-panel .breath-experience-card.gamepad-focused {
+    outline: 2px solid #e9f5ff;
+    outline-offset: 3px;
+    border-color: var(--experience-primary);
+    box-shadow: 0 0 0 5px rgba(var(--experience-rgb), 0.2);
+}
+
+#serenity-hub-panel .breath-experience-card .technique-info {
+    text-align: left;
+}
+
+#serenity-hub-panel .breath-experience-card .technique-name {
+    display: block;
+    margin: 0 0 3px;
+    color: #f0f6ff;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+#serenity-hub-panel .breath-card-atmosphere {
+    display: block;
+    color: #9baec7;
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+#serenity-hub-panel .breath-card-selection {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border: 1px solid rgba(225, 241, 255, 0.28);
+    border-radius: 8px;
+    background: rgba(7, 15, 27, 0.75);
+    color: #eff8ff;
+    font-size: 9px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+#serenity-hub-panel .breath-experience-card.active .breath-card-selection {
+    opacity: 1;
+}
+
+#serenity-hub-panel .breath-rhythm {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    gap: 3px;
+}
+
+#serenity-hub-panel .breath-rhythm-step {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    padding: 5px 2px;
+    border-radius: 6px;
+    background: rgba(166, 189, 220, 0.055);
+    border-top: 1px solid rgba(var(--experience-rgb), 0.3);
+}
+
+#serenity-hub-panel .breath-rhythm-step[data-phase="1"],
+#serenity-hub-panel .breath-rhythm-step[data-phase="3"] {
+    border-top-color: rgba(188, 201, 222, 0.2);
+}
+
+#serenity-hub-panel .breath-rhythm-label {
+    color: #a0b4ce;
+    font-size: 8px;
+    line-height: 1.4;
+}
+
+#serenity-hub-panel .breath-rhythm-count {
+    color: #e5f1ff;
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+#serenity-hub-panel .breath-rhythm-count small {
+    margin-left: 2px;
+    color: #8296b2;
+    font-size: 8px;
+}
+
+#serenity-hub-panel .breathing-tab-content .technique-info-display {
+    padding: 20px;
+    border-radius: 18px;
+    border-color: rgba(var(--experience-rgb), 0.25);
+    background:
+        radial-gradient(ellipse at 0% 0%, rgba(var(--experience-rgb), 0.1), transparent 75%),
+        rgba(7, 13, 25, 0.6);
+}
+
+#serenity-hub-panel .breathing-tab-content .info-header {
+    align-items: center;
+    gap: 12px;
+}
+
+#serenity-hub-panel .breathing-tab-content .info-emoji {
+    display: flex;
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(var(--experience-rgb), 0.08);
+    color: var(--experience-primary);
+    filter: none;
+}
+
+#serenity-hub-panel .breathing-tab-content .info-title {
+    font-size: 17px;
+    font-weight: 500;
+}
+
+#serenity-hub-panel .breathing-tab-content .info-description {
+    margin: 14px 0;
+    color: #b4c4da;
+    font-size: 12px;
+    line-height: 1.7;
+}
+
+#serenity-hub-panel .breath-cycle-duration {
+    margin-left: auto;
+    color: #dcecff;
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+#serenity-hub-panel .breath-cycle-duration > span {
+    display: block;
+    color: #92a9c8;
+    font-size: 9px;
+}
+
+#serenity-hub-panel .breath-rhythm-detail {
+    gap: 7px;
+}
+
+#serenity-hub-panel .breath-rhythm-detail .breath-rhythm-step {
+    padding: 9px;
+}
+
+#serenity-hub-panel .breath-rhythm-detail .breath-rhythm-count {
+    font-size: 20px;
+}
+
+#serenity-hub-panel .breath-rhythm-detail .breath-rhythm-label {
+    font-size: 10px;
+}
+
+/* Each illustration shares the live world's palette and three small paint layers. */
+#serenity-hub-panel .breath-art {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 80px;
+    overflow: hidden;
+    contain: paint;
+    border-radius: 10px;
+    background: radial-gradient(ellipse at 50% 30%, rgba(var(--experience-rgb), 0.18), #081020 85%);
+}
+
+#serenity-hub-panel .breath-art-orb,
+#serenity-hub-panel .breath-art-line,
+#serenity-hub-panel .breath-art-particles {
+    position: absolute;
+    display: block;
+    pointer-events: none;
+}
+
+#serenity-hub-panel .breath-art-orb {
+    inset: 20px auto auto 50%;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    transform: translateX(-50%);
+    background: radial-gradient(circle at 40% 35%, #e9f7ff, var(--experience-primary) 40%, transparent 73%);
+    box-shadow: 0 0 28px 5px rgba(var(--experience-rgb), 0.22);
+}
+
+#serenity-hub-panel .breath-art-particles {
+    top: 16px;
+    left: 20%;
+    width: 2px;
+    height: 2px;
+    border-radius: 50%;
+    background: #dbedff;
+    box-shadow: 28px 9px #a7c3dd, 74px 3px #d9ebff, 106px 18px #a7c3dd, 48px 44px #8098b8,
+        3px 31px #adc5da, 89px 48px #a7c3dd, 120px 55px #dfedff;
+    opacity: 0.7;
+}
+
+#serenity-hub-panel .breath-art[data-world="deep-relaxation"] .breath-art-orb {
+    inset: -20px -5% auto;
+    width: 110%;
+    height: 80px;
+    border-radius: 45%;
+    transform: rotate(-12deg);
+    background: repeating-linear-gradient(90deg, transparent, var(--experience-tertiary) 13%,
+        var(--experience-primary) 21%, var(--experience-secondary) 29%, transparent 38%);
+    filter: blur(9px);
+    opacity: 0.55;
+}
+
+#serenity-hub-panel .breath-art[data-world="deep-relaxation"] .breath-art-line {
+    inset: 55px 0 0;
+    background: #081320;
+    clip-path: polygon(0 90%, 18% 8%, 29% 50%, 46% 12%, 66% 86%, 80% 35%, 100% 88%, 100% 100%, 0 100%);
+}
+
+#serenity-hub-panel .breath-art[data-world="box-breathing"] .breath-art-orb {
+    width: 45px;
+    height: 45px;
+    top: 17px;
+    background: transparent;
+    border: 1px solid var(--experience-secondary);
+    border-radius: 12%;
+    transform: translateX(-50%) rotate(45deg);
+    box-shadow: 0 0 18px rgba(var(--experience-rgb), 0.25), inset 0 0 22px rgba(var(--experience-rgb), 0.15);
+}
+
+#serenity-hub-panel .breath-art[data-world="box-breathing"] .breath-art-line {
+    inset: 12px auto auto 50%;
+    width: 54px;
+    height: 54px;
+    border: 1px solid var(--experience-primary);
+    border-radius: 50%;
+    transform: translateX(-50%);
+}
+
+#serenity-hub-panel .breath-art[data-world="calm-sleep"] .breath-art-orb {
+    inset: 9px auto auto 65%;
+    width: 25px;
+    height: 25px;
+    background: radial-gradient(circle at 30% 35%, #f4f6dd, #bdcee4 60%, #8596b6);
+}
+
+#serenity-hub-panel .breath-art[data-world="calm-sleep"] .breath-art-line {
+    inset: 44px -10% -10px;
+    background: repeating-linear-gradient(178deg, transparent 0 5px, rgba(var(--experience-rgb), 0.28) 6px,
+        transparent 8px), radial-gradient(ellipse at 62% 0, rgba(232, 242, 252, 0.55), transparent 60%);
+}
+
+#serenity-hub-panel .breath-art[data-world="energizing"] .breath-art-orb {
+    top: 16px;
+    width: 48px;
+    height: 48px;
+    background: radial-gradient(circle at 40% 35%, #fffae8, var(--experience-secondary) 27%,
+        var(--experience-primary) 62%, var(--experience-tertiary));
+    box-shadow: 0 0 18px 5px rgba(var(--experience-rgb), 0.3), 0 0 0 5px rgba(var(--experience-rgb), 0.08),
+        0 0 0 12px rgba(var(--experience-rgb), 0.06);
+}
+
+#serenity-hub-panel .breath-art[data-world="coherence"] .breath-art-orb {
+    inset: 32px auto auto 50%;
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    background: var(--experience-primary);
+    transform: translateX(-50%) rotate(-45deg);
+}
+
+#serenity-hub-panel .breath-art[data-world="coherence"] .breath-art-orb::before,
+#serenity-hub-panel .breath-art[data-world="coherence"] .breath-art-orb::after {
+    content: '';
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--experience-primary);
+}
+
+#serenity-hub-panel .breath-art[data-world="coherence"] .breath-art-orb::before {
+    top: -12px;
+}
+
+#serenity-hub-panel .breath-art[data-world="coherence"] .breath-art-orb::after {
+    left: 12px;
+}
+
+#serenity-hub-panel .breath-art[data-world="triangle"] .breath-art-orb {
+    top: 14px;
+    width: 58px;
+    height: 52px;
+    border-radius: 0;
+    clip-path: polygon(50% 0, 100% 84%, 50% 100%, 0 84%);
+    background: conic-gradient(from 0deg, #d1f8ff, var(--experience-primary), #667bae,
+        var(--experience-secondary), var(--experience-tertiary), var(--experience-primary));
+}
+
+#serenity-hub-panel .breath-art[data-world="wim-hof"] .breath-art-orb {
+    inset: 24px -20% auto;
+    width: 140%;
+    height: 80px;
+    border-radius: 40%;
+    transform: none;
+    background: radial-gradient(ellipse at 50% 65%, var(--experience-primary), transparent 70%);
+    opacity: 0.4;
+}
+
+#serenity-hub-panel .breath-art[data-world="wim-hof"] .breath-art-line {
+    inset: 45px -5% -10px;
+    background: repeating-linear-gradient(18deg, #1e1620 0 15px, var(--experience-tertiary) 16px,
+        var(--experience-secondary) 17px, #1e1620 19px);
+    transform: perspective(70px) rotateX(35deg);
+}
+
+#serenity-hub-panel .breath-art[data-world="ocean-breath"] .breath-art-orb {
+    inset: 25px -10% auto;
+    width: 120%;
+    height: 65px;
+    border-radius: 45% 60% 0 0;
+    transform: rotate(-8deg);
+    background: linear-gradient(170deg, var(--experience-secondary), #12628b 20%, #081d35 75%);
+    box-shadow: 0 -2px 18px rgba(var(--experience-rgb), 0.3);
+}
+
+#serenity-hub-panel .breath-art[data-world="ocean-breath"] .breath-art-line {
+    inset: 43px -10% -15px;
+    border-radius: 60% 40% 0 0;
+    border-top: 1px solid var(--experience-secondary);
+    background: linear-gradient(180deg, rgba(var(--experience-rgb), 0.4), #08213e);
+    transform: rotate(9deg);
+}
+
+#serenity-hub-panel .breath-art[data-world="zen-garden"] {
+    background: repeating-radial-gradient(ellipse at 35% 65%, #293b3e 0 5px, #465251 6px, #293b3e 7px 11px);
+}
+
+#serenity-hub-panel .breath-art[data-world="zen-garden"] .breath-art-orb {
+    inset: 35px auto auto 50%;
+    width: 40px;
+    height: 23px;
+    border-radius: 55% 45% 35% 40%;
+    background: linear-gradient(155deg, #b6c1b2, #4f6560 55%, #233738);
+    box-shadow: 5px 8px 8px rgba(0, 0, 0, 0.4);
+}
+
+#serenity-hub-panel .breath-art[data-world="cosmic-breath"] .breath-art-orb {
+    inset: 21px auto auto 50%;
+    width: 80px;
+    height: 34px;
+    transform: translateX(-50%) rotate(-22deg);
+    background: radial-gradient(ellipse, #f8d7ff, var(--experience-secondary) 10%,
+        var(--experience-primary) 26%, transparent 36%, var(--experience-tertiary) 50%, transparent 68%);
+    box-shadow: 0 0 25px rgba(var(--experience-rgb), 0.4);
+}
+
+#serenity-hub-panel .breath-art[data-world="forest-breath"] .breath-art-orb {
+    inset: 12px auto auto 50%;
+    width: 55px;
+    height: 55px;
+    opacity: 0.35;
+    filter: blur(9px);
+}
+
+#serenity-hub-panel .breath-art[data-world="forest-breath"] .breath-art-line {
+    inset: 0 -5% -10px;
+    background: repeating-linear-gradient(90deg, #071e22 0 9px, transparent 10px 35px),
+        linear-gradient(90deg, #163b34, transparent 40% 60%, #163b34);
+    clip-path: polygon(0 0, 30% 0, 37% 30%, 35% 75%, 50% 100%, 65% 75%, 63% 30%, 70% 0,
+        100% 0, 100% 100%, 0 100%);
+}
+
+#serenity-hub-panel .breath-art[data-world="electric-storm"] .breath-art-orb {
+    inset: 7px 10% auto;
+    width: 80%;
+    height: 25px;
+    transform: none;
+    background: radial-gradient(ellipse, #485b88, #283452 55%, transparent 75%);
+    box-shadow: none;
+}
+
+#serenity-hub-panel .breath-art[data-world="electric-storm"] .breath-art-line {
+    inset: 26px auto auto 50%;
+    width: 16px;
+    height: 45px;
+    background: linear-gradient(#f4f5fd, var(--experience-primary));
+    clip-path: polygon(55% 0, 100% 0, 55% 42%, 95% 42%, 10% 100%, 35% 54%, 0 54%);
+    filter: drop-shadow(0 0 4px var(--experience-secondary));
+}
+
+@media (max-width: 480px) {
+    #serenity-hub-panel .breath-guided-session-notice {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    #serenity-hub-panel .breathing-tab-content .technique-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 9px;
+    }
+
+    #serenity-hub-panel .breath-experience-card {
+        padding: 8px;
+        gap: 8px;
+    }
+
+    #serenity-hub-panel .breath-art {
+        height: 72px;
+    }
+
+    #serenity-hub-panel .breath-card-selection > span {
+        display: none;
+    }
+
+    #serenity-hub-panel .breath-library-intro,
+    #serenity-hub-panel .breathing-tab-content .technique-info-display {
+        padding: 16px;
+    }
+
+    #serenity-hub-panel .breathing-tab-content .info-header {
+        gap: 9px;
+    }
+
+    #serenity-hub-panel .breathing-tab-content .info-title {
+        font-size: 15px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #serenity-hub-panel .breath-experience-card {
+        transition: none;
+    }
+
+    #serenity-hub-panel .breath-experience-card:hover {
+        transform: none;
+    }
+}
