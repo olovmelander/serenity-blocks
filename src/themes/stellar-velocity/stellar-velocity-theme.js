@@ -638,10 +638,9 @@ export default class StellarVelocityTheme extends BaseTheme {
     }
 
     getCurrentQualityLevel() {
-        if (typeof window !== 'undefined' && window.settings?.graphicsQuality) {
-            return normalizeQuality(window.settings.graphicsQuality);
-        }
-        return 'High';
+        const quality = typeof window !== 'undefined'
+            ? window.settings?.effectQuality || window.settings?.graphicsQuality : null;
+        return normalizeQuality(quality);
     }
 
     applyQualityPreset(quality) {
@@ -2468,7 +2467,8 @@ export default class StellarVelocityTheme extends BaseTheme {
             return { ok: false, reason: 'no-valid-quality-sequence' };
         }
 
-        const originalQuality = window.settings?.graphicsQuality;
+        const originalQuality = window.settings?.effectQuality;
+        const hadEffectQuality = Object.prototype.hasOwnProperty.call(window.settings || {}, 'effectQuality');
         if (!window.settings) {
             window.settings = {};
         }
@@ -2479,7 +2479,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         try {
             for (let loop = 0; loop < iterations; loop++) {
                 for (const tier of normalizedSequence) {
-                    window.settings.graphicsQuality = tier;
+                    window.settings.effectQuality = tier;
 
                     if (fullRebuild) {
                         await this.createScene();
@@ -2515,7 +2515,8 @@ export default class StellarVelocityTheme extends BaseTheme {
                 }
             }
         } finally {
-            window.settings.graphicsQuality = originalQuality;
+            if (hadEffectQuality) window.settings.effectQuality = originalQuality;
+            else delete window.settings.effectQuality;
             if (fullRebuild) {
                 await this.createScene();
             }
@@ -2718,7 +2719,9 @@ export default class StellarVelocityTheme extends BaseTheme {
             : ['High', 'Medium', 'Ultra', 'Low', 'High'];
         const fullRebuild = options.fullRebuild === true;
         const originalQuality = this.activeQualityLevel;
-        const originalSettingsQuality = typeof window !== 'undefined' ? window.settings?.graphicsQuality : null;
+        const originalSettingsQuality = typeof window !== 'undefined' ? window.settings?.effectQuality : null;
+        const hadEffectQuality = typeof window !== 'undefined'
+            && Object.prototype.hasOwnProperty.call(window.settings || {}, 'effectQuality');
         const originalFlags = { ...this.flags };
         const snapshots = [this.captureValidationSnapshot('start')];
         let qualityCursor = 0;
@@ -2741,7 +2744,7 @@ export default class StellarVelocityTheme extends BaseTheme {
                     if (fullRebuild) {
                         if (typeof window !== 'undefined') {
                             if (!window.settings) window.settings = {};
-                            window.settings.graphicsQuality = nextQuality;
+                            window.settings.effectQuality = nextQuality;
                         }
                         await this.createScene();
                     } else {
@@ -2764,7 +2767,8 @@ export default class StellarVelocityTheme extends BaseTheme {
             this.flags = { ...originalFlags };
             if (typeof window !== 'undefined') {
                 if (!window.settings) window.settings = {};
-                window.settings.graphicsQuality = originalSettingsQuality || originalQuality;
+                if (hadEffectQuality) window.settings.effectQuality = originalSettingsQuality;
+                else delete window.settings.effectQuality;
             }
             if (fullRebuild) {
                 await this.createScene();

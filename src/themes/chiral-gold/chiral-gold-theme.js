@@ -351,10 +351,9 @@ export default class ChiralGoldTheme extends BaseTheme {
     }
 
     getCurrentQualityLevel() {
-        if (typeof window !== 'undefined' && window.settings?.graphicsQuality) {
-            return normalizeQuality(window.settings.graphicsQuality);
-        }
-        return 'High';
+        const quality = typeof window !== 'undefined'
+            ? window.settings?.effectQuality || window.settings?.graphicsQuality : null;
+        return normalizeQuality(quality);
     }
 
     applyQualityPreset(quality) {

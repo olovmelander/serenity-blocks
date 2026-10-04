@@ -645,7 +645,9 @@ export default class FallTheme extends BaseTheme {
     }
 
     applyQualityPreset(quality) {
-        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+        // Minimal shares the existing lowest-cost scene rather than falling back to High.
+        const selected = quality === 'Minimal' ? 'Low' : quality;
+        this.qualityPreset = QUALITY_PRESETS[selected] || QUALITY_PRESETS.High;
     }
 
     async createScene() {

@@ -185,7 +185,7 @@ const QUALITY_PRESETS = {
         distantVolcanoCount: 2,
         auroraRibbonCount: 1,
     },
-    Minimum: {
+    Minimal: {
         emberCount: 1000,
         smokeCount: 15,
         ashCount: 200,
@@ -295,14 +295,15 @@ export default class PyrestormTheme extends BaseTheme {
     }
 
     getCurrentQualityLevel() {
-        if (typeof window !== 'undefined' && window.settings?.effectQuality) {
-            return normalizeQuality(window.settings.effectQuality);
-        }
-        return 'High';
+        const quality = typeof window !== 'undefined'
+            ? window.settings?.effectQuality || window.settings?.graphicsQuality : null;
+        const legacyMinimum = String(quality).trim().toLowerCase() === 'minimum';
+        return normalizeQuality(legacyMinimum ? 'Minimal' : quality);
     }
 
     applyQualityPreset(quality) {
-        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+        const selected = String(quality).trim().toLowerCase() === 'minimum' ? 'Minimal' : normalizeQuality(quality);
+        this.qualityPreset = QUALITY_PRESETS[selected] || QUALITY_PRESETS.High;
         console.log(`[Pyrestorm] Applied ${quality} quality preset`);
     }
 

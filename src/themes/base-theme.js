@@ -7,6 +7,7 @@ import { gpuResilience } from '../utils/gpu-context-resilience.js';
 import { initGpuLossCoordinator } from '../utils/gpu-loss-coordinator.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { computeScenePixelRatio } from '../utils/desktop-performance-policy.js';
+import { normalizeQuality } from '../utils/quality.js';
 import {
     createFramePacer, resetFramePacer, shouldRenderAtTargetFps, resolveTargetFps,
 } from './theme-frame-pacer.js';
@@ -1225,11 +1226,15 @@ export class BaseTheme {
      */
     static getEffectivePixelRatio(maxRatio = 2, sceneType = 'theme') {
         const baseRatio = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+        const qualityTier = normalizeQuality(typeof window !== 'undefined'
+            ? window.settings?.effectQuality || window.settings?.graphicsQuality
+            : undefined);
         return computeScenePixelRatio({
             renderScale: globalRenderScale,
             devicePixelRatio: baseRatio,
             maxPixelRatio: maxRatio,
             sceneType,
+            qualityTier,
         });
     }
 

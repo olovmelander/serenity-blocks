@@ -1248,7 +1248,8 @@ export default class WinterTheme extends BaseTheme {
 
     applyQualityPreset(quality) {
         this.currentQuality = quality || 'High';
-        let selected = this.currentQuality;
+        // Both authored preset tables start at Low; Minimal must retain that budget.
+        let selected = this.currentQuality === 'Minimal' ? 'Low' : this.currentQuality;
         if (selected === 'Extreme+' && !this.isWebGPU) {
             selected = 'Extreme';
         }
