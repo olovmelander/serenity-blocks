@@ -1,6 +1,7 @@
 /* eslint-disable import/no-unresolved, prefer-destructuring, no-nested-ternary */
 import * as THREE from 'three';
 import * as THREE_WEBGPU from 'three/webgpu';
+import { compileComputeAsync, isAsyncComputeCapable } from '../../rendering/webgpu-compute-pipeline-async.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
@@ -9,6 +10,9 @@ import { AstralWeaveFXController } from './astral-weave-fx-controller.js';
 import * as AstralWeaveMaterialFactories from './astral-weave-materials.js';
 import * as AstralWeaveComputeFactories from './astral-weave-compute.js';
 import * as AstralWeavePostFactories from './astral-weave-post.js';
+import {
+    AstralWeaveWorld, buildAstralRibbonCurve, buildAstralSilkGeometry, getAstralWeaveLayout,
+} from './astral-weave-world.js';
 import {
     ribbonVertexShader,
     ribbonFragmentShader,
@@ -33,13 +37,13 @@ const BASELINE_PRESET_ORDER = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Ext
 
 const QUALITY_PRESETS = {
     Minimal: {
-        ribbons: 12,
+        ribbons: 4,
         ribbonSegments: 64,
-        starCount: 4000,
+        starCount: 320,
         flowParticles: 1200,
         dustParticles: 80,
         burstParticles: 180,
-        nebulaLayers: 3,
+        nebulaLayers: 1,
         enablePost: false,
         enableMRT: false,
         enableCompute: false,
@@ -53,13 +57,13 @@ const QUALITY_PRESETS = {
         webglDustParticles: 60,
     },
     Low: {
-        ribbons: 16,
+        ribbons: 6,
         ribbonSegments: 72,
-        starCount: 8000,
+        starCount: 500,
         flowParticles: 1800,
         dustParticles: 140,
         burstParticles: 240,
-        nebulaLayers: 4,
+        nebulaLayers: 2,
         enablePost: false,
         enableMRT: false,
         enableCompute: false,
@@ -73,13 +77,13 @@ const QUALITY_PRESETS = {
         webglDustParticles: 100,
     },
     Medium: {
-        ribbons: 24,
+        ribbons: 8,
         ribbonSegments: 84,
-        starCount: 15000,
+        starCount: 800,
         flowParticles: 4000,
         dustParticles: 300,
         burstParticles: 320,
-        nebulaLayers: 5,
+        nebulaLayers: 2,
         enablePost: true,
         enableMRT: true,
         enableCompute: true,
@@ -93,13 +97,13 @@ const QUALITY_PRESETS = {
         webglDustParticles: 180,
     },
     High: {
-        ribbons: 32,
+        ribbons: 10,
         ribbonSegments: 96,
-        starCount: 28000,
+        starCount: 1200,
         flowParticles: 10000,
         dustParticles: 600,
         burstParticles: 640,
-        nebulaLayers: 6,
+        nebulaLayers: 3,
         enablePost: true,
         enableMRT: true,
         enableCompute: true,
@@ -113,13 +117,13 @@ const QUALITY_PRESETS = {
         webglDustParticles: 280,
     },
     Ultra: {
-        ribbons: 40,
+        ribbons: 12,
         ribbonSegments: 112,
-        starCount: 45000,
+        starCount: 1800,
         flowParticles: 18000,
         dustParticles: 1100,
         burstParticles: 960,
-        nebulaLayers: 8,
+        nebulaLayers: 4,
         enablePost: true,
         enableMRT: true,
         enableCompute: true,
@@ -133,13 +137,13 @@ const QUALITY_PRESETS = {
         webglDustParticles: 420,
     },
     Extreme: {
-        ribbons: 48,
+        ribbons: 14,
         ribbonSegments: 128,
-        starCount: 60000,
+        starCount: 2400,
         flowParticles: 28000,
         dustParticles: 1600,
         burstParticles: 1400,
-        nebulaLayers: 10,
+        nebulaLayers: 4,
         enablePost: true,
         enableMRT: true,
         enableCompute: true,
@@ -157,7 +161,7 @@ const QUALITY_PRESETS = {
 const QUALITY_BUDGETS = {
     Minimal: {
         targetFps: 30,
-        maxDrawCalls: 16,
+        maxDrawCalls: 18,
         maxTriangles: 120000,
         maxPoints: 18000,
     },
@@ -169,25 +173,25 @@ const QUALITY_BUDGETS = {
     },
     Medium: {
         targetFps: 60,
-        maxDrawCalls: 26,
+        maxDrawCalls: 44,
         maxTriangles: 520000,
         maxPoints: 70000,
     },
     High: {
         targetFps: 60,
-        maxDrawCalls: 30,
+        maxDrawCalls: 46,
         maxTriangles: 1000000,
         maxPoints: 120000,
     },
     Ultra: {
         targetFps: 60,
-        maxDrawCalls: 35,
+        maxDrawCalls: 50,
         maxTriangles: 1500000,
         maxPoints: 180000,
     },
     Extreme: {
         targetFps: 60,
-        maxDrawCalls: 40,
+        maxDrawCalls: 54,
         maxTriangles: 2000000,
         maxPoints: 260000,
     },
@@ -197,12 +201,12 @@ const WEBGPU_RENDER_SCALE = 1.0;
 const WEBGL_RENDER_SCALE = 1.25;
 
 const WEBGPU_BILLBOARD_PARTICLE_BUDGETS = {
-    Minimal: { flow: 900, dust: 72, burst: 96 },
-    Low: { flow: 1400, dust: 96, burst: 120 },
-    Medium: { flow: 2400, dust: 140, burst: 160 },
-    High: { flow: 3600, dust: 220, burst: 220 },
-    Ultra: { flow: 5200, dust: 320, burst: 300 },
-    Extreme: { flow: 6800, dust: 420, burst: 380 },
+    Minimal: { flow: 180, dust: 24, burst: 96 },
+    Low: { flow: 320, dust: 48, burst: 120 },
+    Medium: { flow: 600, dust: 80, burst: 160 },
+    High: { flow: 1000, dust: 120, burst: 220 },
+    Ultra: { flow: 1600, dust: 180, burst: 300 },
+    Extreme: { flow: 2400, dust: 220, burst: 380 },
 };
 
 function parseAstralWeaveFlags() {
@@ -341,6 +345,16 @@ function createIdentityInstancedBillboardMesh(material, count, attributes = {}) 
     return mesh;
 }
 
+function createBillboardFromPointGeometry(material, geometry) {
+    const attributes = {};
+    Object.entries(geometry.attributes).forEach(([name, attribute]) => {
+        if (name !== 'position') attributes[name] = { array: attribute.array, itemSize: attribute.itemSize };
+    });
+    const mesh = createIdentityInstancedBillboardMesh(material, geometry.getAttribute('position').count, attributes);
+    geometry.dispose();
+    return mesh;
+}
+
 export default class AstralWeaveTheme extends BaseTheme {
     constructor() {
         super('astral-weave');
@@ -351,7 +365,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.fixedElapsedTime = 0;
 
         this.fxController = new AstralWeaveFXController();
-        this.clock = new THREE.Clock();
+        this.clock = new THREE.Timer();
         this.time = 0;
 
         this.renderer = null;
@@ -367,6 +381,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.rootGroup = null;
         this.nexusGroup = null;
         this.centerVeil = null;
+        this.weaveWorld = null;
         this.starfield = null;
         this.flowParticles = null;
         this.dustParticles = null;
@@ -427,18 +442,18 @@ export default class AstralWeaveTheme extends BaseTheme {
         };
 
         this.palette = {
-            cyan: new THREE.Color(0x73f8ff),
-            magenta: new THREE.Color(0xd95bff),
-            gold: new THREE.Color(0xffd96d),
-            blue: new THREE.Color(0x3b8dff),
-            pink: new THREE.Color(0xff82d2),
-            violet: new THREE.Color(0x7b58ff),
+            cyan: new THREE.Color(0x65e9ef),
+            magenta: new THREE.Color(0xc27fe8),
+            gold: new THREE.Color(0xffd293),
+            blue: new THREE.Color(0x439acf),
+            pink: new THREE.Color(0xe083bd),
+            violet: new THREE.Color(0x8373f3),
             white: new THREE.Color(0xf7fbff),
             void: new THREE.Color(0x030611),
         };
 
         this.textures = {};
-        this.nexusLocalPosition = new THREE.Vector3(0, 7.5, -12);
+        this.nexusLocalPosition = new THREE.Vector3(4, 21, -24);
         this.cameraBasePosition = new THREE.Vector3(0, 5.6, 34);
         this.cameraShake = new THREE.Vector3();
     }
@@ -482,12 +497,8 @@ export default class AstralWeaveTheme extends BaseTheme {
     getActiveParticleCounts() {
         const webgpuBudget = this.getWebGPUBillboardBudget();
         return {
-            flow: this.isWebGPU
-                ? Math.min(this.qualityPreset.flowParticles, webgpuBudget.flow)
-                : this.qualityPreset.webglFlowParticles,
-            dust: this.isWebGPU
-                ? Math.min(this.qualityPreset.dustParticles, webgpuBudget.dust)
-                : this.qualityPreset.webglDustParticles,
+            flow: Math.min(this.qualityPreset.flowParticles, webgpuBudget.flow),
+            dust: Math.min(this.qualityPreset.dustParticles, webgpuBudget.dust),
             burst: this.isWebGPU
                 ? Math.min(this.qualityPreset.burstParticles, webgpuBudget.burst)
                 : Math.max(128, Math.floor(this.qualityPreset.burstParticles * 0.4)),
@@ -597,6 +608,13 @@ export default class AstralWeaveTheme extends BaseTheme {
         await this.loadRuntimeModules();
         this.createGeneratedTextures();
         this.createSceneGraph();
+        if (isAsyncComputeCapable(this.renderer) && this.flags.useCompute) {
+            const readiness = await compileComputeAsync(this.renderer, [
+                this.flowCompute?.computeNode, this.dustCompute?.computeNode, this.burstCompute?.computeNode,
+            ]);
+            if (ownerGeneration !== this.lifecycleGeneration || !this.isActive || this.cleanupComplete) return;
+            if (readiness.status !== 'ready') throw new Error(`Astral Weave compute preparation: ${readiness.status}`);
+        }
         this.setupEventListeners();
         this.setupResizeListener();
         this.setupQualityListener();
@@ -809,14 +827,17 @@ export default class AstralWeaveTheme extends BaseTheme {
     createSceneGraph() {
         this.rootGroup = new THREE.Group();
         this.rootGroup.position.set(0, 0.8, 0);
+        this.rootGroup.scale.x = getAstralWeaveLayout(this.camera.aspect).span;
         this.scene.add(this.rootGroup);
+
+        this.weaveWorld = new AstralWeaveWorld(this.scene, this.rootGroup, this.nexusLocalPosition).build();
+        this.weaveWorld.resize(this.camera.aspect);
 
         this.createCenterVeil();
         this.createNexus();
         this.createRibbons();
         this.createStarfield();
         this.createConstellations();
-        this.createLightShafts();
         this.createNebulaLayers();
         this.createFlowParticles();
         this.createDustParticles();
@@ -843,15 +864,14 @@ export default class AstralWeaveTheme extends BaseTheme {
     createNexus() {
         this.nexusGroup = new THREE.Group();
         this.nexusGroup.position.copy(this.nexusLocalPosition);
+        const layout = getAstralWeaveLayout(this.camera.aspect);
+        this.nexusGroup.scale.set(layout.nexusScale / layout.span, layout.nexusScale, layout.nexusScale);
         this.rootGroup.add(this.nexusGroup);
         this.nexusNodeData = [];
 
         if (this.usesNodeMaterials && this.materialFactories) {
             const coreGeo = new THREE.IcosahedronGeometry(1.75, 3);
-            const shellGeo = new THREE.TorusKnotGeometry(2.95, 0.13, 180, 20, 2, 3);
-            const haloGeo = new THREE.TorusGeometry(4.35, 0.17, 12, 96);
-            const halo2Geo = new THREE.TorusGeometry(5.2, 0.1, 12, 96);
-            const halo3Geo = new THREE.TorusGeometry(6.0, 0.07, 12, 96);
+            const shellGeo = new THREE.TorusKnotGeometry(2.95, 0.1, 128, 12, 2, 3);
 
             const coreData = this.materialFactories.createAstralNexusCoreNodeMaterial({
                 colorA: this.palette.cyan,
@@ -861,52 +881,22 @@ export default class AstralWeaveTheme extends BaseTheme {
             const shellData = this.materialFactories.createAstralNexusShellNodeMaterial({
                 colorA: this.palette.blue,
                 colorB: this.palette.pink,
-                opacity: 0.11,
+                opacity: 0.22,
                 pulseBias: 0.16,
-            });
-            const haloData = this.materialFactories.createAstralNexusShellNodeMaterial({
-                colorA: this.palette.magenta,
-                colorB: this.palette.cyan,
-                opacity: 0.045,
-                pulseBias: 0.1,
-                additive: true,
-            });
-            const halo2Data = this.materialFactories.createAstralNexusShellNodeMaterial({
-                colorA: this.palette.gold,
-                colorB: this.palette.pink,
-                opacity: 0.038,
-                pulseBias: 0.08,
-                additive: true,
-            });
-            const halo3Data = this.materialFactories.createAstralNexusShellNodeMaterial({
-                colorA: this.palette.violet,
-                colorB: this.palette.cyan,
-                opacity: 0.032,
-                pulseBias: 0.06,
                 additive: true,
             });
 
             const core = new THREE.Mesh(coreGeo, coreData.material);
             const shell = new THREE.Mesh(shellGeo, shellData.material);
-            const halo = new THREE.Mesh(haloGeo, haloData.material);
-            const halo2 = new THREE.Mesh(halo2Geo, halo2Data.material);
-            const halo3 = new THREE.Mesh(halo3Geo, halo3Data.material);
 
             shell.rotation.set(0.86, 0.18, 0.42);
             shell.scale.set(1, 0.94, 1.06);
-            halo.rotation.set(Math.PI * 0.56, 0, 0.18);
-            halo.scale.set(1, 0.72, 1);
-            halo2.rotation.set(Math.PI * 0.25, Math.PI * 0.35, 0.5);
-            halo3.rotation.set(-Math.PI * 0.3, -Math.PI * 0.15, 0.8);
 
             core.userData.baseRotation = new THREE.Euler(0, 0, 0);
             shell.userData.baseRotation = shell.rotation.clone();
-            halo.userData.baseRotation = halo.rotation.clone();
-            halo2.userData.baseRotation = halo2.rotation.clone();
-            halo3.userData.baseRotation = halo3.rotation.clone();
 
-            this.nexusGroup.add(core, shell, halo, halo2, halo3);
-            this.nexusNodeData.push(coreData, shellData, haloData, halo2Data, halo3Data);
+            this.nexusGroup.add(core, shell);
+            this.nexusNodeData.push(coreData, shellData);
             return;
         }
 
@@ -1061,7 +1051,8 @@ export default class AstralWeaveTheme extends BaseTheme {
             return;
         }
 
-        const positionAttr = this.starfield?.geometry?.getAttribute('position');
+        const positionAttr = this.starfield?.geometry?.getAttribute('aCenter')
+            || this.starfield?.geometry?.getAttribute('position');
         if (!positionAttr) return;
 
         const count = positionAttr.count;
@@ -1076,7 +1067,6 @@ export default class AstralWeaveTheme extends BaseTheme {
             const z1 = positionAttr.getZ(i);
             const p1 = new THREE.Vector3(x1, y1, z1);
 
-            let connections = 0;
             const neighbors = [];
             for (let j = i + 1; j < searchCount; j += 1) {
                 const x2 = positionAttr.getX(j);
@@ -1141,29 +1131,7 @@ export default class AstralWeaveTheme extends BaseTheme {
     }
 
     buildRibbonCurve(index, total) {
-        const angle = (index / total) * TAU;
-        const drift = Math.sin(index * 0.73);
-        const start = this.nexusLocalPosition.clone().add(new THREE.Vector3(
-            Math.cos(angle) * 1.8,
-            Math.sin(index * 0.3) * 1.2,
-            Math.sin(angle) * 1.6,
-        ));
-        const control1 = new THREE.Vector3(
-            Math.cos(angle) * 7 + Math.sin(index * 0.42) * 3.2,
-            8 + Math.sin(index * 0.55) * 3.5,
-            -14 + Math.sin(angle) * 7,
-        );
-        const control2 = new THREE.Vector3(
-            Math.cos(angle + drift * 0.15) * 16,
-            2 + Math.cos(index * 0.37) * 10,
-            -20 + Math.sin(angle + 0.6) * 13,
-        );
-        const end = new THREE.Vector3(
-            Math.cos(angle + 0.85) * 28,
-            -8 + Math.sin(index * 0.41) * 12,
-            -26 + Math.sin(angle + 1.2) * 18,
-        );
-        return new THREE.CatmullRomCurve3([start, control1, control2, end]);
+        return buildAstralRibbonCurve(index, total, this.nexusLocalPosition);
     }
 
     createRibbons() {
@@ -1171,22 +1139,21 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.ribbonNodeData = [];
         const count = this.qualityPreset.ribbons;
         const palette = [
-            [this.palette.cyan, this.palette.magenta, this.palette.gold],
-            [this.palette.blue, this.palette.cyan, this.palette.white],
-            [this.palette.magenta, this.palette.violet, this.palette.cyan],
-            [this.palette.gold, this.palette.magenta, this.palette.pink],
+            [this.palette.cyan, this.palette.violet, this.palette.pink],
+            [this.palette.violet, this.palette.pink, this.palette.cyan],
+            [this.palette.blue, this.palette.cyan, this.palette.magenta],
+            [this.palette.magenta, this.palette.blue, this.palette.pink],
         ];
 
         for (let i = 0; i < count; i += 1) {
             const curve = this.buildRibbonCurve(i, count);
-            const geometry = new THREE.TubeGeometry(
+            const geometry = buildAstralSilkGeometry(
                 curve,
-                this.qualityPreset.ribbonSegments,
-                0.12 + (i % 4) * 0.016,
-                10,
-                false,
+                this.qualityPreset.ribbonSegments * 2,
+                1.5 + (i % 3) * 0.7,
+                i * 0.7,
             );
-            const colors = palette[i % palette.length];
+            const colors = palette[Math.floor(i / 2) % palette.length];
             let material = null;
             let nodeData = null;
 
@@ -1195,8 +1162,9 @@ export default class AstralWeaveTheme extends BaseTheme {
                     colorA: colors[0],
                     colorB: colors[1],
                     colorC: colors[2],
-                    flowSpeed: 0.8 + (i % 7) * 0.11,
-                    pulseOffset: i * 0.31,
+                    flowSpeed: 0.42 + i * 0.035,
+                    pulseOffset: i * 0.63,
+                    eventColor: this.palette.gold,
                 });
                 material = nodeData.material;
                 this.ribbonNodeData.push(nodeData);
@@ -1223,6 +1191,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             const ribbon = new THREE.Mesh(geometry, material);
             ribbon.userData.rotationSeed = i * 0.23;
             ribbon.userData.baseScale = 1 + (i % 5) * 0.015;
+            ribbon.frustumCulled = false;
             this.rootGroup.add(ribbon);
             this.ribbonMeshes.push(ribbon);
         }
@@ -1278,6 +1247,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aCenter', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
@@ -1288,6 +1258,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         let material = null;
         if (this.usesNodeMaterials && this.materialFactories) {
             this.starfieldNodeData = this.materialFactories.createAstralStarfieldNodeMaterial({
+                billboard: true,
                 pixelRatio: this.renderer.getPixelRatio(),
                 diffractionStrength: this.activeQualityLevel === 'Medium' ? 0.18 : 0.3,
             });
@@ -1304,7 +1275,8 @@ export default class AstralWeaveTheme extends BaseTheme {
             });
         }
 
-        this.starfield = new THREE.Points(geometry, material);
+        this.starfield = this.usesNodeMaterials
+            ? createBillboardFromPointGeometry(material, geometry) : new THREE.Points(geometry, material);
         this.starfield.frustumCulled = false;
         this.scene.add(this.starfield);
     }
@@ -1329,7 +1301,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             if (this.usesNodeMaterials && this.materialFactories) {
                 nodeData = this.materialFactories.createAstralNebulaNodeMaterial({
                     texture: this.textures.nebula,
-                    opacity: 0.06 + this.random() * 0.03,
+                    opacity: 0.035 + this.random() * 0.02,
                     drift: 0.12 + this.random() * 0.18,
                     tintA: tint[0],
                     tintB: tint[1],
@@ -1361,6 +1333,8 @@ export default class AstralWeaveTheme extends BaseTheme {
             );
             mesh.rotation.z = this.random() * TAU;
             mesh.userData.rotationSpeed = (this.random() - 0.5) * 0.012;
+            mesh.userData.home = mesh.position.clone();
+            mesh.userData.baseRotation = mesh.rotation.z;
             this.scene.add(mesh);
             this.nebulaLayers.push(mesh);
         }
@@ -1428,6 +1402,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         let material = null;
         if (this.usesNodeMaterials && this.materialFactories) {
             this.flowNodeData = this.materialFactories.createAstralFlowParticleNodeMaterial({
+                billboard: true,
                 pixelRatio: this.renderer.getPixelRatio(),
                 flowCompute: this.flowCompute,
                 colorA: this.palette.cyan,
@@ -1448,7 +1423,8 @@ export default class AstralWeaveTheme extends BaseTheme {
                 vertexColors: true,
             });
         }
-        this.flowParticles = new THREE.Points(geometry, material);
+        this.flowParticles = this.usesNodeMaterials
+            ? createBillboardFromPointGeometry(material, geometry) : new THREE.Points(geometry, material);
         this.flowParticles.frustumCulled = false;
         this.flowParticles.renderOrder = 18;
         this.scene.add(this.flowParticles);
@@ -1509,6 +1485,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         let material = null;
         if (this.usesNodeMaterials && this.materialFactories) {
             this.dustNodeData = this.materialFactories.createAstralFlowParticleNodeMaterial({
+                billboard: true,
                 pixelRatio: this.renderer.getPixelRatio(),
                 flowCompute: this.dustCompute,
                 colorA: this.palette.white,
@@ -1531,7 +1508,8 @@ export default class AstralWeaveTheme extends BaseTheme {
                 blending: THREE.AdditiveBlending,
             });
         }
-        this.dustParticles = new THREE.Points(geometry, material);
+        this.dustParticles = this.usesNodeMaterials
+            ? createBillboardFromPointGeometry(material, geometry) : new THREE.Points(geometry, material);
         this.dustParticles.frustumCulled = false;
         this.dustParticles.renderOrder = 16;
         this.scene.add(this.dustParticles);
@@ -1618,7 +1596,7 @@ export default class AstralWeaveTheme extends BaseTheme {
                 });
                 mesh = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), nodeData.material);
                 uniforms = nodeData.uniforms;
-                mesh.rotation.x = -Math.PI * 0.5;
+                mesh.quaternion.copy(this.camera.quaternion);
             } else {
                 mesh = new THREE.Mesh(
                     new THREE.TorusGeometry(2.2, 0.08, 12, 72),
@@ -1697,7 +1675,7 @@ export default class AstralWeaveTheme extends BaseTheme {
 
     startAnimation() {
         if (!this.renderer) return;
-        this.clock.start();
+        this.clock.reset();
         this.renderLoop = () => {
             if (!this.isActive || !this.renderer || !this.scene || !this.camera) return;
             if (!this.shouldRenderFrame()) return;
@@ -1724,22 +1702,25 @@ export default class AstralWeaveTheme extends BaseTheme {
             this.fixedElapsedTime += this.fixedDeltaSeconds;
             return this.fixedDeltaSeconds;
         }
+        this.clock.update();
         return Math.min(0.05, this.clock.getDelta());
     }
 
     updateSceneMotion(_delta, signals) {
         if (!this.rootGroup) return;
+        const layout = getAstralWeaveLayout(this.camera.aspect);
+        this.rootGroup.scale.x = layout.span;
         const driftTime = this.time * 0.18;
         const braidMotion = 1 + signals.braidVelocity * 0.24;
-        this.rootGroup.position.x = Math.sin(driftTime) * 2.8 + Math.cos(driftTime * 0.6) * 1.2;
-        this.rootGroup.position.y = 0.6 + Math.cos(driftTime * 0.7) * 1.1 + signals.comboEnergy * 0.22;
-        this.rootGroup.position.z = Math.sin(driftTime * 0.5) * 1.8;
-        this.rootGroup.rotation.y = Math.sin(driftTime * 0.4) * 0.12 + signals.braidVelocity * 0.018;
-        this.rootGroup.rotation.z = Math.cos(driftTime * 0.3) * 0.025 + signals.comboEnergy * 0.008;
+        this.rootGroup.position.x = Math.sin(driftTime) * 0.65 * layout.span;
+        this.rootGroup.position.y = 0.6 + Math.cos(driftTime * 0.7) * 0.45 + signals.comboEnergy * 0.08;
+        this.rootGroup.position.z = Math.sin(driftTime * 0.5) * 0.6;
+        this.rootGroup.rotation.y = Math.sin(driftTime * 0.4) * 0.035;
+        this.rootGroup.rotation.z = Math.cos(driftTime * 0.3) * 0.012;
 
         if (this.nexusGroup) {
-            const scale = 1 + signals.linePulse * 0.1 + signals.comboEnergy * 0.05;
-            this.nexusGroup.scale.setScalar(scale);
+            const scale = (1 + signals.linePulse * 0.04 + signals.comboEnergy * 0.02) * layout.nexusScale;
+            this.nexusGroup.scale.set(scale / layout.span, scale, scale);
             this.nexusGroup.rotation.y = this.time * (0.08 + signals.braidVelocity * 0.06);
             this.nexusGroup.rotation.x = Math.sin(this.time * 0.42) * 0.08;
 
@@ -1794,8 +1775,8 @@ export default class AstralWeaveTheme extends BaseTheme {
         }
 
         if (this.constellations) {
-            this.constellations.rotation.y = this.time * 0.005;
-            this.constellations.rotation.x = Math.sin(this.time * 0.02) * 0.015;
+            this.constellations.rotation.y = this.time * 0.01;
+            this.constellations.rotation.x = Math.sin(this.time * 0.04) * 0.03;
         }
 
         if (this.starfield) {
@@ -1804,22 +1785,22 @@ export default class AstralWeaveTheme extends BaseTheme {
         }
 
         this.nebulaLayers.forEach((mesh, index) => {
-            mesh.rotation.z += mesh.userData.rotationSpeed;
-            mesh.position.x += Math.sin(this.time * 0.08 + index) * 0.002;
-            mesh.position.y += Math.cos(this.time * 0.05 + index * 0.3) * 0.001;
+            mesh.rotation.z = mesh.userData.baseRotation + this.time * mesh.userData.rotationSpeed;
+            mesh.position.x = mesh.userData.home.x + Math.sin(this.time * 0.08 + index) * 1.4;
+            mesh.position.y = mesh.userData.home.y + Math.cos(this.time * 0.05 + index * 0.3) * 0.8;
         });
     }
 
     updateCamera(_delta, signals) {
         const sway = this.time * 0.13;
         const shakeScale = (this.qualityPreset.cameraShakeScale || 1) * signals.cameraImpulse;
-        this.cameraShake.x = (this.random() - 0.5) * shakeScale * 0.85;
-        this.cameraShake.y = (this.random() - 0.5) * shakeScale * 0.55;
+        this.cameraShake.x = Math.sin(this.time * 12.7) * shakeScale * 0.22;
+        this.cameraShake.y = Math.sin(this.time * 9.3 + 0.7) * shakeScale * 0.16;
 
-        this.camera.position.x = Math.sin(sway) * 2.2 + this.cameraShake.x;
-        this.camera.position.y = this.cameraBasePosition.y + Math.sin(sway * 0.6) * 1.2 + this.cameraShake.y;
-        this.camera.position.z = this.cameraBasePosition.z + Math.cos(sway * 0.5) * 2.4;
-        this.camera.lookAt(Math.sin(sway * 0.4) * 1.2, 3.4 + signals.linePulse * 0.25, -8);
+        this.camera.position.x = Math.sin(sway) * 0.55 + this.cameraShake.x;
+        this.camera.position.y = this.cameraBasePosition.y + Math.sin(sway * 0.6) * 0.4 + this.cameraShake.y;
+        this.camera.position.z = this.cameraBasePosition.z + Math.cos(sway * 0.5) * 0.75;
+        this.camera.lookAt(Math.sin(sway * 0.4) * 0.3, 3.8 + signals.linePulse * 0.08, -8);
     }
 
     updateCompute(delta, signals) {
@@ -1871,6 +1852,7 @@ export default class AstralWeaveTheme extends BaseTheme {
     }
 
     updateUniforms(signals) {
+        this.weaveWorld?.update(this.time, signals, this.camera);
         const effectMix = Math.min(
             3.0,
             signals.linePulse + signals.comboEnergy + signals.pieceLockPulse + signals.braidVelocity * 0.35,
@@ -1888,6 +1870,10 @@ export default class AstralWeaveTheme extends BaseTheme {
             copyUniformValue(nodeData.uniforms?.uEnergy, effectMix);
             copyUniformValue(nodeData.uniforms?.uLinePulse, signals.linePulse);
             copyUniformValue(nodeData.uniforms?.uComboEnergy, signals.comboEnergy);
+            copyUniformValue(nodeData.uniforms?.uLineWaveProgress, signals.lineWaveProgress);
+            copyUniformValue(nodeData.uniforms?.uWeaveCharge, signals.weaveCharge);
+            copyUniformValue(nodeData.uniforms?.uCrownPulse, signals.crownPulse);
+            copyUniformValue(nodeData.uniforms?.uEventHue, signals.eventHue);
         });
 
         this.nebulaNodeData.forEach((nodeData, index) => {
@@ -2000,10 +1986,10 @@ export default class AstralWeaveTheme extends BaseTheme {
             }
         }
 
-        const totalShockwaves = bursts.shockwaves + bursts.constellationFractures;
-        for (let i = 0; i < totalShockwaves; i += 1) {
-            this.spawnShockwave(nexusWorld, bursts.constellationFractures > 0 && i === totalShockwaves - 1);
-        }
+        // Coalesce an event storm into two readable fronts; reserve the gold
+        // celebration before spending slots on ordinary clear rings.
+        if (bursts.constellationFractures > 0) this.spawnShockwave(nexusWorld, true);
+        if (bursts.shockwaves > 0) this.spawnShockwave(nexusWorld);
     }
 
     spawnShockwave(origin, fracture = false) {
@@ -2013,6 +1999,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         const scale = fracture ? 1.45 : 1;
         slot.mesh.visible = true;
         slot.mesh.position.copy(origin);
+        slot.mesh.quaternion.copy(this.camera.quaternion);
         slot.mesh.userData.active = true;
         slot.mesh.userData.progress = 0;
         slot.mesh.userData.speed = fracture ? 0.82 : 1.06;
@@ -2036,8 +2023,9 @@ export default class AstralWeaveTheme extends BaseTheme {
             if (!mesh.userData.active) return;
             mesh.userData.progress += delta * mesh.userData.speed;
             const progress = mesh.userData.progress;
-            const scale = mesh.userData.baseScale * (1 + progress * 13.5);
+            const scale = mesh.userData.baseScale * (0.65 + progress * 3.6);
             mesh.scale.set(scale, scale, scale);
+            mesh.quaternion.copy(this.camera.quaternion);
             if (progress >= 1) {
                 mesh.userData.active = false;
                 mesh.visible = false;
@@ -2091,8 +2079,9 @@ export default class AstralWeaveTheme extends BaseTheme {
     }
 
     getNexusWorldPosition(target = new THREE.Vector3()) {
+        if (this.nexusGroup) return this.nexusGroup.getWorldPosition(target);
         target.copy(this.nexusLocalPosition);
-        if (this.rootGroup) target.add(this.rootGroup.position);
+        if (this.rootGroup) this.rootGroup.localToWorld(target);
         return target;
     }
 
@@ -2188,6 +2177,7 @@ export default class AstralWeaveTheme extends BaseTheme {
 
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
+        this.weaveWorld?.resize(this.camera.aspect);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio(this.isWebGPU ? WEBGPU_RENDER_SCALE : WEBGL_RENDER_SCALE));
         this.renderer.setSize(width, height);
         if (this.postProcessing?.setSize) this.postProcessing.setSize(width, height);
@@ -2249,7 +2239,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         if (this.baselineFrames.length > 3600) this.baselineFrames.shift();
 
         this.baselineRenderStats.push({
-            calls: this.renderer?.info?.render?.calls ?? 0,
+            calls: this.renderer?.info?.render?.drawCalls ?? this.renderer?.info?.render?.calls ?? 0,
             triangles: this.renderer?.info?.render?.triangles ?? 0,
             points: this.renderer?.info?.render?.points ?? 0,
             textures: this.renderer?.info?.memory?.textures ?? 0,
@@ -2468,7 +2458,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             this.renderer.setAnimationLoop(null);
         }
         this.renderLoop = null;
-        this.clock.stop();
+        this.clock.reset();
 
         if (this.postProcessing?.dispose) {
             this.postProcessing.dispose();
@@ -2485,6 +2475,9 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.burstCompute = null;
         this.cpuBurstSimulation = null;
 
+        this.weaveWorld?.dispose();
+        this.weaveWorld = null;
+
         if (this.renderer?.domElement && this.webglContextLostHandler) {
             this.renderer.domElement.removeEventListener('webglcontextlost', this.webglContextLostHandler, false);
         }
@@ -2494,6 +2487,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             const geometries = new Set();
             const materials = new Set();
             this.scene.traverse((object) => {
+                if (object.isInstancedMesh) object.dispose();
                 if (object.geometry) geometries.add(object.geometry);
                 if (object.material) {
                     if (Array.isArray(object.material)) {

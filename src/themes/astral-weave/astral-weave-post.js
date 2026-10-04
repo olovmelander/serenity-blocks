@@ -38,10 +38,10 @@ export const ASTRAL_WEAVE_POST_PROFILES = Object.freeze({
         bloomThreshold: 0.28,
         bloomDownsample: 0.6,
         exposure: 1.0,
-        contrast: 1.02,
+        contrast: 1.015,
         saturation: 1.0,
         vignetteOffset: 1.12,
-        vignetteDarkness: 0.24,
+        vignetteDarkness: 0.12,
         ditherStrength: 0.0012,
         useFilmGrain: false,
         grainStrength: 0,
@@ -56,10 +56,10 @@ export const ASTRAL_WEAVE_POST_PROFILES = Object.freeze({
         bloomThreshold: 0.24,
         bloomDownsample: 0.6,
         exposure: 1.0,
-        contrast: 1.03,
+        contrast: 1.015,
         saturation: 1.0,
         vignetteOffset: 1.12,
-        vignetteDarkness: 0.28,
+        vignetteDarkness: 0.12,
         ditherStrength: 0.0012,
         useFilmGrain: false,
         grainStrength: 0,
@@ -69,74 +69,74 @@ export const ASTRAL_WEAVE_POST_PROFILES = Object.freeze({
     }),
     Medium: Object.freeze({
         enabled: true,
-        bloomStrength: 0.12,
-        bloomRadius: 0.48,
-        bloomThreshold: 0.34,
+        bloomStrength: 0.16,
+        bloomRadius: 0.54,
+        bloomThreshold: 0.58,
         bloomDownsample: 0.64,
-        exposure: 0.96,
-        contrast: 1.03,
-        saturation: 1.0,
+        exposure: 1.0,
+        contrast: 1.025,
+        saturation: 1.065,
         vignetteOffset: 1.1,
-        vignetteDarkness: 0.38,
-        ditherStrength: 0.0015,
+        vignetteDarkness: 0.14,
+        ditherStrength: 0.0012,
         useFilmGrain: false,
         grainStrength: 0,
         lensDirtStrength: 0,
-        chromaticStrength: 0.002,
+        chromaticStrength: 0.0005,
         useLensing: false,
     }),
     High: Object.freeze({
         enabled: true,
-        bloomStrength: 0.16,
-        bloomRadius: 0.48,
-        bloomThreshold: 0.36,
+        bloomStrength: 0.2,
+        bloomRadius: 0.56,
+        bloomThreshold: 0.58,
         bloomDownsample: 0.7,
-        exposure: 0.95,
+        exposure: 1.0,
         contrast: 1.03,
-        saturation: 0.99,
+        saturation: 1.075,
         vignetteOffset: 1.12,
-        vignetteDarkness: 0.46,
-        ditherStrength: 0.0018,
-        useFilmGrain: true,
-        grainStrength: 0.001,
-        lensDirtStrength: 0.02,
-        chromaticStrength: 0.003,
+        vignetteDarkness: 0.16,
+        ditherStrength: 0.0013,
+        useFilmGrain: false,
+        grainStrength: 0,
+        lensDirtStrength: 0.006,
+        chromaticStrength: 0.0007,
         useLensing: false,
     }),
     Ultra: Object.freeze({
         enabled: true,
         bloomStrength: 0.22,
-        bloomRadius: 0.5,
-        bloomThreshold: 0.34,
+        bloomRadius: 0.58,
+        bloomThreshold: 0.56,
         bloomDownsample: 0.76,
-        exposure: 0.95,
-        contrast: 1.04,
-        saturation: 1.0,
+        exposure: 1.0,
+        contrast: 1.03,
+        saturation: 1.08,
         vignetteOffset: 1.14,
-        vignetteDarkness: 0.5,
-        ditherStrength: 0.002,
-        useFilmGrain: true,
-        grainStrength: 0.0011,
-        lensDirtStrength: 0.03,
-        chromaticStrength: 0.0038,
+        vignetteDarkness: 0.17,
+        ditherStrength: 0.0014,
+        useFilmGrain: false,
+        grainStrength: 0,
+        lensDirtStrength: 0.008,
+        chromaticStrength: 0.0009,
         useLensing: true,
     }),
     Extreme: Object.freeze({
         enabled: true,
-        bloomStrength: 0.28,
-        bloomRadius: 0.52,
-        bloomThreshold: 0.32,
+        bloomStrength: 0.24,
+        bloomRadius: 0.6,
+        bloomThreshold: 0.56,
         bloomDownsample: 0.8,
-        exposure: 0.96,
-        contrast: 1.04,
-        saturation: 1.0,
+        exposure: 1.0,
+        contrast: 1.035,
+        saturation: 1.08,
         vignetteOffset: 1.16,
-        vignetteDarkness: 0.54,
-        ditherStrength: 0.0022,
-        useFilmGrain: true,
-        grainStrength: 0.0012,
-        lensDirtStrength: 0.04,
-        chromaticStrength: 0.0045,
+        vignetteDarkness: 0.18,
+        ditherStrength: 0.0014,
+        useFilmGrain: false,
+        grainStrength: 0,
+        lensDirtStrength: 0.01,
+        chromaticStrength: 0.001,
         useLensing: true,
     }),
 });
@@ -150,15 +150,15 @@ const ASTRAL_WEAVE_GRADE_SHADER = {
     uniforms: {
         tDiffuse: { value: null },
         tLensDirt: { value: null },
-        uExposure: { value: 1.03 },
-        uContrast: { value: 1.06 },
-        uSaturation: { value: 1.04 },
+        uExposure: { value: 1.0 },
+        uContrast: { value: 1.03 },
+        uSaturation: { value: 1.075 },
         uVignetteOffset: { value: 1.12 },
-        uVignetteDarkness: { value: 0.38 },
-        uGrainStrength: { value: 0.0012 },
-        uDitherStrength: { value: 0.0018 },
-        uLensDirtStrength: { value: 0.08 },
-        uChromaticStrength: { value: 0.0045 },
+        uVignetteDarkness: { value: 0.16 },
+        uGrainStrength: { value: 0 },
+        uDitherStrength: { value: 0.0013 },
+        uLensDirtStrength: { value: 0.006 },
+        uChromaticStrength: { value: 0.0007 },
         uLensingStrength: { value: 0.0 },
         uTime: { value: 0.0 },
     },
@@ -200,21 +200,23 @@ const ASTRAL_WEAVE_GRADE_SHADER = {
         }
 
         void main() {
-            vec2 centered = (vUv - 0.5) * 2.0;
+            vec2 centered = (vUv - vec2(0.5, 0.46)) * 2.0;
             float dist = length(centered);
-            float lensMask = smoothstep(0.55, 0.0, dist) * uLensingStrength;
-            vec2 warpedUv = vUv - centered * lensMask * 0.02;
+            float lensMask = (1.0 - smoothstep(0.0, 0.6, dist)) * uLensingStrength;
+            vec2 warpedUv = vUv - centered * lensMask * 0.0035;
 
-            vec3 color = sampleChromatic(warpedUv, uChromaticStrength + lensMask * 0.01);
+            vec3 color = sampleChromatic(warpedUv, uChromaticStrength + lensMask * 0.0015);
             vec3 lensDirt = texture2D(tLensDirt, vUv).rgb;
             color += color * lensDirt * uLensDirtStrength * 0.12;
 
             color *= uExposure;
             float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
             color = mix(vec3(luma), color, uSaturation);
-            color = (color - 0.5) * uContrast + 0.5;
+            // A midpoint contrast subtraction erased low-intensity nebula hues.
+            // This gentle highlight lift leaves black and shadow colors intact.
+            color *= 1.0 + (uContrast - 1.0) * smoothstep(0.08, 0.75, luma);
 
-            float vignette = smoothstep(uVignetteOffset, uVignetteOffset - 0.55, dist);
+            float vignette = 1.0 - smoothstep(uVignetteOffset - 0.55, uVignetteOffset, dist);
             color = mix(color * (1.0 - uVignetteDarkness), color, vignette);
 
             float grain = randomGrain(vUv * 132.0) * uGrainStrength;
@@ -269,39 +271,38 @@ export class AstralWeavePost {
 
         this.bloomNode = bloom(
             bloomSource,
-            params.bloomStrength ?? 0.45,
-            params.bloomRadius ?? 0.52,
-            params.bloomThreshold ?? 0.18,
+            params.bloomStrength ?? 0.2,
+            params.bloomRadius ?? 0.56,
+            params.bloomThreshold ?? 0.58,
         );
 
         this.bloomDownsample = params.bloomDownsample ?? 0.72;
-        const originalBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
-        this.bloomNode.setSize = (width, height) => {
-            originalBloomSetSize(width * this.bloomDownsample, height * this.bloomDownsample);
-        };
+        // The old size patch also applied BloomNode's internal half-resolution.
+        // Preserve that budget through r186's public resolution API.
+        this.bloomNode.setResolutionScale(this.bloomDownsample * 0.5);
 
-        this.uExposure = uniform(params.exposure ?? 1.03);
-        this.uContrast = uniform(params.contrast ?? 1.06);
-        this.uSaturation = uniform(params.saturation ?? 1.05);
+        this.uExposure = uniform(params.exposure ?? 1.0);
+        this.uContrast = uniform(params.contrast ?? 1.03);
+        this.uSaturation = uniform(params.saturation ?? 1.075);
         this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.12);
-        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.38);
+        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.16);
         this.uGrainStrength = uniform(params.useFilmGrain ? (params.grainStrength ?? 0.00115) : 0);
-        this.uDitherStrength = uniform(params.ditherStrength ?? 0.0018);
+        this.uDitherStrength = uniform(params.ditherStrength ?? 0.0013);
         this.uLensDirtStrength = uniform(params.lensDirtStrength ?? 0);
         this.uChromaticStrength = uniform(params.chromaticStrength ?? 0);
-        this.uLensingStrength = uniform(params.useLensing ? 0.0 : 0.0);
+        this.uLensingStrength = uniform(0);
         this.uTime = uniform(0);
-        this.uLensCenter = uniform(new THREE.Vector2(0.5, 0.43));
+        this.uLensCenter = uniform(new THREE.Vector2(0.5, 0.46));
 
         const uvNode = viewportUV;
         const centered = uvNode.sub(this.uLensCenter);
-        const dist = length(centered);
-        const lensMask = smoothstep(float(0.55), float(0.0), dist).mul(this.uLensingStrength);
-        const warpedUv = uvNode.sub(centered.mul(lensMask).mul(0.02));
+        const dist = length(centered.mul(2));
+        const lensMask = float(1).sub(smoothstep(float(0), float(0.6), dist)).mul(this.uLensingStrength);
+        const warpedUv = uvNode.sub(centered.mul(lensMask).mul(0.007));
         const sceneSample = sceneColor.sample(warpedUv);
         const chroma = chromaticAberration(
             sceneSample,
-            this.uChromaticStrength.add(lensMask.mul(0.01)),
+            this.uChromaticStrength.add(lensMask.mul(0.0015)),
             this.uLensCenter,
             1.05,
         );
@@ -313,7 +314,7 @@ export class AstralWeavePost {
             combined = combined.add(this.bloomNode.mul(dirt).mul(this.uLensDirtStrength));
         }
 
-        const vignette = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.55), dist);
+        const vignette = float(1).sub(smoothstep(this.uVignetteOffset.sub(0.55), this.uVignetteOffset, dist));
         const vignetteColor = mix(
             combined.mul(float(1.0).sub(this.uVignetteDarkness)),
             combined,
@@ -332,7 +333,9 @@ export class AstralWeavePost {
 
         const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
         graded = mix(vec3(luma), graded, this.uSaturation);
-        graded = graded.sub(0.5).mul(this.uContrast).add(0.5);
+        graded = graded.mul(float(1).add(
+            this.uContrast.sub(1).mul(smoothstep(float(0.08), float(0.75), luma)),
+        ));
 
         const grain = fract(
             sin(dot(uvNode.mul(148.37).add(vec2(this.uTime.mul(0.73), this.uTime.mul(1.17))), vec2(12.9898, 78.233)))
@@ -352,9 +355,9 @@ export class AstralWeavePost {
         this.renderPass = new RenderPass(this.scene, this.camera);
         this.bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            params.bloomStrength ?? 0.45,
-            params.bloomRadius ?? 0.52,
-            params.bloomThreshold ?? 0.18,
+            params.bloomStrength ?? 0.2,
+            params.bloomRadius ?? 0.56,
+            params.bloomThreshold ?? 0.58,
         );
         this.gradePass = new ShaderPass(ASTRAL_WEAVE_GRADE_SHADER);
         this.gradePass.uniforms.tLensDirt.value = this.lensDirtTexture;
@@ -381,7 +384,9 @@ export class AstralWeavePost {
         }
         if (params.lensingStrength !== undefined) {
             if (this.uLensingStrength) this.uLensingStrength.value = params.lensingStrength;
-            if (this.gradePass?.uniforms?.uLensingStrength) this.gradePass.uniforms.uLensingStrength.value = params.lensingStrength;
+            if (this.gradePass?.uniforms?.uLensingStrength) {
+                this.gradePass.uniforms.uLensingStrength.value = params.lensingStrength;
+            }
         }
     }
 
@@ -396,6 +401,7 @@ export class AstralWeavePost {
         }
         if (params.bloomDownsample !== undefined) {
             this.bloomDownsample = params.bloomDownsample;
+            this.bloomNode?.setResolutionScale(this.bloomDownsample * 0.5);
             if (this.size.width > 0 && this.size.height > 0 && this.bloomNode?._separableBlurMaterials?.length) {
                 this.bloomNode.setSize(this.size.width, this.size.height);
             }
@@ -481,6 +487,9 @@ export class AstralWeavePost {
             this.postProcessing.dispose();
         }
         if (this.composer?.dispose) {
+            this.renderPass?.dispose?.();
+            this.bloomPass?.dispose?.();
+            this.gradePass?.dispose?.();
             this.composer.dispose();
         }
         this.postProcessing = null;
