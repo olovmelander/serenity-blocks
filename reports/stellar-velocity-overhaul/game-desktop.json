@@ -1,0 +1,53 @@
+{
+  "state": {
+    "projection": [
+      -0.6399999999999999,
+      0.08,
+      0.9998686665353332
+    ],
+    "currentAnchor": [
+      -0.64,
+      0.08
+    ],
+    "camera": {
+      "fov": 75,
+      "aspect": 1.6,
+      "position": [
+        0,
+        0,
+        1000
+      ]
+    },
+    "rendererRect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900,
+      "top": 0,
+      "right": 1440,
+      "bottom": 900,
+      "left": 0
+    },
+    "backend": "WebGL2",
+    "quality": "High",
+    "board": {
+      "x": 545,
+      "y": 76.5,
+      "width": 350,
+      "height": 762,
+      "top": 76.5,
+      "right": 895,
+      "bottom": 838.5,
+      "left": 545
+    },
+    "anchor": {
+      "x": -0.64,
+      "y": 0.08,
+      "scale": 1
+    },
+    "renderPath": "webgl2-node-post",
+    "canvasCount": 25
+  },
+  "errors": [],
+  "warnings": []
+}

@@ -23,6 +23,7 @@ import {
     clamp,
     fract,
     sin,
+    pow,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
@@ -120,7 +121,8 @@ export class StellarVelocityPost {
         // Deep-space grade
         const luma = dot(toneMapped, vec3(0.2126, 0.7152, 0.0722));
         const saturated = mix(vec3(luma), toneMapped, this.uSaturation);
-        const contrasted = saturated.sub(0.5).mul(this.uContrast).add(0.5);
+        // Preserve low nebula values instead of clipping every shadow below 0.02.
+        const contrasted = pow(saturated.max(0), this.uContrast);
         const graded = mix(contrasted, contrasted.mul(this.uTintColor), this.uTintStrength);
 
         // Dither to reduce deep-space banding

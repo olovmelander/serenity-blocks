@@ -26,16 +26,17 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
+import { compileComputeAsync } from '../../rendering/webgpu-compute-pipeline-async.js';
 import { STELLAR_VELOCITY_TETROMINOS } from './stellar-velocity-tetrominos.js';
 import {
     VignetteShader,
     ChromaticAberrationShader,
 } from './stellar-velocity-shaders.js';
 import { StellarVelocityPost } from './stellar-velocity-post.js';
+import { StellarVelocityAtmosphere } from './stellar-velocity-atmosphere.js';
 import {
     createStellarVelocityStarfieldMaterial,
     createStellarVelocityWarpCoreMaterial,
-    createStellarVelocityNebulaMaterial,
     createStellarVelocityAsteroidMaterial,
     createStellarVelocityEnergyRingMaterial,
     createStellarVelocityBurstParticleMaterial,
@@ -420,6 +421,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.warpAccretionDisc = null;
         this.energyDischargeArcs = [];
         this.nebulaMeshes = [];
+        this.atmosphere = null;
         this.galaxyClusters = [];
         this.dustLaneMeshes = [];
         this.asteroids = [];
@@ -441,7 +443,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.coreLight = null;
 
         // Animation
-        this.clock = new THREE.Clock();
+        this.clock = new THREE.Timer();
         this.time = 0;
         this.fixedElapsed = 0;
 
@@ -464,19 +466,19 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.currentColorScheme = 0;
         this.colorSchemes = [
             {
-                name: 'classic', primary: new THREE.Color(0xffffff), secondary: new THREE.Color(0x88ccff), bg: 0x000000,
+                name: 'ion', primary: new THREE.Color(0x94edff), secondary: new THREE.Color(0x8580e8), bg: 0x02040d,
             },
             {
-                name: 'nebula', primary: new THREE.Color(0x00ffff), secondary: new THREE.Color(0x0088ff), bg: 0x000510,
+                name: 'nebula', primary: new THREE.Color(0xa4dfff), secondary: new THREE.Color(0xa485e0), bg: 0x030511,
             },
             {
-                name: 'solar', primary: new THREE.Color(0xffd700), secondary: new THREE.Color(0xff8800), bg: 0x001020,
+                name: 'solar', primary: new THREE.Color(0xffdcac), secondary: new THREE.Color(0xb282d2), bg: 0x070510,
             },
             {
-                name: 'aurora', primary: new THREE.Color(0x00ff88), secondary: new THREE.Color(0x00ffcc), bg: 0x000815,
+                name: 'aurora', primary: new THREE.Color(0x9af2e3), secondary: new THREE.Color(0x648ddf), bg: 0x020810,
             },
             {
-                name: 'crimson', primary: new THREE.Color(0xff4466), secondary: new THREE.Color(0xff0044), bg: 0x100005,
+                name: 'crimson', primary: new THREE.Color(0xffb5c8), secondary: new THREE.Color(0x9b7dde), bg: 0x080410,
             },
         ];
         this.colorCycleInterval = null;
@@ -932,7 +934,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             if (Number.isFinite(computeTotalMs)) {
                 this.gpuTiming.computeMs = computeTotalMs;
             }
-            const backend = this.renderer.backend;
+            const { backend } = this.renderer;
             const computePassMs = {};
             const collectPassTiming = (label, computeNode) => {
                 // r185 renames hasTimestamp(uid) → hasTimestampQuery(uid); hasTimestamp becomes a
@@ -1484,7 +1486,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         const dt = Number.isFinite(delta) ? Math.max(0, delta) : 0;
         sequence.phaseElapsed += dt;
 
-        let phase = sequence.phase;
+        let { phase } = sequence;
         let duration = sequence.timeline?.[phase] ?? 0;
         while (sequence.active && duration > 0 && sequence.phaseElapsed >= duration) {
             sequence.phaseElapsed -= duration;
@@ -1639,7 +1641,8 @@ export default class StellarVelocityTheme extends BaseTheme {
     }
 
     probeCapabilities() {
-        const maxColorAttachments = this.renderer?.capabilities?.maxColorAttachments ?? 1;
+        const maxColorAttachments = this.renderer?.backend?.device?.limits?.maxColorAttachments
+            ?? this.renderer?.capabilities?.maxColorAttachments ?? 1;
         const supportsCompute = this.isWebGPU && typeof this.renderer?.compute === 'function';
         const supportsTimestampQuery = this.renderer?.hasFeature?.('timestamp-query') ?? false;
         const supportsPost = this.usesNodeMaterials
@@ -1761,6 +1764,8 @@ export default class StellarVelocityTheme extends BaseTheme {
     disposeSceneResources() {
         if (!this.scene) return;
 
+        this.atmosphere?.dispose();
+        this.atmosphere = null;
         const disposedGeometries = new Set();
         const disposedMaterials = new Set();
         const disposedTextures = new Set();
@@ -1822,7 +1827,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             this.renderer.backend.trackTimestamp = false;
         }
         this.removeRendererResilienceListeners();
-        const domElement = this.renderer.domElement;
+        const { domElement } = this.renderer;
         try {
             this.disposeRenderer(this.renderer, { nullInstance: false });
         } catch (error) {
@@ -1984,6 +1989,22 @@ export default class StellarVelocityTheme extends BaseTheme {
         let timeoutId = null;
 
         try {
+            if (this.starfieldCompute?.computeNode) {
+                const computeReady = await compileComputeAsync(this.renderer, this.starfieldCompute.computeNode, {
+                    timeoutMs,
+                });
+                if (computeReady.status === 'failed') {
+                    // Preserve the scene and its node materials if a device rejects
+                    // the optional simulation kernel. The CPU billboards look the same.
+                    this.flags.useCompute = false;
+                    this.scene.remove(this.starfield);
+                    this.starfield.geometry.dispose();
+                    this.starfield.material.dispose();
+                    this.starfieldCompute.dispose();
+                    this.starfieldCompute = null;
+                    this.createStarfield();
+                }
+            }
             await Promise.race([
                 this.renderer.compileAsync(this.scene, this.camera),
                 new Promise((_, reject) => {
@@ -2868,8 +2889,8 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.hyperdriveSequence.timeline = this.createHyperdriveTimeline(0);
         this.hyperdriveSequence.lastTriggerAt = -Infinity;
         this.resetBaseline();
-        this.clock.stop();
-        this.clock = new THREE.Clock();
+        this.clock.dispose();
+        this.clock = new THREE.Timer();
         const scheme = this.colorSchemes[this.currentColorScheme];
         this.activePalette.primary.copy(scheme.primary);
         this.activePalette.secondary.copy(scheme.secondary);
@@ -2911,12 +2932,11 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.configureRendererColorPipeline();
         this.setupRendererResilience();
         this.createStarfield();
-        this.createWarpStreakLines();
-        this.createTunnelLattice();
         this.createNebulaBackdrop();
         this.createWarpCore();
         this.createAsteroidField();
         this.createAsteroidMicroDebris();
+        this.atmosphere?.update(this, 0);
         this.applyActivePalette();
         if (this.capabilities.mrt) {
             this.ensureMrtMaterials();
@@ -3073,8 +3093,8 @@ export default class StellarVelocityTheme extends BaseTheme {
 
             // Cylindrical depth-band distribution around the tunnel.
             const angle = this.rand() * Math.PI * 2;
-            const radius = band.radius;
-            const z = band.z;
+            const { radius } = band;
+            const { z } = band;
 
             positions[i3] = Math.cos(angle) * radius;
             positions[i3 + 1] = Math.sin(angle) * radius;
@@ -3198,209 +3218,9 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.starfield.userData.computeBacked = Boolean(this.starfieldCompute?.computeNode);
         this.scene.add(this.starfield);
         console.log(
-            `[StellarVelocity] Starfield created with ${starCount} stars`
-            + (this.starfieldCompute?.computeNode ? ' (compute)' : ' (cpu)'),
+            `[StellarVelocity] Starfield created with ${starCount} stars${
+                this.starfieldCompute?.computeNode ? ' (compute)' : ' (cpu)'}`,
         );
-    }
-
-    randomizeWarpStreakLine(state, index, initial = false) {
-        const count = Math.max(1, state?.count || 1);
-        if (!state || index < 0 || index >= count) return;
-        state.angles[index] = this.rand() * Math.PI * 2;
-        state.radii[index] = 20 + this.rand() * 170;
-        state.lengths[index] = 90 + this.rand() * 320;
-        state.speeds[index] = 0.45 + this.rand() * 1.55;
-        state.drifts[index] = 0.18 + this.rand() * 1.35;
-        state.z[index] = initial
-            ? -7800 + this.rand() * 9000
-            : -9200 - this.rand() * 2000;
-    }
-
-    createWarpStreakLines() {
-        if (!this.scene) return;
-
-        if (this.warpStreakLines) {
-            this.scene.remove(this.warpStreakLines);
-            this.warpStreakLines.geometry?.dispose?.();
-            this.warpStreakLines.material?.dispose?.();
-            this.warpStreakLines = null;
-            this.warpStreakState = null;
-        }
-
-        const count = Math.max(120, Math.min(1400, Math.floor(this.qualityPreset.starCount * 0.22)));
-        const positions = new Float32Array(count * 6);
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.getAttribute('position').setUsage(THREE.DynamicDrawUsage);
-
-        const material = new THREE.LineBasicMaterial({
-            color: this.activePalette.secondary.clone(),
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        this.warpStreakState = {
-            count,
-            positions,
-            angles: new Float32Array(count),
-            radii: new Float32Array(count),
-            lengths: new Float32Array(count),
-            speeds: new Float32Array(count),
-            drifts: new Float32Array(count),
-            z: new Float32Array(count),
-        };
-
-        for (let i = 0; i < count; i++) {
-            this.randomizeWarpStreakLine(this.warpStreakState, i, true);
-        }
-
-        this.warpStreakLines = new THREE.LineSegments(geometry, material);
-        this.warpStreakLines.name = 'stellar-velocity-warp-streak-lines';
-        this.warpStreakLines.frustumCulled = false;
-        this.warpStreakLines.visible = false;
-        this.scene.add(this.warpStreakLines);
-    }
-
-    updateWarpStreakLines(delta) {
-        if (!this.warpStreakLines?.geometry || !this.warpStreakState) return;
-        const choreography = this.hyperdriveFrame || this.createIdleHyperdriveFrame();
-        const warpRatio = THREE.MathUtils.clamp(this.currentSpeed / Math.max(this.maxSpeed, 0.0001), 0, 1);
-        const accelerationBoost = THREE.MathUtils.clamp(
-            (this.targetSpeed - this.currentSpeed) / Math.max(this.maxSpeed, 0.0001),
-            0,
-            1,
-        );
-        const visibility = this.isEnhancementsEnabled()
-            ? THREE.MathUtils.clamp(
-                (warpRatio - 0.08) * 1.12
-                + accelerationBoost * 1.45
-                + (choreography.starStretchBoost || 0) * 0.72
-                + (choreography.warpRatioBoost || 0) * 0.32,
-                0,
-                1,
-            )
-            : 0;
-        const material = this.warpStreakLines.material;
-        const opacity = THREE.MathUtils.clamp(visibility * 0.42, 0, 0.45);
-        material.opacity = opacity;
-        this.warpStreakLines.visible = opacity > 0.002;
-        if (!this.warpStreakLines.visible) {
-            return;
-        }
-
-        this.tunnelTintScratch
-            .copy(this.activePalette.secondary)
-            .lerp(this.activePalette.primary, 0.30 + visibility * 0.28);
-        material.color.copy(this.tunnelTintScratch);
-
-        const dt = Number.isFinite(delta) ? Math.max(0, delta) : 0.016;
-        const state = this.warpStreakState;
-        const positions = state.positions;
-        const velocityMul = 36 + this.currentSpeed * 48;
-
-        for (let i = 0; i < state.count; i++) {
-            state.z[i] += dt * velocityMul * state.speeds[i];
-            if (state.z[i] > 1200) {
-                this.randomizeWarpStreakLine(state, i, false);
-            }
-
-            const angle = state.angles[i] + this.time * 0.025 * state.speeds[i];
-            const radiusWave = Math.sin(this.time * state.drifts[i] + state.angles[i]) * 11;
-            const radial = Math.max(8, state.radii[i] * (0.38 + visibility * 0.68) + radiusWave);
-            const innerRadius = radial * 0.15;
-            const outerRadius = innerRadius + state.lengths[i] * (
-                0.34
-                + visibility * 1.85
-                + (choreography.starStretchBoost || 0) * 0.52
-            );
-            const xInner = Math.cos(angle) * innerRadius;
-            const yInner = Math.sin(angle) * innerRadius;
-            const xOuter = Math.cos(angle) * outerRadius;
-            const yOuter = Math.sin(angle) * outerRadius;
-            const z = state.z[i];
-            const streakDepth = state.lengths[i] * (0.08 + visibility * 0.26);
-
-            const base = i * 6;
-            positions[base] = xInner;
-            positions[base + 1] = yInner;
-            positions[base + 2] = z - streakDepth * 0.45;
-            positions[base + 3] = xOuter;
-            positions[base + 4] = yOuter;
-            positions[base + 5] = z + streakDepth;
-        }
-
-        this.warpStreakLines.geometry.getAttribute('position').needsUpdate = true;
-    }
-
-    createTunnelLattice() {
-        if (!this.scene) return;
-        if (this.tunnelLattice) {
-            this.scene.remove(this.tunnelLattice);
-            this.tunnelLattice.geometry?.dispose?.();
-            this.tunnelLattice.material?.dispose?.();
-            this.tunnelLattice = null;
-        }
-
-        const geometry = new THREE.CylinderGeometry(1, 1, 14000, 56, 18, true);
-        const material = new THREE.MeshBasicMaterial({
-            color: this.activePalette.secondary.clone(),
-            wireframe: true,
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.BackSide,
-        });
-        const lattice = new THREE.Mesh(geometry, material);
-        lattice.name = 'stellar-velocity-tunnel-lattice';
-        lattice.position.set(0, 0, -5400);
-        lattice.rotation.x = Math.PI / 2;
-        lattice.scale.set(this.baseTunnelRadius * 1.04, this.baseTunnelRadius * 1.04, 1);
-        lattice.visible = false;
-        lattice.frustumCulled = false;
-        lattice.userData.baseOpacity = 0.12;
-        this.scene.add(lattice);
-        this.tunnelLattice = lattice;
-    }
-
-    updateTunnelLattice(delta) {
-        if (!this.tunnelLattice?.material) return;
-        const choreography = this.hyperdriveFrame || this.createIdleHyperdriveFrame();
-        const warpRatio = THREE.MathUtils.clamp(this.currentSpeed / Math.max(this.maxSpeed, 0.0001), 0, 1);
-        const visibility = this.isEnhancementsEnabled()
-            ? THREE.MathUtils.clamp(
-                (warpRatio - 0.18) * 1.55
-                + (choreography.tunnelCompression || 0) * 0.95
-                + (choreography.warpRatioBoost || 0) * 0.45,
-                0,
-                1,
-            )
-            : 0;
-        const material = this.tunnelLattice.material;
-        const opacity = THREE.MathUtils.clamp(
-            (this.tunnelLattice.userData.baseOpacity || 0.12)
-            * visibility
-            * (0.62 + (choreography.lensHaloBoost || 0) * 0.35),
-            0,
-            0.18,
-        );
-        material.opacity = opacity;
-        this.tunnelLattice.visible = opacity > 0.002;
-        if (!this.tunnelLattice.visible) {
-            return;
-        }
-
-        const dt = Number.isFinite(delta) ? Math.max(0, delta) : 0.016;
-        this.tunnelLattice.rotation.z += dt * (0.02 + warpRatio * 0.10 + (choreography.warpRatioBoost || 0) * 0.05);
-        this.tunnelLattice.position.z = -5400 + Math.sin(this.time * 0.12) * 110;
-        const latticeRadius = Math.max(220, this.tunnelRadius * (1.02 + visibility * 0.10));
-        this.tunnelLattice.scale.set(latticeRadius, latticeRadius, 1);
-        this.tunnelTintScratch
-            .copy(this.activePalette.secondary)
-            .lerp(this.activePalette.primary, 0.18 + visibility * 0.22);
-        material.color.copy(this.tunnelTintScratch);
     }
 
     getStarTexture() {
@@ -3441,266 +3261,15 @@ export default class StellarVelocityTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createNebulaBackdrop() {
-        const { nebulaCount } = this.qualityPreset;
-        const nebulaColors = [
-            new THREE.Color(0x00ffff), // Cyan
-            new THREE.Color(0x0066ff), // Blue
-            new THREE.Color(0x6600ff), // Purple
-            new THREE.Color(0xff0066), // Magenta
-            new THREE.Color(0xff6600), // Orange
-            new THREE.Color(0x00ff66), // Green
-            new THREE.Color(0xff0044), // Crimson
-            new THREE.Color(0xffcc00), // Gold
-            new THREE.Color(0x8800ff), // Violet
-        ];
-
-        for (let i = 0; i < nebulaCount; i++) {
-            const size = 60000 + this.rand() * 40000;
-            const color = nebulaColors[i % nebulaColors.length];
-            const opacity = 0.25 + this.rand() * 0.15;
-            const seed = this.rand() * 100;
-            const flowAngle = this.rand() * Math.PI * 2;
-            const flowDir = new THREE.Vector2(Math.cos(flowAngle), Math.sin(flowAngle));
-            const flowOffset = new THREE.Vector2(this.rand() * 12.0, this.rand() * 12.0);
-            const flowSpeed = 0.028 + this.rand() * 0.055;
-            const warpAmount = 0.16 + this.rand() * 0.22;
-            const detailScale = 2.1 + this.rand() * 2.0;
-            const morphRate = 0.24 + this.rand() * 0.28;
-
-            const geometry = new THREE.PlaneGeometry(size, size * 0.6);
-            const {
-                material,
-            } = createStellarVelocityNebulaMaterial({
-                isWebGPU: this.isWebGPU,
-                usesNodeMaterials: this.usesNodeMaterials,
-                color,
-                opacity,
-                seed,
-                flowDir,
-                flowOffset,
-                flowSpeed,
-                warpAmount,
-                detailScale,
-                morphRate,
-            });
-
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.name = `stellar-velocity-nebula-${i}`;
-
-            // Position nebulas in a ring around the tunnel
-            const angle = (i / nebulaCount) * Math.PI * 2 + this.rand() * 0.5;
-            const distance = 20000 + this.rand() * 15000;
-            mesh.position.x = Math.cos(angle) * distance;
-            mesh.position.y = Math.sin(angle) * distance * 0.3 + (this.rand() - 0.5) * 5000;
-            mesh.position.z = -30000 - this.rand() * 20000;
-
-            mesh.rotation.z = this.rand() * Math.PI;
-            mesh.userData.driftSpeed = 0.5 + this.rand() * 0.5;
-            mesh.userData.driftPhase = this.rand() * Math.PI * 2;
-            mesh.userData.baseY = mesh.position.y;
-            mesh.userData.baseOpacity = opacity;
-            mesh.userData.baseRotation = mesh.rotation.z;
-            mesh.userData.rotationDriftSpeed = 0.016 + this.rand() * 0.03;
-            mesh.userData.rotationDriftAmplitude = 0.06 + this.rand() * 0.07;
-            mesh.userData.scalePhase = this.rand() * Math.PI * 2;
-            mesh.userData.scaleOscillation = 0.05 + this.rand() * 0.05;
-            mesh.userData.baseScaleX = 1.0;
-            mesh.userData.baseScaleY = 1.0;
-            mesh.userData.flowDir = flowDir;
-            mesh.userData.flowOffset = flowOffset;
-            mesh.userData.flowSpeed = flowSpeed;
-            mesh.userData.warpAmount = warpAmount;
-            mesh.userData.detailScale = detailScale;
-            mesh.userData.morphRate = morphRate;
-            mesh.userData.flowDrift = 0.18 + this.rand() * 0.35;
-            mesh.userData.flowPulse = 0.12 + this.rand() * 0.18;
-
-            this.nebulaMeshes.push(mesh);
-            this.scene.add(mesh);
-        }
-
-        this.createDistantGalaxyClusters();
-        this.createDustLanes();
-        console.log(`[StellarVelocity] ${nebulaCount} procedural nebulas created`);
+        this.atmosphere?.dispose();
+        this.atmosphere = new StellarVelocityAtmosphere({
+            scene: this.scene, quality: this.activeQualityLevel,
+        }).build();
     }
-
-    createDistantGalaxyClusters() {
-        this.galaxyClusters = [];
-        if (!this.scene) return;
-
-        const clusterCount = this.activeQualityLevel === 'Extreme'
-            ? 8
-            : this.activeQualityLevel === 'Ultra'
-                ? 7
-                : this.activeQualityLevel === 'High'
-                    ? 6
-                    : this.activeQualityLevel === 'Medium'
-                        ? 4
-                        : this.activeQualityLevel === 'Low'
-                            ? 3
-                            : 2;
-
-        for (let i = 0; i < clusterCount; i++) {
-            const clusterColor = this.activePalette.secondary
-                .clone()
-                .lerp(this.activePalette.primary, 0.35 + this.rand() * 0.45);
-            const {
-                material,
-            } = createStellarVelocityCoreGlowMaterial({
-                isWebGPU: this.isWebGPU,
-                usesNodeMaterials: this.usesNodeMaterials,
-                color: clusterColor,
-                opacity: 0.06 + this.rand() * 0.08,
-            });
-            const cluster = this.usesNodeMaterials
-                ? new THREE.Sprite(material)
-                : new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
-            cluster.name = `stellar-velocity-galaxy-cluster-${i}`;
-            cluster.position.set(
-                (this.rand() - 0.5) * 38000,
-                (this.rand() - 0.5) * 18000,
-                -45000 - this.rand() * 70000,
-            );
-            const size = 3400 + this.rand() * 7800;
-            cluster.scale.set(size, size, 1);
-            cluster.userData.baseOpacity = 0.06 + this.rand() * 0.08;
-            cluster.userData.phase = this.rand() * Math.PI * 2;
-            cluster.userData.driftSpeed = 0.02 + this.rand() * 0.05;
-            cluster.userData.pulseSpeed = 0.08 + this.rand() * 0.12;
-            cluster.userData.colorMix = 0.25 + this.rand() * 0.55;
-            cluster.frustumCulled = false;
-            this.galaxyClusters.push(cluster);
-            this.scene.add(cluster);
-        }
-    }
-
-    updateGalaxyClusters(delta) {
-        if (!this.galaxyClusters.length) return;
-        const dt = Number.isFinite(delta) ? Math.max(0, delta) : 0.016;
-        const choreography = this.hyperdriveFrame || this.createIdleHyperdriveFrame();
-        const warpRatio = THREE.MathUtils.clamp(this.currentSpeed / Math.max(this.maxSpeed, 0.0001), 0, 1);
-        this.galaxyClusters.forEach((cluster, index) => {
-            const phase = cluster.userData.phase || 0;
-            const pulse = Math.sin(this.time * (cluster.userData.pulseSpeed || 0.1) + phase) * 0.5 + 0.5;
-            const opacity = THREE.MathUtils.clamp(
-                (cluster.userData.baseOpacity || 0.08)
-                * (0.72 + pulse * 0.38 + this.reactiveEnvelope.nebula * 0.22 + (choreography.lensHaloBoost || 0) * 0.20),
-                0.01,
-                0.24,
-            );
-            this.setMaterialOpacity(cluster.material, 'uOpacity', opacity);
-            this.tunnelTintScratch
-                .copy(this.activePalette.secondary)
-                .lerp(this.activePalette.primary, cluster.userData.colorMix || 0.5);
-            this.setMaterialColor(cluster.material, 'uColor', this.tunnelTintScratch);
-            cluster.position.z += dt * (8 + warpRatio * 22) * (cluster.userData.driftSpeed || 0.04);
-            if (cluster.position.z > -14000) {
-                cluster.position.z = -70000 - this.rand() * 50000;
-                cluster.position.x = (this.rand() - 0.5) * 38000;
-                cluster.position.y = (this.rand() - 0.5) * 18000;
-            }
-            if (cluster.isSprite && this.camera) {
-                cluster.quaternion.copy(this.camera.quaternion);
-            }
-            if (!cluster.isSprite) {
-                cluster.rotation.z += dt * (0.002 + index * 0.0007);
-            }
-        });
-    }
-
-    createDustLanes() {
-        this.dustLaneMeshes = [];
-        if (!this.scene) return;
-
-        const laneCount = this.activeQualityLevel === 'Extreme'
-            ? 5
-            : this.activeQualityLevel === 'Ultra'
-                ? 4
-                : this.activeQualityLevel === 'High'
-                    ? 4
-                    : this.activeQualityLevel === 'Medium'
-                        ? 3
-                        : 2;
-
-        for (let i = 0; i < laneCount; i++) {
-            const size = 32000 + this.rand() * 22000;
-            const geometry = new THREE.PlaneGeometry(size, size * (0.32 + this.rand() * 0.22));
-            const {
-                material,
-            } = createStellarVelocityNebulaMaterial({
-                isWebGPU: this.isWebGPU,
-                usesNodeMaterials: this.usesNodeMaterials,
-                color: this.activePalette.bg.clone().multiplyScalar(0.32),
-                opacity: 0.09 + this.rand() * 0.06,
-                seed: this.rand() * 100,
-                flowDir: new THREE.Vector2((this.rand() - 0.5) * 0.8, (this.rand() - 0.5) * 0.8),
-                flowOffset: new THREE.Vector2(this.rand() * 12, this.rand() * 12),
-                flowSpeed: 0.010 + this.rand() * 0.018,
-                warpAmount: 0.28 + this.rand() * 0.16,
-                detailScale: 2.8 + this.rand() * 1.8,
-                morphRate: 0.12 + this.rand() * 0.15,
-            });
-            material.blending = THREE.NormalBlending;
-
-            const lane = new THREE.Mesh(geometry, material);
-            lane.name = `stellar-velocity-dust-lane-${i}`;
-            lane.position.set(
-                (this.rand() - 0.5) * 22000,
-                (this.rand() - 0.5) * 7000,
-                -24000 - this.rand() * 26000,
-            );
-            lane.rotation.z = this.rand() * Math.PI;
-            lane.userData.baseOpacity = 0.09 + this.rand() * 0.06;
-            lane.userData.baseY = lane.position.y;
-            lane.userData.phase = this.rand() * Math.PI * 2;
-            lane.userData.driftSpeed = 0.05 + this.rand() * 0.09;
-            lane.userData.depthDrift = 0.9 + this.rand() * 0.8;
-            lane.userData.baseScaleX = 1.0;
-            lane.userData.baseScaleY = 1.0;
-            lane.frustumCulled = false;
-            this.dustLaneMeshes.push(lane);
-            this.scene.add(lane);
-        }
-    }
-
-    updateDustLanes(delta) {
-        if (!this.dustLaneMeshes.length) return;
-        const dt = Number.isFinite(delta) ? Math.max(0, delta) : 0.016;
-        const choreography = this.hyperdriveFrame || this.createIdleHyperdriveFrame();
-        const warpRatio = THREE.MathUtils.clamp(this.currentSpeed / Math.max(this.maxSpeed, 0.0001), 0, 1);
-        this.dustLaneMeshes.forEach((lane) => {
-            const phase = lane.userData.phase || 0;
-            const wave = Math.sin(this.time * (lane.userData.driftSpeed || 0.08) + phase) * 0.5 + 0.5;
-            lane.position.y = (lane.userData.baseY || 0) + (wave - 0.5) * 260;
-            lane.position.z += dt * (6 + warpRatio * 16) * (lane.userData.depthDrift || 1.2);
-            if (lane.position.z > -12000) {
-                lane.position.z = -42000 - this.rand() * 22000;
-            }
-            lane.rotation.z += dt * (0.004 + wave * 0.005);
-            lane.scale.x = (lane.userData.baseScaleX || 1) * (0.96 + wave * 0.08);
-            lane.scale.y = (lane.userData.baseScaleY || 1) * (0.94 + wave * 0.10);
-            this.setMaterialUniformValue(lane.material, 'uTime', this.time);
-            const laneOpacity = THREE.MathUtils.clamp(
-                (lane.userData.baseOpacity || 0.1)
-                * (0.68 + wave * 0.22 + (choreography.tunnelCompression || 0) * 0.22)
-                * (1 + this.reactiveEnvelope.nebula * 0.08),
-                0.03,
-                0.26,
-            );
-            this.setMaterialOpacity(lane.material, 'uOpacity', laneOpacity);
-            this.tunnelTintScratch.copy(this.activePalette.bg).multiplyScalar(0.34);
-            this.setMaterialColor(lane.material, 'uColor', this.tunnelTintScratch);
-            this.setMaterialUniformValue(lane.material, 'uPulse', 0);
-        });
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Warp Core (Central Energy Vortex)
-    // ─────────────────────────────────────────────────────────────────────────
 
     createWarpCore() {
         // Inner energy sphere
-        const coreGeometry = new THREE.SphereGeometry(80, 32, 32);
+        const coreGeometry = new THREE.SphereGeometry(112, 48, 32);
         const {
             material: coreMaterial,
         } = createStellarVelocityWarpCoreMaterial({
@@ -3711,7 +3280,9 @@ export default class StellarVelocityTheme extends BaseTheme {
             color: this.activePalette.primary,
         });
 
-        this.warpCore = new THREE.Mesh(coreGeometry, coreMaterial);
+        const stellarMaterial = this.atmosphere?.createCoreMaterial() || coreMaterial;
+        if (stellarMaterial !== coreMaterial) coreMaterial.dispose();
+        this.warpCore = new THREE.Mesh(coreGeometry, stellarMaterial);
         this.warpCore.name = 'stellar-velocity-warp-core';
         this.warpCore.position.set(0, 0, -500);
         this.scene.add(this.warpCore);
@@ -3722,10 +3293,10 @@ export default class StellarVelocityTheme extends BaseTheme {
 
         // Energy rings
         for (let i = 0; i < 3; i++) {
-            const tubeRadius = 2.2 + i * 1.05 + this.rand() * 0.9;
+            const tubeRadius = 0.9 + i * 0.45 + this.rand() * 0.35;
             const radialSegments = 16 + i * 2;
             const tubularSegments = 64 + i * 10;
-            const ringGeometry = new THREE.TorusGeometry(120 + i * 40, tubeRadius, radialSegments, tubularSegments);
+            const ringGeometry = new THREE.TorusGeometry(168 + i * 48, tubeRadius, radialSegments, tubularSegments);
             const {
                 material: ringMaterial,
             } = createStellarVelocityEnergyRingMaterial({
@@ -3739,9 +3310,11 @@ export default class StellarVelocityTheme extends BaseTheme {
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
             ring.name = `stellar-velocity-energy-ring-${i}`;
             ring.position.set(0, 0, -500);
-            ring.rotation.x = Math.PI / 2 + this.rand() * 0.3;
-            ring.userData.rotationSpeed = 0.5 + this.rand() * 0.5;
-            ring.userData.rotationAxis = this.rand() > 0.5 ? 'x' : 'y';
+            ring.rotation.x = 1.22 + i * 0.035;
+            ring.rotation.y = 0.14;
+            ring.rotation.z = -0.28;
+            ring.userData.rotationSpeed = 0.07 + this.rand() * 0.08;
+            ring.userData.rotationAxis = 'z';
             ring.userData.shimmerPhase = this.rand() * Math.PI * 2;
             ring.userData.baseOpacity = 0.6 - i * 0.15;
 
@@ -3768,6 +3341,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.warpAccretionDisc.userData.baseOpacity = 0.52;
         this.scene.add(this.warpAccretionDisc);
 
+        this.atmosphere?.bindCore(this);
         console.log('[StellarVelocity] Warp core created');
     }
 
@@ -4883,7 +4457,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         if (!this.cometStreaks.length) return;
         for (let i = this.cometStreaks.length - 1; i >= 0; i--) {
             const comet = this.cometStreaks[i];
-            const velocity = comet.userData.velocity;
+            const { velocity } = comet.userData;
             if (!velocity) continue;
 
             if (comet.userData.cameraFacing === true && this.camera) {
@@ -4951,13 +4525,22 @@ export default class StellarVelocityTheme extends BaseTheme {
 
     startAnimation() {
         if (!this.isActive) return;
-        this.clock.start();
+        this.clock.reset();
 
         const animate = () => {
             if (!this.isActive) return;
 
+            const animationId = requestAnimationFrame(animate);
+            this.animationFrameId = animationId;
+            this.registerAnimation(animationId);
+            if (!this.shouldRenderFrame()) {
+                if (typeof document !== 'undefined' && document.hidden) this.clock.reset();
+                return;
+            }
+            this.clock.update();
             const measuredDelta = this.clock.getDelta();
-            const rawDelta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : measuredDelta;
+            const rawDelta = Math.min(0.05,
+                this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : measuredDelta);
             if (this.fixedDeltaSeconds !== null) {
                 this.fixedElapsed += rawDelta;
                 this.time = this.fixedElapsed;
@@ -4968,10 +4551,8 @@ export default class StellarVelocityTheme extends BaseTheme {
 
             this.updateWarpState(rawDelta);
             this.runHotPathStep('starfield', () => this.updateStarfield(rawDelta), profileFrame);
-            this.updateWarpStreakLines(rawDelta);
             this.updateNebulas(rawDelta);
             this.updateWarpCore(rawDelta);
-            this.updateTunnelLattice(rawDelta);
             this.runHotPathStep('asteroid', () => this.updateAsteroids(rawDelta), profileFrame);
             this.updateAsteroidMicroDebris(rawDelta);
             this.runHotPathStep('burst', () => this.updateBurstParticles(rawDelta), profileFrame);
@@ -4988,9 +4569,6 @@ export default class StellarVelocityTheme extends BaseTheme {
                 this.trackBaselineFrame(rawDelta);
             }
 
-            const animationId = requestAnimationFrame(animate);
-            this.animationFrameId = animationId;
-            this.registerAnimation(animationId);
         };
 
         const animationId = requestAnimationFrame(animate);
@@ -5217,79 +4795,7 @@ export default class StellarVelocityTheme extends BaseTheme {
     }
 
     updateNebulas(delta) {
-        const dt = Number.isFinite(delta) ? Math.max(0.001, delta) : 0.016;
-        this.nebulaMeshes.forEach((mesh) => {
-            this.setMaterialUniformValue(mesh.material, 'uTime', this.time);
-            const driftSpeed = mesh.userData.driftSpeed ?? 1;
-            const driftPhase = mesh.userData.driftPhase ?? 0;
-            const baseY = mesh.userData.baseY ?? mesh.position.y;
-            const baseOpacity = mesh.userData.baseOpacity ?? 0.25;
-            const driftOffset = Math.sin(this.time * 0.08 * driftSpeed + driftPhase) * 160;
-            mesh.position.y = baseY + driftOffset;
-
-            const hazePulse = 0.9 + Math.sin(this.time * 0.11 + driftPhase) * 0.08;
-            const reactiveBoost = 1.0 + Math.min(0.25, this.reactiveEnvelope.nebula * 0.2);
-            this.setMaterialOpacity(
-                mesh.material,
-                'uOpacity',
-                Math.min(0.9, Math.max(0.05, baseOpacity * hazePulse * reactiveBoost)),
-            );
-
-            const flowDir = mesh.userData.flowDir;
-            const flowOffset = mesh.userData.flowOffset;
-            const baseFlowSpeed = mesh.userData.flowSpeed ?? 0.045;
-            const baseWarpAmount = mesh.userData.warpAmount ?? 0.22;
-            const baseDetailScale = mesh.userData.detailScale ?? 2.8;
-            const baseMorphRate = mesh.userData.morphRate ?? 0.36;
-            const flowDrift = mesh.userData.flowDrift ?? 0.3;
-            const flowPulse = mesh.userData.flowPulse ?? 0.15;
-
-            if (flowDir?.isVector2 && flowOffset?.isVector2) {
-                const flowBoost = 1.0 + Math.min(0.5, this.reactiveEnvelope.nebula * 0.22 + this.reactiveEnvelope.warp * 0.08);
-                flowOffset.x += flowDir.x * dt * baseFlowSpeed * flowBoost;
-                flowOffset.y += flowDir.y * dt * baseFlowSpeed * flowBoost;
-                this.setMaterialUniformValue(mesh.material, 'uFlowOffset', flowOffset);
-                this.setMaterialUniformValue(mesh.material, 'uFlowDir', flowDir);
-                this.setMaterialUniformValue(
-                    mesh.material,
-                    'uFlowSpeed',
-                    baseFlowSpeed * (1.0 + Math.sin(this.time * flowDrift + driftPhase) * flowPulse),
-                );
-                this.setMaterialUniformValue(
-                    mesh.material,
-                    'uWarpAmount',
-                    baseWarpAmount * (1.0 + Math.min(0.45, this.reactiveEnvelope.nebula * 0.25)),
-                );
-                this.setMaterialUniformValue(
-                    mesh.material,
-                    'uDetailScale',
-                    baseDetailScale * (0.96 + Math.sin(this.time * 0.12 + driftPhase) * 0.04),
-                );
-                this.setMaterialUniformValue(
-                    mesh.material,
-                    'uMorphRate',
-                    baseMorphRate * (1.0 + Math.min(0.30, this.reactiveEnvelope.nebula * 0.2 + this.reactiveEnvelope.warp * 0.08)),
-                );
-            }
-
-            const scalePhase = mesh.userData.scalePhase ?? 0;
-            const scaleOscillation = mesh.userData.scaleOscillation ?? 0.06;
-            const scaleWaveA = Math.sin(this.time * 0.22 * driftSpeed + scalePhase);
-            const scaleWaveB = Math.cos(this.time * 0.17 * driftSpeed + scalePhase * 0.81);
-            const reactiveScaleBoost = Math.min(0.06, this.reactiveEnvelope.nebula * 0.03);
-            mesh.scale.x = (mesh.userData.baseScaleX ?? 1.0)
-                * (1.0 + scaleWaveA * scaleOscillation + reactiveScaleBoost);
-            mesh.scale.y = (mesh.userData.baseScaleY ?? 1.0)
-                * (1.0 + scaleWaveB * (scaleOscillation * 0.75) + reactiveScaleBoost);
-
-            const baseRotation = mesh.userData.baseRotation ?? mesh.rotation.z;
-            const rotationDriftSpeed = mesh.userData.rotationDriftSpeed ?? 0.02;
-            const rotationDriftAmplitude = mesh.userData.rotationDriftAmplitude ?? 0.08;
-            mesh.rotation.z = baseRotation
-                + Math.sin(this.time * rotationDriftSpeed + driftPhase) * rotationDriftAmplitude;
-        });
-        this.updateDustLanes(dt);
-        this.updateGalaxyClusters(dt);
+        this.atmosphere?.update(this, delta);
     }
 
     updateWarpCore(delta) {
@@ -5328,9 +4834,11 @@ export default class StellarVelocityTheme extends BaseTheme {
             this.setMaterialUniformValue(ring.material, 'uShimmer', shimmer);
             const reactiveRotation = 1.0 + warpRatio * 0.65 + (choreography.warpRatioBoost || 0) * 0.55;
             if (ring.userData.rotationAxis === 'x') {
-                ring.rotation.x += ring.userData.rotationSpeed * 0.01 * reactiveRotation;
+                ring.rotation.x += ring.userData.rotationSpeed * Math.max(0, delta || 0) * reactiveRotation;
+            } else if (ring.userData.rotationAxis === 'z') {
+                ring.rotation.z += ring.userData.rotationSpeed * Math.max(0, delta || 0) * reactiveRotation;
             } else {
-                ring.rotation.y += ring.userData.rotationSpeed * 0.01 * reactiveRotation;
+                ring.rotation.y += ring.userData.rotationSpeed * Math.max(0, delta || 0) * reactiveRotation;
             }
 
             const baseOpacity = ring.userData.baseOpacity ?? 0.45;
@@ -5350,7 +4858,7 @@ export default class StellarVelocityTheme extends BaseTheme {
                 0.34 + pulseIntensity * 0.22 + (choreography.ringShimmerBoost || 0) * 0.24,
             );
             this.warpAccretionDisc.rotation.z += (this.warpAccretionDisc.userData.rotationSpeed || 2.2)
-                * 0.01
+                * Math.max(0, delta || 0)
                 * (1 + warpRatio * 0.7 + (choreography.warpRatioBoost || 0) * 0.4);
             const discOpacity = Math.min(
                 0.42,
@@ -5759,7 +5267,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         // the base sweep and the bespoke runtime retirement.
         super.stop();
 
-        this.clock.stop();
+        this.clock.dispose();
         this.cancelAnimationLoop();
         this.clearBaselinePlaybackTimers();
         this.clearThemeTimeouts();
@@ -5782,7 +5290,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.disposeRuntimeResources({ removeCanvas: true });
         this.resetBaseline();
         this.clearBaselinePlaybackTimers();
-        this.clock = new THREE.Clock();
+        this.clock = new THREE.Timer();
 
         super.cleanup();
         console.log('[StellarVelocity] Cleaned up successfully');
