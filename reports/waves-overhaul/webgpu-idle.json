@@ -1,0 +1,45 @@
+{
+  "ready": true,
+  "diagnostics": {
+    "quality": "High",
+    "disabled": false,
+    "useMRT": true,
+    "impacts": 0,
+    "backend": "WebGPU",
+    "time": 8,
+    "seed": 187,
+    "event": "idle",
+    "combo": 7,
+    "eventAge": 0.35,
+    "render": {
+      "calls": 14,
+      "frameCalls": 14,
+      "drawCalls": 25,
+      "triangles": 31215,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "width": 1440,
+    "height": 900,
+    "readbackBytes": 5299072,
+    "rowStride": 5888,
+    "maxColorAttachments": 8,
+    "reaction": {
+      "pulse": 0,
+      "foam": 0,
+      "spray": 0,
+      "shafts": 0,
+      "activeImpacts": 0
+    },
+    "pixelStats": {
+      "min": 49,
+      "max": 252,
+      "meanPeak": 127.72748765432098,
+      "clippedWhiteFraction": 0
+    },
+    "gpuErrors": []
+  },
+  "errors": [],
+  "warnings": []
+}
