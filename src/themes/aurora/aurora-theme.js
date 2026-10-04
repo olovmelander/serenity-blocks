@@ -3,6 +3,7 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { AURORA_TETROMINOS } from './aurora-tetrominos.js';
+import { normalizeQuality } from '../../utils/quality.js';
 import {
     auroraCurtainVertexShader,
     auroraCurtainFragmentShader,
@@ -78,7 +79,7 @@ export default class AuroraTheme extends BaseTheme {
 
         // Quality settings
         this.qualityPresets = {
-            Minimum: {
+            Minimal: {
                 starCount: 500, curtainLayers: 2, nebulaCount: 50, auroraSparks: 800,
             },
             Low: {
@@ -102,7 +103,9 @@ export default class AuroraTheme extends BaseTheme {
 
     getGraphicsQuality() {
         const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'High';
+        const quality = settings?.effectQuality || settings?.graphicsQuality;
+        const legacyMinimum = String(quality).trim().toLowerCase() === 'minimum';
+        return normalizeQuality(legacyMinimum ? 'Minimal' : quality);
     }
 
     async createScene() {

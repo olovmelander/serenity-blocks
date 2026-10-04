@@ -7,8 +7,8 @@
  * volumetric neon haze, with curl-noise compute particles, MRT emissive bloom,
  * ACES tonemap, and subtle chromatic aberration.
  *
- * WebGPU path: TSL node materials + compute + THREE.RenderPipeline.
- * WebGL fallback: MeshPhysicalMaterial liquid-glass orbs + EffectComposer.
+ * Both backends share TSL node artwork and THREE.RenderPipeline.
+ * Native WebGPU adds compute particles and MRT; WebGL2 uses attribute motes.
  *
  * ═══════════════════════════════════════════════════════════════════════════════
  */
@@ -38,6 +38,7 @@ import {
 } from './fluid-dreams-materials.js';
 import { FluidDreamsParticleCompute } from './fluid-dreams-compute.js';
 import { FluidDreamsPost } from './fluid-dreams-post.js';
+import { createFluidDreamsCompatibilityParticles } from './fluid-dreams-compatibility-particles.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality presets — vibrant-hero budget
@@ -148,6 +149,8 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.clock = new THREE.Clock();
         this.isWebGPU = false;
         this.isWebGL = false;
+        this.usesNodeMaterials = false;
+        this.forceWebGL = false;
         this.animationFrame = null;
 
         // Scene meshes
@@ -384,42 +387,31 @@ export default class FluidDreamsTheme extends BaseTheme {
             && this.isActive
             && !this.cleanupComplete;
 
-        // Try WebGPU first.
-        let webgpuRenderer = null;
-        let renderer = null;
+        const params = new URLSearchParams(window.location?.search || '');
+        const forceWebGL = this.forceWebGL || params.get('forceWebGL') === '1'
+            || params.get('fluidDreamsForceWebGL') === '1'
+            || typeof navigator === 'undefined' || !navigator.gpu;
+        const createRenderer = (webglOnly) => new THREE_WEBGPU.WebGPURenderer({
+            antialias,
+            powerPreference: 'high-performance',
+            alpha: false,
+            forceWebGL: webglOnly,
+        });
+        let renderer = createRenderer(forceWebGL);
         try {
-            webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
-                antialias,
-                powerPreference: 'high-performance',
-                alpha: false,
-                forceWebGL: false,
-            });
-            await this.initializeRendererCandidate(webgpuRenderer, {
-                label: 'Fluid Dreams WebGPU renderer init',
+            await this.initializeRendererCandidate(renderer, {
+                label: `Fluid Dreams ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
                 ownerGeneration,
             });
         } catch (error) {
             if (!ownsLifecycle()) return false;
-            console.warn('💧 Fluid Dreams: WebGPU init failed, falling back to WebGL2:', error);
-            webgpuRenderer = null;
-        }
-
-        if (webgpuRenderer?.backend?.isWebGPUBackend === true) {
-            renderer = webgpuRenderer;
-            this.isWebGPU = true;
-            this.isWebGL = false;
-        } else {
-            if (webgpuRenderer) {
-                try { webgpuRenderer.dispose(); } catch (e) { /* noop */ }
-            }
-            if (!ownsLifecycle()) return false;
-            renderer = new THREE.WebGLRenderer({
-                alpha: false,
-                antialias,
-                powerPreference: 'high-performance',
+            if (forceWebGL) throw error;
+            console.warn('💧 Fluid Dreams: WebGPU init failed, retrying the node WebGL2 backend:', error);
+            renderer = createRenderer(true);
+            await this.initializeRendererCandidate(renderer, {
+                label: 'Fluid Dreams WebGL2 renderer init',
+                ownerGeneration,
             });
-            this.isWebGPU = false;
-            this.isWebGL = true;
         }
 
         if (!ownsLifecycle()) {
@@ -427,14 +419,19 @@ export default class FluidDreamsTheme extends BaseTheme {
             return false;
         }
         this.renderer = renderer;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        this.isWebGL = !this.isWebGPU;
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        if (this.isWebGL) {
+        if (!this.usesNodeMaterials) {
             this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
             this.renderer.toneMappingExposure = 1.1;
         }
         container.appendChild(this.renderer.domElement);
+        this.removeRendererResilience();
+        this.setupRendererResilience(this.renderer);
         return true;
     }
 
@@ -513,7 +510,7 @@ export default class FluidDreamsTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createBackground() {
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const geometry = new THREE.SphereGeometry(180, 32, 24);
             const material = createBackgroundNodeMaterial();
             this.backgroundMaterial = material;
@@ -542,10 +539,7 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     createHaze() {
-        if (!this.isWebGPU) {
-            // Skip volumetric haze on WebGL fallback — it would be too expensive without compute.
-            return;
-        }
+        if (!this.usesNodeMaterials) return;
         if (this.activePreset.bgHazeSteps <= 0) return;
 
         const [segW, segH] = this.activePreset.hazeSegments ?? [16, 12];
@@ -562,7 +556,7 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     createHero() {
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const material = createFluidHeroNodeMaterial({
                 marchSteps: this.activePreset.marchSteps,
                 metaballCount: this.activePreset.metaballCount,
@@ -643,6 +637,14 @@ export default class FluidDreamsTheme extends BaseTheme {
 
     createParticles() {
         const count = this.activePreset.particleCount;
+
+        if (this.usesNodeMaterials && !this.isWebGPU) {
+            const { mesh, material } = createFluidDreamsCompatibilityParticles(count);
+            this.particleSystem = mesh;
+            this.particleMaterial = material;
+            this.scene.add(mesh);
+            return;
+        }
 
         if (this.isWebGPU) {
             this.particleCompute = new FluidDreamsParticleCompute(count, {
@@ -730,7 +732,7 @@ export default class FluidDreamsTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     setupPostProcessing() {
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.post = new FluidDreamsPost(this.renderer, this.scene, this.camera, {
                 bloomStrength: this.activePreset.bloomStrength,
                 bloomRadius: this.activePreset.bloomRadius,
@@ -744,7 +746,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                 saturation: 1.15,
                 tintStrength: 0.12,
                 grainStrength: 0.015,
-                useMRT: true,
+                useMRT: this.isWebGPU,
             });
             this.post.setSize(window.innerWidth, window.innerHeight);
         } else {
@@ -999,7 +1001,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.updateMetaballState(elapsed);
         this.updateShockwave(delta);
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.pushMetaballsToHero();
 
             // Push hero uniforms.
@@ -1022,6 +1024,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             // Particle material colour wash uniforms.
             if (this.particleMaterial?.userData?.uColorOverride) {
                 const pud = this.particleMaterial.userData;
+                if (pud.uTime) pud.uTime.value = elapsed;
                 pud.uColorOverride.value.set(
                     this.particleColorTarget.r,
                     this.particleColorTarget.g,
@@ -1091,11 +1094,11 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     renderFrame(elapsed) {
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             // Throttle compute dispatch on low quality presets — most users won't
             // see the difference, and it cuts the per-frame GPU work meaningfully.
             const stride = Math.max(1, this.activePreset.computeStride ?? 1);
-            if (this.particleCompute?.computeNode && (this.frameCount % stride) === 0) {
+            if (this.isWebGPU && this.particleCompute?.computeNode && (this.frameCount % stride) === 0) {
                 this.renderer.compute(this.particleCompute.computeNode);
             }
             if (this.post) {
@@ -1205,6 +1208,7 @@ export default class FluidDreamsTheme extends BaseTheme {
 
     stop() {
         console.log('💧 Fluid Dreams: Stopping...');
+        this.removeRendererResilience();
 
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
@@ -1250,19 +1254,19 @@ export default class FluidDreamsTheme extends BaseTheme {
             this.scene = null;
         }
         if (this.renderer) {
-            try { this.renderer.dispose?.(); } catch (e) { /* noop */ }
             try {
                 if (this.renderer.domElement?.parentNode) {
                     this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
                 }
             } catch (e) { /* noop */ }
-            this.renderer = null;
+            this.disposeRenderer(this.renderer);
         }
 
         this.camera = null;
         this.clock = new THREE.Clock();
         this.isWebGPU = false;
         this.isWebGL = false;
+        this.usesNodeMaterials = false;
         this.metaballState = [];
 
         super.stop();

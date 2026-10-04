@@ -6,7 +6,8 @@
  * following the source-tripwire convention used elsewhere in the unit suite.
  */
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import CosmicNoirTheme from '../../src/themes/cosmic-noir/cosmic-noir-theme.js';
 
 const postSource = readFileSync(
     new URL('../../src/themes/cosmic-noir/cosmic-noir-post.js', import.meta.url),
@@ -82,19 +83,23 @@ describe('Cosmic Noir performance regressions', () => {
         expect(fallbackBurstSource).toContain('this.markGeometryAttributeRange(geometry');
     });
 
-    it('does not clear before choosing the WebGPU post or direct path', () => {
-        const renderFrameSource = sourceBetween(
-            themeSource,
-            '    renderFrame() {',
-            '    getCosmicWavePoolKey(options = {}) {'
-        );
-        const renderPrologue = renderFrameSource.slice(
-            0,
-            renderFrameSource.indexOf('        if (this.isWebGPU) {')
-        );
+    it.each([true, false])('lets node post own its clear on native=%s, and clears direct rendering', (isWebGPU) => {
+        const renderer = { clear: vi.fn(), render: vi.fn() };
+        const postProcessing = { render: vi.fn() };
+        const theme = {
+            renderer, scene: {}, camera: {}, usesNodeMaterials: true, isWebGPU,
+            postProcessing, flags: { usePost: true },
+        };
+        CosmicNoirTheme.prototype.renderFrame.call(theme);
+        expect(postProcessing.render).toHaveBeenCalledOnce();
+        expect(renderer.clear).not.toHaveBeenCalled();
+        expect(renderer.render).not.toHaveBeenCalled();
 
-        expect(renderPrologue).not.toContain('this.renderer.clear()');
-        expect(renderFrameSource).toContain('this.renderer.clear()');
+        theme.flags.usePost = false;
+        CosmicNoirTheme.prototype.renderFrame.call(theme);
+        expect(renderer.clear).toHaveBeenCalledOnce();
+        expect(renderer.render).toHaveBeenCalledWith(theme.scene, theme.camera);
+        expect(renderer.clear.mock.invocationCallOrder[0]).toBeLessThan(renderer.render.mock.invocationCallOrder[0]);
     });
 
     it('resets transient pool ranges only after all active windows expire', () => {

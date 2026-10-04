@@ -115,7 +115,10 @@ export default class RainyWindowTheme extends BaseTheme {
     }
 
     initThreeJS() {
-        this.container = document.body;
+        this.container = this.getContainer('rainy-window-theme');
+        if (!this.container) throw new Error('[RainyWindow] Theme container not found');
+        // The 3D storm owns this theme's scenery; retire opaque legacy layers.
+        this.container.innerHTML = '';
 
         // Setup Renderer
         this.renderer = new THREE.WebGLRenderer({
@@ -125,16 +128,14 @@ export default class RainyWindowTheme extends BaseTheme {
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.domElement.id = 'rainy-window-3d-canvas';
-        this.renderer.domElement.style.position = 'fixed';
+        this.renderer.domElement.style.position = 'absolute';
         this.renderer.domElement.style.top = '0';
         this.renderer.domElement.style.left = '0';
         this.renderer.domElement.style.width = '100%';
         this.renderer.domElement.style.height = '100%';
-        this.renderer.domElement.style.zIndex = '-1';
+        this.renderer.domElement.style.zIndex = '1';
 
-        if (!document.getElementById('rainy-window-3d-canvas')) {
-            this.container.appendChild(this.renderer.domElement);
-        }
+        this.container.appendChild(this.renderer.domElement);
 
         // Setup Scene with darker fog
         this.scene = new THREE.Scene();
@@ -1137,10 +1138,7 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.disposeRenderer(this.renderer, { nullInstance: false });
-            if (this.renderer.domElement && this.renderer.domElement.parentNode) {
-                this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
-            }
+            this.disposeRenderer(this.renderer);
         }
 
         // Dispose rain system

@@ -19,6 +19,7 @@ function rendererStateHarness() {
     const clearColor = new THREE.Color(0x075a74);
     let clearAlpha = 1;
     return {
+        isWebGPURenderer: true,
         autoClear: true,
         getRenderTarget: () => null,
         getActiveCubeFace: () => 0,
@@ -38,7 +39,7 @@ function rendererStateHarness() {
     };
 }
 
-async function createProductionScene(quality) {
+async function createProductionScene(quality, isWebGPU = true) {
     const container = { innerHTML: '', style: {} };
     vi.stubGlobal('window', {
         location: { search: '' }, innerWidth: 1600, innerHeight: 732,
@@ -50,7 +51,7 @@ async function createProductionScene(quality) {
     theme.setupQualityListener = vi.fn();
     theme.initRenderer = vi.fn(async () => {
         theme.renderer = renderer;
-        theme.isWebGPU = true;
+        theme.isWebGPU = isWebGPU;
         return true;
     });
     // Exercise the real createScene/environment ownership path while avoiding
@@ -80,6 +81,15 @@ describe('Ocean production scene environment', () => {
         expect(renderer.getClearAlpha()).toBe(1);
         expect(theme.scene.background.equals(background)).toBe(true);
         expect(theme.scene.background.getHex()).toBe(0x06474b);
+    });
+
+    it('keeps modern fog and authored High quality on a node WebGL2 renderer', async () => {
+        const { theme } = await createProductionScene('High', false);
+        expect(theme.isWebGPU).toBe(false);
+        expect(theme.usesNodeMaterials).toBe(true);
+        expect(theme.scene.fogNode?.isNode).toBe(true);
+        expect(theme.currentQuality).toBe('High');
+        expect(theme.getBackendLabel()).toBe('WebGL2');
     });
 
     it('retains its scene-owned background across quality rebuilds', async () => {

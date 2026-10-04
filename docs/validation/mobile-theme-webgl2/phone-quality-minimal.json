@@ -1,0 +1,3620 @@
+{
+  "schemaVersion": 1,
+  "environment": {
+    "portrait": {
+      "width": 390,
+      "height": 844
+    },
+    "landscape": {
+      "width": 844,
+      "height": 390
+    },
+    "deviceScaleFactor": 3,
+    "globalRenderScale": 1,
+    "quality": "Minimal",
+    "expectedMaxThemePixelRatio": 0.9,
+    "navigatorGPU": false,
+    "forceWebGL": true,
+    "serialFreshBrowserPerTheme": true
+  },
+  "limits": [
+    "Phone viewport/touch/DPR are emulated in Chromium; physical Android and iOS hardware are not tested.",
+    "Nonuniform screenshots and modern renderer assertions catch compatibility regressions, but do not establish pixel-perfect artwork parity.",
+    "Attribute checks sample large buffers; GPU storage values are not read back.",
+    "This isolated production-theme harness does not exercise the full game boot or measure phone FPS, battery use, or thermals."
+  ],
+  "expectedThemeCount": 17,
+  "results": [
+    {
+      "id": "wolfhour",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "[.WebGL-0x250400190e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x250400192000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x250400190e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x250400192000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 18,
+        "meshes": 18,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 77876,
+        "quality": "Minimal",
+        "qualityField": "activeQualityLevel",
+        "qualityPreset": {
+          "starCount": 3200,
+          "mountainSegments": 28,
+          "nebulaResolution": 512,
+          "spiritCount": 0,
+          "spiritComputeCount": 0,
+          "ambientParticles": 0,
+          "enableBloom": false,
+          "enableNodePost": false,
+          "enableMRT": false,
+          "enableFilmGrain": false,
+          "enableCompute": false,
+          "computeStarTwinkle": false,
+          "computeSpirits": false,
+          "computeMeteorTrails": false,
+          "computeDebris": false,
+          "bloomStrength": 0,
+          "bloomDownsample": 0.58,
+          "debrisPerCrash": 40,
+          "meteorTrailSegments": 40,
+          "maxStarBursts": 5,
+          "maxCosmicRifts": 1,
+          "maxCelestialBeams": 0,
+          "maxMeteorCrashes": 0,
+          "starTwinkleSpeed": 0.5,
+          "enableDiffraction": false,
+          "enableGroundFog": false,
+          "enableVolumetricBeams": false,
+          "meteorAtmosphereGlow": 0,
+          "cameraShakeScale": 0.15
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 7,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 3,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            36.90323550856726,
+            37.48461234657917,
+            39.193106695831816
+          ],
+          "stdDev": [
+            51.56909843322854,
+            51.86246452709752,
+            53.01869267985833
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 18,
+        "meshes": 18,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 77876,
+        "quality": "Minimal",
+        "qualityField": "activeQualityLevel",
+        "qualityPreset": {
+          "starCount": 3200,
+          "mountainSegments": 28,
+          "nebulaResolution": 512,
+          "spiritCount": 0,
+          "spiritComputeCount": 0,
+          "ambientParticles": 0,
+          "enableBloom": false,
+          "enableNodePost": false,
+          "enableMRT": false,
+          "enableFilmGrain": false,
+          "enableCompute": false,
+          "computeStarTwinkle": false,
+          "computeSpirits": false,
+          "computeMeteorTrails": false,
+          "computeDebris": false,
+          "bloomStrength": 0,
+          "bloomDownsample": 0.58,
+          "debrisPerCrash": 40,
+          "meteorTrailSegments": 40,
+          "maxStarBursts": 5,
+          "maxCosmicRifts": 1,
+          "maxCelestialBeams": 0,
+          "maxMeteorCrashes": 0,
+          "starTwinkleSpeed": 0.5,
+          "enableDiffraction": false,
+          "enableGroundFog": false,
+          "enableVolumetricBeams": false,
+          "meteorAtmosphereGlow": 0,
+          "cameraShakeScale": 0.15
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 22,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 4,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            36.96547879450723,
+            37.54611131364686,
+            39.25580264916758
+          ],
+          "stdDev": [
+            51.58784221717085,
+            51.87617634349267,
+            53.02895791334733
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 18,
+        "meshes": 18,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 77876,
+        "quality": "Minimal",
+        "qualityField": "activeQualityLevel",
+        "qualityPreset": {
+          "starCount": 3200,
+          "mountainSegments": 28,
+          "nebulaResolution": 512,
+          "spiritCount": 0,
+          "spiritComputeCount": 0,
+          "ambientParticles": 0,
+          "enableBloom": false,
+          "enableNodePost": false,
+          "enableMRT": false,
+          "enableFilmGrain": false,
+          "enableCompute": false,
+          "computeStarTwinkle": false,
+          "computeSpirits": false,
+          "computeMeteorTrails": false,
+          "computeDebris": false,
+          "bloomStrength": 0,
+          "bloomDownsample": 0.58,
+          "debrisPerCrash": 40,
+          "meteorTrailSegments": 40,
+          "maxStarBursts": 5,
+          "maxCosmicRifts": 1,
+          "maxCelestialBeams": 0,
+          "maxMeteorCrashes": 0,
+          "starTwinkleSpeed": 0.5,
+          "enableDiffraction": false,
+          "enableGroundFog": false,
+          "enableVolumetricBeams": false,
+          "meteorAtmosphereGlow": 0,
+          "cameraShakeScale": 0.15
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 38,
+        "canvas": {
+          "width": 759,
+          "height": 351,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 4,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            36.570649532142426,
+            37.199073398954916,
+            38.909499939239275
+          ],
+          "stdDev": [
+            51.30122161490843,
+            51.748024969235615,
+            53.06094794693984
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "shifting-sands",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "[.WebGL-0x36bc0015ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x36bc00157200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x36bc0015ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x36bc0015ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 8,
+        "meshes": 8,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 81957,
+        "quality": "Minimal",
+        "qualityField": "quality",
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": {
+          "lifecycle": "running",
+          "backend": "WebGL2",
+          "quality": "Minimal",
+          "pixelRatio": 0.75,
+          "terrain": {
+            "vertices": 19200,
+            "triangles": 37846,
+            "bakeMs": 71.3
+          },
+          "worm": "below",
+          "reducedMotion": false
+        },
+        "frame": 9,
+        "canvas": {
+          "width": 292,
+          "height": 633,
+          "connected": true
+        },
+        "pixelRatio": 0.75,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 12,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            106.88683922712359,
+            76.77058877141816,
+            76.0620670798396
+          ],
+          "stdDev": [
+            45.60805379526086,
+            27.28665213889846,
+            21.685829133969673
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 8,
+        "meshes": 8,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 81957,
+        "quality": "Minimal",
+        "qualityField": "quality",
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": {
+          "lifecycle": "running",
+          "backend": "WebGL2",
+          "quality": "Minimal",
+          "pixelRatio": 0.75,
+          "terrain": {
+            "vertices": 19200,
+            "triangles": 37846,
+            "bakeMs": 71.3
+          },
+          "worm": "below",
+          "reducedMotion": false
+        },
+        "frame": 25,
+        "canvas": {
+          "width": 292,
+          "height": 633,
+          "connected": true
+        },
+        "pixelRatio": 0.75,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 8,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            110.82809575890144,
+            79.45237878235508,
+            77.85997083485235
+          ],
+          "stdDev": [
+            48.48824378573412,
+            28.819918786358016,
+            21.97004609815624
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 8,
+        "meshes": 8,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 81957,
+        "quality": "Minimal",
+        "qualityField": "quality",
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": {
+          "lifecycle": "running",
+          "backend": "WebGL2",
+          "quality": "Minimal",
+          "pixelRatio": 0.75,
+          "terrain": {
+            "vertices": 19200,
+            "triangles": 37846,
+            "bakeMs": 71.3
+          },
+          "worm": "below",
+          "reducedMotion": false
+        },
+        "frame": 40,
+        "canvas": {
+          "width": 633,
+          "height": 292,
+          "connected": true
+        },
+        "pixelRatio": 0.75,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 6,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            117.91261696439422,
+            83.65418945193827,
+            76.13406550006076
+          ],
+          "stdDev": [
+            54.38501254263724,
+            35.744389939518264,
+            25.81807224814367
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "ocean",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x14bc0020f400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x14bc0020c400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x14bc0020f400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x14bc0020f400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 17,
+        "meshes": 17,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 80661,
+        "quality": "Minimal",
+        "qualityField": "currentQuality",
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 8,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 2,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            43.16410256410256,
+            87.08041681856848,
+            81.35703001579779
+          ],
+          "stdDev": [
+            35.015035563395124,
+            20.59823976380395,
+            13.997825447030849
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 32,
+        "meshes": 32,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 93665,
+        "quality": "Minimal",
+        "qualityField": "currentQuality",
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 21,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 2,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            42.68069024182768,
+            87.02535545023697,
+            81.39384493863167
+          ],
+          "stdDev": [
+            34.84609606464665,
+            20.67780735589905,
+            14.017405019688226
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 22,
+        "meshes": 22,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 115585,
+        "quality": "Minimal",
+        "qualityField": "currentQuality",
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 36,
+        "canvas": {
+          "width": 759,
+          "height": 351,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 2,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            38.477178271965,
+            82.31325799003524,
+            74.10126078502856
+          ],
+          "stdDev": [
+            31.990272560126716,
+            18.750069254308148,
+            16.932015229731686
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "winter",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x23fc00159600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x23fc00156000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x23fc00159600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x23fc00159600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "[Winter] Piece Lock data missing coords: {piece: Object, type: T, position: Object, lines: 0}"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 10,
+        "meshes": 10,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 230228,
+        "quality": "Minimal",
+        "qualityField": "currentQuality",
+        "qualityPreset": {
+          "snowCount": 3000,
+          "iceBurstCount": 50,
+          "streakCount": 20,
+          "vortexCount": 30,
+          "mountainSegments": 32,
+          "auroraLayers": 1,
+          "auroraSegments": 32,
+          "auroraDetail": 0.4,
+          "enableAurora": true,
+          "bloomStrength": 0.08,
+          "bloomRadius": 0.2,
+          "enablePostProcessing": false,
+          "fogDensity": 0.0015,
+          "targetFps": 60,
+          "bloomScale": 0.5,
+          "iceWispCount": 8,
+          "iceWispTrailSegments": 2,
+          "closeSnowflakeCount": 35,
+          "lensSnowflakeCount": 3,
+          "maxShootingStars": 1,
+          "maxIceCrystalCrashes": 1,
+          "maxBlizzardWaves": 0,
+          "fogLayerCount": 0,
+          "enableCameraAnimation": true
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 5,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 2,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            133.87677421314862,
+            158.974273909345,
+            173.44308542957833
+          ],
+          "stdDev": [
+            38.46875863359137,
+            39.93328514637786,
+            37.9247508777064
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 10,
+        "meshes": 10,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 230228,
+        "quality": "Minimal",
+        "qualityField": "currentQuality",
+        "qualityPreset": {
+          "snowCount": 3000,
+          "iceBurstCount": 50,
+          "streakCount": 20,
+          "vortexCount": 30,
+          "mountainSegments": 32,
+          "auroraLayers": 1,
+          "auroraSegments": 32,
+          "auroraDetail": 0.4,
+          "enableAurora": true,
+          "bloomStrength": 0.08,
+          "bloomRadius": 0.2,
+          "enablePostProcessing": false,
+          "fogDensity": 0.0015,
+          "targetFps": 60,
+          "bloomScale": 0.5,
+          "iceWispCount": 8,
+          "iceWispTrailSegments": 2,
+          "closeSnowflakeCount": 35,
+          "lensSnowflakeCount": 3,
+          "maxShootingStars": 1,
+          "maxIceCrystalCrashes": 1,
+          "maxBlizzardWaves": 0,
+          "fogLayerCount": 0,
+          "enableCameraAnimation": true
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 18,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 2,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            141.05753432980922,
+            163.29183983473084,
+            178.5210292866691
+          ],
+          "stdDev": [
+            41.28848740178693,
+            43.343420354039694,
+            38.435926122909336
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 10,
+        "meshes": 10,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 230228,
+        "quality": "Minimal",
+        "qualityField": "currentQuality",
+        "qualityPreset": {
+          "snowCount": 3000,
+          "iceBurstCount": 50,
+          "streakCount": 20,
+          "vortexCount": 30,
+          "mountainSegments": 32,
+          "auroraLayers": 1,
+          "auroraSegments": 32,
+          "auroraDetail": 0.4,
+          "enableAurora": true,
+          "bloomStrength": 0.08,
+          "bloomRadius": 0.2,
+          "enablePostProcessing": false,
+          "fogDensity": 0.0015,
+          "targetFps": 60,
+          "bloomScale": 0.5,
+          "iceWispCount": 8,
+          "iceWispTrailSegments": 2,
+          "closeSnowflakeCount": 35,
+          "lensSnowflakeCount": 3,
+          "maxShootingStars": 1,
+          "maxIceCrystalCrashes": 1,
+          "maxBlizzardWaves": 0,
+          "fogLayerCount": 0,
+          "enableCameraAnimation": true
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 32,
+        "canvas": {
+          "width": 759,
+          "height": 351,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 2,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            146.34627232956618,
+            173.52889476242558,
+            189.6956677603597
+          ],
+          "stdDev": [
+            40.476203431049775,
+            37.33548867027355,
+            35.20867431211842
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "starlight",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x272400195a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x272400199c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x272400195a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x272400195a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 4,
+        "meshes": 4,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 29624,
+        "quality": "Minimal",
+        "qualityField": "qualityName",
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 6,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 3,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            45.88046542714789,
+            38.169959897921984,
+            62.927044598371616
+          ],
+          "stdDev": [
+            8.06443186753684,
+            3.6133057076149884,
+            3.73992836704419
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 4,
+        "meshes": 4,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 29624,
+        "quality": "Minimal",
+        "qualityField": "qualityName",
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 20,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 4,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            45.953408676631426,
+            38.205359095880425,
+            63.00836675173168
+          ],
+          "stdDev": [
+            7.938009358360184,
+            3.5766456936317943,
+            3.678930990102449
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 4,
+        "meshes": 4,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 29624,
+        "quality": "Minimal",
+        "qualityField": "qualityName",
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 35,
+        "canvas": {
+          "width": 759,
+          "height": 351,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 3,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            46.17008445740673,
+            38.636669097095634,
+            63.58005529225908
+          ],
+          "stdDev": [
+            7.926868085203147,
+            4.719955478398569,
+            4.430301180189888
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "chiral-gold",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x38240017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x38240017ca00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x38240017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x38240017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 1,
+        "meshes": 2,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 16650,
+        "quality": "Minimal",
+        "qualityField": "currentQualityLevel",
+        "qualityPreset": {
+          "goldDustCount": 1500,
+          "burstSparkCount": 0,
+          "wispCount": 0,
+          "strandCount": 0,
+          "strandParticles": 0,
+          "lightBeamCount": 0,
+          "bloomStrength": 0.2,
+          "bloomRadius": 0.2,
+          "enableCompute": false,
+          "enablePostProcessing": false,
+          "enableFilmGrain": false,
+          "enableChromaticAberr": false,
+          "enableVolumetricBeams": false,
+          "cpuBurstPoolSize": 3,
+          "cpuBurstParticles": 400
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 16,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 11,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            0.012243285939968405,
+            0.008816381091262608,
+            0.0028618301130149473
+          ],
+          "stdDev": [
+            0.6358537088911655,
+            0.49917423262420035,
+            0.25388764912176276
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 1,
+        "meshes": 2,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 16650,
+        "quality": "Minimal",
+        "qualityField": "currentQualityLevel",
+        "qualityPreset": {
+          "goldDustCount": 1500,
+          "burstSparkCount": 0,
+          "wispCount": 0,
+          "strandCount": 0,
+          "strandParticles": 0,
+          "lightBeamCount": 0,
+          "bloomStrength": 0.2,
+          "bloomRadius": 0.2,
+          "enableCompute": false,
+          "enablePostProcessing": false,
+          "enableFilmGrain": false,
+          "enableChromaticAberr": false,
+          "enableVolumetricBeams": false,
+          "cpuBurstPoolSize": 3,
+          "cpuBurstParticles": 400
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 38,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 11,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            0.012723295661684288,
+            0.009108032567748208,
+            0.002892210475148864
+          ],
+          "stdDev": [
+            0.6469468824232361,
+            0.5028920314583394,
+            0.2501260261739712
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 1,
+        "meshes": 2,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 16650,
+        "quality": "Minimal",
+        "qualityField": "currentQualityLevel",
+        "qualityPreset": {
+          "goldDustCount": 1500,
+          "burstSparkCount": 0,
+          "wispCount": 0,
+          "strandCount": 0,
+          "strandParticles": 0,
+          "lightBeamCount": 0,
+          "bloomStrength": 0.2,
+          "bloomRadius": 0.2,
+          "enableCompute": false,
+          "enablePostProcessing": false,
+          "enableFilmGrain": false,
+          "enableChromaticAberr": false,
+          "enableVolumetricBeams": false,
+          "cpuBurstPoolSize": 3,
+          "cpuBurstParticles": 400
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 61,
+        "canvas": {
+          "width": 759,
+          "height": 351,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 12,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            0.03979219832300401,
+            0.028499817717827197,
+            0.009281200631911532
+          ],
+          "stdDev": [
+            1.1330076829427858,
+            0.8910848517037673,
+            0.42249830546294403
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "waves",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x2e4c0020fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2e4c0020d600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2e4c0020fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2e4c0020fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 18,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 11860,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "waveSegments": 48,
+          "sprayCount": 150,
+          "bloomStrength": 0.3,
+          "bloomRadius": 0.35,
+          "enablePostProcessing": false,
+          "ripplePool": 6,
+          "dropletsPerBurst": 20,
+          "bubbleStreamPool": 0,
+          "bubblesPerStream": 0,
+          "godRayCount": 3,
+          "plankStreakCount": 0,
+          "foamCurtainParticles": 0,
+          "enableBloomSurge": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 16,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 14,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            23.00867055535302,
+            113.08644732045207,
+            106.1937598736177
+          ],
+          "stdDev": [
+            25.735578252928825,
+            36.15607165643351,
+            36.27786337358732
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 18,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 11860,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "waveSegments": 48,
+          "sprayCount": 150,
+          "bloomStrength": 0.3,
+          "bloomRadius": 0.35,
+          "enablePostProcessing": false,
+          "ripplePool": 6,
+          "dropletsPerBurst": 20,
+          "bubbleStreamPool": 0,
+          "bubblesPerStream": 0,
+          "godRayCount": 3,
+          "plankStreakCount": 0,
+          "foamCurtainParticles": 0,
+          "enableBloomSurge": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 46,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 16,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            23.347824766071213,
+            119.87011483776887,
+            111.35525580264917
+          ],
+          "stdDev": [
+            25.748049155415146,
+            34.48723198617471,
+            34.82754772577863
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 18,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 11860,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "waveSegments": 48,
+          "sprayCount": 150,
+          "bloomStrength": 0.3,
+          "bloomRadius": 0.35,
+          "enablePostProcessing": false,
+          "ripplePool": 6,
+          "dropletsPerBurst": 20,
+          "bubbleStreamPool": 0,
+          "bubblesPerStream": 0,
+          "godRayCount": 3,
+          "plankStreakCount": 0,
+          "foamCurtainParticles": 0,
+          "enableBloomSurge": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 75,
+        "canvas": {
+          "width": 759,
+          "height": 351,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 15,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            10.711714667638839,
+            90.51269899137198,
+            81.4459168793292
+          ],
+          "stdDev": [
+            15.05533823822151,
+            25.864946743412073,
+            25.394618015860843
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "solar-eclipse",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x3fa400153a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3fa40014f200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3fa400153a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3fa400153a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 17,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 21330,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "starCount": 800,
+          "coronaParticles": 100,
+          "flareParticles": 50,
+          "meteorCount": 8,
+          "ambientParticles": 80,
+          "nebulaCount": 3,
+          "bloomStrength": 0.25,
+          "bloomRadius": 0.35,
+          "enablePostProcessing": false,
+          "moonDetail": 16,
+          "sunDetail": 16,
+          "eclipseSparkPoolSize": 2,
+          "eclipseSparkCount": 300,
+          "maxCosmicRifts": 0,
+          "maxMeteorCrashes": 0,
+          "enableChromaticAberration": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 11,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 9,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            64.27294628751974,
+            62.471011058451815,
+            63.8758384979949
+          ],
+          "stdDev": [
+            105.58326097941925,
+            106.31058308518955,
+            100.8324169667117
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 26,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 23850,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "starCount": 800,
+          "coronaParticles": 100,
+          "flareParticles": 50,
+          "meteorCount": 8,
+          "ambientParticles": 80,
+          "nebulaCount": 3,
+          "bloomStrength": 0.25,
+          "bloomRadius": 0.35,
+          "enablePostProcessing": false,
+          "moonDetail": 16,
+          "sunDetail": 16,
+          "eclipseSparkPoolSize": 2,
+          "eclipseSparkCount": 300,
+          "maxCosmicRifts": 0,
+          "maxMeteorCrashes": 0,
+          "enableChromaticAberration": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 33,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 9,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            66.43659010815409,
+            64.25855814801312,
+            67.16001640539555
+          ],
+          "stdDev": [
+            105.72078327083567,
+            106.36537763311048,
+            104.37704367460688
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 26,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 23850,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "starCount": 800,
+          "coronaParticles": 100,
+          "flareParticles": 50,
+          "meteorCount": 8,
+          "ambientParticles": 80,
+          "nebulaCount": 3,
+          "bloomStrength": 0.25,
+          "bloomRadius": 0.35,
+          "enablePostProcessing": false,
+          "moonDetail": 16,
+          "sunDetail": 16,
+          "eclipseSparkPoolSize": 2,
+          "eclipseSparkCount": 300,
+          "maxCosmicRifts": 0,
+          "maxMeteorCrashes": 0,
+          "enableChromaticAberration": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 56,
+        "canvas": {
+          "width": 759,
+          "height": 351,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 9,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            46.701069388747115,
+            44.5486389597764,
+            46.55712723295662
+          ],
+          "stdDev": [
+            90.54791256362843,
+            90.78534291694544,
+            87.46823901074468
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "stellar-drift",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x220c0015ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x220c00154200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x220c0015ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x220c0015ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 38,
+        "meshes": 38,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 72560,
+        "quality": "Minimal",
+        "qualityField": "activeQualityLevel",
+        "qualityPreset": {
+          "planetDetail": 12,
+          "meteorCount": 50,
+          "dustRingParticleCount": 900,
+          "ambientParticleCount": 180,
+          "nebulaBurstCapacity": 6400,
+          "maxBurstParticlesPerNebula": 420,
+          "bloomStrength": 0.18,
+          "bloomRadius": 0.3,
+          "enablePostProcessing": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 15,
+        "canvas": {
+          "width": 238,
+          "height": 515,
+          "connected": true
+        },
+        "pixelRatio": 0.6106661607277672,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 4,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            110.20240004860858,
+            130.82618787215944,
+            128.23546603475512
+          ],
+          "stdDev": [
+            59.2362374359479,
+            59.97229916768407,
+            56.54948761633838
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 49,
+        "meshes": 52,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 87834,
+        "quality": "Minimal",
+        "qualityField": "activeQualityLevel",
+        "qualityPreset": {
+          "planetDetail": 12,
+          "meteorCount": 50,
+          "dustRingParticleCount": 900,
+          "ambientParticleCount": 180,
+          "nebulaBurstCapacity": 6400,
+          "maxBurstParticlesPerNebula": 420,
+          "bloomStrength": 0.18,
+          "bloomRadius": 0.3,
+          "enablePostProcessing": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 31,
+        "canvas": {
+          "width": 193,
+          "height": 419,
+          "connected": true
+        },
+        "pixelRatio": 0.4973746899281307,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 5,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            128.90640418033783,
+            143.75014582573823,
+            139.43369182160652
+          ],
+          "stdDev": [
+            53.63644475011345,
+            52.60015368897377,
+            50.466446188563786
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 50,
+        "meshes": 53,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 88114,
+        "quality": "Minimal",
+        "qualityField": "activeQualityLevel",
+        "qualityPreset": {
+          "planetDetail": 12,
+          "meteorCount": 50,
+          "dustRingParticleCount": 900,
+          "ambientParticleCount": 180,
+          "nebulaBurstCapacity": 6400,
+          "maxBurstParticlesPerNebula": 420,
+          "bloomStrength": 0.18,
+          "bloomRadius": 0.3,
+          "enablePostProcessing": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 50,
+        "canvas": {
+          "width": 381,
+          "height": 176,
+          "connected": true
+        },
+        "pixelRatio": 0.4520538727344388,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 6,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            66.48003706404181,
+            92.1323277433467,
+            96.29767894033297
+          ],
+          "stdDev": [
+            63.020298161664265,
+            69.35668973317543,
+            66.47658706080918
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "stellar-velocity",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x22040017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x22040017c400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x22040017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x22040017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 21,
+        "meshes": 19,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 110348,
+        "quality": "Minimal",
+        "qualityField": "activeQualityLevel",
+        "qualityPreset": {
+          "starCount": 500,
+          "asteroidCount": 50,
+          "nebulaCount": 2,
+          "bloomStrength": 0.1,
+          "bloomRadius": 0.24,
+          "enableChromatic": false,
+          "enablePostProcessing": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 17,
+        "canvas": {
+          "width": 194,
+          "height": 421,
+          "connected": true
+        },
+        "pixelRatio": 0.49934247840550744,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 11,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            3.9611921254101348,
+            45.483400170130025,
+            55.006638109126264
+          ],
+          "stdDev": [
+            24.15854450117534,
+            41.17276764778801,
+            44.48184462727787
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 21,
+        "meshes": 19,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 110348,
+        "quality": "Minimal",
+        "qualityField": "activeQualityLevel",
+        "qualityPreset": {
+          "starCount": 500,
+          "asteroidCount": 50,
+          "nebulaCount": 2,
+          "bloomStrength": 0.1,
+          "bloomRadius": 0.24,
+          "enableChromatic": false,
+          "enablePostProcessing": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 40,
+        "canvas": {
+          "width": 194,
+          "height": 421,
+          "connected": true
+        },
+        "pixelRatio": 0.49934247840550744,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 12,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            3.9860888321788797,
+            42.978706404180336,
+            52.32905881638109
+          ],
+          "stdDev": [
+            24.04208416455827,
+            39.3779408492002,
+            42.26638097717653
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 21,
+        "meshes": 19,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 110348,
+        "quality": "Minimal",
+        "qualityField": "activeQualityLevel",
+        "qualityPreset": {
+          "starCount": 500,
+          "asteroidCount": 50,
+          "nebulaCount": 2,
+          "bloomStrength": 0.1,
+          "bloomRadius": 0.24,
+          "enableChromatic": false,
+          "enablePostProcessing": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 67,
+        "canvas": {
+          "width": 379,
+          "height": 175,
+          "connected": true
+        },
+        "pixelRatio": 0.45002298844240746,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 15,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            0.8920616113744075,
+            37.00024608093329,
+            50.75847308299915
+          ],
+          "stdDev": [
+            11.43657822940807,
+            43.50802452863115,
+            47.855483048163165
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "void-ember",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "[.WebGL-0x2d7c00193a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2d7c00192800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2d7c00193a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2d7c00193a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "RawWebGL2",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 0,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 0,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {
+          "id": "low",
+          "renderScale": 0.68,
+          "flowGridWidth": 72,
+          "flowGridHeight": 40,
+          "particleCount": 90,
+          "raySteps": 10,
+          "bloomStrength": 0.24,
+          "bloomMips": 4,
+          "bloomThreshold": 1.25,
+          "anamorphicStrength": 0,
+          "temporalMix": 0,
+          "historyClamp": 0.08,
+          "noiseStrength": 0.0018,
+          "vignetteStrength": 0.34,
+          "exposure": 1.04,
+          "sharpness": 0.04,
+          "downshiftThresholdMs": 23.5,
+          "fallbackParticleCount": 22
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 9,
+        "canvas": {
+          "width": 239,
+          "height": 517,
+          "connected": true
+        },
+        "pixelRatio": null,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 7,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            54.399222262729374,
+            16.3856392028193,
+            9.732494835338438
+          ],
+          "stdDev": [
+            72.05371828541183,
+            31.462347952269543,
+            7.931718038149312
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "RawWebGL2",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 0,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 0,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {
+          "id": "low",
+          "renderScale": 0.68,
+          "flowGridWidth": 72,
+          "flowGridHeight": 40,
+          "particleCount": 90,
+          "raySteps": 10,
+          "bloomStrength": 0.24,
+          "bloomMips": 4,
+          "bloomThreshold": 1.25,
+          "anamorphicStrength": 0,
+          "temporalMix": 0,
+          "historyClamp": 0.08,
+          "noiseStrength": 0.0018,
+          "vignetteStrength": 0.34,
+          "exposure": 1.04,
+          "sharpness": 0.04,
+          "downshiftThresholdMs": 23.5,
+          "fallbackParticleCount": 22
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 30,
+        "canvas": {
+          "width": 239,
+          "height": 517,
+          "connected": true
+        },
+        "pixelRatio": null,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 8,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            211.1769990278284,
+            199.83596427269413,
+            195.78393486450358
+          ],
+          "stdDev": [
+            51.10454493964106,
+            61.24264722718995,
+            62.76849049078534
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "RawWebGL2",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 0,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 0,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {
+          "id": "low",
+          "renderScale": 0.68,
+          "flowGridWidth": 72,
+          "flowGridHeight": 40,
+          "particleCount": 90,
+          "raySteps": 10,
+          "bloomStrength": 0.24,
+          "bloomMips": 4,
+          "bloomThreshold": 1.25,
+          "anamorphicStrength": 0,
+          "temporalMix": 0,
+          "historyClamp": 0.08,
+          "noiseStrength": 0.0018,
+          "vignetteStrength": 0.34,
+          "exposure": 1.04,
+          "sharpness": 0.04,
+          "downshiftThresholdMs": 23.5,
+          "fallbackParticleCount": 22
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 50,
+        "canvas": {
+          "width": 517,
+          "height": 239,
+          "connected": true
+        },
+        "pixelRatio": null,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 6,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            101.14334670069267,
+            81.60648316927937,
+            74.59081905456313
+          ],
+          "stdDev": [
+            81.28639410054119,
+            77.9261374324554,
+            70.51597750704732
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "rainy-window",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "[.WebGL-0x2dbc0017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2dbc00178800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2dbc0017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2dbc0017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 16,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 36886,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 10,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 4,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            23.585864017499087,
+            25.32406124681006,
+            32.01777251184834
+          ],
+          "stdDev": [
+            37.50084396608821,
+            40.245213300071484,
+            50.998189656619566
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 16,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 36898,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 36,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 4,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            27.75121825252157,
+            29.391581601652693,
+            37.11111313646859
+          ],
+          "stdDev": [
+            43.33926197717369,
+            45.85115817530883,
+            58.13213240162703
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 16,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 36898,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 62,
+        "canvas": {
+          "width": 759,
+          "height": 351,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 2,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            28.101430915056508,
+            31.32260906550006,
+            38.5858670555353
+          ],
+          "stdDev": [
+            39.887145929437956,
+            44.4220580720528,
+            54.71839276278626
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "nebula-flow",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "[.WebGL-0xfdc0017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0xfdc00179a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0xfdc0017fa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0xfdc00179a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": null,
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 0,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 0,
+        "quality": "minimal",
+        "qualityField": "getQualitySetting()",
+        "qualityPreset": {},
+        "qualityMultiplier": 0.4,
+        "visualProfile": null,
+        "simulatorConfig": {
+          "SIM_RESOLUTION": 128,
+          "DYE_RESOLUTION": 512,
+          "CAPTURE_RESOLUTION": 512,
+          "DENSITY_DISSIPATION": 1.4,
+          "VELOCITY_DISSIPATION": 0.9,
+          "PRESSURE": 0.6,
+          "PRESSURE_ITERATIONS": 10,
+          "CURL": 20,
+          "SPLAT_RADIUS": 0.15,
+          "SPLAT_FORCE": 1500,
+          "SHADING": false,
+          "COLORFUL": true,
+          "COLOR_UPDATE_SPEED": 10,
+          "PAUSED": false,
+          "TRANSPARENT": false,
+          "BLOOM": false,
+          "BLOOM_ITERATIONS": 4,
+          "BLOOM_RESOLUTION": 128,
+          "BLOOM_INTENSITY": 0.8,
+          "BLOOM_THRESHOLD": 0.6,
+          "BLOOM_SOFT_KNEE": 0.7,
+          "SUNRAYS": false,
+          "SUNRAYS_RESOLUTION": 196,
+          "SUNRAYS_WEIGHT": 1
+        },
+        "diagnostics": null,
+        "frame": null,
+        "canvas": {
+          "width": 390,
+          "height": 844,
+          "connected": true
+        },
+        "pixelRatio": null,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 16,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            0.11577348401992951,
+            0.5873192368453032,
+            1.3763792684408798
+          ],
+          "stdDev": [
+            0.6302422731418853,
+            2.8757676729242054,
+            6.69208540099832
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": null,
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 0,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 0,
+        "quality": "minimal",
+        "qualityField": "getQualitySetting()",
+        "qualityPreset": {},
+        "qualityMultiplier": 0.4,
+        "visualProfile": null,
+        "simulatorConfig": {
+          "SIM_RESOLUTION": 128,
+          "DYE_RESOLUTION": 512,
+          "CAPTURE_RESOLUTION": 512,
+          "DENSITY_DISSIPATION": 1.4,
+          "VELOCITY_DISSIPATION": 0.9,
+          "PRESSURE": 0.6,
+          "PRESSURE_ITERATIONS": 10,
+          "CURL": 20,
+          "SPLAT_RADIUS": 0.15,
+          "SPLAT_FORCE": 1500,
+          "SHADING": false,
+          "COLORFUL": true,
+          "COLOR_UPDATE_SPEED": 10,
+          "PAUSED": false,
+          "TRANSPARENT": false,
+          "BLOOM": false,
+          "BLOOM_ITERATIONS": 4,
+          "BLOOM_RESOLUTION": 128,
+          "BLOOM_INTENSITY": 0.8,
+          "BLOOM_THRESHOLD": 0.6,
+          "BLOOM_SOFT_KNEE": 0.7,
+          "SUNRAYS": false,
+          "SUNRAYS_RESOLUTION": 196,
+          "SUNRAYS_WEIGHT": 1
+        },
+        "diagnostics": null,
+        "frame": null,
+        "canvas": {
+          "width": 390,
+          "height": 844,
+          "connected": true
+        },
+        "pixelRatio": null,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 11,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            0.08786000729128692,
+            0.4511878721594361,
+            1.060192611495929
+          ],
+          "stdDev": [
+            0.4843369027382082,
+            2.1953436563369944,
+            5.109189466070709
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": null,
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 0,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 0,
+        "quality": "minimal",
+        "qualityField": "getQualitySetting()",
+        "qualityPreset": {},
+        "qualityMultiplier": 0.4,
+        "visualProfile": null,
+        "simulatorConfig": {
+          "SIM_RESOLUTION": 128,
+          "DYE_RESOLUTION": 512,
+          "CAPTURE_RESOLUTION": 512,
+          "DENSITY_DISSIPATION": 1.4,
+          "VELOCITY_DISSIPATION": 0.9,
+          "PRESSURE": 0.6,
+          "PRESSURE_ITERATIONS": 10,
+          "CURL": 20,
+          "SPLAT_RADIUS": 0.15,
+          "SPLAT_FORCE": 1500,
+          "SHADING": false,
+          "COLORFUL": true,
+          "COLOR_UPDATE_SPEED": 10,
+          "PAUSED": false,
+          "TRANSPARENT": false,
+          "BLOOM": false,
+          "BLOOM_ITERATIONS": 4,
+          "BLOOM_RESOLUTION": 128,
+          "BLOOM_INTENSITY": 0.8,
+          "BLOOM_THRESHOLD": 0.6,
+          "BLOOM_SOFT_KNEE": 0.7,
+          "SUNRAYS": false,
+          "SUNRAYS_RESOLUTION": 196,
+          "SUNRAYS_WEIGHT": 1
+        },
+        "diagnostics": null,
+        "frame": null,
+        "canvas": {
+          "width": 844,
+          "height": 390,
+          "connected": true
+        },
+        "pixelRatio": null,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 8,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            0.061526309393607974,
+            0.32490278284117147,
+            0.7657339895491554
+          ],
+          "stdDev": [
+            0.34729817177515326,
+            1.5650634489145283,
+            3.6408921792860647
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "serenity-warp",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 1,
+      "errors": [],
+      "warnings": [
+        "[.WebGL-0x131400190800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x131400195c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x131400195c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x131400195c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 30,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 27714,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": {
+          "performanceLevel": "LOW",
+          "qualityBudget": "LOW",
+          "authoredPixelRatioCap": 1
+        },
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 26,
+        "canvas": {
+          "width": 390,
+          "height": 844,
+          "connected": true
+        },
+        "pixelRatio": 1,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 22,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            31.88384979948961,
+            13.529584396646008,
+            86.00677482075587
+          ],
+          "stdDev": [
+            31.256934840955893,
+            19.36899291289856,
+            41.062416696163474
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 30,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 27714,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": {
+          "performanceLevel": "LOW",
+          "qualityBudget": "LOW",
+          "authoredPixelRatioCap": 1
+        },
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 74,
+        "canvas": {
+          "width": 390,
+          "height": 844,
+          "connected": true
+        },
+        "pixelRatio": 1,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 20,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            48.47938996232835,
+            31.025133673593388,
+            95.67979098310852
+          ],
+          "stdDev": [
+            33.94116381490794,
+            25.284481723139443,
+            39.21410369929647
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 30,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 27714,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {},
+        "qualityMultiplier": null,
+        "visualProfile": {
+          "performanceLevel": "LOW",
+          "qualityBudget": "LOW",
+          "authoredPixelRatioCap": 1
+        },
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 120,
+        "canvas": {
+          "width": 844,
+          "height": 390,
+          "connected": true
+        },
+        "pixelRatio": 1,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 16,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            47.89651233442703,
+            24.707974845060154,
+            95.7137714181553
+          ],
+          "stdDev": [
+            34.54608215745599,
+            26.967912473040585,
+            38.258412230178756
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "pyrestorm",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x26140018ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x261400184e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x26140018ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x26140018ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 39,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 83234,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "emberCount": 1000,
+          "smokeCount": 15,
+          "ashCount": 200,
+          "terrainSegments": 16,
+          "lavaDetail": 16,
+          "bloomStrength": 0,
+          "bloomRadius": 0,
+          "bloomThreshold": 1,
+          "enableBloom": false,
+          "enableHeatDistortion": false,
+          "enableShadows": false,
+          "mountainDetail": 8,
+          "enableSmokePlume": false,
+          "smokePlumeSegments": 8,
+          "enableLavaBubbles": false,
+          "enableGodRays": false,
+          "godRaySegments": 8,
+          "enableStormClouds": false,
+          "enableInfernalAurora": false,
+          "enableDistantVolcanos": true,
+          "distantVolcanoCount": 2,
+          "auroraRibbonCount": 0
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 8,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 2,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            68.79543383157127,
+            28.15041317292502,
+            13.44252946895127
+          ],
+          "stdDev": [
+            59.011206728518836,
+            35.94181015011063,
+            9.970469648305942
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 39,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 83234,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "emberCount": 1000,
+          "smokeCount": 15,
+          "ashCount": 200,
+          "terrainSegments": 16,
+          "lavaDetail": 16,
+          "bloomStrength": 0,
+          "bloomRadius": 0,
+          "bloomThreshold": 1,
+          "enableBloom": false,
+          "enableHeatDistortion": false,
+          "enableShadows": false,
+          "mountainDetail": 8,
+          "enableSmokePlume": false,
+          "smokePlumeSegments": 8,
+          "enableLavaBubbles": false,
+          "enableGodRays": false,
+          "godRaySegments": 8,
+          "enableStormClouds": false,
+          "enableInfernalAurora": false,
+          "enableDistantVolcanos": true,
+          "distantVolcanoCount": 2,
+          "auroraRibbonCount": 0
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 32,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 2,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            81.94000789889415,
+            37.70759812856969,
+            13.416399319479888
+          ],
+          "stdDev": [
+            68.13052147029802,
+            45.44021651375563,
+            9.918329988808699
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 39,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 83234,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "emberCount": 1000,
+          "smokeCount": 15,
+          "ashCount": 200,
+          "terrainSegments": 16,
+          "lavaDetail": 16,
+          "bloomStrength": 0,
+          "bloomRadius": 0,
+          "bloomThreshold": 1,
+          "enableBloom": false,
+          "enableHeatDistortion": false,
+          "enableShadows": false,
+          "mountainDetail": 8,
+          "enableSmokePlume": false,
+          "smokePlumeSegments": 8,
+          "enableLavaBubbles": false,
+          "enableGodRays": false,
+          "godRaySegments": 8,
+          "enableStormClouds": false,
+          "enableInfernalAurora": false,
+          "enableDistantVolcanos": true,
+          "distantVolcanoCount": 2,
+          "auroraRibbonCount": 0
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 60,
+        "canvas": {
+          "width": 759,
+          "height": 351,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 4,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            67.70816320330539,
+            29.968352776765098,
+            13.550674444039373
+          ],
+          "stdDev": [
+            60.11500297472512,
+            37.13417493063253,
+            9.94091408507603
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "fall",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+        "[.WebGL-0x18ec00189c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x18ec00184e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x18ec00189c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x18ec00189c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 10,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 208070,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "leafCount": 500,
+          "treeCount": 20,
+          "emberCount": 50,
+          "streakCount": 40,
+          "vortexCount": 40,
+          "enablePost": false,
+          "bloomStrength": 0.2
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 6,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 4,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            52.35892878843116,
+            15.364196743225179,
+            0.0401598007048244
+          ],
+          "stdDev": [
+            16.884703464306483,
+            4.479001878528468,
+            0.6534542474429904
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 11,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 208350,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "leafCount": 500,
+          "treeCount": 20,
+          "emberCount": 50,
+          "streakCount": 40,
+          "vortexCount": 40,
+          "enablePost": false,
+          "bloomStrength": 0.2
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 20,
+        "canvas": {
+          "width": 351,
+          "height": 759,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 3,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            51.9738212419492,
+            15.535791104629967,
+            0.040761331875075954
+          ],
+          "stdDev": [
+            15.751844598917506,
+            4.629581460753339,
+            0.6989656638064815
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "rendererDescription": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "nodeMaterials": 0,
+        "meshes": 10,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 208070,
+        "quality": "Minimal",
+        "qualityField": "getCurrentQualityLevel()",
+        "qualityPreset": {
+          "leafCount": 500,
+          "treeCount": 20,
+          "emberCount": 50,
+          "streakCount": 40,
+          "vortexCount": 40,
+          "enablePost": false,
+          "bloomStrength": 0.2
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": 38,
+        "canvas": {
+          "width": 759,
+          "height": 351,
+          "connected": true
+        },
+        "pixelRatio": 0.9,
+        "glError": 0,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": true,
+        "heartbeat": 6,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            52.15391299064285,
+            13.285387045813586,
+            0.9464120792319844
+          ],
+          "stdDev": [
+            29.16249393584563,
+            8.973141711953497,
+            2.3191532408103877
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    },
+    {
+      "id": "mountain",
+      "quality": "Minimal",
+      "expectedMaxPixelRatio": 0.9,
+      "errors": [],
+      "warnings": [
+        "[.WebGL-0xfcc0017b800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0xfcc0017b800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      ],
+      "requestFailures": [],
+      "httpFailures": [],
+      "browserVersion": "141.0.7390.37",
+      "portrait": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": null,
+        "backend": null,
+        "rendererDescription": null,
+        "nodeMaterials": 0,
+        "meshes": 0,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 0,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {
+          "maxParticles": 5,
+          "effectCooldown": 500,
+          "enableLightning": false,
+          "enableTremor": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": null,
+        "canvas": null,
+        "pixelRatio": null,
+        "glError": null,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": false,
+        "heartbeat": 0,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            32.0082361161745,
+            41.7278132215336,
+            60.53454854781869
+          ],
+          "stdDev": [
+            26.46514769710132,
+            25.929696223067324,
+            24.138787673419515
+          ],
+          "uniform": false
+        }
+      },
+      "effects": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "dpr": 3
+        },
+        "rendererKind": null,
+        "backend": null,
+        "rendererDescription": null,
+        "nodeMaterials": 0,
+        "meshes": 0,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 0,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {
+          "maxParticles": 5,
+          "effectCooldown": 500,
+          "enableLightning": false,
+          "enableTremor": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": null,
+        "canvas": null,
+        "pixelRatio": null,
+        "glError": null,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": false,
+        "heartbeat": 0,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            32.07299489609916,
+            41.79088892939604,
+            60.59176692186171
+          ],
+          "stdDev": [
+            26.546694585436015,
+            26.002063310021278,
+            24.208272946720978
+          ],
+          "uniform": false
+        }
+      },
+      "landscape": {
+        "ready": true,
+        "active": true,
+        "lifecycle": "running",
+        "runtimeFailure": null,
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "dpr": 3
+        },
+        "rendererKind": null,
+        "backend": null,
+        "rendererDescription": null,
+        "nodeMaterials": 0,
+        "meshes": 0,
+        "nonFinite": 0,
+        "inspectedAttributeValues": 0,
+        "quality": null,
+        "qualityField": null,
+        "qualityPreset": {
+          "maxParticles": 5,
+          "effectCooldown": 500,
+          "enableLightning": false,
+          "enableTremor": false
+        },
+        "qualityMultiplier": null,
+        "visualProfile": null,
+        "simulatorConfig": {},
+        "diagnostics": null,
+        "frame": null,
+        "canvas": null,
+        "pixelRatio": null,
+        "glError": null,
+        "visibleContent": true,
+        "fallbackText": "",
+        "livenessRequired": false,
+        "heartbeat": 0,
+        "raster": {
+          "width": 844,
+          "height": 390,
+          "mean": [
+            30.163169886985052,
+            39.87171284481711,
+            58.959958682707494
+          ],
+          "stdDev": [
+            22.80472105311854,
+            22.58826436753962,
+            20.814610733242635
+          ],
+          "uniform": false
+        }
+      },
+      "failures": [],
+      "status": "pass"
+    }
+  ],
+  "passed": 17,
+  "failed": 0
+}

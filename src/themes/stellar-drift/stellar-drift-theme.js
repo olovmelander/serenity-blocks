@@ -503,6 +503,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.themeTimeouts = new Set();
         this.isWebGPU = false;
         this.isWebGL = false;
+        this.usesNodeMaterials = false;
         this.deviceLossRecoveryInProgress = false;
         this.deviceLossRecoveries = 0;
         this.renderFallbackInProgress = false;
@@ -1118,6 +1119,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const geometry = new THREE.PlaneGeometry(width, height);
         const materialData = createStellarNebulaMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             variant: 'haze',
             nebulaTexture: texture,
             opacity: baseOpacity,
@@ -1170,6 +1172,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const cometColor = new THREE.Color().setHSL(0.54 + this.rand() * 0.08, 0.82, 0.78);
         const materialData = createStellarShootingStarMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             color: cometColor,
             opacity: 0.95,
         });
@@ -1236,6 +1239,7 @@ export default class StellarDriftTheme extends BaseTheme {
 
             const materialData = createStellarNebulaBurstMaterial({
                 isWebGPU: this.isWebGPU,
+                usesNodeMaterials: this.usesNodeMaterials,
                 burstCompute,
             });
 
@@ -1300,9 +1304,9 @@ export default class StellarDriftTheme extends BaseTheme {
 
     probeCapabilities() {
         const maxColorAttachments = this.renderer?.capabilities?.maxColorAttachments ?? 1;
-        const supportsPost = this.isWebGPU
-            ? typeof (THREE_WEBGPU.RenderPipeline ?? THREE_WEBGPU.PostProcessing) === 'function'
-            : true;
+        const supportsPost = this.usesNodeMaterials
+            ? typeof THREE_WEBGPU.RenderPipeline === 'function'
+            : this.renderer?.isWebGLRenderer === true;
         const supportsMRT = this.isWebGPU && maxColorAttachments > 1;
         const supportsCompute = this.isWebGPU && typeof this.renderer?.compute === 'function';
 
@@ -1403,7 +1407,7 @@ export default class StellarDriftTheme extends BaseTheme {
         if (!this.renderer) return;
 
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        if (this.isWebGPU && this.capabilities.post) {
+        if (this.usesNodeMaterials && this.capabilities.post) {
             this.renderer.toneMapping = THREE.NoToneMapping;
             this.renderer.toneMappingExposure = 1.0;
             return;
@@ -1538,38 +1542,21 @@ export default class StellarDriftTheme extends BaseTheme {
     }
 
     removeRendererResilienceListeners() {
-        if (!this.renderer?.domElement) return;
-
-        if (this.webglContextLostHandler) {
-            this.renderer.domElement.removeEventListener('webglcontextlost', this.webglContextLostHandler, false);
-            this.webglContextLostHandler = null;
-        }
-        if (this.webglContextRestoredHandler) {
-            this.renderer.domElement.removeEventListener('webglcontextrestored', this.webglContextRestoredHandler, false);
-            this.webglContextRestoredHandler = null;
-        }
+        BaseTheme.prototype.removeRendererResilience.call(this);
     }
 
     setupRendererResilience() {
         if (!this.renderer?.domElement) return;
+        this.removeRendererResilienceListeners();
 
         if (this.isWebGL) {
-            this.webglContextLostHandler = (event) => {
-                event.preventDefault();
-                console.warn('[StellarDrift] WebGL context lost');
-            };
-            this.webglContextRestoredHandler = () => {
-                console.warn('[StellarDrift] WebGL context restored');
-                this.resize(window.innerWidth, window.innerHeight);
-            };
-            this.renderer.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler, false);
-            this.renderer.domElement.addEventListener('webglcontextrestored', this.webglContextRestoredHandler, false);
+            BaseTheme.prototype.setupRendererResilience.call(this, this.renderer, { webgpuDevice: null });
             return;
         }
 
         // three's WebGPUBackend already wires device.lost.then() -> renderer.onDeviceLost
         // (three/src/renderers/webgpu/WebGPUBackend.js), and disposeRendererResources()
-        // nulls renderer.onDeviceLost on teardown, so that path releases this theme on
+        // replaces renderer.onDeviceLost with a closure-free no-op on teardown, releasing this theme on
         // switch-away. Do NOT additionally register our own device.lost.then(...): a .then()
         // reaction cannot be detached, and device.lost never settles under normal play, so
         // its closure pinned this entire theme instance (scene included) on the
@@ -1578,6 +1565,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const rendererAtRegistration = this.renderer;
         const ownerGeneration = this.lifecycleGeneration;
         this.renderer.onDeviceLost = (info) => {
+            rendererAtRegistration._isDeviceLost = true;
             if (ownerGeneration !== this.lifecycleGeneration
                 || !this.isActive
                 || this.cleanupComplete
@@ -1687,7 +1675,7 @@ export default class StellarDriftTheme extends BaseTheme {
     disposeRendererResources(removeCanvas = true) {
         if (!this.renderer) return;
 
-        this.renderer.onDeviceLost = null;
+        this.renderer.onDeviceLost = () => {};
         this.removeRendererResilienceListeners();
         const domElement = this.renderer.domElement;
         try {
@@ -1760,6 +1748,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.fixedElapsed = 0;
         this.isWebGPU = false;
         this.isWebGL = false;
+        this.usesNodeMaterials = false;
         this.capabilities = {
             webgpu: false,
             webgl: false,
@@ -1833,10 +1822,9 @@ export default class StellarDriftTheme extends BaseTheme {
     }
 
     getCurrentQualityLevel() {
-        if (typeof window !== 'undefined' && window.settings?.graphicsQuality) {
-            return normalizeQuality(window.settings.graphicsQuality);
-        }
-        return 'High';
+        const quality = typeof window !== 'undefined'
+            ? window.settings?.effectQuality || window.settings?.graphicsQuality : null;
+        return normalizeQuality(quality);
     }
 
     resolveQualityBudget(quality) {
@@ -1928,7 +1916,7 @@ export default class StellarDriftTheme extends BaseTheme {
         }
 
         const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
-        if (this.isWebGPU && this.postProcessing) {
+        if (this.usesNodeMaterials && this.postProcessing) {
             this.postProcessing.update({
                 bloomDownsample: THREE.MathUtils.clamp(0.6 + effectScale * 0.22, 0.58, 0.86),
             });
@@ -2343,47 +2331,40 @@ export default class StellarDriftTheme extends BaseTheme {
         const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
             && this.isActive
             && !this.cleanupComplete;
-        let renderer = null;
-        let webgpuRenderer = null;
-
-        if (!this.shouldForceWebGL()) {
+        const forceWebGL = this.shouldForceWebGL()
+            || typeof navigator === 'undefined'
+            || !navigator.gpu;
+        const createRenderer = (webglOnly) => new THREE_WEBGPU.WebGPURenderer({
+            antialias: this.getAntialiasEnabled(),
+            powerPreference: 'high-performance',
+            alpha: false,
+            preserveDrawingBuffer,
+            forceWebGL: webglOnly,
+        });
+        let renderer = createRenderer(forceWebGL);
+        try {
+            await this.initializeRendererCandidate(renderer, {
+                label: 'Stellar Drift node renderer init',
+                ownerGeneration,
+            });
+        } catch (error) {
+            if (!ownsLifecycle()) return false;
+            if (forceWebGL) {
+                console.error('[StellarDrift] WebGL2 node renderer initialization failed:', error);
+                return false;
+            }
+            // The lifecycle helper retires the failed candidate. Keep the same
+            // materials and artwork when retrying with the compatibility backend.
+            console.warn('[StellarDrift] WebGPU init failed, retrying WebGL2:', error);
+            renderer = createRenderer(true);
             try {
-                webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
-                    antialias: this.getAntialiasEnabled(),
-                    powerPreference: 'high-performance',
-                    alpha: false,
-                    preserveDrawingBuffer,
-                    forceWebGL: false,
-                });
-                await this.initializeRendererCandidate(webgpuRenderer, {
-                    label: 'Stellar Drift WebGPU renderer init',
+                await this.initializeRendererCandidate(renderer, {
+                    label: 'Stellar Drift WebGL2 node renderer init',
                     ownerGeneration,
                 });
-                if (webgpuRenderer.backend?.isWebGPUBackend === true) {
-                    renderer = webgpuRenderer;
-                } else {
-                    webgpuRenderer.dispose();
-                    webgpuRenderer = null;
-                }
-            } catch (error) {
+            } catch (fallbackError) {
                 if (!ownsLifecycle()) return false;
-                console.warn('[StellarDrift] WebGPU init failed, falling back to WebGL2:', error);
-                webgpuRenderer?.dispose();
-                webgpuRenderer = null;
-            }
-        }
-
-        if (!renderer) {
-            if (!ownsLifecycle()) return false;
-            try {
-                renderer = new THREE.WebGLRenderer({
-                    antialias: this.getAntialiasEnabled(),
-                    powerPreference: 'high-performance',
-                    alpha: false,
-                    preserveDrawingBuffer,
-                });
-            } catch (error) {
-                console.error('[StellarDrift] WebGL renderer initialization failed:', error);
+                console.error('[StellarDrift] WebGL2 node renderer initialization failed:', fallbackError);
                 return false;
             }
         }
@@ -2393,10 +2374,11 @@ export default class StellarDriftTheme extends BaseTheme {
             return false;
         }
         this.renderer = renderer;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = renderer.isWebGLRenderer === true
             || renderer.backend?.isWebGLBackend === true
-            || !this.isWebGPU;
+            || (!this.usesNodeMaterials && !this.isWebGPU);
 
         this.renderer.setClearColor(0x000000, 1);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
@@ -2595,6 +2577,7 @@ export default class StellarDriftTheme extends BaseTheme {
 
         const materialData = createStellarStarfieldMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             pixelRatio: this.renderer.getPixelRatio(),
             starTexture: this.getStarTexture(),
         });
@@ -2607,7 +2590,11 @@ export default class StellarDriftTheme extends BaseTheme {
         this.starfield.renderOrder = -3200;
         this.starfield.frustumCulled = false;
         this.scene.add(this.starfield);
-        console.log('[StellarDrift] Starfield created with', starCount, this.isWebGPU ? 'TSL stars' : 'shader stars');
+        console.log(
+            '[StellarDrift] Starfield created with',
+            starCount,
+            this.usesNodeMaterials ? 'TSL stars' : 'shader stars',
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2861,6 +2848,7 @@ export default class StellarDriftTheme extends BaseTheme {
                 );
                 const materialData = createStellarBloodMoonNebulaMaterial({
                     isWebGPU: this.isWebGPU,
+                    usesNodeMaterials: this.usesNodeMaterials,
                     nebulaTexture: config.texture,
                     opacity: config.opacity * massConfig.opacityMultiplier,
                     palette: massConfig.palette,
@@ -3064,15 +3052,13 @@ export default class StellarDriftTheme extends BaseTheme {
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 
-        const material = new THREE.PointsMaterial({
+        const { material } = createStellarNebulaBurstMaterial({
+            isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             color,
-            map: this.getRoundParticleTexture(), // USE ROUND TEXTURE
-            size: 200 + this.rand() * 150, // Balanced size for visibility
-            transparent: true,
+            map: this.getRoundParticleTexture(),
+            size: 200 + this.rand() * 150,
             opacity: 1.0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            sizeAttenuation: true,
         });
 
         const burst = new THREE.Points(geometry, material);
@@ -3117,6 +3103,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const jupiterTexture = this.loadStellarSurfaceTexture('./textures/2k_jupiter.jpg');
         const materialData = createStellarPlanetMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             planetTexture: jupiterTexture,
         });
         this.planetMaterialData = materialData;
@@ -3149,6 +3136,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const primaryGeometry = new THREE.RingGeometry(primaryInner, primaryOuter, 164, 1);
         const primaryMaterialData = createStellarPlanetRingMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             colorInner: 0xf5e7ff,
             colorOuter: 0xbd8cff,
             opacity: 0.24,
@@ -3166,6 +3154,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const outerGeometry = new THREE.RingGeometry(outerInner, outerOuter, 160, 1);
         const outerMaterialData = createStellarPlanetRingMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             colorInner: 0xa8f3ff,
             colorOuter: 0x4460eb,
             opacity: 0.16,
@@ -3188,6 +3177,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const geometry = new THREE.PlaneGeometry(size, size);
         const materialData = createStellarGlowPlaneMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             glowTexture: this.getGlowTexture(),
             color,
             opacity,
@@ -3390,6 +3380,7 @@ export default class StellarDriftTheme extends BaseTheme {
             );
             const materialData = createStellarCelestialBodyMaterial({
                 isWebGPU: this.isWebGPU,
+                usesNodeMaterials: this.usesNodeMaterials,
                 color: config.color,
                 emissiveColor: config.emissiveColor,
                 emissiveStrength: config.emissiveStrength,
@@ -3428,6 +3419,7 @@ export default class StellarDriftTheme extends BaseTheme {
         );
         const ringedPlanetMaterialData = createStellarCelestialBodyMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             color: 0xf4e2c4,
             emissiveColor: 0xe8caa6,
             emissiveStrength: 0.03,
@@ -3444,6 +3436,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const ringGeometry = new THREE.RingGeometry(396, 660, 96);
         const ringMaterialData = createStellarPlanetRingMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             colorInner: 0xf2dfb0,
             colorOuter: 0xb89c72,
             opacity: 0.2,
@@ -3686,6 +3679,7 @@ export default class StellarDriftTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.56);
             const materialData = createStellarNebulaMaterial({
                 isWebGPU: this.isWebGPU,
+                usesNodeMaterials: this.usesNodeMaterials,
                 variant: config.variant ?? 'haze',
                 nebulaTexture: texture,
                 opacity: config.opacity,
@@ -3867,6 +3861,7 @@ export default class StellarDriftTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(config.width, config.height);
             const materialData = createStellarForegroundVeilMaterial({
                 isWebGPU: this.isWebGPU,
+                usesNodeMaterials: this.usesNodeMaterials,
                 veilTexture: texture,
                 color: config.tintColor,
                 opacity: config.opacity,
@@ -3979,6 +3974,7 @@ export default class StellarDriftTheme extends BaseTheme {
 
         const materialData = createStellarDustRingMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             size: 2.35,
             opacity: 0.46,
             dustCompute: this.dustRingCompute,
@@ -4081,6 +4077,7 @@ export default class StellarDriftTheme extends BaseTheme {
 
         const materialData = createStellarAmbientParticlesMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             size: 1.35,
             opacity: 0.24,
             ambientCompute: this.ambientParticleCompute,
@@ -4101,6 +4098,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const count = this.qualityPreset.meteorCount;
         const materialData = createStellarMeteorMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
         });
         const material = materialData.material;
 
@@ -4194,7 +4192,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const height = window.innerHeight;
         const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             try {
                 const useMRT = this.capabilities.mrt;
                 this.postProcessing = new StellarDriftPost(
@@ -4217,9 +4215,9 @@ export default class StellarDriftTheme extends BaseTheme {
                     },
                 );
                 this.postProcessing.setSize(width, height);
-                console.log(`[StellarDrift] WebGPU post-processing ready (MRT: ${useMRT})`);
+                console.log(`[StellarDrift] Node post-processing ready (MRT: ${useMRT})`);
             } catch (error) {
-                console.warn('[StellarDrift] WebGPU post setup failed. Falling back to direct rendering:', error);
+                console.warn('[StellarDrift] Node post setup failed. Falling back to direct rendering:', error);
                 this.capabilities.post = false;
                 this.flags.usePost = false;
                 this.disposePostProcessingStack();
@@ -4622,6 +4620,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const geometry = new THREE.RingGeometry(450, 480, 64);
         const materialData = createStellarShockwaveRingMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             color,
             opacity,
         });
@@ -5213,7 +5212,10 @@ export default class StellarDriftTheme extends BaseTheme {
         const coreGeometry = geometryCache.coreTemplates[
             Math.floor(this.rand() * geometryCache.coreTemplates.length)
         ] || geometryCache.coreTemplates[0];
-        const coreMaterialData = createStellarMeteorMaterial({ isWebGPU: this.isWebGPU });
+        const coreMaterialData = createStellarMeteorMaterial({
+            isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
+        });
         const coreMesh = new THREE.Mesh(coreGeometry, coreMaterialData.material);
         coreMesh.userData.materialData = coreMaterialData;
         coreMesh.userData.sharedCrashGeom = true;
@@ -5225,7 +5227,10 @@ export default class StellarDriftTheme extends BaseTheme {
         let fragmentMaterialData = null;
         const fragmentCount = spawnProfile.fragmentCount;
         if (fragmentCount > 0) {
-            fragmentMaterialData = createStellarMeteorMaterial({ isWebGPU: this.isWebGPU });
+            fragmentMaterialData = createStellarMeteorMaterial({
+                isWebGPU: this.isWebGPU,
+                usesNodeMaterials: this.usesNodeMaterials,
+            });
         }
         for (let i = 0; i < fragmentCount; i++) {
             const fragmentRadius = meteorRadius * (0.18 + this.rand() * 0.32);
@@ -5266,6 +5271,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const glowGeometry = coreGeometry;
         const glowMaterialData = createStellarShootingStarMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             color: new THREE.Color(0xffbb76),
             opacity: 0.22 + clampedIntensity * 0.16,
         });
@@ -5291,6 +5297,7 @@ export default class StellarDriftTheme extends BaseTheme {
         );
         const tailMaterialData = createStellarShootingStarMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             color: new THREE.Color(0xff9a4a),
             opacity: 0.14 + clampedIntensity * 0.06,
         });
@@ -5309,6 +5316,7 @@ export default class StellarDriftTheme extends BaseTheme {
         );
         const plasmaTailMaterialData = createStellarShootingStarMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             color: new THREE.Color(0xffc98a),
             opacity: 0.1 + clampedIntensity * 0.05,
         });
@@ -5880,6 +5888,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const geometry = new THREE.CylinderGeometry(0, 3, 80, 8);
         const materialData = createStellarShootingStarMaterial({
             isWebGPU: this.isWebGPU,
+            usesNodeMaterials: this.usesNodeMaterials,
             color: 0xffffff,
             opacity: 1.0,
         });
@@ -6348,7 +6357,7 @@ export default class StellarDriftTheme extends BaseTheme {
                 this.radialSpeedPass.uniforms.time.value = this.time * 50; // Fast animation
             }
 
-            if (this.isWebGPU && this.postProcessing?.update) {
+            if (this.usesNodeMaterials && this.postProcessing?.update) {
                 const baseDarkness = 0.5;
                 const warpDarkness = this.warpSpeed * 0.44;
                 const baseOffset = 1.04;
@@ -6619,16 +6628,16 @@ export default class StellarDriftTheme extends BaseTheme {
         if (!this.renderer || !this.scene || !this.camera) return;
         const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             if (this.capabilities.post && this.postProcessing?.render) {
                 try {
                     const postStart = nowMs();
                     this.postProcessing.render();
                     this.lastPostCostMs = nowMs() - postStart;
-                    this.lastRenderPath = 'webgpu-post';
+                    this.lastRenderPath = this.isWebGPU ? 'webgpu-post' : 'webgl2-node-post';
                     return;
                 } catch (error) {
-                    console.warn('[StellarDrift] WebGPU post render failed. Falling back:', error);
+                    console.warn('[StellarDrift] Node post render failed. Falling back:', error);
                     this.capabilities.post = false;
                     this.flags.usePost = false;
                     this.disposePostProcessingStack();
@@ -6640,9 +6649,10 @@ export default class StellarDriftTheme extends BaseTheme {
                 this.renderer.clear();
                 this.renderer.render(this.scene, this.camera);
                 this.lastPostCostMs = 0;
-                this.lastRenderPath = 'webgpu-direct';
+                this.lastRenderPath = this.isWebGPU ? 'webgpu-direct' : 'webgl2-node-direct';
             } catch (error) {
-                void this.requestWebGLFallback('webgpu-render-failure', error);
+                if (this.isWebGPU) void this.requestWebGLFallback('webgpu-render-failure', error);
+                else console.error('[StellarDrift] WebGL2 node render failed:', error);
             }
             return;
         }

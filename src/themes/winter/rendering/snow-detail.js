@@ -49,8 +49,9 @@ function loadTex(fileName, placeholderHex) {
     tex.anisotropy = 4;
     tex.needsUpdate = true;
     tex.userData.lifecycleDisposed = false;
+    let replacingImage = false;
     tex.addEventListener('dispose', () => {
-        tex.userData.lifecycleDisposed = true;
+        if (!replacingImage) tex.userData.lifecycleDisposed = true;
     });
     new THREE.TextureLoader().load(
         `${ASSET_BASE}${fileName}`,
@@ -59,6 +60,12 @@ function loadTex(fileName, placeholderHex) {
                 loaded.dispose?.();
                 return;
             }
+            // WebGL2 uses immutable texture storage. Release the 2×2 GPU
+            // allocation before uploading the larger image; needsUpdate alone
+            // otherwise uploads outside the placeholder's texture dimensions.
+            replacingImage = true;
+            tex.dispose();
+            replacingImage = false;
             tex.image = loaded.image;
             tex.needsUpdate = true;
             loaded.dispose?.();

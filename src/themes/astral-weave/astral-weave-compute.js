@@ -367,6 +367,30 @@ export class AstralWeaveBurstCompute {
         }
     }
 
+    // Compatibility simulation uses the same bounded pool, spawn values and
+    // lifetime law as the native compute path, without dispatching GPU compute.
+    updateCpu(delta, options = {}) {
+        const dt = Math.min(0.05, Math.max(0, Number(delta) || 0));
+        this.update(dt, options);
+        for (let i = 0; i < this.count; i += 1) {
+            const i4 = i * 4;
+            if (this.positionData[i4 + 3] <= 0.5) continue;
+            this.velocityData[i4 + 1] += this.uGravity.value * dt;
+            for (let axis = 0; axis < 3; axis += 1) {
+                this.velocityData[i4 + axis] *= this.uDrag.value;
+                this.positionData[i4 + axis] += this.velocityData[i4 + axis] * dt;
+            }
+            this.miscData[i4 + 1] -= dt * (0.9 + this.miscData[i4 + 2] * 0.3);
+            if (this.miscData[i4 + 1] <= 0) {
+                this.positionData[i4 + 3] = 0;
+                this.positionData[i4 + 2] = -9999;
+                this.miscData[i4 + 1] = 0;
+            }
+        }
+        this.positionBuffer.needsUpdate = true;
+        this.miscBuffer.needsUpdate = true;
+    }
+
     getPositionBuffer() {
         return this.positionBuffer;
     }

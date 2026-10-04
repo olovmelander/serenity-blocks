@@ -195,6 +195,7 @@ describe('Ocean authored jellyfish scene lifecycle', () => {
         vi.stubGlobal('requestAnimationFrame', (callback) => callback());
         const compiledPopulations = [];
         theme.renderer = {
+            isWebGPURenderer: true,
             compileAsync: vi.fn(async () => { compiledPopulations.push(theme.jellyfishMesh); }),
             render: vi.fn(),
         };

@@ -539,9 +539,9 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     getCurrentQualityLevel() {
-        if (typeof window !== 'undefined' && window.settings?.graphicsQuality) {
-            return normalizeQuality(window.settings.graphicsQuality);
-        }
+        const quality = typeof window !== 'undefined'
+            ? window.settings?.effectQuality || window.settings?.graphicsQuality : null;
+        if (quality) return normalizeQuality(quality);
         return 'High';
     }
 
@@ -1675,31 +1675,32 @@ export default class NeonDistrictTheme extends BaseTheme {
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        // Use WebGPU renderer with automatic WebGL2 fallback
-        const renderer = new THREE.WebGPURenderer({
-            antialias: this.getAntialiasEnabled(),
-            alpha: false,
-            forceWebGL: this.forceWebGL,
-        });
-        try {
-            await this.initializeRendererCandidate(renderer, {
-                label: 'Neon District renderer init',
+        const ownsRuntime = () => ownerGeneration === this.lifecycleGeneration
+            && this.isRuntimeCurrent(generation, null);
+        const makeRenderer = async (forceWebGL) => {
+            const candidate = new THREE.WebGPURenderer({
+                antialias: this.getAntialiasEnabled(),
+                alpha: false,
+                forceWebGL,
+            });
+            return this.initializeRendererCandidate(candidate, {
+                timeoutMs: 4000,
+                label: `Neon District ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
                 ownerGeneration,
             });
+        };
+        let renderer;
+        const forceWebGL = this.forceWebGL || !globalThis.navigator?.gpu;
+        try {
+            renderer = await makeRenderer(forceWebGL);
         } catch (error) {
-            if (ownerGeneration !== this.lifecycleGeneration
-                || !this.isRuntimeCurrent(generation, null)) {
-                this.disposeRenderer(renderer, { nullInstance: false });
-                return false;
-            }
-            console.error('[NeonDistrict] Renderer initialization failed:', error);
-            this.disposeRenderer(renderer, { nullInstance: false });
-            throw new Error('[NeonDistrict] Renderer initialization failed.', { cause: error });
+            if (!ownsRuntime()) return false;
+            if (forceWebGL) throw error;
+            console.warn('[NeonDistrict] WebGPU init failed, trying WebGL2:', error);
+            renderer = await makeRenderer(true);
         }
-
-        if (ownerGeneration !== this.lifecycleGeneration
-            || !this.isRuntimeCurrent(generation, null)) {
-            this.disposeRenderer(renderer, { nullInstance: false });
+        if (!ownsRuntime()) {
+            await this.disposeRenderer(renderer, { nullInstance: false });
             return false;
         }
 

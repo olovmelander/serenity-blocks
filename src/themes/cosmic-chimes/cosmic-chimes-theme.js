@@ -212,11 +212,6 @@ export default class CosmicChimesTheme extends BaseTheme {
             const particle = document.createElement('div');
             particle.className = 'dust-particle';
 
-            if (!preset.dustAnimationEnabled) {
-                particle.style.animation = 'none';
-                particle.style.opacity = '0.3';
-            }
-
             const size = Math.random() * 2 + 1;
             particle.style.cssText = `
                 width: ${size}px;
@@ -227,6 +222,11 @@ export default class CosmicChimesTheme extends BaseTheme {
                 --y-end: ${Math.random() * 100}vh;
                 animation-delay: -${Math.random() * 30}s;
             `;
+
+            if (!preset.dustAnimationEnabled) {
+                particle.style.animation = 'none';
+                particle.style.opacity = '0.3';
+            }
 
             fragment.appendChild(particle);
         }
@@ -246,11 +246,6 @@ export default class CosmicChimesTheme extends BaseTheme {
             const chime = document.createElement('div');
             chime.className = 'chime';
 
-            if (!preset.chimeAnimationEnabled) {
-                chime.style.animation = 'none';
-                chime.style.opacity = '0.6';
-            }
-
             chime.style.cssText = `
                 left: ${5 + Math.random() * 90}%;
                 top: ${-10 + Math.random() * 30}%;
@@ -258,6 +253,11 @@ export default class CosmicChimesTheme extends BaseTheme {
                 --r-end: ${Math.random() * 10 - 5}deg;
                 animation-delay: -${Math.random() * 12}s;
             `;
+
+            if (!preset.chimeAnimationEnabled) {
+                chime.style.animation = 'none';
+                chime.style.opacity = '0.6';
+            }
 
             fragment.appendChild(chime);
             this.chimeInstances.push(chime);
@@ -270,9 +270,7 @@ export default class CosmicChimesTheme extends BaseTheme {
     updateNebulaSettings() {
         const nebula = document.querySelector('.chime-nebula');
         if (!nebula) return;
-        if (!this.activePreset.nebulaAnimationEnabled) {
-            nebula.style.animation = 'none';
-        }
+        nebula.style.animation = this.activePreset.nebulaAnimationEnabled ? '' : 'none';
     }
 
     setupEventListeners() {

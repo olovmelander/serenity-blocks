@@ -66,8 +66,9 @@ function loadLunaraTexture(url, {
     const loader = new THREE.TextureLoader();
     const texture = createPlaceholderTexture({ repeat, color: fallbackColor, colorSpace });
     texture.userData.lifecycleDisposed = false;
+    let replacingImage = false;
     texture.addEventListener('dispose', () => {
-        texture.userData.lifecycleDisposed = true;
+        if (!replacingImage) texture.userData.lifecycleDisposed = true;
     });
     loader.load(
         url,
@@ -75,6 +76,15 @@ function loadLunaraTexture(url, {
             if (texture.userData.lifecycleDisposed) {
                 loaded.dispose?.();
                 return;
+            }
+            // Node WebGL2 allocates immutable storage for the 2px placeholder.
+            // Retire that allocation before uploading the larger image while
+            // preserving the material's texture identity and lifecycle guard.
+            replacingImage = true;
+            try {
+                texture.dispose();
+            } finally {
+                replacingImage = false;
             }
             texture.image = loaded.image;
             configureTexture(texture, { repeat, colorSpace });
@@ -146,7 +156,7 @@ export function loadLunaraHdriEnvironment(renderer, scene, onReady = null) {
             let environment = texture;
             let sourceTexture = texture;
             try {
-                const PMREMGeneratorClass = renderer.backend?.isWebGPUBackend
+                const PMREMGeneratorClass = renderer.isWebGPURenderer === true
                     ? WEBGPU.PMREMGenerator
                     : THREE.PMREMGenerator;
                 const pmrem = new PMREMGeneratorClass(renderer);

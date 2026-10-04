@@ -1077,6 +1077,7 @@ export default class WinterTheme extends BaseTheme {
     constructor() {
         super('winter');
         this.renderer = null; this.scene = null; this.camera = null; this.composer = null; this.post = null;
+        this.usesNodeMaterials = false;
         this.animationFrameId = null;
 
         this.snowParticles = null;
@@ -1247,7 +1248,8 @@ export default class WinterTheme extends BaseTheme {
 
     applyQualityPreset(quality) {
         this.currentQuality = quality || 'High';
-        let selected = this.currentQuality;
+        // Both authored preset tables start at Low; Minimal must retain that budget.
+        let selected = this.currentQuality === 'Minimal' ? 'Low' : this.currentQuality;
         if (selected === 'Extreme+' && !this.isWebGPU) {
             selected = 'Extreme';
         }
@@ -1381,10 +1383,10 @@ export default class WinterTheme extends BaseTheme {
             };
             console.log('[WinterBaseline] Helpers: window.winterBaseline.capture(label), report(), reset()');
         }
-        // WebGPU: mount the composed Winter Wonderland scene (one effect) and let
-        // the post pipeline grade it dark/moody. WebGL keeps the legacy build.
+        // Both node backends mount the composed Winter Wonderland scene and
+        // the same dark grade. Genuine GPU simulation stays capability-gated.
         // ?winterLegacy=1 forces the old scene for comparison.
-        this.useWonderland = this.isWebGPU && !this.bare
+        this.useWonderland = this.usesNodeMaterials && !this.bare
             && new URLSearchParams(window.location.search).get('winterLegacy') !== '1';
         if (this.useWonderland) {
             this.scene.fog = null; // scene materials do their own distance fog
@@ -1416,7 +1418,7 @@ export default class WinterTheme extends BaseTheme {
             this.createReferenceLandscapeBackdrop();
             this.createMoon();
             this.createMountains();
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 this.createLake();
                 this.createLowPolyForest();
                 // GLB winter trees (Spruce, Pine, Fir, Birch) — Firewatch low-poly style
@@ -1429,7 +1431,7 @@ export default class WinterTheme extends BaseTheme {
                 });
             }
             // WebGL fallback keeps the separate flat-plane curtain ribbons.
-            if (this.qualityPreset.enableAurora && !this.isWebGPU) this.createAuroraSystem();
+            if (this.qualityPreset.enableAurora && !this.usesNodeMaterials) this.createAuroraSystem();
             this.createSnowParticles();
             this.createCloseSnowflakes();
             this.createIceBurstSystem();
@@ -1453,25 +1455,32 @@ export default class WinterTheme extends BaseTheme {
     async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
-        const renderer = new THREE.WebGPURenderer({
-            antialias: this.getAntialiasEnabled(),
-            alpha: false,
-            forceWebGL: this.forceWebGL === true,
-            preserveDrawingBuffer: this.baselineEnabled === true,
-        });
-        try {
-            await this.initializeRendererCandidate(renderer, {
-                label: 'Winter renderer init',
-                ownerGeneration,
+        const backends = this.forceWebGL === true ? [true] : [false, true];
+        let renderer = null;
+        for (const forceWebGL of backends) {
+            const candidate = new THREE.WebGPURenderer({
+                antialias: this.getAntialiasEnabled(),
+                alpha: false,
+                forceWebGL,
+                preserveDrawingBuffer: this.baselineEnabled === true,
             });
-        } catch (error) {
-            if (ownerGeneration !== this.lifecycleGeneration
-                || !this.isActive
-                || this.cleanupComplete) return false;
-            console.error('[WinterTheme] Renderer init failed:', error);
-            this.disposeRenderer(renderer, { nullInstance: false });
-            return false;
+            try {
+                // A new renderer owns a fresh canvas after a failed native init.
+                // eslint-disable-next-line no-await-in-loop
+                await this.initializeRendererCandidate(candidate, {
+                    label: `Winter ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                    ownerGeneration,
+                });
+                renderer = candidate;
+                break;
+            } catch (error) {
+                if (ownerGeneration !== this.lifecycleGeneration
+                    || !this.isActive
+                    || this.cleanupComplete) return false;
+                console.warn('[WinterTheme] Renderer init failed:', error);
+            }
         }
+        if (!renderer) return false;
 
         if (ownerGeneration !== this.lifecycleGeneration
             || !this.isActive
@@ -1480,6 +1489,7 @@ export default class WinterTheme extends BaseTheme {
             return false;
         }
         this.renderer = renderer;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
         this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = this.renderer.backend?.isWebGLBackend === true;
         console.log(`[WinterTheme] Backend: ${this.isWebGPU ? 'WebGPU' : 'WebGL2'}, post: ${this.disablePost ? 'BYPASSED' : 'on'}`);
@@ -1494,6 +1504,9 @@ export default class WinterTheme extends BaseTheme {
         this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
         container.appendChild(this.renderer.domElement);
         this.registerContainer(container);
+        this.setupRendererResilience(this.renderer, {
+            webgpuDevice: this.isWebGPU ? this.renderer.backend?.device : null,
+        });
 
         this.scene = new THREE.Scene();
         // Rich Midnight Fog
@@ -1555,7 +1568,7 @@ export default class WinterTheme extends BaseTheme {
         geometry.setAttribute('twinkle', new THREE.BufferAttribute(twinkles, 1));
 
         let material = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material: starMaterial, uniforms } = createWinterStarfieldNodeMaterial();
             material = starMaterial;
             this.starUniforms = uniforms;
@@ -1595,9 +1608,9 @@ export default class WinterTheme extends BaseTheme {
         this.starMaxCount = starCount;
         this.starfield.geometry.setDrawRange(0, starCount);
 
-        // Backdrop: WebGPU gets the volumetric aurora + night-sky shell (Phase 2);
-        // WebGL keeps the simple gradient dome + the separate flat-plane aurora.
-        if (this.isWebGPU) {
+        // The node renderer uses the same volumetric aurora and night-sky shell
+        // on both native WebGPU and its WebGL2 backend.
+        if (this.usesNodeMaterials) {
             const detail = this.qualityPreset.auroraDetail ?? 0.8;
             const auroraSteps = Math.round(12 + detail * 16); // 12..28 by preset
             this.auroraVolume = createAuroraVolume({
@@ -1640,7 +1653,7 @@ export default class WinterTheme extends BaseTheme {
     }
 
     createReferenceAuroraCurtains() {
-        if (!this.isWebGPU) return;
+        if (!this.usesNodeMaterials) return;
         const specs = [
             {
                 x: 0,
@@ -1664,7 +1677,7 @@ export default class WinterTheme extends BaseTheme {
     }
 
     createReferenceLandscapeBackdrop() {
-        if (!this.isWebGPU) return;
+        if (!this.usesNodeMaterials) return;
 
         const { material, uniforms } = createReferenceLandscapeBackdropMaterial();
         this.referenceBackdropUniforms = uniforms;
@@ -1679,7 +1692,7 @@ export default class WinterTheme extends BaseTheme {
     createMoon() {
         const geometry = new THREE.SphereGeometry(150, 64, 64);
         let material = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material: moonMaterial, uniforms } = createWinterMoonNodeMaterial({
                 color: new THREE.Color(0xf4f7ff),
             });
@@ -1703,7 +1716,7 @@ export default class WinterTheme extends BaseTheme {
         };
         this.scene.add(this.moon);
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const haloGeo = new THREE.SphereGeometry(260, 48, 48);
             const { material: haloMaterial, uniforms } = createWinterMoonHaloNodeMaterial();
             this.moonHalo = new THREE.Mesh(haloGeo, haloMaterial);
@@ -1879,7 +1892,7 @@ export default class WinterTheme extends BaseTheme {
     createMountains() {
         // WebGPU: layered Odyssey-Ch4 FBM snow peaks (the "better mountains").
         // WebGL keeps the simpler displaced-plane silhouette ranges below.
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.createOdysseyWinterMountains();
             this.createGround();
             return;
@@ -1912,7 +1925,7 @@ export default class WinterTheme extends BaseTheme {
         ];
 
         ranges.forEach((range) => {
-            const segs = this.isWebGPU ? 48 : 32;
+            const segs = this.usesNodeMaterials ? 48 : 32;
             const geometry = new THREE.PlaneGeometry(range.width, range.height, segs, segs / 2);
             const posAttr = geometry.attributes.position;
             for (let i = 0; i < posAttr.count; i++) {
@@ -1960,7 +1973,7 @@ export default class WinterTheme extends BaseTheme {
             geoNonIndexed.computeVertexNormals();
 
             let material = null;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 material = createFlatNodeMaterial(range.index === 0 ? 0x1a6aa8 : 0x104f91);
             } else {
                 // WebGL Fallback
@@ -2004,7 +2017,7 @@ export default class WinterTheme extends BaseTheme {
             this.scene.add(mesh);
         });
 
-        if (this.isWebGPU) this.createGround();
+        if (this.usesNodeMaterials) this.createGround();
     }
 
     // Snowy foreground/valley floor — grounds the composition and catches
@@ -2462,7 +2475,7 @@ export default class WinterTheme extends BaseTheme {
         this.auroraLayers = [];
         const layerCount = this.qualityPreset.auroraLayers || 1;
         const segments = this.qualityPreset.auroraSegments || 64;
-        const layerOpacity = (this.isWebGPU ? 0.5 : 0.3) / layerCount;
+        const layerOpacity = (this.usesNodeMaterials ? 0.5 : 0.3) / layerCount;
 
         for (let i = 0; i < layerCount; i++) {
             // Each layer is a giant curved ribbon
@@ -2479,7 +2492,7 @@ export default class WinterTheme extends BaseTheme {
             geometry.computeVertexNormals();
 
             let material = null;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const { material: auroraMaterial, uniforms } = createWinterAuroraNodeMaterial({
                     offset: i * 100.0,
                     opacity: layerOpacity,
@@ -2506,7 +2519,7 @@ export default class WinterTheme extends BaseTheme {
             }
 
             const mesh = new THREE.Mesh(geometry, material);
-            if (this.isWebGPU && material.userData?.uniforms) {
+            if (this.usesNodeMaterials && material.userData?.uniforms) {
                 mesh.userData.uniforms = material.userData.uniforms;
             }
             mesh.userData.baseOpacity = layerOpacity;
@@ -2589,7 +2602,7 @@ export default class WinterTheme extends BaseTheme {
         geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 
         let material = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material: snowMaterial, uniforms } = createWinterSnowNodeMaterial({
                 isWebGPU: this.isWebGPU,
                 snowCompute: this.snowCompute,
@@ -2780,7 +2793,7 @@ export default class WinterTheme extends BaseTheme {
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
         geometry.setAttribute('life', new THREE.BufferAttribute(lives, 1));
         let material = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material: iceBurstMaterial } = createWinterIceBurstNodeMaterial();
             material = iceBurstMaterial;
         } else {
@@ -2843,7 +2856,7 @@ export default class WinterTheme extends BaseTheme {
         geo.setAttribute('offset', new THREE.BufferAttribute(off, 1));
 
         let mat = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material, uniforms } = createWinterWindStreakNodeMaterial();
             mat = material;
             this.windStreakUniforms = uniforms;
@@ -2915,7 +2928,7 @@ export default class WinterTheme extends BaseTheme {
         geometry.setAttribute('aTrail', new THREE.BufferAttribute(trails, 1));
 
         let material = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material: wispMaterial, uniforms } = createWinterIceWispNodeMaterial();
             material = wispMaterial;
             this.iceWispUniforms = uniforms;
@@ -3011,7 +3024,7 @@ export default class WinterTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(config.width, config.height);
 
             let material = null;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const { material: fogMaterial, uniforms } = createWinterFogNodeMaterial({
                     opacity: config.opacity,
                     speed: config.speed,
@@ -3048,7 +3061,7 @@ export default class WinterTheme extends BaseTheme {
             mesh.userData.phase = Math.random() * Math.PI * 2;
             mesh.userData.baseSpeed = config.speed;
             mesh.userData.baseOpacity = config.opacity;
-            if (this.isWebGPU && material.userData?.uniforms) {
+            if (this.usesNodeMaterials && material.userData?.uniforms) {
                 mesh.userData.uniforms = material.userData.uniforms;
             }
 
@@ -3063,7 +3076,7 @@ export default class WinterTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createShootingStar() {
-        if (this.isWebGPU) return;
+        if (this.usesNodeMaterials) return;
         const maxStars = this.qualityPreset.maxShootingStars || 0;
         if (this.shootingStars.length >= maxStars) return;
 
@@ -3278,7 +3291,7 @@ export default class WinterTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createIceCrystalCrash() {
-        if (this.isWebGPU) return;
+        if (this.usesNodeMaterials) return;
         const maxCrashes = this.qualityPreset.maxIceCrystalCrashes || 0;
         if (this.iceCrystalCrashes.length >= maxCrashes) return;
 
@@ -3403,7 +3416,7 @@ export default class WinterTheme extends BaseTheme {
             this.effectState.bloomBoost = 2.0;
             this.effectState.iceWispSurge = 1.0;
         }
-        if (this.isWebGPU) return;
+        if (this.usesNodeMaterials) return;
 
         const pCount = 32;
         const geo = new THREE.BufferGeometry();
@@ -3541,7 +3554,7 @@ export default class WinterTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createBlizzardWave(direction = 1) { // 1 for left-to-right, -1 for right-to-left
-        if (this.isWebGPU) return;
+        if (this.usesNodeMaterials) return;
         const maxWaves = this.qualityPreset.maxBlizzardWaves || 0;
         if (this.blizzardWaves.length >= maxWaves) return;
 
@@ -3606,7 +3619,7 @@ export default class WinterTheme extends BaseTheme {
     }
 
     createFrozenLightningEffect(cx, cy, cz) {
-        if (this.isWebGPU) return;
+        if (this.usesNodeMaterials) return;
         // Recursive Fractal Lightning
         const pos = []; const alp = [];
         const gen = (sx, sy, sz, l, ax, ay, d) => {
@@ -3635,7 +3648,7 @@ export default class WinterTheme extends BaseTheme {
     }
 
     createVortexSystem(x, y, z) {
-        if (this.isWebGPU) return;
+        if (this.usesNodeMaterials) return;
         // (Similar to previous step)
         const count = this.qualityPreset.vortexCount;
         const geometry = new THREE.BufferGeometry();
@@ -3692,7 +3705,7 @@ export default class WinterTheme extends BaseTheme {
             return;
         }
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             if (this.composer) {
                 this.composer.dispose();
                 this.composer = null;
@@ -3712,13 +3725,13 @@ export default class WinterTheme extends BaseTheme {
             this.post = new WinterPipeline(this.renderer, this.scene, this.camera, {
                 bloomStrength: this.qualityPreset.bloomStrength ?? 0.16,
                 bloomRadius: this.qualityPreset.bloomRadius,
-                bloomThreshold: 0.0,
+                bloomThreshold: this.isWebGPU ? 0.0 : 0.7,
                 vignetteDarkness: 0.55,
                 // The aurora is now a real TSL volumetric dome (rendering/aurora-volume.js)
                 // that writes emissiveNode, so it survives the MRT path. Drive bloom from
                 // the emissive buffer → only aurora / moon / ice glints bloom (art-directed),
                 // instead of a luminance threshold on the whole tonemapped output.
-                useMRT: true,
+                useMRT: this.isWebGPU,
                 bloomScale: this.qualityPreset.bloomScale ?? 0.6,
             });
             this.post.setSize(window.innerWidth, window.innerHeight);
@@ -4824,6 +4837,7 @@ export default class WinterTheme extends BaseTheme {
     }
 
     stop() {
+        this.removeRendererResilience();
         if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
         this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];

@@ -544,8 +544,10 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     getCurrentQualityLevel() {
-        if (typeof window !== 'undefined' && window.settings?.graphicsQuality) {
-            return normalizeQuality(window.settings.graphicsQuality);
+        const quality = typeof window !== 'undefined'
+            ? window.settings?.effectQuality || window.settings?.graphicsQuality : null;
+        if (quality) {
+            return normalizeQuality(quality);
         }
         return 'High';
     }
@@ -773,7 +775,7 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     shouldUseVolumetricAurora() {
-        if (!this.isWebGPU || !this.useWebGPUMaterials) return false;
+        if (!this.useWebGPUMaterials) return false;
         if (this.flags.noEnhancements || this.flags.noAuroraVolume) return false;
         return (this.qualityPreset.auroraLayers ?? 1) > 1;
     }
@@ -794,7 +796,7 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     shouldUseEnhancedFogMotion() {
-        if (!this.isWebGPU || !this.useWebGPUMaterials) return false;
+        if (!this.useWebGPUMaterials) return false;
         if (this.flags.noEnhancements || this.flags.noFogMotion) return false;
         return this.getFogMotionProfile().enabled;
     }
@@ -1141,6 +1143,7 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     removeRendererResilienceListeners() {
+        this.removeRendererResilience();
         if (!this.renderer?.domElement) return;
 
         if (this.webglContextLostHandler) {
@@ -1161,7 +1164,6 @@ export default class IceTempleTheme extends BaseTheme {
         if (!this.renderer?.domElement) return;
 
         this.removeRendererResilienceListeners();
-        this.renderer.onDeviceLost = null;
         const rendererAtRegistration = this.renderer;
         const ownerGeneration = this.lifecycleGeneration;
         const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
@@ -1169,25 +1171,12 @@ export default class IceTempleTheme extends BaseTheme {
             && !this.cleanupComplete
             && this.renderer === rendererAtRegistration;
 
-        if (this.isWebGL) {
-            this.webglContextLostHandler = (event) => {
-                if (!ownsLifecycle()) return;
-                event.preventDefault();
-                console.warn('[IceTemple] WebGL context lost');
-            };
-            this.webglContextRestoredHandler = () => {
-                if (!ownsLifecycle()) return;
-                console.warn('[IceTemple] WebGL context restored');
-                this.onWindowResize();
-            };
-            rendererAtRegistration.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler, false);
-            rendererAtRegistration.domElement.addEventListener(
-                'webglcontextrestored',
-                this.webglContextRestoredHandler,
-                false,
-            );
-            return;
-        }
+        // A node WebGL2 renderer remains marked lost after restoration. Broadcast
+        // through BaseTheme so it rebuilds the renderer and scene together.
+        super.setupRendererResilience(rendererAtRegistration, {
+            webgpuDevice: this.isWebGPU ? rendererAtRegistration.backend?.device : null,
+        });
+        if (this.isWebGL) return;
 
         rendererAtRegistration.onDeviceLost = (info) => {
             if (!ownsLifecycle()) return;
@@ -1232,7 +1221,9 @@ export default class IceTempleTheme extends BaseTheme {
     disposeRendererResources(removeCanvas = true) {
         if (!this.renderer) return;
 
-        this.renderer.onDeviceLost = null;
+        // Three's backend may deliver a queued loss while async disposal drains.
+        // Retire the local closure while preserving its callable contract.
+        this.renderer.onDeviceLost = () => undefined;
         this.removeRendererResilienceListeners();
         const { domElement } = this.renderer;
         this.disposeRenderer(this.renderer, { nullInstance: false });
@@ -1336,7 +1327,7 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     async precompileSceneWithTimeout() {
-        if (!this.isWebGPU || !this.renderer?.compileAsync || !this.scene || !this.camera) {
+        if (!this.usesNodeMaterials || !this.renderer?.compileAsync || !this.scene || !this.camera) {
             return false;
         }
 
@@ -1675,8 +1666,8 @@ export default class IceTempleTheme extends BaseTheme {
 
         try {
             report.render.attempted = true;
-            if (includePost && this.isWebGPU && this.flags.usePost && this.postProcessing?.render) {
-                report.render.path = 'webgpu-post';
+            if (includePost && this.usesNodeMaterials && this.flags.usePost && this.postProcessing?.render) {
+                report.render.path = this.isWebGPU ? 'webgpu-post' : 'webgl-post';
                 this.postProcessing.render();
             } else if (includePost && this.isWebGL && this.flags.usePost && this.composer?.render) {
                 report.render.path = 'webgl-composer';
@@ -2847,13 +2838,9 @@ export default class IceTempleTheme extends BaseTheme {
         this.applyAdaptiveScalerState(true);
 
         this.useWebGPUMaterials = false;
-        if (this.isWebGPU) {
-            try {
-                await initIceTempleMaterialRuntime();
-                this.useWebGPUMaterials = true;
-            } catch (error) {
-                console.warn('[IceTemple] WebGPU material runtime unavailable, using WebGL materials:', error);
-            }
+        if (this.usesNodeMaterials) {
+            await initIceTempleMaterialRuntime();
+            this.useWebGPUMaterials = true;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -2918,70 +2905,52 @@ export default class IceTempleTheme extends BaseTheme {
         }
     }
 
+    get usesNodeMaterials() {
+        return this.renderer?.isWebGPURenderer === true;
+    }
+
     async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         if (!container) return false;
-
         const width = window.innerWidth;
         const height = window.innerHeight;
         const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
-            && this.isActive
-            && !this.cleanupComplete;
-        let renderer = null;
-        let webgpuRenderer = null;
-
-        if (!this.flags.forceWebGL) {
-            try {
-                webgpuRenderer = new WEBGPU_MODULE.WebGPURenderer({
-                    antialias: this.getAntialiasEnabled(),
-                    alpha: true,
-                    forceWebGL: false,
-                });
-                await this.initializeRendererCandidate(webgpuRenderer, {
-                    label: 'Ice Temple WebGPU renderer init',
-                    ownerGeneration,
-                });
-                if (webgpuRenderer.backend?.isWebGPUBackend === true) {
-                    renderer = webgpuRenderer;
-                } else {
-                    webgpuRenderer.dispose();
-                    webgpuRenderer = null;
-                }
-            } catch (error) {
-                if (!ownsLifecycle()) return false;
-                console.warn('[IceTemple] WebGPU init failed, falling back to WebGL2:', error);
-                webgpuRenderer?.dispose();
-                webgpuRenderer = null;
-            }
-        }
-
-        if (!renderer) {
-            if (!ownsLifecycle()) return false;
-            renderer = new THREE.WebGLRenderer({
-                alpha: true,
+            && this.isActive && !this.cleanupComplete;
+        const createCandidate = async (forceWebGL) => {
+            const candidate = new WEBGPU_MODULE.WebGPURenderer({
                 antialias: this.getAntialiasEnabled(),
-                powerPreference: 'high-performance',
+                alpha: true,
+                forceWebGL,
             });
+            return this.initializeRendererCandidate(candidate, {
+                label: `Ice Temple ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            });
+        };
+        let renderer;
+        const forceWebGL = this.flags.forceWebGL
+            || typeof navigator === 'undefined' || !navigator.gpu;
+        try {
+            renderer = await createCandidate(forceWebGL);
+        } catch (error) {
+            if (!ownsLifecycle()) return false;
+            if (forceWebGL) throw error;
+            console.warn('[IceTemple] WebGPU init failed, trying WebGL2:', error);
+            renderer = await createCandidate(true);
         }
-
         if (!ownsLifecycle()) {
-            this.disposeRenderer(renderer, { nullInstance: false });
+            await this.disposeRenderer(renderer, { nullInstance: false });
             return false;
         }
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
-        this.isWebGL = renderer.isWebGLRenderer === true
-            || renderer.backend?.isWebGLBackend === true
-            || !this.isWebGPU;
-
+        this.isWebGL = !this.isWebGPU;
         this.probeCapabilities();
-
         renderer.setSize(width, height);
         renderer.setPixelRatio(this.getRendererPixelRatio(2));
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.4;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         container.appendChild(renderer.domElement);
-
         if (this.flags.baseline) {
             console.log(`[IceTemple] Renderer initialized (${this.isWebGPU ? 'WebGPU' : 'WebGL2'})`);
             console.log('[IceTemple] Baseline mode', {
@@ -2990,14 +2959,13 @@ export default class IceTempleTheme extends BaseTheme {
                 capabilities: { ...this.capabilities },
             });
         }
-
         return true;
     }
 
     probeCapabilities() {
         const maxColorAttachments = this.renderer?.capabilities?.maxColorAttachments ?? 1;
         const supportsCompute = this.isWebGPU && typeof this.renderer?.compute === 'function';
-        const supportsPost = this.isWebGPU
+        const supportsPost = this.usesNodeMaterials
             ? typeof (WEBGPU_MODULE?.RenderPipeline ?? WEBGPU_MODULE?.PostProcessing) === 'function'
             : true;
 
@@ -3071,7 +3039,7 @@ export default class IceTempleTheme extends BaseTheme {
             ? Math.min(0.75, this.getAdaptiveBloomDownsample())
             : this.getAdaptiveBloomDownsample();
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             try {
                 this.postProcessing = await IceTemplePost.create(this.renderer, this.scene, this.camera, {
                     bloomStrength: this.qualityPreset.bloomStrength,
@@ -3084,7 +3052,7 @@ export default class IceTempleTheme extends BaseTheme {
                 });
                 this.postProcessing.setSize(window.innerWidth, window.innerHeight);
             } catch (error) {
-                console.warn('[IceTemple] WebGPU post setup failed; using direct render path:', error);
+                console.warn('[IceTemple] Node post setup failed; using direct render path:', error);
                 this.postProcessing?.dispose?.();
                 this.postProcessing = null;
             }
@@ -3985,7 +3953,7 @@ export default class IceTempleTheme extends BaseTheme {
             skyTexture.needsUpdate = true;
 
             let envMap = skyTexture;
-            if (this.isWebGL) {
+            if (this.renderer.isWebGLRenderer === true) {
                 pmremGenerator = new THREE.PMREMGenerator(this.renderer);
                 pmremGenerator.compileEquirectangularShader();
                 envMap = pmremGenerator.fromEquirectangular(skyTexture).texture;
@@ -5087,16 +5055,16 @@ export default class IceTempleTheme extends BaseTheme {
         this.lastPostCostMs = 0;
         this.lastRenderPath = this.isWebGPU ? 'webgpu-direct' : 'webgl-direct';
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             if (this.postProcessing?.render) {
                 try {
                     const postStart = canMeasure ? performance.now() : 0;
                     this.postProcessing.render();
                     this.lastPostCostMs = canMeasure ? Math.max(0, performance.now() - postStart) : 0;
-                    this.lastRenderPath = 'webgpu-post';
+                    this.lastRenderPath = this.isWebGPU ? 'webgpu-post' : 'webgl-post';
                     return;
                 } catch (error) {
-                    console.warn('[IceTemple] WebGPU post render failed, disabling post path:', error);
+                    console.warn('[IceTemple] Node post render failed, disabling post path:', error);
                     this.postProcessing?.dispose?.();
                     this.postProcessing = null;
                     this.flags.usePost = false;
@@ -5105,7 +5073,7 @@ export default class IceTempleTheme extends BaseTheme {
 
             try {
                 this.renderer.render(this.scene, this.camera);
-                this.lastRenderPath = 'webgpu-direct';
+                this.lastRenderPath = this.isWebGPU ? 'webgpu-direct' : 'webgl-direct';
             } catch (error) {
                 this.requestWebGLFallback('webgpu-render-failure', error).catch((fallbackError) => {
                     console.error('[IceTemple] Render fallback request failed:', fallbackError);
@@ -5184,6 +5152,7 @@ export default class IceTempleTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     stop() {
+        this.removeRendererResilienceListeners();
         this.cancelAnimationLoop();
         this.clock.stop();
 

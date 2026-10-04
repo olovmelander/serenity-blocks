@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { normalizeQuality } from '../../utils/quality.js';
 import { MOUNTAIN_TETROMINOS } from './mountain-tetrominos.js';
 
 // Quality presets for performance scaling
@@ -212,8 +213,12 @@ export default class MountainTheme extends BaseTheme {
 
     updateQualityPreset() {
         const settings = typeof window !== 'undefined' ? window.settings : null;
-        const quality = settings?.visualQuality || 'High';
-        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+        const quality = normalizeQuality(
+            settings?.effectQuality || settings?.graphicsQuality || settings?.visualQuality,
+        );
+        // Keep this scene's four authored budgets and map the canonical endpoints to them.
+        const selected = { Minimal: 'Low', Extreme: 'Ultra' }[quality] || quality;
+        this.qualityPreset = QUALITY_PRESETS[selected] || QUALITY_PRESETS.High;
     }
 
     canRunComboEffects() {

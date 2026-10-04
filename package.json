@@ -35,6 +35,7 @@
     "build:win:wsl": "SERENITY_ALLOW_WSL_WIN_BUILD=1 node scripts/build-win.mjs",
     "build:linux": "vite build && electron-builder --linux",
     "capture:themes": "node scripts/validate-all-themes.mjs",
+    "validate:mobile:webgl2": "node scripts/validate-mobile-webgl2.mjs",
     "capture:odyssey": "npx electron scripts/odyssey-aaa-board-capture.mjs",
     "capture:odyssey:chapter": "node scripts/run-electron.mjs scripts/odyssey-chapter-capture.mjs",
     "perf:odyssey:baseline": "node scripts/odyssey-perf-baseline.mjs",

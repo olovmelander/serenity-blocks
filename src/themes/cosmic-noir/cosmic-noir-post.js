@@ -33,7 +33,7 @@ import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 export class CosmicNoirPost {
     constructor(renderer, scene, camera, params = {}) {
         this.renderer = renderer;
-        this.useMRT = params.useMRT ?? true;
+        this.useMRT = renderer.backend?.isWebGPUBackend === true && (params.useMRT ?? true);
         this.bloomDownsample = params.bloomDownsample ?? 0.8;
         this.resolutionScale = params.resolutionScale ?? 1.0;
         this.chromaticEnabled = params.chromaticEnabled ?? true;

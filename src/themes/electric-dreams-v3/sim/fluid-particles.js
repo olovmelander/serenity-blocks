@@ -77,6 +77,7 @@ export const IMPULSE_TYPE = Object.freeze({
 export class FluidParticleSim {
     constructor(count, options = {}) {
         this.count = Math.max(1, Math.floor(count));
+        this.isCPU = options.cpu === true;
         this.focalPoint = options.focalPoint?.clone?.() || new THREE.Vector3(0, 0, 0);
         this.bounds = {
             width: options.boundsWidth ?? 18,
@@ -93,10 +94,15 @@ export class FluidParticleSim {
         // The buffer is populated by shape generators; sim's attraction force
         // pulls particles toward these positions when uShapeStrength > 0.
         this.targetData = new Float32Array(this.count * 4);
-        this.positionBuffer = new THREE.StorageBufferAttribute(this.positionData, 4);
-        this.velocityBuffer = new THREE.StorageBufferAttribute(this.velocityData, 4);
-        this.colorBuffer = new THREE.StorageBufferAttribute(this.colorData, 4);
-        this.targetBuffer = new THREE.StorageBufferAttribute(this.targetData, 4);
+        const Attribute = this.isCPU ? THREE.InstancedBufferAttribute : THREE.StorageBufferAttribute;
+        this.positionBuffer = new Attribute(this.positionData, 4);
+        this.velocityBuffer = new Attribute(this.velocityData, 4);
+        this.colorBuffer = new Attribute(this.colorData, 4);
+        this.targetBuffer = new Attribute(this.targetData, 4);
+        if (this.isCPU) {
+            this.positionBuffer.setUsage(THREE.DynamicDrawUsage);
+            this.colorBuffer.setUsage(THREE.DynamicDrawUsage);
+        }
         this.currentShape = 'free';
 
         // ─── Impulse uniforms (8 slots × 2 vec4) ───
@@ -223,6 +229,7 @@ export class FluidParticleSim {
     }
 
     createComputeNode() {
+        if (this.isCPU) return null;
         const positions = storage(this.positionBuffer, 'vec4', this.count);
         const velocities = storage(this.velocityBuffer, 'vec4', this.count);
         const colors = storage(this.colorBuffer, 'vec4', this.count);
@@ -440,6 +447,106 @@ export class FluidParticleSim {
 
         this.computeNode = computeFn().compute(this.count);
         return this.computeNode;
+    }
+
+    /** WebGL2 twin of the independent-particle force field; no storage/PBO reads. */
+    stepCPU() {
+        if (!this.isCPU) return;
+        const dt = this.uDelta.value;
+        if (!(dt > 0)) return;
+        const time = this.uTime.value;
+        const focal = this.uFocalPoint.value;
+        const radius = this.uFocalRadius.value;
+        const gravity = this.uGravityStrength.value;
+        const aniso = this.uGravityAniso.value;
+        const shape = this.uShapeStrength.value;
+        const smooth = (a, b, x) => {
+            const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+            return t * t * (3 - 2 * t);
+        };
+        const gravityDimmer = 1 - shape * (1 - this.uShapeOverride.value);
+        const boardDimmer = 1 - smooth(0.05, 0.18, shape);
+        const turbulence = this.uTurbulence.value * (1 - smooth(0, 0.5, shape) * 0.85);
+        const board = this.uBoardCenter.value;
+        const half = this.uBoardHalfExtents.value;
+        const softness = Math.max(0.001, this.uBoardSoftness.value);
+        const boardForce = this.uBoardRepulsion.value * boardDimmer;
+        const damping = this.uDamping.value;
+        const maxSpeed = this.uMaxSpeed.value;
+        const positions = this.positionData;
+        const velocities = this.velocityData;
+        const colors = this.colorData;
+        const targets = this.targetData;
+        const hash = (x) => { const n = Math.sin(x) * 43758.5453; return n - Math.floor(n); };
+        for (let i = 0; i < this.count; i++) {
+            const j = i * 4;
+            let x = positions[j]; let y = positions[j + 1]; let z = positions[j + 2];
+            let vx = velocities[j]; let vy = velocities[j + 1]; let vz = velocities[j + 2];
+            const fx = focal.x - x; const fy = focal.y - y; const fz = focal.z - z;
+            const distance = Math.hypot(fx, fy, fz);
+            const pull = (gravity * (1 + Math.max(0, distance - radius) * 0.4)
+                * gravityDimmer * dt) / Math.max(distance, 0.01);
+            vx += fx * pull * aniso.x; vy += fy * pull * aniso.y; vz += fz * pull * aniso.z;
+            const attraction = shape * targets[j + 3] * 11 * dt;
+            vx += (targets[j] - x) * attraction;
+            vy += (targets[j + 1] - y) * attraction;
+            vz += (targets[j + 2] - z) * attraction;
+            if (boardForce > 0) {
+                const bx = x - board.x; const by = y - board.y; const bz = z - board.z;
+                const ax = Math.abs(bx); const ay = Math.abs(by); const az = Math.abs(bz);
+                const inside = Math.max(0, 1 - Math.max(0, (ax - half.x) / softness))
+                    * Math.max(0, 1 - Math.max(0, (ay - half.y) / softness))
+                    * Math.max(0, 1 - Math.max(0, (az - half.z) / softness));
+                const push = boardForce * inside * dt;
+                vx += (bx / Math.max(ax, 0.001)) * push;
+                vy += (by / Math.max(ay, 0.001)) * push;
+                vz += (bz / Math.max(az, 0.001)) * push;
+            }
+            for (let k = 0; k < MAX_IMPULSES; k++) {
+                const ip = this._impulsePositions[k].value;
+                if (!(ip.w > 0.01)) continue;
+                const direction = this._impulseParams[k].value;
+                const ix = x - ip.x; const iy = y - ip.y; const iz = z - ip.z;
+                const d = Math.hypot(ix, iy, iz);
+                const falloff = Math.max(0, 1 - d * 0.18);
+                const force = (ip.w * falloff * falloff * dt) / Math.max(d, 0.05);
+                if (direction.w < 0.5) {
+                    vx += ix * force; vy += iy * force; vz += iz * force;
+                } else if (direction.w < 1.5) {
+                    vx += (direction.y * iz - direction.z * iy) * force;
+                    vy += (direction.z * ix - direction.x * iz) * force;
+                    vz += (direction.x * iy - direction.y * ix) * force;
+                } else {
+                    vx -= ix * force; vy -= iy * force; vz -= iz * force;
+                }
+            }
+            vx = (vx + Math.sin(time * 0.55 + i * 0.013) * turbulence * 0.35 * dt) * damping;
+            vy = (vy + Math.cos(time * 0.42 + i * 0.017) * turbulence * 0.32 * dt) * damping;
+            vz = (vz + Math.sin(time * 0.31 + i * 0.011) * turbulence * 0.22 * dt) * damping;
+            const speed = Math.hypot(vx, vy, vz);
+            if (speed > maxSpeed) {
+                const cap = maxSpeed / speed; vx *= cap; vy *= cap; vz *= cap;
+            }
+            x += vx * dt; y += vy * dt; z += vz * dt;
+            let age = positions[j + 3] + dt / velocities[j + 3];
+            if (age > 1) {
+                const r1 = hash(i * 12.9898 + time * 0.37);
+                const r2 = hash(i * 78.233 + time * 0.53);
+                const r3 = hash(i * 39.425 + time * 0.71);
+                const r = radius * 0.4 * r1; const theta = r2 * 6.2832;
+                const phi = r3 * 3.1416;
+                x = focal.x + r * Math.sin(phi) * Math.cos(theta);
+                y = focal.y + r * Math.sin(phi) * Math.sin(theta);
+                z = focal.z + r * Math.cos(phi);
+                vx = (r1 - 0.5) * 0.6; vy = (r2 - 0.5) * 0.6; vz = (r3 - 0.5) * 0.4;
+                age = 0;
+            }
+            positions[j] = x; positions[j + 1] = y; positions[j + 2] = z; positions[j + 3] = age;
+            velocities[j] = vx; velocities[j + 1] = vy; velocities[j + 2] = vz;
+            colors[j + 3] += ((speed / maxSpeed) * 0.7 + 0.3 - colors[j + 3]) * 0.12;
+        }
+        this.positionBuffer.needsUpdate = true;
+        this.colorBuffer.needsUpdate = true;
     }
 
     /**
