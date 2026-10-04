@@ -593,7 +593,17 @@ export async function waitForIntroRendererDecision(introAnimation, options = {})
         clearTimeoutFn(timerId);
     }
 
-    return settled
-        ? { canAttemptWarp: true, reason: 'intro-renderer-settled' }
-        : { canAttemptWarp: false, reason: 'intro-renderer-timeout' };
+    if (!settled) {
+        return { canAttemptWarp: false, reason: 'intro-renderer-timeout' };
+    }
+
+    // navigator.gpu can be exposed on a phone while its adapter/device is
+    // unavailable. Once the intro has fallen back, retrying the same GPU-only
+    // transition holds the ident until the startup watchdog skips the intro.
+    if (typeof introAnimation?.getWebGPUDevice === 'function'
+        && !introAnimation.getWebGPUDevice()) {
+        return { canAttemptWarp: false, reason: 'intro-webgpu-unavailable' };
+    }
+
+    return { canAttemptWarp: true, reason: 'intro-renderer-settled' };
 }

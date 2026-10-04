@@ -43,6 +43,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [CORE_UI_PERFORMANCE_FIXES_2026-10.md](CORE_UI_PERFORMANCE_FIXES_2026-10.md) | Reference | Menu/audio/Phaser audit fixes, regression coverage and bounded before/after menu-rendering evidence; theme and WebGPU work excluded. |
 | [CORE_UI_PERFORMANCE_FOLLOWUP_2026-10.md](CORE_UI_PERFORMANCE_FOLLOWUP_2026-10.md) | Reference | Additional shared UI/audio/Phaser/input/transport/storage optimizations with deterministic work counts, command parity and lifecycle regressions. |
 | [CORE_UI_PERFORMANCE_PASS3_2026-10.md](CORE_UI_PERFORMANCE_PASS3_2026-10.md) | Reference | Retained HUD/minimap/Phaser presentation, responsive replay seeks, atomic local scores and shared audio startup; repeated work counts and state/command/pixel preservation checks. |
+| [MOBILE_WOLFHOUR_INTRO_FIX_2026-10.md](MOBILE_WOLFHOUR_INTRO_FIX_2026-10.md) | Reference | Wolfhour WebGL2 visual parity and intro fallback recovery, with emulated phone captures and regression checks; physical-device acceptance remains open. |
 | [COSMIC_NOIR_PERF_AUDIT_2026-06-30.md](COSMIC_NOIR_PERF_AUDIT_2026-06-30.md) | Reference | Theme performance evidence. |
 | [cosmic-cursor-global-fix-plan.md](cosmic-cursor-global-fix-plan.md) | Reference | UI fix plan. |
 | [gameplay-effects-plan.md](gameplay-effects-plan.md) | Reference | Gameplay effects plan. |

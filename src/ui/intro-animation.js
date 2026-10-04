@@ -109,7 +109,7 @@ export class IntroAnimation {
             : new URLSearchParams();
         this.flags = {
             // Keep v2 on by default for active development, allow explicit opt-out.
-            introV2: params.get('introV2') !== '0',
+            introV2: params.get('introV2') !== '0' && params.get('forceWebGL') !== '1',
         };
     }
 
@@ -591,7 +591,7 @@ export class IntroAnimation {
     /**
      * Initialize the 3D renderer. Tries WebGPU first, falls back to WebGL.
      */
-    replaceRendererCanvasForFallback(canvas) {
+    replaceRendererCanvasForFallback(canvas, reason = 'webgpu-timeout') {
         if (!canvas || typeof document === 'undefined') {
             return canvas;
         }
@@ -621,7 +621,7 @@ export class IntroAnimation {
             this.threeCanvas = fallbackCanvas;
         }
         performanceMonitor.recordEvent('startup_intro_renderer_canvas_replaced', {
-            reason: 'webgpu-timeout',
+            reason,
         });
         return fallbackCanvas;
     }
@@ -692,10 +692,21 @@ export class IntroAnimation {
                 if (!initTimedOut) {
                     fallbackReason = 'webgpu-init-failed';
                     webgpuRenderer.destroy?.();
+                    // Canvas context types stay bound even after renderer disposal. A
+                    // mobile device can acquire WebGPU and then reject device/scene
+                    // setup; trying WebGL on that canvas leaves the intro blank.
+                    rendererCanvas = this.replaceRendererCanvasForFallback(
+                        rendererCanvas,
+                        fallbackReason,
+                    );
                 }
             } catch (err) {
                 fallbackReason = 'webgpu-exception';
                 webgpuRenderer?.destroy?.();
+                rendererCanvas = this.replaceRendererCanvasForFallback(
+                    rendererCanvas,
+                    fallbackReason,
+                );
                 console.warn('[IntroAnimation] WebGPU init failed, falling back to WebGL:', err);
             }
         }

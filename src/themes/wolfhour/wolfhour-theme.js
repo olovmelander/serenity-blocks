@@ -618,6 +618,12 @@ export default class WolfhourTheme extends BaseTheme {
         return WOLFHOUR_TETROMINOS;
     }
 
+    // Both backends of WebGPURenderer run TSL. Native GPU availability only
+    // controls compute/MRT; it must never select the old mountain artwork.
+    get usesNodeMaterials() {
+        return this.renderer?.isWebGPURenderer === true;
+    }
+
     random() {
         return this.randomFn();
     }
@@ -997,7 +1003,7 @@ export default class WolfhourTheme extends BaseTheme {
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         }
 
-        const postOwnsToneMapping = this.isWebGPU === true
+        const postOwnsToneMapping = this.usesNodeMaterials
             && this.flags.usePost === true
             && !!this.postProcessing;
 
@@ -1334,12 +1340,12 @@ export default class WolfhourTheme extends BaseTheme {
         this.postFactories = null;
         this.postProfile = null;
 
-        // WebGPU path: dynamically import node material factories + compute module
-        if (this.isWebGPU) {
+        // The node renderer uses these materials and grade on WebGPU and WebGL2.
+        if (this.usesNodeMaterials) {
             this.materialFactories = WolfhourMaterialFactories;
             console.log('[Wolfhour] TSL node material factories loaded');
 
-            if (this.materialFactories) {
+            if (this.isWebGPU && this.materialFactories) {
                 this.computeFactories = WolfhourComputeFactories;
             } else {
                 this.computeFactories = null;
@@ -1379,7 +1385,7 @@ export default class WolfhourTheme extends BaseTheme {
             });
         }
 
-        const materialMode = this.isWebGPU && this.materialFactories ? 'node' : 'legacy';
+        const materialMode = this.usesNodeMaterials && this.materialFactories ? 'node' : 'legacy';
         const computeEnabled = this.shouldUseCompute();
         console.log('[Wolfhour] Scene created', {
             backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
@@ -1401,7 +1407,6 @@ export default class WolfhourTheme extends BaseTheme {
         const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
             && this.isActive
             && !this.cleanupComplete;
-        let selectedRenderer = null;
 
         this.isWebGPU = false;
         this.isWebGL = false;
@@ -1414,59 +1419,38 @@ export default class WolfhourTheme extends BaseTheme {
             supportsCompute: false,
         };
 
-        const useWebGPU = !this.flags.forceWebGL && navigator.gpu;
-
-        if (useWebGPU) {
+        const forceWebGL = this.flags.forceWebGL === true
+            || typeof navigator === 'undefined'
+            || !navigator.gpu;
+        const createRenderer = (webglOnly) => new THREE_WEBGPU.WebGPURenderer({
+            antialias: this.getAntialiasEnabled(),
+            alpha: false,
+            powerPreference: 'high-performance',
+            forceWebGL: webglOnly,
+            trackTimestamp: this.flags.baseline === true,
+        });
+        let selectedRenderer = createRenderer(forceWebGL);
+        try {
+            await this.initializeRendererCandidate(selectedRenderer, {
+                label: 'Wolfhour node renderer init',
+                ownerGeneration,
+            });
+        } catch (error) {
+            if (!ownsLifecycle()) return false;
+            if (forceWebGL) throw error;
+            // A failed native device still gets the same art on WebGL2. The
+            // lifecycle helper already retired the failed renderer candidate.
+            console.warn('[Wolfhour] WebGPU initialization failed; retrying WebGL2.', error);
+            selectedRenderer = createRenderer(true);
             try {
-                const renderer = new THREE_WEBGPU.WebGPURenderer({
-                    antialias: this.getAntialiasEnabled(),
-                    alpha: false,
-                    powerPreference: 'high-performance',
-                    preserveDrawingBuffer: this.flags.baseline === true,
-                    trackTimestamp: this.flags.baseline === true,
-                });
-
-                await this.initializeRendererCandidate(renderer, {
-                    label: 'Wolfhour WebGPU renderer init',
+                await this.initializeRendererCandidate(selectedRenderer, {
+                    label: 'Wolfhour WebGL2 node renderer init',
                     ownerGeneration,
                 });
-
-                if (renderer.backend && renderer.backend.isWebGPUBackend) {
-                    selectedRenderer = renderer;
-                    this.isWebGPU = true;
-
-                    this.capabilities.webgpu = true;
-                    this.capabilities.supportsPost = true;
-                    this.capabilities.maxColorAttachments = 8;
-                    this.capabilities.supportsMRT = true;
-                    this.capabilities.supportsCompute = typeof renderer.compute === 'function';
-
-                    console.log('[Wolfhour] WebGPU backend initialized successfully');
-                } else {
-                    console.log('[Wolfhour] WebGPU backend not acquired, falling back to WebGL');
-                    await this.disposeRenderer(renderer, { nullInstance: false });
-                }
-            } catch (err) {
+            } catch (fallbackError) {
                 if (!ownsLifecycle()) return false;
-                console.warn('[Wolfhour] WebGPU initialization failed:', err);
+                throw fallbackError;
             }
-        }
-
-        if (!selectedRenderer) {
-            if (!ownsLifecycle()) return false;
-            console.log('[Wolfhour] Initializing WebGL fallback renderer');
-            selectedRenderer = new THREE.WebGLRenderer({
-                antialias: this.getAntialiasEnabled(),
-                alpha: false,
-                powerPreference: 'high-performance',
-                preserveDrawingBuffer: this.flags.baseline === true,
-            });
-            this.isWebGL = true;
-            this.capabilities.webgl = true;
-            this.capabilities.maxColorAttachments = 1;
-            this.capabilities.supportsPost = true; // via EffectComposer
-            this.capabilities.supportsMRT = false;
-            this.capabilities.supportsCompute = false;
         }
 
         if (!ownsLifecycle()) {
@@ -1474,6 +1458,16 @@ export default class WolfhourTheme extends BaseTheme {
             return false;
         }
         this.renderer = selectedRenderer;
+        this.isWebGPU = selectedRenderer.backend?.isWebGPUBackend === true;
+        this.isWebGL = selectedRenderer.backend?.isWebGLBackend === true;
+        this.capabilities = {
+            webgpu: this.isWebGPU,
+            webgl: this.isWebGL,
+            maxColorAttachments: this.isWebGPU ? 8 : 1,
+            supportsPost: this.usesNodeMaterials,
+            supportsMRT: this.isWebGPU,
+            supportsCompute: this.isWebGPU && typeof selectedRenderer.compute === 'function',
+        };
         // Apply policy flags
         this.flags.usePost = this.capabilities.supportsPost
             && !this.flags.noPost
@@ -1672,7 +1666,7 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createAmbientScene() {
-        if (!this.renderer.isWebGPURenderer) {
+        if (!this.usesNodeMaterials) {
             this.createStarfield();
             this.createNebulaBackdrop();
             this.createMoonHero();
@@ -1764,7 +1758,7 @@ export default class WolfhourTheme extends BaseTheme {
      * WebGPU doesn't support variable point sizes for Points, so we use billboarding on InstancedMesh.
      */
     _createInstancedParticleMesh(pointsGeometry, material) {
-        if (!this.isWebGPU) {
+        if (!this.usesNodeMaterials) {
             return new THREE.Points(pointsGeometry, material);
         }
 
@@ -1835,7 +1829,7 @@ export default class WolfhourTheme extends BaseTheme {
     createStarfield() {
         const geometry = this.createStarfieldGeometry();
 
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const result = this.materialFactories.createStarfieldNodeMaterial({
                 pixelRatio: this.renderer.getPixelRatio(),
                 enableDiffraction: this.qualityPreset.enableDiffraction === true,
@@ -1927,7 +1921,7 @@ export default class WolfhourTheme extends BaseTheme {
 
             let material;
             let nodeData = null;
-            if (this.isWebGPU && this.materialFactories) {
+            if (this.usesNodeMaterials && this.materialFactories) {
                 const result = this.materialFactories.createNebulaNodeMaterial({
                     texture: config.texture,
                     opacity: config.opacity,
@@ -1981,7 +1975,7 @@ export default class WolfhourTheme extends BaseTheme {
         let haloNodeData = null;
 
         if (
-            this.isWebGPU
+            this.usesNodeMaterials
             && this.materialFactories?.createMoonNodeMaterial
             && this.materialFactories?.createLunarHaloNodeMaterial
         ) {
@@ -2280,7 +2274,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         let material;
         let nodeData = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const result = this.materialFactories.createMountainNodeMaterial({
                 layer: config.layer,
                 ridgeStrength: 0.18 + (1.0 - config.layer) * 0.28,
@@ -2323,7 +2317,7 @@ export default class WolfhourTheme extends BaseTheme {
         let material;
         let nodeData = null;
 
-        if (this.isWebGPU && this.materialFactories?.createMountainBaseFillNodeMaterial) {
+        if (this.usesNodeMaterials && this.materialFactories?.createMountainBaseFillNodeMaterial) {
             const result = this.materialFactories.createMountainBaseFillNodeMaterial({
                 color: new THREE.Color(0x03040a),
             });
@@ -2357,7 +2351,7 @@ export default class WolfhourTheme extends BaseTheme {
         let fogResult = null;
 
         if (
-            this.isWebGPU
+            this.usesNodeMaterials
             && this.materialFactories
             && typeof this.materialFactories.createGroundFogNodeMaterial === 'function'
         ) {
@@ -2429,7 +2423,7 @@ export default class WolfhourTheme extends BaseTheme {
             return;
         }
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             if (!this.postFactories?.WolfhourPost) {
                 this.flags.usePost = false;
                 this.configureRendererColorPipeline();
@@ -3360,7 +3354,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         let material;
         let nodeData = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const result = this.materialFactories.createStarBurstNodeMaterial({
                 pixelRatio: this.renderer.getPixelRatio(),
             });
@@ -3439,7 +3433,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         let material;
         let nodeData = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const result = this.materialFactories.createCelestialBeamNodeMaterial({
                 volumetricStrength: this.qualityPreset.enableVolumetricBeams ? 0.82 : 0.0,
             });
@@ -3502,7 +3496,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         let material;
         let nodeData = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const result = this.materialFactories.createCosmicRiftNodeMaterial();
             material = result.material;
             nodeData = result;
@@ -3565,7 +3559,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         let material;
         let nodeData = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const result = this.materialFactories.createCosmicWaveNodeMaterial();
             material = result.material;
             nodeData = result;
@@ -3648,7 +3642,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.effectState.ambientSwirl *= decay;
         this.effectState.cameraShake *= 0.9 ** (deltaTime * 60);
 
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             if (this.starfieldNodeData) {
                 this.starfieldNodeData.uniforms.uEventBoost.value = this.effectState.starBurstIntensity;
                 if (this.starfieldNodeData.uniforms.uDiffractionStrength) {
@@ -3732,7 +3726,7 @@ export default class WolfhourTheme extends BaseTheme {
         if (this.bloomPass) {
             this.bloomPass.strength = dynamicBloomStrength;
         }
-        if (this.isWebGPU && this.postProcessing && this.postProfile?.enabled) {
+        if (this.usesNodeMaterials && this.postProcessing && this.postProfile?.enabled) {
             try {
                 this.postProcessing.updateDynamic?.({
                     time: this.time,
@@ -3923,7 +3917,7 @@ export default class WolfhourTheme extends BaseTheme {
         let trailNodeData = null;
         let headNodeData = null;
 
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const trailResult = this.materialFactories.createMeteorTrailNodeMaterial({
                 meteorTrailCompute: this.meteorTrailBatchCompute,
                 atmosphereGlow: this.qualityPreset.meteorAtmosphereGlow || 0,
@@ -4191,7 +4185,7 @@ export default class WolfhourTheme extends BaseTheme {
             ({ trailNodeData, headNodeData } = ribbon.userData);
             trailMaterial = trailNodeData.material;
             headMaterial = headNodeData.material;
-        } else if (this.isWebGPU && this.materialFactories) {
+        } else if (this.usesNodeMaterials && this.materialFactories) {
             const trailResult = this.materialFactories.createCrashMeteorTrailNodeMaterial({
                 meteorTrailCompute: this.meteorTrailBatchCompute,
                 atmosphereGlow: (this.qualityPreset.meteorAtmosphereGlow || 0) + 0.1,
@@ -4266,7 +4260,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         let debrisMaterial;
         let debrisNodeData = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const debrisResult = this.materialFactories.createDebrisNodeMaterial({
                 pixelRatio: this.renderer.getPixelRatio(),
                 debrisCompute: this.debrisBatchCompute,
@@ -4291,7 +4285,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         let shockwaveMaterial;
         let shockwaveNodeData = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const shockwaveResult = this.materialFactories.createShockwaveNodeMaterial();
             shockwaveMaterial = shockwaveResult.material;
             shockwaveNodeData = shockwaveResult;
@@ -4331,7 +4325,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         let dustMaterial;
         let dustNodeData = null;
-        if (this.isWebGPU && this.materialFactories) {
+        if (this.usesNodeMaterials && this.materialFactories) {
             const dustResult = this.materialFactories.createDustCloudNodeMaterial({
                 pixelRatio: this.renderer.getPixelRatio(),
             });
@@ -4770,8 +4764,8 @@ export default class WolfhourTheme extends BaseTheme {
             this.updateCameraAnimation(deltaTime);
             this.updateLunarReaction();
 
-            // Update time uniforms — branch by backend
-            if (this.isWebGPU && this.materialFactories) {
+            // Update time uniforms by material kind on both backends
+            if (this.usesNodeMaterials && this.materialFactories) {
                 if (this.starfieldNodeData) {
                     this.starfieldNodeData.uniforms.uTime.value = this.time;
                 }
@@ -4809,7 +4803,7 @@ export default class WolfhourTheme extends BaseTheme {
             this.updateMeteorCrashes(); // Meteor crash system
             this.updateComputeSystems(deltaTime);
 
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 if (this.postProcessing) {
                     try {
                         this.postProcessing.render();
