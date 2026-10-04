@@ -1420,5 +1420,98 @@
     "settledUI": "PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome node scripts/capture-breathing-overhaul.mjs --uiOnly --out /tmp/breathing-ui",
     "actualApplication": "PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome node scripts/capture-breathing-overhaul.mjs --profile none --gameSmoke --out /tmp/breathing-app",
     "harnessSHA256": "fd2766a7e34294e1602e961bdbbc77d902dfa4ebc31c7ea0bb39ca27f2149eae"
-  }
+  },
+  "finalIntegrationRevision": {
+    "status": "pass",
+    "change": "Repeated window.breathingIndicator reads in SerenityMode are consolidated into one local reference per operation to satisfy the existing architecture fitness limit. Behavior and artwork are unchanged.",
+    "previousEvidenceSHA256": "bee2f344f816a544a478600895c3242733c3aa8aa4b1bb9da08ded67a784c876",
+    "sourceStable": true,
+    "sourceSHA256": {
+      "index.html": "614b3baa5a1c30044d456fa9e12db67448bf368431b27c1b3356b49bd0b3a35c",
+      "src/core/game-modes/SerenityMode.js": "98e667cec6b17c370dd8ce716f0190d5f0b0ceebc7b8cc855280a60703bc6409",
+      "src/ui/serenity-hub/SerenityHub.js": "44d90725a5e3bd5534b30bea0ff5e9a4e7d9d7f18056818b3efff34bf1f2b9c3",
+      "src/ui/effects/threejs-breathing-renderer.js": "807eb61aa3a5642e5db124cbd18f5b69cc65b90234e1b36c8b4fe61c71d442d6",
+      "src/ui/effects/breathing-atmosphere.js": "aebd6f8bcb562698d70f82b7bfc0701edc6398f4cb04f8b890d819b601edebfc",
+      "src/ui/effects/enhanced-breathing-indicator.js": "e319413a61b96efac82437b3740213bfc3f2a4221291554c156106d2e3247168",
+      "src/ui/effects/breathwork-session-manager.js": "eefa7d7ee2c88ca0bdf2a35dd09d6daaac6bfdbd32e1d157a0802ad6f542a324",
+      "src/ui/serenity-hub/SessionsTab.js": "e4dab3a4bdba965288298415761a86f369a2de056a1d3b9b521c7495c9c83bb7",
+      "src/ui/serenity-hub/BreathingTab.js": "4e74f3de6790231731b4314c92cb7478c03de364fc8cf3d7ccf7eaf3cf99b89d",
+      "public/styles/main.css": "b9e4afd13b0a116d15552ca7ed88d0d8ffc668191fbfe0588de91b113486d780",
+      "public/styles/serenity-hub.css": "2f0c962b56372076f39f1ec39267641d6c2c8961bf60e3e164c2ecdefd4290b0",
+      "public/styles/serenity-hub-aaa.css": "aa7bb2d19ff3eb562d459dc63606f5759916ee2f3f40609bd1652ea26b8ddf3a",
+      "public/styles/breathing-immersive.css": "4c777955869e8173b6a7a10d2d16e1e38a7fac256f9a44f287f1f7a1764c5fe0",
+      "public/styles/breathwork-sessions.css": "4cef52314b215e68b5ab964492fc2d1476da15a8180b19677b76d5588a570226",
+      "public/styles/breathing-library.css": "622b2f1d0edb31b4bcd622be78e2985249b9461faae4f26d49f223dce79b1ede"
+    },
+    "changedSourceSincePreviousIntegration": [
+      {
+        "path": "src/core/game-modes/SerenityMode.js",
+        "previousSHA256": "8972b1267af1b9e9cae649ad87cfcc61e8a2cfe062f80cda073da469d110183c",
+        "finalSHA256": "98e667cec6b17c370dd8ce716f0190d5f0b0ceebc7b8cc855280a60703bc6409"
+      }
+    ],
+    "validationScope": "Actual-application Vite development smoke only; existing matrix, settled UI and selected image evidence retain their original immutable fingerprints.",
+    "browserVersion": "151.0.7922.34",
+    "softwareRendering": true,
+    "captureCount": 4,
+    "result": {
+      "id": "game-smoke",
+      "console": [],
+      "screenshots": [
+        "game-smoke-breathing.png",
+        "game-smoke-preparation.png",
+        "game-smoke-guided.png",
+        "game-smoke-completion.png"
+      ],
+      "failures": [],
+      "globalHub": {
+        "hasModeControls": false,
+        "afterStart": true,
+        "afterStop": false
+      },
+      "breathing": {
+        "mode": "serenity",
+        "active": true,
+        "technique": "deep-relaxation",
+        "canvasCount": 1
+      },
+      "session": {
+        "session": "BASE",
+        "externallyControlled": true,
+        "phase": "grounding",
+        "hasHUDState": true,
+        "hubHidden": true
+      },
+      "completion": {
+        "activeSession": false,
+        "indicatorActive": false,
+        "completionSession": "BASE",
+        "currentTab": "sessions"
+      },
+      "completionScroll": {
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "scrollTop": 378,
+        "scrollHeight": 563,
+        "clientHeight": 185,
+        "dialog": {
+          "top": 180.40625,
+          "bottom": 365.59375
+        },
+        "button": {
+          "top": 279.5,
+          "bottom": 325.5
+        },
+        "reachable": true,
+        "clicked": true
+      },
+      "breathingConsoleErrors": [],
+      "status": "pass"
+    },
+    "rawReportSHA256": "6bfe4ad783c0319974f0d653648e0a30638e915fd84ded69ebdc4f4184dd2a57",
+    "harnessSHA256": "fd2766a7e34294e1602e961bdbbc77d902dfa4ebc31c7ea0bb39ca27f2149eae"
+  },
+  "latestValidatedIntegration": "finalIntegrationRevision"
 }

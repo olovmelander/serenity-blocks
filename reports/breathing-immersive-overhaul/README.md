@@ -14,7 +14,7 @@ The [validation report](validation.json) preserves source fingerprints and separ
 
 After all twelve worlds were warmed, 26 technique switches retained 10 geometries, zero textures and four programs. The most complex world uses six draw calls. The capture runner also checks native ResizeObserver delivery, console/shader errors, control accessibility and teardown. These are software Chromium compatibility and bounded-work results, not physical-device FPS measurements.
 
-All 117 targeted tests pass. Type checking, the lint ratchet, dependency boundaries and production build/boot closure pass. The [implementation notes](../../docs/BREATHING_IMMERSIVE_OVERHAUL_2026-10.md) include the broader unit-run results and the existing programmatic session-resume limitation.
+All 117 targeted tests pass. Type checking, the lint and architecture ratchets, dependency boundaries and production build/boot closure pass. The report's `finalIntegrationRevision` records a second successful application smoke after consolidating the mode's global indicator reads, preserving the earlier capture fingerprints. The [implementation notes](../../docs/BREATHING_IMMERSIVE_OVERHAUL_2026-10.md) include the broader unit-run results and the existing programmatic session-resume limitation.
 
 Additional previews: [Aurora on phone](aurora-phone.jpg), [Hale Base empty hold on phone](hale-base-hold-phone.jpg), and [guided breathing in the real application](game-guided.jpg).
 
