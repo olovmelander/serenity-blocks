@@ -39,6 +39,7 @@ import {
     floor,
     fract,
     fwidth,
+    Fn,
     length,
     max,
     min,
@@ -887,6 +888,27 @@ export function createCurtainWallTSL(uTime, uEnergy) {
 
 // ── Megastructure shell: dark silhouette + energy seams that ignite (bloom-eligible) ──
 
+// Integrate a repeating strip over the pixel footprint instead of thresholding its centre.
+// The primitive also covers repeat boundaries; deriving AFTER fract would widen those
+// boundaries and leave the thin ribs crawling as the camera moves. Once a period is
+// subpixel, retain its mean light rather than resolving a flickering grid.
+const spireBandCoverage = /* @__PURE__ */ Fn(([phase, start, duty]) => {
+    const footprint = max(fwidth(phase), 1e-4).toVar();
+    const lo = phase.sub(start).sub(footprint.mul(0.5)).toVar();
+    const hi = lo.add(footprint).toVar();
+    const integral = (x) => floor(x).mul(duty).add(min(fract(x), duty));
+    const coverage = clamp(integral(hi).sub(integral(lo)).div(footprint), 0, 1);
+    return mix(coverage, duty, smoothstep(0.5, 1.0, footprint));
+}).setLayout({
+    name: 'od_spire_band_coverage',
+    type: 'float',
+    inputs: [
+        { name: 'phase', type: 'float' },
+        { name: 'start', type: 'float' },
+        { name: 'duty', type: 'float' },
+    ],
+});
+
 function createConduitMaterial(uTime, uEnergy, { colorA, colorB, uReveal } = {}) {
     const uColorA = uniform(new THREE.Color(colorA ?? CYAN));
     const uColorB = uniform(new THREE.Color(colorB ?? MAGENTA));
@@ -904,9 +926,10 @@ function createConduitMaterial(uTime, uEnergy, { colorA, colorB, uReveal } = {})
     // Vertical energy pulses travelling up the structure.
     const pulseRaw = sin(vUv.y.mul(26.0).sub(uTime.mul(3.0))).mul(0.5).add(0.5);
     const pulse = pow(pulseRaw, 3.0);
-    const seamX = fract(vUv.x.mul(5.0));
-    const seams = smoothstep(0.86, 0.9, seamX).mul(oneMinus(smoothstep(0.94, 0.98, seamX)));
-    const ribs = step(0.94, fract(vUv.y.mul(14.0))).mul(0.55);
+    // Same strip centres and mean coverage as the original grid, filtered at the current
+    // render resolution (including dynamic resolution and the narrow upper tiers).
+    const seams = spireBandCoverage(vUv.x.mul(5.0), float(0.88), float(0.08));
+    const ribs = spireBandCoverage(vUv.y.mul(14.0), float(0.94), float(0.06)).mul(0.55);
     const fres = pow(oneMinus(max(0.0, dot(normalize(normalView), positionViewDirection))), 2.0);
 
     // REVEAL ENERGY SURGE: a fast, bright wavefront rushing UP the conduit, gated by the
@@ -919,7 +942,9 @@ function createConduitMaterial(uTime, uEnergy, { colorA, colorB, uReveal } = {})
     const color = mix(uColorA, uColorB, vUv.y);
     // Dormant seams glow at ~18 %; ignition lifts them to full.
     const revealGain = uRevealNode.mul(0.82).add(0.18);
-    const lines = max(seams, ribs);
+    // Union coverage preserves both strips' light when they become subpixel. max() of
+    // their separately filtered values would lose the horizontal ribs' mean contribution.
+    const lines = seams.add(ribs.mul(oneMinus(seams)));
     // Ignited, the faces between the seams take a faint inner glow too (the structure is
     // charged, not just outlined).
     const fill = uRevealNode.mul(uRevealNode).mul(0.12);

@@ -1,0 +1,78 @@
+{
+  "date": "2026-10-04",
+  "baseCommit": "76013bf6de26c6503c6b482bc585a8c582122aaa",
+  "softwareRendering": true,
+  "testsPassed": 39,
+  "build": "pass",
+  "bootClosure": "pass",
+  "lintRatchet": {
+    "status": "pass",
+    "errorCount": 1220,
+    "baseline": 1220
+  },
+  "captureRuns": [
+    {
+      "name": "odyssey-spire-shipping",
+      "status": "pass",
+      "browserVersion": "151.0.7922.34",
+      "offscreenWebGPU": true,
+      "samples": 4,
+      "framesCaptured": 18,
+      "phases": [
+        0,
+        0.04,
+        8
+      ],
+      "profilesPassed": [
+        "webgpu-desktop",
+        "webgpu-mobile",
+        "webgpu-crossfade",
+        "webgl2-desktop",
+        "webgl2-mobile",
+        "webgl2-crossfade"
+      ],
+      "errors": []
+    },
+    {
+      "name": "odyssey-city-shipping",
+      "status": "pass",
+      "browserVersion": "151.0.7922.34",
+      "offscreenWebGPU": true,
+      "samples": 4,
+      "framesCaptured": 6,
+      "phases": [
+        8
+      ],
+      "profilesPassed": [
+        "webgpu-desktop",
+        "webgpu-mobile",
+        "webgpu-crossfade",
+        "webgl2-desktop",
+        "webgl2-mobile",
+        "webgl2-crossfade"
+      ],
+      "errors": []
+    },
+    {
+      "name": "odyssey-spire-ignition",
+      "status": "pass",
+      "browserVersion": "151.0.7922.34",
+      "offscreenWebGPU": true,
+      "samples": 4,
+      "framesCaptured": 2,
+      "phases": [
+        8
+      ],
+      "profilesPassed": [
+        "webgpu-desktop",
+        "webgl2-desktop"
+      ],
+      "errors": []
+    }
+  ],
+  "limits": [
+    "Isolated chapter only; no full journey.",
+    "Software browser rendering does not establish phone or physical GPU performance.",
+    "WebGPU renders to a GPU target and uses readback; native canvas presentation is not exercised."
+  ]
+}
