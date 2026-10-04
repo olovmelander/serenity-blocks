@@ -3,6 +3,17 @@ import { PerspectiveCamera, Scene } from 'three/webgpu';
 import { CosmicNoirPost } from '../../src/themes/cosmic-noir/cosmic-noir-post.js';
 
 describe('Cosmic Noir r186 bloom sizing', () => {
+    it.each([false, true])('enables requested MRT only on a native WebGPU backend (%s)', (native) => {
+        const post = new CosmicNoirPost(
+            { isWebGPURenderer: true, backend: { isWebGPUBackend: native } },
+            new Scene(),
+            new PerspectiveCamera(),
+            { useMRT: true },
+        );
+        expect(post.useMRT).toBe(native);
+        post.dispose();
+    });
+
     it('preserves the bloom footprint when the adaptive scale changes', () => {
         const post = new CosmicNoirPost({}, new Scene(), new PerspectiveCamera(), {
             useMRT: false,

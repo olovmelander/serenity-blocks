@@ -113,7 +113,7 @@ export default class CinderDriftTheme extends BaseTheme {
             powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap pixel ratio for shader performance
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         container.appendChild(this.renderer.domElement);
 
         // 2. Create Layers
@@ -883,6 +883,7 @@ export default class CinderDriftTheme extends BaseTheme {
         if (!this.camera || !this.renderer) return;
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
@@ -890,6 +891,7 @@ export default class CinderDriftTheme extends BaseTheme {
         if (!this.camera || !this.renderer) return;
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
     }
 

@@ -69,6 +69,22 @@ describe('Ocean imported fauna material backend', () => {
         expect(sourceDispose).toHaveBeenCalledTimes(1);
     });
 
+    it.each(converters)('uses modern %s shading on the node WebGL2 lane', (_name, System, method) => {
+        const system = Object.create(System.prototype);
+        system.isWebGPU = false;
+        system._usesNodeMaterials = true;
+        const geometry = new THREE.BoxGeometry();
+        const colors = new Float32Array(geometry.attributes.position.count * 3).fill(0.5);
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        const material = new THREE.MeshStandardMaterial();
+        const root = new THREE.Mesh(geometry, material);
+        system[method](root);
+        const converted = Array.isArray(root.material) ? root.material[0] : root.material;
+        expect(system.isWebGPU).toBe(false);
+        expect(converted.isNodeMaterial).toBe(true);
+        resources.push(geometry, converted);
+    });
+
     it('records the renderer backend for deferred rare-fauna loading', () => {
         const legacy = new OceanRareFaunaSystem();
         const webgpu = new OceanRareFaunaSystem({ isWebGPU: true });

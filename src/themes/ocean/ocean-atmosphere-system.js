@@ -1221,12 +1221,16 @@ function createHeroReefStandardMaterial(sourceMaterial) {
 }
 
 export class OceanAtmosphereSystem {
+    get usesNodeMaterials() {
+        return this._usesNodeMaterials ?? this.isWebGPU === true;
+    }
+
     constructor({
         scene,
         camera,
         preset,
         getSeabedHeight,
-        isWebGPU = false,
+        isWebGPU = false, usesNodeMaterials = isWebGPU,
         skipFlags = {},
     }) {
         this.scene = scene;
@@ -1234,6 +1238,7 @@ export class OceanAtmosphereSystem {
         this.preset = preset;
         this.getSeabedHeight = getSeabedHeight;
         this.isWebGPU = isWebGPU;
+        this._usesNodeMaterials = usesNodeMaterials;
         this.settings = preset?.atmosphere ?? {};
         // Phase 1 diagnostic skip flags: each key maps to one of the per-component
         // ?oceanNoX URL flags. Defaults to {} (everything enabled).
@@ -1542,7 +1547,7 @@ export class OceanAtmosphereSystem {
         group.userData.kind = placement.kind;
 
         const reefColor = placement.kind === 'sun-pillar' ? 0x123e48 : 0x4f948c;
-        const material = this.isWebGPU
+        const material = this.usesNodeMaterials
             ? createHeroReefNodeMaterial({ color: new THREE.Color(reefColor) })
             : new THREE.MeshStandardMaterial({
                 color: new THREE.Color(placement.kind === 'sun-pillar' ? 0x092f3a : 0x1b5660),
@@ -1552,7 +1557,7 @@ export class OceanAtmosphereSystem {
                 metalness: 0.0,
                 side: THREE.DoubleSide,
             });
-        if (this.isWebGPU) this.tslUserData.push(material.userData);
+        if (this.usesNodeMaterials) this.tslUserData.push(material.userData);
 
         if (placement.kind === 'sun-pillar') {
             // ABZU-style asymmetric scale landmark: a leaning monolith with a
@@ -1795,10 +1800,10 @@ export class OceanAtmosphereSystem {
             const sources = Array.isArray(child.material) ? child.material : [child.material];
             const materials = sources.map((source) => {
                 if (source && materialCache.has(source)) return materialCache.get(source);
-                const material = this.isWebGPU
+                const material = this.usesNodeMaterials
                     ? createHeroReefNodeMaterial(source)
                     : createHeroReefStandardMaterial(source);
-                if (this.isWebGPU) this.tslUserData.push(material.userData);
+                if (this.usesNodeMaterials) this.tslUserData.push(material.userData);
                 if (source) materialCache.set(source, material);
                 source?.dispose?.();
                 return material;
@@ -1823,7 +1828,7 @@ export class OceanAtmosphereSystem {
         ];
 
         let material;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             material = createReefSilhouetteNodeMaterial();
             this.tslUserData.push(material.userData);
         } else {
@@ -1964,7 +1969,7 @@ export class OceanAtmosphereSystem {
         // WebGPU reads `aInstanceColor` attribute; WebGL uses InstancedMesh's
         // built-in `instanceColor` (set via mesh.setColorAt). 20 InstancedMesh
         // per rock-cluster → 4 InstancedMesh.
-        const sharedMaterial = this.isWebGPU
+        const sharedMaterial = this.usesNodeMaterials
             ? createCoralOvergrowthNodeMaterial()
             : new THREE.MeshLambertMaterial({
                 color: 0xffffff,
@@ -1973,7 +1978,7 @@ export class OceanAtmosphereSystem {
                 side: THREE.DoubleSide,
                 vertexColors: true,
             });
-        if (this.isWebGPU) this.tslUserData.push(sharedMaterial.userData);
+        if (this.usesNodeMaterials) this.tslUserData.push(sharedMaterial.userData);
 
         const geometries = [
             new THREE.CylinderGeometry(0.07, 0.09, 0.42, 10),
@@ -2039,7 +2044,7 @@ export class OceanAtmosphereSystem {
             // Per-instance color attribute. WebGPU TSL reads `aInstanceColor`;
             // WebGL uses InstancedMesh.setColorAt (which writes to a built-in
             // instanceColor attribute). Both paths use vec3 (rgb).
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const colorArray = new Float32Array(count * 3);
                 for (let i = 0; i < count; i += 1) {
                     const c = bucket.colors[i];
@@ -2053,13 +2058,13 @@ export class OceanAtmosphereSystem {
             const mesh = new THREE.InstancedMesh(geometry, sharedMaterial, count);
             for (let i = 0; i < count; i += 1) {
                 mesh.setMatrixAt(i, bucket.matrices[i]);
-                if (!this.isWebGPU) mesh.setColorAt(i, bucket.colors[i]);
+                if (!this.usesNodeMaterials) mesh.setColorAt(i, bucket.colors[i]);
             }
             mesh.name = `OceanCoralOvergrowth:${typeIndex}`;
             mesh.userData.isOceanCoralOvergrowth = true;
             mesh.userData.assetStatus = 'procedural-instanced';
             mesh.instanceMatrix.needsUpdate = true;
-            if (!this.isWebGPU && mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+            if (!this.usesNodeMaterials && mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
             mesh.computeBoundingSphere();
             mesh.frustumCulled = true;
             mesh.renderOrder = -1;
@@ -2173,7 +2178,7 @@ export class OceanAtmosphereSystem {
             'blue-brush-coral': 0x55a6bd,
         };
         const tint = new THREE.Color(paletteByKind[placement.kind] || 0x8f6db6);
-        const material = this.isWebGPU
+        const material = this.usesNodeMaterials
             ? createCoralNodeMaterial(tint)
             : new THREE.MeshLambertMaterial({
                 color: tint,
@@ -2181,7 +2186,7 @@ export class OceanAtmosphereSystem {
                 emissiveIntensity: 0.38,
                 side: THREE.DoubleSide,
             });
-        if (this.isWebGPU) this.tslUserData.push(material.userData);
+        if (this.usesNodeMaterials) this.tslUserData.push(material.userData);
 
         const isPlate = placement.kind === 'green-yellow-plate-coral';
         const isTube = placement.kind === 'orange-tube-sponge-cluster';
@@ -2341,7 +2346,7 @@ export class OceanAtmosphereSystem {
             new THREE.Color(0x5f9f94),
         ];
         const tint = palette[placement.index % palette.length];
-        const material = this.isWebGPU
+        const material = this.usesNodeMaterials
             ? createCoralNodeMaterial(tint)
             : new THREE.MeshLambertMaterial({
                 color: tint,
@@ -2349,7 +2354,7 @@ export class OceanAtmosphereSystem {
                 emissiveIntensity: 0.42,
                 side: THREE.DoubleSide,
             });
-        if (this.isWebGPU) this.tslUserData.push(material.userData);
+        if (this.usesNodeMaterials) this.tslUserData.push(material.userData);
         else this.uniforms.push(material.uniforms || {});
 
         const branchCount = 7 + (placement.index % 5);
@@ -2507,10 +2512,10 @@ export class OceanAtmosphereSystem {
             const materials = sources.map((source) => {
                 const cacheKey = source ? `${source.uuid}_vc${hasVertexColors ? 1 : 0}` : null;
                 if (cacheKey && materialCache.has(cacheKey)) return materialCache.get(cacheKey);
-                const material = this.isWebGPU
+                const material = this.usesNodeMaterials
                     ? createHeroCoralNodeMaterial(source, { vertexColors: hasVertexColors })
                     : createHeroCoralStandardMaterial(source, { vertexColors: hasVertexColors });
-                if (this.isWebGPU) this.tslUserData.push(material.userData);
+                if (this.usesNodeMaterials) this.tslUserData.push(material.userData);
                 if (cacheKey) materialCache.set(cacheKey, material);
                 source?.dispose?.();
                 return material;
@@ -2566,8 +2571,8 @@ export class OceanAtmosphereSystem {
                 randRange(0.34, 0.64),
                 12,
             );
-            const material = this.isWebGPU ? createHeroKelpNodeMaterial() : createHeroKelpShaderMaterial();
-            if (this.isWebGPU) this.tslUserData.push(material.userData);
+            const material = this.usesNodeMaterials ? createHeroKelpNodeMaterial() : createHeroKelpShaderMaterial();
+            if (this.usesNodeMaterials) this.tslUserData.push(material.userData);
             else this.uniforms.push(material.uniforms);
             const mesh = new THREE.Mesh(geometry, material);
             const angle = (i / bladeCount) * Math.PI * 2 + randRange(-0.22, 0.22);
@@ -2656,10 +2661,10 @@ export class OceanAtmosphereSystem {
         // across the asset and let mergeMeshesByMaterial collapse all child
         // meshes into a single draw call per kelp clone.
         let sharedMaterial;
-        if (this.isWebGPU) sharedMaterial = createHeroKelpNodeMaterial({ authored });
+        if (this.usesNodeMaterials) sharedMaterial = createHeroKelpNodeMaterial({ authored });
         else if (authored) sharedMaterial = createHeroKelpStandardMaterial();
         else sharedMaterial = createHeroKelpShaderMaterial();
-        if (this.isWebGPU) this.tslUserData.push(sharedMaterial.userData);
+        if (this.usesNodeMaterials) this.tslUserData.push(sharedMaterial.userData);
         else if (sharedMaterial.uniforms) this.uniforms.push(sharedMaterial.uniforms);
 
         root.traverse((child) => {
@@ -2707,7 +2712,7 @@ export class OceanAtmosphereSystem {
     async upgradeGardenModels(detailCount) {
         const generation = this.upgradeGeneration;
         const garden = await createOceanGardenModels({
-            getSeabedHeight: this.getSeabedHeight, isWebGPU: this.isWebGPU, detailCount,
+            getSeabedHeight: this.getSeabedHeight, usesNodeMaterials: this.usesNodeMaterials, detailCount,
         });
         if (this.isUpgradeStale(generation)) { garden?.dispose(); return; }
         this.gardenModels?.dispose();
@@ -2798,10 +2803,10 @@ export class OceanAtmosphereSystem {
     prepareImportedSeabedPlantAsset(root) {
         // Phase G.4: one shared material → mergeMeshesByMaterial collapses
         // every child into a single draw call per asset clone.
-        const sharedMaterial = this.isWebGPU
+        const sharedMaterial = this.usesNodeMaterials
             ? createImportedSeabedPlantNodeMaterial()
             : createImportedSeabedPlantShaderMaterial();
-        if (this.isWebGPU) this.tslUserData.push(sharedMaterial.userData);
+        if (this.usesNodeMaterials) this.tslUserData.push(sharedMaterial.userData);
         else this.uniforms.push(sharedMaterial.uniforms);
 
         root.traverse((child) => {
@@ -2831,10 +2836,10 @@ export class OceanAtmosphereSystem {
             const sources = Array.isArray(child.material) ? child.material : [child.material];
             const materials = sources.map((source) => {
                 if (source && materialCache.has(source)) return materialCache.get(source);
-                const material = this.isWebGPU
+                const material = this.usesNodeMaterials
                     ? createHeroCoralNodeMaterial(source)
                     : createHeroCoralStandardMaterial(source);
-                if (this.isWebGPU) this.tslUserData.push(material.userData);
+                if (this.usesNodeMaterials) this.tslUserData.push(material.userData);
                 if (source) materialCache.set(source, material);
                 source?.dispose?.();
                 return material;
@@ -2850,10 +2855,10 @@ export class OceanAtmosphereSystem {
         // reef formations instead of standing out as pale plateaus.
         // Phase G.4: this already uses a single shared material; just add
         // the merge so multi-mesh rocks collapse to 1 draw call.
-        const material = this.isWebGPU
+        const material = this.usesNodeMaterials
             ? createHeroReefNodeMaterial({ color: ROCK_LOW })
             : createHeroReefStandardMaterial({ color: ROCK_LOW, roughness: 0.9, metalness: 0.0 });
-        if (this.isWebGPU) this.tslUserData.push(material.userData);
+        if (this.usesNodeMaterials) this.tslUserData.push(material.userData);
 
         root.traverse((child) => {
             if (!child.isMesh) return;
@@ -2917,7 +2922,7 @@ export class OceanAtmosphereSystem {
         geometry.setAttribute('aLayer', new THREE.Float32BufferAttribute(layers, 1));
         geometry.computeVertexNormals();
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const tslMaterial = createVolumetricShaftNodeMaterial({
                 rayStrength: this.settings.rayStrength ?? 1.0,
             });
@@ -3008,7 +3013,7 @@ export class OceanAtmosphereSystem {
 
         const geometry = new THREE.PlaneGeometry(430, 155, 1, 1);
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const tslMaterial = createHazeLayerNodeMaterial({
                 hazeStrength: this.settings.hazeStrength ?? 1.0,
             });
@@ -3150,7 +3155,7 @@ export class OceanAtmosphereSystem {
             dummy.updateMatrix();
         };
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const tslMaterial = createReefSilhouetteNodeMaterial();
             this.tslUserData.push(tslMaterial.userData);
             const dummy = new THREE.Object3D();
@@ -3329,7 +3334,7 @@ export class OceanAtmosphereSystem {
      * kelp curtains in fog. Always behind atmosphere haze.
      */
     createBiomeSilhouettes() {
-        if (!this.isWebGPU) return; // TSL-only — keeps WebGL legacy path unchanged
+        if (!this.usesNodeMaterials) return; // TSL-only — keeps WebGL legacy path unchanged
         const count = Math.max(0, Math.floor(this.settings.biomeSilhouetteCount ?? 4));
         if (count <= 0) return;
 
@@ -3391,7 +3396,7 @@ export class OceanAtmosphereSystem {
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
         geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             geometry.dispose();
             const billboardGeometry = new THREE.PlaneGeometry(1, 1, 1, 1);
             billboardGeometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
@@ -3489,7 +3494,7 @@ export class OceanAtmosphereSystem {
         geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             geometry.dispose();
             const billboardGeometry = new THREE.PlaneGeometry(1, 1, 1, 1);
             billboardGeometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
@@ -3586,7 +3591,7 @@ export class OceanAtmosphereSystem {
     }
 
     updateBillboards(elapsed, currentStrength, glowIntensity = 0.8) {
-        if (!this.isWebGPU || !this.camera) return;
+        if (!this.usesNodeMaterials || !this.camera) return;
 
         if (this.glowBillboardMesh && this.glowBillboardData) {
             const {

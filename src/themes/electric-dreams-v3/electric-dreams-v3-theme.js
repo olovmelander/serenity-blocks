@@ -24,6 +24,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
+import { initializeThemeNodeRenderer } from '../shared/node-renderer.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { CameraDirector } from './composition/camera-director.js';
 import { createNebulaSky } from './rendering/nebula-volume.js';
@@ -32,6 +33,14 @@ import { V3PostPipeline, getV3PostProfile } from './post/render-pipeline.js';
 import { FluidParticleSim, getFluidBudget } from './sim/fluid-particles.js';
 import { FluidEmitters } from './sim/fluid-emitters.js';
 import { SHAPE_NAMES } from './sim/shape-formations.js';
+
+const BOARD_CANVAS_SELECTOR = [
+    '#phaser-game-container canvas', '#online-main-board canvas', '.phaser-board-container canvas',
+].join(', ');
+const BOARD_MOUNT_SELECTOR = '#phaser-game-container, #online-main-board, .phaser-board-container';
+const BOARD_OBSERVATION_ROOT_SELECTOR = [
+    '.single-player-stage', '#multiplayer-container', '#online-multiplayer-container', '#odyssey-container',
+].join(', ');
 
 // ─── Master shape pool (single, randomized) ───
 // All visual shapes go here. Every game event rolls from this same pool — the
@@ -105,6 +114,10 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         // Event subscription handles (for cleanup)
         this.eventUnsubscribers = [];
         this.boundResize = null;
+        this._boardMutationObserver = null;
+        this._boardResizeObserver = null;
+        this._observedBoardCanvas = null;
+        this._boardObserverSession = null;
 
         // FX state — minimal Phase 1 version (will expand as conductors come online)
         this.fxState = {
@@ -163,47 +176,19 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         const w = window.innerWidth;
         const h = window.innerHeight;
 
-        // ── Renderer (WebGPU only; theme is best-in-class WebGPU showcase) ──
-        if (!navigator.gpu) {
-            console.warn('[ElectricDreamsV3] No WebGPU support — showing fallback message');
-            container.innerHTML = '<div style="color:#aaa;text-align:center;padding:2em;font-family:sans-serif;">'
-                + 'Electric Dreams V3 requires WebGPU. Try Chrome 113+ or Safari 26+.</div>';
-            return;
-        }
-        const renderer = new THREE.WebGPURenderer({
-            antialias: true,
+        const renderer = await initializeThemeNodeRenderer(this, {
+            antialias: this.getAntialiasEnabled(),
             alpha: false,
             powerPreference: 'high-performance',
-        });
-        try {
-            await this.initializeRendererCandidate(renderer, {
-                timeoutMs: 4000,
-                label: 'Electric Dreams V3 WebGPU renderer init',
-                ownerGeneration,
-            });
-            if (renderer.backend?.isWebGPUBackend !== true) {
-                throw new Error('WebGPU backend not active after init');
-            }
-        } catch (err) {
-            if (ownerGeneration !== this.lifecycleGeneration
-                || !this.isActive
-                || this.cleanupComplete) return;
-            console.error('[ElectricDreamsV3] WebGPU init failed:', err);
-            this.disposeRenderer(renderer, { nullInstance: false });
-            container.innerHTML = '<div style="color:#aaa;text-align:center;padding:2em;font-family:sans-serif;">'
-                + `WebGPU initialization failed: ${err.message}</div>`;
-            return;
-        }
-
-        if (ownerGeneration !== this.lifecycleGeneration
-            || !this.isActive
-            || this.cleanupComplete) {
-            this.disposeRenderer(renderer, { nullInstance: false });
-            return;
-        }
+        }, { ownerGeneration, label: 'Electric Dreams V3' });
+        if (!renderer) return;
         this.renderer = renderer;
+        this._computeFailedOnce = false;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: renderer.backend?.isWebGPUBackend === true ? renderer.backend.device : null,
+        });
 
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio(2));
         this.renderer.setSize(w, h);
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         container.innerHTML = '';
@@ -225,11 +210,11 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         this.scene.add(this.nebula.mesh);
 
         // ── Fluid hero (the centerpiece) ──
-        // Compute capability check: if renderer lacks .compute(), skip the
-        // fluid entirely (Minimal/Low mobile fallback will look like just
-        // nebula, which is still a valid theme just less spectacular).
-        this._computeAvailable = typeof this.renderer.compute === 'function';
-        if (this.qualityPreset.enableFluid && this._computeAvailable) {
+        // Billboard storage indexing is a native path. WebGL2 keeps the same
+        // hero, formations and impulses with CPU simulation + instance attributes.
+        this._computeAvailable = renderer.backend?.isWebGPUBackend === true
+            && typeof renderer.compute === 'function';
+        if (this.qualityPreset.enableFluid) {
             try {
                 const budget = getFluidBudget(this.qualityName);
                 // Focal slightly behind the screen plane so the fluid wraps
@@ -241,6 +226,7 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
                 // Result: a wide horizontal sweep that fills the empty corners
                 // beside the game board, like aurora wings.
                 this.fluidSim = new FluidParticleSim(budget.count, {
+                    cpu: !this._computeAvailable,
                     focalPoint: focal,
                     focalRadius: budget.focalRadius,
                     gravityStrength: budget.gravityStrength,
@@ -334,6 +320,54 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
     _setupResize() {
         this.boundResize = () => this.resize(window.innerWidth, window.innerHeight);
         this.registerEventListener(window, 'resize', this.boundResize);
+        this._setupBoardZoneObserver();
+    }
+
+    _setupBoardZoneObserver() {
+        this._removeBoardZoneObserver();
+        const session = {};
+        this._boardObserverSession = session;
+        const isCurrent = () => this._boardObserverSession === session
+            && this.isActive && !this.cleanupComplete;
+        if (typeof ResizeObserver !== 'undefined') {
+            this._boardResizeObserver = new ResizeObserver(() => {
+                if (isCurrent()) this._updateBoardZone();
+            });
+        }
+        if (typeof MutationObserver !== 'undefined') {
+            this._boardMutationObserver = new MutationObserver((mutations) => {
+                if (!isCurrent()) return;
+                const boards = Array.from(document.querySelectorAll(BOARD_CANVAS_SELECTOR));
+                const affectsBoard = mutations.some(({ target, removedNodes }) => (
+                    target.matches?.(BOARD_MOUNT_SELECTOR)
+                    || boards.some((board) => target.contains?.(board))
+                    || Array.from(removedNodes || []).some((node) => node.matches?.(BOARD_MOUNT_SELECTOR)
+                        || node.querySelector?.(BOARD_MOUNT_SELECTOR))
+                ));
+                if (affectsBoard) this._updateBoardZone();
+            });
+            // These existing shells own board mounting and mode visibility.
+            // Observe game shells instead of animated theme DOM; the callback
+            // ignores changes within unrelated HUD elements.
+            document.querySelectorAll(BOARD_OBSERVATION_ROOT_SELECTOR).forEach((root) => {
+                this._boardMutationObserver.observe(root, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['class', 'style'],
+                });
+            });
+        }
+        this._updateBoardZone();
+    }
+
+    _removeBoardZoneObserver() {
+        this._boardObserverSession = null;
+        this._boardMutationObserver?.disconnect();
+        this._boardResizeObserver?.disconnect();
+        this._boardMutationObserver = null;
+        this._boardResizeObserver = null;
+        this._observedBoardCanvas = null;
     }
 
     resize(w, h) {
@@ -551,7 +585,7 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
     /**
      * Compute the board's screen rectangle and push it to BOTH the fluid sim
      * (world-space repulsion zone) and the post pipeline (UV-space halo glow).
-     * Called at scene setup AND on resize.
+     * Called at scene setup, resize, and board mounting/visibility changes.
      *
      * Strategy: detect the board DOM element if present and project its
      * bounding-rect into world + UV space. Falls back to viewport-relative
@@ -570,11 +604,27 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         // Look for the actual board mount points; fall back to viewport-relative.
         const vw = window.innerWidth || 1920;
         const vh = window.innerHeight || 1080;
-        const boardEl = document.querySelector('#game-canvas, #game-board, canvas[data-game-board]');
+        let boardCanvas = null;
+        let boardRect = null;
+        for (const board of document.querySelectorAll(BOARD_CANVAS_SELECTOR)) {
+            const rect = board.getBoundingClientRect();
+            const style = window.getComputedStyle?.(board);
+            if (rect.width > 0 && rect.height > 0
+                && style?.visibility !== 'hidden' && style?.visibility !== 'collapse') {
+                boardCanvas = board;
+                boardRect = rect;
+                break;
+            }
+        }
+        if (this._boardResizeObserver && boardCanvas !== this._observedBoardCanvas) {
+            this._boardResizeObserver.disconnect();
+            this._observedBoardCanvas = boardCanvas;
+            if (boardCanvas) this._boardResizeObserver.observe(boardCanvas);
+        }
         let rectCenterUV;
         let rectHalfUV;
-        if (boardEl) {
-            const r = boardEl.getBoundingClientRect();
+        if (boardRect) {
+            const r = boardRect;
             rectCenterUV = this._scratchVec2A.set(
                 ((r.left + r.right) * 0.5) / vw,
                 ((r.top + r.bottom) * 0.5) / vh,
@@ -644,7 +694,8 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
     // Try/catch lives in a helper so V8 can optimize the animate body.
     _safeFluidCompute() {
         try {
-            this.renderer.compute(this.fluidSim.computeNode);
+            if (this.fluidSim.isCPU) this.fluidSim.stepCPU();
+            else this.renderer.compute(this.fluidSim.computeNode);
         } catch (err) {
             console.warn('[ElectricDreamsV3] Fluid compute failed, disabling:', err.message);
             this._computeFailedOnce = true;
@@ -744,6 +795,8 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
 
     stop() {
         super.stop();
+        this._removeBoardZoneObserver();
+        this.removeRendererResilience();
         this._cancelShapeRelease();
         this._uninstallDebugHelper();
         for (const unsub of this.eventUnsubscribers) {

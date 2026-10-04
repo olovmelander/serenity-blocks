@@ -10,8 +10,8 @@
  * sky). MRT means ONLY emissive surfaces (stars, dust, meteors) bloom — the
  * luminance-capped nebula/aurora stay calm and never wash out the board.
  *
- * WebGPU-only at the post layer (mirrors edv3). On the WebGL2 fallback the theme
- * renders without post (the orchestrator falls back to renderer.render()).
+ * The same grade and bloom graph runs on both WebGPURenderer backends.
+ * Native WebGPU uses selective emissive bloom; WebGL2 uses full-scene bloom.
  */
 import * as WEBGPU from 'three/webgpu';
 import {
@@ -131,24 +131,27 @@ export class StarlightPostPipeline {
         this.scene = scene;
         this.camera = camera;
         this.lastRenderCostMs = 0;
-        this.mrtEnabled = params.useMRT !== false;
+        this.mrtEnabled = params.useMRT !== false
+            && renderer?.backend?.isWebGPUBackend === true;
         this.postProcessing = null;
+        this.scenePass = null;
 
-        if (renderer?.backend?.isWebGPUBackend !== true) {
-            console.warn('[Starlight] Post pipeline requires WebGPU; skipping (rendering without post)');
+        if (renderer?.isWebGPURenderer !== true) {
+            console.warn('[Starlight] Post pipeline requires a node renderer; skipping');
             return;
         }
         try {
             this._setupWebGPU(params);
         } catch (err) {
             console.warn('[Starlight] Post pipeline setup failed; rendering without post:', err.message);
-            this.postProcessing = null;
+            this.dispose();
         }
     }
 
     _setupWebGPU(params) {
         this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
+        this.scenePass = scenePass;
 
         let bloomSource;
         try {
@@ -304,7 +307,10 @@ export class StarlightPostPipeline {
     }
 
     dispose() {
+        this.scenePass?.dispose();
         disposeBloomNodeDeep(this.bloomNode);
+        this.postProcessing?.dispose();
+        this.scenePass = null;
         this.postProcessing = null;
         this.bloomNode = null;
     }

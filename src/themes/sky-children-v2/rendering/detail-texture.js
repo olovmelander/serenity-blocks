@@ -62,8 +62,9 @@ export function createSkyDetailTexture(fileName) {
     tex.anisotropy = 4;
     tex.needsUpdate = true;
     tex.userData.lifecycleDisposed = false;
+    let replacingImage = false;
     tex.addEventListener('dispose', () => {
-        tex.userData.lifecycleDisposed = true;
+        if (!replacingImage) tex.userData.lifecycleDisposed = true;
     });
 
     new THREE.TextureLoader().load(
@@ -73,6 +74,12 @@ export function createSkyDetailTexture(fileName) {
                 loaded.dispose?.();
                 return;
             }
+            // WebGL2 allocates immutable storage for the placeholder. Retire
+            // that allocation before the full-sized image is uploaded, while
+            // retaining the Texture identity already wired into node materials.
+            replacingImage = true;
+            tex.dispose();
+            replacingImage = false;
             tex.image = loaded.image;
             tex.needsUpdate = true;
             loaded.dispose?.();

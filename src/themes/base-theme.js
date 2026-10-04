@@ -111,6 +111,7 @@ export class BaseTheme {
         this.cleanupComplete = false;
         this._startRequestGeneration = 0;
         this._startInFlight = null;
+        this._contextLostRendererDisposals = new WeakMap();
         this.onRuntimeFailure = null;
         this.resourceProfile = 'light';
         this.animationIds = [];
@@ -277,7 +278,16 @@ export class BaseTheme {
                         audioManager: this.audioManager,
                         onRuntimeFailure: this.onRuntimeFailure,
                     };
-                    this.start(sharedRenderer, recoveryManagers).catch((err) => {
+                    const recoveryGeneration = this.lifecycleGeneration;
+                    const lostRenderer = this.renderer;
+                    const recover = async () => {
+                        const retirement = lostRenderer && this._contextLostRendererDisposals.get(lostRenderer);
+                        if (retirement?.completion) await retirement.completion;
+                        if (recoveryGeneration !== this.lifecycleGeneration
+                            || !this.isActive || this.cleanupComplete) return;
+                        await this.start(sharedRenderer, recoveryManagers);
+                    };
+                    recover().catch((err) => {
                         console.error('[BaseTheme] Context recovery failed:', err);
                         try {
                             this.onRuntimeFailure?.(err);
@@ -615,7 +625,7 @@ export class BaseTheme {
         }
     }
 
-    disposeRenderer(renderer = this.renderer, { nullInstance = true } = {}) {
+    disposeRenderer(renderer = this.renderer, { nullInstance = true, preserveCanvas = false } = {}) {
         if (!renderer || renderer === this.webglRenderer) return undefined;
 
         let domElement = null;
@@ -667,18 +677,27 @@ export class BaseTheme {
         // defer ONLY the GPU release until pending resolves settle (bounded so a
         // stuck query can never wedge teardown); loop stop, canvas detach and
         // the reference clear below stay synchronous.
-        const pendingResolves = collectPendingTimestampResolves(renderer);
         let disposal;
-        if (pendingResolves.length > 0) {
-            disposal = Promise.race([
-                Promise.allSettled(pendingResolves),
-                new Promise((resolve) => { setTimeout(resolve, 300); }),
-            ]).then(releaseGpu, releaseGpu);
+        const lossRetirement = this._contextLostRendererDisposals.get(renderer);
+        if (lossRetirement?.releaseStarted) {
+            // Retired while its GL context was lost. Three's backend scratch
+            // framebuffers are not safe to delete again after restoration.
+            disposal = lossRetirement.completion;
         } else {
-            disposal = releaseGpu();
+            if (lossRetirement) lossRetirement.releaseStarted = true;
+            const pendingResolves = collectPendingTimestampResolves(renderer);
+            if (pendingResolves.length > 0) {
+                disposal = Promise.race([
+                    Promise.allSettled(pendingResolves),
+                    new Promise((resolve) => { setTimeout(resolve, 300); }),
+                ]).then(releaseGpu, releaseGpu);
+            } else {
+                disposal = releaseGpu();
+            }
+            if (lossRetirement) lossRetirement.completion = disposal;
         }
         try {
-            if (domElement?.parentNode) {
+            if (!preserveCanvas && domElement?.parentNode) {
                 domElement.parentNode.removeChild(domElement);
             }
         } catch (error) {
@@ -1372,7 +1391,10 @@ export class BaseTheme {
         if (renderer?.domElement) {
             const unsub = gpuResilience.monitorWebGL(renderer.domElement, {
                 label: this.name,
-                onLost: options.onContextLost,
+                onLost: (event) => {
+                    this.retireContextLostNodeRenderer(renderer);
+                    options.onContextLost?.(event);
+                },
                 onRestored: options.onContextRestored,
             });
             this._resilienceUnsubs.push(unsub);
@@ -1385,6 +1407,22 @@ export class BaseTheme {
             });
             this._resilienceUnsubs.push(unsub);
         }
+    }
+
+    retireContextLostNodeRenderer(renderer) {
+        if (renderer?.isWebGPURenderer !== true
+            || renderer.backend?.isWebGLBackend !== true
+            || renderer.backend.gl?.isContextLost?.() !== true
+            || renderer !== this.renderer
+            || !this.isActive || this.cleanupComplete
+            || this._contextLostRendererDisposals.has(renderer)) return;
+
+        // GL ignores deletions while lost. Retire Three's caches now, before the
+        // restored context makes their old handles invalid. Keep this canvas and
+        // its restore monitor until start() replaces the paused, active runtime.
+        this.pause();
+        this._contextLostRendererDisposals.set(renderer, { releaseStarted: false, completion: undefined });
+        this.disposeRenderer(renderer, { nullInstance: false, preserveCanvas: true });
     }
 
     /**

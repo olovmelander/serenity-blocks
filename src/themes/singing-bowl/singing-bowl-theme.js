@@ -1143,7 +1143,7 @@ export default class SingingBowlTheme extends BaseTheme {
             this.renderer.domElement.style.width = '100%';
             this.renderer.domElement.style.height = '100%';
         } else {
-            const dpr = Math.min(window.devicePixelRatio, 2);
+            const dpr = this.getEffectivePixelRatio();
             this.renderer.setPixelRatio(dpr);
             this.renderer.setSize(window.innerWidth, window.innerHeight);
 

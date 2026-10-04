@@ -731,7 +731,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     disposeRendererResources(removeCanvas = true) {
         if (!this.renderer) return;
 
-        this.renderer.onDeviceLost = null;
+        this.renderer.onDeviceLost = () => {};
         const { domElement } = this.renderer;
         try {
             this.disposeRenderer(this.renderer, { nullInstance: false });

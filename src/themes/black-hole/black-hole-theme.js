@@ -3329,9 +3329,25 @@ export default class BlackHoleTheme extends BaseTheme {
             + Math.sin(t * 0.041 + this.cameraPhaseD) * 0.34
         ) * 330;
         const frameBiasY = -50 + Math.sin(t * 0.023 + this.cameraPhaseC) * 60;
-        const screenRight = frameBiasX
-            + Math.sin(t * 0.2 + this.cameraPhaseX) * (2.6 + comboEnergy * 1.8)
-            + parallaxX * 0.32;
+        // Narrow portrait views need room for the 120-unit shadow and its
+        // approximately 135-unit photon ring. Retain the authored landscape
+        // framing and orbit; gameplay shake is layered afterward by the rig.
+        const framingDistance = Math.hypot(
+            bhX - this.cameraSmoothedPosition.x,
+            bhY - this.cameraSmoothedPosition.y,
+            bhZ - this.cameraSmoothedPosition.z,
+        );
+        const portraitFrameLimit = this.camera.aspect < 1
+            ? Math.max(0, framingDistance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5))
+                * this.camera.aspect - 160)
+            : Infinity;
+        const screenRight = THREE.MathUtils.clamp(
+            frameBiasX
+                + Math.sin(t * 0.2 + this.cameraPhaseX) * (2.6 + comboEnergy * 1.8)
+                + parallaxX * 0.32,
+            -portraitFrameLimit,
+            portraitFrameLimit,
+        );
         const screenUp = frameBiasY
             + Math.cos(t * 0.17 + this.cameraPhaseY) * (1.9 + comboEnergy * 1.5)
             + parallaxY * 0.32;
@@ -3341,6 +3357,16 @@ export default class BlackHoleTheme extends BaseTheme {
             .addScaledVector(this._camUp, screenUp);
         const lookLerp = Math.min(1.0, delta * (2.4 + comboEnergy * 1.2));
         this.cameraLookTargetSmoothed.lerp(this.cameraLookTarget, lookLerp);
+        if (Number.isFinite(portraitFrameLimit)) {
+            // Reframe an old landscape target immediately after rotation.
+            const smoothedRight = (this.cameraLookTargetSmoothed.x - bhX) * this._camRight.x
+                + (this.cameraLookTargetSmoothed.y - bhY) * this._camRight.y
+                + (this.cameraLookTargetSmoothed.z - bhZ) * this._camRight.z;
+            this.cameraLookTargetSmoothed.addScaledVector(
+                this._camRight,
+                THREE.MathUtils.clamp(smoothedRight, -portraitFrameLimit, portraitFrameLimit) - smoothedRight,
+            );
+        }
 
         // The rig writes the final camera position and performs the lookAt, layering the
         // impact shake on top of the orbit. The cinematic roll below still composes onto
@@ -3370,6 +3396,23 @@ export default class BlackHoleTheme extends BaseTheme {
         this.camera.fov += (targetFov - this.camera.fov) * fovLerp;
         if (Math.abs(targetFov - this.camera.fov) > 0.001) {
             this.camera.updateProjectionMatrix();
+        }
+    }
+
+    renderPostProcessing() {
+        // The WebGL2 node backend clears and binds the scene-pass target itself.
+        // Keep that clear inside the pipeline, rather than invalidating its
+        // framebuffer state with an outer clear on the default framebuffer.
+        if (this.renderer.backend?.isWebGLBackend !== true) {
+            this.postProcessing.render();
+            return;
+        }
+        const previousAutoClear = this.renderer.autoClear;
+        this.renderer.autoClear = true;
+        try {
+            this.postProcessing.render();
+        } finally {
+            this.renderer.autoClear = previousAutoClear;
         }
     }
 
@@ -3420,7 +3463,7 @@ export default class BlackHoleTheme extends BaseTheme {
             // and blank the scene. compileAsync is only correct on the non-post path.
             try {
                 if (this.postProcessing && this.flags.usePost) {
-                    this.postProcessing.render();
+                    this.renderPostProcessing();
                 } else if (this.renderer.compileAsync) {
                     await this.renderer.compileAsync(this.scene, this.camera);
                 }
@@ -3767,9 +3810,12 @@ export default class BlackHoleTheme extends BaseTheme {
             }
 
             // Render
-            this.renderer.clear();
-            if (this.postProcessing && this.flags.usePost) {
-                this.postProcessing.render();
+            const usePost = this.postProcessing && this.flags.usePost;
+            if (!usePost || this.renderer.backend?.isWebGLBackend !== true) {
+                this.renderer.clear();
+            }
+            if (usePost) {
+                this.renderPostProcessing();
             } else {
                 this.renderer.render(this.scene, this.camera);
             }

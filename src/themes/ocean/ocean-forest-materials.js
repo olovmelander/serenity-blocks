@@ -17,13 +17,13 @@ const glslVec = (values) => `vec3(${values.map((value) => value.toFixed(4)).join
  * this surface adds dark holdfasts, a little leaf transmission and sparse
  * amber growth. It uses neither transmission render targets nor textures.
  */
-export function createOceanForestKelpMaterial({ isWebGPU = true } = {}) {
-    const Material = isWebGPU ? THREE.MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
+export function createOceanForestKelpMaterial({ isWebGPU = true, usesNodeMaterials = isWebGPU } = {}) {
+    const Material = usesNodeMaterials ? THREE.MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
     const material = new Material({
         color: 0xffffff,
         // The node graph consumes COLOR_0 directly. Enabling the built-in
         // multiplier there would apply the painted pigment twice in r186.
-        vertexColors: !isWebGPU,
+        vertexColors: !usesNodeMaterials,
         side: THREE.DoubleSide,
         forceSinglePass: true,
         transparent: false,
@@ -32,7 +32,7 @@ export function createOceanForestKelpMaterial({ isWebGPU = true } = {}) {
         metalness: 0,
         envMapIntensity: 0.35,
     });
-    const makeUniform = (value) => (isWebGPU ? uniform(value) : { value });
+    const makeUniform = (value) => (usesNodeMaterials ? uniform(value) : { value });
     const uTime = makeUniform(0);
     const uCurrentStrength = makeUniform(0.5);
     const uGlowIntensity = makeUniform(0.8);
@@ -41,7 +41,7 @@ export function createOceanForestKelpMaterial({ isWebGPU = true } = {}) {
         uTime, uCurrentStrength, uGlowIntensity, forestKelp: true,
     };
 
-    if (isWebGPU) {
+    if (usesNodeMaterials) {
         const paint = attribute('color', 'vec3');
         const height = attribute('aHeroKelpHeight', 'float').clamp(0, 1);
         const leaf = smoothstep(float(0.025), float(0.68), height);

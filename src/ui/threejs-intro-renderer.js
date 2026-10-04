@@ -8,6 +8,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { IntroCameraParallax } from './intro-camera-parallax.js';
+import { IntroClassicProfile } from './intro-classic-profile.js';
+import { INTRO_PHASES } from './intro-visual-config.js';
 import { COLORS } from '../core/constants.js';
 import {
     INTRO_TETROMINO_CLICK_IMPULSE,
@@ -188,6 +190,10 @@ export default class ThreeJSIntroRenderer {
         const uniforms = {
             uTime: { value: 0 },
             uIntensity: { value: 1.0 },
+            uPulse: { value: 0 },
+            uCloudCalibration: { value: new THREE.Vector3(0.54, 0.88, 0.42) },
+            uHiCyan: { value: new THREE.Color(0.08, 0.52, 0.68) },
+            uHiMagenta: { value: new THREE.Color(0.52, 0.12, 0.62) },
         };
         const material = new THREE.ShaderMaterial({
             uniforms,
@@ -206,6 +212,8 @@ export default class ThreeJSIntroRenderer {
                 varying vec3 vDir;
                 uniform float uTime;
                 uniform float uIntensity;
+                uniform float uPulse;
+                uniform vec3 uCloudCalibration, uHiCyan, uHiMagenta;
 
                 float hash3(vec3 p){
                     p = fract(p * vec3(0.1031, 0.1030, 0.0973));
@@ -248,8 +256,6 @@ export default class ThreeJSIntroRenderer {
                     vec3 COL_DEEP   = vec3(0.018, 0.010, 0.055);
                     vec3 COL_VIOLET = vec3(0.090, 0.045, 0.190);
                     vec3 COL_TEAL   = vec3(0.030, 0.110, 0.180);
-                    vec3 HI_MAGENTA = vec3(0.520, 0.120, 0.620);
-                    vec3 HI_CYAN    = vec3(0.080, 0.520, 0.680);
 
                     vec3 lower = mix(COL_DEEP, COL_VIOLET, smoothstep(-0.6, 0.1, elev));
                     vec3 upper = mix(COL_VIOLET, COL_TEAL, smoothstep(0.0, 0.7, elev));
@@ -261,10 +267,10 @@ export default class ThreeJSIntroRenderer {
                     float neb = base * 0.8 + detail * 0.2;
 
                     float frontFade = smoothstep(-1.0, -0.2, dir.z) * 0.7 + 0.3;
-                    float mask = smoothstep(0.54, 0.88, neb) * frontFade;
+                    float mask = smoothstep(uCloudCalibration.x, uCloudCalibration.y, neb) * frontFade;
                     float hue = sin(dir.x * 2.3 + dir.z * 1.7 + uTime * 0.05) * 0.5 + 0.5;
-                    vec3 hi = mix(HI_CYAN, HI_MAGENTA, hue);
-                    vec3 col = mix(grad, hi, mask * 0.42);
+                    vec3 hi = mix(uHiCyan, uHiMagenta, hue);
+                    vec3 col = mix(grad, hi, mask * uCloudCalibration.z) + vec3(uPulse * 0.06);
 
                     vec2 starUv = (dir.xy + dir.zz * 0.5) * 90.0;
                     float sn = vnoise2(starUv);
@@ -387,10 +393,12 @@ export default class ThreeJSIntroRenderer {
             uniforms: {
                 uTime: { value: 0 },
                 uPulse: { value: 1.0 },
+                uParticleMul: { value: 1.0 },
             },
             vertexShader: `
                 uniform float uTime;
                 uniform float uPulse;
+                uniform float uParticleMul;
                 attribute float aRandom;
                 attribute float size;
                 attribute vec3 color;
@@ -405,11 +413,13 @@ export default class ThreeJSIntroRenderer {
                     float pulse = 1.0 + sin(uTime * 2.0 + aRandom * 10.0) * 0.2;
                     
                     // Size attenuation
-                    gl_PointSize = size * pulse * (300.0 / -mvPosition.z);
+                    gl_PointSize = size * pulse * (300.0 / -mvPosition.z)
+                        * (1.0 + max(0.0, uPulse - 1.0) * 0.18) * uParticleMul;
                 }
             `,
             fragmentShader: `
                 varying vec3 vColor;
+                uniform float uPulse, uParticleMul;
 
                 void main() {
                     // Soft circular glow
@@ -424,7 +434,8 @@ export default class ThreeJSIntroRenderer {
                     
                     vec3 finalColor = vColor + core * 0.5; // Add white core mix
                     
-                    gl_FragColor = vec4(finalColor, alpha * 0.8);
+                    gl_FragColor = vec4(finalColor * (1.0 + max(0.0, uPulse - 1.0) * 0.25),
+                        alpha * 0.8 * uParticleMul);
                 }
             `,
             transparent: true,
@@ -841,6 +852,7 @@ export default class ThreeJSIntroRenderer {
     }
 
     spawnTetromino() {
+        if (this.portableProfile && !this.portableProfile.canSpawn()) return;
         // Always spawn outside the view
         const shapeKeys = Object.keys(this.SHAPES);
         const type = shapeKeys[Math.floor(Math.random() * shapeKeys.length)];
@@ -876,6 +888,7 @@ export default class ThreeJSIntroRenderer {
             ),
             radius: 4 * scale,
             type,
+            bornAt: this.portableProfile?.time ?? 0,
         };
 
         // Determine Spawn Position (outside the frame at its most extreme pan).
@@ -1048,7 +1061,8 @@ export default class ThreeJSIntroRenderer {
     update(time) {
         if (!this.scene || !this.camera) return;
 
-        const delta = this.clock.getDelta();
+        const rawDelta = this.clock.getDelta();
+        const delta = this.portableProfile ? this.portableProfile.prepareFrame(rawDelta) : rawDelta;
 
         // 1. Camera Drift — idle Lissajous sway, then pointer parallax on top.
         // apply() adds the cursor-driven offset and performs the final lookAt,
@@ -1058,6 +1072,7 @@ export default class ThreeJSIntroRenderer {
         this.camera.position.y = Math.cos(t * 0.3) * CAMERA_IDLE_AMP_Y;
         this.camera.position.z = 40;
         this.cameraParallax.apply(this.camera, delta);
+        this.portableProfile?.applyCamera(this.camera);
 
         // Nebula sky drift
         if (this.nebulaSkyUniforms) {
@@ -1083,9 +1098,14 @@ export default class ThreeJSIntroRenderer {
         this.updateTetrominos(delta);
 
         // 5. Spawn new tetrominos
-        if (time - this.lastSpawnTime > 1.5 && this.activeTetrominos.length < 25) {
+        const spawnTime = this.portableProfile?.time ?? time;
+        const spawnInterval = this.portableProfile
+            ? this.portableProfile.quality.spawnInterval
+                / Math.max(0.1, this.portableProfile.phaseState.spawnMul) : 1.5;
+        const canAttemptSpawn = this.portableProfile || this.activeTetrominos.length < 25;
+        if (spawnTime - this.lastSpawnTime > spawnInterval && canAttemptSpawn) {
             this.spawnTetromino();
-            this.lastSpawnTime = time;
+            this.lastSpawnTime = spawnTime;
         }
 
         // 6. Update visual effects
@@ -1127,17 +1147,24 @@ export default class ThreeJSIntroRenderer {
         // Settings
         const MAX_SPEED = INTRO_TETROMINO_MAX_SPEED;
         const RESTITUTION = 0.8; // Bounciness (1 = perfectly elastic, < 1 = loses energy)
+        const frameScale = this.portableProfile ? delta * 60 : 1;
 
         for (let i = this.activeTetrominos.length - 1; i >= 0; i--) {
             const t1 = this.activeTetrominos[i];
 
             // 1. Move
-            t1.position.add(t1.userData.velocity);
+            t1.position.addScaledVector(t1.userData.velocity, frameScale);
+            if (this.portableProfile?.reaction.scatter) {
+                const scatter = (this.portableProfile.reaction.scatter * delta * 2.2)
+                    / Math.max(0.05, t1.position.length());
+                t1.position.multiplyScalar(1 + scatter);
+            }
 
             // 2. Rotate
-            t1.rotation.x += t1.userData.rotationSpeed.x;
-            t1.rotation.y += t1.userData.rotationSpeed.y;
-            t1.rotation.z += t1.userData.rotationSpeed.z;
+            t1.rotation.x += t1.userData.rotationSpeed.x * frameScale;
+            t1.rotation.y += t1.userData.rotationSpeed.y * frameScale;
+            t1.rotation.z += t1.userData.rotationSpeed.z * frameScale
+                + (this.portableProfile?.reaction.spin ?? 0) * delta * 0.75;
 
             // 3. No damping - let tetrominos drift at constant speed off-screen
 
@@ -1145,7 +1172,9 @@ export default class ThreeJSIntroRenderer {
             // We'll keep the remove logic for simplicity as they drift in from outside.
             // Bounds must exceed the (camera-envelope-expanded) spawn distance so
             // far-out spawns aren't culled before they drift into view.
-            if (Math.abs(t1.position.x) > 130 || Math.abs(t1.position.y) > 90 || Math.abs(t1.position.z) > 80) {
+            const outOfBounds = Math.abs(t1.position.x) > 130
+                || Math.abs(t1.position.y) > 90 || Math.abs(t1.position.z) > 80;
+            if (outOfBounds && (!this.portableProfile || this.portableProfile.canRetire(t1))) {
                 this.scene.remove(t1);
                 this.activeTetrominos.splice(i, 1);
                 continue;
@@ -1356,6 +1385,7 @@ export default class ThreeJSIntroRenderer {
 
     onResize() {
         if (!this.camera || !this.renderer) return;
+        if (this.portableProfile) this.portableProfile.setPerformanceBudget(this.performanceLevel);
 
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
@@ -1378,8 +1408,56 @@ export default class ThreeJSIntroRenderer {
      */
     setBackgroundMode(enabled) {
         this.isBackgroundMode = !!enabled;
+        if (this.portableProfile) {
+            if (enabled) this.portableProfile.setPhase(INTRO_PHASES.MENU_BG);
+            else if (this.portableProfile.phase === INTRO_PHASES.MENU_BG) {
+                this.portableProfile.setPhase(INTRO_PHASES.IDLE);
+            }
+            this.portableProfile.setPerformanceBudget(this.performanceLevel);
+        }
         if (this.nebulaSkyUniforms) {
-            this.nebulaSkyUniforms.uIntensity.value = enabled ? 0.5 : 1.0;
+            if (!this.portableProfile) this.nebulaSkyUniforms.uIntensity.value = enabled ? 0.5 : 1.0;
+        }
+    }
+
+    ensurePortableProfile() {
+        if (!this.portableProfile) {
+            this.portableProfile = new IntroClassicProfile(this);
+            const mem = navigator.deviceMemory || 8;
+            const threads = navigator.hardwareConcurrency || 8;
+            if (mem <= 2 || threads <= 2) this.portableProfile.setPerformanceBudget('LOW');
+            else if (mem <= 4 || threads <= 4) this.portableProfile.setPerformanceBudget('MEDIUM');
+        }
+        return this.portableProfile;
+    }
+
+    setPerformanceBudget(level) { this.ensurePortableProfile().setPerformanceBudget(level); }
+
+    setPhase(phase, immediate = false, options = null) {
+        this.ensurePortableProfile().setPhase(phase, immediate, options);
+    }
+
+    setReactionState(state) { this.ensurePortableProfile().setReactionState(state); }
+
+    setAudioPulse(pulse) {
+        this.ensurePortableProfile().audioPulse = THREE.MathUtils.clamp(pulse, 0, 1);
+    }
+
+    setTetrominoRecyclingPolicy(policy) {
+        return this.ensurePortableProfile().setTetrominoRecyclingPolicy(policy);
+    }
+
+    setTitleEffectsEnabled(enabled) { this.titleEffectsEnabled = !!enabled; }
+
+    setTetrominoTitleAvoidanceEnabled(enabled) { this.titleAvoidanceEnabled = !!enabled; }
+
+    pulseReactionAt(x, y, strength = 1) { this.ensurePortableProfile().pulseReactionAt(x, y, strength); }
+
+    pulseReactionSpread(x, y, count = 3, strength = 1.2) {
+        const lanes = Math.max(1, Math.min(5, Math.round(count)));
+        for (let i = 0; i < lanes; i += 1) {
+            const spread = lanes === 1 ? 0 : (i / (lanes - 1) - 0.5);
+            this.pulseReactionAt(x + spread * 0.42, y + (i % 2 === 0 ? -0.06 : 0.06), strength);
         }
     }
 
@@ -1419,6 +1497,7 @@ export default class ThreeJSIntroRenderer {
     }
 
     destroy() {
+        this.portableProfile?.dispose();
         window.removeEventListener('resize', this.boundResizeHandler);
         this.cameraParallax?.detach();
 

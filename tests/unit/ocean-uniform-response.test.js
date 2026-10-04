@@ -107,7 +107,8 @@ describe('Ocean material response to current and glow', () => {
         const { theme } = startFrameHarness();
         theme.scene = new THREE.Scene();
         theme.camera = new THREE.PerspectiveCamera();
-        theme.isWebGPU = true;
+        theme.isWebGPU = false;
+        theme.renderer.isWebGPURenderer = true;
         theme.flags.legacyModels = true;
         theme.activePreset = {
             ...theme.activePreset, planktonCount: 12, bubbleCount: 8, jellyfishCount: 1,

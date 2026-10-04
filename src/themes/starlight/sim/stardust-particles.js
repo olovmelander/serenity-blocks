@@ -12,8 +12,8 @@
  *   - focal gravity / board-repulsion → a gentle bounds-centering + slow breeze.
  *   - particles spawn + respawn in a WIDE SLAB (the sky canopy), not an ellipsoid.
  *
- * Capability-gated: the orchestrator only builds this when WebGPU compute is
- * available; on the WebGL2 fallback the starfield + sky carry the theme.
+ * Native WebGPU advances storage buffers with compute. WebGL2 advances the same
+ * particle arrays on the CPU and renders them through instanced attributes.
  *
  * Storage layout (3 × vec4 × count):
  *   positions:  xyz + age (0..1)
@@ -265,6 +265,84 @@ export class StardustSim {
         this.uDelta.value = Math.min(delta, 0.033);
         this.uTime.value = time;
         this.decayImpulses(delta);
+    }
+
+    /**
+     * WebGL2 keeps the same motes and event/lifetime model using CPU attributes.
+     * A bounded analytic curl replaces the six MaterialX vector-noise samples:
+     * each flow component depends on the other axes, so divergence stays zero.
+     */
+    updateCPU(delta, time) {
+        this.update(delta, time);
+        const dt = Math.max(0, this.uDelta.value);
+        const flow = this.uFlowStrength.value;
+        const breeze = this.uBreeze.value;
+        const bounds = this.uBounds.value;
+        const center = this.uCenterPull.value * dt * 4;
+        const damping = this.uDamping.value ** (dt * 60);
+        const maxSpeed = this.uMaxSpeed.value;
+        const energyLerp = 1 - Math.exp(-6.3 * dt);
+        const fractCPU = (value) => value - Math.floor(value);
+        const phase = time * 0.05;
+        const secondPhase = time * -0.035;
+        for (let i = 0; i < this.count; i += 1) {
+            const j = i * 4;
+            let x = this.positionData[j];
+            let y = this.positionData[j + 1];
+            let z = this.positionData[j + 2];
+            let vx = this.velocityData[j];
+            let vy = this.velocityData[j + 1];
+            let vz = this.velocityData[j + 2];
+            vx += (-0.18 * Math.cos(z * 0.18 + phase) - 0.0945 * Math.sin(y * 0.27 + secondPhase)) * flow * dt;
+            vy += (-0.18 * Math.cos(x * 0.18 + phase) - 0.0945 * Math.sin(z * 0.27 + secondPhase)) * flow * dt;
+            vz += (-0.18 * Math.cos(y * 0.18 + phase) - 0.0945 * Math.sin(x * 0.27 + secondPhase)) * flow * dt;
+            vx += breeze.x * dt - Math.max(Math.abs(x) - bounds.x, 0) * Math.sign(x) * center;
+            vy += breeze.y * dt - Math.max(Math.abs(y) - bounds.y, 0) * Math.sign(y) * center;
+            vz += breeze.z * dt - Math.max(Math.abs(z) - bounds.z, 0) * Math.sign(z) * center;
+            for (let k = 0; k < MAX_IMPULSES; k += 1) {
+                const impulse = this._impulsePositions[k].value;
+                if (impulse.w <= 0.01) continue;
+                const parameter = this._impulseParams[k].value;
+                const dx = x - impulse.x;
+                const dy = y - impulse.y;
+                const dz = z - impulse.z;
+                const distance = Math.hypot(dx, dy, dz);
+                const scale = (impulse.w * Math.max(1 - distance * 0.16, 0) ** 2 * dt)
+                    / Math.max(distance, 0.05);
+                if (parameter.w < 0.5) {
+                    vx += dx * scale; vy += dy * scale; vz += dz * scale;
+                } else if (parameter.w < 1.5) {
+                    vx += (parameter.y * dz - parameter.z * dy) * scale;
+                    vy += (parameter.z * dx - parameter.x * dz) * scale;
+                    vz += (parameter.x * dy - parameter.y * dx) * scale;
+                } else {
+                    vx -= dx * scale; vy -= dy * scale; vz -= dz * scale;
+                }
+            }
+            vx *= damping; vy *= damping; vz *= damping;
+            const speed = Math.hypot(vx, vy, vz);
+            if (speed > maxSpeed) {
+                const scale = maxSpeed / speed;
+                vx *= scale; vy *= scale; vz *= scale;
+            }
+            x += vx * dt; y += vy * dt; z += vz * dt;
+            let age = this.positionData[j + 3] + dt / this.velocityData[j + 3];
+            if (age > 1) {
+                const r1 = fractCPU(Math.sin(i * 12.9898 + time * 0.37) * 43758.5453);
+                const r2 = fractCPU(Math.sin(i * 78.233 + time * 0.53) * 43758.5453);
+                const r3 = fractCPU(Math.sin(i * 39.425 + time * 0.71) * 43758.5453);
+                x = (r1 - 0.5) * 2 * bounds.x;
+                y = (r2 - 0.5) * 2 * bounds.y;
+                z = (r3 - 0.5) * 2 * bounds.z;
+                vx = (r1 - 0.5) * 0.3; vy = (r2 - 0.5) * 0.3; vz = (r3 - 0.5) * 0.2;
+                age = 0;
+            }
+            this.positionData[j] = x; this.positionData[j + 1] = y; this.positionData[j + 2] = z;
+            this.positionData[j + 3] = age;
+            this.velocityData[j] = vx; this.velocityData[j + 1] = vy; this.velocityData[j + 2] = vz;
+            const targetEnergy = (speed / maxSpeed) * 0.6 + 0.4;
+            this.colorData[j + 3] += (targetEnergy - this.colorData[j + 3]) * energyLerp;
+        }
     }
 
     getPositionBuffer() { return this.positionBuffer; }

@@ -32,12 +32,20 @@ export const hash3 = Fn(([pInput]) => {
     p.assign(fract(p.mul(vec3(0.1031, 0.1030, 0.0973))));
     p.addAssign(dot(p, p.yzx.add(33.33)));
     return fract(p.x.add(p.y).mul(p.z));
+}).setLayout({
+    name: 'starlightHash3',
+    type: 'float',
+    inputs: [{ name: 'pInput', type: 'vec3' }],
 });
 
 // 2D hash for screen-space noise.
 export const hash2 = Fn(([pInput]) => {
     const p = vec2(pInput).toVar();
     return fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
+}).setLayout({
+    name: 'starlightHash2',
+    type: 'float',
+    inputs: [{ name: 'pInput', type: 'vec2' }],
 });
 
 // Standard 3D value noise (linear interpolation between hashed lattice corners).
@@ -64,6 +72,10 @@ export const valueNoise3 = Fn(([pInput]) => {
     const y1 = mix(x1, x2, u.y);
     const y2 = mix(x3, x4, u.y);
     return mix(y1, y2, u.z);
+}).setLayout({
+    name: 'starlightValueNoise3',
+    type: 'float',
+    inputs: [{ name: 'pInput', type: 'vec3' }],
 });
 
 // 4-octave FBM. Tuned for nebula-scale features (slow drift, soft edges).
@@ -76,6 +88,10 @@ export const fbm3 = Fn(([pInput]) => {
     v.addAssign(a.mul(valueNoise3(p))); p.mulAssign(2.0); a.mulAssign(0.5);
     v.addAssign(a.mul(valueNoise3(p)));
     return v;
+}).setLayout({
+    name: 'starlightFbm3',
+    type: 'float',
+    inputs: [{ name: 'pInput', type: 'vec3' }],
 });
 
 // Domain-warped FBM — feeds FBM output back into its own input.
@@ -88,6 +104,10 @@ export const warpedFbm3 = Fn(([pInput, warpStrength]) => {
         fbm3(p.add(vec3(0.0, 7.7, 3.1))),
     );
     return fbm3(p.add(warp.mul(warpStrength)));
+}).setLayout({
+    name: 'starlightWarpedFbm3',
+    type: 'float',
+    inputs: [{ name: 'pInput', type: 'vec3' }, { name: 'warpStrength', type: 'float' }],
 });
 
 // 2D variant of value noise — used for star-field and screen-space dither.
@@ -101,6 +121,10 @@ export const valueNoise2 = Fn(([pInput]) => {
     const c = hash2(i.add(vec2(0.0, 1.0)));
     const d = hash2(i.add(vec2(1.0, 1.0)));
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}).setLayout({
+    name: 'starlightValueNoise2',
+    type: 'float',
+    inputs: [{ name: 'pInput', type: 'vec2' }],
 });
 
 // Cheap rotation in XY plane — used for camera-relative billboards & swirls.
@@ -108,6 +132,10 @@ export const rotate2 = Fn(([v, angle]) => {
     const c = cos(angle);
     const s = sin(angle);
     return vec2(c.mul(v.x).sub(s.mul(v.y)), s.mul(v.x).add(c.mul(v.y)));
+}).setLayout({
+    name: 'starlightRotate2',
+    type: 'vec2',
+    inputs: [{ name: 'v', type: 'vec2' }, { name: 'angle', type: 'float' }],
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -137,6 +165,10 @@ export const curlNoise3 = Fn(([p, t]) => {
         dz.x.sub(dx.z),
         dx.y.sub(dy.x),
     ).div(eps.mul(2.0));
+}).setLayout({
+    name: 'starlightCurlNoise3',
+    type: 'vec3',
+    inputs: [{ name: 'p', type: 'vec3' }, { name: 't', type: 'float' }],
 });
 
 /**
@@ -148,6 +180,10 @@ export const starlightRamp = Fn(([tInput]) => {
     const cool = vec3(0.75, 0.85, 1.0);
     const warm = vec3(1.0, 0.91, 0.76);
     return mix(cool, warm, t);
+}).setLayout({
+    name: 'starlightStarlightRamp',
+    type: 'vec3',
+    inputs: [{ name: 'tInput', type: 'float' }],
 });
 
 /**
@@ -167,4 +203,8 @@ export const blackbodyColor = Fn(([tInput]) => {
     const seg3 = mix(cWhite, cBlue, t.sub(0.7).div(0.3).clamp(0.0, 1.0));
     const lower = mix(seg1, seg2, step(0.4, t));
     return mix(lower, seg3, step(0.7, t));
+}).setLayout({
+    name: 'starlightBlackbodyColor',
+    type: 'vec3',
+    inputs: [{ name: 'tInput', type: 'float' }],
 });

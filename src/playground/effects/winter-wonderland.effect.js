@@ -312,7 +312,7 @@ const SNOW_TIERS = [
 ];
 
 // ── Vertex-animated full-screen falling snow (no compute; wraps in a world box) ──
-function buildSnow(count, box) {
+export function createWinterAnalyticSnow(count, box) {
     const positions = new Float32Array(count * 3);
     const seeds = new Float32Array(count);
     const sizes = new Float32Array(count);
@@ -329,6 +329,9 @@ function buildSnow(count, box) {
     geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
 
     const uTime = uniform(0);
+    const uFallDistance = uniform(0);
+    const uWindOffset = uniform(new THREE.Vector2());
+    const uSwirl = uniform(1);
     const aSeed = attribute('aSeed');
     const aSize = attribute('aSize');
     const material = new THREE.PointsNodeMaterial();
@@ -339,10 +342,15 @@ function buildSnow(count, box) {
     const fallSpeed = float(70).add(aSeed.mul(70));
     const bottom = float(box.cy - box.h * 0.5);
     const y0 = positionLocal.y.sub(bottom);
-    const yWrapped = mod(y0.sub(uTime.mul(fallSpeed)), float(box.h)).add(bottom);
-    const swayX = sin(uTime.mul(0.5).add(aSeed.mul(tau))).mul(float(30).add(aSeed.mul(40)));
-    const swayZ = cos(uTime.mul(0.4).add(aSeed.mul(tau))).mul(22);
-    material.positionNode = vec3(positionLocal.x.add(swayX), yWrapped, positionLocal.z.add(swayZ));
+    const yWrapped = mod(y0.sub(uFallDistance.mul(fallSpeed)), float(box.h)).add(bottom);
+    const swayX = sin(uTime.mul(0.5).add(aSeed.mul(tau)))
+        .mul(float(30).add(aSeed.mul(40))).mul(uSwirl);
+    const swayZ = cos(uTime.mul(0.4).add(aSeed.mul(tau))).mul(22).mul(uSwirl);
+    const left = float(box.cx - box.w * 0.5);
+    const back = float(box.cz - box.d * 0.5);
+    const xWrapped = mod(positionLocal.x.sub(left).add(uWindOffset.x), float(box.w)).add(left);
+    const zWrapped = mod(positionLocal.z.sub(back).add(uWindOffset.y), float(box.d)).add(back);
+    material.positionNode = vec3(xWrapped.add(swayX), yWrapped, zWrapped.add(swayZ));
     material.sizeNode = aSize.mul(float(820).div(positionView.z.negate()));
     material.colorNode = vec3(0.74, 0.82, 0.96);
     material.opacityNode = clamp(aSize.mul(0.28).add(0.18), 0.0, 0.7);
@@ -350,7 +358,32 @@ function buildSnow(count, box) {
     const points = new THREE.Points(geometry, material);
     points.frustumCulled = false;
     return {
-        points, geometry, material, uTime,
+        points,
+        geometry,
+        material,
+        uniforms: {
+            uTime, uFallDistance, uWindOffset, uSwirl,
+        },
+        update(time, delta, state = {}) {
+            const dt = THREE.MathUtils.clamp(delta, 0, 0.05);
+            const intensity = THREE.MathUtils.clamp(state.intensity ?? 0, 0, 1);
+            const gust = state.gust ?? 0;
+            const blast = 1 + 1.8 * gust;
+            const direction = state.gustDir ?? 1;
+            // Match the conductor's native wind/fall multipliers without storage
+            // compute. Integrate offsets so an event changes velocity, not position.
+            uTime.value = time;
+            uFallDistance.value += dt * (1 - 0.30 * intensity);
+            uWindOffset.value.x += dt * (14 * (0.6 + 2.4 * intensity) + 44 * intensity) * direction * blast;
+            uWindOffset.value.y += dt * (6 * (0.6 + intensity) + 12 * intensity);
+            uWindOffset.value.x %= box.w;
+            uWindOffset.value.y %= box.d;
+            uSwirl.value = 1 + 1.8 * intensity + 0.7 * gust + 1.5 * (state.vortex ?? 0);
+        },
+        dispose() {
+            geometry.dispose();
+            material.dispose();
+        },
     };
 }
 
@@ -998,7 +1031,10 @@ export function create({
     // GPU deformation sim (snowflow deformSim port: diffusion + berm slump +
     // wind infill on fp16 ping-pong) with the CPU original as an instant
     // fallback: WebGPU-compute unavailable, or ?trailCpu=1 to A/B the two.
-    const useGpuTrail = !!(renderer && typeof renderer.compute === 'function')
+    // Texture writes need native WebGPU. The WebGL2 backend exposes compute()
+    // for transform feedback, but cannot execute this StorageTexture graph.
+    const useGpuTrail = renderer?.backend?.isWebGPUBackend === true
+        && typeof renderer.compute === 'function'
         && params?.get?.('trailCpu') !== '1';
     const trailOpts = {
         origin: [-1200, -1880],
@@ -1117,7 +1153,11 @@ export function create({
     const snowTiers = [];
     let snowFallback = null;
     let snowComputeErr = false;
-    const snowComputeOk = renderer && typeof renderer.compute === 'function';
+    // The storage-backed billboard tiers exceed the WebGL2 buffer-texture
+    // compatibility lane on phones. Keep the authored vertex-animated snow
+    // there, alongside the same landscape, aurora, foxes and storm response.
+    const snowComputeOk = renderer?.backend?.isWebGPUBackend === true
+        && typeof renderer.compute === 'function';
     if (snowComputeOk) {
         SNOW_TIERS.forEach((st) => {
             const count = Math.max(64, Math.round(st.sim.count * tier.snow));
@@ -1128,7 +1168,7 @@ export function create({
             snowTiers.push({ sim, rend });
         });
     } else {
-        snowFallback = buildSnow(4200, {
+        snowFallback = createWinterAnalyticSnow(4200, {
             w: 4600, h: 2800, d: 3800, cx: 0, cy: 560, cz: -1000,
         });
         scene.add(snowFallback.points);
@@ -1346,7 +1386,12 @@ export function create({
                 const nb = snowTiers[snowTiers.length - 1].sim.uBreeze.value;
                 window.__winterStormDbg = { S: +stormS.toFixed(2), nearBreezeX: +nb.x.toFixed(1) };
             }
-            if (snowFallback) snowFallback.uTime.value = time;
+            snowFallback?.update(time, dt, {
+                intensity: stormS,
+                gust: gustT,
+                gustDir,
+                vortex: stormReact?.vortex ?? 0,
+            });
             arcticFox.update(dt);
             pawTrail.update(dt);
             snowPuffs.update(dt);

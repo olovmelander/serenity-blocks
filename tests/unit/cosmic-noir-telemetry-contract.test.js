@@ -50,9 +50,8 @@ describe('Cosmic Noir opt-in telemetry contract', () => {
             'const webgpuAntialias = this.getWebGpuAntialiasEnabled();',
         );
         expect(initRendererSource).toMatch(/WebGPURenderer\(\{[\s\S]*?antialias:\s*webgpuAntialias/);
-        expect(initRendererSource).toMatch(
-            /WebGLRenderer\(\{[\s\S]*?antialias:\s*this\.getAntialiasEnabled\(\)/,
-        );
+        expect(initRendererSource).not.toContain('new THREE.WebGLRenderer');
+        expect(initRendererSource).toContain('forceWebGL: webglOnly');
     });
 
     it('parses perf and preserve-buffer flags independently of baseline capture', () => {
@@ -101,12 +100,7 @@ describe('Cosmic Noir opt-in telemetry contract', () => {
         const webgpuOptionsSource = sourceBetween(
             initRendererSource,
             'new THREE_WEBGPU.WebGPURenderer({',
-            'await this.initializeRendererCandidate(webgpuRenderer',
-        );
-        const webglOptionsSource = sourceBetween(
-            initRendererSource,
-            'renderer = new THREE.WebGLRenderer({',
-            '            this.isWebGPU = false;',
+            'let renderer = createRenderer(forceWebGL)',
         );
 
         expect(constructorSource).toMatch(
@@ -115,9 +109,8 @@ describe('Cosmic Noir opt-in telemetry contract', () => {
         expect(initRendererSource).toMatch(
             /const trackTimestamp\s*=\s*this\.performanceInstrumentationEnabled\s*===\s*true/,
         );
-        expect(webgpuOptionsSource).toMatch(/\btrackTimestamp\s*,/);
+        expect(webgpuOptionsSource).toMatch(/trackTimestamp:\s*trackTimestamp\s*&&\s*!webglOnly/);
         expect(webgpuOptionsSource).not.toMatch(/trackTimestamp:\s*true/);
-        expect(webglOptionsSource).not.toContain('trackTimestamp');
 
         expect(initRendererSource).toMatch(
             /const preserveDrawingBuffer\s*=\s*this\.flags\.preserveDrawingBuffer\s*===\s*true/,

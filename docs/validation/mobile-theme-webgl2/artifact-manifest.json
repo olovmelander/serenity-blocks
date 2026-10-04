@@ -1,0 +1,238 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-04",
+  "summary": {
+    "registryCount": 62,
+    "lowSmokePasses": 62,
+    "lowFailures": [],
+    "highThemeCount": 19,
+    "highSmokePasses": 19,
+    "recoveryCount": 7,
+    "recoveryPasses": 7,
+    "introSmokeCount": 3
+  },
+  "qualityScopes": {
+    "contactSheets": "All62 registry themes at Low; BlackHole, Solar and custom context surfaces use latest production reruns.",
+    "highMatrix": "19 selected production themes, ambient plus normal gameplay reactions and landscape rotation.",
+    "restoreMatrix": "7 production themes using real WEBGL_lose_context loss and restoration.",
+    "intro": "ForcedWebGL2 and failed native adapter handoff plus actual reduced-motion menu boot."
+  },
+  "files": [
+    {
+      "name": "astral-weave-restored.png",
+      "bytes": 128986,
+      "sha256": "04c348734c56d65e900a17b4a18fc81bd99fa3a6086e8c90ee366d641d8b9128",
+      "scope": "production-real-context-loss-and-restore"
+    },
+    {
+      "name": "black-hole-high-fx.png",
+      "bytes": 151946,
+      "sha256": "993ecbab000f8c18935d18f3a2974a02d1268b3dfbe7e1f55b68e97d9de722f1",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "black-hole-high-landscape.png",
+      "bytes": 71093,
+      "sha256": "395564365c0fa9956113c6ae9c5a2f5edf6fea1d6b84f806c28a45efe3eb14cc",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "black-hole-low-phone.png",
+      "bytes": 110593,
+      "sha256": "5e176fac6baa64f734bdf66b7d637af666ed82f37b7fd51a4c6ef7e5d56aaeae",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "black-hole-orbit-40s.png",
+      "bytes": 105552,
+      "sha256": "2e39bbc7b9cac32d0e07051dc6fbdaab529ff42df4f9471c8b74949b630e2c5a",
+      "scope": "isolated-production-scene-with-CPU-orbit-advanced-to40seconds"
+    },
+    {
+      "name": "chiral-gold-high-landscape.png",
+      "bytes": 329347,
+      "sha256": "7c6ad8ef610b86a795956e9b67e072f7b7b65c3d904a55b26ae7ee951ad16b1e",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "chiral-gold-high-phone.png",
+      "bytes": 341857,
+      "sha256": "de9bc0047da51550fe3890f195abaa14927d3848f3b756625f353ad8d04e6277",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "chiral-gold-restored.png",
+      "bytes": 12829,
+      "sha256": "326e398c35980991e3b87f3a48fd4a38deac064a746deb73d7edb00c1d925ebc",
+      "scope": "production-real-context-loss-and-restore"
+    },
+    {
+      "name": "contact-sheet-1.png",
+      "bytes": 1607926,
+      "sha256": "81f2540a6c96c6d9779c1b4ceed11667e46297e7718eede922cf9d4c13ec39a4",
+      "scope": "all62-production-Low-contact-sheet"
+    },
+    {
+      "name": "contact-sheet-2.png",
+      "bytes": 1735945,
+      "sha256": "79038a38e8d1622cc1d39c5dc8ae413f92a299099c4172b19e464371beb7f66e",
+      "scope": "all62-production-Low-contact-sheet"
+    },
+    {
+      "name": "contact-sheet-3.png",
+      "bytes": 974708,
+      "sha256": "19c6d26eea7f5973ac1deb8789220676b4130c87f8c617dfb9e9f2499e1002a5",
+      "scope": "all62-production-Low-contact-sheet"
+    },
+    {
+      "name": "electric-dreams-high-fx.png",
+      "bytes": 348691,
+      "sha256": "4e8c90d4a54a19fa258c46673f92c2dc94a242e2bbfce145630c47209eca0596",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "electric-dreams-high-landscape.png",
+      "bytes": 446901,
+      "sha256": "5ba4c566a7860ddcb2eece22d45a425115b4901b3ad80413fd499f534b3d030d",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "fluid-dreams-high-phone.png",
+      "bytes": 269218,
+      "sha256": "3803e69e3ea3233f3b3e418d810c0f7bbc5ac46e9e9559f318d96b76a97e6d21",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "golden-forest-high-phone.png",
+      "bytes": 200289,
+      "sha256": "3b33cfafaa1428913b0c1f01e41c2a651ca7225d6b2afb3f7eb60fa4ff783e8b",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "ice-temple-high-landscape.png",
+      "bytes": 236294,
+      "sha256": "e74b549d0badd322b6e874cc52cf3be23830893a1e705d090becb88c39664eb1",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "intro-phone-adapter-failure.png",
+      "bytes": 292728,
+      "sha256": "8ff3f602624a77b4ee9fcb17b73f2ce6789d16bd1384787ce2ac21ade08255af",
+      "scope": "isolated-production-intro-controller"
+    },
+    {
+      "name": "intro-phone-reduced-motion.png",
+      "bytes": 317767,
+      "sha256": "a6bc2a79022ee48a46a8f30044eafe88d1f4cde52cac0f1792ac5f8bfa35a99e",
+      "scope": "full-application-reduced-motion-menu"
+    },
+    {
+      "name": "intro-phone-webgl.png",
+      "bytes": 295593,
+      "sha256": "fdd31e8b954229b8caf3296e7fd20a8ab471e285d53456c79ccd152190b20070",
+      "scope": "isolated-production-intro-controller"
+    },
+    {
+      "name": "low-wolfhour.png",
+      "bytes": 182818,
+      "sha256": "8451fc9cb0ae90fcccd2538c3dd14180f2f2fc5a1a0a333767a8fe5560bff516",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "ocean-restored.png",
+      "bytes": 116831,
+      "sha256": "22e15007b25af567abafddc8529f4dfd5bb0ad087d60c2c6da4c83c4c4661047",
+      "scope": "production-real-context-loss-and-restore"
+    },
+    {
+      "name": "runtime-audit.json",
+      "bytes": 150488,
+      "sha256": "1ed899b0307c6adbd97241f5b18180445665971cae83a2448ac0adc054fc3a65",
+      "scope": "normalized-audit-data"
+    },
+    {
+      "name": "serenity-warp-high-fx.png",
+      "bytes": 294941,
+      "sha256": "484bfbfdb9e8b182204f2dc4c9ebb1448588d8c8674c7dfca3df26bd5f89dc1a",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "serenity-warp-high-landscape.png",
+      "bytes": 303400,
+      "sha256": "5ac7fd8d6d200631815cd0c5758b2faf6662376ebd8012c8bfda21cdd1fb4b36",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "serenity-warp-low-phone.png",
+      "bytes": 260536,
+      "sha256": "24045b5d797bd9fbf4dec5267b89f5a850cfb362d4639bd019dcfadfd78ff120",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "solar-eclipse-aligned.png",
+      "bytes": 142193,
+      "sha256": "c358116c415aae837676039d15029636c6f2df8ec56bd407c03e2c54a7612ff4",
+      "scope": "isolated-playground-aligned-eclipse-before-port"
+    },
+    {
+      "name": "solar-eclipse-high-fx.png",
+      "bytes": 209319,
+      "sha256": "96f817c25c5b9a9502a47ce3384924f3250c77e3d9f1b7347b513803a3eb6bcc",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "solar-eclipse-high-landscape.png",
+      "bytes": 248689,
+      "sha256": "5446e3f2c63f689f8f1384744f0f8dd9fed4e90b52ed74a6f053b41e472dcc19",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "solar-eclipse-low-phone.png",
+      "bytes": 149662,
+      "sha256": "2407c566fbe8bd9488f47d1f5be03a57ffde9d4328ef4c838b7fc7dcc2e27697",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "stellar-drift-restored.png",
+      "bytes": 284258,
+      "sha256": "301f2d8d5ea9bc45928318b4bc7c60f593f266985dc40169a4b31c65853b8986",
+      "scope": "production-real-context-loss-and-restore"
+    },
+    {
+      "name": "stellar-velocity-restored.png",
+      "bytes": 103251,
+      "sha256": "f6802def8273e3fca0434757b82f02bac426542fb6bfc3f90413034a9215a787",
+      "scope": "production-real-context-loss-and-restore"
+    },
+    {
+      "name": "void-ember-high-landscape.png",
+      "bytes": 277480,
+      "sha256": "8f0255e1783d25213ced7141ca636b7aa574aafd45894f21948465044298b002",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "void-ember-high-phone.png",
+      "bytes": 242518,
+      "sha256": "c13b1940cb3b1a613d01a00dda27eadb73797ec33d0b564ae2df042da7f68aee",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "void-ember-restored.png",
+      "bytes": 231682,
+      "sha256": "9aad29d7cb0ee0d6056eab299a8d962aa335bb5721f990f2bda2ef991ff74b05",
+      "scope": "production-real-context-loss-and-restore"
+    },
+    {
+      "name": "winter-high-fx.png",
+      "bytes": 242952,
+      "sha256": "8e59bfe0686bcc32740b9184c59a6f13e66961561804cb5d4c5945b51f59d169",
+      "scope": "selected-production-theme-render"
+    },
+    {
+      "name": "winter-restored.png",
+      "bytes": 185662,
+      "sha256": "64251498bd55b076953b40c292d7d6d3fffb9da0b51f7f4f394b1f6794d5de55",
+      "scope": "production-real-context-loss-and-restore"
+    }
+  ]
+}

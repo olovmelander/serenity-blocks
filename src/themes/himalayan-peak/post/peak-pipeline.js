@@ -148,11 +148,12 @@ export class PeakPostPipeline {
         this.renderer = renderer;
         this.scene = scene;
         this.camera = camera;
-        this.mrtEnabled = params.useMRT !== false;
+        this.mrtEnabled = params.useMRT !== false && renderer?.backend?.isWebGPUBackend === true;
         this.postProcessing = null;
+        this.scenePass = null;
 
-        if (renderer?.backend?.isWebGPUBackend !== true) {
-            console.warn('[HimalayanPeak] Post pipeline requires WebGPU; skipping');
+        if (renderer?.isWebGPURenderer !== true) {
+            console.warn('[HimalayanPeak] Post pipeline requires a node renderer; skipping');
             return;
         }
         this._setup(params);
@@ -161,6 +162,7 @@ export class PeakPostPipeline {
     _setup(params) {
         this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
+        this.scenePass = scenePass;
 
         let bloomSource;
         try {
@@ -323,7 +325,10 @@ export class PeakPostPipeline {
     }
 
     dispose() {
+        this.scenePass?.dispose();
         disposeBloomNodeDeep(this.bloomNode);
+        this.postProcessing?.dispose();
+        this.scenePass = null;
         this.postProcessing = null;
         this.bloomNode = null;
         this._bloomSource = null;

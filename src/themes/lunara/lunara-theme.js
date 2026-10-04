@@ -341,6 +341,7 @@ export default class LunaraTheme extends BaseTheme {
         this.clock = new THREE.Clock();
         this.time = 0;
         this.isWebGPU = false;
+        this.usesNodeMaterials = false;
         this.isWebGL = false;
         this.capabilities = {
             webgpu: false,
@@ -556,7 +557,8 @@ export default class LunaraTheme extends BaseTheme {
     async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const width = window.innerWidth;
         const height = window.innerHeight;
-        const force = shouldForceWebGL();
+        const force = shouldForceWebGL()
+            || typeof navigator === 'undefined' || !navigator.gpu;
         const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
             && this.isActive
             && !this.cleanupComplete;
@@ -574,14 +576,9 @@ export default class LunaraTheme extends BaseTheme {
                     label: 'Lunara WebGPU renderer init',
                     ownerGeneration,
                 });
-                if (renderer.backend?.isWebGPUBackend !== true) {
-                    renderer.dispose?.();
-                    renderer = null;
-                }
             } catch (error) {
                 if (!ownsLifecycle()) return false;
                 console.warn('[LunaraTheme] WebGPU init failed, using WebGL2 fallback:', error);
-                renderer?.dispose?.();
                 renderer = null;
             }
         }
@@ -589,10 +586,15 @@ export default class LunaraTheme extends BaseTheme {
         if (!renderer) {
             if (!ownsLifecycle()) return false;
             try {
-                renderer = new THREE.WebGLRenderer({
+                renderer = new WEBGPU.WebGPURenderer({
                     antialias: this.getAntialiasEnabled(),
                     alpha: false,
                     powerPreference: 'high-performance',
+                    forceWebGL: true,
+                });
+                await this.initializeRendererCandidate(renderer, {
+                    label: 'Lunara WebGL2 renderer init',
+                    ownerGeneration,
                 });
             } catch (error) {
                 console.error('[LunaraTheme] No renderer backend available:', error);
@@ -601,10 +603,11 @@ export default class LunaraTheme extends BaseTheme {
         }
 
         if (!ownsLifecycle()) {
-            this.disposeRenderer(renderer, { nullInstance: false });
+            await this.disposeRenderer(renderer, { nullInstance: false });
             return false;
         }
         this.renderer = renderer;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = !this.isWebGPU;
 
@@ -631,6 +634,10 @@ export default class LunaraTheme extends BaseTheme {
             + 'z-index:1;pointer-events:none;'
         );
         container.appendChild(renderer.domElement);
+        this.removeRendererResilience();
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+        });
 
         const backendLabel = this.isWebGPU ? 'WebGPU' : 'WebGL2';
         console.log(
@@ -664,8 +671,8 @@ export default class LunaraTheme extends BaseTheme {
         // active backend, and use the async path on WebGPU (pipelines compile
         // asynchronously, so the synchronous fromScene yields a blank cube).
         try {
-            const PMREMGeneratorClass = this.isWebGPU ? WEBGPU.PMREMGenerator : THREE.PMREMGenerator;
-            const makeBasic = (params) => (this.isWebGPU
+            const PMREMGeneratorClass = this.usesNodeMaterials ? WEBGPU.PMREMGenerator : THREE.PMREMGenerator;
+            const makeBasic = (params) => (this.usesNodeMaterials
                 ? Object.assign(new WEBGPU.MeshBasicNodeMaterial(), params)
                 : new THREE.MeshBasicMaterial(params));
 
@@ -729,7 +736,7 @@ export default class LunaraTheme extends BaseTheme {
 
     createSky() {
         const geometry = new THREE.SphereGeometry(2400, 48, 32);
-        const factory = this.isWebGPU ? createLunaraSkyMaterialWebGPU : createLunaraSkyMaterialWebGL;
+        const factory = this.usesNodeMaterials ? createLunaraSkyMaterialWebGPU : createLunaraSkyMaterialWebGL;
         const { material } = factory({
             zenith: new THREE.Color(0x030214),
             mid: new THREE.Color(0x1b0742),
@@ -818,7 +825,7 @@ export default class LunaraTheme extends BaseTheme {
         geometry.setAttribute('aSpike', new THREE.BufferAttribute(spikes, 1));
         addPointSpriteUv(geometry, count);
 
-        const factory = this.isWebGPU ? createLunaraStarMaterialWebGPU : createLunaraStarMaterialWebGL;
+        const factory = this.usesNodeMaterials ? createLunaraStarMaterialWebGPU : createLunaraStarMaterialWebGL;
         const { material } = factory();
         this.starMaterial = material;
         this.starPoints = new THREE.Points(geometry, material);
@@ -866,7 +873,7 @@ export default class LunaraTheme extends BaseTheme {
             },
         ];
         const count = level === 'Medium' || level === 'High' ? 1 : specs.length;
-        const factory = this.isWebGPU ? createLunaraAuroraMaterialWebGPU : createLunaraAuroraMaterialWebGL;
+        const factory = this.usesNodeMaterials ? createLunaraAuroraMaterialWebGPU : createLunaraAuroraMaterialWebGL;
 
         for (let i = 0; i < count; i++) {
             const spec = specs[i];
@@ -891,7 +898,7 @@ export default class LunaraTheme extends BaseTheme {
         const count = this.preset.nebulaCards ?? 0;
         if (count <= 0) return;
 
-        const factory = this.isWebGPU ? createLunaraFogMaterialWebGPU : createLunaraFogMaterialWebGL;
+        const factory = this.usesNodeMaterials ? createLunaraFogMaterialWebGPU : createLunaraFogMaterialWebGL;
         const rng = makeSeededRandom(62041);
         const colors = [
             new THREE.Color(0xc38cff),
@@ -948,7 +955,7 @@ export default class LunaraTheme extends BaseTheme {
 
         // Primary — deep purple moon (lunar surface texture, purple-tinted)
         const primaryRadius = 42 * MOON_DEPTH_MULTIPLIER;
-        const primaryFactory = this.isWebGPU ? createLunaraMoonMaterialWebGPU : createLunaraMoonMaterialWebGL;
+        const primaryFactory = this.usesNodeMaterials ? createLunaraMoonMaterialWebGPU : createLunaraMoonMaterialWebGL;
         const primary = primaryFactory({
             surfaceMap: moonSurfaceTex,
             color: new THREE.Color(0x341071), // deep purple highlands
@@ -986,7 +993,7 @@ export default class LunaraTheme extends BaseTheme {
         this.scene.add(companionMesh);
 
         // Atmospheric scattering shells — true 3D limb glow hugging each disc.
-        const atmoFactory = this.isWebGPU
+        const atmoFactory = this.usesNodeMaterials
             ? createLunaraAtmosphereMaterialWebGPU
             : createLunaraAtmosphereMaterialWebGL;
         const addAtmosphere = (moonMesh, radius, color, intensity) => {
@@ -1005,7 +1012,7 @@ export default class LunaraTheme extends BaseTheme {
         this.moonCompanionAtmosphere = addAtmosphere(companionMesh, companionRadius, new THREE.Color(0xff5f9e), 1.0);
 
         // Halos — matching deep purple and blood red
-        const haloFactory = this.isWebGPU ? createLunaraMoonHaloMaterialWebGPU : createLunaraMoonHaloMaterialWebGL;
+        const haloFactory = this.usesNodeMaterials ? createLunaraMoonHaloMaterialWebGPU : createLunaraMoonHaloMaterialWebGL;
         const haloGeo = new THREE.PlaneGeometry(1, 1);
 
         const primaryHalo = haloFactory({
@@ -1061,7 +1068,7 @@ export default class LunaraTheme extends BaseTheme {
         const pos = DISTANT_PLANET_POS;
 
         // Reuse the moon material (texture + terminator + rim) tinted gas-giant gold.
-        const bodyFactory = this.isWebGPU ? createLunaraMoonMaterialWebGPU : createLunaraMoonMaterialWebGL;
+        const bodyFactory = this.usesNodeMaterials ? createLunaraMoonMaterialWebGPU : createLunaraMoonMaterialWebGL;
         const body = bodyFactory({
             surfaceMap: bodyTex,
             color: new THREE.Color(0xe6d6a6),
@@ -1082,7 +1089,7 @@ export default class LunaraTheme extends BaseTheme {
         this.scene.add(mesh);
 
         // Ring — flat disc sampling the radial alpha strip.
-        const ringFactory = this.isWebGPU ? createLunaraRingMaterialWebGPU : createLunaraRingMaterialWebGL;
+        const ringFactory = this.usesNodeMaterials ? createLunaraRingMaterialWebGPU : createLunaraRingMaterialWebGL;
         const innerR = radius * 1.32;
         const outerR = radius * 2.35;
         const ringGeo = new THREE.PlaneGeometry(outerR * 2, outerR * 2, 1, 1);
@@ -1190,7 +1197,7 @@ export default class LunaraTheme extends BaseTheme {
     }
 
     createMountains() {
-        const mountainFactory = this.isWebGPU ? createLunaraMountainMaterialWebGPU : createLunaraMountainMaterialWebGL;
+        const mountainFactory = this.usesNodeMaterials ? createLunaraMountainMaterialWebGPU : createLunaraMountainMaterialWebGL;
 
         const layers = [
             {
@@ -1397,7 +1404,7 @@ export default class LunaraTheme extends BaseTheme {
         const count = this.preset.rockCount ?? 0;
         if (count <= 0) return;
 
-        const material = this.isWebGPU
+        const material = this.usesNodeMaterials
             ? new WEBGPU.MeshStandardNodeMaterial()
             : new THREE.MeshStandardMaterial();
         material.color = new THREE.Color(0x21113d);
@@ -1524,8 +1531,8 @@ export default class LunaraTheme extends BaseTheme {
     }
 
     createCrystals() {
-        const factory = this.isWebGPU ? createLunaraCrystalMaterialWebGPU : createLunaraCrystalMaterialWebGL;
-        const fastCrystals = this.isWebGPU
+        const factory = this.usesNodeMaterials ? createLunaraCrystalMaterialWebGPU : createLunaraCrystalMaterialWebGL;
+        const fastCrystals = this.usesNodeMaterials
             && this.activeQualityLevel !== 'Ultra'
             && this.activeQualityLevel !== 'Extreme';
         const main = factory({
@@ -1679,7 +1686,7 @@ export default class LunaraTheme extends BaseTheme {
     createCrystalCaustics(heroClusters) {
         if (this.activeQualityLevel === 'Minimal' || this.activeQualityLevel === 'Low') return;
 
-        const factory = this.isWebGPU
+        const factory = this.usesNodeMaterials
             ? createLunaraCausticMaterialWebGPU
             : createLunaraCausticMaterialWebGL;
 
@@ -1707,7 +1714,7 @@ export default class LunaraTheme extends BaseTheme {
         const count = this.preset.floraCount;
         if (count <= 0) return;
 
-        const factory = this.isWebGPU ? createLunaraFloraMaterialWebGPU : createLunaraFloraMaterialWebGL;
+        const factory = this.usesNodeMaterials ? createLunaraFloraMaterialWebGPU : createLunaraFloraMaterialWebGL;
         const { material } = factory({
             colorCore: new THREE.Color(0x80ffd4),
             colorEdge: new THREE.Color(0x40e8c0),
@@ -1743,7 +1750,7 @@ export default class LunaraTheme extends BaseTheme {
         geom.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
         addPointSpriteUv(geom, count);
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             // WebGPU uses a point-sprite node material for soft bioluminescent discs.
             const points = new THREE.Points(geom, material);
             points.frustumCulled = false;
@@ -1764,7 +1771,7 @@ export default class LunaraTheme extends BaseTheme {
         if (this.activeQualityLevel === 'Minimal' || this.activeQualityLevel === 'Low') return;
 
         const count = Math.min(42, Math.max(12, Math.floor(sourceCount * 0.28)));
-        const bulbMaterial = this.isWebGPU
+        const bulbMaterial = this.usesNodeMaterials
             ? new WEBGPU.MeshStandardNodeMaterial()
             : new THREE.MeshStandardMaterial();
         bulbMaterial.color = new THREE.Color(0x7dffe0);
@@ -1778,7 +1785,7 @@ export default class LunaraTheme extends BaseTheme {
             bulbMaterial.userData.baseEmissiveIntensity = bulbMaterial.emissiveIntensity;
         }
 
-        const stemMaterial = this.isWebGPU
+        const stemMaterial = this.usesNodeMaterials
             ? new WEBGPU.MeshStandardNodeMaterial()
             : new THREE.MeshStandardMaterial();
         stemMaterial.color = new THREE.Color(0x173a48);
@@ -1881,7 +1888,7 @@ export default class LunaraTheme extends BaseTheme {
             geom.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
             geom.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
             addPointSpriteUv(geom, lightCount);
-            const factory = this.isWebGPU ? createLunaraMoteMaterialWebGPU : createLunaraMoteMaterialWebGL;
+            const factory = this.usesNodeMaterials ? createLunaraMoteMaterialWebGPU : createLunaraMoteMaterialWebGL;
             const { material } = factory({ color });
             this.horizonLightMaterials.push(material);
             const points = new THREE.Points(geom, material);
@@ -1898,7 +1905,7 @@ export default class LunaraTheme extends BaseTheme {
         const count = this.preset.moteCount;
         if (count <= 0) return;
 
-        const factory = this.isWebGPU ? createLunaraMoteMaterialWebGPU : createLunaraMoteMaterialWebGL;
+        const factory = this.usesNodeMaterials ? createLunaraMoteMaterialWebGPU : createLunaraMoteMaterialWebGL;
         const { material } = factory({});
         this.moteMaterial = material;
 
@@ -1976,7 +1983,7 @@ export default class LunaraTheme extends BaseTheme {
         if (count <= 0) return;
 
         const geo = new THREE.PlaneGeometry(360, 80);
-        const factory = this.isWebGPU ? createLunaraFogMaterialWebGPU : createLunaraFogMaterialWebGL;
+        const factory = this.usesNodeMaterials ? createLunaraFogMaterialWebGPU : createLunaraFogMaterialWebGL;
 
         for (let i = 0; i < count; i++) {
             const t = i / Math.max(1, count - 1);
@@ -1999,7 +2006,7 @@ export default class LunaraTheme extends BaseTheme {
         const level = this.activeQualityLevel;
         if (level === 'Minimal' || level === 'Low') return;
 
-        const factory = this.isWebGPU ? createLunaraFogMaterialWebGPU : createLunaraFogMaterialWebGL;
+        const factory = this.usesNodeMaterials ? createLunaraFogMaterialWebGPU : createLunaraFogMaterialWebGL;
         const specs = [
             {
                 x: -34, y: -2.2, z: -60, w: 330, h: 190, color: 0x7a5cff, opacity: 0.07, sx: 0.012, sy: 0.006,
@@ -2035,7 +2042,7 @@ export default class LunaraTheme extends BaseTheme {
         const count = this.preset.lightShafts ?? 0;
         if (count <= 0) return;
 
-        const factory = this.isWebGPU ? createLunaraFogMaterialWebGPU : createLunaraFogMaterialWebGL;
+        const factory = this.usesNodeMaterials ? createLunaraFogMaterialWebGPU : createLunaraFogMaterialWebGL;
         const specs = [
             {
                 x: -18, y: 34, z: -118, w: 92, h: 210, rot: -0.18, color: 0xb779ff, opacity: 0.07,
@@ -2068,7 +2075,7 @@ export default class LunaraTheme extends BaseTheme {
     }
 
     createGround() {
-        const factory = this.isWebGPU ? createLunaraGroundMaterialWebGPU : createLunaraGroundMaterialWebGL;
+        const factory = this.usesNodeMaterials ? createLunaraGroundMaterialWebGPU : createLunaraGroundMaterialWebGL;
 
         // Matte alien mineral valley (no normal map — the old water-normal made
         // the foreground read as an ocean). Micro-relief comes from the FBM tone
@@ -2156,7 +2163,7 @@ export default class LunaraTheme extends BaseTheme {
         geo.setIndex(indices);
         geo.computeVertexNormals();
 
-        const material = this.isWebGPU
+        const material = this.usesNodeMaterials
             ? new WEBGPU.MeshStandardNodeMaterial()
             : new THREE.MeshStandardMaterial();
         material.color = new THREE.Color(0x2c155d);
@@ -2761,6 +2768,7 @@ export default class LunaraTheme extends BaseTheme {
     }
 
     stop() {
+        this.removeRendererResilience();
         this.teardownEvents();
         this.removeResizeListener();
 

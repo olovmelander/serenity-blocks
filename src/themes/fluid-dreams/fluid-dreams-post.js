@@ -1,5 +1,5 @@
 /**
- * Fluid Dreams Theme - WebGPU Post Processing
+ * Fluid Dreams Theme - node renderer post-processing on WebGPU and WebGL2
  *
  * MRT emissive bloom + chromatic aberration + vibrant vignette + ACES.
  * Heavy bloom radius for that hazy "neon dream" halo around the hero fluid.
@@ -31,7 +31,7 @@ import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 export class FluidDreamsPost {
     constructor(renderer, scene, camera, params = {}) {
         this.renderer = renderer;
-        this.useMRT = params.useMRT ?? true;
+        this.useMRT = renderer.backend?.isWebGPUBackend === true && (params.useMRT ?? true);
         this.bloomDownsample = params.bloomDownsample ?? 0.65;
         this.postProcessing = new THREE.RenderPipeline(renderer);
 
