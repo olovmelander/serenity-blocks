@@ -231,6 +231,10 @@ export default class ThreeJSIntroRendererWebGPU {
             if (!this.renderer.backend?.isWebGPUBackend) {
                 console.warn('[IntroWebGPU] WebGPU backend not available');
                 await this.renderer.dispose();
+                // The fallback owner will call destroy() after init returns false.
+                // The WebGL2 context has already been released here; disposing it
+                // again emits an INVALID_OPERATION warning on mobile browsers.
+                this.renderer = null;
                 return false;
             }
 
