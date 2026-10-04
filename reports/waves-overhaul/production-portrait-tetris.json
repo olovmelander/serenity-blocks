@@ -1,0 +1,176 @@
+{
+  "event": "tetris",
+  "theme": "waves",
+  "isActive": true,
+  "isPaused": false,
+  "lifecycle": "running",
+  "generation": 2,
+  "time": 7.999999999999977,
+  "quality": "Low",
+  "backend": "WebGL2",
+  "post": {
+    "quality": "Low",
+    "disabled": true,
+    "useMRT": false
+  },
+  "frame": {
+    "pulse": 0.25039210358886727,
+    "foam": 0.380299445611669,
+    "spray": 0.3774048308814721,
+    "shafts": 0.14710219456375523,
+    "surgeStrength": 0.5836418214305521,
+    "surgeZ": -4.875000000000046,
+    "impacts": [
+      {
+        "id": 0,
+        "active": true,
+        "angle": 0.3002602023319616,
+        "z": 9.173482510288068,
+        "age": 0.019999999999998685,
+        "duration": 0.95,
+        "strength": 0.8200000000000001,
+        "seed": 0.4273448216735254,
+        "kind": "clear",
+        "progress": 0.021052631578945987
+      },
+      {
+        "id": 1,
+        "active": true,
+        "angle": 2.913001261271549,
+        "z": 20.35178755144033,
+        "age": 0.29499999999999904,
+        "duration": 0.95,
+        "strength": 0.8200000000000001,
+        "seed": 0.9820644718792867,
+        "kind": "clear",
+        "progress": 0.3105263157894727
+      },
+      {
+        "id": 2,
+        "active": true,
+        "angle": 0.28227151920438953,
+        "z": -0.7773919753086425,
+        "age": 0.23999999999999844,
+        "duration": 0.95,
+        "strength": 0.8200000000000001,
+        "seed": 0.053527949245541835,
+        "kind": "clear",
+        "progress": 0.25263157894736676
+      },
+      {
+        "id": 3,
+        "active": true,
+        "angle": 2.3415926535897933,
+        "z": 14.956854423868311,
+        "age": 0.18499999999999872,
+        "duration": 0.95,
+        "strength": 0.8200000000000001,
+        "seed": 0.3171210562414266,
+        "kind": "clear",
+        "progress": 0.19473684210526182
+      },
+      {
+        "id": 4,
+        "active": true,
+        "angle": 0.6796917866941016,
+        "z": 12.137860082304528,
+        "age": 0.129999999999999,
+        "duration": 0.95,
+        "strength": 0.8200000000000001,
+        "seed": 0.18951045953360768,
+        "kind": "clear",
+        "progress": 0.13684210526315685
+      },
+      {
+        "id": 5,
+        "active": true,
+        "angle": 3.5245084629176393,
+        "z": 5.348958333333334,
+        "age": 0.0749999999999984,
+        "duration": 0.95,
+        "strength": 0.8200000000000001,
+        "seed": 0.08736282578875171,
+        "kind": "clear",
+        "progress": 0.07894736842105095
+      }
+    ]
+  },
+  "render": {
+    "calls": 22,
+    "frameCalls": 2,
+    "drawCalls": 13,
+    "triangles": 8095,
+    "points": 0,
+    "lines": 0,
+    "timestamp": 0
+  },
+  "board": {
+    "x": 21.5,
+    "y": 45,
+    "width": 347,
+    "height": 756
+  },
+  "boardCanvasCount": 1,
+  "themeCanvasCount": 1,
+  "activeContainers": [
+    "waves-theme"
+  ],
+  "camera": {
+    "position": [
+      0,
+      -0.4,
+      -25
+    ],
+    "fov": 84,
+    "aspect": 0.46208530805687204
+  },
+  "cssLayers": [
+    {
+      "id": "BODY",
+      "className": "startup-intro-skipped phaser-hud-ready",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgb(12, 10, 26)",
+      "display": "flex",
+      "zIndex": "auto"
+    },
+    {
+      "id": "DIV",
+      "className": "background-container",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "-1"
+    },
+    {
+      "id": "background-canvas",
+      "className": "",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "10"
+    },
+    {
+      "id": "waves-theme",
+      "className": "theme-container active",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "1"
+    },
+    {
+      "id": "single-player-container",
+      "className": "game-container single-player-layout",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "flex",
+      "zIndex": "1"
+    }
+  ],
+  "errors": [],
+  "warnings": []
+}

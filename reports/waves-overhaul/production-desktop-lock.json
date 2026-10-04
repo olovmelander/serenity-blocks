@@ -1,0 +1,116 @@
+{
+  "event": "lock",
+  "theme": "waves",
+  "isActive": true,
+  "isPaused": false,
+  "lifecycle": "running",
+  "generation": 2,
+  "time": 7.999999999999977,
+  "quality": "High",
+  "backend": "WebGL2",
+  "post": {
+    "quality": "High",
+    "disabled": false,
+    "useMRT": false
+  },
+  "frame": {
+    "pulse": 0.06907368374865305,
+    "foam": 0.049875337129399226,
+    "spray": 0.0893853546824539,
+    "shafts": 0,
+    "surgeStrength": 0,
+    "surgeZ": -18,
+    "impacts": [
+      {
+        "id": 0,
+        "active": true,
+        "angle": 0.28423268175582994,
+        "z": -11.471000514403292,
+        "age": 0.34999999999999876,
+        "duration": 0.72,
+        "strength": 0.45,
+        "seed": 0.1704903978052126,
+        "kind": "lock",
+        "progress": 0.4861111111111094
+      }
+    ]
+  },
+  "render": {
+    "calls": 282,
+    "frameCalls": 14,
+    "drawCalls": 25,
+    "triangles": 31215,
+    "points": 0,
+    "lines": 0,
+    "timestamp": 0
+  },
+  "board": {
+    "x": 545,
+    "y": 76.5,
+    "width": 350,
+    "height": 762
+  },
+  "boardCanvasCount": 1,
+  "themeCanvasCount": 1,
+  "activeContainers": [
+    "waves-theme"
+  ],
+  "camera": {
+    "position": [
+      0,
+      -0.4,
+      -25
+    ],
+    "fov": 75,
+    "aspect": 1.6
+  },
+  "cssLayers": [
+    {
+      "id": "BODY",
+      "className": "startup-intro-skipped phaser-hud-ready",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgb(12, 10, 26)",
+      "display": "flex",
+      "zIndex": "auto"
+    },
+    {
+      "id": "DIV",
+      "className": "background-container",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "-1"
+    },
+    {
+      "id": "background-canvas",
+      "className": "",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "10"
+    },
+    {
+      "id": "waves-theme",
+      "className": "theme-container active",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "1"
+    },
+    {
+      "id": "single-player-container",
+      "className": "game-container single-player-layout",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "flex",
+      "zIndex": "1"
+    }
+  ],
+  "errors": [],
+  "warnings": []
+}
