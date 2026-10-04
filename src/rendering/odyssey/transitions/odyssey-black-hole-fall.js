@@ -9,7 +9,7 @@
  * comes. Its surface is a window onto the singularity's interior (the warp tunnel), which fades in
  * as the shadow fills the frame — so "inside" is reached without a cut. The accretion disk's plane
  * sweeps through edge-on on the way (the disk-plane crossing), and the camera picks up a gentle,
- * progress-driven roll and a widening FOV (frame dragging / speed), both zero at the chapter's
+ * progress-driven forward pull, roll and a widening FOV (frame dragging / speed), all zero at the chapter's
  * start and back to exactly zero where the 7->8 window opens (the city's stage alignment needs an
  * unrolled basis).
  *
@@ -58,9 +58,12 @@ export const CH7_FALL = Object.freeze({
     /** The warp (streak speed / zoom) ramps up across the horizon. */
     warpFrom: 0.36,
     warpTo: 0.52,
-    /** Camera: peak roll (deg) and FOV widening (deg), sin-shaped over [0, exit]. */
+    /** Camera: a brief compression gives the attraction weight before the horizon rush. */
+    fovCompressionDeg: 2.2,
+    /** Frame dragging and speed stay bounded; the camera never changes logical rail progress. */
     rollPeakDeg: 14,
-    fovPeakDeg: 6,
+    fovPeakDeg: 10,
+    camForwardPeak: 6.5,
 });
 
 const REST = Object.freeze({
@@ -76,6 +79,7 @@ const REST = Object.freeze({
     inside: 0,
     rollDeg: 0,
     fovOffset: 0,
+    camForward: 0,
 });
 
 /** The fall at rest (before ch7, or with no layout): the plain camera lock. */
@@ -85,7 +89,7 @@ export function blackHoleFallAtRest() {
 
 /**
  * Local ch7 progress at which the 7->8 window opens (the camera's city alignment starts there,
- * so roll / FOV must be back to zero by then).
+ * so the camera's pull, roll and FOV must be back to zero by then).
  * @param {number[]} chapterPositions
  * @returns {number|null}
  */
@@ -99,17 +103,31 @@ export function resolveBlackHoleFallExit(chapterPositions) {
 
 /**
  * The camera's share of the fall, from LOCAL ch7 progress alone (the camera's framing resolver
- * receives in-chapter progress): roll and FOV, sin-shaped, zero at local 0 and at `exit`.
+ * receives in-chapter progress). Attraction briefly compresses the lens, the plunge pushes
+ * the eye forward and widens it, and the warp holds that momentum before easing to rest.
+ * All envelopes have zero slope at their joins and at both seams. Phase positions are relative
+ * to the LIVE exit, so a shorter chapter still settles before the city begins revealing.
  * @param {number} local in-chapter progress (0 = ch7 start)
  * @param {number} [exit] local progress where the 7->8 window opens
- * @returns {{ rollDeg: number, fovOffset: number }}
+ * @returns {{ rollDeg: number, fovOffset: number, camForward: number }}
  */
 export function resolveBlackHoleFallCamera(local, exit = 0.82) {
-    if (!Number.isFinite(local) || local <= 0 || local >= exit) return { rollDeg: 0, fovOffset: 0 };
-    const arc = Math.sin(Math.PI * (local / exit));
+    if (!Number.isFinite(local) || !Number.isFinite(exit) || exit <= 0 || local <= 0 || local >= exit) {
+        return { rollDeg: 0, fovOffset: 0, camForward: 0 };
+    }
+    const phase = local / exit;
+    const compression = smoother01(phase / 0.18)
+        * (1 - smoother01((phase - 0.18) / 0.22));
+    const pull = smoother01((phase - 0.10) / 0.46)
+        * (1 - smoother01((phase - 0.74) / 0.26));
+    const rush = smoother01((phase - 0.20) / 0.38)
+        * (1 - smoother01((phase - 0.74) / 0.26));
+    const drag = smoother01((phase - 0.06) / 0.46)
+        * (1 - smoother01((phase - 0.66) / 0.34));
     return {
-        rollDeg: CH7_FALL.rollPeakDeg * arc,
-        fovOffset: CH7_FALL.fovPeakDeg * arc,
+        rollDeg: CH7_FALL.rollPeakDeg * drag,
+        fovOffset: CH7_FALL.fovPeakDeg * rush - CH7_FALL.fovCompressionDeg * compression,
+        camForward: CH7_FALL.camForwardPeak * pull,
     };
 }
 
@@ -118,7 +136,8 @@ export function resolveBlackHoleFallCamera(local, exit = 0.82) {
  * @param {number} progress absolute path progress
  * @param {number[]} chapterPositions live chapter boundaries
  * @returns {{active:boolean, local:number, u:number, alpha:number, centring:number, portal:number,
- *   diskTilt:number, band:number, warp:number, inside:number, rollDeg:number, fovOffset:number}}
+ *   diskTilt:number, band:number, warp:number, inside:number, rollDeg:number, fovOffset:number,
+ *   camForward:number}}
  */
 export function resolveBlackHoleFall(progress, chapterPositions) {
     const ch7Start = chapterPositions?.[6];
@@ -148,6 +167,7 @@ export function resolveBlackHoleFall(progress, chapterPositions) {
         inside: smooth01((local - (F.horizon - 0.04)) / 0.06),
         rollDeg: camera.rollDeg,
         fovOffset: camera.fovOffset,
+        camForward: camera.camForward,
     };
 }
 
