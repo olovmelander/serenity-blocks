@@ -100,6 +100,30 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
         );
     });
 
+    it('keeps the streaming dust ahead of the eye on a near-vertical climb', () => {
+        const group = createBlackHoleTranscendenceEnvironment({ particleCount: 200 });
+        const positions = getActiveOdysseyChapterPositions();
+        const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 9000);
+        camera.position.set(267, 1358, -1146);
+        camera.lookAt(camera.position.clone().add(new THREE.Vector3(-0.2, 10, 0.1)));
+        camera.updateMatrixWorld(true);
+        const inside = positions[6] + (positions[7] - positions[6]) * 0.6;
+        updateBlackHoleTranscendenceEnvironment(group, 0.016, 8, camera, inside);
+        group.updateMatrixWorld(true);
+        const dust = group.userData.corridorDust;
+        const bases = dust.geometry.getAttribute('aBase');
+        const forward = camera.getWorldDirection(new THREE.Vector3());
+        for (const index of [0, Math.floor(bases.count / 2), bases.count - 1]) {
+            const mote = new THREE.Vector3().fromBufferAttribute(bases, index)
+                .applyMatrix4(dust.matrixWorld).sub(camera.position);
+            expect(mote.dot(forward)).toBeGreaterThanOrEqual(55 - 1e-3);
+        }
+        expect(dust.userData.flowUniforms.uWarp.value).toBe(1);
+        // Backwards navigation must restore slow dust, without retaining an infall state.
+        updateBlackHoleTranscendenceEnvironment(group, 0.016, 2, camera, positions[6] + 0.001);
+        expect(dust.userData.flowUniforms.uWarp.value).toBe(0);
+    });
+
     it('keeps the chapter 7 rail below the lensed hero read', () => {
         const profile = ODYSSEY_CHAPTER_PROFILES.find((chapter) => chapter.id === 7);
 

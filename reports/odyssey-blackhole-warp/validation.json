@@ -1,0 +1,3292 @@
+{
+  "schemaVersion": 1,
+  "softwareRendering": true,
+  "effect": "ch7-fall",
+  "offscreenWebGPU": true,
+  "browserVersion": "151.0.7922.34",
+  "limits": [
+    "Isolated chapter only; no full journey.",
+    "Production Chapter 7 environment, path and camera; journey post processing and Chapter 8 city are absent.",
+    "Software browser rendering does not establish phone or physical GPU performance.",
+    "WebGPU renders to a GPU target and uses readback; native canvas presentation is not exercised."
+  ],
+  "sourceSHA256": {
+    "src/playground/effects/ch7-fall.effect.js": "2af0f5de2019af301bb23331285cb2f8fd28f7ee1095498e71cc2d5f28cb29a3",
+    "src/rendering/odyssey/OdysseyCameraController.js": "170541717c31e1cfe5812a8ad6aafcc4109e9de1a376a99f9aa89d10ee622ed3",
+    "src/rendering/odyssey/chapter-environments/black-hole-transcendence.js": "f5d77cd46f0d153e24b11fa1fdc0b28b060d01fa6e7465a94cdefc253ab82e9f",
+    "src/rendering/odyssey/chapter-environments/black-hole-transcendence.tsl.js": "9519b98f2c5a6335cf0225a8cf8c208ed7d6b74913e2e19336606ec6b0e63758",
+    "src/rendering/odyssey/transitions/odyssey-black-hole-fall.js": "1673fd2e4053250fc467fefe509b9349be2ea6a7ce4d6990dda338689a0fa15d"
+  },
+  "sourceStable": true,
+  "status": "pass",
+  "results": [
+    {
+      "id": "webgpu-desktop",
+      "status": "pass",
+      "profile": {
+        "id": "desktop",
+        "width": 1280,
+        "height": 720,
+        "tier": "High"
+      },
+      "screenshotCount": 20,
+      "failures": [],
+      "frames": [
+        {
+          "fallT": 0,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              256.250208219211,
+              1290.0787815661706,
+              -1171.617531903014
+            ],
+            "quaternion": [
+              0.09474060155137873,
+              -0.5505211084461267,
+              0.10808865810357814,
+              0.8223548927089197
+            ],
+            "fov": 65
+          },
+          "fall": {
+            "active": false,
+            "local": 0,
+            "u": 0,
+            "alpha": 0.1451212510084275,
+            "centring": 0,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 33.214036458390574,
+            "stdDev": 27.014409659479885
+          }
+        },
+        {
+          "fallT": 0,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              256.250208219211,
+              1290.0787815661706,
+              -1171.617531903014
+            ],
+            "quaternion": [
+              0.09474060155137873,
+              -0.5505211084461267,
+              0.10808865810357814,
+              0.8223548927089197
+            ],
+            "fov": 65
+          },
+          "fall": {
+            "active": false,
+            "local": 0,
+            "u": 0,
+            "alpha": 0.1451212510084275,
+            "centring": 0,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 33.23501880792815,
+            "stdDev": 27.035646979570057
+          }
+        },
+        {
+          "fallT": 0.12,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              284.08864113518104,
+              1288.5096368002376,
+              -1198.297211342109
+            ],
+            "quaternion": [
+              0.10779140929434784,
+              -0.685096057456014,
+              0.3317924300023859,
+              0.6394827499891426
+            ],
+            "fov": 62.36424438676789
+          },
+          "fall": {
+            "active": true,
+            "local": 0.11999999999999916,
+            "u": 0.2727272727272708,
+            "alpha": 0.2392668291464931,
+            "centring": 0.35199999999999604,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0.6847056952178991,
+            "fovOffset": -2.0934849216792655,
+            "camForward": 0.05682023006441851
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 42.1131723812899,
+            "stdDev": 38.966096189734564
+          }
+        },
+        {
+          "fallT": 0.12,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              284.09891843154236,
+              1288.5173860023222,
+              -1198.2978765752684
+            ],
+            "quaternion": [
+              0.10778811695731343,
+              -0.6850967826084289,
+              0.3317948793733892,
+              0.6394812572108534
+            ],
+            "fov": 62.359950091526926
+          },
+          "fall": {
+            "active": true,
+            "local": 0.11999999999999916,
+            "u": 0.2727272727272708,
+            "alpha": 0.2392668291464931,
+            "centring": 0.35199999999999604,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0.6847056952178991,
+            "fovOffset": -2.0934849216792655,
+            "camForward": 0.05682023006441851
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 42.13630389170872,
+            "stdDev": 38.97288170305835
+          }
+        },
+        {
+          "fallT": 0.24,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              309.2243967976779,
+              1294.9551651316788,
+              -1192.7412686384935
+            ],
+            "quaternion": [
+              0.09635224852762485,
+              0.816689912840065,
+              -0.5593213010223171,
+              -0.10437199189275012
+            ],
+            "fov": 63.9234515058267
+          },
+          "fall": {
+            "active": true,
+            "local": 0.2400000000000008,
+            "u": 0.5454545454545473,
+            "alpha": 0.4964849726489209,
+            "centring": 0.8960000000000026,
+            "portal": 0,
+            "diskTilt": -0.020000000000001766,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 7.153087914962068,
+            "fovOffset": -0.07782060797932733,
+            "camForward": 2.278514664647873
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 35.93023726856343,
+            "stdDev": 44.91496335120398
+          }
+        },
+        {
+          "fallT": 0.24,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              309.2255579296173,
+              1294.9583431982576,
+              -1192.7398322993197
+            ],
+            "quaternion": [
+              0.0963574635651857,
+              0.8166901110439713,
+              -0.5593206080492791,
+              -0.10436934008440615
+            ],
+            "fov": 63.92222967130069
+          },
+          "fall": {
+            "active": true,
+            "local": 0.2400000000000008,
+            "u": 0.5454545454545473,
+            "alpha": 0.4964849726489209,
+            "centring": 0.8960000000000026,
+            "portal": 0,
+            "diskTilt": -0.020000000000001766,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 7.153087914962068,
+            "fovOffset": -0.07782060797932733,
+            "camForward": 2.278514664647873
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 35.92555736405054,
+            "stdDev": 44.934239681743904
+          }
+        },
+        {
+          "fallT": 0.34,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              311.655603211106,
+              1311.5410181574264,
+              -1186.2901012108252
+            ],
+            "quaternion": [
+              0.290064647124241,
+              0.8647740651733157,
+              -0.2671298501402527,
+              0.3109179310627704
+            ],
+            "fov": 70.20194788870464
+          },
+          "fall": {
+            "active": true,
+            "local": 0.3399999999999997,
+            "u": 0.772727272727272,
+            "alpha": 0.8261500878051706,
+            "centring": 1,
+            "portal": 0.492424500076778,
+            "diskTilt": -0.13999999999999968,
+            "band": 0.8017492711370289,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 12.842617712513418,
+            "fovOffset": 6.201947621920373,
+            "camForward": 5.298150526313324
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 25.617218967024854,
+            "stdDev": 19.360755119647354
+          }
+        },
+        {
+          "fallT": 0.34,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              311.65560307212127,
+              1311.5410186633655,
+              -1186.2901006135708
+            ],
+            "quaternion": [
+              0.29006465490218136,
+              0.8647740624521295,
+              -0.26712984737681106,
+              0.31091793374934257
+            ],
+            "fov": 70.20194762192848
+          },
+          "fall": {
+            "active": true,
+            "local": 0.3399999999999997,
+            "u": 0.772727272727272,
+            "alpha": 0.8261500878051706,
+            "centring": 1,
+            "portal": 0.492424500076778,
+            "diskTilt": -0.13999999999999968,
+            "band": 0.8017492711370289,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 12.842617712513418,
+            "fovOffset": 6.201947621920373,
+            "camForward": 5.298150526313324
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 25.897801649322695,
+            "stdDev": 19.39948578185106
+          }
+        },
+        {
+          "fallT": 0.44,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              305.80018963919935,
+              1330.009799175728,
+              -1169.445197992511
+            ],
+            "quaternion": [
+              0.192613534808994,
+              0.8611268189801058,
+              -0.03250843616119627,
+              0.4693653474852417
+            ],
+            "fov": 73.87526111325451
+          },
+          "fall": {
+            "active": true,
+            "local": 0.44000000000000106,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 0.5000000000000098,
+            "inside": 0.7407407407407638,
+            "rollDeg": 14,
+            "fovOffset": 9.875261113254508,
+            "camForward": 6.492068802050758
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 37.94730685765846,
+            "stdDev": 31.531847407042953
+          }
+        },
+        {
+          "fallT": 0.44,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              305.8001896391993,
+              1330.009799175728,
+              -1169.445197992511
+            ],
+            "quaternion": [
+              0.19261353480899407,
+              0.861126818980106,
+              -0.03250843616119638,
+              0.46936534748524145
+            ],
+            "fov": 73.87526111325451
+          },
+          "fall": {
+            "active": true,
+            "local": 0.44000000000000106,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 0.5000000000000098,
+            "inside": 0.7407407407407638,
+            "rollDeg": 14,
+            "fovOffset": 9.875261113254508,
+            "camForward": 6.492068802050758
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 38.46425202547446,
+            "stdDev": 31.52322178296881
+          }
+        },
+        {
+          "fallT": 0.56,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              284.75941425582283,
+              1337.8575170237398,
+              -1152.0405515522557
+            ],
+            "quaternion": [
+              0.3249747931603781,
+              0.736928158540035,
+              -0.22034505614961186,
+              0.5502511510134139
+            ],
+            "fov": 74
+          },
+          "fall": {
+            "active": true,
+            "local": 0.5600000000000002,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 13.961298502998257,
+            "fovOffset": 10,
+            "camForward": 6.5
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 43.38361653647058,
+            "stdDev": 38.763542557086545
+          }
+        },
+        {
+          "fallT": 0.56,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              284.75941425582283,
+              1337.8575170237398,
+              -1152.0405515522557
+            ],
+            "quaternion": [
+              0.3249747931603781,
+              0.736928158540035,
+              -0.22034505614961186,
+              0.5502511510134139
+            ],
+            "fov": 74
+          },
+          "fall": {
+            "active": true,
+            "local": 0.5600000000000002,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 13.961298502998257,
+            "fovOffset": 10,
+            "camForward": 6.5
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 44.22173972801651,
+            "stdDev": 38.598579358831074
+          }
+        },
+        {
+          "fallT": 0.7,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              250.219209611005,
+              1341.3227801353999,
+              -1117.0856520744153
+            ],
+            "quaternion": [
+              0.5220326670827108,
+              0.24804889857505216,
+              -0.43148236135117884,
+              0.6926590866053992
+            ],
+            "fov": 70.16611545227575
+          },
+          "fall": {
+            "active": true,
+            "local": 0.6999999999999996,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 5.196869179947316,
+            "fovOffset": 6.166115452275742,
+            "camForward": 4.007975043979233
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 45.696014178250216,
+            "stdDev": 38.993583846659575
+          }
+        },
+        {
+          "fallT": 0.7,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              250.219209611005,
+              1341.3227801353999,
+              -1117.0856520744153
+            ],
+            "quaternion": [
+              0.5220326670827108,
+              0.24804889857505216,
+              -0.43148236135117884,
+              0.6926590866053992
+            ],
+            "fov": 70.16611545227575
+          },
+          "fall": {
+            "active": true,
+            "local": 0.6999999999999996,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 5.196869179947316,
+            "fovOffset": 6.166115452275742,
+            "camForward": 4.007975043979233
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 46.62676106771223,
+            "stdDev": 38.883192865750125
+          }
+        },
+        {
+          "fallT": 0.81,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              265.80803670597527,
+              1353.6283214529533,
+              -1145.8455370859856
+            ],
+            "quaternion": [
+              0.4821430113849569,
+              0.49179779313673466,
+              -0.4423983342368063,
+              0.5744186287917391
+            ],
+            "fov": 64.0096066301258
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8099999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0.0061176679666519185,
+            "fovOffset": 0.009606630125799098,
+            "camForward": 0.006244309581769414
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 46.07654152198418,
+            "stdDev": 38.57021207760985
+          }
+        },
+        {
+          "fallT": 0.81,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              265.80803670597527,
+              1353.6283214529533,
+              -1145.8455370859856
+            ],
+            "quaternion": [
+              0.4821430113849569,
+              0.49179779313673466,
+              -0.4423983342368063,
+              0.5744186287917391
+            ],
+            "fov": 64.0096066301258
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8099999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0.0061176679666519185,
+            "fovOffset": 0.009606630125799098,
+            "camForward": 0.006244309581769414
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 47.06319842301318,
+            "stdDev": 38.71218031175902
+          }
+        },
+        {
+          "fallT": 0.9,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              260.36853216494256,
+              1374.0440016287948,
+              -1120.7763139638337
+            ],
+            "quaternion": [
+              0.4463375010087986,
+              0.17741016127195652,
+              -0.2735347295735859,
+              0.8333589992240945
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8999999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 48.64987738715066,
+            "stdDev": 51.81849735606336
+          }
+        },
+        {
+          "fallT": 0.9,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              260.3684098285373,
+              1374.0439764568316,
+              -1120.7761085580355
+            ],
+            "quaternion": [
+              0.4463397922979476,
+              0.1774059437238214,
+              -0.2735277639998696,
+              0.8333609561673242
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8999999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 49.1384248408659,
+            "stdDev": 51.76078604399288
+          }
+        },
+        {
+          "fallT": 0.99,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              254.98115380511774,
+              1389.1092807471173,
+              -1123.2417376734845
+            ],
+            "quaternion": [
+              0.48487547793564745,
+              0.03787413106300884,
+              -0.04859489667706033,
+              0.8724103719637023
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.9899999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 18.549583695022005,
+            "stdDev": 41.655133203891474
+          }
+        },
+        {
+          "fallT": 0.99,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              254.98103790792166,
+              1389.1086987326341,
+              -1123.2419990839617
+            ],
+            "quaternion": [
+              0.4848796638968146,
+              0.037868780863938585,
+              -0.048586426039994274,
+              0.8724087494860716
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.9899999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 18.514851707175083,
+            "stdDev": 41.5846309814441
+          }
+        }
+      ]
+    },
+    {
+      "id": "webgpu-portrait",
+      "status": "pass",
+      "profile": {
+        "id": "portrait",
+        "width": 390,
+        "height": 844,
+        "tier": "Low"
+      },
+      "screenshotCount": 20,
+      "failures": [],
+      "frames": [
+        {
+          "fallT": 0,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              256.250208219211,
+              1290.0787815661706,
+              -1171.617531903014
+            ],
+            "quaternion": [
+              0.09474060155137873,
+              -0.5505211084461267,
+              0.10808865810357814,
+              0.8223548927089197
+            ],
+            "fov": 65
+          },
+          "fall": {
+            "active": false,
+            "local": 0,
+            "u": 0,
+            "alpha": 0.1451212510084275,
+            "centring": 0,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 42.00038380519147,
+            "stdDev": 45.456946231667445
+          }
+        },
+        {
+          "fallT": 0,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              256.250208219211,
+              1290.0787815661706,
+              -1171.617531903014
+            ],
+            "quaternion": [
+              0.09474060155137873,
+              -0.5505211084461267,
+              0.10808865810357814,
+              0.8223548927089197
+            ],
+            "fov": 65
+          },
+          "fall": {
+            "active": false,
+            "local": 0,
+            "u": 0,
+            "alpha": 0.1451212510084275,
+            "centring": 0,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 41.99587434677164,
+            "stdDev": 45.4739199117591
+          }
+        },
+        {
+          "fallT": 0.12,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              284.08864113518104,
+              1288.5096368002376,
+              -1198.297211342109
+            ],
+            "quaternion": [
+              0.10779140929434784,
+              -0.685096057456014,
+              0.3317924300023859,
+              0.6394827499891426
+            ],
+            "fov": 62.36424438676789
+          },
+          "fall": {
+            "active": true,
+            "local": 0.11999999999999916,
+            "u": 0.2727272727272708,
+            "alpha": 0.2392668291464931,
+            "centring": 0.35199999999999604,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0.6847056952178991,
+            "fovOffset": -2.0934849216792655,
+            "camForward": 0.05682023006441851
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 50.32359136388656,
+            "stdDev": 56.039914916499406
+          }
+        },
+        {
+          "fallT": 0.12,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              284.09891843154236,
+              1288.5173860023222,
+              -1198.2978765752684
+            ],
+            "quaternion": [
+              0.10778811695731343,
+              -0.6850967826084289,
+              0.3317948793733892,
+              0.6394812572108534
+            ],
+            "fov": 62.359950091526926
+          },
+          "fall": {
+            "active": true,
+            "local": 0.11999999999999916,
+            "u": 0.2727272727272708,
+            "alpha": 0.2392668291464931,
+            "centring": 0.35199999999999604,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0.6847056952178991,
+            "fovOffset": -2.0934849216792655,
+            "camForward": 0.05682023006441851
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 50.30141572488396,
+            "stdDev": 56.092097672029084
+          }
+        },
+        {
+          "fallT": 0.24,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              309.2243967976779,
+              1294.9551651316788,
+              -1192.7412686384935
+            ],
+            "quaternion": [
+              0.09635224852762485,
+              0.816689912840065,
+              -0.5593213010223171,
+              -0.10437199189275012
+            ],
+            "fov": 63.9234515058267
+          },
+          "fall": {
+            "active": true,
+            "local": 0.2400000000000008,
+            "u": 0.5454545454545473,
+            "alpha": 0.4964849726489209,
+            "centring": 0.8960000000000026,
+            "portal": 0,
+            "diskTilt": -0.020000000000001766,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 7.153087914962068,
+            "fovOffset": -0.07782060797932733,
+            "camForward": 2.278514664647873
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 26.981254303883517,
+            "stdDev": 54.86423371172382
+          }
+        },
+        {
+          "fallT": 0.24,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              309.2255579296173,
+              1294.9583431982576,
+              -1192.7398322993197
+            ],
+            "quaternion": [
+              0.0963574635651857,
+              0.8166901110439713,
+              -0.5593206080492791,
+              -0.10436934008440615
+            ],
+            "fov": 63.92222967130069
+          },
+          "fall": {
+            "active": true,
+            "local": 0.2400000000000008,
+            "u": 0.5454545454545473,
+            "alpha": 0.4964849726489209,
+            "centring": 0.8960000000000026,
+            "portal": 0,
+            "diskTilt": -0.020000000000001766,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 7.153087914962068,
+            "fovOffset": -0.07782060797932733,
+            "camForward": 2.278514664647873
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 27.00810446793774,
+            "stdDev": 55.00582881853979
+          }
+        },
+        {
+          "fallT": 0.34,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              311.655603211106,
+              1311.5410181574264,
+              -1186.2901012108252
+            ],
+            "quaternion": [
+              0.290064647124241,
+              0.8647740651733157,
+              -0.2671298501402527,
+              0.3109179310627704
+            ],
+            "fov": 70.20194788870464
+          },
+          "fall": {
+            "active": true,
+            "local": 0.3399999999999997,
+            "u": 0.772727272727272,
+            "alpha": 0.8261500878051706,
+            "centring": 1,
+            "portal": 0.492424500076778,
+            "diskTilt": -0.13999999999999968,
+            "band": 0.8017492711370289,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 12.842617712513418,
+            "fovOffset": 6.201947621920373,
+            "camForward": 5.298150526313324
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 19.376101794488193,
+            "stdDev": 22.076870593714865
+          }
+        },
+        {
+          "fallT": 0.34,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              311.65560307212127,
+              1311.5410186633655,
+              -1186.2901006135708
+            ],
+            "quaternion": [
+              0.29006465490218136,
+              0.8647740624521295,
+              -0.26712984737681106,
+              0.31091793374934257
+            ],
+            "fov": 70.20194762192848
+          },
+          "fall": {
+            "active": true,
+            "local": 0.3399999999999997,
+            "u": 0.772727272727272,
+            "alpha": 0.8261500878051706,
+            "centring": 1,
+            "portal": 0.492424500076778,
+            "diskTilt": -0.13999999999999968,
+            "band": 0.8017492711370289,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 12.842617712513418,
+            "fovOffset": 6.201947621920373,
+            "camForward": 5.298150526313324
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 19.307943452037865,
+            "stdDev": 22.031027864654853
+          }
+        },
+        {
+          "fallT": 0.44,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              305.80018963919935,
+              1330.009799175728,
+              -1169.445197992511
+            ],
+            "quaternion": [
+              0.192613534808994,
+              0.8611268189801058,
+              -0.03250843616119627,
+              0.4693653474852417
+            ],
+            "fov": 73.87526111325451
+          },
+          "fall": {
+            "active": true,
+            "local": 0.44000000000000106,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 0.5000000000000098,
+            "inside": 0.7407407407407638,
+            "rollDeg": 14,
+            "fovOffset": 9.875261113254508,
+            "camForward": 6.492068802050758
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 36.7033003200022,
+            "stdDev": 36.00168082623941
+          }
+        },
+        {
+          "fallT": 0.44,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              305.8001896391993,
+              1330.009799175728,
+              -1169.445197992511
+            ],
+            "quaternion": [
+              0.19261353480899407,
+              0.861126818980106,
+              -0.03250843616119638,
+              0.46936534748524145
+            ],
+            "fov": 73.87526111325451
+          },
+          "fall": {
+            "active": true,
+            "local": 0.44000000000000106,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 0.5000000000000098,
+            "inside": 0.7407407407407638,
+            "rollDeg": 14,
+            "fovOffset": 9.875261113254508,
+            "camForward": 6.492068802050758
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 36.66894114310327,
+            "stdDev": 36.25028124977146
+          }
+        },
+        {
+          "fallT": 0.56,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              284.75941425582283,
+              1337.8575170237398,
+              -1152.0405515522557
+            ],
+            "quaternion": [
+              0.3249747931603781,
+              0.736928158540035,
+              -0.22034505614961186,
+              0.5502511510134139
+            ],
+            "fov": 74
+          },
+          "fall": {
+            "active": true,
+            "local": 0.5600000000000002,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 13.961298502998257,
+            "fovOffset": 10,
+            "camForward": 6.5
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 42.37596001944675,
+            "stdDev": 44.90727791548007
+          }
+        },
+        {
+          "fallT": 0.56,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              284.75941425582283,
+              1337.8575170237398,
+              -1152.0405515522557
+            ],
+            "quaternion": [
+              0.3249747931603781,
+              0.736928158540035,
+              -0.22034505614961186,
+              0.5502511510134139
+            ],
+            "fov": 74
+          },
+          "fall": {
+            "active": true,
+            "local": 0.5600000000000002,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 13.961298502998257,
+            "fovOffset": 10,
+            "camForward": 6.5
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 42.33607769271204,
+            "stdDev": 45.238156581035945
+          }
+        },
+        {
+          "fallT": 0.7,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              250.219209611005,
+              1341.3227801353999,
+              -1117.0856520744153
+            ],
+            "quaternion": [
+              0.5220326670827108,
+              0.24804889857505216,
+              -0.43148236135117884,
+              0.6926590866053992
+            ],
+            "fov": 70.16611545227575
+          },
+          "fall": {
+            "active": true,
+            "local": 0.6999999999999996,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 5.196869179947316,
+            "fovOffset": 6.166115452275742,
+            "camForward": 4.007975043979233
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 44.410854903387836,
+            "stdDev": 46.46617117186755
+          }
+        },
+        {
+          "fallT": 0.7,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              250.219209611005,
+              1341.3227801353999,
+              -1117.0856520744153
+            ],
+            "quaternion": [
+              0.5220326670827108,
+              0.24804889857505216,
+              -0.43148236135117884,
+              0.6926590866053992
+            ],
+            "fov": 70.16611545227575
+          },
+          "fall": {
+            "active": true,
+            "local": 0.6999999999999996,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 5.196869179947316,
+            "fovOffset": 6.166115452275742,
+            "camForward": 4.007975043979233
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 44.378758050787546,
+            "stdDev": 46.79770395317371
+          }
+        },
+        {
+          "fallT": 0.81,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              265.80803670597527,
+              1353.6283214529533,
+              -1145.8455370859856
+            ],
+            "quaternion": [
+              0.4821430113849569,
+              0.49179779313673466,
+              -0.4423983342368063,
+              0.5744186287917391
+            ],
+            "fov": 64.0096066301258
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8099999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0.0061176679666519185,
+            "fovOffset": 0.009606630125799098,
+            "camForward": 0.006244309581769414
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 45.108950054680456,
+            "stdDev": 47.38348481599211
+          }
+        },
+        {
+          "fallT": 0.81,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              265.80803670597527,
+              1353.6283214529533,
+              -1145.8455370859856
+            ],
+            "quaternion": [
+              0.4821430113849569,
+              0.49179779313673466,
+              -0.4423983342368063,
+              0.5744186287917391
+            ],
+            "fov": 64.0096066301258
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8099999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0.0061176679666519185,
+            "fovOffset": 0.009606630125799098,
+            "camForward": 0.006244309581769414
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 44.681678616270226,
+            "stdDev": 47.317285561234634
+          }
+        },
+        {
+          "fallT": 0.9,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              260.36853216494256,
+              1374.0440016287948,
+              -1120.7763139638337
+            ],
+            "quaternion": [
+              0.4463375010087986,
+              0.17741016127195652,
+              -0.2735347295735859,
+              0.8333589992240945
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8999999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 58.774919998391624,
+            "stdDev": 72.32348735350456
+          }
+        },
+        {
+          "fallT": 0.9,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              260.3684098285373,
+              1374.0439764568316,
+              -1120.7761085580355
+            ],
+            "quaternion": [
+              0.4463397922979476,
+              0.1774059437238214,
+              -0.2735277639998696,
+              0.8333609561673242
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8999999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 58.5349495685932,
+            "stdDev": 72.30299690181967
+          }
+        },
+        {
+          "fallT": 0.99,
+          "time": 8,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              254.98115380511774,
+              1389.1092807471173,
+              -1123.2417376734845
+            ],
+            "quaternion": [
+              0.48487547793564745,
+              0.03787413106300884,
+              -0.04859489667706033,
+              0.8724103719637023
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.9899999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 28.58222546278676,
+            "stdDev": 49.747145216991676
+          }
+        },
+        {
+          "fallT": 0.99,
+          "time": 8.08,
+          "backend": "WebGPU \u00b7 google swiftshader",
+          "camera": {
+            "position": [
+              254.98103790792166,
+              1389.1086987326341,
+              -1123.2419990839617
+            ],
+            "quaternion": [
+              0.4848796638968146,
+              0.037868780863938585,
+              -0.048586426039994274,
+              0.8724087494860716
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.9899999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 28.457159638668603,
+            "stdDev": 49.55823546601177
+          }
+        }
+      ]
+    },
+    {
+      "id": "webgl2-desktop",
+      "status": "pass",
+      "profile": {
+        "id": "desktop",
+        "width": 1280,
+        "height": 720,
+        "tier": "High"
+      },
+      "screenshotCount": 20,
+      "failures": [],
+      "frames": [
+        {
+          "fallT": 0,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              256.250208219211,
+              1290.0787815661706,
+              -1171.617531903014
+            ],
+            "quaternion": [
+              0.09474060155137873,
+              -0.5505211084461267,
+              0.10808865810357814,
+              0.8223548927089197
+            ],
+            "fov": 65
+          },
+          "fall": {
+            "active": false,
+            "local": 0,
+            "u": 0,
+            "alpha": 0.1451212510084275,
+            "centring": 0,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 33.31132089125902,
+            "stdDev": 27.304375378237836
+          }
+        },
+        {
+          "fallT": 0,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              256.250208219211,
+              1290.0787815661706,
+              -1171.617531903014
+            ],
+            "quaternion": [
+              0.09474060155137873,
+              -0.5505211084461267,
+              0.10808865810357814,
+              0.8223548927089197
+            ],
+            "fov": 65
+          },
+          "fall": {
+            "active": false,
+            "local": 0,
+            "u": 0,
+            "alpha": 0.1451212510084275,
+            "centring": 0,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 33.31258680561136,
+            "stdDev": 27.319394064189787
+          }
+        },
+        {
+          "fallT": 0.12,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              284.08864113518104,
+              1288.5096368002376,
+              -1198.297211342109
+            ],
+            "quaternion": [
+              0.10779140929434784,
+              -0.685096057456014,
+              0.3317924300023859,
+              0.6394827499891426
+            ],
+            "fov": 62.36424438676789
+          },
+          "fall": {
+            "active": true,
+            "local": 0.11999999999999916,
+            "u": 0.2727272727272708,
+            "alpha": 0.2392668291464931,
+            "centring": 0.35199999999999604,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0.6847056952178991,
+            "fovOffset": -2.0934849216792655,
+            "camForward": 0.05682023006441851
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 42.36442165791801,
+            "stdDev": 39.59454860722169
+          }
+        },
+        {
+          "fallT": 0.12,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              284.09891843154236,
+              1288.5173860023222,
+              -1198.2978765752684
+            ],
+            "quaternion": [
+              0.10778811695731343,
+              -0.6850967826084289,
+              0.3317948793733892,
+              0.6394812572108534
+            ],
+            "fov": 62.359950091526926
+          },
+          "fall": {
+            "active": true,
+            "local": 0.11999999999999916,
+            "u": 0.2727272727272708,
+            "alpha": 0.2392668291464931,
+            "centring": 0.35199999999999604,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0.6847056952178991,
+            "fovOffset": -2.0934849216792655,
+            "camForward": 0.05682023006441851
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 42.35915328407536,
+            "stdDev": 39.59741103757739
+          }
+        },
+        {
+          "fallT": 0.24,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              309.2243967976779,
+              1294.9551651316788,
+              -1192.7412686384935
+            ],
+            "quaternion": [
+              0.09635224852762485,
+              0.816689912840065,
+              -0.5593213010223171,
+              -0.10437199189275012
+            ],
+            "fov": 63.9234515058267
+          },
+          "fall": {
+            "active": true,
+            "local": 0.2400000000000008,
+            "u": 0.5454545454545473,
+            "alpha": 0.4964849726489209,
+            "centring": 0.8960000000000026,
+            "portal": 0,
+            "diskTilt": -0.020000000000001766,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 7.153087914962068,
+            "fovOffset": -0.07782060797932733,
+            "camForward": 2.278514664647873
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 36.36985460073583,
+            "stdDev": 45.98556670383152
+          }
+        },
+        {
+          "fallT": 0.24,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              309.2255579296173,
+              1294.9583431982576,
+              -1192.7398322993197
+            ],
+            "quaternion": [
+              0.0963574635651857,
+              0.8166901110439713,
+              -0.5593206080492791,
+              -0.10436934008440615
+            ],
+            "fov": 63.92222967130069
+          },
+          "fall": {
+            "active": true,
+            "local": 0.2400000000000008,
+            "u": 0.5454545454545473,
+            "alpha": 0.4964849726489209,
+            "centring": 0.8960000000000026,
+            "portal": 0,
+            "diskTilt": -0.020000000000001766,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 7.153087914962068,
+            "fovOffset": -0.07782060797932733,
+            "camForward": 2.278514664647873
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 36.366223234994735,
+            "stdDev": 45.995878220506526
+          }
+        },
+        {
+          "fallT": 0.34,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              311.655603211106,
+              1311.5410181574264,
+              -1186.2901012108252
+            ],
+            "quaternion": [
+              0.290064647124241,
+              0.8647740651733157,
+              -0.2671298501402527,
+              0.3109179310627704
+            ],
+            "fov": 70.20194788870464
+          },
+          "fall": {
+            "active": true,
+            "local": 0.3399999999999997,
+            "u": 0.772727272727272,
+            "alpha": 0.8261500878051706,
+            "centring": 1,
+            "portal": 0.492424500076778,
+            "diskTilt": -0.13999999999999968,
+            "band": 0.8017492711370289,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 12.842617712513418,
+            "fovOffset": 6.201947621920373,
+            "camForward": 5.298150526313324
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 25.640474175358015,
+            "stdDev": 19.279699226346214
+          }
+        },
+        {
+          "fallT": 0.34,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              311.65560307212127,
+              1311.5410186633655,
+              -1186.2901006135708
+            ],
+            "quaternion": [
+              0.29006465490218136,
+              0.8647740624521295,
+              -0.26712984737681106,
+              0.31091793374934257
+            ],
+            "fov": 70.20194762192848
+          },
+          "fall": {
+            "active": true,
+            "local": 0.3399999999999997,
+            "u": 0.772727272727272,
+            "alpha": 0.8261500878051706,
+            "centring": 1,
+            "portal": 0.492424500076778,
+            "diskTilt": -0.13999999999999968,
+            "band": 0.8017492711370289,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 12.842617712513418,
+            "fovOffset": 6.201947621920373,
+            "camForward": 5.298150526313324
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 25.9109964554556,
+            "stdDev": 19.306369336799076
+          }
+        },
+        {
+          "fallT": 0.44,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              305.80018963919935,
+              1330.009799175728,
+              -1169.445197992511
+            ],
+            "quaternion": [
+              0.192613534808994,
+              0.8611268189801058,
+              -0.03250843616119627,
+              0.4693653474852417
+            ],
+            "fov": 73.87526111325451
+          },
+          "fall": {
+            "active": true,
+            "local": 0.44000000000000106,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 0.5000000000000098,
+            "inside": 0.7407407407407638,
+            "rollDeg": 14,
+            "fovOffset": 9.875261113254508,
+            "camForward": 6.492068802050758
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 37.95775788485636,
+            "stdDev": 31.535760256017205
+          }
+        },
+        {
+          "fallT": 0.44,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              305.8001896391993,
+              1330.009799175728,
+              -1169.445197992511
+            ],
+            "quaternion": [
+              0.19261353480899407,
+              0.861126818980106,
+              -0.03250843616119638,
+              0.46936534748524145
+            ],
+            "fov": 73.87526111325451
+          },
+          "fall": {
+            "active": true,
+            "local": 0.44000000000000106,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 0.5000000000000098,
+            "inside": 0.7407407407407638,
+            "rollDeg": 14,
+            "fovOffset": 9.875261113254508,
+            "camForward": 6.492068802050758
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 38.48955656829759,
+            "stdDev": 31.515454462920076
+          }
+        },
+        {
+          "fallT": 0.56,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              284.75941425582283,
+              1337.8575170237398,
+              -1152.0405515522557
+            ],
+            "quaternion": [
+              0.3249747931603781,
+              0.736928158540035,
+              -0.22034505614961186,
+              0.5502511510134139
+            ],
+            "fov": 74
+          },
+          "fall": {
+            "active": true,
+            "local": 0.5600000000000002,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 13.961298502998257,
+            "fovOffset": 10,
+            "camForward": 6.5
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 43.465618127908066,
+            "stdDev": 38.91444507996938
+          }
+        },
+        {
+          "fallT": 0.56,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              284.75941425582283,
+              1337.8575170237398,
+              -1152.0405515522557
+            ],
+            "quaternion": [
+              0.3249747931603781,
+              0.736928158540035,
+              -0.22034505614961186,
+              0.5502511510134139
+            ],
+            "fov": 74
+          },
+          "fall": {
+            "active": true,
+            "local": 0.5600000000000002,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 13.961298502998257,
+            "fovOffset": 10,
+            "camForward": 6.5
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 43.7830110677155,
+            "stdDev": 38.600885317784105
+          }
+        },
+        {
+          "fallT": 0.7,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              250.219209611005,
+              1341.3227801353999,
+              -1117.0856520744153
+            ],
+            "quaternion": [
+              0.5220326670827108,
+              0.24804889857505216,
+              -0.43148236135117884,
+              0.6926590866053992
+            ],
+            "fov": 70.16611545227575
+          },
+          "fall": {
+            "active": true,
+            "local": 0.6999999999999996,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 5.196869179947316,
+            "fovOffset": 6.166115452275742,
+            "camForward": 4.007975043979233
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 45.764650245960375,
+            "stdDev": 39.160207487373626
+          }
+        },
+        {
+          "fallT": 0.7,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              250.219209611005,
+              1341.3227801353999,
+              -1117.0856520744153
+            ],
+            "quaternion": [
+              0.5220326670827108,
+              0.24804889857505216,
+              -0.43148236135117884,
+              0.6926590866053992
+            ],
+            "fov": 70.16611545227575
+          },
+          "fall": {
+            "active": true,
+            "local": 0.6999999999999996,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 5.196869179947316,
+            "fovOffset": 6.166115452275742,
+            "camForward": 4.007975043979233
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 46.240196035885035,
+            "stdDev": 38.89978710745493
+          }
+        },
+        {
+          "fallT": 0.81,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              265.80803670597527,
+              1353.6283214529533,
+              -1145.8455370859856
+            ],
+            "quaternion": [
+              0.4821430113849569,
+              0.49179779313673466,
+              -0.4423983342368063,
+              0.5744186287917391
+            ],
+            "fov": 64.0096066301258
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8099999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0.0061176679666519185,
+            "fovOffset": 0.009606630125799098,
+            "camForward": 0.006244309581769414
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 46.04899558737938,
+            "stdDev": 38.78391326355837
+          }
+        },
+        {
+          "fallT": 0.81,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              265.80803670597527,
+              1353.6283214529533,
+              -1145.8455370859856
+            ],
+            "quaternion": [
+              0.4821430113849569,
+              0.49179779313673466,
+              -0.4423983342368063,
+              0.5744186287917391
+            ],
+            "fov": 64.0096066301258
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8099999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0.0061176679666519185,
+            "fovOffset": 0.009606630125799098,
+            "camForward": 0.006244309581769414
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 46.704549696160086,
+            "stdDev": 38.78297008079055
+          }
+        },
+        {
+          "fallT": 0.9,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              260.36853216494256,
+              1374.0440016287948,
+              -1120.7763139638337
+            ],
+            "quaternion": [
+              0.4463375010087986,
+              0.17741016127195652,
+              -0.2735347295735859,
+              0.8333589992240945
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8999999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 49.165605107056365,
+            "stdDev": 52.22152172061608
+          }
+        },
+        {
+          "fallT": 0.9,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              260.3684098285373,
+              1374.0439764568316,
+              -1120.7761085580355
+            ],
+            "quaternion": [
+              0.4463397922979476,
+              0.1774059437238214,
+              -0.2735277639998696,
+              0.8333609561673242
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8999999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 49.60088541667676,
+            "stdDev": 52.06470260619665
+          }
+        },
+        {
+          "fallT": 0.99,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              254.98115380511774,
+              1389.1092807471173,
+              -1123.2417376734845
+            ],
+            "quaternion": [
+              0.48487547793564745,
+              0.03787413106300884,
+              -0.04859489667706033,
+              0.8724103719637023
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.9899999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 20.515005787036102,
+            "stdDev": 46.65076217632339
+          }
+        },
+        {
+          "fallT": 0.99,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              254.98103790792166,
+              1389.1086987326341,
+              -1123.2419990839617
+            ],
+            "quaternion": [
+              0.4848796638968146,
+              0.037868780863938585,
+              -0.048586426039994274,
+              0.8724087494860716
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.9899999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 1280,
+            "height": 720,
+            "mean": 20.477921730323757,
+            "stdDev": 46.5867836110834
+          }
+        }
+      ]
+    },
+    {
+      "id": "webgl2-portrait",
+      "status": "pass",
+      "profile": {
+        "id": "portrait",
+        "width": 390,
+        "height": 844,
+        "tier": "Low"
+      },
+      "screenshotCount": 20,
+      "failures": [],
+      "frames": [
+        {
+          "fallT": 0,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              256.250208219211,
+              1290.0787815661706,
+              -1171.617531903014
+            ],
+            "quaternion": [
+              0.09474060155137873,
+              -0.5505211084461267,
+              0.10808865810357814,
+              0.8223548927089197
+            ],
+            "fov": 65
+          },
+          "fall": {
+            "active": false,
+            "local": 0,
+            "u": 0,
+            "alpha": 0.1451212510084275,
+            "centring": 0,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 42.216062097410564,
+            "stdDev": 45.901699428476306
+          }
+        },
+        {
+          "fallT": 0,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              256.250208219211,
+              1290.0787815661706,
+              -1171.617531903014
+            ],
+            "quaternion": [
+              0.09474060155137873,
+              -0.5505211084461267,
+              0.10808865810357814,
+              0.8223548927089197
+            ],
+            "fov": 65
+          },
+          "fall": {
+            "active": false,
+            "local": 0,
+            "u": 0,
+            "alpha": 0.1451212510084275,
+            "centring": 0,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 42.22315388661155,
+            "stdDev": 45.935339183541
+          }
+        },
+        {
+          "fallT": 0.12,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              284.08864113518104,
+              1288.5096368002376,
+              -1198.297211342109
+            ],
+            "quaternion": [
+              0.10779140929434784,
+              -0.685096057456014,
+              0.3317924300023859,
+              0.6394827499891426
+            ],
+            "fov": 62.36424438676789
+          },
+          "fall": {
+            "active": true,
+            "local": 0.11999999999999916,
+            "u": 0.2727272727272708,
+            "alpha": 0.2392668291464931,
+            "centring": 0.35199999999999604,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0.6847056952178991,
+            "fovOffset": -2.0934849216792655,
+            "camForward": 0.05682023006441851
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 50.92709624499421,
+            "stdDev": 57.211676941832486
+          }
+        },
+        {
+          "fallT": 0.12,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              284.09891843154236,
+              1288.5173860023222,
+              -1198.2978765752684
+            ],
+            "quaternion": [
+              0.10778811695731343,
+              -0.6850967826084289,
+              0.3317948793733892,
+              0.6394812572108534
+            ],
+            "fov": 62.359950091526926
+          },
+          "fall": {
+            "active": true,
+            "local": 0.11999999999999916,
+            "u": 0.2727272727272708,
+            "alpha": 0.2392668291464931,
+            "centring": 0.35199999999999604,
+            "portal": 0,
+            "diskTilt": 0.1,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 0.6847056952178991,
+            "fovOffset": -2.0934849216792655,
+            "camForward": 0.05682023006441851
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 50.97270425730721,
+            "stdDev": 57.22324746902628
+          }
+        },
+        {
+          "fallT": 0.24,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              309.2243967976779,
+              1294.9551651316788,
+              -1192.7412686384935
+            ],
+            "quaternion": [
+              0.09635224852762485,
+              0.816689912840065,
+              -0.5593213010223171,
+              -0.10437199189275012
+            ],
+            "fov": 63.9234515058267
+          },
+          "fall": {
+            "active": true,
+            "local": 0.2400000000000008,
+            "u": 0.5454545454545473,
+            "alpha": 0.4964849726489209,
+            "centring": 0.8960000000000026,
+            "portal": 0,
+            "diskTilt": -0.020000000000001766,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 7.153087914962068,
+            "fovOffset": -0.07782060797932733,
+            "camForward": 2.278514664647873
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 27.350755458338707,
+            "stdDev": 55.44535200460209
+          }
+        },
+        {
+          "fallT": 0.24,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              309.2255579296173,
+              1294.9583431982576,
+              -1192.7398322993197
+            ],
+            "quaternion": [
+              0.0963574635651857,
+              0.8166901110439713,
+              -0.5593206080492791,
+              -0.10436934008440615
+            ],
+            "fov": 63.92222967130069
+          },
+          "fall": {
+            "active": true,
+            "local": 0.2400000000000008,
+            "u": 0.5454545454545473,
+            "alpha": 0.4964849726489209,
+            "centring": 0.8960000000000026,
+            "portal": 0,
+            "diskTilt": -0.020000000000001766,
+            "band": 1,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 7.153087914962068,
+            "fovOffset": -0.07782060797932733,
+            "camForward": 2.278514664647873
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 27.464072183741184,
+            "stdDev": 55.57853837830132
+          }
+        },
+        {
+          "fallT": 0.34,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              311.655603211106,
+              1311.5410181574264,
+              -1186.2901012108252
+            ],
+            "quaternion": [
+              0.290064647124241,
+              0.8647740651733157,
+              -0.2671298501402527,
+              0.3109179310627704
+            ],
+            "fov": 70.20194788870464
+          },
+          "fall": {
+            "active": true,
+            "local": 0.3399999999999997,
+            "u": 0.772727272727272,
+            "alpha": 0.8261500878051706,
+            "centring": 1,
+            "portal": 0.492424500076778,
+            "diskTilt": -0.13999999999999968,
+            "band": 0.8017492711370289,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 12.842617712513418,
+            "fovOffset": 6.201947621920373,
+            "camForward": 5.298150526313324
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 19.637283793110218,
+            "stdDev": 22.30323350883281
+          }
+        },
+        {
+          "fallT": 0.34,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              311.65560307212127,
+              1311.5410186633655,
+              -1186.2901006135708
+            ],
+            "quaternion": [
+              0.29006465490218136,
+              0.8647740624521295,
+              -0.26712984737681106,
+              0.31091793374934257
+            ],
+            "fov": 70.20194762192848
+          },
+          "fall": {
+            "active": true,
+            "local": 0.3399999999999997,
+            "u": 0.772727272727272,
+            "alpha": 0.8261500878051706,
+            "centring": 1,
+            "portal": 0.492424500076778,
+            "diskTilt": -0.13999999999999968,
+            "band": 0.8017492711370289,
+            "warp": 0,
+            "inside": 0,
+            "rollDeg": 12.842617712513418,
+            "fovOffset": 6.201947621920373,
+            "camForward": 5.298150526313324
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 19.630108964250205,
+            "stdDev": 22.24413185124084
+          }
+        },
+        {
+          "fallT": 0.44,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              305.80018963919935,
+              1330.009799175728,
+              -1169.445197992511
+            ],
+            "quaternion": [
+              0.192613534808994,
+              0.8611268189801058,
+              -0.03250843616119627,
+              0.4693653474852417
+            ],
+            "fov": 73.87526111325451
+          },
+          "fall": {
+            "active": true,
+            "local": 0.44000000000000106,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 0.5000000000000098,
+            "inside": 0.7407407407407638,
+            "rollDeg": 14,
+            "fovOffset": 9.875261113254508,
+            "camForward": 6.492068802050758
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 36.642978085627675,
+            "stdDev": 36.00970535642602
+          }
+        },
+        {
+          "fallT": 0.44,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              305.8001896391993,
+              1330.009799175728,
+              -1169.445197992511
+            ],
+            "quaternion": [
+              0.19261353480899407,
+              0.861126818980106,
+              -0.03250843616119638,
+              0.46936534748524145
+            ],
+            "fov": 73.87526111325451
+          },
+          "fall": {
+            "active": true,
+            "local": 0.44000000000000106,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 0.5000000000000098,
+            "inside": 0.7407407407407638,
+            "rollDeg": 14,
+            "fovOffset": 9.875261113254508,
+            "camForward": 6.492068802050758
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 36.6735387045743,
+            "stdDev": 36.25360450832032
+          }
+        },
+        {
+          "fallT": 0.56,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              284.75941425582283,
+              1337.8575170237398,
+              -1152.0405515522557
+            ],
+            "quaternion": [
+              0.3249747931603781,
+              0.736928158540035,
+              -0.22034505614961186,
+              0.5502511510134139
+            ],
+            "fov": 74
+          },
+          "fall": {
+            "active": true,
+            "local": 0.5600000000000002,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 13.961298502998257,
+            "fovOffset": 10,
+            "camForward": 6.5
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 42.41340887916955,
+            "stdDev": 44.76876669732403
+          }
+        },
+        {
+          "fallT": 0.56,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              284.75941425582283,
+              1337.8575170237398,
+              -1152.0405515522557
+            ],
+            "quaternion": [
+              0.3249747931603781,
+              0.736928158540035,
+              -0.22034505614961186,
+              0.5502511510134139
+            ],
+            "fov": 74
+          },
+          "fall": {
+            "active": true,
+            "local": 0.5600000000000002,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 13.961298502998257,
+            "fovOffset": 10,
+            "camForward": 6.5
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 42.34383886255721,
+            "stdDev": 45.16883724113842
+          }
+        },
+        {
+          "fallT": 0.7,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              250.219209611005,
+              1341.3227801353999,
+              -1117.0856520744153
+            ],
+            "quaternion": [
+              0.5220326670827108,
+              0.24804889857505216,
+              -0.43148236135117884,
+              0.6926590866053992
+            ],
+            "fov": 70.16611545227575
+          },
+          "fall": {
+            "active": true,
+            "local": 0.6999999999999996,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 5.196869179947316,
+            "fovOffset": 6.166115452275742,
+            "camForward": 4.007975043979233
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 44.37455340867419,
+            "stdDev": 46.33991546896485
+          }
+        },
+        {
+          "fallT": 0.7,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              250.219209611005,
+              1341.3227801353999,
+              -1117.0856520744153
+            ],
+            "quaternion": [
+              0.5220326670827108,
+              0.24804889857505216,
+              -0.43148236135117884,
+              0.6926590866053992
+            ],
+            "fov": 70.16611545227575
+          },
+          "fall": {
+            "active": true,
+            "local": 0.6999999999999996,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 5.196869179947316,
+            "fovOffset": 6.166115452275742,
+            "camForward": 4.007975043979233
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 44.38164317251039,
+            "stdDev": 46.76447727594268
+          }
+        },
+        {
+          "fallT": 0.81,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              265.80803670597527,
+              1353.6283214529533,
+              -1145.8455370859856
+            ],
+            "quaternion": [
+              0.4821430113849569,
+              0.49179779313673466,
+              -0.4423983342368063,
+              0.5744186287917391
+            ],
+            "fov": 64.0096066301258
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8099999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0.0061176679666519185,
+            "fovOffset": 0.009606630125799098,
+            "camForward": 0.006244309581769414
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 44.98809798679051,
+            "stdDev": 47.25626929369723
+          }
+        },
+        {
+          "fallT": 0.81,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              265.80803670597527,
+              1353.6283214529533,
+              -1145.8455370859856
+            ],
+            "quaternion": [
+              0.4821430113849569,
+              0.49179779313673466,
+              -0.4423983342368063,
+              0.5744186287917391
+            ],
+            "fov": 64.0096066301258
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8099999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0.0061176679666519185,
+            "fovOffset": 0.009606630125799098,
+            "camForward": 0.006244309581769414
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 44.673192368446024,
+            "stdDev": 47.28328606452904
+          }
+        },
+        {
+          "fallT": 0.9,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              260.36853216494256,
+              1374.0440016287948,
+              -1120.7763139638337
+            ],
+            "quaternion": [
+              0.4463375010087986,
+              0.17741016127195652,
+              -0.2735347295735859,
+              0.8333589992240945
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8999999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 60.85707963705571,
+            "stdDev": 73.0192226098036
+          }
+        },
+        {
+          "fallT": 0.9,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              260.3684098285373,
+              1374.0439764568316,
+              -1120.7761085580355
+            ],
+            "quaternion": [
+              0.4463397922979476,
+              0.1774059437238214,
+              -0.2735277639998696,
+              0.8333609561673242
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.8999999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 60.48807469516431,
+            "stdDev": 73.09518062253431
+          }
+        },
+        {
+          "fallT": 0.99,
+          "time": 8,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              254.98115380511774,
+              1389.1092807471173,
+              -1123.2417376734845
+            ],
+            "quaternion": [
+              0.48487547793564745,
+              0.03787413106300884,
+              -0.04859489667706033,
+              0.8724103719637023
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.9899999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 31.632882691286976,
+            "stdDev": 54.554913123035334
+          }
+        },
+        {
+          "fallT": 0.99,
+          "time": 8.08,
+          "backend": "WebGL2",
+          "camera": {
+            "position": [
+              254.98103790792166,
+              1389.1086987326341,
+              -1123.2419990839617
+            ],
+            "quaternion": [
+              0.4848796638968146,
+              0.037868780863938585,
+              -0.048586426039994274,
+              0.8724087494860716
+            ],
+            "fov": 64
+          },
+          "fall": {
+            "active": true,
+            "local": 0.9899999999999999,
+            "u": 1,
+            "alpha": 1.2566370614359172,
+            "centring": 1,
+            "portal": 1,
+            "diskTilt": -0.14,
+            "band": 0,
+            "warp": 1,
+            "inside": 1,
+            "rollDeg": 0,
+            "fovOffset": 0,
+            "camForward": 0
+          },
+          "raster": {
+            "width": 390,
+            "height": 844,
+            "mean": 31.502659294356942,
+            "stdDev": 54.38079927760258
+          }
+        }
+      ]
+    }
+  ],
+  "motion": {
+    "status": "pass",
+    "sourceStable": true,
+    "screenshotCount": 24,
+    "failures": []
+  },
+  "longSession": {
+    "status": "pass",
+    "sourceStable": true,
+    "screenshotCount": 4,
+    "failures": []
+  }
+}

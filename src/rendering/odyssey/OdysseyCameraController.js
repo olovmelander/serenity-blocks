@@ -495,10 +495,9 @@ function resolveChapter8Framing(t) {
     return out;
 }
 
-// THE FALL (chapter 7, 2026-10-02): a gentle roll (frame dragging) and a widening FOV (speed)
-// across the plunge into the black hole, both sin-shaped from the chapter's start to where the 7->8
-// window opens (transitions/odyssey-black-hole-fall.js), so they are exactly zero at both seams.
-const CH7_FALL_EXIT = resolveBlackHoleFallExit(DEFAULT_CHAPTER_POSITIONS) ?? 0.82;
+// THE FALL (chapter 7): attraction compresses the lens, then the eye pulls forward and the
+// view widens into the warp. Every envelope settles before the LIVE 7->8 window opens, so
+// none of the fall's framing changes the established city reveal.
 let reducedMotionPreferred = null;
 function prefersReducedMotion() {
     if (reducedMotionPreferred === null) {
@@ -511,22 +510,29 @@ function prefersReducedMotion() {
 export function setOdysseyCameraReducedMotion(value) {
     reducedMotionPreferred = value === null ? null : !!value;
 }
-function resolveChapter7Framing(t) {
-    const fall = resolveBlackHoleFallCamera(t, CH7_FALL_EXIT);
+function resolveChapter7Framing(t, chapterPositions) {
+    const exit = resolveBlackHoleFallExit(chapterPositions) ?? 0.82;
+    const fall = resolveBlackHoleFallCamera(t, exit);
+    const reducedMotion = prefersReducedMotion();
     return {
         ...resolveChapterFraming(7),
-        rollDeg: prefersReducedMotion() ? 0 : fall.rollDeg,
-        fovOffset: fall.fovOffset,
+        rollDeg: reducedMotion ? 0 : fall.rollDeg,
+        fovOffset: reducedMotion ? fall.fovOffset * 0.35 : fall.fovOffset,
+        camForward: reducedMotion ? 0 : fall.camForward,
     };
 }
 
-function resolveChapterFramingForProgress(chapterId, inChapterProgress = 0) {
+function resolveChapterFramingForProgress(
+    chapterId,
+    inChapterProgress = 0,
+    chapterPositions = DEFAULT_CHAPTER_POSITIONS,
+) {
     if (chapterId === 1) return resolveChapter1Framing(inChapterProgress);
     if (chapterId === 2) return resolveChapter2Framing(inChapterProgress);
     if (chapterId === 3) return resolveChapter3Framing(inChapterProgress);
     if (chapterId === 4) return resolveChapter4Framing(inChapterProgress);
     if (chapterId === 5) return resolveChapter5Framing(inChapterProgress);
-    if (chapterId === 7) return resolveChapter7Framing(inChapterProgress);
+    if (chapterId === 7) return resolveChapter7Framing(inChapterProgress, chapterPositions);
     if (chapterId === 8) return resolveChapter8Framing(inChapterProgress);
     return resolveChapterFraming(chapterId);
 }
@@ -590,15 +596,21 @@ export function resolveJourneyFraming(progress, chapterPositions = DEFAULT_CHAPT
     const seam = seamWindowAt(progress, chapterPositions);
     if (!seam) {
         const chapterId = chapterAtProgress(progress, chapterPositions);
-        return resolveChapterFramingForProgress(chapterId, localChapterProgress(chapterId, progress, chapterPositions));
+        return resolveChapterFramingForProgress(
+            chapterId,
+            localChapterProgress(chapterId, progress, chapterPositions),
+            chapterPositions,
+        );
     }
     const src = resolveChapterFramingForProgress(
         seam.source,
         localChapterProgress(seam.source, progress, chapterPositions),
+        chapterPositions,
     );
     const dst = resolveChapterFramingForProgress(
         seam.target,
         localChapterProgress(seam.target, progress, chapterPositions),
+        chapterPositions,
     );
     const blend = smoother01(seam.t);
     const out = { ...DEFAULT_CHAPTER_FRAMING };
@@ -617,6 +629,24 @@ export function resolveJourneyFraming(progress, chapterPositions = DEFAULT_CHAPT
         out[key] = THREE.MathUtils.lerp(a, b, w);
     }
     return out;
+}
+
+const FALL_CAMERA_KEYS = Object.freeze(['rollDeg', 'fovOffset', 'camForward']);
+
+/** The fall is already smooth in progress; easing it again would carry it into the city. */
+function resolveJourneyFallCamera(progress, chapterPositions) {
+    const local = localChapterProgress(7, progress, chapterPositions);
+    const fall = resolveChapter7Framing(local, chapterPositions);
+    const seam = seamWindowAt(progress, chapterPositions);
+    const weight = seam
+        ? ((seam.source === 7 ? 1 : 0) * (1 - smoother01(seam.t))
+            + (seam.target === 7 ? 1 : 0) * smoother01(seam.t))
+        : 1;
+    return {
+        rollDeg: fall.rollDeg * weight,
+        fovOffset: fall.fovOffset * weight,
+        camForward: fall.camForward * weight,
+    };
 }
 
 // ── 6->7 HAIRPIN — the path turns ~170 deg just past the boundary ─────────────────
@@ -786,6 +816,10 @@ export class OdysseyCameraController {
         // changes never snap. Seeded from the start chapter so the first frame is
         // already framed correctly.
         this._activeFraming = resolveJourneyFraming(this.currentPosition, this.chapterPositions);
+        this._fallCameraFraming = resolveJourneyFallCamera(this.currentPosition, this.chapterPositions);
+        this._appliedFallEyeOffset = new THREE.Vector3();
+        this._frameFallEyeOffset = new THREE.Vector3();
+        this._appliedFallFovOffset = 0;
         this._framingInitialized = false;
 
         // Configuration
@@ -1467,8 +1501,10 @@ export class OdysseyCameraController {
         if (this.pathTravel?.active) {
             this.updatePathTravel();
         } else if (this.portalApproach?.active) {
+            this._appliedFallEyeOffset.set(0, 0, 0);
             this.updatePortalApproach();
         } else if (this.isAnimating) {
+            this._appliedFallEyeOffset.set(0, 0, 0);
             this.updateAnimation();
         } else if (this.mode === 'follow') {
             if (teleported) {
@@ -1492,6 +1528,7 @@ export class OdysseyCameraController {
 
         // Free camera is driven directly from its quaternion to avoid lookAt singularities.
         if (this.mode === 'free') {
+            this._appliedFallEyeOffset.set(0, 0, 0);
             this.camera.quaternion.copy(this.freeCameraQuaternion);
             this.camera.updateMatrixWorld(true);
             return;
@@ -1652,12 +1689,15 @@ export class OdysseyCameraController {
         // lerped by progress (resolveJourneyFraming), so the target itself never steps; the
         // exponential ease below only filters it.
         const target = resolveJourneyFraming(this.currentPosition, this.chapterPositions);
+        const fall = resolveJourneyFallCamera(this.currentPosition, this.chapterPositions);
+        const previousFall = this._fallCameraFraming;
         const active = this._activeFraming;
 
         // Snap on the very first frame (avoids a visible ease-in from defaults on load).
         if (!this._framingInitialized) {
             this._framingInitialized = true;
             Object.assign(active, target);
+            this._fallCameraFraming = fall;
             return;
         }
 
@@ -1665,8 +1705,21 @@ export class OdysseyCameraController {
         for (let i = 0; i < FRAMING_KEYS.length; i += 1) {
             const key = FRAMING_KEYS[i];
             const fallback = DEFAULT_CHAPTER_FRAMING[key];
-            active[key] = THREE.MathUtils.lerp(active[key] ?? fallback, target[key] ?? fallback, lerp);
+            const a = (active[key] ?? fallback) - (previousFall[key] ?? 0);
+            const b = (target[key] ?? fallback) - (fall[key] ?? 0);
+            active[key] = THREE.MathUtils.lerp(a, b, lerp) + (fall[key] ?? 0);
         }
+        this._fallCameraFraming = fall;
+    }
+
+    /** Travel integrates after generic framing; sync the fall to the position actually drawn. */
+    _syncFallCameraFraming(position) {
+        const fall = resolveJourneyFallCamera(position, this.chapterPositions);
+        for (let i = 0; i < FALL_CAMERA_KEYS.length; i += 1) {
+            const key = FALL_CAMERA_KEYS[i];
+            this._activeFraming[key] += fall[key] - this._fallCameraFraming[key];
+        }
+        this._fallCameraFraming = fall;
     }
 
     /**
@@ -1843,9 +1896,11 @@ export class OdysseyCameraController {
 
     applyBaseFov(deltaTime, snap = false) {
         if (this.mode !== 'follow') {
+            this._appliedFallFovOffset = 0;
             return;
         }
         if (this.fovPulseActive || this.portalApproach?.active || (this.isAnimating && this.mode === 'focus')) {
+            this._appliedFallFovOffset = 0;
             return;
         }
 
@@ -1853,10 +1908,16 @@ export class OdysseyCameraController {
         if (!Number.isFinite(targetFov)) return;
 
         const lerp = snap ? 1 : 1 - Math.exp(-Math.max(0, deltaTime) * 2.2);
-        const nextFov = THREE.MathUtils.lerp(this.camera.fov, targetFov, lerp);
-        if (Math.abs(nextFov - this.camera.fov) > 0.01) {
+        const fallFov = this._fallCameraFraming.fovOffset;
+        const nextFov = THREE.MathUtils.lerp(
+            this.camera.fov - this._appliedFallFovOffset,
+            targetFov - fallFov,
+            lerp,
+        ) + fallFov;
+        if (Math.abs(nextFov - this.camera.fov) > 0.01 || fallFov !== this._appliedFallFovOffset) {
             this.camera.fov = nextFov;
             this.camera.updateProjectionMatrix();
+            this._appliedFallFovOffset = fallFov;
         }
     }
 
@@ -1869,7 +1930,8 @@ export class OdysseyCameraController {
 
         const elapsed = (performance.now() - this.fovPulseStartTime) / 1000;
         const t = Math.min(elapsed / this.fovPulseDuration, 1);
-        const base = this._resolveBaseFov();
+        const fallFov = this._fallCameraFraming.fovOffset;
+        const base = this._resolveBaseFov() - fallFov;
 
         // ONE hump: a quick smooth widen, then a long smooth release. (The old curve hit
         // sin(pi * t / 0.4) — a full hump by t=0.4 — then a SECOND hump on the way down,
@@ -1881,15 +1943,20 @@ export class OdysseyCameraController {
         const envelope = t < attack
             ? smooth(t / attack)
             : 1 - smooth((t - attack) / (1 - attack));
-        const carrier = THREE.MathUtils.lerp(this.fovPulseStartFov, base, smooth(Math.min(1, t / 0.6)));
+        const carrier = THREE.MathUtils.lerp(
+            this.fovPulseStartFov - (this._fovPulseStartFallOffset ?? 0),
+            base,
+            smooth(Math.min(1, t / 0.6)),
+        );
         const direction = this.fovPulseType === 'expand' ? 1 : -0.5;
-        this.camera.fov = carrier + envelope * this.fovPulseAmount * direction;
+        this.camera.fov = carrier + envelope * this.fovPulseAmount * direction + fallFov;
+        this._appliedFallFovOffset = fallFov;
         this.camera.updateProjectionMatrix();
 
         // End pulse (envelope and carrier have both landed on the base: no snap)
         if (t >= 1) {
             this.fovPulseActive = false;
-            this.camera.fov = base;
+            this.camera.fov = base + fallFov;
             this.camera.updateProjectionMatrix();
         }
     }
@@ -1904,6 +1971,7 @@ export class OdysseyCameraController {
         this.fovPulseActive = true;
         this.fovPulseStartTime = performance.now();
         this.fovPulseStartFov = Number.isFinite(this.camera?.fov) ? this.camera.fov : this._resolveBaseFov();
+        this._fovPulseStartFallOffset = this._appliedFallFovOffset;
         this.fovPulseType = type;
         this.fovPulseAmount = options.amount ?? this.cinematicConfig.fovPulseAmount;
         this.fovPulseDuration = options.duration ?? this.cinematicConfig.fovPulseDuration;
@@ -2340,6 +2408,8 @@ export class OdysseyCameraController {
             .addScaledVector(eyeRight, this.config.followOffset.x + framing.camRight)
             .addScaledVector(cameraUp, this.config.followOffset.y + vistaLift + framing.camUp)
             .addScaledVector(dolly, framing.camForward);
+        const fallEyeOffset = this._frameFallEyeOffset.copy(dolly)
+            .multiplyScalar(this._fallCameraFraming.camForward);
         if (forwardOffset > 0) {
             camPos.addScaledVector(dolly, forwardOffset * seamDirection);
         }
@@ -2463,6 +2533,7 @@ export class OdysseyCameraController {
             tangent,
             normal: cameraUp,
             right: eyeRight,
+            fallEyeOffset,
         };
     }
 
@@ -2474,16 +2545,23 @@ export class OdysseyCameraController {
             lookBlend = 0.1,
         } = options;
 
-        const { camPos, lookTarget, normal } = this.computeFollowFrame(position);
+        this._syncFallCameraFraming(position);
+        const {
+            camPos, lookTarget, normal, fallEyeOffset,
+        } = this.computeFollowFrame(position);
 
         if (direct) {
             this.camera.position.copy(camPos);
             this.lookAtTarget.copy(lookTarget);
             this.followCameraUp.copy(normal);
+            this._appliedFallEyeOffset.copy(fallEyeOffset);
             return;
         }
 
-        this.camera.position.lerp(camPos, positionBlend);
+        this.camera.position.sub(this._appliedFallEyeOffset)
+            .lerp(camPos.sub(fallEyeOffset), positionBlend)
+            .add(fallEyeOffset);
+        this._appliedFallEyeOffset.copy(fallEyeOffset);
         this.lookAtTarget.lerp(lookTarget, lookBlend);
         this.followCameraUp.lerp(normal, lookBlend).normalize();
     }
