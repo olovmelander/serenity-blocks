@@ -1,0 +1,38 @@
+{
+  "fullSuite": {
+    "files": 523,
+    "passedTests": 5571,
+    "failedTests": 0,
+    "success": true,
+    "stage": "before final portrait camera adjustment"
+  },
+  "finalWavesSuite": {
+    "files": 4,
+    "passedTests": 57,
+    "failedTests": 0
+  },
+  "checks": {
+    "build": "passed",
+    "typecheck": "passed",
+    "scopedLint": "passed, zero warnings",
+    "lintRatchet": "passed, 1203 errors versus 1220 baseline",
+    "architectureFitness": "passed",
+    "dependencyBoundaries": "passed",
+    "themeLifecycleAudit": "passed"
+  },
+  "renderValidation": {
+    "nativeWebGPU": "software Vulkan offscreen GPU readback; High idle and combo7; selective MRT; zero GPU/console errors",
+    "productionWebGL2": "SwiftShader; desktop High and portrait Low real game board; canonical gameplay callbacks; lifecycle checks"
+  },
+  "physicalGPUPerformance": "not measured",
+  "productionChecks": {
+    "desktopHigh": 14,
+    "portraitLow": 14,
+    "passed": 28,
+    "failed": 0,
+    "errors": 0,
+    "shaderWarnings": 0,
+    "expectedNoticesPerRun": 2,
+    "expectedNotice": "BaseTheme stops an active runtime before deliberate quality restart"
+  }
+}
