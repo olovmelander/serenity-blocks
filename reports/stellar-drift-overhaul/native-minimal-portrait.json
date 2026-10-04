@@ -1,0 +1,105 @@
+{
+  "ready": true,
+  "diagnostics": {
+    "quality": "Minimal",
+    "disabled": true,
+    "useMRT": false,
+    "arcs": 0,
+    "comets": 0,
+    "stars": 550,
+    "meteorCount": 50,
+    "dust": 160,
+    "analyticMotion": true,
+    "backend": "WebGPU",
+    "time": 8,
+    "seed": 187,
+    "event": "idle",
+    "combo": 9,
+    "eventAge": 0.35,
+    "render": {
+      "calls": 2,
+      "frameCalls": 2,
+      "drawCalls": 16,
+      "triangles": 25019,
+      "points": 0,
+      "lines": 0,
+      "timestamp": 0
+    },
+    "memory": {
+      "attributes": 28,
+      "attributesSize": 138108,
+      "geometries": 12,
+      "indexAttributes": 10,
+      "indexAttributesSize": 147552,
+      "indirectStorageAttributes": 0,
+      "indirectStorageAttributesSize": 0,
+      "programs": 22,
+      "programsSize": 45962,
+      "readbackBuffers": 0,
+      "readbackBuffersSize": 0,
+      "renderTargets": 2,
+      "storageAttributes": 0,
+      "storageAttributesSize": 0,
+      "textures": 6,
+      "texturesSize": 6845278,
+      "uniformBuffers": 29,
+      "uniformBuffersSize": 2192,
+      "total": 7179092
+    },
+    "width": 390,
+    "height": 844,
+    "readbackBytes": 1512216,
+    "rowStride": 1792,
+    "directOutput": true,
+    "maxColorAttachments": 8,
+    "reaction": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0
+    },
+    "camera": {
+      "position": [
+        0,
+        0,
+        45
+      ],
+      "fov": 48,
+      "aspect": 0.46208530805687204
+    },
+    "scene": [
+      {
+        "name": "stellar-drift-planet-system",
+        "visible": true
+      },
+      {
+        "name": "",
+        "visible": true
+      },
+      {
+        "name": "stellar-drift-starfield",
+        "visible": true
+      },
+      {
+        "name": "stellar-drift-distant-moon",
+        "visible": true
+      },
+      {
+        "name": "stellar-drift-inner-moon",
+        "visible": true
+      }
+    ],
+    "pixelStats": {
+      "min": 8,
+      "max": 250,
+      "meanPeak": 72.28219406975332,
+      "clippedWhiteFraction": 0.0000030380362133916637
+    },
+    "gpuErrors": []
+  },
+  "gpuErrors": [],
+  "errors": [],
+  "warnings": []
+}
