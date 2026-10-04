@@ -1,0 +1,118 @@
+{
+  "event": "lock",
+  "theme": "stellar-drift",
+  "isActive": true,
+  "isPaused": false,
+  "lifecycle": "running",
+  "generation": 2,
+  "time": 7.999999999999977,
+  "quality": "Low",
+  "backend": "WebGL2",
+  "post": {
+    "quality": "Low",
+    "disabled": true,
+    "useMRT": false
+  },
+  "frame": {
+    "rim": 0.09586652418124166,
+    "aurora": 0,
+    "dust": 0.10649300571158285,
+    "stars": 0.0761337561537875,
+    "glow": 0.04288384759290918,
+    "impact": 0,
+    "arcs": [
+      {
+        "id": 0,
+        "active": true,
+        "angle": 1.771653737252164,
+        "direction": 1,
+        "age": 0.34999999999999876,
+        "duration": 0.9,
+        "strength": 0.32,
+        "seed": 0.8539137517146776,
+        "kind": "lock",
+        "impacted": false,
+        "progress": 0.3888888888888875
+      }
+    ],
+    "comets": []
+  },
+  "render": {
+    "calls": 30,
+    "frameCalls": 2,
+    "drawCalls": 16,
+    "triangles": 28555,
+    "points": 0,
+    "lines": 0,
+    "timestamp": 0
+  },
+  "board": {
+    "x": 21.5,
+    "y": 45,
+    "width": 347,
+    "height": 756
+  },
+  "boardCanvasCount": 1,
+  "themeCanvasCount": 1,
+  "activeContainers": [
+    "stellar-drift-theme"
+  ],
+  "camera": {
+    "position": [
+      0,
+      0,
+      45
+    ],
+    "fov": 48,
+    "aspect": 0.46208530805687204
+  },
+  "cssLayers": [
+    {
+      "id": "BODY",
+      "className": "startup-intro-skipped phaser-hud-ready",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgb(12, 10, 26)",
+      "display": "flex",
+      "zIndex": "auto"
+    },
+    {
+      "id": "DIV",
+      "className": "background-container",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "-1"
+    },
+    {
+      "id": "background-canvas",
+      "className": "",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "10"
+    },
+    {
+      "id": "stellar-drift-theme",
+      "className": "theme-container active",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "1"
+    },
+    {
+      "id": "single-player-container",
+      "className": "game-container single-player-layout",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "flex",
+      "zIndex": "1"
+    }
+  ],
+  "errors": [],
+  "warnings": []
+}

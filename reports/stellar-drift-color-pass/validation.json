@@ -1,0 +1,590 @@
+{
+  "baseCommit": "7161370",
+  "three": "0.186.1",
+  "date": "2026-10-04",
+  "checks": {
+    "targetedTests": 82,
+    "targetedTestFiles": 4,
+    "targetedStatus": "passed",
+    "build": "passed",
+    "bootClosure": "passed",
+    "typecheck": "passed",
+    "scopedLint": "passed"
+  },
+  "isolated": {
+    "native-idle": {
+      "ready": true,
+      "diagnostics": {
+        "quality": "High",
+        "disabled": false,
+        "useMRT": true,
+        "arcs": 0,
+        "comets": 0,
+        "stars": 1900,
+        "meteorCount": 300,
+        "dust": 900,
+        "analyticMotion": true,
+        "backend": "WebGPU",
+        "time": 8,
+        "seed": 187,
+        "event": "idle",
+        "combo": 9,
+        "eventAge": 0.35,
+        "render": {
+          "calls": 14,
+          "frameCalls": 14,
+          "drawCalls": 33,
+          "triangles": 46021,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 34,
+          "attributesSize": 335936,
+          "geometries": 15,
+          "indexAttributes": 13,
+          "indexAttributesSize": 271464,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 38,
+          "programsSize": 75238,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 13,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 18,
+          "texturesSize": 45024634,
+          "uniformBuffers": 58,
+          "uniformBuffersSize": 4800,
+          "total": 45712072
+        },
+        "width": 1440,
+        "height": 900,
+        "readbackBytes": 5299072,
+        "rowStride": 5888,
+        "directOutput": false,
+        "maxColorAttachments": 8,
+        "reaction": {
+          "rim": 0,
+          "aurora": 0,
+          "dust": 0,
+          "stars": 0,
+          "glow": 0,
+          "impact": 0
+        },
+        "camera": {
+          "position": [
+            0,
+            0,
+            45
+          ],
+          "fov": 48,
+          "aspect": 1.6
+        },
+        "scene": [
+          {
+            "name": "stellar-drift-planet-system",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "stellar-drift-starfield",
+            "visible": true
+          },
+          {
+            "name": "stellar-drift-distant-moon",
+            "visible": true
+          },
+          {
+            "name": "stellar-drift-inner-moon",
+            "visible": true
+          }
+        ],
+        "pixelStats": {
+          "min": 20,
+          "max": 254,
+          "meanPeak": 108.89431944444445,
+          "clippedWhiteFraction": 3.858024691358025e-06
+        },
+        "gpuErrors": []
+      },
+      "gpuErrors": [],
+      "errors": [],
+      "warnings": []
+    },
+    "native-combo": {
+      "ready": true,
+      "diagnostics": {
+        "quality": "High",
+        "disabled": false,
+        "useMRT": true,
+        "arcs": 2,
+        "comets": 3,
+        "stars": 1900,
+        "meteorCount": 300,
+        "dust": 900,
+        "analyticMotion": true,
+        "backend": "WebGPU",
+        "time": 8,
+        "seed": 187,
+        "event": "combo",
+        "combo": 9,
+        "eventAge": 1.8,
+        "render": {
+          "calls": 14,
+          "frameCalls": 14,
+          "drawCalls": 33,
+          "triangles": 46021,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 34,
+          "attributesSize": 335936,
+          "geometries": 15,
+          "indexAttributes": 13,
+          "indexAttributesSize": 271464,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 38,
+          "programsSize": 75238,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 13,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 18,
+          "texturesSize": 45024634,
+          "uniformBuffers": 58,
+          "uniformBuffersSize": 4800,
+          "total": 45712072
+        },
+        "width": 1440,
+        "height": 900,
+        "readbackBytes": 5299072,
+        "rowStride": 5888,
+        "directOutput": false,
+        "maxColorAttachments": 8,
+        "reaction": {
+          "rim": 0.2929215685809761,
+          "aurora": 0.22217018152109885,
+          "dust": 0.2206433409526468,
+          "stars": 0.05687663769870132,
+          "glow": 0.12625340033367963,
+          "impact": 0.20390735451674763
+        },
+        "camera": {
+          "position": [
+            0,
+            0,
+            45
+          ],
+          "fov": 48,
+          "aspect": 1.6
+        },
+        "scene": [
+          {
+            "name": "stellar-drift-planet-system",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "stellar-drift-starfield",
+            "visible": true
+          },
+          {
+            "name": "stellar-drift-distant-moon",
+            "visible": true
+          },
+          {
+            "name": "stellar-drift-inner-moon",
+            "visible": true
+          }
+        ],
+        "pixelStats": {
+          "min": 23,
+          "max": 254,
+          "meanPeak": 110.05890354938272,
+          "clippedWhiteFraction": 3.858024691358025e-06
+        },
+        "gpuErrors": []
+      },
+      "gpuErrors": [],
+      "errors": [],
+      "warnings": []
+    },
+    "native-low-portrait": {
+      "ready": true,
+      "diagnostics": {
+        "quality": "Low",
+        "disabled": true,
+        "useMRT": false,
+        "arcs": 0,
+        "comets": 0,
+        "stars": 850,
+        "meteorCount": 100,
+        "dust": 320,
+        "analyticMotion": true,
+        "backend": "WebGPU",
+        "time": 8,
+        "seed": 187,
+        "event": "idle",
+        "combo": 9,
+        "eventAge": 0.35,
+        "render": {
+          "calls": 2,
+          "frameCalls": 2,
+          "drawCalls": 16,
+          "triangles": 28555,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 28,
+          "attributesSize": 167036,
+          "geometries": 12,
+          "indexAttributes": 10,
+          "indexAttributesSize": 163104,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 22,
+          "programsSize": 47039,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 6,
+          "texturesSize": 7107357,
+          "uniformBuffers": 29,
+          "uniformBuffersSize": 2256,
+          "total": 7486792
+        },
+        "width": 390,
+        "height": 844,
+        "readbackBytes": 1512216,
+        "rowStride": 1792,
+        "directOutput": true,
+        "maxColorAttachments": 8,
+        "reaction": {
+          "rim": 0,
+          "aurora": 0,
+          "dust": 0,
+          "stars": 0,
+          "glow": 0,
+          "impact": 0
+        },
+        "camera": {
+          "position": [
+            0,
+            0,
+            45
+          ],
+          "fov": 48,
+          "aspect": 0.46208530805687204
+        },
+        "scene": [
+          {
+            "name": "stellar-drift-planet-system",
+            "visible": true
+          },
+          {
+            "name": "",
+            "visible": true
+          },
+          {
+            "name": "stellar-drift-starfield",
+            "visible": true
+          },
+          {
+            "name": "stellar-drift-distant-moon",
+            "visible": true
+          },
+          {
+            "name": "stellar-drift-inner-moon",
+            "visible": true
+          }
+        ],
+        "pixelStats": {
+          "min": 21,
+          "max": 250,
+          "meanPeak": 93.82673775671407,
+          "clippedWhiteFraction": 3.0380362133916637e-06
+        },
+        "gpuErrors": []
+      },
+      "gpuErrors": [],
+      "errors": [],
+      "warnings": []
+    },
+    "webgl-idle": {
+      "ready": true,
+      "error": null,
+      "backend": "WebGL2",
+      "diagnostics": {
+        "quality": "High",
+        "disabled": false,
+        "useMRT": false,
+        "arcs": 0,
+        "comets": 0,
+        "stars": 1900,
+        "meteorCount": 300,
+        "dust": 900,
+        "analyticMotion": true,
+        "backend": "WebGL2"
+      },
+      "render": {
+        "calls": 44,
+        "frameCalls": 14,
+        "drawCalls": 33,
+        "triangles": 46021,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 35,
+        "attributesSize": 335972,
+        "geometries": 15,
+        "indexAttributes": 13,
+        "indexAttributesSize": 135732,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 40,
+        "programsSize": 86665,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 13,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 17,
+        "texturesSize": 39840634,
+        "uniformBuffers": 108,
+        "uniformBuffersSize": 9120,
+        "total": 40408123
+      },
+      "pixelStats": {
+        "min": 20,
+        "max": 254,
+        "meanPeak": 108.92271990740741,
+        "meanChannelSpan": 64.23152469135802,
+        "clippedWhiteFraction": 3.858024691358025e-06
+      },
+      "width": 1440,
+      "height": 900,
+      "time": 8,
+      "seed": 187,
+      "camera": {
+        "position": [
+          0,
+          0,
+          45
+        ],
+        "fov": 48,
+        "aspect": 1.6
+      },
+      "event": "idle",
+      "errors": [],
+      "warnings": []
+    },
+    "webgl-combo": {
+      "ready": true,
+      "error": null,
+      "backend": "WebGL2",
+      "diagnostics": {
+        "quality": "High",
+        "disabled": false,
+        "useMRT": false,
+        "arcs": 2,
+        "comets": 3,
+        "stars": 1900,
+        "meteorCount": 300,
+        "dust": 900,
+        "analyticMotion": true,
+        "backend": "WebGL2"
+      },
+      "render": {
+        "calls": 44,
+        "frameCalls": 14,
+        "drawCalls": 33,
+        "triangles": 46021,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 35,
+        "attributesSize": 335972,
+        "geometries": 15,
+        "indexAttributes": 13,
+        "indexAttributesSize": 135732,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 40,
+        "programsSize": 86665,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 13,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 17,
+        "texturesSize": 39840634,
+        "uniformBuffers": 108,
+        "uniformBuffersSize": 9120,
+        "total": 40408123
+      },
+      "pixelStats": {
+        "min": 23,
+        "max": 254,
+        "meanPeak": 110.0910200617284,
+        "meanChannelSpan": 63.63598842592592,
+        "clippedWhiteFraction": 3.858024691358025e-06
+      },
+      "width": 1440,
+      "height": 900,
+      "time": 8,
+      "seed": 187,
+      "camera": {
+        "position": [
+          0,
+          0,
+          45
+        ],
+        "fov": 48,
+        "aspect": 1.6
+      },
+      "event": "combo",
+      "errors": [],
+      "warnings": []
+    },
+    "webgl-low-portrait": {
+      "ready": true,
+      "error": null,
+      "backend": "WebGL2",
+      "diagnostics": {
+        "quality": "Low",
+        "disabled": true,
+        "useMRT": false,
+        "arcs": 0,
+        "comets": 0,
+        "stars": 850,
+        "meteorCount": 100,
+        "dust": 320,
+        "analyticMotion": true,
+        "backend": "WebGL2"
+      },
+      "render": {
+        "calls": 8,
+        "frameCalls": 2,
+        "drawCalls": 16,
+        "triangles": 28555,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 28,
+        "attributesSize": 167036,
+        "geometries": 12,
+        "indexAttributes": 10,
+        "indexAttributesSize": 81552,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 22,
+        "programsSize": 49117,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 1,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 4,
+        "texturesSize": 4474077,
+        "uniformBuffers": 29,
+        "uniformBuffersSize": 2368,
+        "total": 4774150
+      },
+      "pixelStats": {
+        "min": 21,
+        "max": 250,
+        "meanPeak": 93.81672438935472,
+        "meanChannelSpan": 54.378937294932555,
+        "clippedWhiteFraction": 3.0380362133916637e-06
+      },
+      "width": 390,
+      "height": 844,
+      "time": 8,
+      "seed": 187,
+      "camera": {
+        "position": [
+          0,
+          0,
+          45
+        ],
+        "fov": 48,
+        "aspect": 0.46208530805687204
+      },
+      "event": "idle",
+      "errors": [],
+      "warnings": []
+    }
+  },
+  "production": {
+    "desktop": {
+      "checks": {
+        "realBoard": true,
+        "webgl": true,
+        "eventsVisible": true,
+        "pauseFreezesTime": true,
+        "pausedEventIgnored": true,
+        "resumeAdvances": true,
+        "qualityDeferred": true,
+        "qualityRebuilt": true,
+        "qualityRestored": true,
+        "restartReleased": true,
+        "restartRunning": true,
+        "switchReleased": true,
+        "returnRunning": true,
+        "consoleClean": true
+      },
+      "errors": [],
+      "expectedQualityRestartNotices": [
+        "[BaseTheme] Theme already active or paused, stopping before restart: stellar-drift",
+        "[BaseTheme] Theme already active or paused, stopping before restart: stellar-drift"
+      ]
+    },
+    "portrait": {
+      "checks": {
+        "realBoard": true,
+        "webgl": true,
+        "eventsVisible": true,
+        "pauseFreezesTime": true,
+        "pausedEventIgnored": true,
+        "resumeAdvances": true,
+        "qualityDeferred": true,
+        "qualityRebuilt": true,
+        "qualityRestored": true,
+        "restartReleased": true,
+        "restartRunning": true,
+        "switchReleased": true,
+        "returnRunning": true,
+        "consoleClean": true
+      },
+      "errors": [],
+      "expectedQualityRestartNotices": [
+        "[BaseTheme] Theme already active or paused, stopping before restart: stellar-drift",
+        "[BaseTheme] Theme already active or paused, stopping before restart: stellar-drift"
+      ]
+    }
+  },
+  "performanceClaim": "Software renderer correctness and bounded ownership; no physical GPU frame-rate claim."
+}

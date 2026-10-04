@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-04",
+  "base": "1c5623bdddee4413631c82ec1ae2dafba983e7d4",
+  "three": "0.186.1",
+  "branch": "codex/stellar-drift-atmosphere-overhaul",
+  "fullSuite": {
+    "files": 526,
+    "tests": 5626,
+    "status": "passed"
+  },
+  "checks": {
+    "typecheck": "passed",
+    "build": "passed",
+    "bootClosure": "passed",
+    "lintRatchet": "passed; baseline lowered from 1220 to1170",
+    "dependencyBoundaries": "passed",
+    "ipStrings": "passed",
+    "palette": "existing failure in unchanged Stillwater palette; Stellar Drift passed",
+    "architectureFitness": "passed; lowered retired shader and resize-listener metrics",
+    "themeLifecycleAudit": "passed"
+  },
+  "native": {
+    "adapter": "software Vulkan/SwiftShader",
+    "cases": [
+      "High idle",
+      "High combo9 age1.8",
+      "High four-line clear age0.6",
+      "Minimal portrait direct"
+    ],
+    "consoleErrors": 0,
+    "consoleWarnings": 0,
+    "gpuValidationErrors": 0
+  },
+  "productionDesktop": {
+    "realBoard": true,
+    "webgl": true,
+    "eventsVisible": true,
+    "pauseFreezesTime": true,
+    "pausedEventIgnored": true,
+    "resumeAdvances": true,
+    "qualityDeferred": true,
+    "qualityRebuilt": true,
+    "qualityRestored": true,
+    "restartReleased": true,
+    "restartRunning": true,
+    "switchReleased": true,
+    "returnRunning": true,
+    "consoleClean": true
+  },
+  "performanceClaim": "Correctness and bounded resources verified; physical GPU frame rates were not measured.",
+  "productionPortrait": {
+    "realBoard": true,
+    "webgl": true,
+    "eventsVisible": true,
+    "pauseFreezesTime": true,
+    "pausedEventIgnored": true,
+    "resumeAdvances": true,
+    "qualityDeferred": true,
+    "qualityRebuilt": true,
+    "qualityRestored": true,
+    "restartReleased": true,
+    "restartRunning": true,
+    "switchReleased": true,
+    "returnRunning": true,
+    "consoleClean": true
+  },
+  "productionConsole": {
+    "errors": 0,
+    "shaderWarnings": 0,
+    "expectedRestartNotices": 2,
+    "expectedRestartNoticesScope": "per viewport during intentional quality rebuilds"
+  }
+}

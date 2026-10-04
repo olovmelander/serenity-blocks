@@ -3,7 +3,6 @@ import {
 } from 'vitest';
 import StellarDriftTheme from '../../src/themes/stellar-drift/stellar-drift-theme.js';
 import StellarVelocityTheme from '../../src/themes/stellar-velocity/stellar-velocity-theme.js';
-import * as driftMaterials from '../../src/themes/stellar-drift/stellar-drift-materials.js';
 import * as velocityMaterials from '../../src/themes/stellar-velocity/stellar-velocity-materials.js';
 
 const rendererMocks = vi.hoisted(() => ({ instances: [], initialize: null }));
@@ -37,27 +36,29 @@ vi.mock('three/webgpu', async (importOriginal) => {
 });
 
 vi.mock('../../src/themes/stellar-drift/stellar-drift-post.js', () => ({
-    StellarDriftPost: class {
-        constructor(renderer, scene, camera, params) {
-            this.params = params;
-            this.useMRT = params.useMRT;
-            this.setSize = vi.fn();
-            this.update = vi.fn();
-            this.render = vi.fn();
-            postMocks.instances.push(this);
-        }
+    StellarDriftPost: function StellarDriftPost(options) {
+        const post = {
+            params: options,
+            useMRT: options.useMRT,
+            setSize: vi.fn(),
+            update: vi.fn(),
+            render: vi.fn(),
+        };
+        postMocks.instances.push(post);
+        return post;
     },
 }));
 vi.mock('../../src/themes/stellar-velocity/stellar-velocity-post.js', () => ({
-    StellarVelocityPost: class {
-        constructor(renderer, scene, camera, params) {
-            this.params = params;
-            this.useMRT = params.useMRT;
-            this.setSize = vi.fn();
-            this.update = vi.fn();
-            this.render = vi.fn();
-            postMocks.instances.push(this);
-        }
+    StellarVelocityPost: function StellarVelocityPost(renderer, scene, camera, params) {
+        const post = {
+            params,
+            useMRT: params.useMRT,
+            setSize: vi.fn(),
+            update: vi.fn(),
+            render: vi.fn(),
+        };
+        postMocks.instances.push(post);
+        return post;
     },
 }));
 
@@ -174,21 +175,23 @@ describe.each([
         expect(theme.lastRenderPath).toBe('webgl2-node-post');
     });
 
-    it('preserves native compute and MRT capabilities', async () => {
+    it('preserves native MRT and the scene compute policy', async () => {
         const theme = createTheme(Theme);
         expect(await theme.initRenderer(container())).toBe(true);
         theme.probeCapabilities();
         expect(theme.usesNodeMaterials).toBe(true);
         expect(theme.isWebGPU).toBe(true);
-        expect(theme.capabilities).toMatchObject({ post: true, compute: true, mrt: true });
+        expect(theme.capabilities).toMatchObject({ post: true, compute: Theme === StellarVelocityTheme, mrt: true });
     });
 });
 
 describe('stellar node material factories on WebGL2', () => {
-    const entries = Object.entries({ ...driftMaterials, ...velocityMaterials })
+    const entries = Object.entries(velocityMaterials)
         .filter(([name, value]) => name.startsWith('createStellar') && typeof value === 'function');
     it.each(entries)('%s selects node materials while native WebGPU is unavailable', (_name, factory) => {
-        const result = factory({ usesNodeMaterials: true, isWebGPU: false, color: 0xffffff, opacity: 0.6 });
+        const result = factory({
+            usesNodeMaterials: true, isWebGPU: false, color: 0xffffff, opacity: 0.6,
+        });
         expect(result.material.isNodeMaterial).toBe(true);
         expect(result.material.isShaderMaterial).not.toBe(true);
         expect(result.meta?.usesCompute ?? false).toBe(false);
@@ -205,9 +208,6 @@ describe('stellar node material factories on WebGL2', () => {
             getVelocityBuffer: readBuffer,
         };
         const factories = [
-            [driftMaterials.createStellarDustRingMaterial, 'dustCompute'],
-            [driftMaterials.createStellarAmbientParticlesMaterial, 'ambientCompute'],
-            [driftMaterials.createStellarNebulaBurstMaterial, 'burstCompute'],
             [velocityMaterials.createStellarVelocityStarfieldMaterial, 'starCompute'],
             [velocityMaterials.createStellarVelocityBurstParticleMaterial, 'burstCompute'],
         ];
@@ -258,26 +258,26 @@ describe('Stellar Velocity CPU animation on node WebGL2', () => {
     });
 });
 
-
-describe('Stellar Drift CPU nebula burst on node WebGL2', () => {
-    it('retains node material selection when native compute is unavailable', async () => {
+describe('Stellar Drift analytic scene on node WebGL2', () => {
+    it('retains node artwork, fixed event pools and mobile meteor budgets without GPU compute', async () => {
         const theme = createTheme(StellarDriftTheme);
         theme.flags.forceWebGL = true;
+        theme.applyQualityPreset('Minimal');
         expect(await theme.initRenderer(container())).toBe(true);
         theme.probeCapabilities();
-        vi.spyOn(theme, 'getRoundParticleTexture').mockReturnValue(null);
-        const nebula = {
-            getWorldPosition: (target) => target.set(0, 0, -500),
-            geometry: { parameters: { width: 200 } },
-            scale: { x: 1 },
-            userData: {},
-        };
-        theme.createNebulaBurst(nebula, 4);
-        expect(theme.nebulaBursts).toHaveLength(1);
-        expect(theme.nebulaBursts[0].material.isPointsNodeMaterial).toBe(true);
-        expect(theme.nebulaBursts[0].material.userData.usesCompute).toBe(false);
-        expect(theme.nebulaBursts[0].geometry.getAttribute('position').count).toBe(4);
-        expect(theme.nebulaBursts[0].userData.velocities).toHaveLength(4);
-        expect(theme.nebulaBurstCompute).toBeNull();
+        theme.buildScene();
+        const originalObjects = [...theme.atmosphere.group.children];
+        theme.triggerComboEffect(8);
+        theme.update(1 / 60);
+        expect(theme.atmosphere.getDiagnostics()).toMatchObject({ meteorCount: 50, analyticMotion: true });
+        expect(theme.atmosphere.group.children).toEqual(originalObjects);
+        theme.atmosphere.group.traverse((object) => {
+            if (object.material) expect(object.material.isNodeMaterial).toBe(true);
+        });
+        expect(theme.reactions.getFrame().arcs.length).toBeGreaterThan(0);
+        expect(theme.reactions.getFrame().comets.length).toBeGreaterThan(0);
+        expect(theme.capabilities.compute).toBe(false);
+        expect(theme.renderer.compute).not.toHaveBeenCalled();
+        theme.stop();
     });
 });
