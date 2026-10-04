@@ -1,0 +1,28 @@
+{
+  "state": {
+    "ready": true,
+    "backend": "WebGPU offscreen readback",
+    "diagnostics": {
+      "quality": "High",
+      "renderPath": "webgpu-post",
+      "phase": "IDLE",
+      "materialAudit": {
+        "ready": true,
+        "materialCount": 17,
+        "issues": []
+      },
+      "ribbons": 12,
+      "compute": true,
+      "selectiveBloom": true,
+      "offscreen": true,
+      "phaseCheck": {
+        "actual": 20.718381881713867,
+        "expected": 20.718464374542236,
+        "error": 8.249282836914062e-05
+      },
+      "errors": []
+    }
+  },
+  "errors": [],
+  "warnings": []
+}

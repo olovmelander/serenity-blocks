@@ -9,7 +9,6 @@
 import * as THREE from 'three';
 import {
     MeshBasicNodeMaterial,
-    MeshStandardNodeMaterial,
     SpriteNodeMaterial,
 } from 'three/webgpu';
 import {
@@ -25,6 +24,7 @@ import {
     normalWorld,
     normalize,
     positionLocal,
+    positionGeometry,
     positionWorld,
     pow,
     sin,
@@ -35,6 +35,7 @@ import {
     uv,
     vec2,
     vec3,
+    exp,
 } from 'three/tsl';
 import {
     STARFIELD_VERTEX_SHADER,
@@ -128,6 +129,7 @@ function createStarfieldNodeMaterial(params = {}) {
     const uWarpSpeed = uniform(0);
     const uTwinkleBoost = uniform(0);
     const uTunnelTint = uniform(resolveColor(params.tunnelTint, 0xffffff));
+    const uTravelAxis = uniform(new THREE.Vector2());
 
     const useGPU = Boolean(
         params.isWebGPU
@@ -162,18 +164,24 @@ function createStarfieldNodeMaterial(params = {}) {
     const colorNode = aColor.mul(twinkle).mul(warpMul).mul(boostMul).mul(tunnelTint)
         .add(vec3(uWarpSpeed.mul(0.04)));
 
-    const dist = length(uvCoord.sub(vec2(0.5)));
-    const softCircle = smoothstep(float(0.52), float(0.0), dist);
-    const alpha = clamp(softCircle.mul(twinkle).mul(0.96), float(0.0), float(1.0));
-    const warpStretch = float(1.0).add(uWarpSpeed.mul(2.2).mul(velocityNode).mul(streakFactor));
+    const starUV = uvCoord.sub(vec2(0.5)).mul(2);
+    const softCircle = exp(dot(starUV, starUV).mul(-9));
+    const pin = exp(dot(starUV, starUV).mul(-60));
+    const alpha = clamp(softCircle.mul(0.55).add(pin).mul(twinkle), float(0), float(1));
+    const warpStretch = float(1.0).add(uWarpSpeed.mul(14).mul(velocityNode).mul(streakFactor));
     const billboardSize = aSize.mul(float(0.16));
-    const starColor = colorNode.mul(softCircle.mul(0.82).add(0.18));
+    const starColor = colorNode.mul(softCircle.mul(0.8).add(pin.mul(1.6)));
+    const radial = normalize(offsetNode.xy.add(vec2(0.001)));
+    const across = vec2(radial.y.negate(), radial.x);
+    const quadOffset = across.mul(positionGeometry.x.mul(billboardSize))
+        .add(radial.mul(positionGeometry.y.mul(billboardSize).mul(warpStretch)));
 
+    const axisOffset = uTravelAxis.mul(cameraPosition.z.sub(offsetNode.z));
     material.positionNode = vec3(
-        positionLocal.x.mul(billboardSize),
-        positionLocal.y.mul(billboardSize).mul(warpStretch),
-        positionLocal.z,
-    ).add(offsetNode);
+        quadOffset.x,
+        quadOffset.y,
+        positionGeometry.z,
+    ).add(offsetNode).add(vec3(axisOffset, 0));
     material.colorNode = starColor;
     material.opacityNode = alpha;
     material.emissiveNode = starColor.mul(alpha).mul(STELLAR_VELOCITY_BLOOM_WEIGHTS.starfield);
@@ -185,6 +193,7 @@ function createStarfieldNodeMaterial(params = {}) {
             uWarpSpeed,
             uTwinkleBoost,
             uTunnelTint,
+            uTravelAxis,
         },
         {
             emitsBloom: true,
@@ -447,9 +456,7 @@ export function createStellarVelocityNebulaMaterial(params = {}) {
 }
 
 function createAsteroidNodeMaterial(params = {}) {
-    const material = new MeshStandardNodeMaterial({
-        flatShading: true,
-    });
+    const material = new MeshBasicNodeMaterial();
 
     const uBaseColor = uniform(resolveColor(params.color, 0x444444));
     const uRoughness = uniform(params.roughness ?? 0.8);
@@ -458,9 +465,9 @@ function createAsteroidNodeMaterial(params = {}) {
     const uCoreGlow = uniform(params.coreGlow ?? 0.0);
     const aCoreProximity = attribute('aCoreProximity', 'float');
 
-    const roughNoise = sin(positionLocal.x.mul(0.17))
-        .add(cos(positionLocal.y.mul(0.19)))
-        .add(sin(positionLocal.z.mul(0.23)))
+    const roughNoise = sin(positionGeometry.x.mul(0.17))
+        .add(cos(positionGeometry.y.mul(0.19)))
+        .add(sin(positionGeometry.z.mul(0.23)))
         .mul(0.333)
         .mul(0.5)
         .add(0.5);
@@ -469,11 +476,16 @@ function createAsteroidNodeMaterial(params = {}) {
     const edgeMask = pow(float(1.0).sub(abs(dot(normalWorld, viewDir))), float(2.1));
     const glowMask = proximity.mul(uCoreGlow).mul(edgeMask.mul(0.55).add(0.22));
     const edgeTint = uEmissiveTint.mul(glowMask.mul(0.35));
-    const rockColor = uBaseColor.mul(mix(float(0.78), float(1.08), roughNoise)).add(edgeTint);
+    const keyDirection = normalize(vec3(-450, 220, -500).sub(positionWorld));
+    const key = dot(normalWorld, keyDirection).max(0);
+    const hemisphere = normalWorld.y.mul(0.5).add(0.5);
+    const rockColor = uBaseColor.mul(mix(float(0.65), float(1.15), roughNoise))
+        .mul(key.mul(1.5).add(0.14))
+        .mul(mix(vec3(0.24, 0.33, 0.57), vec3(0.55, 0.79, 0.93), hemisphere))
+        .add(vec3(0.10, 0.18, 0.27).mul(edgeMask).mul(0.22))
+        .add(edgeTint);
 
     material.colorNode = rockColor;
-    material.roughnessNode = clamp(uRoughness.add(roughNoise.mul(0.08)).sub(0.04), float(0.05), float(1.0));
-    material.metalnessNode = clamp(uMetalness.add(roughNoise.mul(0.05)).sub(0.025), float(0.0), float(1.0));
 
     return finalizeStellarVelocityMaterial(
         material,

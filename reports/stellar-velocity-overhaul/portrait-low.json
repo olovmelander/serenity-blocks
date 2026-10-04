@@ -1,0 +1,18 @@
+{
+  "state": {
+    "ready": true,
+    "error": null,
+    "backend": "WebGL2",
+    "diagnostics": {
+      "quality": "Low",
+      "renderPath": "webgl-direct",
+      "phase": "FTL_TRANSIT",
+      "materialAudit": null,
+      "ribbons": 5,
+      "compute": false,
+      "selectiveBloom": false
+    }
+  },
+  "errors": [],
+  "warnings": []
+}

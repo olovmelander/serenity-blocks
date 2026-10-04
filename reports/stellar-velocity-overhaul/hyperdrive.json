@@ -1,0 +1,16 @@
+{
+  "state": {
+    "ready": true,
+    "error": null,
+    "backend": "WebGL2",
+    "diagnostics": {
+      "quality": "High",
+      "renderPath": "webgl2-node-post",
+      "phase": "FTL_TRANSIT",
+      "materialAudit": null,
+      "ribbons": 12
+    }
+  },
+  "errors": [],
+  "warnings": []
+}
