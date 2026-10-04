@@ -180,7 +180,8 @@ export class StellarVelocityStarfieldCompute {
             const state = misc.element(index).toVar();
 
             pos.z.addAssign(warpStep.mul(max(state.x, float(0.15))));
-            state.y.addAssign(state.z.mul(delta).mul(float(60.0)));
+            // Twinkle frequency is radians/second, matching the CPU material.
+            state.y.addAssign(state.z.mul(delta));
             state.w.assign(
                 clamp(
                     float(1.0).add(warpStep.mul(max(state.x, float(0.1))).mul(0.08)),
