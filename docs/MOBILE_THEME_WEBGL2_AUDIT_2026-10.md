@@ -19,6 +19,9 @@ Read with [ADR-0008](adr/0008-hybrid-renderer-and-webgl-holdouts.md), [ADR-0019]
 | Asynchronous placeholder image replacement retained an incompatible immutable texture allocation | Lunara, Sky Children, Winter | Dispose the placeholder GPU allocation before assigning the larger image, retaining texture identity and the guard against late loading after external disposal. |
 | HALF_FLOAT linear filtering unnecessarily required a FLOAT32 extension on WebGL2 | Aether Tides, Chromatic Impasto, Nebula Flow, Voltage Storm | Recognize core WebGL2 half-float filtering; preserve bloom/shading/resolution where supported. Validate renderable formats and release capability probes/replaced render targets. |
 | Quality settings or resize bypassed mobile budgets | Aurora, Bioluminescence II, Cinder Drift, Cosmic Chimes, Ice Temple, Luminous Tides, Neon District, Singing Bowl, Sunset | Canonical quality selection and existing effect policy restored; effective pixel ratio retained on resize/rotation. Sunset's second starfield now respects its existing preset instead of silently allocating at least 35,000 stars. |
+| Real UI quality was ignored because only obsolete settings were read | Chiral Gold, Solar Eclipse, Stellar Drift, Stellar Velocity, Waves, Mountain | `effectQuality` takes precedence, with legacy readers retained. Stellar Velocity's diagnostic tier switches use the canonical setting and restore the exact prior key/value. |
+| Canonical tiers were absent from authored preset tables and silently selected a more expensive tier | Pyrestorm, Nebula Flow, Fall, Winter, Mountain | Pyrestorm's existing cheapest preset is named Minimal; Minimum remains a read alias. Minimal maps to existing Low in the four/five-tier scenes; Nebula Flow Ultra maps to High and Mountain Extreme to Ultra. Existing artwork and budgets are retained. |
+| Shared DPR calculation used the default High ceiling on the web | BaseTheme consumers | Canonical quality is passed to the existing scene-cap policy. Low/Minimal phones use their existing tier ceilings; an active packaged-desktop policy remains authoritative. |
 | Authored celestial heroes moved outside the portrait viewport | Moonlit Forest, Sunset, Black Hole | Moon/halo and celestial-core placement fit the narrow view. Black Hole bounds its camera-relative horizontal bias and immediately reframes a smoothed landscape target after rotation. Desktop arcs/orbits and native material treatment remain shared. |
 | Shared scene rendered behind opaque legacy DOM layers | Rainy Window | The authored Water/GLSL storm canvas now belongs to its active theme container above the obsolete background children; teardown detaches and clears its renderer reference. |
 | Node WebGL2 scene-pass clear produced a nearly uniform black frame | Black Hole | The post pipeline owns the WebGL2 scene-target clear, with scoped `autoClear` restoration. Native and direct-render paths retain their existing clearing behavior. |
@@ -64,7 +67,7 @@ Node post processing remains available on WebGL2. Repaired pipelines retain the 
 | Cosmic Noir | Common node, repaired | Shared lensing, palette and grade; native compute/MRT gated; CPU event particles. |
 | Crystal Cave | Common classic | Shared crystal scene/composer; no backend split found. |
 | Electric Dreams V3 | Common node, repaired | Same fluid particle hero/post; WebGL2 CPU instanced attributes. |
-| Fall | Common classic | Shared scene and quality-gated composer; no split found. |
+| Fall | Common classic | Shared scene and quality-gated composer; Minimal now maps to the existing Low budget instead of falling back to High. |
 | Fluid Dreams | Common node, repaired | Shared raymarch/haze/grade; bounded existing CPU motes up to 4,000; native MRT. |
 | Forest | Same custom WebGL/CSS | Shared screen-space particles; Low intentionally disables the particle layer on every backend. Empty historical tree DOM layers are also a desktop condition, not an older phone scene. |
 | Galaxy | Common classic | Shared GLSL/points scene; no native alternate scene. |
@@ -80,21 +83,21 @@ Node post processing remains available on WebGL2. Repaired pipelines retain the 
 | Moonlit Forest | Common node | Automatic fallback retained; portrait moon/halo placement fixed. |
 | Moonlit Greenhouse | Same DOM/Canvas2D | Shared authored artwork; no backend-selected substitute. |
 | Moonrise Summit | Common classic | Active CPU drivers and responsive FOV; no native alternate scene. |
-| Mountain | Same DOM/Canvas2D | Shared authored artwork; no backend split. |
-| Nebula Flow | Same custom WebGL fluid | Shared simulator filtering/capability/resource repair. |
+| Mountain | Same DOM/Canvas2D | Shared authored artwork; canonical quality reader repaired, Minimal maps to Low and Extreme to Ultra. |
+| Nebula Flow | Same custom WebGL fluid | Shared simulator filtering/capability/resource repair; Minimal/Ultra map to the existing Low/High fluid budgets. |
 | Neon District | Common node | Fresh forced node WebGL2 retry after native failure; native reflections/MRT remain capability-gated; canonical quality getter. |
 | Neon Dusk | Common node | Existing bounded forced-WebGL2 retry and responsive composition. |
 | Nimbus Veil | Common node | Existing bounded forced-WebGL2 retry and responsive composition. |
 | Ocean | Common node, repaired | Modern underwater world, fog, fauna, billboards and grade retained; obsolete classic-only Medium clamp removed; native MRT. |
 | Parhelion | Common node | Existing node fallback and responsive board-space effects. |
-| Pyrestorm | Common classic | Shared GLSL/composer scene; no split found. |
+| Pyrestorm | Common classic | Shared GLSL/composer scene; Minimal now selects the existing 1,000-ember budget rather than High's 15,000. Legacy Minimum remains accepted. |
 | Rainy Window | Common classic, repaired | Shared Water/GLSL storm now visible inside its theme container; legacy opaque layers retired and renderer teardown fixed. Existing rain budget remains unchanged. |
 | Sakura Twilight | Common classic | Shared imported scene; fixed FOV produces a portrait crop, with no confirmed missing hero. |
 | Serenity Warp | Current authored hybrid intro, repaired | Both sources retain the same intended nebula/crystal scene. Classic now shares cinematic grade, selected quality/phase profile and whole-scene reactions through bounded CPU state; native compute/fine material detail remains separate. Fresh-canvas fallback is correct. |
 | Shifting Sands | Common node | Positive reference: same world/post, bounded node fallback, responsive composition. |
 | Singing Bowl | Common classic | Rotation now preserves effective quality-aware DPR; shared scene/composer. |
 | Sky Children (`sky-children`, V2 module) | Common node | Existing same world/post and native compute/MRT gates; async detail-texture allocation fixed. |
-| Solar Eclipse | Common classic, repaired | Shared GLSL/composer artwork; portrait sun/aligned-moon fit and deterministic tendril point size. Desktop projection unchanged. |
+| Solar Eclipse | Common classic, repaired | Shared GLSL/composer artwork; portrait sun/aligned-moon fit, deterministic tendril point size and canonical quality reader. Desktop projection unchanged. |
 | Starlight | Common node, repaired | Same sky, live stardust hero and common grade; CPU analytic curl/instanced attributes on WebGL2; native compute/MRT. |
 | Stellar Drift | Common node, repaired | Same materials/geometry/post; native compute/MRT gates; CPU burst fallback uses node points. |
 | Stellar Velocity | Common node, repaired | Same materials/geometry/post; CPU instanced star/burst updates; native compute/MRT gates. |
@@ -109,10 +112,27 @@ Node post processing remains available on WebGL2. Repaired pipelines retain the 
 | Void Ember | Native raw WGSL / modern WebGL2 compatibility renderer | Obsolete Canvas2D substitute replaced by authored GLSL star/corona/environment and bounded analytic particles; shared conductor/uniform packing, portrait anchor and live event channels. High FX/rotation and real context recovery pass. Canvas2D remains only when WebGL2 is unavailable. |
 | Voltage Storm | Same custom WebGL fluid | Shared simulator filtering/capability/resource repair. |
 | Waves | Common classic | Shared shader/composer scene; no backend split found. |
-| Winter | Common node, repaired | Modern Wonderland and grade, CPU trail and reactive analytic node snow on WebGL2; native storage features remain native. |
+| Winter | Common node, repaired | Modern Wonderland and grade, CPU trail and reactive analytic node snow on WebGL2; native storage features remain native. Minimal uses the existing Low preset on both backends. |
 | Wolfhour | Common node | Positive reference fixed by #324; same modern sky, landscape, grade and gameplay FX on both backends. |
 
 Most classic scenes update camera aspect rather than providing separate portrait staging. An aspect-only update is a composition risk, not evidence of a failure. Confirmed Moonlit Forest, Sunset, Black Hole and Solar Eclipse clipping was fixed. Existing intentional quality omissions, native-only fine simulation, transmission and reflection budgets remain distinct from choosing older artwork. Rainy Window retains its authored rain count; this compatibility audit does not establish its physical-phone performance budget.
+
+## Repeatable phone quality checks
+
+The continuation audit uses only the canonical `effectQuality` setting written by the UI. The original capture shell supplied both `effectQuality` and the obsolete `graphicsQuality` alias, which masked five incorrect readers. Checking every authored tier table also found the missing Minimal mappings described above. Regression tests cover the real particle/post budgets, canonical precedence, legacy compatibility, diagnostic setting restoration, and quality-aware DPR.
+
+Run the checked-in harness with optional Playwright/Chromium tooling:
+
+```bash
+npm run validate:mobile:webgl2 -- --all --quality Low --dpr 3 --render-scale 0.5
+npm run validate:mobile:webgl2 -- --quality Minimal --dpr 3 --render-scale 1
+```
+
+The default selection is 17 representative themes, including all ten quality repairs and the Wolfhour/Shifting Sands references. Use repeated `--theme <id>` options to target a repair; `--all --list` prints the registry without installing or starting a browser. `--out` selects the report/screenshot directory (default `artifacts/mobile-webgl2`). Supply `PLAYWRIGHT_MODULE` with an absolute path to an existing Playwright module and `PLAYWRIGHT_EXECUTABLE_PATH` with a Chromium executable when using external capture tooling. Playwright is optional and is not required by ordinary unit tests or CI. `--help` lists the supported options.
+
+Every theme runs serially in a fresh browser. The harness forces WebGL2 with `navigator.gpu` absent, forwards the shared viewport event through the same active-theme resize path as the game, and captures portrait, gameplay-event, and landscape phases. It checks renderer kind, actual Minimal preset allocations, rendering activity, sampled finite attributes, asset failures, nonuniform screenshots, buffer dimensions and selected-tier DPR ceilings. Any failed or incomplete matrix exits nonzero. A modern renderer and a nonuniform frame remain smoke evidence, not a pixel-parity metric.
+
+Serenity Warp delegates resolution to the intro's authored profile rather than BaseTheme's global scale. The forced-classic Low ceiling is 1.0; its profile, live frames and rotation are checked separately. The native intro explicitly separates display resolution from its effects budget to preserve menu clarity. This continuation retains those existing resolution policies.
 
 ## Validation and acceptance limits
 
@@ -134,7 +154,7 @@ These results establish source routing, shader compatibility, current visual str
 
 ## Final release evidence
 
-The frozen-source regression run passes **514 files / 5,416 tests** with four workers. Typecheck, TS coverage, lint ratchet, architecture fitness, theme lifecycle, import boundaries, performance-budget structure and release scaffolding pass. Production dependencies report zero audit vulnerabilities. Lint and architecture ceilings are lowered to lock in the measured improvements.
+The final frozen-source regression run passes **517 files / 5,493 tests** with four workers, including 77 continuation checks for canonical quality, DPR and the repeatable runner. Typecheck, TS coverage, lint ratchet, architecture fitness, theme lifecycle, import boundaries, performance-budget structure and release scaffolding pass. Production dependencies report zero audit vulnerabilities. Lint and architecture ceilings are lowered to lock in the measured improvements.
 
 A fresh isolated build of the current source passes production bundling, boot-closure, IP-string and Pages-artifact checks; a later Pages recheck also passes. The unchanged prune hook removes development reference assets correctly. Isolation was needed because a shared-workspace synchronizer repopulated the ordinary output directory after pruning. The verified build's static entry/main closures are 12 KB / 853 KB; this is packaging evidence, not phone performance evidence.
 
@@ -144,6 +164,13 @@ A fresh isolated build of the current source passes production bundling, boot-cl
 | Selected High production themes, gameplay FX and landscape rotation | **19 / 19 pass**, live finite state and visible nonuniform artwork |
 | Real context loss/restore: Ocean, Winter, Void Ember, Stellar Drift, Stellar Velocity, Astral Weave, Chiral Gold | **7 / 7 pass**, fresh renderer, old canvas detached, one owned renderer canvas, advancing visible frames, GL error zero; expected device-loss diagnostics recorded separately |
 | Phone intro: forced classic, failed native adapter, reduced motion | **3 / 3 pass**, live classic fallback/tap dismissal or static reduced-motion menu as appropriate |
+| Canonical-only Low, DPR 3, global scale 0.5, portrait/events/landscape | **62 / 62 pass**, current artwork routes, live rendering, sampled finite state, asset and drawing-buffer checks; final per-theme DPR ceilings revalidated |
+| Canonical-only Minimal, DPR 3, global scale 1, portrait/events/landscape | **17 / 17 pass**, including all ten quality repairs; actual Minimal allocations and intro profile budget checked |
+
+The continuation's [Low matrix](validation/mobile-theme-webgl2/phone-quality-low.json) and [Minimal matrix](validation/mobile-theme-webgl2/phone-quality-minimal.json) record all three phases and their acceptance rules. Koi Pond and Luminous Tides were rechecked after the standalone runner gained the game's viewport forwarding; Serenity Warp was rechecked for its actual intro-profile diagnostics. The [isolated Solar Eclipse proof](validation/mobile-theme-webgl2/phone-quality-solar-playground.json) also confirms the Minimal DPR-3 scene is ready, has a full sun and GL error zero before the production checks. These runs use the same Chromium/SwiftShader environment described above, with the recorded higher emulated DPR.
+
+![Canonical Low, ten repaired themes](validation/mobile-theme-webgl2/phone-quality-low.png)
+![Canonical Minimal, ten repaired themes](validation/mobile-theme-webgl2/phone-quality-minimal.png)
 
 The machine-readable [runtime audit](validation/mobile-theme-webgl2/runtime-audit.json) records each theme, actual backend, dimensions, errors, FX/rotation state and recovery evidence. The [artifact manifest](validation/mobile-theme-webgl2/artifact-manifest.json) records evidence hashes. Contact sheets show every Low theme, with final Solar Eclipse and Black Hole framing; named PNGs preserve representative High, FX, rotation, intro and restored scenes.
 

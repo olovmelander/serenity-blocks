@@ -9,13 +9,16 @@
     "highSmokePasses": 19,
     "recoveryCount": 7,
     "recoveryPasses": 7,
-    "introSmokeCount": 3
+    "introSmokeCount": 3,
+    "canonicalPhoneLowPasses": 62,
+    "canonicalPhoneMinimalPasses": 17
   },
   "qualityScopes": {
     "contactSheets": "All62 registry themes at Low; BlackHole, Solar and custom context surfaces use latest production reruns.",
     "highMatrix": "19 selected production themes, ambient plus normal gameplay reactions and landscape rotation.",
     "restoreMatrix": "7 production themes using real WEBGL_lose_context loss and restoration.",
-    "intro": "ForcedWebGL2 and failed native adapter handoff plus actual reduced-motion menu boot."
+    "intro": "ForcedWebGL2 and failed native adapter handoff plus actual reduced-motion menu boot.",
+    "canonicalPhone": "DPR3, canonical effectQuality only; all62 Low at globalScale.5 and17 representative Minimal at globalScale1; portrait, gameplay events, landscape and actual preset/DPR checks. Serenity retains authored intro resolution. Initial Koi/Luminous rotation probes and Serenity diagnostics rechecked with production viewport forwarding; all final verdicts pass."
   },
   "files": [
     {
@@ -233,6 +236,36 @@
       "bytes": 185662,
       "sha256": "64251498bd55b076953b40c292d7d6d3fffb9da0b51f7f4f394b1f6794d5de55",
       "scope": "production-real-context-loss-and-restore"
+    },
+    {
+      "name": "phone-quality-low.json",
+      "bytes": 445764,
+      "sha256": "94207a3559a3c3b229f2a60a5d78f5db57d6f8a6a5e49f3e51d7e708415df7db"
+    },
+    {
+      "name": "phone-quality-low.png",
+      "bytes": 362370,
+      "sha256": "1466768cee297b38b7e71a0c01d2d75645590d9d181898cc23e38fb858518dd8"
+    },
+    {
+      "name": "phone-quality-minimal.json",
+      "bytes": 109184,
+      "sha256": "dd584885c9be9d596e7bda9fe9f22bcf9c9a3abf29daed34c906fcff7b0c1de6"
+    },
+    {
+      "name": "phone-quality-minimal.png",
+      "bytes": 346543,
+      "sha256": "718d5b2c505664da0a58070a549a5cd738168cad36f075b93671b0cb1471d8ac"
+    },
+    {
+      "name": "phone-quality-solar-playground.json",
+      "bytes": 2966,
+      "sha256": "e0f10e3832c38732871020045ebd6c92e39c942a59bf280d9a14c5c236bb7b92"
+    },
+    {
+      "name": "phone-quality-solar-playground.png",
+      "bytes": 446427,
+      "sha256": "f46d06103e5a640ec78b3eb7e46484019bdaa0c97dcc36a016e4d03acd10d00e"
     }
   ]
 }
