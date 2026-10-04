@@ -348,10 +348,11 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     const dustCount = Math.floor((options.particleCount
         ? Math.min(CH7_CORRIDOR_DUST_SETTINGS.maxCount, Math.floor(options.particleCount * 2.0))
         : 720) * tier.dust);
-    const { mesh: corridorDust } = createCorridorDustTSL(uniforms.uTime, dustCount);
+    const { mesh: corridorDust, uniforms: dustUniforms } = createCorridorDustTSL(uniforms.uTime, dustCount);
     corridorDust.name = 'corridor-violet-dust';
     group.add(corridorDust);
     group.userData.corridorDust = corridorDust;
+    corridorDust.userData.flowUniforms = dustUniforms;
 
     const shards = createTranscendenceShards(uniforms);
     group.add(shards);
@@ -587,8 +588,8 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         }
     }
 
-    // Re-centre the corridor dust on the camera (group-local) so the camera is always
-    // inside it and keeps near + mid motes for parallax.
+    // Keep the streaming dust ahead of the eye on the camera's own basis, including the
+    // near-vertical rail climb. A world-Z field used to slide beside/behind the camera.
     const { corridorDust } = group.userData;
     if (camera?.position && corridorDust) {
         corridorDust.position.set(
@@ -596,6 +597,11 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
             camera.position.y - group.position.y,
             camera.position.z - group.position.z,
         );
+        corridorDust.quaternion.copy(camera.quaternion);
+    }
+    const dustWarp = corridorDust?.userData?.flowUniforms?.uWarp;
+    if (dustWarp) {
+        dustWarp.value = fall.warp;
     }
 
     // Vertical shard drift runs in the TSL material; feed it the camera Y.

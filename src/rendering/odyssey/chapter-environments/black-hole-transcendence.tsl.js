@@ -35,6 +35,7 @@ import {
     float,
     floor,
     fract,
+    fwidth,
     length,
     log,
     max,
@@ -178,37 +179,66 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // Depth down the tunnel (cot theta), capped where the lanes would alias at the vanishing point.
     const depth = cosT.div(sinT).min(80.0);
     const warp = clamp(uWarp, 0.0, 1.0);
-    // A spiral: the lanes twist with depth (more as the warp builds) and the whole tunnel turns.
-    const twist = depth.mul(warp.mul(0.035).add(0.012)).add(uTime.mul(0.05));
+    const logDepth = log(depth.add(0.25));
+    // A shallow helical wall, rather than tightly wound spokes near the vanishing point.
+    // Every travelling feature uses +time: increasing tunnel depth projects nearer the axis,
+    // so a fixed feature of depth + time moves OUT toward the traveller as time advances.
+    const twist = logDepth.mul(warp.mul(0.22).add(0.08)).add(uTime.mul(0.035));
     const ang = atan(ray.y, ray.x).add(twist);
 
-    // STREAK LANES: 56 angular lanes, each with its own speed and dash length; not every lane lit.
-    const LANES = 56;
+    // Two sparse banks of long, feathered streaks at different depths. Pixel-footprint widths
+    // keep the fine angular detail stable on phone-sized targets and close to the axis.
+    const LANES = 72;
     const lanePos = ang.div(TAU).add(0.5).mul(LANES);
-    const lane = floor(lanePos);
+    const lane = mod(floor(lanePos), LANES);
     const laneF = fract(lanePos);
     const r1 = hash21(vec2(lane, 7.13));
     const r2 = hash21(vec2(lane, 1.91));
-    const speed = mix(0.35, 1.0, r1).mul(warp.mul(1.6).add(0.35));
-    const seg = fract(depth.mul(mix(0.05, 0.12, r2)).add(uTime.mul(speed)).add(r1.mul(17.0)));
-    const head = smoothstep(0.0, 0.32, seg).mul(oneMinus(smoothstep(0.32, 0.36, seg)));
-    const core = oneMinus(smoothstep(0.06, 0.22, abs(laneF.sub(0.5))));
-    const lit = smoothstep(0.55, 0.85, r2.add(warp.mul(0.3)));
+    // Rates never multiply elapsed time by a changing progress value. The faster bank and
+    // brighter, longer features emerge with warp instead, so a late-session plunge cannot
+    // amplify minutes of elapsed time into a sudden phase jump.
+    const speed = mix(0.55, 1.25, r1);
+    const seg = fract(logDepth.mul(mix(0.65, 1.2, r2)).add(uTime.mul(speed)).add(r1.mul(17.0)));
+    const head = smoothstep(0.0, 0.30, seg).mul(oneMinus(smoothstep(0.30, 0.36, seg)));
+    const laneAA = clamp(fwidth(lanePos), 0.018, 0.24);
+    const core = oneMinus(smoothstep(0.025, laneAA.add(0.06), abs(laneF.sub(0.5))));
+    const lit = smoothstep(0.62, 0.88, r2.add(warp.mul(0.20)));
     const streaks = head.mul(core).mul(lit);
+
+    const finePos = ang.add(0.23).sub(logDepth.mul(0.10)).div(TAU).mul(116);
+    const fineLane = mod(floor(finePos), 116);
+    const fineSeed = hash21(vec2(fineLane, 23.71));
+    const finePhase = fract(logDepth.mul(1.8).add(uTime.mul(1.6)).add(fineSeed.mul(13.0)));
+    const fineHead = smoothstep(0.0, 0.40, finePhase)
+        .mul(oneMinus(smoothstep(0.40, 0.45, finePhase)));
+    const fineCore = oneMinus(smoothstep(
+        0.015,
+        clamp(fwidth(finePos), 0.015, 0.20).add(0.035),
+        abs(fract(finePos).sub(0.5)),
+    ));
+    const fineStreaks = fineHead.mul(fineCore).mul(smoothstep(0.75, 0.94, fineSeed)).mul(warp);
 
     // LOG DEPTH: cot(theta) crowds everything interesting into the centre of the frame; its log
     // spreads features evenly across screen radius, so bands and filaments read edge to centre.
-    const logDepth = log(depth.add(0.25));
     // WALL FILAMENTS: accretion matter spiralling past, two baked-lattice octaves, stretched along
     // the tunnel (low frequency in depth, high in angle) and streaming toward the eye.
-    const wallDepth = logDepth.mul(1.1).sub(uTime.mul(mix(0.35, 1.2, warp)));
+    const wallDepth = logDepth.mul(1.1).add(uTime.mul(0.75));
     const wall = vec3(cos(ang).mul(3.4), sin(ang).mul(3.4), wallDepth);
     const filamentField = latticeNoise3(wall).mul(0.65).add(latticeNoise3(wall.mul(2.3)).mul(0.35));
     const filaments = smoothstep(0.5, 0.8, filamentField);
 
     // The journey's colours, in rings down the tunnel that zoom outward past the eye.
-    const band = fract(logDepth.mul(0.42).sub(uTime.mul(0.12)));
+    const band = fract(logDepth.mul(0.32).add(uTime.mul(0.08)));
     const tint = sampleTexture(palette, vec2(band, 0.5)).rgb;
+    // Travelling rings make depth legible between the longitudinal streaks. They share the
+    // wall's outward direction and stay restrained enough to avoid a flashing strobe.
+    const ringPhase = logDepth.mul(2.2).add(uTime.mul(1.0));
+    const ringAA = clamp(fwidth(ringPhase), 0.012, 0.12);
+    const rings = oneMinus(smoothstep(0.035, ringAA.add(0.12), abs(fract(ringPhase).sub(0.5))))
+        .mul(filaments.mul(0.65).add(0.35));
+    const ridges = pow(clamp(cos(ang.mul(12.0).sub(logDepth.mul(1.4))).mul(0.5).add(0.5), 0.0, 1.0), 8.0)
+        .mul(filaments);
+    const axisFade = smoothstep(0.008, 0.055, sinT);
     // Far down the tunnel is dimmer — except the exit light dead ahead (the light at the end,
     // which becomes the city's sun at the 7->8 seam).
     const far = exp(depth.mul(-0.035));
@@ -224,9 +254,13 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // (a +20 luma spike in the 7->8 seam gate).
     const rimFade = oneMinus(smoothstep(0.25, 1.1, uOpen));
     const rim = exp(rimOffset.mul(rimOffset).negate()).mul(opening).mul(rimFade);
-    const color = tint.mul(filaments.mul(0.30).add(0.015)).mul(far.mul(0.8).add(0.2))
-        .add(mix(tint, vec3(1.0), head.mul(0.35)).mul(streaks).mul(1.3))
-        .add(vec3(1.0, 0.86, 0.62).mul(exitLight).mul(1.6).mul(oneMinus(opening)))
+    const color = tint.mul(filaments.mul(0.15).add(ridges.mul(0.16)).add(0.009))
+        .mul(far.mul(0.8).add(0.2)).mul(axisFade)
+        .add(mix(tint, vec3(1.0, 0.94, 0.84), head.mul(0.45)).mul(streaks)
+            .mul(warp.mul(1.8).add(0.35)).mul(axisFade))
+        .add(mix(tint, vec3(0.74, 0.91, 1.0), 0.72).mul(fineStreaks).mul(1.15).mul(axisFade))
+        .add(tint.mul(rings).mul(warp.mul(0.19).add(0.035)).mul(axisFade))
+        .add(vec3(1.0, 0.86, 0.62).mul(exitLight).mul(warp.mul(1.2).add(0.12)).mul(oneMinus(opening)))
         .add(vec3(1.0, 0.82, 0.55).mul(rim).mul(1.8));
 
     // As the mouth widens the tunnel walls dim with it, so the frame's brightness eases down into
@@ -522,7 +556,8 @@ export const CH7_CORRIDOR_DUST_SETTINGS = Object.freeze({
  * re-centres the field on the camera so it is always inside it.
  * @param {object} uTime shared time uniform
  */
-export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) {
+export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460, options = {}) {
+    const uWarp = options.uWarp ?? uniform(0);
     const count = Math.max(
         CH7_CORRIDOR_DUST_SETTINGS.minCount,
         Math.min(Math.floor(requestedCount), CH7_CORRIDOR_DUST_SETTINGS.maxCount),
@@ -570,12 +605,29 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
     const aSize = attribute('aSize', 'float');
     const aPhase = attribute('aPhase', 'float');
 
+    const warp = clamp(uWarp, 0.0, 1.0);
+    // Negative local Z is forward once the environment aligns this mesh to the camera.
+    // At rest this is the original dust. During the plunge each mote runs from deep ahead
+    // toward the eye, then wraps invisibly; perspective expands its path out of the axis.
+    const travel = fract(aBase.z.negate().sub(-CH7_CORRIDOR_DUST_SETTINGS.depthNear)
+        .div(CH7_CORRIDOR_DUST_SETTINGS.depthSpan)
+        .add(uTime.mul(0.85))
+        .add(aPhase.mul(0.11)));
+    const movingZ = float(CH7_CORRIDOR_DUST_SETTINGS.depthNear)
+        .sub(oneMinus(travel).mul(CH7_CORRIDOR_DUST_SETTINGS.depthSpan));
     const center = vec3(
         aBase.x.add(sin(uTime.mul(0.05).add(aPhase)).mul(7.0)),
         aBase.y.add(cos(uTime.mul(0.04).add(aPhase.mul(1.3))).mul(5.0)),
-        aBase.z,
+        mix(aBase.z, movingZ, warp),
     );
-    const positionNode = billboardLocal(center, aSize);
+    const radial = center.xy.div(length(center.xy).max(1e-4));
+    const tangent = vec2(radial.y.negate(), radial.x);
+    const streakCorner = tangent.mul(positionLocal.x.mul(aSize).mul(0.16))
+        .add(radial.mul(positionLocal.y.mul(aSize).mul(8.0)));
+    const streakPosition = center.add(vec3(streakCorner, 0.0));
+    // Small, quiet dust leaves the approaching horizon readable. The same budget becomes
+    // long bright velocity streaks at the crossing instead of filling the shadow with bokeh.
+    const positionNode = mix(billboardLocal(center, aSize.mul(0.48)), streakPosition, warp);
 
     const d = length(uv().sub(0.5));
     const glow = pow(
@@ -585,16 +637,19 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
     const breathe = sin(uTime.mul(0.3).add(aPhase))
         .mul(CH7_CORRIDOR_DUST_SETTINGS.breatheSwing)
         .add(CH7_CORRIDOR_DUST_SETTINGS.breatheBase);
+    const travelFade = smoothstep(0.0, 0.09, travel).mul(oneMinus(smoothstep(0.84, 1.0, travel)));
 
     const uOpacity = uniform(1); // ecotone crossfade (backlog #4)
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = aColor.mul(CH7_CORRIDOR_DUST_SETTINGS.colorGain);
+    material.colorNode = aColor.mul(CH7_CORRIDOR_DUST_SETTINGS.colorGain).mul(warp.mul(0.6).add(1.0));
     material.opacityNode = clamp(
         glow.mul(breathe),
         0.0,
         CH7_CORRIDOR_DUST_SETTINGS.opacityCap,
-    ).mul(uOpacity);
+    // The wrap is hidden throughout the plunge too: interpolating this feather with a
+    // nonzero resting alpha exposed a partial-depth jump whenever 0 < warp < 1.
+    ).mul(uOpacity).mul(travelFade).mul(warp.mul(0.55).add(0.45));
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
@@ -607,7 +662,7 @@ export function createCorridorDustTSL(uTime = uniform(0), requestedCount = 460) 
     mesh.frustumCulled = false;
     mesh.userData.readability = CH7_CORRIDOR_DUST_SETTINGS;
     return {
-        mesh, material, geometry, uniforms: { uOpacity },
+        mesh, material, geometry, uniforms: { uOpacity, uWarp },
     };
 }
 
