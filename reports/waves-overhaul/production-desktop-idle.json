@@ -1,0 +1,103 @@
+{
+  "event": "idle",
+  "theme": "waves",
+  "isActive": true,
+  "isPaused": false,
+  "lifecycle": "running",
+  "generation": 2,
+  "time": 7.999999999999977,
+  "quality": "High",
+  "backend": "WebGL2",
+  "post": {
+    "quality": "High",
+    "disabled": false,
+    "useMRT": false
+  },
+  "frame": {
+    "pulse": 0,
+    "foam": 0,
+    "spray": 0,
+    "shafts": 0,
+    "surgeStrength": 0,
+    "surgeZ": -18,
+    "impacts": []
+  },
+  "render": {
+    "calls": 267,
+    "frameCalls": 1,
+    "drawCalls": 1,
+    "triangles": 1,
+    "points": 0,
+    "lines": 0,
+    "timestamp": 0
+  },
+  "board": {
+    "x": 545,
+    "y": 76.5,
+    "width": 350,
+    "height": 762
+  },
+  "boardCanvasCount": 1,
+  "themeCanvasCount": 1,
+  "activeContainers": [
+    "waves-theme"
+  ],
+  "camera": {
+    "position": [
+      0,
+      -0.4,
+      -25
+    ],
+    "fov": 75,
+    "aspect": 1.6
+  },
+  "cssLayers": [
+    {
+      "id": "BODY",
+      "className": "startup-intro-skipped phaser-hud-ready",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgb(12, 10, 26)",
+      "display": "flex",
+      "zIndex": "auto"
+    },
+    {
+      "id": "DIV",
+      "className": "background-container",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "-1"
+    },
+    {
+      "id": "background-canvas",
+      "className": "",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "10"
+    },
+    {
+      "id": "waves-theme",
+      "className": "theme-container active",
+      "opacity": "0.99966",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "1"
+    },
+    {
+      "id": "single-player-container",
+      "className": "game-container single-player-layout",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "flex",
+      "zIndex": "1"
+    }
+  ],
+  "errors": [],
+  "warnings": []
+}

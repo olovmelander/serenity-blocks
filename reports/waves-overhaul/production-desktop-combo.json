@@ -1,0 +1,152 @@
+{
+  "event": "combo",
+  "theme": "waves",
+  "isActive": true,
+  "isPaused": false,
+  "lifecycle": "running",
+  "generation": 2,
+  "time": 7.999999999999977,
+  "quality": "High",
+  "backend": "WebGL2",
+  "post": {
+    "quality": "High",
+    "disabled": false,
+    "useMRT": false
+  },
+  "frame": {
+    "pulse": 0.2363505231452676,
+    "foam": 0.3424462298516819,
+    "spray": 0.3368433952657969,
+    "shafts": 0.46080702006295354,
+    "surgeStrength": 0.4911623552157938,
+    "surgeZ": -4.875000000000046,
+    "impacts": [
+      {
+        "id": 0,
+        "active": true,
+        "angle": -0.1846677812071331,
+        "z": -0.8548096707818935,
+        "age": 0.34999999999999876,
+        "duration": 1.12,
+        "strength": 0.7945820258307293,
+        "seed": 0.4803283607681756,
+        "kind": "combo",
+        "progress": 0.31249999999999883
+      },
+      {
+        "id": 1,
+        "active": true,
+        "angle": 3.4115377839052936,
+        "z": -2.296489197530865,
+        "age": 0.29499999999999904,
+        "duration": 1.12,
+        "strength": 0.7945820258307293,
+        "seed": 0.3642918381344307,
+        "kind": "combo",
+        "progress": 0.26339285714285626
+      },
+      {
+        "id": 2,
+        "active": true,
+        "angle": 0.3886784122085048,
+        "z": 24.375257201646086,
+        "age": 0.23999999999999844,
+        "duration": 1.12,
+        "strength": 0.7945820258307293,
+        "seed": 0.1903849451303155,
+        "kind": "combo",
+        "progress": 0.21428571428571286
+      },
+      {
+        "id": 3,
+        "active": true,
+        "angle": 3.2714580513950056,
+        "z": 23.743762860082306,
+        "age": 0.18499999999999872,
+        "duration": 1.12,
+        "strength": 0.7945820258307293,
+        "seed": 0.3752743484224966,
+        "kind": "combo",
+        "progress": 0.16517857142857026
+      }
+    ]
+  },
+  "render": {
+    "calls": 338,
+    "frameCalls": 14,
+    "drawCalls": 25,
+    "triangles": 31215,
+    "points": 0,
+    "lines": 0,
+    "timestamp": 0
+  },
+  "board": {
+    "x": 545,
+    "y": 76.5,
+    "width": 350,
+    "height": 762
+  },
+  "boardCanvasCount": 1,
+  "themeCanvasCount": 1,
+  "activeContainers": [
+    "waves-theme"
+  ],
+  "camera": {
+    "position": [
+      0,
+      -0.4,
+      -25
+    ],
+    "fov": 75,
+    "aspect": 1.6
+  },
+  "cssLayers": [
+    {
+      "id": "BODY",
+      "className": "startup-intro-skipped phaser-hud-ready",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgb(12, 10, 26)",
+      "display": "flex",
+      "zIndex": "auto"
+    },
+    {
+      "id": "DIV",
+      "className": "background-container",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "-1"
+    },
+    {
+      "id": "background-canvas",
+      "className": "",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "10"
+    },
+    {
+      "id": "waves-theme",
+      "className": "theme-container active",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "block",
+      "zIndex": "1"
+    },
+    {
+      "id": "single-player-container",
+      "className": "game-container single-player-layout",
+      "opacity": "1",
+      "filter": "none",
+      "background": "rgba(0, 0, 0, 0)",
+      "display": "flex",
+      "zIndex": "1"
+    }
+  ],
+  "errors": [],
+  "warnings": []
+}

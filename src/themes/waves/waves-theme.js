@@ -1,898 +1,435 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════════
- *  ✧ WAVES - Inside the Surf Barrel ✧
- *  A Three.js Theme for Serenity Blocks
- * ═══════════════════════════════════════════════════════════════════════════════
- *
- * Realistic water barrel using luminous-tides quality ocean shader.
- * Curved wave geometry wraps around you creating the barrel effect.
- * Camera positioned inside looking toward the bright barrel opening.
- *
- * Gameplay feedback layers (see docs/WAVES_LOCK_COMBO_EFFECTS_PLAN.md):
- *   • Lock       → droplet splash on the barrel wall + caustic flash
- *   • Line clear → swell surge travelling down the tube + spray & foam boost
- *   • Combo      → god-rays through the exit + plankton streaks + foam curtain
+ * Waves — a sculpted, sunlit surf barrel shared with the isolated playground.
+ * The theme owns lifecycle, renderer and gameplay subscriptions; WavesOcean owns
+ * the artwork and WavesReactions owns bounded, seconds-based event envelopes.
+ * Both renderer backends use the same node scene and RenderPipeline.
  */
-
-import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-
+import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
+import { getViewport } from '../../utils/viewport.js';
+import { seededRandom } from '../../utils/helpers.js';
 import { WAVES_TETROMINOS } from './waves-tetrominos.js';
-import {
-    VignetteShader,
-    WaterBarrelShader,
-    SprayShader,
-    ExitGlowShader,
-} from './waves-shaders.js';
-import {
-    RippleRingPool,
-    DropletBurstPool,
-    BubbleStreamPool,
-    GodRayArray,
-    PlanktonStreakPool,
-    FoamCurtain,
-} from './waves-effects.js';
+import { WavesOcean } from './waves-ocean.js';
+import { WavesReactions } from './waves-reactions.js';
+import { WavesPost } from './waves-post.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Quality Presets
-// ─────────────────────────────────────────────────────────────────────────────
-const QUALITY_PRESETS = {
-    Extreme: {
-        waveSegments: 256,
-        sprayCount: 2000,
-        bloomStrength: 0.55,
-        bloomRadius: 0.6,
-        enablePostProcessing: true,
-        ripplePool: 16,
-        dropletsPerBurst: 120,
-        bubbleStreamPool: 6,
-        bubblesPerStream: 10,
-        godRayCount: 8,
-        plankStreakCount: 24,
-        foamCurtainParticles: 400,
-        enableBloomSurge: true,
-    },
-    Ultra: {
-        waveSegments: 192,
-        sprayCount: 1500,
-        bloomStrength: 0.5,
-        bloomRadius: 0.55,
-        enablePostProcessing: true,
-        ripplePool: 14,
-        dropletsPerBurst: 100,
-        bubbleStreamPool: 5,
-        bubblesPerStream: 10,
-        godRayCount: 8,
-        plankStreakCount: 20,
-        foamCurtainParticles: 300,
-        enableBloomSurge: true,
-    },
-    High: {
-        waveSegments: 128,
-        sprayCount: 1000,
-        bloomStrength: 0.45,
-        bloomRadius: 0.5,
-        enablePostProcessing: true,
-        ripplePool: 12,
-        dropletsPerBurst: 80,
-        bubbleStreamPool: 4,
-        bubblesPerStream: 8,
-        godRayCount: 6,
-        plankStreakCount: 16,
-        foamCurtainParticles: 250,
-        enableBloomSurge: true,
-    },
-    Medium: {
-        waveSegments: 96,
-        sprayCount: 600,
-        bloomStrength: 0.4,
-        bloomRadius: 0.45,
-        enablePostProcessing: true,
-        ripplePool: 10,
-        dropletsPerBurst: 60,
-        bubbleStreamPool: 3,
-        bubblesPerStream: 8,
-        godRayCount: 5,
-        plankStreakCount: 12,
-        foamCurtainParticles: 180,
-        enableBloomSurge: false,
-    },
-    Low: {
-        waveSegments: 64,
-        sprayCount: 300,
-        bloomStrength: 0.35,
-        bloomRadius: 0.4,
-        enablePostProcessing: false,
-        ripplePool: 8,
-        dropletsPerBurst: 40,
-        bubbleStreamPool: 0,
-        bubblesPerStream: 0,
-        godRayCount: 4,
-        plankStreakCount: 8,
-        foamCurtainParticles: 0,
-        enableBloomSurge: false,
-    },
-    Minimal: {
-        waveSegments: 48,
-        sprayCount: 150,
-        bloomStrength: 0.3,
-        bloomRadius: 0.35,
-        enablePostProcessing: false,
-        ripplePool: 6,
-        dropletsPerBurst: 20,
-        bubbleStreamPool: 0,
-        bubblesPerStream: 0,
-        godRayCount: 3,
-        plankStreakCount: 0,
-        foamCurtainParticles: 0,
-        enableBloomSurge: false,
-    },
-};
+const INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const PIXEL_RATIO_CAP = Object.freeze({
+    Extreme: 1.5, Ultra: 1.35, High: 1.25, Medium: 1, Low: 0.9, Minimal: 0.75,
+});
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Theme Class
-// ─────────────────────────────────────────────────────────────────────────────
+// Preserve the public quality-preset API used by canonical mobile-tier checks.
+// Each art module receives the same canonical tier and owns its own draw budget.
+export const QUALITY_PRESETS = Object.freeze({
+    Extreme: { sprayCount: 2000, enablePostProcessing: true },
+    Ultra: { sprayCount: 1500, enablePostProcessing: true },
+    High: { sprayCount: 1000, enablePostProcessing: true },
+    Medium: { sprayCount: 600, enablePostProcessing: true },
+    Low: { sprayCount: 300, enablePostProcessing: false },
+    Minimal: { sprayCount: 150, enablePostProcessing: false },
+});
+
+function searchParams() {
+    return new URLSearchParams(typeof window === 'undefined' ? '' : window.location?.search || '');
+}
+
+function enabledParam(params, ...keys) {
+    return keys.some((key) => params.has(key)
+        && ['', '1', 'true', 'yes', 'on'].includes((params.get(key) || '').toLowerCase()));
+}
+
+function eventDetail(payload) {
+    return payload?.detail ?? payload;
+}
+
+/** Accept the bus's canonical fields, historical aliases and DOM detail envelopes. */
+export function readWavesEventCount(payload, keys, fallback) {
+    const detail = eventDetail(payload);
+    const candidates = typeof detail === 'number' || typeof detail === 'string'
+        ? [detail] : keys.map((key) => detail?.[key]);
+    for (const value of candidates) {
+        if (typeof value !== 'number' && typeof value !== 'string') continue;
+        if (typeof value === 'string' && value.trim() === '') continue;
+        const count = Number(value);
+        if (Number.isFinite(count)) return Math.floor(count);
+    }
+    return fallback;
+}
+
 export default class WavesTheme extends BaseTheme {
     constructor() {
         super('waves');
-
+        this.resourceProfile = 'heavy-gpu';
         this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.composer = null;
-
-        // Scene elements
-        this.barrel = null;
-        this.barrelMaterial = null;
-        this.spray = null;
-        this.sprayMaterial = null;
-        this.exitGlow = null;
-        this.exitGlowMaterial = null;
-
-        // Effect pools
-        this.ripplePool = null;
-        this.dropletPool = null;
-        this.bubblePool = null;
-        this.godRays = null;
-        this.planktonStreaks = null;
-        this.foamCurtain = null;
-
-        // Game-state targets (smoothed each frame)
-        this.glowIntensity = 0;
-        this.targetGlowIntensity = 0;
-        this.waveIntensity = 1.0;
-        this.targetWaveIntensity = 1.0;
-        this.causticsBase = 0.4;
-        this.causticsIntensity = 0.4;
-        this.targetCausticsIntensity = 0.4;
-        this.sprayEventBoost = 0;
-        this.targetSprayEventBoost = 0;
-        this.foamBoost = 0;
-        this.targetFoamBoost = 0;
-        this.exitSurge = 0;
-        this.targetExitSurge = 0;
-        this.exitGlowBaseScale = 1.0;
-
-        // Swell animation (line-clear surge travelling along Z)
-        this.surgeActive = false;
-        this.surgeAge = 0;
-        this.surgeDuration = 1.2;
-        this.surgePeakAmplitude = 0;
-        this.surgeStartZ = 0;
-        this.surgeEndZ = 0;
-
-        // Bloom surge
-        this.bloomBaseStrength = 0;
-        this.bloomSurge = 0;
-        this.targetBloomSurge = 0;
-
-        // Impact-location history — avoid two bursts in the same spot
-        this.recentImpactAngles = [];
-
-        // Animation
-        this.clock = new THREE.Clock();
+        this.ocean = null;
+        this.reactions = null;
+        this.post = null;
+        this.timer = null;
         this.time = 0;
-        this.animationFrameId = null;
-
-        // State
-        this.eventUnsubscribers = [];
-        this.effectTimeouts = new Set();
+        this.quality = 'High';
         this.qualityPreset = QUALITY_PRESETS.High;
-
-        this.barrelRadius = 10;
-        this.barrelLength = 80;
-
-        console.log('[Waves] Surf barrel theme constructed');
+        this.pendingQuality = null;
+        this.isWebGPU = false;
+        this.usesNodeMaterials = false;
+        this.forceWebGL = false;
+        this.runtimeGeneration = 0;
+        this.animationLoopStarted = false;
+        this.animationFrameId = null;
+        this.eventUnsubscribers = [];
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        this.appliedSize = null;
     }
 
     getTetrominoConfig() {
         return WAVES_TETROMINOS;
     }
 
+    getWarmupRoots() {
+        return this.ocean?.group ? [this.ocean.group] : [];
+    }
+
+    usesMrtScenePass() {
+        return this.post?.useMRT === true;
+    }
+
     getCurrentQualityLevel() {
-        const quality = typeof window !== 'undefined'
-            ? window.settings?.effectQuality || window.settings?.graphicsQuality : null;
-        return normalizeQuality(quality);
+        return normalizeQuality(typeof window === 'undefined' ? undefined
+            : window.settings?.effectQuality || window.settings?.graphicsQuality);
     }
 
     applyQualityPreset(quality) {
-        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+        this.quality = normalizeQuality(quality);
+        this.qualityPreset = QUALITY_PRESETS[this.quality];
     }
 
-    scheduleEffectTimeout(callback, delayMs = 0) {
-        const id = window.setTimeout(() => {
-            this.effectTimeouts.delete(id);
-            if (this.isActive) callback();
-        }, delayMs);
-        this.effectTimeouts.add(id);
-        return id;
-    }
-
-    clearEffectTimeouts() {
-        this.effectTimeouts.forEach((id) => clearTimeout(id));
-        this.effectTimeouts.clear();
-    }
-
-    async createScene() {
-        console.log('[Waves] Creating surf barrel scene...');
-
-        const quality = this.getCurrentQualityLevel();
-        this.applyQualityPreset(quality);
-
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
         const container = document.getElementById('waves-theme');
-        if (!container) {
-            console.error('[Waves] Container not found');
+        if (!container) throw new Error('[Waves] Theme container not found.');
+        this.disposeRuntime();
+        const runtimeGeneration = ++this.runtimeGeneration;
+        const current = () => runtimeGeneration === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        this.applyQualityPreset(this.pendingQuality ?? this.getCurrentQualityLevel());
+        this.pendingQuality = null;
+
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return;
+        if (!current()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
             return;
         }
-
-        this.initRenderer(container);
-        this.createBarrel();
-        this.createExitGlow();
-        this.createSpray();
-        this.setupLighting();
-        this.setupPostProcessing();
-        this.createEffectPools();
-        this.setupEventListeners();
-        this.startAnimation();
-
-        console.log('[Waves] Scene created');
+        this.renderer = renderer;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        renderer.setClearColor(0x052c39, 1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+        // The registry's static container is never registered for removal.
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
+        try {
+            this.buildScene();
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.setupEventListeners();
+            this.time = 0;
+            this.update(0);
+            this.timer = new THREE.Timer();
+            this.timer.connect(document);
+            this.timer.reset();
+            if (enabledParam(searchParams(), 'themeValidation')) window.__WAVES__ = this;
+            if (!this.isPaused && current()) this.startAnimation();
+        } catch (error) {
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            throw error;
+        }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Renderer & Camera
-    // ─────────────────────────────────────────────────────────────────────────
-
-    initRenderer(container) {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        this.renderer = new THREE.WebGLRenderer({
+    async createRenderer(ownerGeneration) {
+        const forceWebGL = this.forceWebGL || enabledParam(searchParams(), 'forceWebGL', 'wavesForceWebGL');
+        const current = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        const attempt = (force) => this.initializeRendererCandidate(new THREE.WebGPURenderer({
             antialias: this.getAntialiasEnabled(),
             alpha: false,
+            forceWebGL: force,
             powerPreference: 'high-performance',
+        }), {
+            timeoutMs: INIT_TIMEOUT_MS,
+            label: `Waves ${force ? 'WebGL2' : 'WebGPU'} renderer init`,
+            ownerGeneration,
         });
-        this.renderer.setClearColor(0x001015, 1);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setSize(width, height);
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.15;
+        if (!forceWebGL && typeof navigator !== 'undefined' && navigator.gpu) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!current()) return null;
+                console.warn('[Waves] WebGPU initialization failed; trying node WebGL2.', error);
+            }
+        }
+        if (!current()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!current()) return null;
+            throw new Error('Waves could not initialize WebGPU or WebGL2.', { cause: error });
+        }
+    }
 
-        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
-        container.appendChild(this.renderer.domElement);
-        this.registerContainer(container);
-
+    buildScene() {
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x002233, 0.015);
-
-        this.camera = new THREE.PerspectiveCamera(95, width / height, 0.1, 150);
+        this.camera = new THREE.PerspectiveCamera(75, 1, 0.1, 240);
         this.camera.position.set(0, 0, -25);
-        this.camera.lookAt(0, 0, 40);
-
-        console.log('[Waves] Renderer initialized');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Barrel
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createBarrel() {
-        const segments = this.qualityPreset.waveSegments;
-        const geometry = new THREE.CylinderGeometry(
-            this.barrelRadius,
-            this.barrelRadius,
-            this.barrelLength,
-            segments,
-            segments / 2,
-            true,
-        );
-        geometry.rotateX(Math.PI / 2);
-
-        // Deep-clone uniforms so pool-shared structures aren't mutated
-        const uniforms = THREE.UniformsUtils.clone(WaterBarrelShader.uniforms);
-        uniforms.uBarrelRadius.value = this.barrelRadius;
-        this.causticsBase = uniforms.uCausticsIntensity.value;
-
-        this.barrelMaterial = new THREE.ShaderMaterial({
-            uniforms,
-            vertexShader: WaterBarrelShader.vertexShader,
-            fragmentShader: WaterBarrelShader.fragmentShader,
-            side: THREE.BackSide,
-            transparent: true,
+        this.camera.lookAt(-6, 1, 35);
+        const rawSeed = searchParams().get('wavesSeed');
+        const seed = rawSeed === null || rawSeed === '' ? 187 : Number(rawSeed);
+        const rng = seededRandom(Number.isFinite(seed) ? seed : 187);
+        this.reactions = new WavesReactions({ quality: this.quality, rng });
+        this.ocean = new WavesOcean({
+            scene: this.scene, camera: this.camera, quality: this.quality, rng,
+        }).build();
+        // WavesPost's phone path renders directly, with no pass targets or bloom.
+        this.post = new WavesPost({
+            renderer: this.renderer, scene: this.scene, camera: this.camera, quality: this.quality,
         });
-
-        this.barrel = new THREE.Mesh(geometry, this.barrelMaterial);
-        this.scene.add(this.barrel);
-
-        console.log('[Waves] Barrel created');
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Exit Glow
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createExitGlow() {
-        const geometry = new THREE.PlaneGeometry(40, 40);
-        const uniforms = THREE.UniformsUtils.clone(ExitGlowShader.uniforms);
-        this.exitGlowMaterial = new THREE.ShaderMaterial({
-            uniforms,
-            vertexShader: ExitGlowShader.vertexShader,
-            fragmentShader: ExitGlowShader.fragmentShader,
-            transparent: true,
-            side: THREE.DoubleSide,
-            depthWrite: false,
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
         });
-
-        this.exitGlow = new THREE.Mesh(geometry, this.exitGlowMaterial);
-        this.exitGlow.position.set(5, 2, 45);
-        this.exitGlow.rotation.y = -0.1;
-        this.scene.add(this.exitGlow);
-
-        console.log('[Waves] Exit glow created');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Spray
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createSpray() {
-        const count = this.qualityPreset.sprayCount;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(count * 3);
-        const sizes = new Float32Array(count);
-        const phases = new Float32Array(count);
-        const speeds = new Float32Array(count);
-
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-            const angle = Math.random() * Math.PI * 1.5 + Math.PI * 0.25;
-            const radius = 2 + Math.random() * 9;
-            const z = (Math.random() - 0.5) * 60;
-
-            positions[i3] = Math.cos(angle) * radius;
-            positions[i3 + 1] = Math.sin(angle) * radius;
-            positions[i3 + 2] = z;
-
-            sizes[i] = 2 + Math.random() * 5;
-            phases[i] = Math.random() * Math.PI * 2;
-            speeds[i] = 0.2 + Math.random() * 0.5;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
-
-        const uniforms = THREE.UniformsUtils.clone(SprayShader.uniforms);
-        this.sprayMaterial = new THREE.ShaderMaterial({
-            uniforms,
-            vertexShader: SprayShader.vertexShader,
-            fragmentShader: SprayShader.fragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return;
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Waves WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true;
+                if (this.isActive) {
+                    await this.start(this.webglRenderer, {
+                        assetManager: this.assetManager,
+                        audioManager: this.audioManager,
+                        onRuntimeFailure: this.onRuntimeFailure,
+                    });
+                }
+            },
         });
-
-        this.spray = new THREE.Points(geometry, this.sprayMaterial);
-        this.scene.add(this.spray);
-
-        console.log('[Waves] Spray created -', count, 'particles');
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Lighting
-    // ─────────────────────────────────────────────────────────────────────────
-
-    setupLighting() {
-        const ambient = new THREE.AmbientLight(0x224455, 0.3);
-        this.scene.add(ambient);
-
-        const exitLight = new THREE.PointLight(0xaaeeff, 1.2, 80);
-        exitLight.position.set(5, 5, 50);
-        this.scene.add(exitLight);
-
-        const topLight = new THREE.DirectionalLight(0x66aacc, 0.4);
-        topLight.position.set(0, 20, 0);
-        this.scene.add(topLight);
-
-        const fill = new THREE.PointLight(0x003344, 0.3, 40);
-        fill.position.set(0, 0, -20);
-        this.scene.add(fill);
+    effectsAllowed() {
+        return this.isActive && !this.isPaused && !this.cleanupComplete
+            && (typeof window === 'undefined' || window.settings?.backgroundComboEffects !== false);
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Post-Processing
-    // ─────────────────────────────────────────────────────────────────────────
-
-    setupPostProcessing() {
-        if (!this.qualityPreset.enablePostProcessing) return;
-
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        this.composer = new EffectComposer(this.renderer);
-
-        const renderPass = new RenderPass(this.scene, this.camera);
-        this.composer.addPass(renderPass);
-
-        this.bloomBaseStrength = this.qualityPreset.bloomStrength;
-        this.bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(width, height),
-            this.bloomBaseStrength,
-            this.qualityPreset.bloomRadius,
-            0.75,
-        );
-        this.composer.addPass(this.bloomPass);
-
-        const vignettePass = new ShaderPass(VignetteShader);
-        this.composer.addPass(vignettePass);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Effect Pools
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createEffectPools() {
-        const p = this.qualityPreset;
-
-        if (p.ripplePool > 0) {
-            this.ripplePool = new RippleRingPool(this.scene, p.ripplePool);
-        }
-        if (p.dropletsPerBurst > 0 && p.ripplePool > 0) {
-            this.dropletPool = new DropletBurstPool(this.scene, p.ripplePool, p.dropletsPerBurst);
-        }
-        if (p.bubbleStreamPool > 0 && p.bubblesPerStream > 0) {
-            this.bubblePool = new BubbleStreamPool(this.scene, p.bubbleStreamPool, p.bubblesPerStream);
-        }
-        if (p.godRayCount > 0) {
-            const anchor = this.exitGlow ? this.exitGlow.position : new THREE.Vector3(5, 2, 45);
-            this.godRays = new GodRayArray(this.scene, p.godRayCount, anchor);
-        }
-        if (p.plankStreakCount > 0) {
-            this.planktonStreaks = new PlanktonStreakPool(this.scene, p.plankStreakCount, this.barrelRadius - 0.3);
-        }
-        if (p.foamCurtainParticles > 0) {
-            this.foamCurtain = new FoamCurtain(this.scene, p.foamCurtainParticles, this.barrelRadius - 0.2);
-        }
-
-        console.log('[Waves] Effect pools created');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Event Listeners
-    // ─────────────────────────────────────────────────────────────────────────
 
     setupEventListeners() {
         this.teardownEventListeners();
-
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                const detail = data?.detail || data || {};
-                const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
-                this.onLineClear(lineCount);
-            }
-        });
-
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                const detail = data?.detail || data || {};
-                const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
-                this.onCombo(comboCount);
-            }
-        });
-
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onPieceLock();
-            }
-        });
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
-
-        this.handleResize = () => {
-            if (!this.isActive || !this.renderer) return;
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            this.camera.aspect = width / height;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(width, height);
-            if (this.composer) this.composer.setSize(width, height);
-        };
-        window.addEventListener('resize', this.handleResize);
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(payload)),
+            eventBus.on(EVENTS.LINE_CLEAR, (payload) => this.onLineClear(payload)),
+            eventBus.on(EVENTS.COMBO, (payload) => this.onCombo(payload)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
+        );
+        this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
+        this.registerEventListener(window, 'gameOver', () => this.reactions?.reset());
     }
 
     teardownEventListeners() {
-        this.eventUnsubscribers.forEach((unsub) => {
-            try { unsub?.(); } catch { /* ignore */ }
-        });
-        this.eventUnsubscribers = [];
-        if (this.handleResize) {
-            window.removeEventListener('resize', this.handleResize);
-            this.handleResize = null;
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+    }
+
+    onPieceLock(payload) {
+        if (!this.effectsAllowed()
+            || (typeof window !== 'undefined' && window.settings?.pieceLockRipple === false)) return;
+        this.reactions?.onPieceLock(eventDetail(payload));
+    }
+
+    onLineClear(payload) {
+        if (!this.effectsAllowed()) return;
+        const count = readWavesEventCount(payload, ['lineCount', 'count', 'lines'], 1);
+        if (count <= 0) return;
+        this.reactions?.onLineClear(Math.max(1, Math.min(4, count)), eventDetail(payload));
+    }
+
+    onCombo(payload) {
+        if (!this.effectsAllowed()) return;
+        const count = readWavesEventCount(payload, ['comboCount', 'combo', 'count'], 0);
+        this.reactions?.onCombo(Math.max(0, Math.min(32, count)), eventDetail(payload));
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.isActive || !this.renderer) return;
+        const detail = eventDetail(payload) || {};
+        const quality = detail.type === 'effectQuality' ? detail.value
+            : detail.effectQuality ?? detail.settings?.effectQuality ?? detail.changed?.effectQuality;
+        if (quality !== undefined && normalizeQuality(quality) !== this.quality) {
+            this.pendingQuality = normalizeQuality(quality);
+            this.queueRebuild();
+            return;
+        }
+        if (detail.type === 'renderScale' || detail.renderScale !== undefined
+            || detail.settings?.renderScale !== undefined || detail.changed?.renderScale !== undefined) {
+            const generation = this.runtimeGeneration;
+            queueMicrotask(() => {
+                if (!this.isActive || generation !== this.runtimeGeneration) return;
+                this.appliedSize = null;
+                const { width, height } = getViewport();
+                this.resize(width, height);
+            });
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Impact Helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Pick a random angle around the barrel, avoiding angles close to the last 2
-     * impacts so successive splashes feel visually varied.
-     */
-    pickImpactAngle() {
-        const MIN_SEPARATION = 0.9; // rad
-        let angle = 0;
-        for (let attempt = 0; attempt < 8; attempt++) {
-            angle = Math.random() * Math.PI * 2;
-            let ok = true;
-            for (const prev of this.recentImpactAngles) {
-                let diff = Math.abs(angle - prev);
-                if (diff > Math.PI) diff = Math.PI * 2 - diff;
-                if (diff < MIN_SEPARATION) { ok = false; break; }
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const generation = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || generation !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true;
+                return;
             }
-            if (ok) break;
-        }
-        this.recentImpactAngles.push(angle);
-        if (this.recentImpactAngles.length > 2) this.recentImpactAngles.shift();
-        return angle;
+            this.start(this.webglRenderer, {
+                assetManager: this.assetManager,
+                audioManager: this.audioManager,
+                onRuntimeFailure: this.onRuntimeFailure,
+            }).catch((error) => this.onRuntimeFailure?.(error));
+        });
     }
 
-    /**
-     * Produce an impact point on the inner barrel wall and its inward normal.
-     */
-    computeImpact(zBiasAhead = true) {
-        const angle = this.pickImpactAngle();
-        const camZ = this.camera ? this.camera.position.z : -25;
-        const zOffset = zBiasAhead
-            ? Math.random() * 35 - 5 // mostly ahead of camera
-            : (Math.random() - 0.5) * 40;
-        const z = camZ + zOffset;
-
-        const r = this.barrelRadius - 0.15;
-        const origin = new THREE.Vector3(Math.cos(angle) * r, Math.sin(angle) * r, z);
-        // Inward normal = from wall point toward the barrel axis
-        const wallNormal = new THREE.Vector3(-Math.cos(angle), -Math.sin(angle), 0).normalize();
-        return {
-            origin, wallNormal, angle, z,
-        };
+    resize(width, height) {
+        if (!this.renderer || !this.camera) return;
+        const view = width > 0 && height > 0 ? { width, height } : getViewport();
+        if (!(view.width > 0) || !(view.height > 0)) return;
+        const dpr = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality]);
+        if (this.appliedSize?.width === view.width && this.appliedSize?.height === view.height
+            && this.appliedSize?.dpr === dpr) return;
+        this.appliedSize = { width: view.width, height: view.height, dpr };
+        this.camera.aspect = view.width / view.height;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(dpr);
+        this.renderer.setSize(view.width, view.height);
+        this.post?.setSize?.(view.width, view.height);
+        const hasBoard = !!document.querySelector('.player-card[data-player="solo"], #game-container canvas');
+        this.ocean?.prepareCamera?.(this.camera.aspect, hasBoard);
     }
 
-    triggerDropletImpact(opts = {}) {
-        const strength = opts.strength ?? 1.0;
-        const { origin, wallNormal } = this.computeImpact(opts.biasAhead !== false);
-
-        if (this.ripplePool) {
-            this.ripplePool.trigger(
-                origin,
-                wallNormal,
-                strength,
-                opts.rippleRadius ?? 4.0,
-                opts.rippleDuration ?? 0.6,
-            );
-        }
-        if (this.dropletPool) {
-            this.dropletPool.trigger(origin, wallNormal, {
-                strength,
-                size: opts.dropletSize ?? 8.0,
-                duration: opts.dropletDuration ?? 0.85,
-                speed: opts.dropletSpeed ?? 6.0,
-            });
-        }
-        if (this.bubblePool && (opts.spawnBubbles ?? Math.random() < 0.6)) {
-            this.bubblePool.trigger(origin, wallNormal, {
-                strength: strength * 0.8,
-                duration: 1.5,
-            });
-        }
+    update(delta) {
+        const dt = Math.max(0, Math.min(MAX_DELTA_S, Number.isFinite(delta) ? delta : 0));
+        this.time += dt;
+        this.reactions?.update(dt);
+        const frame = this.reactions?.getFrame();
+        this.ocean?.update(this.time, dt, frame);
+        this.post?.update?.({ ...frame, time: this.time });
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Game Events
-    // ─────────────────────────────────────────────────────────────────────────
-
-    onPieceLock() {
-        this.triggerDropletImpact({ strength: 0.9, rippleRadius: 3.5, dropletSpeed: 5.5 });
-
-        // Caustic flash — brief surge above the baseline
-        this.targetCausticsIntensity = Math.max(this.targetCausticsIntensity, this.causticsBase + 0.5);
-
-        // Existing glow nudge preserved
-        this.targetGlowIntensity = Math.min(this.targetGlowIntensity + 0.1, 0.5);
+    renderFrame() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        if (this.post) this.post.render();
+        else this.renderer.render(this.scene, this.camera);
     }
-
-    onLineClear(lineCount) {
-        const n = Math.max(1, Math.min(lineCount, 4));
-        const burstCount = [2, 4, 6, 8][n - 1];
-        const surgeAmp = [0.6, 1.0, 1.5, 2.2][n - 1];
-        const sprayBoost = [0.3, 0.5, 0.7, 1.0][n - 1];
-        const foamAmt = [0.2, 0.35, 0.55, 0.8][n - 1];
-
-        // Staggered droplet bursts around the camera
-        for (let i = 0; i < burstCount; i++) {
-            this.scheduleEffectTimeout(() => {
-                this.triggerDropletImpact({
-                    strength: 1.1,
-                    rippleRadius: 4.5,
-                    dropletSpeed: 7.5,
-                    dropletSize: 10.0,
-                    spawnBubbles: i % 2 === 0,
-                });
-            }, i * 60);
-        }
-
-        // Swell surge rolling past the camera toward the exit
-        this.surgeActive = true;
-        this.surgeAge = 0;
-        this.surgeDuration = 1.2;
-        this.surgePeakAmplitude = surgeAmp;
-        this.surgeStartZ = (this.camera?.position.z ?? -25) - 5;
-        this.surgeEndZ = this.surgeStartZ + 70;
-
-        // Spray + foam boosts
-        this.targetSprayEventBoost = Math.max(this.targetSprayEventBoost, sprayBoost);
-        this.targetFoamBoost = Math.max(this.targetFoamBoost, foamAmt);
-
-        // Existing wave/glow envelope
-        this.targetWaveIntensity = Math.min(1.0 + lineCount * 0.3, 2.5);
-        this.targetGlowIntensity = Math.min(0.3 + lineCount * 0.2, 1.0);
-
-        // Caustic flash stacks with lock flash
-        this.targetCausticsIntensity = Math.max(
-            this.targetCausticsIntensity,
-            this.causticsBase + 0.8,
-        );
-    }
-
-    onCombo(comboCount) {
-        if (comboCount < 2) return;
-        const c = Math.max(2, Math.min(comboCount, 7));
-
-        // Tier table (plan §5.2)
-        const godRayTier = [0, 4, 6, 8, 8, 8][Math.min(c - 2, 5)];
-        const exitSurgeTier = [0.2, 0.4, 0.6, 0.8, 0.8, 0.8][Math.min(c - 2, 5)];
-        const plankCount = [8, 12, 16, 20, 20, 20][Math.min(c - 2, 5)];
-        const lipFoamParticles = [0, 0, 200, 400, 400, 400][Math.min(c - 2, 5)];
-        const bloomBoost = [0, 0.1, 0.15, 0.25, 0.25, 0.25][Math.min(c - 2, 5)];
-
-        // God-ray shafts through the exit
-        if (this.godRays && godRayTier > 0) {
-            this.godRays.trigger(1.0, 1.5);
-        }
-
-        // Exit-glow surge
-        this.targetExitSurge = Math.max(this.targetExitSurge, exitSurgeTier);
-
-        // Plankton streaks chasing the curl
-        if (this.planktonStreaks && plankCount > 0) {
-            const camZ = this.camera?.position.z ?? -25;
-            this.planktonStreaks.trigger(
-                Math.min(plankCount, this.qualityPreset.plankStreakCount),
-                camZ + 5,
-                1.0,
-                1.4,
-            );
-        }
-
-        // Breaking-lip foam curtain (combo ≥ 4)
-        if (this.foamCurtain && lipFoamParticles > 0 && c >= 4) {
-            const camZ = this.camera?.position.z ?? -25;
-            this.foamCurtain.trigger(camZ + 10, 1.0, 2.0);
-        }
-
-        // Bloom surge
-        if (this.qualityPreset.enableBloomSurge && this.bloomPass && bloomBoost > 0) {
-            this.targetBloomSurge = Math.max(this.targetBloomSurge, bloomBoost);
-        }
-
-        // Existing scalar pushes
-        this.targetWaveIntensity = Math.min(1.5 + comboCount * 0.15, 3.0);
-        this.targetGlowIntensity = Math.min(0.5 + comboCount * 0.15, 1.8);
-        this.targetCausticsIntensity = Math.max(
-            this.targetCausticsIntensity,
-            this.causticsBase + 1.0,
-        );
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Animation Loop
-    // ─────────────────────────────────────────────────────────────────────────
 
     startAnimation() {
-        const animate = () => {
-            if (!this.isActive) return;
-
-            const delta = this.clock.getDelta();
-            this.time += delta;
-
-            // Scalar smoothing + decay of event-driven targets
-            this.glowIntensity += (this.targetGlowIntensity - this.glowIntensity) * delta * 3;
-            this.targetGlowIntensity *= 0.97;
-
-            this.waveIntensity += (this.targetWaveIntensity - this.waveIntensity) * delta * 2;
-            this.targetWaveIntensity += (1.0 - this.targetWaveIntensity) * delta * 0.4;
-
-            // Caustics: event targets decay back toward baseline
-            this.causticsIntensity += (this.targetCausticsIntensity - this.causticsIntensity) * delta * 4;
-            this.targetCausticsIntensity += (this.causticsBase - this.targetCausticsIntensity) * delta * 1.5;
-
-            this.sprayEventBoost += (this.targetSprayEventBoost - this.sprayEventBoost) * delta * 4;
-            this.targetSprayEventBoost *= 0.94;
-
-            this.foamBoost += (this.targetFoamBoost - this.foamBoost) * delta * 3;
-            this.targetFoamBoost *= 0.93;
-
-            this.exitSurge += (this.targetExitSurge - this.exitSurge) * delta * 4;
-            this.targetExitSurge *= 0.93;
-
-            this.bloomSurge += (this.targetBloomSurge - this.bloomSurge) * delta * 4;
-            this.targetBloomSurge *= 0.9;
-
-            // Swell surge Z animation
-            let surgeAmplitudeNow = 0;
-            let surgeCenterZ = 0;
-            if (this.surgeActive) {
-                this.surgeAge += delta;
-                const t = this.surgeAge / this.surgeDuration;
-                if (t >= 1.0) {
-                    this.surgeActive = false;
-                } else {
-                    // Ease-in-out amplitude envelope
-                    const envelope = Math.sin(t * Math.PI);
-                    surgeAmplitudeNow = this.surgePeakAmplitude * envelope;
-                    surgeCenterZ = this.surgeStartZ + (this.surgeEndZ - this.surgeStartZ) * t;
-                }
-            }
-
-            // Gentle camera sway
-            if (this.camera) {
-                this.camera.position.x = Math.sin(this.time * 0.3) * 0.8;
-                this.camera.position.y = Math.sin(this.time * 0.4) * 0.5;
-            }
-
-            // Update shaders
-            if (this.barrelMaterial) {
-                const u = this.barrelMaterial.uniforms;
-                u.uTime.value = this.time;
-                u.uWaveIntensity.value = this.waveIntensity;
-                u.uGlowIntensity.value = this.glowIntensity;
-                u.uCausticsIntensity.value = this.causticsIntensity;
-                u.uFoamBoost.value = this.foamBoost;
-                u.uSurgeAmplitude.value = surgeAmplitudeNow;
-                u.uSurgeCenterZ.value = surgeCenterZ;
-            }
-
-            if (this.sprayMaterial) {
-                this.sprayMaterial.uniforms.uTime.value = this.time;
-                this.sprayMaterial.uniforms.uEventBoost.value = this.sprayEventBoost;
-            }
-
-            if (this.exitGlowMaterial) {
-                this.exitGlowMaterial.uniforms.uSurge.value = this.exitSurge;
-            }
-            if (this.exitGlow) {
-                const s = this.exitGlowBaseScale + this.exitSurge * 0.6;
-                this.exitGlow.scale.set(s, s, 1);
-            }
-
-            if (this.bloomPass) {
-                this.bloomPass.strength = this.bloomBaseStrength + this.bloomSurge;
-            }
-
-            // Update effect pools
-            if (this.ripplePool) this.ripplePool.update(delta);
-            if (this.dropletPool) this.dropletPool.update(delta);
-            if (this.bubblePool) this.bubblePool.update(delta);
-            if (this.godRays) this.godRays.update(delta, this.time);
-            if (this.planktonStreaks) this.planktonStreaks.update(delta);
-            if (this.foamCurtain) this.foamCurtain.update(delta);
-
-            // Render
-            if (this.composer) {
-                this.composer.render(delta);
-            } else {
-                this.renderer.render(this.scene, this.camera);
-            }
-
+        if (this.animationLoopStarted || !this.isActive || this.isPaused || !this.timer) return;
+        this.animationLoopStarted = true;
+        this.timer.reset();
+        const generation = this.runtimeGeneration;
+        const animate = (timestamp) => {
+            if (generation !== this.runtimeGeneration || !this.isActive || this.isPaused) return;
             this.animationFrameId = requestAnimationFrame(animate);
             this.registerAnimation(this.animationFrameId);
+            if (!this.shouldRenderFrame() || document.hidden === true) {
+                // FPS skips accumulate elapsed time; a hidden/paused surface does not.
+                if (document.hidden === true || window.isRenderingPaused) this.timer.reset();
+                return;
+            }
+            this.timer.update(timestamp);
+            this.update(this.timer.getDelta());
+            this.renderFrame();
         };
-
         this.animationFrameId = requestAnimationFrame(animate);
         this.registerAnimation(this.animationFrameId);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Cleanup
-    // ─────────────────────────────────────────────────────────────────────────
+    pause() {
+        const paused = super.pause();
+        if (paused) this.timer?.reset();
+        return paused;
+    }
 
-    cleanup() {
-        console.log('[Waves] Cleaning up...');
+    resume() {
+        if (!this.renderer || !this.scene || !this.ocean) return false;
+        const resumed = super.resume();
+        if (resumed) {
+            this.timer?.reset();
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            } else this.startAnimation();
+        }
+        return resumed;
+    }
 
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
         this.teardownEventListeners();
-        this.clearEffectTimeouts();
-
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-
-        if (this.ripplePool) { this.ripplePool.dispose(); this.ripplePool = null; }
-        if (this.dropletPool) { this.dropletPool.dispose(); this.dropletPool = null; }
-        if (this.bubblePool) { this.bubblePool.dispose(); this.bubblePool = null; }
-        if (this.godRays) { this.godRays.dispose(); this.godRays = null; }
-        if (this.planktonStreaks) { this.planktonStreaks.dispose(); this.planktonStreaks = null; }
-        if (this.foamCurtain) { this.foamCurtain.dispose(); this.foamCurtain = null; }
-
-        if (this.barrel) {
-            this.barrel.geometry.dispose();
-            this.barrelMaterial?.dispose();
-            this.scene.remove(this.barrel);
-        }
-
-        if (this.exitGlow) {
-            this.exitGlow.geometry.dispose();
-            this.exitGlowMaterial?.dispose();
-            this.scene.remove(this.exitGlow);
-        }
-
-        if (this.spray) {
-            this.spray.geometry.dispose();
-            this.sprayMaterial?.dispose();
-            this.scene.remove(this.spray);
-        }
-
-        if (this.composer) {
-            this.composer.dispose();
-            this.composer = null;
-        }
-
-        if (this.renderer) {
-            this.disposeRenderer(this.renderer, { nullInstance: false });
-            this.renderer = null;
-        }
-
+        this.removeRendererResilience();
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        const release = (label, value) => {
+            try { value?.dispose?.(); } catch (error) { console.warn(`[Waves] ${label} disposal failed.`, error); }
+        };
+        release('Post', this.post);
+        this.post = null;
+        release('Ocean', this.ocean);
+        this.ocean = null;
+        this.reactions?.reset();
+        release('Reactions', this.reactions);
+        this.reactions = null;
+        release('Timer', this.timer);
+        this.timer = null;
+        this.scene?.clear();
         this.scene = null;
         this.camera = null;
-        this.barrel = null;
-        this.barrelMaterial = null;
-        this.exitGlow = null;
-        this.exitGlowMaterial = null;
-        this.spray = null;
-        this.sprayMaterial = null;
-        this.bloomPass = null;
+        if (this.renderer) this.disposeRenderer(this.renderer);
+        this.isWebGPU = false;
+        this.usesNodeMaterials = false;
+        this.appliedSize = null;
+        if (typeof window !== 'undefined' && window.__WAVES__ === this) delete window.__WAVES__;
+    }
 
+    releaseManagedGpuResources() {
+        this.disposeRuntime();
+        super.releaseManagedGpuResources();
+    }
+
+    stop() {
+        super.stop();
+        this.disposeRuntime();
+    }
+
+    cleanup() {
+        if (this.cleanupComplete) return;
+        this.stop();
         super.cleanup();
-
-        console.log('[Waves] Cleanup complete');
     }
 }
