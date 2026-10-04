@@ -518,14 +518,16 @@ function createFacadeMaterial(uTime, uEnergy, { uCityLight, uIgniteRadius, uDim 
     const igniteRadius = uIgniteRadius ?? uniform(0);
     const dim = uDim ?? uniform(0);
 
-    const aFacade = attribute('aFacade', 'vec4');
-    const aDims = attribute('aDims', 'vec3');
+    // These are constant per tower/face. Perspective interpolation introduces tiny
+    // per-pixel seed differences that the hashes amplify into speckled, crawling windows.
+    const aFacade = varying(attribute('aFacade', 'vec4'), 'vCityFacade').setInterpolation('flat');
+    const aDims = varying(attribute('aDims', 'vec3'), 'vCityDimensions').setInterpolation('flat');
     const seed = aFacade.x;
     const occupancy = aFacade.y;
     const warmBias = aFacade.z;
     const hero = aFacade.w;
 
-    const n = normalGeometry;
+    const n = varying(normalGeometry, 'vCityFaceNormal').setInterpolation('flat');
     const isRoof = step(0.5, abs(n.y));
     const isSide = oneMinus(isRoof);
     // ±X faces span the tower's depth, ±Z faces its width.
@@ -576,7 +578,8 @@ function createFacadeMaterial(uTime, uEnergy, { uCityLight, uIgniteRadius, uDim 
     const single = step(oneMinus(occupancy.mul(S.scatter).mul(cityLight)), winRnd);
     const aboveLobby = step(1.0, cell.y);
     // The resolve: whole buildings gutter out as uDim rises (per-building threshold).
-    const buildingAlive = step(dim, varying(hash21(vec2(seed, 91.7)), 'vCityGutter').mul(0.98).add(0.01));
+    const gutter = varying(hash21(vec2(seed, 91.7)), 'vCityGutter').setInterpolation('flat');
+    const buildingAlive = step(dim, gutter.mul(0.98).add(0.01));
     const lit = max(inFloor, single).mul(aboveLobby).mul(buildingAlive).mul(isSide);
 
     // ── WHAT colour ───────────────────────────────────────────────────────────────
@@ -669,6 +672,8 @@ export const CH8_CITY_LAYOUT = Object.freeze({
     ranks: 30,
     nearZ: 130,
     farZ: -640, // the skyline cards (z -650/-675) carry the city beyond this
+    streetGap: 3,
+    laneHalfWidth: 24,
     // lateral: centre offset from the lane; jitter; zStag; height range [min,max] above the
     // street near -> far (lerped by rank); tallChance: odds of a tower breaking the skyline.
     banks: [
@@ -724,6 +729,13 @@ export function createCityBlocksTSL(uTime, uEnergy, {
     // frame out to the horizon; the skyline cards carry the city beyond farZ.
     const L = CH8_CITY_LAYOUT;
     const rand = mulberry32(L.seed);
+    // Disjoint parcels prevent neighbouring towers from cutting through each other's
+    // windows. Keep the seeded heights/palette, and constrain only footprint and jitter.
+    // Centres follow the authored placement's mean width (23 + bank * 2.5) and jitter.
+    const bankCentres = L.banks.map((bank, b) => bank.lateral + bank.latJit * 0.5
+        + (23 + b * 2.5) * 0.5 - 8);
+    const rankSpacing = Math.abs(L.farZ - L.nearZ) / (L.ranks - 1);
+    const parcelDepth = rankSpacing - L.streetGap;
     const heroSlots = new Map(L.heroes.map(([rank, side, bank, hue]) => [`${rank}:${side}:${bank}`, hue]));
     // Low tier drops the OUTERMOST banks (the skyline cards carry the horizon behind them);
     // the layout is still dealt for every bank so the kept towers are identical on all tiers.
@@ -759,19 +771,28 @@ export function createCityBlocksTSL(uTime, uEnergy, {
                     height = L.tallRange[0] + rand() * (L.tallRange[1] - L.tallRange[0]);
                 }
                 let width = 16 + rand() * 14 + b * 2.5;
-                const depth = 14 + rand() * 14 + b * 2;
+                let depth = 14 + rand() * 14 + b * 2;
                 if (heroHue > 0) {
                     height = L.heroHeight[0] + rand() * (L.heroHeight[1] - L.heroHeight[0]);
                     width = 24 + rand() * 8;
                 }
-                const lateral = bank.lateral + rand() * bank.latJit + width * 0.5 - 8;
-                const zJitter = bank.zStag + (rand() - 0.5) * bank.zJit;
+                let lateral = bank.lateral + rand() * bank.latJit + width * 0.5 - 8;
+                let zJitter = (rand() - 0.5) * bank.zJit;
                 const warmy = rand() < 0.5;
                 const facadeSeed = rand() * 100;
                 const occupancyRoll = rand();
                 const warmRoll = rand();
                 if (b >= banksKept) continue;
-                scratchPos.set(side * lateral, STREET_Y + height * 0.5, z + zJitter);
+                const innerEdge = b === 0 ? L.laneHalfWidth
+                    : (bankCentres[b - 1] + bankCentres[b]) * 0.5 + L.streetGap * 0.5;
+                const outerEdge = b === L.banks.length - 1 ? Infinity
+                    : (bankCentres[b] + bankCentres[b + 1]) * 0.5 - L.streetGap * 0.5;
+                width = Math.min(width, outerEdge - innerEdge);
+                lateral = THREE.MathUtils.clamp(lateral, innerEdge + width * 0.5, outerEdge - width * 0.5);
+                depth = Math.min(depth, parcelDepth);
+                const jitterLimit = (parcelDepth - depth) * 0.5;
+                zJitter = THREE.MathUtils.clamp(zJitter, -jitterLimit, jitterLimit);
+                scratchPos.set(side * lateral, STREET_Y + height * 0.5, z + bank.zStag + zJitter);
                 scratchScale.set(width, height, depth);
                 scratchMatrix.compose(scratchPos, scratchQuat, scratchScale);
                 towers.setMatrixAt(instance, scratchMatrix);
