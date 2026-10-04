@@ -50,20 +50,22 @@ function disposeSource(root) {
 }
 
 /** Original Blender silhouettes and clips retain the existing school simulation. */
-export function createOceanSchoolModel(gltf, { count, phases, isWebGPU = true }) {
+export function createOceanSchoolModel(gltf, {
+    count, phases, isWebGPU = true, usesNodeMaterials = isWebGPU,
+}) {
     let source;
     gltf.scene.updateMatrixWorld(true);
     gltf.scene.traverse((child) => { if (child.isMesh) source = child; });
     if (!source?.geometry.morphAttributes.position?.length) throw new Error('School asset needs authored morphs.');
     const geometry = source.geometry.clone();
     transformMorphGeometry(geometry, source.matrixWorld);
-    const material = isWebGPU
+    const material = usesNodeMaterials
         ? new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide })
         : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.54, side: THREE.DoubleSide });
     const uTime = uniform(0);
     const uCurrentStrength = uniform(0.5);
     const uGlowIntensity = uniform(0.8);
-    if (isWebGPU) {
+    if (usesNodeMaterials) {
         const paint = attribute('color', 'vec3');
         const light = max(dot(normalize(normalWorld), normalize(vec3(-0.1, 0.9, -0.42))), float(0));
         const lit = paint.mul(light.mul(0.50).add(0.42)).mul(float(0.96).add(uGlowIntensity.mul(0.05)));
@@ -121,7 +123,7 @@ export async function upgradeOceanSchoolModels(system) {
             const phases = new Float32Array(count);
             const misc = fallback.geometry.attributes.aMisc;
             for (let i = 0; i < count; i++) phases[i] = misc.getX(i);
-            const mesh = createOceanSchoolModel(gltf, { count, phases, isWebGPU: system.isWebGPU });
+            const mesh = createOceanSchoolModel(gltf, { count, phases, usesNodeMaterials: system.usesNodeMaterials });
             mesh.instanceMatrix.array.set(fallback.instanceMatrix.array);
             mesh.instanceMatrix.needsUpdate = true;
             mesh.userData.setActiveCount(fallback.count);

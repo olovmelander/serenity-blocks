@@ -3,9 +3,9 @@
  * Starlight — Stardust Renderer
  *
  * Forked from electric-dreams-v3/rendering/fluid-particles-renderer.js. Renders
- * StardustSim's compute buffers as additive-blended camera-facing billboards —
- * positions + colors are read straight from the storage buffers (no CPU→GPU
- * transfer per frame). Starlight tweaks vs edv3:
+ * StardustSim's motes as additive-blended camera-facing billboards. Native WebGPU
+ * reads compute storage buffers; WebGL2 reads live instanced position/color
+ * attributes. Starlight tweaks vs edv3:
  *   - per-particle TWINKLE (hashed phase/freq from instanceIndex) so the dust
  *     shimmers like fairy-light, under a slow global sky-breath envelope;
  *   - smaller, softer Gaussian motes (dust, not a fluid mass);
@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
     Fn,
+    attribute,
     cameraProjectionMatrix,
     cameraViewMatrix,
     float,
@@ -40,6 +41,17 @@ export function createStardustRenderer(sim, options = {}) {
     const colorBuffer = sim.getColorBuffer();
 
     const geometry = new THREE.PlaneGeometry(1, 1);
+    const useStorage = options.useStorage !== false;
+    let positionAttribute = null;
+    let colorAttribute = null;
+    if (!useStorage) {
+        positionAttribute = new THREE.InstancedBufferAttribute(sim.positionData, 4);
+        colorAttribute = new THREE.InstancedBufferAttribute(sim.colorData, 4);
+        positionAttribute.setUsage(THREE.DynamicDrawUsage);
+        colorAttribute.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute('aDustPosition', positionAttribute);
+        geometry.setAttribute('aDustColor', colorAttribute);
+    }
 
     const uTime = uniform(0);
     const uSizeMul = uniform(options.sizeMul ?? 1.0);
@@ -53,12 +65,18 @@ export function createStardustRenderer(sim, options = {}) {
         side: THREE.DoubleSide,
     });
 
-    const positions = storage(positionBuffer, 'vec4', count);
-    const colors = storage(colorBuffer, 'vec4', count);
+    const positions = useStorage ? storage(positionBuffer, 'vec4', count) : null;
+    const colors = useStorage ? storage(colorBuffer, 'vec4', count) : null;
+    const particlePosition = () => (useStorage
+        ? positions.element(instanceIndex)
+        : attribute('aDustPosition', 'vec4'));
+    const particleColor = () => (useStorage
+        ? colors.element(instanceIndex)
+        : attribute('aDustColor', 'vec4'));
 
     material.vertexNode = Fn(() => {
-        const pdata = positions.element(instanceIndex).toVar();
-        const cdata = colors.element(instanceIndex).toVar();
+        const pdata = particlePosition().toVar();
+        const cdata = particleColor().toVar();
         const particlePos = pdata.xyz.toVar();
         const age = pdata.w.toVar();
         const energy = cdata.w.toVar();
@@ -78,8 +96,8 @@ export function createStardustRenderer(sim, options = {}) {
     })();
 
     const colorNode = Fn(() => {
-        const cdata = colors.element(instanceIndex).toVar();
-        const pdata = positions.element(instanceIndex).toVar();
+        const cdata = particleColor().toVar();
+        const pdata = particlePosition().toVar();
         const baseColor = cdata.xyz.toVar();
         const energy = cdata.w.toVar();
         const age = pdata.w.toVar();
@@ -128,6 +146,8 @@ export function createStardustRenderer(sim, options = {}) {
         },
         update(time) {
             uTime.value = time;
+            if (positionAttribute) positionAttribute.needsUpdate = true;
+            if (colorAttribute) colorAttribute.needsUpdate = true;
         },
         dispose() {
             geometry.dispose();

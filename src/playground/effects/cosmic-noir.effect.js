@@ -27,9 +27,10 @@ export function create({
     theme.scene = scene;
     theme.camera = camera;
     theme.renderer = renderer;
-    // The playground owns a node renderer on either backend. Production's classic
-    // fallback is separately validated in the built game.
-    theme.isWebGPU = true;
+    // Match production: one node scene on either backend, native-only compute/MRT.
+    theme.usesNodeMaterials = renderer.isWebGPURenderer === true;
+    theme.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+    theme.isWebGL = !theme.isWebGPU;
     theme.getCurrentQualityLevel = () => quality;
     Object.assign(theme.flags, {
         seed: Number(params.get('seed') || 12345),

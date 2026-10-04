@@ -416,6 +416,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.fixedElapsed = 0;
         this.isWebGPU = false;
         this.isWebGL = false;
+        this.usesNodeMaterials = false;
         this.capabilities = {
             isWebGPU: false,
             maxColorAttachments: 0,
@@ -1505,7 +1506,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 isWebGPU: false,
                 maxColorAttachments: 0,
                 supportsCompute: false,
-                supportsPost: false,
+                supportsPost: this.usesNodeMaterials,
             };
             return;
         }
@@ -1521,13 +1522,13 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     updateCapabilityFlags() {
-        const usePost = this.isWebGPU
+        const usePost = this.usesNodeMaterials
             && this.capabilities?.supportsPost
             && this.qualityPreset.enablePostProcessing
             && !this.flags.noPost;
         const supportsMRT = this.capabilities?.maxColorAttachments > 1;
         const guardMrtOnPlatform = this.shouldGuardMrtOnPlatform();
-        const useMRT = usePost && !this.flags.noMRT && supportsMRT && !guardMrtOnPlatform;
+        const useMRT = this.isWebGPU && usePost && !this.flags.noMRT && supportsMRT && !guardMrtOnPlatform;
         const qualityAllowsCompute = this.qualityPreset.enableCompute !== false;
         const useCompute = this.isWebGPU
             && this.capabilities?.supportsCompute
@@ -1561,10 +1562,8 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     normalizeRuntimeFeatureFlags() {
         if (!this.isWebGPU) {
-            this.flags.usePost = false;
             this.flags.useMRT = false;
             this.flags.useCompute = false;
-            return;
         }
 
         if (this.flags.noPost || !this.flags.usePost) {
@@ -1589,7 +1588,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (!this.renderer) return;
 
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        const postOwnsToneMapping = this.isWebGPU && this.flags.usePost && !!this.postProcessing;
+        const postOwnsToneMapping = this.usesNodeMaterials && this.flags.usePost && !!this.postProcessing;
         if (postOwnsToneMapping) {
             this.renderer.toneMapping = THREE.NoToneMapping;
             this.renderer.toneMappingExposure = 1.0;
@@ -1848,11 +1847,11 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     async precompileSceneWithTimeout() {
-        if (!this.isWebGPU || !this.renderer?.compileAsync || !this.scene || !this.camera) {
+        if (!this.usesNodeMaterials || !this.renderer?.compileAsync || !this.scene || !this.camera) {
             this.compileStats = {
                 status: 'skipped',
                 durationMs: 0,
-                message: 'compileAsync unavailable or non-WebGPU path',
+                message: 'compileAsync unavailable or non-node renderer',
             };
             return;
         }
@@ -2035,61 +2034,31 @@ export default class CosmicNoirTheme extends BaseTheme {
         const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
             && this.isActive
             && !this.cleanupComplete;
-        let webgpuRenderer = null;
-        let renderer = null;
-
-        if (!this.flags.forceWebGL) {
-            try {
-                webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
-                    antialias: webgpuAntialias,
-                    powerPreference: 'high-performance',
-                    alpha: false,
-                    preserveDrawingBuffer,
-                    trackTimestamp,
-                });
-                await this.initializeRendererCandidate(webgpuRenderer, {
-                    label: 'Cosmic Noir WebGPU renderer init',
-                    ownerGeneration,
-                });
-            } catch (error) {
-                if (!ownsLifecycle()) return false;
-                console.warn('[CosmicNoir] WebGPU init failed, falling back to WebGL2:', error.message);
-                if (webgpuRenderer) {
-                    webgpuRenderer.dispose();
-                    webgpuRenderer = null;
-                }
-            }
-        }
-
-        const hasWebGPUBackend = webgpuRenderer?.backend?.isWebGPUBackend === true;
-        const compatibilityGuardEnabled = this.hasWebGLOnlyDependencies();
-
-        if (hasWebGPUBackend && compatibilityGuardEnabled) {
-            console.warn(
-                '[CosmicNoir] WebGPU available, but Phase 1 compatibility guard keeps WebGL path:',
-                this.getWebGPUBlockers(),
-            );
-        }
-
-        if (hasWebGPUBackend && !compatibilityGuardEnabled) {
-            renderer = webgpuRenderer;
-            this.isWebGPU = true;
-            this.isWebGL = false;
-        } else {
-            if (webgpuRenderer) {
-                webgpuRenderer.dispose();
-                webgpuRenderer = null;
-            }
-
-            if (!ownsLifecycle()) return false;
-            renderer = new THREE.WebGLRenderer({
-                antialias: this.getAntialiasEnabled(),
-                powerPreference: 'high-performance',
-                alpha: false,
-                preserveDrawingBuffer,
+        const forceWebGL = this.flags.forceWebGL
+            || typeof navigator === 'undefined' || !navigator.gpu;
+        const createRenderer = (webglOnly) => new THREE_WEBGPU.WebGPURenderer({
+            antialias: webgpuAntialias,
+            powerPreference: 'high-performance',
+            alpha: false,
+            preserveDrawingBuffer,
+            trackTimestamp: trackTimestamp && !webglOnly,
+            forceWebGL: webglOnly,
+        });
+        let renderer = createRenderer(forceWebGL);
+        try {
+            await this.initializeRendererCandidate(renderer, {
+                label: `Cosmic Noir ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
             });
-            this.isWebGPU = false;
-            this.isWebGL = true;
+        } catch (error) {
+            if (!ownsLifecycle()) return false;
+            if (forceWebGL) throw error;
+            console.warn('[CosmicNoir] WebGPU init failed, retrying the node WebGL2 backend:', error.message);
+            renderer = createRenderer(true);
+            await this.initializeRendererCandidate(renderer, {
+                label: 'Cosmic Noir WebGL2 renderer init',
+                ownerGeneration,
+            });
         }
 
         if (!ownsLifecycle()) {
@@ -2097,6 +2066,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             return false;
         }
         this.renderer = renderer;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        this.isWebGL = !this.isWebGPU;
 
         this.renderer.setClearColor(0x000000, 1); // Pure black background
         this.renderer.setPixelRatio(this.getRendererPixelRatio());
@@ -2289,7 +2261,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             let material;
             let uniforms;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 ({ material, uniforms } = createStarfieldNodeMaterial({
                     pixelRatio: this.renderer.getPixelRatio(),
                     isWebGPU: this.isWebGPU,
@@ -2374,7 +2346,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(config.size, config.size);
             let material;
             let uniforms = null;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 ({ material, uniforms } = createNebulaNodeMaterial({
                     map: config.texture,
                     noiseMap,
@@ -2452,7 +2424,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.qualityPreset.planetDetail,
         );
         let material;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material: nodeMaterial, uniforms } = createPlanetNodeMaterial({
                 map: planetTexture,
                 sunDirection,
@@ -2497,10 +2469,10 @@ export default class CosmicNoirTheme extends BaseTheme {
             z: -12,
         };
 
-        const geometry = this.isWebGPU ? null : new THREE.PlaneGeometry(config.size, config.size);
+        const geometry = this.usesNodeMaterials ? null : new THREE.PlaneGeometry(config.size, config.size);
         let material;
         let uniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createPlanetGlowSpriteNodeMaterial({
                 color: new THREE.Color(config.color),
                 opacity: config.opacity,
@@ -2531,10 +2503,10 @@ export default class CosmicNoirTheme extends BaseTheme {
             });
         }
 
-        const glow = this.isWebGPU
+        const glow = this.usesNodeMaterials
             ? new THREE.Sprite(material)
             : new THREE.Mesh(geometry, material);
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             glow.scale.set(config.size, config.size, 1.0);
         }
         glow.position.set(0, 0, config.z);
@@ -2555,11 +2527,11 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.comboFlashUniforms = null;
 
         const size = planetSize * 2.7;
-        const geometry = this.isWebGPU ? null : new THREE.PlaneGeometry(size, size);
+        const geometry = this.usesNodeMaterials ? null : new THREE.PlaneGeometry(size, size);
         let material;
         let uniforms = null;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createPlanetGlowSpriteNodeMaterial({
                 color: new THREE.Color(0xe6e6ff),
                 opacity: 0.0,
@@ -2589,10 +2561,10 @@ export default class CosmicNoirTheme extends BaseTheme {
             });
         }
 
-        const mesh = this.isWebGPU
+        const mesh = this.usesNodeMaterials
             ? new THREE.Sprite(material)
             : new THREE.Mesh(geometry, material);
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             mesh.scale.set(size, size, 1.0);
         }
         mesh.position.set(0, 0, 15);
@@ -2600,7 +2572,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         mesh.frustumCulled = false;
         mesh.visible = false;
         mesh.userData.uniforms = uniforms;
-        mesh.userData.baseSize = this.isWebGPU ? size : 1;
+        mesh.userData.baseSize = this.usesNodeMaterials ? size : 1;
         this.comboFlash = mesh;
         this.comboFlashUniforms = uniforms;
         this.planetGroup.add(mesh);
@@ -2639,7 +2611,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         let uniforms;
         const noiseMap = this.ensureSharedNoiseTexture();
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createAccretionDiskNodeMaterial({
                 noiseMap,
             }));
@@ -2685,7 +2657,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         let material;
         let uniforms = null;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createAnamorphicFlareNodeMaterial({
                 opacity: 0.0,
             }));
@@ -2780,7 +2752,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         let material;
         let uniforms = null;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createAmbientDustNodeMaterial({
                 pixelRatio: this.renderer.getPixelRatio(),
             }));
@@ -2835,7 +2807,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             let material;
             let uniforms;
 
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 ({ material, uniforms } = createAtmosphereNodeMaterial({
                     noiseMap,
                 }));
@@ -2945,7 +2917,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         let material;
         let uniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const { material: nodeMaterial, uniforms: nodeUniforms } = createGasSwirlNodeMaterial();
             material = nodeMaterial;
             uniforms = nodeUniforms;
@@ -3282,7 +3254,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         let material;
         let uniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createUnifiedVoidSparkNodeMaterial());
             if (this.flags.useMRT && !this.applyMrtPatchToMaterial(material)) {
                 this.disableMrtRuntime('unified-void-spark-not-mrt-compatible');
@@ -3484,7 +3456,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             return;
         }
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             if (!this.flags.usePost) {
                 this.flags.useMRT = false;
                 return;
@@ -3996,7 +3968,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         // Update cosmic waves
         this.updateCosmicWaves(delta);
 
-        if (this.isWebGPU && this.flags.usePost && this.postProcessing?.update) {
+        if (this.usesNodeMaterials && this.flags.usePost && this.postProcessing?.update) {
             if (!this.planetGroup || !this.camera) this.tempBhScreenPos.set(0.5, 0.5);
 
             const reactiveBloomBoost = Math.min(
@@ -4072,7 +4044,7 @@ export default class CosmicNoirTheme extends BaseTheme {
     renderFrame() {
         if (!this.renderer || !this.scene || !this.camera) return;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             if (this.postProcessing && this.flags.usePost) {
                 try {
                     this.postProcessing.render();
@@ -4119,7 +4091,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             waveColor.set(options.color ?? 0x888888);
         }
         return [
-            this.isWebGPU ? 'wgpu' : 'webgl',
+            this.usesNodeMaterials ? 'node' : 'webgl',
             radius.toFixed(2),
             tube.toFixed(2),
             radialSegments,
@@ -4151,7 +4123,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         const geometry = new THREE.TorusGeometry(radius, tube, radialSegments, tubularSegments);
         let material;
         let uniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createCosmicWaveNodeMaterial({
                 color: waveColor,
             }));
@@ -4786,7 +4758,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.renderer.backend.trackTimestamp = false;
         }
         this.baselineCaptureGeneration += 1;
-        this.renderer.onDeviceLost = null;
+        // Both native and WebGL backends can dispatch a late loss during disposal.
+        // Release the theme closure while keeping the backend callback callable.
+        this.renderer.onDeviceLost = () => {};
         const { domElement } = this.renderer;
         try {
             this.disposeRenderer(this.renderer, { nullInstance: false });
@@ -4859,6 +4833,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.fixedElapsed = 0;
         this.isWebGPU = false;
         this.isWebGL = false;
+        this.usesNodeMaterials = false;
         this.capabilities = {
             isWebGPU: false,
             maxColorAttachments: 0,

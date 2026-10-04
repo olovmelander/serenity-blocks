@@ -3,6 +3,7 @@ import * as THREE_WEBGPU from 'three/webgpu';
 import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js';
 import {
     attribute,
+    cos,
     float,
     instanceIndex,
     length,
@@ -11,7 +12,9 @@ import {
     sin,
     smoothstep,
     storage,
+    uniform,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { GoldenForestBirdCompute } from './golden-forest-compute.js';
 
@@ -22,11 +25,13 @@ export class GoldenForestBirds {
         this.mesh = null;
         this.gpuCompute = null;
         this.birdCompute = null;
+        this.compatibilityTime = null;
         this.randomFn = typeof options.randomFn === 'function' ? options.randomFn : Math.random;
         this.isWebGPU = renderer?.backend?.isWebGPUBackend === true;
+        this.usesNodeMaterials = renderer?.isWebGPURenderer === true;
 
         this.requestedBirdCount = Math.max(1, Math.floor(options.birdCount ?? 1024));
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.BIRDS = this.requestedBirdCount;
             this.WIDTH = Math.max(1, Math.ceil(Math.sqrt(this.BIRDS)));
         } else {
@@ -281,6 +286,10 @@ export class GoldenForestBirds {
             this.initWebGPUBirds();
             return;
         }
+        if (this.usesNodeMaterials) {
+            this.initCompatibilityBirds();
+            return;
+        }
         this.initComputeRenderer();
         this.initBirdsWebGL();
     }
@@ -322,14 +331,13 @@ export class GoldenForestBirds {
         return geometry;
     }
 
-    createWebGPUBirdMaterial() {
-        const positionStorage = storage(this.birdCompute.getPositionBuffer(), 'vec4', this.BIRDS);
-        const velocityStorage = storage(this.birdCompute.getVelocityBuffer(), 'vec4', this.BIRDS);
+    createWebGPUBirdMaterial(states = null) {
         const birdVertexAttr = attribute('birdVertex');
-        const simTime = this.birdCompute.uTime;
-
-        const posState = positionStorage.element(instanceIndex);
-        const velState = velocityStorage.element(instanceIndex);
+        const simTime = states?.time ?? this.birdCompute.uTime;
+        const posState = states?.position
+            ?? storage(this.birdCompute.getPositionBuffer(), 'vec4', this.BIRDS).element(instanceIndex);
+        const velState = states?.velocity
+            ?? storage(this.birdCompute.getVelocityBuffer(), 'vec4', this.BIRDS).element(instanceIndex);
 
         const local = positionLocal;
         const leftWingMask = smoothstep(float(3.2), float(4.0), birdVertexAttr)
@@ -369,6 +377,45 @@ export class GoldenForestBirds {
         material.colorNode = finalColor;
         material.emissiveNode = finalColor.mul(0.01);
         return material;
+    }
+
+    /** Same silhouette and wing shader, with bounded attribute-driven flight. */
+    initCompatibilityBirds() {
+        this.BIRDS = this.requestedBirdCount;
+        const geometry = this.createBirdBaseGeometry();
+        const origins = new Float32Array(this.BIRDS * 4);
+        const flights = new Float32Array(this.BIRDS * 2);
+        for (let i = 0; i < this.BIRDS; i++) {
+            const nearCanopy = this.randomFn() < 0.45;
+            origins.set([
+                this.randomFn() * 2000 - 1000,
+                nearCanopy ? 28 + this.randomFn() * 30 : 60 + this.randomFn() * 160,
+                this.randomFn() * 1200 - 800,
+                this.randomFn() * Math.PI * 2,
+            ], i * 4);
+            flights.set([40 + this.randomFn() * 65, 0.12 + this.randomFn() * 0.1], i * 2);
+        }
+        geometry.setAttribute('birdOrigin', new THREE.InstancedBufferAttribute(origins, 4));
+        geometry.setAttribute('birdFlight', new THREE.InstancedBufferAttribute(flights, 2));
+        this.compatibilityTime = uniform(0);
+        const origin = attribute('birdOrigin');
+        const flight = attribute('birdFlight');
+        const phase = this.compatibilityTime.mul(flight.y).add(origin.w);
+        const position = vec4(
+            origin.x.add(sin(phase).mul(flight.x)),
+            origin.y.add(sin(phase.mul(0.7)).mul(4)),
+            origin.z.add(cos(phase).mul(flight.x)),
+            origin.w,
+        );
+        const velocity = vec4(cos(phase), 0, sin(phase).negate(), 0);
+        const material = this.createWebGPUBirdMaterial({
+            time: this.compatibilityTime, position, velocity,
+        });
+        this.mesh = new THREE.InstancedMesh(geometry, material, this.BIRDS);
+        this.mesh.rotation.y = Math.PI / 2;
+        this.mesh.matrixAutoUpdate = false;
+        this.mesh.updateMatrix();
+        this.mesh.frustumCulled = false;
     }
 
     initWebGPUBirds() {
@@ -511,6 +558,10 @@ export class GoldenForestBirds {
     }
 
     update(time, delta) {
+        if (this.compatibilityTime) {
+            this.compatibilityTime.value = time;
+            return;
+        }
         if (this.isWebGPU) {
             if (!this.birdCompute || typeof this.renderer.compute !== 'function') return;
 
@@ -561,5 +612,6 @@ export class GoldenForestBirds {
         this.velocityVariable = null;
         this.positionUniforms = null;
         this.velocityUniforms = null;
+        this.compatibilityTime = null;
     }
 }

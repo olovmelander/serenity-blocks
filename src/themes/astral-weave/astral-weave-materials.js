@@ -525,9 +525,8 @@ export function createAstralBurstNodeMaterial(params = {}) {
     const uColorB = uniform(params.colorB || new THREE.Color(0xff8de1));
     const uColorC = uniform(params.colorC || new THREE.Color(0xffd96d));
 
-    const aCenter = useCompute ? null : attribute('aCenter', 'vec3');
-    const aSize = useCompute ? null : attribute('aSize');
-    const aSeed = useCompute ? null : attribute('aSeed');
+    const cpuPosition = useCompute ? null : attribute('aBurstPosition', 'vec4');
+    const cpuMisc = useCompute ? null : attribute('aBurstMisc', 'vec4');
     const aColor = attribute('color', 'vec3');
 
     const positionStorage = useCompute
@@ -540,12 +539,12 @@ export function createAstralBurstNodeMaterial(params = {}) {
     const positionAttr = useCompute ? resolveStorageAttr(positionStorage, positionStorage.element(instanceIndex)) : null;
     const miscAttr = useCompute ? resolveStorageAttr(miscStorage, miscStorage.element(instanceIndex)) : null;
 
-    const particlePosition = useCompute ? positionAttr.xyz : aCenter;
-    const particleActive = useCompute ? positionAttr.w : float(1.0);
-    const particleSize = useCompute ? miscAttr.x : aSize;
-    const particleLife = useCompute ? miscAttr.y : float(1.0).sub(sin(uTime).mul(0.5).add(0.5));
-    const particleSeed = useCompute ? miscAttr.z : aSeed;
-    const particleTone = useCompute ? miscAttr.w : aSeed;
+    const particlePosition = useCompute ? positionAttr.xyz : cpuPosition.xyz;
+    const particleActive = useCompute ? positionAttr.w : cpuPosition.w;
+    const particleSize = useCompute ? miscAttr.x : cpuMisc.x;
+    const particleLife = useCompute ? miscAttr.y : cpuMisc.y;
+    const particleSeed = useCompute ? miscAttr.z : cpuMisc.z;
+    const particleTone = useCompute ? miscAttr.w : cpuMisc.w;
 
     const pulse = sin(uTime.mul(8.0).add(particleSeed.mul(10.0))).mul(0.2).add(0.8);
     const dist = length(uv().sub(0.5)).mul(2.0);

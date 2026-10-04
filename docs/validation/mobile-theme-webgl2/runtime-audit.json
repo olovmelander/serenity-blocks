@@ -1,0 +1,5791 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-04",
+  "purpose": "Registry-wide mobile WebGL2 runtime smoke audit with selected modern theme artwork, reaction and rotation checks.",
+  "environment": {
+    "os": "Linux 6.18.44",
+    "browser": "Chromium 141.0.7390.37 headless shell",
+    "renderer": "SwiftShader software WebGL2",
+    "portrait": {
+      "width": 390,
+      "height": 844
+    },
+    "landscape": {
+      "width": 844,
+      "height": 390
+    },
+    "deviceScaleFactor": 1,
+    "globalRenderScale": 0.5,
+    "navigatorGPU": false,
+    "forceWebGL": true,
+    "serialFreshBrowserPerTheme": true,
+    "effectiveResolutionNote": "Global render scale .5 applies through BaseTheme where supported; raw custom surfaces retain their authored Low buffer resolution. Per-theme actual canvas dimensions are recorded."
+  },
+  "limits": [
+    "Phone viewport, touch and mobile user-agent behavior are emulated on a Linux software GPU; this is not physical iOS or Android validation.",
+    "Reduced drawing-buffer resolution bounds software GPU cost and does not measure phone FPS, battery use or thermal behavior.",
+    "Smoke success means active rendered content, nonuniform raster and no shader/GL validation errors; it does not establish artwork parity by itself.",
+    "Selected High checks exercise normal piece-lock, line-clear and combo event paths, finite attributes and landscape rotation.",
+    "Native WebGPU artwork and compute performance were not tested in this environment."
+  ],
+  "summary": {
+    "registryCount": 62,
+    "lowSmokePasses": 62,
+    "lowFailures": [],
+    "highThemeCount": 19,
+    "highSmokePasses": 19,
+    "recoveryCount": 7,
+    "recoveryPasses": 7,
+    "introSmokeCount": 3
+  },
+  "recoveries": [
+    {
+      "id": "ocean",
+      "quality": "Low",
+      "capturedAt": "2026-10-04T09:36:30.756Z",
+      "status": "pass",
+      "restored": {
+        "lostEvent": true,
+        "restoredEvent": true,
+        "rendererReplaced": true,
+        "canvasConnected": true,
+        "canvasCount": 1,
+        "rendererCanvasCount": 1,
+        "oldCanvasConnected": false,
+        "frameBefore": 6,
+        "backend": "WebGL2",
+        "glError": 0,
+        "frameAfter": 9,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            32.146001944343176,
+            84.90137623040467,
+            77.54462571393852
+          ],
+          "stdDev": [
+            27.88725191796909,
+            26.724727322869633,
+            20.291375689423504
+          ],
+          "uniform": false
+        },
+        "pass": true
+      },
+      "consoleErrors": [],
+      "validationWarnings": [],
+      "expectedLossDiagnostics": [
+        "THREE.THREE.WebGPURenderer: WebGL Device Lost:\n\nMessage: Unknown reason"
+      ]
+    },
+    {
+      "id": "winter",
+      "quality": "Low",
+      "capturedAt": "2026-10-04T09:36:36.128Z",
+      "status": "pass",
+      "restored": {
+        "lostEvent": true,
+        "restoredEvent": true,
+        "rendererReplaced": true,
+        "canvasConnected": true,
+        "canvasCount": 2,
+        "rendererCanvasCount": 1,
+        "oldCanvasConnected": false,
+        "frameBefore": 3,
+        "backend": "WebGL2",
+        "glError": 0,
+        "frameAfter": 6,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            134.42524304289708,
+            159.45068963422045,
+            173.66507169765464
+          ],
+          "stdDev": [
+            38.30754707318753,
+            39.55156564242225,
+            37.577756499527965
+          ],
+          "uniform": false
+        },
+        "pass": true
+      },
+      "consoleErrors": [],
+      "validationWarnings": [],
+      "expectedLossDiagnostics": [
+        "THREE.THREE.WebGPURenderer: WebGL Device Lost:\n\nMessage: Unknown reason"
+      ]
+    },
+    {
+      "id": "void-ember",
+      "quality": "Low",
+      "capturedAt": "2026-10-04T09:36:38.772Z",
+      "status": "pass",
+      "restored": {
+        "lostEvent": true,
+        "restoredEvent": true,
+        "rendererReplaced": true,
+        "canvasConnected": true,
+        "canvasCount": 1,
+        "rendererCanvasCount": 1,
+        "oldCanvasConnected": false,
+        "frameBefore": 47,
+        "backend": "rawWebGL2",
+        "glError": 0,
+        "frameAfter": 50,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            47.3643152266375,
+            12.869771539676753,
+            9.100808117632763
+          ],
+          "stdDev": [
+            68.95488556076751,
+            25.432881368284217,
+            7.48187524887738
+          ],
+          "uniform": false
+        },
+        "pass": true
+      },
+      "consoleErrors": [],
+      "validationWarnings": [],
+      "expectedLossDiagnostics": []
+    },
+    {
+      "id": "stellar-drift",
+      "quality": "Low",
+      "capturedAt": "2026-10-04T09:40:54.799Z",
+      "status": "pass",
+      "restored": {
+        "lostEvent": true,
+        "restoredEvent": true,
+        "rendererReplaced": true,
+        "canvasConnected": true,
+        "canvasCount": 1,
+        "rendererCanvasCount": 1,
+        "oldCanvasConnected": false,
+        "frameBefore": 8,
+        "backend": "WebGL2",
+        "glError": 0,
+        "frameAfter": 11,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            119.30236663021023,
+            138.83333637136954,
+            136.34271478916028
+          ],
+          "stdDev": [
+            58.25208055754753,
+            56.249719352265615,
+            53.80568203130829
+          ],
+          "uniform": false
+        },
+        "pass": true
+      },
+      "consoleErrors": [],
+      "validationWarnings": [],
+      "expectedLossDiagnostics": [
+        "THREE.THREE.WebGPURenderer: WebGL Device Lost:\n\nMessage: Unknown reason"
+      ]
+    },
+    {
+      "id": "stellar-velocity",
+      "quality": "Low",
+      "capturedAt": "2026-10-04T09:40:58.081Z",
+      "status": "pass",
+      "restored": {
+        "lostEvent": true,
+        "restoredEvent": true,
+        "rendererReplaced": true,
+        "canvasConnected": true,
+        "canvasCount": 1,
+        "rendererCanvasCount": 1,
+        "oldCanvasConnected": false,
+        "frameBefore": 5,
+        "backend": "WebGL2",
+        "glError": 0,
+        "frameAfter": 8,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            7.665408919674323,
+            50.030890752217765,
+            116.29104386924293
+          ],
+          "stdDev": [
+            25.36912654308376,
+            27.635551752978497,
+            39.97304687964178
+          ],
+          "uniform": false
+        },
+        "pass": true
+      },
+      "consoleErrors": [],
+      "validationWarnings": [],
+      "expectedLossDiagnostics": [
+        "THREE.THREE.WebGPURenderer: WebGL Device Lost:\n\nMessage: Unknown reason"
+      ]
+    },
+    {
+      "id": "astral-weave",
+      "quality": "Low",
+      "capturedAt": "2026-10-04T09:47:39.659Z",
+      "status": "pass",
+      "restored": {
+        "lostEvent": true,
+        "restoredEvent": true,
+        "rendererReplaced": true,
+        "canvasConnected": true,
+        "canvasCount": 1,
+        "rendererCanvasCount": 1,
+        "oldCanvasConnected": false,
+        "frameBefore": 3,
+        "backend": "WebGL2",
+        "glError": 0,
+        "frameAfter": 6,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            15.938965852472961,
+            13.650549884554623,
+            21.8875683558148
+          ],
+          "stdDev": [
+            43.560109345731725,
+            39.47160259339331,
+            48.35495331709119
+          ],
+          "uniform": false
+        },
+        "pass": true
+      },
+      "consoleErrors": [],
+      "validationWarnings": [],
+      "expectedLossDiagnostics": [
+        "THREE.THREE.WebGPURenderer: WebGL Device Lost:\n\nMessage: Unknown reason"
+      ]
+    },
+    {
+      "id": "chiral-gold",
+      "quality": "Low",
+      "capturedAt": "2026-10-04T09:47:41.419Z",
+      "status": "pass",
+      "restored": {
+        "lostEvent": true,
+        "restoredEvent": true,
+        "rendererReplaced": true,
+        "canvasConnected": true,
+        "canvasCount": 1,
+        "rendererCanvasCount": 1,
+        "oldCanvasConnected": false,
+        "frameBefore": 4,
+        "backend": "WebGL2",
+        "glError": 0,
+        "frameAfter": 7,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            0.3412079231984445,
+            0.3040071697654636,
+            0.22393972536152632
+          ],
+          "stdDev": [
+            5.015395624164726,
+            4.696502861223471,
+            3.8742181971612584
+          ],
+          "uniform": false
+        },
+        "pass": true
+      },
+      "consoleErrors": [],
+      "validationWarnings": [],
+      "expectedLossDiagnostics": [
+        "THREE.THREE.WebGPURenderer: WebGL Device Lost:\n\nMessage: Unknown reason"
+      ]
+    }
+  ],
+  "introSmoke": [
+    {
+      "scenario": "final-intro-phone-webgl",
+      "status": "pass",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": {
+        "renderer": "ThreeJSIntroRenderer",
+        "isWebGPU": false,
+        "canvasConnected": true,
+        "active": true,
+        "animating": true,
+        "frames": 30,
+        "phase": "reveal",
+        "decision": {
+          "canAttemptWarp": false,
+          "reason": "intro-webgpu-unavailable"
+        },
+        "events": [
+          {
+            "type": "startup_intro_renderer_init_started",
+            "timestamp": 1791106705991,
+            "payload": {
+              "introV2": false,
+              "hasWebGPU": true
+            }
+          },
+          {
+            "type": "startup_intro_renderer_init_completed",
+            "timestamp": 1791106706632,
+            "payload": {
+              "backend": "webgl",
+              "fallbackReason": "none",
+              "durationMs": 643.2000000001863
+            }
+          }
+        ]
+      },
+      "later": {
+        "frames": 210,
+        "phase": "reveal"
+      },
+      "tapDismissal": "passed",
+      "consoleErrors": [],
+      "validationWarnings": [],
+      "scope": "isolated-production-intro-controller"
+    },
+    {
+      "scenario": "final-intro-phone-adapter-failure",
+      "status": "pass",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": {
+        "renderer": "ThreeJSIntroRenderer",
+        "isWebGPU": false,
+        "canvasConnected": true,
+        "active": true,
+        "animating": true,
+        "frames": 30,
+        "phase": "reveal",
+        "decision": {
+          "canAttemptWarp": false,
+          "reason": "intro-webgpu-unavailable"
+        },
+        "events": [
+          {
+            "type": "startup_intro_renderer_init_started",
+            "timestamp": 1791106716321,
+            "payload": {
+              "introV2": true,
+              "hasWebGPU": true
+            }
+          },
+          {
+            "type": "startup_intro_renderer_canvas_replaced",
+            "timestamp": 1791106716492,
+            "payload": {
+              "reason": "webgpu-init-failed"
+            }
+          },
+          {
+            "type": "startup_intro_renderer_init_completed",
+            "timestamp": 1791106716582,
+            "payload": {
+              "backend": "webgl",
+              "fallbackReason": "webgpu-init-failed",
+              "durationMs": 261.5
+            }
+          }
+        ]
+      },
+      "later": {
+        "frames": 210,
+        "phase": "reveal"
+      },
+      "tapDismissal": "passed",
+      "consoleErrors": [],
+      "validationWarnings": [],
+      "scope": "isolated-production-intro-controller"
+    },
+    {
+      "scenario": "phone reduced-motion actual menu",
+      "status": "pass",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": {
+        "reducedMotion": true,
+        "menuVisible": true,
+        "introSkipped": true,
+        "introActive": false,
+        "animating": false,
+        "rendererPresent": false,
+        "staticLogoVisible": true
+      },
+      "later": null,
+      "tapDismissal": null,
+      "consoleErrors": [],
+      "validationWarnings": [],
+      "scope": "full-application-menu-boot"
+    }
+  ],
+  "themes": [
+    {
+      "id": "winter",
+      "module": "./winter/winter-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:11.087Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 7,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 77,
+          "meshes": 10,
+          "nodeMaterials": 10,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 1.2025,
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            134.07487544051526,
+            159.41705553530198,
+            173.13474298213634
+          ],
+          "stdDev": [
+            38.14370124950145,
+            39.375315234064345,
+            37.53220280040655
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 2,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:18:08.501Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 5,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 77,
+          "meshes": 10,
+          "nodeMaterials": 10,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 1.6087999999998135,
+          "currentQuality": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            133.2244106209746,
+            171.69018714303076,
+            193.39114108640175
+          ],
+          "stdDev": [
+            65.83680475104346,
+            53.571855019348476,
+            36.08735525306501
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 2,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 402204,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "cosmic-noir",
+      "module": "./cosmic-noir/cosmic-noir-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:12.661Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 36,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 21,
+          "meshes": 13,
+          "nodeMaterials": 13,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.5759000000003723,
+          "activeQualityLevel": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            69.27931704945922,
+            70.63431158099405,
+            72.02043079353506
+          ],
+          "stdDev": [
+            38.379748046647904,
+            38.85836898551582,
+            39.37909584978908
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:18:12.953Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 30,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 22,
+          "meshes": 14,
+          "nodeMaterials": 14,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.6184000000003727,
+          "activeQualityLevel": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            71.88583059910074,
+            73.61779377810184,
+            75.39554320087495
+          ],
+          "stdDev": [
+            52.418319226460724,
+            53.07953860791619,
+            53.71319347181325
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 322861,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "astral-weave",
+      "module": "./astral-weave/astral-weave-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:15.145Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 12,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 37,
+          "meshes": 34,
+          "nodeMaterials": 33,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.5127999999998137,
+          "activeQualityLevel": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            15.228499817717827,
+            13.464597764005347,
+            20.97105966703123
+          ],
+          "stdDev": [
+            43.027156796951374,
+            39.53739796013653,
+            47.83666482038024
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:32:55.478Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 8,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 64,
+          "meshes": 61,
+          "nodeMaterials": 60,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.31979999999981373,
+          "activeQualityLevel": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            35.32158220925994,
+            49.42453518045935,
+            77.21237695953336
+          ],
+          "stdDev": [
+            58.94229445368389,
+            51.7983592894176,
+            53.521340803692894
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 226360,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "chiral-gold",
+      "module": "./chiral-gold/chiral-gold-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:16.273Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 35,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 7,
+          "meshes": 3,
+          "nodeMaterials": 2,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.5842999999998136
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            0.32079231984445256,
+            0.28545084457406733,
+            0.20843358852837526
+          ],
+          "stdDev": [
+            5.051117632223349,
+            4.741985558688459,
+            3.927260369220574
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:32:59.100Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 21,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 24,
+          "meshes": 20,
+          "nodeMaterials": 19,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.6274999999990687
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            34.29674626321546,
+            21.616551221290557,
+            10.997320452059789
+          ],
+          "stdDev": [
+            54.79361912365369,
+            42.57635362979936,
+            23.556925364796687
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 179124,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "ocean",
+      "module": "./ocean/ocean-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:19.743Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 10,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 33,
+          "meshes": 26,
+          "nodeMaterials": 26,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            32.19894883947017,
+            85.00790193219103,
+            77.56650261271115
+          ],
+          "stdDev": [
+            27.956659230792134,
+            26.792100170917177,
+            20.386035492986398
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:19:48.018Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 11,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 54,
+          "meshes": 46,
+          "nodeMaterials": 46,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "currentQuality": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            30.53014339530927,
+            84.26234961720743,
+            74.38848280471504
+          ],
+          "stdDev": [
+            23.650952036980133,
+            25.647396258896865,
+            21.888153652588773
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 182405,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "lunara",
+      "module": "./lunara/lunara-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:26.615Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 5,
+        "canvas": {
+          "width": 105,
+          "height": 227
+        },
+        "scene": {
+          "objects": 43,
+          "meshes": 35,
+          "nodeMaterials": 35,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 3.6192000000001863,
+          "activeQualityLevel": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            48.91494106209746,
+            16.020992830234537,
+            112.37339287884312
+          ],
+          "stdDev": [
+            37.53308373812673,
+            21.240176826384058,
+            33.141593410717164
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 2,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:25:40.689Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 5,
+        "canvas": {
+          "width": 120,
+          "height": 261
+        },
+        "scene": {
+          "objects": 69,
+          "meshes": 61,
+          "nodeMaterials": 61,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 6.548400000000373,
+          "activeQualityLevel": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            53.79894580143395,
+            21.77709624498724,
+            118.9744349252643
+          ],
+          "stdDev": [
+            37.3356090284554,
+            23.437221701095954,
+            37.2362062039968
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 2,
+            "drawCalls": 2
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 91812,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 261,
+            "height": 120
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "fluid-dreams",
+      "module": "./fluid-dreams/fluid-dreams-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:30.211Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 8,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 5,
+          "meshes": 4,
+          "nodeMaterials": 4,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            134.68131607728765,
+            62.54690424109855,
+            189.31429699842022
+          ],
+          "stdDev": [
+            69.02644545562262,
+            82.29471212339551,
+            30.30665188325169
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:18:27.076Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 5,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 5,
+          "meshes": 4,
+          "nodeMaterials": 4,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "currentQuality": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            108.78120063191153,
+            73.35522238425082,
+            202.34910681735326
+          ],
+          "stdDev": [
+            66.065640496887,
+            82.81533134799844,
+            24.47100564712927
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 15504,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "ice-temple",
+      "module": "./ice-temple/ice-temple-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:33.721Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 19,
+        "canvas": {
+          "width": 136,
+          "height": 295
+        },
+        "scene": {
+          "objects": 107,
+          "meshes": 85,
+          "nodeMaterials": 4,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "activeQualityLevel": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            22.30846396889051,
+            81.46805504921619,
+            135.48643820634342
+          ],
+          "stdDev": [
+            29.799584969727945,
+            46.28376471273533,
+            66.26453234752249
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 2,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:18:35.663Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 13,
+        "canvas": {
+          "width": 136,
+          "height": 295
+        },
+        "scene": {
+          "objects": 111,
+          "meshes": 89,
+          "nodeMaterials": 6,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "activeQualityLevel": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            21.746169036334912,
+            80.0419674322518,
+            135.87203487665573
+          ],
+          "stdDev": [
+            30.304818401989337,
+            44.34843129619419,
+            66.04550286523002
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 2,
+            "drawCalls": 2
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 82638,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 344,
+            "height": 159
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "golden-forest",
+      "module": "./golden-forest/golden-forest-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:40.077Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 12,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 232,
+          "meshes": 198,
+          "nodeMaterials": 139,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            116.68670859156641,
+            60.61195771053591,
+            32.2390205371248
+          ],
+          "stdDev": [
+            53.643471119154206,
+            21.356855187559898,
+            13.621028311481698
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:18:53.682Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 12,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 249,
+          "meshes": 215,
+          "nodeMaterials": 156,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            123.98602807145461,
+            61.76580690241828,
+            19.23049884554624
+          ],
+          "stdDev": [
+            61.33064207142797,
+            36.27281694644662,
+            12.640359954827613
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 207032,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "stellar-drift",
+      "module": "./stellar-drift/stellar-drift-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:42.903Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 17,
+        "canvas": {
+          "width": 137,
+          "height": 297
+        },
+        "scene": {
+          "objects": 47,
+          "meshes": 38,
+          "nodeMaterials": 38,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.022000000000000006,
+          "activeQualityLevel": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            119.70663203305384,
+            137.21285393121886,
+            134.65076862316198
+          ],
+          "stdDev": [
+            58.64424754266422,
+            57.4298099552857,
+            54.980103003077424
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:19:00.488Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 15,
+        "canvas": {
+          "width": 147,
+          "height": 319
+        },
+        "scene": {
+          "objects": 47,
+          "meshes": 38,
+          "nodeMaterials": 38,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.016,
+          "activeQualityLevel": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            67.03252217766436,
+            96.56796998420221,
+            88.44648803013732
+          ],
+          "stdDev": [
+            77.2386002179145,
+            75.21716700339815,
+            73.18651409034375
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 57368,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 295,
+            "height": 136
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "stellar-velocity",
+      "module": "./stellar-velocity/stellar-velocity-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:44.832Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 19,
+        "canvas": {
+          "width": 136,
+          "height": 295
+        },
+        "scene": {
+          "objects": 28,
+          "meshes": 20,
+          "nodeMaterials": 18,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 1.0253000000007453,
+          "activeQualityLevel": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            7.635839713209381,
+            50.49418519868757,
+            117.63651415724875
+          ],
+          "stdDev": [
+            25.373925324994907,
+            27.05086613365353,
+            38.15488553570658
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:19:09.567Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 10,
+        "canvas": {
+          "width": 156,
+          "height": 337
+        },
+        "scene": {
+          "objects": 37,
+          "meshes": 26,
+          "nodeMaterials": 24,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 1.7144000000003725,
+          "activeQualityLevel": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            83.46163567869729,
+            110.21954064892454,
+            103.13035605784421
+          ],
+          "stdDev": [
+            58.51666256783608,
+            53.816265059583785,
+            65.02669144250142
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 53707,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 295,
+            "height": 136
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "starlight",
+      "module": "./starlight/starlight-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:48.837Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 6,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 6,
+          "meshes": 5,
+          "nodeMaterials": 5,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "_computeAvailable": false,
+          "time": 0.2503999999994412,
+          "qualityName": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            9.137376959533357,
+            0.5359764248389841,
+            45.10192003888687
+          ],
+          "stdDev": [
+            13.949927266748025,
+            6.683008429928535,
+            10.4115514410823
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:19:34.073Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 4,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 10,
+          "meshes": 8,
+          "nodeMaterials": 8,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "_computeAvailable": false,
+          "time": 0.1503999999994412,
+          "qualityName": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            1.2826193948231863,
+            1.0384007777372706,
+            1.8898104265402844
+          ],
+          "stdDev": [
+            10.64974720750602,
+            9.387952447417296,
+            11.85281636382505
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 82754,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "forest",
+      "module": "./forest/forest-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:49.674Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "DOM",
+        "backend": null,
+        "frame": null,
+        "canvas": null,
+        "scene": {
+          "objects": 0,
+          "meshes": 0,
+          "nodeMaterials": 0,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            16.596530562644308,
+            21.805018835824523,
+            34.29676752946895
+          ],
+          "stdDev": [
+            28.46479218843391,
+            27.96581740001794,
+            25.541379777436916
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 4,
+          "themeCanvasCount": 0,
+          "shared": {
+            "particles": 6,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "halcyon-apex",
+      "module": "./halcyon-apex/halcyon-apex-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:52.781Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 15,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 282,
+          "meshes": 254,
+          "nodeMaterials": 254,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "time": 0.6245
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            177.25693887471138,
+            180.72410681735326,
+            165.1192793778102
+          ],
+          "stdDev": [
+            38.69191685111497,
+            38.527262771248154,
+            48.48426790174818
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "himalayan-peak",
+      "module": "./himalayan-peak/himalayan-peak-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:54.596Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 15,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 9,
+          "meshes": 6,
+          "nodeMaterials": 6,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 0.5812999999988826,
+          "qualityName": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            134.01796694616598,
+            132.6872524000486,
+            162.86835885283753
+          ],
+          "stdDev": [
+            45.889475477550356,
+            42.31082200071374,
+            39.80403429455109
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 3,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:20:29.302Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 9,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 9,
+          "meshes": 6,
+          "nodeMaterials": 6,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 0.40020000000018624,
+          "qualityName": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            139.87739701057237,
+            138.55016709199174,
+            169.01952545874346
+          ],
+          "stdDev": [
+            48.924136075740364,
+            46.12580349893843,
+            41.22414527990175
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 3,
+            "drawCalls": 3
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 140643,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "moonlit-forest",
+      "module": "./moonlit-forest/moonlit-forest-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:56.921Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 28,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 36,
+          "meshes": 31,
+          "nodeMaterials": 31,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            14.10850042532507,
+            34.07061915178029,
+            47.20778344877871
+          ],
+          "stdDev": [
+            32.44434389678123,
+            36.995932973255336,
+            36.75169284402034
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:20:23.406Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 17,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 36,
+          "meshes": 31,
+          "nodeMaterials": 31,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            15.174799489609915,
+            35.70010025519504,
+            48.70167091991737
+          ],
+          "stdDev": [
+            32.99559747962334,
+            38.647923479742886,
+            38.422979471184284
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 37389,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "wolfhour",
+      "module": "./wolfhour/wolfhour-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:33:58.735Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 14,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 23,
+          "meshes": 18,
+          "nodeMaterials": 18,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.40010000000055873,
+          "activeQualityLevel": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            34.43016162352655,
+            34.984509053347914,
+            36.63759266010451
+          ],
+          "stdDev": [
+            48.893924201069495,
+            49.14842742522917,
+            50.25096671886674
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 6,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "sunset",
+      "module": "./sunset/sunset-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:00.250Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 38,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 16,
+          "meshes": 6,
+          "nodeMaterials": 0,
+          "shaderMaterials": 6
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            190.17404301859278,
+            207.3220986754162,
+            229.42837525823307
+          ],
+          "stdDev": [
+            25.14241652973654,
+            21.701438753250848,
+            31.94333057550253
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "mountain",
+      "module": "./mountain/mountain-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:05.924Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "DOM",
+        "backend": null,
+        "frame": null,
+        "canvas": null,
+        "scene": {
+          "objects": 0,
+          "meshes": 0,
+          "nodeMaterials": 0,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            31.056835581480133,
+            40.81118908737392,
+            59.71574614169401
+          ],
+          "stdDev": [
+            20.318694793798432,
+            20.14007399389028,
+            18.985322117658455
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 160,
+          "themeCanvasCount": 4,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "fall",
+      "module": "./fall/fall-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:07.508Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 14,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 17,
+          "meshes": 10,
+          "nodeMaterials": 0,
+          "shaderMaterials": 4
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 0.7728999999994413
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            52.599191882367236,
+            15.645023696682465,
+            0.0700115445376109
+          ],
+          "stdDev": [
+            18.34073183813804,
+            6.581648118652092,
+            1.15712849774748
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "summer",
+      "module": "./summer/summer-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:25.904Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 5,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 141,
+          "meshes": 77,
+          "nodeMaterials": 73,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "time": 0.20020000000018628
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            183.6892271235873,
+            177.74562218981652,
+            137.04882731802164
+          ],
+          "stdDev": [
+            66.2514261718194,
+            62.974361369145015,
+            70.23809518150678
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "tornado",
+      "module": "./tornado/tornado-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:27.672Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 12,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 6,
+          "meshes": 3,
+          "nodeMaterials": 3,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 0.49999999999999994,
+          "qualityName": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            46.497062218981654,
+            25.664643334548547,
+            11.606334305504921
+          ],
+          "stdDev": [
+            59.18773247194585,
+            35.226399305663776,
+            14.593410822166078
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "sakura-twilight",
+      "module": "./sakura-twilight/sakura-twilight-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:35.764Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 5,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 80,
+          "meshes": 22,
+          "nodeMaterials": 0,
+          "shaderMaterials": 7
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            50.90963057479645,
+            30.338236723781748,
+            47.18109126260785
+          ],
+          "stdDev": [
+            28.569016294537402,
+            16.66045127325099,
+            31.397255000365252
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "aurora",
+      "module": "./aurora/aurora-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:37.069Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 27,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 16,
+          "meshes": 11,
+          "nodeMaterials": 0,
+          "shaderMaterials": 11
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            16.289227123587313,
+            115.72538886863532,
+            90.47596305747965
+          ],
+          "stdDev": [
+            19.79851150572504,
+            102.15229946157585,
+            90.14876013771803
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "galaxy",
+      "module": "./galaxy/galaxy-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:38.923Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 12,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 16,
+          "meshes": 8,
+          "nodeMaterials": 0,
+          "shaderMaterials": 8
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            38.52793474298213,
+            12.826400534694374,
+            72.42456556082149
+          ],
+          "stdDev": [
+            55.85596856658197,
+            26.20508692852059,
+            70.30210249192938
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "aether-tides",
+      "module": "./aether-tides/aether-tides-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:49:32.685Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "RawWebGL",
+        "backend": "WebGL2",
+        "frame": null,
+        "canvas": {
+          "width": 390,
+          "height": 844
+        },
+        "scene": {
+          "objects": 0,
+          "meshes": 0,
+          "nodeMaterials": 0,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            10.651716490460567,
+            2.8055444160894396,
+            16.515059545509782
+          ],
+          "stdDev": [
+            15.211617550843602,
+            4.151783778971942,
+            22.269655048972393
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 2,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 1
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": {
+          "backend": "WebGL2",
+          "kind": "WebGL2RenderingContext",
+          "canvas": {
+            "width": 390,
+            "height": 844
+          },
+          "glError": 0
+        },
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "rainy-window",
+      "module": "./rainy-window/rainy-window-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:45.689Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 12,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 21,
+          "meshes": 16,
+          "nodeMaterials": 0,
+          "shaderMaterials": 6
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 0.09999999999999999
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            38.42041864139021,
+            41.49979341353749,
+            52.0148590351197
+          ],
+          "stdDev": [
+            44.89949116889183,
+            48.365742252693735,
+            61.048952264740905
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "koi-pond",
+      "module": "./koi-pond/koi-pond-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:51.293Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 22,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 47,
+          "meshes": 35,
+          "nodeMaterials": 35,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            32.9894063677239,
+            56.71840746141694,
+            54.89830781382914
+          ],
+          "stdDev": [
+            20.637069067545415,
+            21.77461176580001,
+            23.171847997262795
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "authoredGrove": {
+          "live": true,
+          "loaded": true,
+          "draws": 2,
+          "trees": 36,
+          "heroTrees": 0,
+          "layoutSize": 130
+        },
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "verdant-hills",
+      "module": "./verdant-hills/verdant-hills-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:53.333Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 10,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 71,
+          "meshes": 58,
+          "nodeMaterials": 58,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            123.58376473447564,
+            154.50990399805565,
+            105.57382731802163
+          ],
+          "stdDev": [
+            50.27271556584529,
+            47.78213947126683,
+            52.162818873900825
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "cosmic-chimes",
+      "module": "./cosmic-chimes/cosmic-chimes-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:54.273Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "DOM",
+        "backend": null,
+        "frame": null,
+        "canvas": null,
+        "scene": {
+          "objects": 0,
+          "meshes": 0,
+          "nodeMaterials": 0,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            19.094713816988698,
+            18.937097460201727,
+            39.28469437355693
+          ],
+          "stdDev": [
+            9.897761972832635,
+            12.54527983209144,
+            17.688381868099775
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 64,
+          "themeCanvasCount": 0,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "serenity-warp",
+      "module": "./serenity-warp/serenity-warp-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:56.185Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 28,
+        "canvas": {
+          "width": 390,
+          "height": 844
+        },
+        "scene": {
+          "objects": 36,
+          "meshes": 30,
+          "nodeMaterials": 0,
+          "shaderMaterials": 19
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            32.13880179851744,
+            14.114041803378296,
+            86.06265645886499
+          ],
+          "stdDev": [
+            31.555473071039778,
+            21.17905519805987,
+            41.25578774426718
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 2,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:36:44.053Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 150,
+        "canvas": {
+          "width": 390,
+          "height": 844
+        },
+        "scene": {
+          "objects": 36,
+          "meshes": 30,
+          "nodeMaterials": 0,
+          "shaderMaterials": 19
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            45.81452788917244,
+            26.90789281808239,
+            100.38871065743103
+          ],
+          "stdDev": [
+            36.85922461641358,
+            25.450106038252606,
+            42.83479411617782
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 2,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 11412,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 844,
+            "height": 390
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "singing-bowl",
+      "module": "./singing-bowl/singing-bowl-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:58.224Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 64,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 16,
+          "meshes": 11,
+          "nodeMaterials": 0,
+          "shaderMaterials": 11
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            37.00393425689634,
+            44.93768987726334,
+            54.70994653056265
+          ],
+          "stdDev": [
+            62.23766394571235,
+            52.27406441288436,
+            61.53341464193442
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "geode",
+      "module": "./geode/geode-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:34:59.558Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 31,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 164,
+          "meshes": 135,
+          "nodeMaterials": 0,
+          "shaderMaterials": 135
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            57.517705675051644,
+            31.11079414266618,
+            38.25476667881881
+          ],
+          "stdDev": [
+            57.412217353593036,
+            39.11253804163835,
+            45.53415835911769
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "bioluminescence",
+      "module": "./bioluminescence/bioluminescence-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:02.204Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 28,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 88,
+          "meshes": 70,
+          "nodeMaterials": 0,
+          "shaderMaterials": 22
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 1.795200000000186
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            10.094176084578928,
+            48.92308299914935,
+            49.8390205371248
+          ],
+          "stdDev": [
+            14.897005503940296,
+            58.9884565116471,
+            57.267604570974925
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "bioluminescence-2",
+      "module": "./bioluminescence-2/bioluminescence-2-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:09.696Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 11,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 211,
+          "meshes": 129,
+          "nodeMaterials": 129,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "time": 0.4951999999992549
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            32.26984749058209,
+            79.3251822821728,
+            122.62678940332968
+          ],
+          "stdDev": [
+            19.49034353514138,
+            37.898888930747646,
+            51.859271962698834
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "shifting-sands",
+      "module": "./shifting-sands/shifting-sands-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:11.456Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 21,
+        "canvas": {
+          "width": 175,
+          "height": 379
+        },
+        "scene": {
+          "objects": 10,
+          "meshes": 8,
+          "nodeMaterials": 8,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "time": 0.5999666666666666
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            108.69726576740794,
+            77.72685016405396,
+            75.9905425932677
+          ],
+          "stdDev": [
+            45.32328632127458,
+            27.498257829803556,
+            21.557433424086458
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "misty-lake",
+      "module": "./misty-lake/misty-lake-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:13.547Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 165,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 47,
+          "meshes": 40,
+          "nodeMaterials": 0,
+          "shaderMaterials": 40
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "isWebGL": false,
+          "time": 1.203
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            12.49477761574918,
+            15.563671162960263,
+            32.492526430915056
+          ],
+          "stdDev": [
+            22.493753134429884,
+            21.891044145213158,
+            26.13385784744497
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "waves",
+      "module": "./waves/waves-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:14.596Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 34,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 29,
+          "meshes": 24,
+          "nodeMaterials": 0,
+          "shaderMaterials": 24
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 0.6540000000000001
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            23.077223842508204,
+            112.84647587799246,
+            105.98211204277555
+          ],
+          "stdDev": [
+            27.28240753207058,
+            35.84537356942071,
+            36.44394541925722
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "luminous-tides",
+      "module": "./luminous-tides/luminous-tides-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:15.767Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 33,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 14,
+          "meshes": 9,
+          "nodeMaterials": 0,
+          "shaderMaterials": 2
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 0.7742000000001864
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            3.232406732288249,
+            6.255128205128205,
+            8.201315469680399
+          ],
+          "stdDev": [
+            8.735665326571137,
+            9.321827085535935,
+            9.54075065431242
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "crystal-cave",
+      "module": "./crystal-cave/crystal-cave-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:18.704Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 26,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 173,
+          "meshes": 140,
+          "nodeMaterials": 0,
+          "shaderMaterials": 92
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            36.3534481711022,
+            39.959141450966094,
+            97.51278709442217
+          ],
+          "stdDev": [
+            18.13551327974517,
+            21.79986573325374,
+            30.579832537735843
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 2,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "moonlit-greenhouse",
+      "module": "./moonlit-greenhouse/moonlit-greenhouse-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:49:40.549Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "Canvas2D",
+        "backend": "Canvas2D",
+        "frame": null,
+        "canvas": {
+          "width": 390,
+          "height": 844
+        },
+        "scene": {
+          "objects": 0,
+          "meshes": 0,
+          "nodeMaterials": 0,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 34,
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            42.87191335520719,
+            57.986763276218255,
+            74.80838497994895
+          ],
+          "stdDev": [
+            38.507273900003554,
+            37.216780504862925,
+            37.25897886181665
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 61,
+          "themeCanvasCount": 0,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": {
+          "backend": "Canvas2D",
+          "kind": "CanvasRenderingContext2D",
+          "canvas": {
+            "width": 390,
+            "height": 844
+          },
+          "glError": null
+        },
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "electric-dreams-v3",
+      "module": "./electric-dreams-v3/electric-dreams-v3-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:23.388Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 6,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 3,
+          "meshes": 2,
+          "nodeMaterials": 2,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "_computeAvailable": false,
+          "time": 0.2502999999998137,
+          "qualityName": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            137.99578928180824,
+            84.13515919309758,
+            190.07892210475148
+          ],
+          "stdDev": [
+            37.53640814375751,
+            42.80298056119928,
+            28.847369249318437
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:21:09.176Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 4,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 3,
+          "meshes": 2,
+          "nodeMaterials": 2,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "_computeAvailable": false,
+          "time": 0.1502000000001863,
+          "qualityName": "High"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            161.90157674079475,
+            107.91903025884069,
+            210.4442368453032
+          ],
+          "stdDev": [
+            40.629976475501174,
+            51.337444598179225,
+            27.929210337813917
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 180363,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "nebula-flow",
+      "module": "./nebula-flow/nebula-flow-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:49:33.901Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "RawWebGL",
+        "backend": "WebGL2",
+        "frame": null,
+        "canvas": {
+          "width": 390,
+          "height": 844
+        },
+        "scene": {
+          "objects": 0,
+          "meshes": 0,
+          "nodeMaterials": 0,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            0.24312796208530807,
+            1.4702242070725482,
+            0.6815044355328715
+          ],
+          "stdDev": [
+            1.281465027660535,
+            7.126624160630695,
+            3.3235490435125796
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 1
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": {
+          "backend": "WebGL2",
+          "kind": "WebGL2RenderingContext",
+          "canvas": {
+            "width": 390,
+            "height": 844
+          },
+          "glError": 0
+        },
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "chromatic-impasto",
+      "module": "./chromatic-impasto/chromatic-impasto-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:49:36.213Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "RawWebGL",
+        "backend": "WebGL2",
+        "frame": null,
+        "canvas": {
+          "width": 390,
+          "height": 844
+        },
+        "scene": {
+          "objects": 0,
+          "meshes": 0,
+          "nodeMaterials": 0,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            32.834259934378416,
+            47.00645886498967,
+            36.147110827561065
+          ],
+          "stdDev": [
+            49.87754853282859,
+            62.93960286486862,
+            58.10979315114844
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 2,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 1
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": {
+          "backend": "WebGL2",
+          "kind": "WebGL2RenderingContext",
+          "canvas": {
+            "width": 390,
+            "height": 844
+          },
+          "glError": 0
+        },
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "voltage-storm",
+      "module": "./voltage-storm/voltage-storm-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:49:39.596Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "RawWebGL",
+        "backend": "WebGL2",
+        "frame": null,
+        "canvas": {
+          "width": 390,
+          "height": 844
+        },
+        "scene": {
+          "objects": 0,
+          "meshes": 0,
+          "nodeMaterials": 0,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            104.32928970713331,
+            111.256349495686,
+            123.68180216308178
+          ],
+          "stdDev": [
+            67.31887866182754,
+            69.70997116836257,
+            68.41557946501894
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 1
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": {
+          "backend": "WebGL2",
+          "kind": "WebGL2RenderingContext",
+          "canvas": {
+            "width": 390,
+            "height": 844
+          },
+          "glError": 0
+        },
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "solar-eclipse",
+      "module": "./solar-eclipse/solar-eclipse-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:49:25.671Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 33,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 26,
+          "meshes": 21,
+          "nodeMaterials": 0,
+          "shaderMaterials": 10
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 0.3300000000000001
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            67.36540588163811,
+            65.2760663507109,
+            65.71185745534086
+          ],
+          "stdDev": [
+            104.64591950217353,
+            105.29748540284717,
+            100.30015804621816
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 14939,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:49:29.649Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 304,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 42,
+          "meshes": 37,
+          "nodeMaterials": 0,
+          "shaderMaterials": 17
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 0.19000000000000003
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            144.3946864746628,
+            128.3428271965002,
+            118.47184044233808
+          ],
+          "stdDev": [
+            90.74722302179134,
+            92.26781997831907,
+            91.59922704518874
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 47595,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "moonrise-summit",
+      "module": "./moonrise-summit/moonrise-summit-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:33.362Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 285,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 20,
+          "meshes": 18,
+          "nodeMaterials": 0,
+          "shaderMaterials": 18
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            21.27957528253737,
+            25.149921011058453,
+            42.1265888929396
+          ],
+          "stdDev": [
+            23.736451264226147,
+            23.957067674491636,
+            26.524106760451208
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "black-hole",
+      "module": "./black-hole/black-hole-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:40:42.997Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 18,
+        "canvas": {
+          "width": 163,
+          "height": 354
+        },
+        "scene": {
+          "objects": 16,
+          "meshes": 8,
+          "nodeMaterials": 8,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "time": 0.7840999999996277
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            31.092040345120914,
+            17.785028557540407,
+            14.294297606027463
+          ],
+          "stdDev": [
+            62.03997530223229,
+            42.09433476447124,
+            31.82447560970463
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 2,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:40:48.462Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 11,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 16,
+          "meshes": 8,
+          "nodeMaterials": 8,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "time": 0.7785999999996275
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            35.078068416575526,
+            19.62065560821485,
+            15.325397982743954
+          ],
+          "stdDev": [
+            65.10848642445804,
+            43.63894620593669,
+            32.907507417839646
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 2,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 16989,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": {
+            "width": 422,
+            "height": 195
+          },
+          "uniformRaster": false
+        },
+        "rawGL": null,
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "supernova",
+      "module": "./supernova/supernova-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:36.471Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 33,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 8,
+          "meshes": 3,
+          "nodeMaterials": 0,
+          "shaderMaterials": 2
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            35.42966338558755,
+            21.241742617572,
+            43.51148377688662
+          ],
+          "stdDev": [
+            55.62124672963426,
+            36.66309147178101,
+            30.981876569285074
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "void-ember",
+      "module": "./void-ember/void-ember-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:38.027Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "RawWebGL2",
+        "backend": "WebGL2",
+        "frame": 20,
+        "canvas": {
+          "width": 176,
+          "height": 380
+        },
+        "scene": {
+          "objects": 0,
+          "meshes": 0,
+          "nodeMaterials": 0,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            54.27915299550371,
+            16.027627901324585,
+            9.61081237088346
+          ],
+          "stdDev": [
+            71.95783198256198,
+            30.68407192460648,
+            7.746805212710734
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": {
+          "backend": "WebGL2",
+          "hdr": true,
+          "width": 176,
+          "height": 380,
+          "frame": 20,
+          "glError": 0
+        },
+        "failure": null
+      },
+      "high": {
+        "capturedAt": "2026-10-04T09:33:02.616Z",
+        "quality": "High",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "RawWebGL2",
+        "backend": "WebGL2",
+        "frame": 14,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 0,
+          "meshes": 0,
+          "nodeMaterials": 0,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            66.6243407461417,
+            21.116019564953213,
+            11.18333029529712
+          ],
+          "stdDev": [
+            73.77429177192396,
+            34.96434577595105,
+            8.924537799469878
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": {
+          "nonFiniteAttributes": 0,
+          "inspectedAttributes": 0,
+          "uniformRaster": false
+        },
+        "rotation": {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "canvas": null,
+          "uniformRaster": false
+        },
+        "rawGL": {
+          "backend": "WebGL2",
+          "hdr": true,
+          "width": 195,
+          "height": 422,
+          "frame": 14,
+          "glError": 0
+        },
+        "failure": null
+      },
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "nimbus-veil",
+      "module": "./nimbus-veil/nimbus-veil-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:39.401Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 29,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 10,
+          "meshes": 3,
+          "nodeMaterials": 3,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "isWebGL": true,
+          "time": 0.5833666666666666,
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            216.6481376838012,
+            188.75857030015797,
+            195.2095971563981
+          ],
+          "stdDev": [
+            40.335470246150955,
+            34.16770528091216,
+            16.25763500516552
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "sky-children",
+      "module": "./sky-children-v2/sky-children-v2-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:43.980Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 30,
+        "canvas": {
+          "width": 175,
+          "height": 379
+        },
+        "scene": {
+          "objects": 50,
+          "meshes": 39,
+          "nodeMaterials": 38,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            153.10083849799489,
+            206.10881638109126,
+            158.21772997934136
+          ],
+          "stdDev": [
+            50.907207375932394,
+            13.46763790252085,
+            80.19553069176013
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "cinder-drift",
+      "module": "./cinder-drift/cinder-drift-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:45.259Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 26,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 12,
+          "meshes": 11,
+          "nodeMaterials": 0,
+          "shaderMaterials": 11
+        },
+        "consoleErrors": [],
+        "qualityFlags": {},
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            42.6937386073642,
+            5.040369425203548,
+            0.9424474419735083
+          ],
+          "stdDev": [
+            29.588471460704728,
+            6.418832792789866,
+            3.096371894616761
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "pyrestorm",
+      "module": "./pyrestorm/pyrestorm-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:48.293Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGLRenderer",
+        "backend": "WebGL2",
+        "frame": 16,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 46,
+          "meshes": 41,
+          "nodeMaterials": 0,
+          "shaderMaterials": 40
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "time": 0.7
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            70.14809211325799,
+            28.83806051768137,
+            13.414852959047272
+          ],
+          "stdDev": [
+            57.0274817692386,
+            34.9317018456342,
+            9.988038718285642
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "neon-dusk",
+      "module": "./neon-dusk/neon-dusk-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:49.657Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 34,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 9,
+          "meshes": 4,
+          "nodeMaterials": 4,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "isWebGL": true,
+          "time": 0.5999666666666666,
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            141.68122493620123,
+            52.01563677239033,
+            71.48954307935351
+          ],
+          "stdDev": [
+            69.00997358290547,
+            65.49806139153382,
+            29.521294612594374
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "neon-district",
+      "module": "./neon-district/neon-district-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:56.735Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 8,
+        "canvas": {
+          "width": 175,
+          "height": 379
+        },
+        "scene": {
+          "objects": 83,
+          "meshes": 67,
+          "nodeMaterials": 66,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.3627000000001863
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            73.39722931097339,
+            40.722514886377446,
+            81.39064588649897
+          ],
+          "stdDev": [
+            70.61400610648461,
+            62.83443129602868,
+            61.381100312970545
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "synthwave-sunset",
+      "module": "./synthwave-sunset/synthwave-sunset-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:58.188Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 32,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 10,
+          "meshes": 6,
+          "nodeMaterials": 6,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "isWebGL": true,
+          "time": 0.6166666666666667,
+          "currentQuality": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            121.35970348766557,
+            21.929329201604084,
+            66.39220743711265
+          ],
+          "stdDev": [
+            58.296929749249294,
+            41.453662601500156,
+            24.797421149669336
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "chromadelic-highway",
+      "module": "./chromadelic-highway/chromadelic-highway-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:35:59.619Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 17,
+        "canvas": {
+          "width": 149,
+          "height": 324
+        },
+        "scene": {
+          "objects": 11,
+          "meshes": 9,
+          "nodeMaterials": 9,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "usesNodeMaterials": true,
+          "isWebGL": true,
+          "time": 0.33346666666666674,
+          "activeQualityLevel": "Low"
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            50.418097581723174,
+            40.14328593996841,
+            70.09756349495686
+          ],
+          "stdDev": [
+            44.19777357176093,
+            35.52376831630438,
+            46.191585071647935
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 4,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "stillwater",
+      "module": "./stillwater/stillwater-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:36:03.358Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 22,
+        "canvas": {
+          "width": 117,
+          "height": 253
+        },
+        "scene": {
+          "objects": 54,
+          "meshes": 26,
+          "nodeMaterials": 26,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "isWebGL": true
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            24.743419613561795,
+            56.17752460809333,
+            52.9709168793292
+          ],
+          "stdDev": [
+            23.050375853212632,
+            24.97447369357898,
+            24.842657044424094
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "blood-moon",
+      "module": "./blood-moon/blood-moon-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:36:05.035Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 24,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 10,
+          "meshes": 9,
+          "nodeMaterials": 9,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "time": 0.5999666666666666
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            53.169324948353385,
+            0.06622311337951148,
+            2.4533722201968646
+          ],
+          "stdDev": [
+            43.618848267147065,
+            2.043434418074191,
+            4.365966919611147
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "vesper-chrysalis",
+      "module": "./vesper-chrysalis/vesper-chrysalis-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:36:10.116Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 16,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 36,
+          "meshes": 28,
+          "nodeMaterials": 28,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false,
+          "time": 0.6199999999990685
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            60.415670190788674,
+            16.237419492040345,
+            100.14243832786487
+          ],
+          "stdDev": [
+            50.5117076908394,
+            23.070078803134916,
+            39.31463652655441
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    },
+    {
+      "id": "parhelion",
+      "module": "./parhelion/parhelion-theme.js",
+      "low": {
+        "capturedAt": "2026-10-04T09:36:11.914Z",
+        "quality": "Low",
+        "bootPass": true,
+        "smokePass": true,
+        "rendererKind": "WebGPURenderer",
+        "backend": "WebGL2",
+        "frame": 17,
+        "canvas": {
+          "width": 195,
+          "height": 422
+        },
+        "scene": {
+          "objects": 8,
+          "meshes": 5,
+          "nodeMaterials": 5,
+          "shaderMaterials": 0
+        },
+        "consoleErrors": [],
+        "qualityFlags": {
+          "isWebGPU": false
+        },
+        "validationWarnings": [],
+        "failedRequests": [],
+        "uniformRaster": false,
+        "raster": {
+          "width": 390,
+          "height": 844,
+          "mean": [
+            55.79899137197715,
+            62.30809029043626,
+            87.12404909466521
+          ],
+          "stdDev": [
+            50.4580524586569,
+            43.83893381787051,
+            39.09803296687989
+          ],
+          "uniform": false
+        },
+        "surface": {
+          "visibleDescendants": 1,
+          "themeCanvasCount": 1,
+          "shared": {
+            "particles": 0,
+            "drawCalls": 0
+          }
+        },
+        "fallbackText": null,
+        "effects": null,
+        "rotation": null,
+        "rawGL": null,
+        "failure": null
+      },
+      "high": null,
+      "artworkReview": {
+        "mobileContactSheet": "Reviewed for absent, blank or fallback-only output.",
+        "nativeDesktopComparison": "Not captured in this environment."
+      }
+    }
+  ]
+}

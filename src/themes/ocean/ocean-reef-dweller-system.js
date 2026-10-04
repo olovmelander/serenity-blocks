@@ -370,8 +370,8 @@ function createDwellerNodeMaterial(species) {
 }
 
 // ── Simple ShaderMaterial (WebGL) for dweller fish ──────────────────────────
-function createDwellerMaterial(species, isWebGPU = false) {
-    if (isWebGPU) return createDwellerNodeMaterial(species);
+function createDwellerMaterial(species, usesNodeMaterials = false) {
+    if (usesNodeMaterials) return createDwellerNodeMaterial(species);
     return new THREE.ShaderMaterial({
         uniforms: {
             uTime: { value: 0 },
@@ -464,11 +464,16 @@ export class OceanReefDwellerSystem {
      * @param {Function} opts.getSeabedHeight
      * @param {Function} opts.getFishSystem - returns OceanFishSystem for influence reads
      */
+    get usesNodeMaterials() {
+        return this._usesNodeMaterials ?? this.isWebGPU === true;
+    }
+
     constructor({
-        scene, totalCount, qualityTier = 3, getSeabedHeight, isPointOccupied, getFishSystem, isWebGPU = false,
+        scene, totalCount, qualityTier = 3, getSeabedHeight, isPointOccupied, getFishSystem, isWebGPU = false, usesNodeMaterials = isWebGPU,
     }) {
         this.scene = scene;
         this.isWebGPU = isWebGPU;
+        this._usesNodeMaterials = usesNodeMaterials;
         this.totalCount = totalCount;
         this.qualityTier = qualityTier;
         this.getSeabedHeight = getSeabedHeight;
@@ -588,7 +593,7 @@ export class OceanReefDwellerSystem {
 
             const species = REEF_SPECIES[si];
             const geometry = createDwellerGeometry(species);
-            const material = createDwellerMaterial(species, this.isWebGPU);
+            const material = createDwellerMaterial(species, this.usesNodeMaterials);
 
             // Per-instance attributes
             const misc = new Float32Array(range.count * 4);
@@ -840,7 +845,7 @@ export class OceanReefDwellerSystem {
                 if (!mat) return mat;
                 const hasVertexColors = !!(child.geometry?.getAttribute?.('color'))
                     || mat.vertexColors === true;
-                const MaterialClass = this.isWebGPU ? MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
+                const MaterialClass = this.usesNodeMaterials ? MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
                 const nodeMat = new MaterialClass({
                     color: mat.color || new THREE.Color(0xffffff),
                     map: mat.map ?? null,
@@ -855,7 +860,7 @@ export class OceanReefDwellerSystem {
                     fog: true,
                     toneMapped: true,
                 });
-                if (hasVertexColors && this.isWebGPU) {
+                if (hasVertexColors && this.usesNodeMaterials) {
                     const vColor = attribute('color', 'vec3');
                     // NodeMaterial applies COLOR_0 automatically when
                     // vertexColors is true. Supply only the boost here so the

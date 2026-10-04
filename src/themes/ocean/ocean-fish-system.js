@@ -236,7 +236,7 @@ function addTriangle(indices, a, b, c) {
     indices.push(a, b, c);
 }
 
-function createFishGeometry(species, isWebGPU = false) {
+function createFishGeometry(species, usesNodeMaterials = false) {
     const vertices = [];
     const bodyCoords = [];
     const indices = [];
@@ -432,7 +432,7 @@ function createFishGeometry(species, isWebGPU = false) {
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    if (!isWebGPU) {
+    if (!usesNodeMaterials) {
         geometry.setAttribute('aBodyCoord', new THREE.Float32BufferAttribute(bodyCoords, 1));
     }
     geometry.setIndex(indices);
@@ -552,8 +552,8 @@ function createFishNodeMaterial(species) {
     return material;
 }
 
-function createFishMaterial(species, isWebGPU = false) {
-    if (isWebGPU) return createFishNodeMaterial(species);
+function createFishMaterial(species, usesNodeMaterials = false) {
+    if (usesNodeMaterials) return createFishNodeMaterial(species);
 
     return new THREE.ShaderMaterial({
         uniforms: {
@@ -673,8 +673,12 @@ function createFishMaterial(species, isWebGPU = false) {
 }
 
 export class OceanFishSystem {
+    get usesNodeMaterials() {
+        return this._usesNodeMaterials ?? this.isWebGPU === true;
+    }
+
     constructor({
-        scene, camera, preset, getSeabedHeight, isPointOccupied, isWebGPU = false,
+        scene, camera, preset, getSeabedHeight, isPointOccupied, isWebGPU = false, usesNodeMaterials = isWebGPU,
     }) {
         this.scene = scene;
         this.camera = camera;
@@ -682,6 +686,7 @@ export class OceanFishSystem {
         this.getSeabedHeight = getSeabedHeight;
         this.isPointOccupied = (x, z, r) => (isPointOccupied ? isPointOccupied(x, z, r) : false);
         this.isWebGPU = isWebGPU;
+        this._usesNodeMaterials = usesNodeMaterials;
         this.disposed = false;
         this.loadGeneration = 0;
         this.authoredBiodiversity = preset?.atmosphere?.biodiversityAssets === true;
@@ -992,8 +997,8 @@ export class OceanFishSystem {
             if (count <= 0) continue;
 
             const species = SPECIES[speciesIndex];
-            const geometry = createFishGeometry(species, this.isWebGPU);
-            const material = createFishMaterial(species, this.isWebGPU);
+            const geometry = createFishGeometry(species, this.usesNodeMaterials);
+            const material = createFishMaterial(species, this.usesNodeMaterials);
             const misc = new Float32Array(count * 4);
             const baseColor = new Float32Array(count * 4);
             const accentColor = new Float32Array(count * 4);
@@ -1043,7 +1048,7 @@ export class OceanFishSystem {
 
             geometry.setAttribute('aMisc', new THREE.InstancedBufferAttribute(misc, 4));
             geometry.setAttribute('aBaseColor', new THREE.InstancedBufferAttribute(baseColor, 4));
-            if (!this.isWebGPU) {
+            if (!this.usesNodeMaterials) {
                 geometry.setAttribute(
                     'aAccentColor',
                     new THREE.InstancedBufferAttribute(accentColor, 4),
@@ -1134,7 +1139,7 @@ export class OceanFishSystem {
 
                 const hasVertexColors = !!(child.geometry?.getAttribute?.('color'))
                     || source.vertexColors === true;
-                const MaterialClass = this.isWebGPU ? MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
+                const MaterialClass = this.usesNodeMaterials ? MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
                 const nodeMat = new MaterialClass({
                     color: source.color || new THREE.Color(0xffffff),
                     map: source.map ?? null,
@@ -1153,8 +1158,8 @@ export class OceanFishSystem {
                     toneMapped: true,
                 });
 
-                const uTime = this.isWebGPU ? uniform(0) : null;
-                if (this.isWebGPU) {
+                const uTime = this.usesNodeMaterials ? uniform(0) : null;
+                if (this.usesNodeMaterials) {
                     const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.18);
 
                     const viewDir = tslNormalize(cameraPosition.sub(positionWorld));
@@ -1184,7 +1189,7 @@ export class OceanFishSystem {
                     aquaticFaunaMaterial: true,
                     sourceMaterial: source.name || null,
                     alphaDistanceFade: true,
-                    underwaterRimHint: this.isWebGPU,
+                    underwaterRimHint: this.usesNodeMaterials,
                 };
                 source.dispose();
                 return nodeMat;

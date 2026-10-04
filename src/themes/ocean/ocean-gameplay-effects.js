@@ -250,12 +250,16 @@ function disposeObject(object) {
 }
 
 export class OceanGameplayEffects {
+    get usesNodeMaterials() {
+        return this._usesNodeMaterials ?? this.isWebGPU === true;
+    }
+
     constructor({
         scene,
         camera,
         preset,
         quality = 'High',
-        isWebGPU = false,
+        isWebGPU = false, usesNodeMaterials = isWebGPU,
         getSeabedHeight,
         getPost,
         getFishSystem,
@@ -266,6 +270,7 @@ export class OceanGameplayEffects {
         this.preset = preset;
         this.quality = quality;
         this.isWebGPU = isWebGPU;
+        this._usesNodeMaterials = usesNodeMaterials;
         this.getSeabedHeight = getSeabedHeight;
         this.getPost = getPost;
         this.getFishSystem = getFishSystem;
@@ -331,7 +336,7 @@ export class OceanGameplayEffects {
         this.scene.add(this.group);
 
         // Pre-warm shared materials for WebGPU to avoid shader compilation lag
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.rippleMat = createGameplayRippleNodeMaterial();
             this.shockwaveMat = createGameplayShockwaveNodeMaterial();
             this.siltMat = createGameplaySiltNodeMaterial();
@@ -397,12 +402,12 @@ export class OceanGameplayEffects {
             const geometry = new THREE.RingGeometry(0.68, 1.0, 32, 1);
             geometry.rotateX(-Math.PI / 2);
 
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const opacities = new Float32Array(geometry.attributes.position.count).fill(0);
                 geometry.setAttribute('aBurstOpacity', new THREE.BufferAttribute(opacities, 1));
             }
 
-            const material = this.isWebGPU
+            const material = this.usesNodeMaterials
                 ? (this.rippleMat || createGameplayRippleNodeMaterial())
                 : new THREE.MeshBasicMaterial({
                     color: 0x65d5d5,
@@ -432,12 +437,12 @@ export class OceanGameplayEffects {
             const geometry = new THREE.RingGeometry(0.92, 1.0, 32, 1);
             geometry.rotateX(-Math.PI / 2);
 
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const opacities = new Float32Array(geometry.attributes.position.count).fill(0);
                 geometry.setAttribute('aBurstOpacity', new THREE.BufferAttribute(opacities, 1));
             }
 
-            const material = this.isWebGPU
+            const material = this.usesNodeMaterials
                 ? (this.shockwaveMat || createGameplayShockwaveNodeMaterial())
                 : new THREE.MeshBasicMaterial({
                     color: 0xc6f7ff,
@@ -477,9 +482,9 @@ export class OceanGameplayEffects {
             let geometry;
             let material;
             let particles;
-            const isBillboard = this.isWebGPU;
+            const isBillboard = this.usesNodeMaterials;
 
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
                 geometry.setAttribute('aLife', new THREE.InstancedBufferAttribute(lives, 1));
                 geometry.setAttribute('aSize', new THREE.InstancedBufferAttribute(sizes, 1));
@@ -537,12 +542,12 @@ export class OceanGameplayEffects {
             const geometry = new THREE.PlaneGeometry(1, 1, 8, 1);
             geometry.rotateX(-Math.PI / 2);
 
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const opacities = new Float32Array(geometry.attributes.position.count).fill(0);
                 geometry.setAttribute('aBurstOpacity', new THREE.BufferAttribute(opacities, 1));
             }
 
-            const material = this.isWebGPU
+            const material = this.usesNodeMaterials
                 ? (this.ribbonMat || createGameplayCausticRibbonNodeMaterial())
                 : createFallbackRibbonMaterial();
             const mesh = new THREE.Mesh(geometry, material);
@@ -1078,7 +1083,7 @@ export class OceanGameplayEffects {
         this._idleParamsPushed = false;
 
         // Shared time and billboard state pre-computation
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             setMaterialTime(this.rippleMat, time);
             setMaterialTime(this.shockwaveMat, time);
             setMaterialTime(this.siltMat, time);
@@ -1128,7 +1133,7 @@ export class OceanGameplayEffects {
             mesh.scale.setScalar(scale);
             mesh.position.y += dt * 0.06;
             const fade = (1 - t) ** 1.6;
-            if (!this.isWebGPU) setMaterialTime(mesh.material, time);
+            if (!this.usesNodeMaterials) setMaterialTime(mesh.material, time);
             this.setMeshOpacity(mesh, fade * effect.intensity);
             if (t >= 1) {
                 effect.active = false;
@@ -1148,7 +1153,7 @@ export class OceanGameplayEffects {
             const scale = effect.baseScale * (0.45 + t * 1.5);
             mesh.scale.setScalar(scale);
             mesh.position.y += dt * 0.08;
-            if (!this.isWebGPU) setMaterialTime(mesh.material, time);
+            if (!this.usesNodeMaterials) setMaterialTime(mesh.material, time);
             this.setMeshOpacity(mesh, fade * effect.intensity * 0.7);
             if (t >= 1) {
                 effect.active = false;
@@ -1233,7 +1238,7 @@ export class OceanGameplayEffects {
                 lives[i] = fade;
             }
 
-            if (!this.isWebGPU) setMaterialTime(points.material, time);
+            if (!this.usesNodeMaterials) setMaterialTime(points.material, time);
             this.setMeshOpacity(
                 points,
                 fade * clamp(0.55 * effect.intensity + 0.25, 0, 0.9),
@@ -1262,7 +1267,7 @@ export class OceanGameplayEffects {
             const fade = Math.sin(t * Math.PI) * (1 - t * 0.1);
             mesh.position.addScaledVector(effect.direction, dt * (8 + effect.intensity * 9));
             mesh.scale.x *= 1 + dt * 0.12;
-            if (!this.isWebGPU) setMaterialTime(mesh.material, time);
+            if (!this.usesNodeMaterials) setMaterialTime(mesh.material, time);
             this.setMeshOpacity(mesh, fade * effect.intensity * 0.85);
             if (t >= 1) {
                 effect.active = false;
@@ -1335,7 +1340,7 @@ export class OceanGameplayEffects {
                 chromaticAberration: this.limits.chromaticAberration === true,
             },
             rendering: {
-                primitive: this.isWebGPU ? 'billboard-quad' : 'points',
+                primitive: this.usesNodeMaterials ? 'billboard-quad' : 'points',
                 webgpuPointSprites: false,
             },
             triggers: { ...this.stats },

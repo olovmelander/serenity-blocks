@@ -139,13 +139,15 @@ export class V3PostPipeline {
         this.scene = scene;
         this.camera = camera;
         this.lastRenderCostMs = 0;
-        this.mrtEnabled = params.useMRT !== false; // Default ON — controlled by capability check
+        this.mrtEnabled = params.useMRT !== false && renderer?.backend?.isWebGPUBackend === true;
         this.postProcessing = null;
+        this.scenePass = null;
         this._lastFrameStart = 0;
 
-        // Detect WebGPU. V3 is WebGPU-only (no WebGL fallback at the post layer).
-        if (renderer?.backend?.isWebGPUBackend !== true) {
-            console.warn('[ElectricDreamsV3] Post pipeline requires WebGPU; skipping');
+        // Node post runs on both WebGPURenderer backends; selective MRT bloom
+        // remains a native-WebGPU capability.
+        if (renderer?.isWebGPURenderer !== true) {
+            console.warn('[ElectricDreamsV3] Post pipeline requires a node renderer; skipping');
             return;
         }
         this._setupWebGPU(params);
@@ -154,6 +156,7 @@ export class V3PostPipeline {
     _setupWebGPU(params) {
         this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
         const scenePass = pass(this.scene, this.camera);
+        this.scenePass = scenePass;
 
         // MRT: split scene rendering into color + emissive targets so bloom
         // operates ONLY on the emissive channel. Non-emissive surfaces don't bloom.
@@ -346,7 +349,10 @@ export class V3PostPipeline {
     }
 
     dispose() {
+        this.scenePass?.dispose();
         disposeBloomNodeDeep(this.bloomNode);
+        this.postProcessing?.dispose();
+        this.scenePass = null;
         this.postProcessing = null;
         this.bloomNode = null;
     }

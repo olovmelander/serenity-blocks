@@ -100,6 +100,7 @@ export default class StarlightTheme extends BaseTheme {
 
         // Backend capability
         this.isWebGPU = false;
+        this.usesNodeMaterials = false;
         this._computeAvailable = false;
         this._computeFailedOnce = false;
 
@@ -184,7 +185,7 @@ export default class StarlightTheme extends BaseTheme {
         this.starfield = createDeepStarfield({ count: this._starCount() });
         this.scene.add(this.starfield.mesh);
 
-        // Stardust river — capability-gated living hero layer (compute only).
+        // Stardust river — native compute or WebGL2 CPU instanced attributes.
         this._setupStardust();
 
         // Meteors / shooting stars (CPU sim; works on both backends).
@@ -203,7 +204,7 @@ export default class StarlightTheme extends BaseTheme {
             this.scene.add(this.constellationRenderer.group);
         }
 
-        // Post pipeline (MRT selective bloom) — WebGPU only; gated + defensive.
+        // Common grade and bloom; selective MRT is a native backend capability.
         this._setupPost();
 
         // Event reactivity — the StarlightReactionDirector coalesces each lock
@@ -226,26 +227,30 @@ export default class StarlightTheme extends BaseTheme {
 
     /**
      * Create a WebGPURenderer, falling back to its WebGL2 backend when WebGPU is
-     * unavailable. TSL node materials render on both backends; only the compute
-     * stardust river (later phase) needs true WebGPU, which is gated separately.
+     * unavailable. TSL node materials render on both backends; native compute
+     * capability is tracked separately from the WebGL2 CPU stardust lane.
      * Returns true on success.
      */
     async _initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
         const w = window.innerWidth;
         const h = window.innerHeight;
         const antialias = this.getAntialiasEnabled();
-        const wantWebGPU = typeof navigator !== 'undefined' && !!navigator.gpu;
+        const params = new URLSearchParams(window.location.search);
+        const forceWebGL = ['forceWebGL', 'starlightForceWebGL'].some((key) => (
+            params.has(key) && ['', '1', 'true', 'yes'].includes((params.get(key) || '').toLowerCase())
+        ));
+        const wantWebGPU = !forceWebGL && typeof navigator !== 'undefined' && !!navigator.gpu;
 
-        const make = async (forceWebGL) => {
+        const make = async (forceWebGLBackend) => {
             const r = new THREE_WEBGPU.WebGPURenderer({
                 antialias,
                 alpha: false,
                 powerPreference: 'high-performance',
-                forceWebGL,
+                forceWebGL: forceWebGLBackend,
             });
             await this.initializeRendererCandidate(r, {
                 timeoutMs: 5000,
-                label: `Starlight ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                label: `Starlight ${forceWebGLBackend ? 'WebGL2' : 'WebGPU'} renderer init`,
                 ownerGeneration,
             });
             return r;
@@ -255,10 +260,6 @@ export default class StarlightTheme extends BaseTheme {
         if (wantWebGPU) {
             try {
                 renderer = await make(false);
-                if (renderer.backend?.isWebGPUBackend !== true) {
-                    this.disposeRenderer(renderer, { nullInstance: false });
-                    renderer = null;
-                }
             } catch (err) {
                 if (ownerGeneration !== this.lifecycleGeneration
                     || !this.isActive
@@ -292,6 +293,7 @@ export default class StarlightTheme extends BaseTheme {
             return false;
         }
         this.renderer = renderer;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         this._computeAvailable = this.isWebGPU && typeof renderer.compute === 'function';
 
@@ -364,12 +366,7 @@ export default class StarlightTheme extends BaseTheme {
                 this.nebula?.update(this.time);
                 this.aurora?.update(this.time);
 
-                // Stardust compute river (gated; one-shot try/catch disables on failure).
-                if (this.stardustSim && !this._computeFailedOnce) {
-                    this.stardustSim.update(delta, this.time);
-                    this._safeStardustCompute();
-                    this.stardustRenderer?.update(this.time);
-                }
+                this._updateStardust(delta, this.time);
 
                 // Meteors (CPU sim → instanced billboards) + rare idle drift.
                 if (this.meteors) {
@@ -430,21 +427,20 @@ export default class StarlightTheme extends BaseTheme {
     }
 
     /**
-     * Build the curl-noise stardust river — only when WebGPU compute is available
-     * and the tier budget is non-zero. On the WebGL2 fallback (or Minimal) the
-     * starfield + sky carry the theme.
+     * Build the same stardust billboards on both node backends. Native WebGPU
+     * uses curl-noise compute; WebGL2 uses a bounded analytic curl on CPU arrays.
+     * Minimal intentionally omits dust on every backend.
      */
     _setupStardust() {
-        if (!this._computeAvailable) {
-            console.log('[Starlight] Compute unavailable — stardust river skipped (starfield carries the theme)');
-            return;
-        }
+        if (!this.usesNodeMaterials) return;
         const budget = getStardustBudget(this.qualityName);
         if (!budget.count) return; // Minimal tier: no dust
         try {
             this.stardustSim = new StardustSim(budget.count, { flowStrength: budget.flowStrength });
-            this.stardustSim.createComputeNode();
+            this._computeFailedOnce = false;
+            if (this._computeAvailable) this.stardustSim.createComputeNode();
             this.stardustRenderer = createStardustRenderer(this.stardustSim, {
+                useStorage: this._computeAvailable,
                 sizeMul: 1.0,
                 brightness: 1.2,
                 twinkleAmp: 0.85,
@@ -455,6 +451,17 @@ export default class StarlightTheme extends BaseTheme {
             console.warn('[Starlight] Stardust setup failed:', err);
             this._teardownStardust();
         }
+    }
+
+    _updateStardust(delta, time) {
+        if (!this.stardustSim || this._computeFailedOnce) return;
+        if (this._computeAvailable) {
+            this.stardustSim.update(delta, time);
+            this._safeStardustCompute();
+        } else {
+            this.stardustSim.updateCPU(delta, time);
+        }
+        this.stardustRenderer?.update(time);
     }
 
     // Try/catch isolated so V8 can optimize the animate body.
@@ -500,12 +507,12 @@ export default class StarlightTheme extends BaseTheme {
     }
 
     /**
-     * MRT selective-bloom post pipeline — WebGPU only, profile-gated, defensive
+     * Common node post pipeline, profile-gated and defensive.
      * (any failure → null → orchestrator falls back to direct renderer.render()).
      */
     _setupPost() {
-        if (!this.postProfile?.enabled || !this.isWebGPU) return;
-        const useMRT = this.qualityName !== 'Low'; // Low: cheaper non-selective bloom
+        if (!this.postProfile?.enabled || !this.usesNodeMaterials) return;
+        const useMRT = this.isWebGPU && this.qualityName !== 'Low';
         try {
             this.postPipeline = new StarlightPostPipeline(this.renderer, this.scene, this.camera, {
                 ...this.postProfile,
@@ -525,6 +532,7 @@ export default class StarlightTheme extends BaseTheme {
 
     stop() {
         super.stop();
+        this.removeRendererResilience();
 
         for (const unsub of this.eventUnsubscribers) {
             try {

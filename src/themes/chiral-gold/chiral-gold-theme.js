@@ -43,7 +43,7 @@ import {
     wispFragmentShader,
     wispVertexShader,
 } from './chiral-gold-shaders.js';
-import { clamp } from '@utils/helpers.js';
+import { clamp } from '../../utils/helpers.js';
 
 function createSeededRandom(seed) {
     if (!Number.isFinite(seed)) return () => Math.random();
@@ -482,6 +482,43 @@ export default class ChiralGoldTheme extends BaseTheme {
                 points.scale.set(dustScaleX * 1.04, dustScaleY * 1.02, 1.0);
             });
         }
+        this.layoutStrandsForViewport();
+    }
+
+    layoutStrandsForViewport() {
+        if (!this.camera || !this.strands?.length) return;
+        const aspect = this.camera.aspect;
+        const portrait = aspect < 1;
+        const scale = portrait ? clamp(aspect, 0.35, 1) : 1;
+        const edgeX = clamp(0.72 + (aspect - 1) * 0.06, 0.68, 0.88);
+        this.camera.updateMatrixWorld();
+        for (const strand of this.strands) {
+            const { userData: data } = strand;
+            if (!data.home) continue;
+            data.authoredHome ||= data.home.clone();
+            const nextHome = data.authoredHome.clone();
+            if (portrait) {
+                const anchor = this.projectNdcToPlane(data.side * edgeX, 0, nextHome.z);
+                if (anchor) {
+                    nextHome.x = anchor.x;
+                    nextHome.y = anchor.y + data.authoredHome.y * scale;
+                }
+            }
+            strand.position.add(nextHome.clone().sub(data.home));
+            data.home.copy(nextHome);
+            strand.scale.setScalar(scale);
+            if (portrait) {
+                // Keep the authored drift around the responsive edge anchor.
+                const driftLimit = 80 * scale;
+                for (const axis of ['x', 'y', 'z']) {
+                    strand.position[axis] = clamp(
+                        strand.position[axis],
+                        data.home[axis] - driftLimit,
+                        data.home[axis] + driftLimit,
+                    );
+                }
+            }
+        }
     }
 
     projectWorldToNdc(worldPosition) {
@@ -716,13 +753,17 @@ export default class ChiralGoldTheme extends BaseTheme {
         }
     }
 
+    get usesNodeMaterials() {
+        return this.renderer?.isWebGPURenderer === true;
+    }
+
     probeCapabilities() {
         if (!this.isWebGPU || !this.renderer?.backend?.isWebGPUBackend) {
             this.capabilities = {
                 isWebGPU: false,
                 maxColorAttachments: 0,
                 supportsCompute: false,
-                supportsPost: false,
+                supportsPost: this.usesNodeMaterials,
             };
             return;
         }
@@ -745,7 +786,7 @@ export default class ChiralGoldTheme extends BaseTheme {
     }
 
     updateCapabilityFlags() {
-        const usePost = this.isWebGPU
+        const usePost = this.usesNodeMaterials
             && this.capabilities?.supportsPost
             && this.qualityPreset.enablePostProcessing
             && !this.flags.noPost;
@@ -772,11 +813,10 @@ export default class ChiralGoldTheme extends BaseTheme {
 
     normalizeRuntimeFeatureFlags() {
         if (!this.isWebGPU) {
-            this.flags.usePost = false;
             this.flags.useMRT = false;
             this.flags.useCompute = false;
-            return;
         }
+        if (!this.usesNodeMaterials) this.flags.usePost = false;
 
         if (this.flags.noPost || !this.flags.usePost) {
             this.flags.usePost = false;
@@ -796,7 +836,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         if (!this.renderer) return;
 
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        const postOwnsToneMapping = this.isWebGPU && this.flags.usePost && !!this.postProcessing;
+        const postOwnsToneMapping = this.usesNodeMaterials && this.flags.usePost && !!this.postProcessing;
         if (postOwnsToneMapping) {
             this.renderer.toneMapping = THREE.NoToneMapping;
             this.renderer.toneMappingExposure = 1.0;
@@ -807,7 +847,7 @@ export default class ChiralGoldTheme extends BaseTheme {
     }
 
     async precompileSceneWithTimeout() {
-        if (!this.isWebGPU || !this.renderer?.compileAsync || !this.scene || !this.camera) {
+        if (!this.usesNodeMaterials || !this.renderer?.compileAsync || !this.scene || !this.camera) {
             this.compileStats = {
                 status: 'skipped',
                 durationMs: 0,
@@ -1035,51 +1075,32 @@ export default class ChiralGoldTheme extends BaseTheme {
         const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
             && this.isActive
             && !this.cleanupComplete;
-        let webgpuRenderer = null;
-        let renderer = null;
-
-        if (!this.flags.forceWebGL) {
-            try {
-                webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
-                    antialias: this.getAntialiasEnabled(),
-                    alpha: false,
-                });
-                await this.initializeRendererCandidate(webgpuRenderer, {
-                    label: 'Chiral Gold WebGPU renderer init',
-                    ownerGeneration,
-                });
-            } catch (error) {
-                if (!ownsLifecycle()) return false;
-                console.warn('[ChiralGold] WebGPU init failed, falling back to WebGL2:', error.message);
-                if (webgpuRenderer) {
-                    webgpuRenderer.dispose();
-                    webgpuRenderer = null;
-                }
-            }
-        }
-
-        if (webgpuRenderer?.backend?.isWebGPUBackend === true) {
-            renderer = webgpuRenderer;
-            this.isWebGPU = true;
-            this.isWebGL = false;
-            renderer.onDeviceLost = (info) => {
-                if (!ownsLifecycle() || this.renderer !== renderer) return;
-                this.handleDeviceLoss(info);
-            };
-        } else {
-            if (webgpuRenderer) {
-                webgpuRenderer.dispose();
-                webgpuRenderer = null;
-            }
-
-            if (!ownsLifecycle()) return false;
-            renderer = new THREE.WebGLRenderer({
-                antialias: this.getAntialiasEnabled(),
-                powerPreference: 'high-performance',
-                alpha: false,
+        const forceWebGL = this.flags.forceWebGL === true
+            || typeof navigator === 'undefined' || !navigator.gpu;
+        const makeRenderer = (webglOnly) => new THREE_WEBGPU.WebGPURenderer({
+            antialias: this.getAntialiasEnabled(),
+            alpha: false,
+            forceWebGL: webglOnly,
+            powerPreference: 'high-performance',
+        });
+        let renderer = makeRenderer(forceWebGL);
+        try {
+            await this.initializeRendererCandidate(renderer, {
+                label: 'Chiral Gold node renderer init', ownerGeneration,
             });
-            this.isWebGPU = false;
-            this.isWebGL = true;
+        } catch (error) {
+            if (!ownsLifecycle()) return false;
+            if (forceWebGL) throw error;
+            console.warn('[ChiralGold] Native init failed; retrying WebGL2.', error);
+            renderer = makeRenderer(true);
+            try {
+                await this.initializeRendererCandidate(renderer, {
+                    label: 'Chiral Gold WebGL2 node renderer init', ownerGeneration,
+                });
+            } catch (fallbackError) {
+                if (!ownsLifecycle()) return false;
+                throw fallbackError;
+            }
         }
 
         if (!ownsLifecycle()) {
@@ -1087,6 +1108,14 @@ export default class ChiralGoldTheme extends BaseTheme {
             return false;
         }
         this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        this.isWebGL = renderer.backend?.isWebGLBackend === true;
+        if (this.isWebGPU) {
+            renderer.onDeviceLost = (info) => {
+                if (!ownsLifecycle() || this.renderer !== renderer) return;
+                this.handleDeviceLoss(info);
+            };
+        }
         this.renderer.setClearColor(0x000000, 1);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
@@ -1106,6 +1135,15 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.camera.position.copy(this.cameraBasePosition);
         this.camera.lookAt(this.cameraTarget);
         this.updateCompositionLayout();
+        this.setupRendererResilience(renderer, {
+            onContextRestored: () => {
+                if (this._contextRestoreUnsub) return;
+                if (!ownsLifecycle() || this.renderer !== renderer) return;
+                this.createScene(ownerGeneration).catch((error) => {
+                    console.error('[ChiralGold] Context recovery failed:', error);
+                });
+            },
+        });
 
         const key = new THREE.PointLight(0xffdd99, 1.35, 4200);
         key.position.set(420, 260, 720);
@@ -1242,7 +1280,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         let material;
         let uniforms = null;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createGoldDustNodeMaterial({
                 isWebGPU: this.isWebGPU,
                 pixelRatio: this.getEffectivePixelRatio(),
@@ -1358,7 +1396,7 @@ export default class ChiralGoldTheme extends BaseTheme {
             let material;
             let uniforms = null;
 
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 ({ material, uniforms } = createBurstSparkNodeMaterial({
                     isWebGPU: this.isWebGPU,
                     pixelRatio: this.getEffectivePixelRatio(),
@@ -1494,7 +1532,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         let material;
         let uniforms = null;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createWispNodeMaterial({
                 isWebGPU: this.isWebGPU,
                 pixelRatio: this.getEffectivePixelRatio(),
@@ -1595,7 +1633,7 @@ export default class ChiralGoldTheme extends BaseTheme {
             let material;
             let uniforms = null;
 
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 ({ material, uniforms } = createStrandNodeMaterial({
                     isWebGPU: this.isWebGPU,
                     pixelRatio: this.getEffectivePixelRatio(),
@@ -1700,7 +1738,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         let material;
         let uniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createStrandNodeMaterial({
                 isWebGPU: this.isWebGPU,
                 pixelRatio: this.getEffectivePixelRatio(),
@@ -1773,7 +1811,7 @@ export default class ChiralGoldTheme extends BaseTheme {
             let material;
             let uniforms;
 
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 ({ material, uniforms } = createLightBeamNodeMaterial({
                     opacity: 0.24 + this.rand() * 0.15,
                     color: new THREE.Color(0xFFCC66),
@@ -1873,7 +1911,7 @@ export default class ChiralGoldTheme extends BaseTheme {
             return;
         }
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             if (!this.flags.usePost) {
                 this.flags.useMRT = false;
                 return;
@@ -2009,6 +2047,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.updateBeams(delta, analysis);
         this.updateShockwaves(delta);
         this.updateCamera(delta, analysis);
+        if (this.camera.aspect < 1) this.layoutStrandsForViewport();
 
         // Background envelope parallax tracking — follows camera at 45% of its motion
         if (this.backgroundEnvelope && this.camera) {
@@ -2194,7 +2233,7 @@ export default class ChiralGoldTheme extends BaseTheme {
             uniforms.uColorTemperature.value = colorTemperature;
         }
 
-        if (this.isWebGL && uniforms?.uPulse) {
+        if (!this.usesNodeMaterials && uniforms?.uPulse) {
             uniforms.uPulse.value = clamp(
                 this.reactiveEnvelope.pulse + pulseEnergy * 0.55 + analysis.bassEnergy * 0.2,
                 0,
@@ -2371,7 +2410,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         if (uniforms.uBeatPulse) uniforms.uBeatPulse.value = clamp(this.beatPulse + this.wispJolt * 0.65, 0, 1);
         if (uniforms.uColorTemperature) uniforms.uColorTemperature.value = colorTemperature;
 
-        if (this.isWebGL && uniforms.uBeatPulse) {
+        if (!this.usesNodeMaterials && uniforms.uBeatPulse) {
             uniforms.uBeatPulse.value = this.beatPulse;
         }
     }
@@ -2673,14 +2712,20 @@ export default class ChiralGoldTheme extends BaseTheme {
 
     renderFrame() {
         if (!this.renderer || !this.scene || !this.camera) return;
+        const nodeWebGL = this.usesNodeMaterials && this.isWebGL;
+        if (!nodeWebGL) this.renderer.clear();
 
-        this.renderer.clear();
-
-        if (this.isWebGPU) {
-            if (this.postProcessing && this.flags.usePost) {
-                this.postProcessing.render();
-            } else {
-                this.renderer.render(this.scene, this.camera);
+        if (this.usesNodeMaterials) {
+            const { autoClear } = this.renderer;
+            if (nodeWebGL) this.renderer.autoClear = true;
+            try {
+                if (this.postProcessing && this.flags.usePost) {
+                    this.postProcessing.render();
+                } else {
+                    this.renderer.render(this.scene, this.camera);
+                }
+            } finally {
+                this.renderer.autoClear = autoClear;
             }
             return;
         }
@@ -3451,7 +3496,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         let material;
         let uniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             ({ material, uniforms } = createLightBeamNodeMaterial({
                 opacity,
                 color: new THREE.Color(0xFFD46B),
@@ -3705,7 +3750,7 @@ export default class ChiralGoldTheme extends BaseTheme {
     disposeRendererResources(removeCanvas = true) {
         if (!this.renderer) return;
 
-        this.renderer.onDeviceLost = null;
+        this.renderer.onDeviceLost = () => {};
         const { domElement } = this.renderer;
         try {
             this.disposeRenderer(this.renderer, { nullInstance: false });
@@ -3808,6 +3853,7 @@ export default class ChiralGoldTheme extends BaseTheme {
     }
 
     disposeRuntimeResources({ removeCanvas = true } = {}) {
+        this.removeRendererResilience();
         this.disposePostProcessingStack();
         this.clearTempEffects();
         this.disposeComputeResources();

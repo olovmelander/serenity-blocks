@@ -35,6 +35,7 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { SOLAR_ECLIPSE_TETROMINOS } from './solar-eclipse-tetrominos.js';
+import { applySolarEclipsePortraitFit } from './solar-eclipse-composition.js';
 import {
     starVertexShader,
     starFragmentShader,
@@ -337,6 +338,7 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100000);
         this.camera.position.set(0, 0, 850);
         this.camera.lookAt(0, 0, 0);
+        applySolarEclipsePortraitFit(this.camera);
 
         // Dramatic lighting - main light from behind (creating the eclipse effect)
         const backLight = new THREE.PointLight(0xffaa44, 4, 4000);
@@ -1304,6 +1306,7 @@ export default class SolarEclipseTheme extends BaseTheme {
                 uTime: { value: 0 },
                 uIntensity: { value: 1.0 },
                 uBasePosition: { value: new THREE.Vector3(0, 0, 0) },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
             },
             vertexShader: tendrilVertexShader,
             fragmentShader: tendrilFragmentShader,
@@ -1754,6 +1757,7 @@ export default class SolarEclipseTheme extends BaseTheme {
                 const lookOffsetX = Math.sin(cameraTime * 0.4) * 150 + parallaxX * 0.4;
                 const lookOffsetY = Math.cos(cameraTime * 0.5) * 100 + parallaxY * 0.4;
                 this.camera.lookAt(lookOffsetX, lookOffsetY, 0);
+                applySolarEclipsePortraitFit(this.camera);
             }
 
             // Update sun shader
@@ -2081,6 +2085,7 @@ export default class SolarEclipseTheme extends BaseTheme {
         if (this.camera) {
             this.camera.aspect = width / height;
             this.camera.updateProjectionMatrix();
+            applySolarEclipsePortraitFit(this.camera);
         }
         if (this.renderer) this.renderer.setSize(width, height);
         if (this.composer) this.composer.setSize(width, height);

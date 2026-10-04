@@ -1,10 +1,10 @@
 /**
  * Golden Forest post-processing abstraction.
  *
- * WebGPU path: TSL PostProcessing with optional emissive MRT bloom,
+ * Node renderer path: TSL RenderPipeline on WebGPU and WebGL2, with optional native MRT bloom,
  * ACES tonemapping, warm grading, vignette, and subtle grain.
  *
- * WebGL path: EffectComposer fallback with bloom + equivalent grade shader.
+ * Classic renderer path: dormant EffectComposer fallback with bloom + grade shader.
  */
 
 import * as THREE from 'three';
@@ -133,7 +133,8 @@ export class GoldenForestPost {
         this.scene = scene;
         this.camera = camera;
         this.isWebGPU = renderer?.backend?.isWebGPUBackend === true;
-        this.useMRT = params.useMRT === true;
+        this.usesNodeMaterials = renderer?.isWebGPURenderer === true;
+        this.useMRT = this.isWebGPU && params.useMRT === true;
         this.useBloom = params.useBloom !== false;
         this.resolutionScale = params.resolutionScale ?? 1;
         this.bloomDownsample = Math.max(0.25, Math.min(1, params.bloomDownsample ?? 0.5));
@@ -149,7 +150,7 @@ export class GoldenForestPost {
         this.bloomPass = null;
         this.gradePass = null;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.setupWebGPU(scene, camera, params);
         } else if (renderer?.isWebGLRenderer === true) {
             this.setupWebGL(scene, camera, params);

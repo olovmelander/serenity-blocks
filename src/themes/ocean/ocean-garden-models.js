@@ -99,8 +99,8 @@ function inspectAsset(gltf, record) {
     };
 }
 
-function createMaterial(record, geometry, sourceMatrix, isWebGPU) {
-    const Material = isWebGPU ? THREE.MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
+function createMaterial(record, geometry, sourceMatrix, usesNodeMaterials) {
+    const Material = usesNodeMaterials ? THREE.MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
     const material = new Material({
         color: record.tint,
         vertexColors: true,
@@ -111,8 +111,8 @@ function createMaterial(record, geometry, sourceMatrix, isWebGPU) {
     material.name = `Ocean Garden ${record.id}`;
     // A small painted-color contribution keeps crimson, apricot and gold
     // legible through underwater fill lighting without introducing white haze.
-    if (isWebGPU && !record.stone) material.emissiveNode = attribute('color', 'vec3').mul(0.035);
-    if (record.luminous && isWebGPU) {
+    if (usesNodeMaterials && !record.stone) material.emissiveNode = attribute('color', 'vec3').mul(0.035);
+    if (record.luminous && usesNodeMaterials) {
         // A per-vertex cap mask keeps dark holdfasts dark. Authored COLOR_0
         // supplies the tip hue; there are no additional textures or lights.
         const positions = geometry.attributes.position;
@@ -173,7 +173,7 @@ function groundedMatrix(source, placement, getSeabedHeight, stone) {
  */
 export async function createOceanGardenModels({
     getSeabedHeight,
-    isWebGPU = true,
+    isWebGPU = true, usesNodeMaterials = isWebGPU,
     detailCount = 0,
 } = {}) {
     const requested = Number.isFinite(detailCount) ? Math.max(0, Math.floor(detailCount)) : 0;
@@ -239,7 +239,7 @@ export async function createOceanGardenModels({
                 record, gltf, source, triangleCount, count,
             } = asset;
             const geometry = source.geometry.clone();
-            const material = createMaterial(record, geometry, source.matrixWorld, isWebGPU);
+            const material = createMaterial(record, geometry, source.matrixWorld, usesNodeMaterials);
             const mesh = new THREE.InstancedMesh(geometry, material, count);
             mesh.name = `OceanGarden:${record.id}`;
             mesh.castShadow = false;

@@ -23,6 +23,7 @@ import {
     cameraPosition,
     cameraViewMatrix,
     clamp,
+    cos,
     dot,
     float,
     fract,
@@ -39,6 +40,7 @@ import {
     positionWorld,
     pow,
     smoothstep,
+    sin,
     sqrt,
     step,
     storage,
@@ -424,6 +426,8 @@ export function createFluidParticleNodeMaterial(params = {}) {
     const aPos = attribute('instancePosition');
     const aColor = attribute('instanceColor');
     const aSize = attribute('instanceSize');
+    const uTime = uniform(0);
+    const aPhase = attribute('instancePhase');
 
     // Gameplay-reactive uniforms for particle colour wash + brightness boost.
     // uColorOverride: a target tint pushed in by line-clear / tetris events.
@@ -435,12 +439,20 @@ export function createFluidParticleNodeMaterial(params = {}) {
 
     const basePos = Fn(() => {
         if (useGPU) return positionBuffer.element(instanceIndex).xyz;
-        return aPos;
+        // Compatibility particles retain the same soft node sprites and event
+        // palette, with bounded analytic drift instead of native compute.
+        return aPos.add(vec3(
+            sin(uTime.mul(0.45).add(aPhase)).mul(0.45),
+            cos(uTime.mul(0.5).add(aPhase.mul(0.7))).mul(0.3),
+            sin(uTime.mul(0.35).add(aPhase.mul(1.3))).mul(0.45),
+        ));
     })();
 
     const baseLife = Fn(() => {
         if (useGPU) return positionBuffer.element(instanceIndex).w;
-        return float(1.0);
+        // A permanent compatibility mote stays at mid-life, where neither the
+        // birth nor death fade erases it.
+        return float(0.5);
     })();
 
     const baseColor = Fn(() => {
@@ -495,7 +507,9 @@ export function createFluidParticleNodeMaterial(params = {}) {
     material.colorNode = vec4(colour, opacity);
     material.emissiveNode = colour.mul(soft).mul(lifeFade).mul(emissiveScale);
 
-    material.userData = { uColorOverride, uColorOverrideMix, uBrightnessBoost };
+    material.userData = {
+        uTime, uColorOverride, uColorOverrideMix, uBrightnessBoost,
+    };
 
     return material;
 }

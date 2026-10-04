@@ -30,6 +30,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 |---|---|---|
 | [ARCHITECTURAL_REVIEW.md](ARCHITECTURAL_REVIEW.md) | Reference | Source review feeding the umbrella plan. |
 | [REPOSITORY_AUDIT_2026-10-03.md](REPOSITORY_AUDIT_2026-10-03.md) | Reference | **A record, not a backlog.** Whole-repository audit at `3d50d88e`: ranked top-10 (rule bugs, online session lifecycle, Steam integration, trust boundaries, async lifecycle ownership, input ownership, theme contract, dark migrations, agent-facing docs, ship size), ~100 findings with file:line, a docs cleanup plan, and the plan statuses it found stale. Its header lists what was fixed with it; harvest the rest into the umbrella plan before executing. |
+| [MOBILE_THEME_WEBGL2_AUDIT_2026-10.md](MOBILE_THEME_WEBGL2_AUDIT_2026-10.md) | Reference | All 62 theme renderer/artwork paths; modern WebGL2 parity repairs, instanced particle/storage and texture-allocation findings, mobile quality/composition fixes, and bounded software-browser evidence. Physical-phone/native hardware acceptance remains separate. |
 | [architectural-review-prompt.md](archive/2026-10-agent-prompts/architectural-review-prompt.md) | Superseded | Archived 2026-10-03. Historical input to an AI session — not instructions; its "known context" facts are outdated. |
 | [ASSET_PIPELINE_BLACKWELL.md](ASSET_PIPELINE_BLACKWELL.md) | Reference | Asset-pipeline context; harvest before execution. |
 | [blind-mode-plan.md](blind-mode-plan.md) | Reference | Feature plan; not part of current Movement A scope. |

@@ -9,6 +9,9 @@ import {
     resolveVoidEmberTier,
 } from './void-ember-presets.js';
 import { StellarConductor } from './composition/stellar-conductor.js';
+import { VoidEmberWebGL2Renderer } from './void-ember-webgl2.js';
+import { createVoidEmberUniformData } from './void-ember-uniforms.js';
+import { getVoidEmberAnchor } from './void-ember-composition.js';
 import { createStellarDebugOverlay } from './composition/stellar-debug-overlay.js';
 import commonWGSL from './wgsl/void-ember-common.wgsl?raw';
 import environmentWGSL from './wgsl/environment.wgsl?raw';
@@ -43,21 +46,6 @@ const BYTES_PER_FLOAT = 4;
 const UNIFORM_BYTES = UNIFORM_FLOATS * BYTES_PER_FLOAT;
 const BYTES_PER_FLOW_CELL = 16;
 const BYTES_PER_PARTICLE = 32;
-
-const UNIFORM = Object.freeze({
-    resolution: 0,
-    sim: 4,
-    ember: 8,
-    reaction: 12,
-    quality: 16,
-    post: 20,
-    colorA: 24,
-    colorB: 28,
-    misc: 32,
-    fx: 36,
-    star0: 40, // temperature, agitation, coronaEnergy, breath
-    star1: 44, // novaFlash, cmePulse, cameraPush, reserved
-});
 
 // Color temperature stops for slow evolution cycle
 // Each: [core_r, core_g, core_b, outer_r, outer_g, outer_b]
@@ -149,6 +137,7 @@ export default class VoidEmberTheme extends BaseTheme {
         this.resourceProfile = 'heavy-gpu';
         this.canvas = null;
         this.ctx2d = null;
+        this.webgl2 = null;
         this.renderBackend = 'none';
         this.webgpu = createEmptyWebGPUState();
         this.eventUnsubscribers = [];
@@ -317,7 +306,8 @@ export default class VoidEmberTheme extends BaseTheme {
 
         if (!hasWebGPU) {
             this.replaceCanvas(container);
-            this.init2DFallback();
+            this.resizeCanvas();
+            this.initCompatibleFallback(container);
         }
 
         this.lastFrameAt = performance.now();
@@ -335,7 +325,8 @@ export default class VoidEmberTheme extends BaseTheme {
     }
 
     async initWebGPU(buildVersion) {
-        if (!this.canvas || typeof navigator === 'undefined' || !navigator.gpu) {
+        if (readFlag('forceWebGL', false)
+            || !this.canvas || typeof navigator === 'undefined' || !navigator.gpu) {
             return false;
         }
 
@@ -442,7 +433,7 @@ export default class VoidEmberTheme extends BaseTheme {
                 releaseDevice();
                 return false;
             }
-            console.warn('[VoidEmber] WebGPU init failed, switching to 2D fallback:', error);
+            console.warn('[VoidEmber] WebGPU init failed, switching to compatible renderer:', error);
             if (!published) releaseDevice(); // teardown only sees a published device
             this.teardownGPUResources();
             return false;
@@ -1165,6 +1156,31 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         };
     }
 
+    initCompatibleFallback(container) {
+        try {
+            this.webgl2 = VoidEmberWebGL2Renderer.create(this.canvas);
+            if (this.webgl2) {
+                this.renderBackend = 'webgl2';
+                const renderer = this.webgl2;
+                this.setupRendererResilience({ domElement: this.canvas }, {
+                    onContextLost: () => {
+                        if (this.webgl2 === renderer) renderer.retireContextLostResources();
+                    },
+                    onContextRestored: () => {
+                        if (this.webgl2 === renderer) this.scheduleRebuild('webgl2-context-restored');
+                    },
+                });
+                return;
+            }
+        } catch (error) {
+            console.warn('[VoidEmber] WebGL2 unavailable, using Canvas fallback:', error);
+        }
+        // A failed shader build can already own the GL canvas context.
+        this.replaceCanvas(container);
+        this.resizeCanvas();
+        this.init2DFallback();
+    }
+
     init2DFallback() {
         if (!this.canvas) {
             return;
@@ -1194,7 +1210,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
     }
 
     handleWebGPUDeviceLost(info) {
-        console.warn('[VoidEmber] WebGPU device lost, falling back to 2D:', info);
+        console.warn('[VoidEmber] WebGPU device lost, switching to compatible renderer:', info);
         const container = this.getOrCreateThemeContainer();
         if (!container) {
             return;
@@ -1204,7 +1220,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         this.teardownGPUResources();
         this.replaceCanvas(container);
         this.resizeCanvas();
-        this.init2DFallback();
+        this.initCompatibleFallback(container);
         this.startAnimation();
     }
 
@@ -1234,6 +1250,9 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
 
     teardownRuntime() {
         this.ctx2d = null;
+        if (this.webgl2) this.removeRendererResilience();
+        this.webgl2?.dispose();
+        this.webgl2 = null;
         if (this.renderBackend === 'webgpu') {
             this.teardownGPUResources();
         } else {
@@ -1355,18 +1374,8 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
     }
 
     getEmberAnchor() {
-        const t = this.runtime.time;
-
-        // Lissajous-style orbit with irrational frequency ratios for organic, non-repeating drift
-        const x1 = Math.sin(t * 0.067) * 0.38;
-        const x2 = Math.sin(t * 0.031 + 1.7) * 0.12;
-        const y1 = Math.sin(t * 0.053 + 0.8) * 0.38;
-        const y2 = Math.cos(t * 0.041 + 2.3) * 0.12;
-
-        return {
-            x: clamp(0.50 + x1 + x2, 0.05, 0.95),
-            y: clamp(0.50 + y1 + y2, 0.05, 0.95),
-        };
+        const aspect = this.canvas ? this.canvas.width / Math.max(this.canvas.height, 1) : 1;
+        return getVoidEmberAnchor(this.runtime.time, aspect);
     }
 
     getEmberColors() {
@@ -1413,7 +1422,8 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             rect?.height || this.canvas.clientHeight || window.innerHeight || 1,
         );
         const ratio = clamp(this.getEffectivePixelRatio(2) * this.qualityPreset.renderScale, 0.45, 2);
-        const maxTextureDimension = this.webgpu.device?.limits?.maxTextureDimension2D || 16384;
+        const maxTextureDimension = this.webgpu.device?.limits?.maxTextureDimension2D
+            || this.webgl2?.maxTextureDimension || 16384;
         const width = Math.max(1, Math.min(maxTextureDimension, Math.ceil(displayWidth * ratio)));
         const height = Math.max(1, Math.min(maxTextureDimension, Math.ceil(displayHeight * ratio)));
 
@@ -1437,6 +1447,8 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
                 alphaMode: 'premultiplied',
             });
             this.createOrResizeResources();
+        } else if (this.renderBackend === 'webgl2') {
+            this.webgl2?.resize();
         }
     }
 
@@ -1470,6 +1482,8 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         const frameStartedAt = performance.now();
         if (this.renderBackend === 'webgpu') {
             this.renderWebGPU();
+        } else if (this.renderBackend === 'webgl2') {
+            this.webgl2?.render(this.createUniformData());
         } else if (this.renderBackend === 'canvas2d') {
             this.renderFallback2D();
         }
@@ -1526,83 +1540,26 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         this.runtime.intensityTarget = lerp(this.runtime.intensityTarget, 0, delta * 0.12);
     }
 
+    createUniformData() {
+        return createVoidEmberUniformData({
+            canvas: this.canvas,
+            runtime: this.runtime,
+            frameCounter: this.frameCounter,
+            qualityPreset: this.qualityPreset,
+            currentTier: this.currentTier,
+            anchor: this.getEmberAnchor(),
+            colors: this.getEmberColors(),
+            conductor: this.stellarConductor,
+        });
+    }
+
     updateUniformBuffer() {
         const { device, uniformBuffer } = this.webgpu;
         if (!device || !uniformBuffer || !this.canvas) {
             return;
         }
 
-        const floats = new Float32Array(UNIFORM_FLOATS);
-        const invWidth = 1 / Math.max(this.canvas.width, 1);
-        const invHeight = 1 / Math.max(this.canvas.height, 1);
-        const anchor = this.getEmberAnchor();
-        const aspect = this.canvas.width / Math.max(this.canvas.height, 1);
-
-        floats[UNIFORM.resolution + 0] = this.canvas.width;
-        floats[UNIFORM.resolution + 1] = this.canvas.height;
-        floats[UNIFORM.resolution + 2] = invWidth;
-        floats[UNIFORM.resolution + 3] = invHeight;
-
-        floats[UNIFORM.sim + 0] = this.runtime.time;
-        floats[UNIFORM.sim + 1] = this.runtime.delta;
-        floats[UNIFORM.sim + 2] = aspect;
-        floats[UNIFORM.sim + 3] = this.frameCounter;
-
-        floats[UNIFORM.ember + 0] = anchor.x;
-        floats[UNIFORM.ember + 1] = anchor.y;
-        floats[UNIFORM.ember + 2] = this.runtime.pulse;
-        floats[UNIFORM.ember + 3] = this.runtime.collapse;
-
-        floats[UNIFORM.reaction + 0] = this.runtime.eventEnergy;
-        floats[UNIFORM.reaction + 1] = this.runtime.comboEnergy;
-        floats[UNIFORM.reaction + 2] = this.runtime.turbulence;
-        floats[UNIFORM.reaction + 3] = this.runtime.lineEnergy;
-
-        floats[UNIFORM.quality + 0] = this.qualityPreset.flowGridWidth;
-        floats[UNIFORM.quality + 1] = this.qualityPreset.flowGridHeight;
-        floats[UNIFORM.quality + 2] = this.qualityPreset.raySteps;
-        floats[UNIFORM.quality + 3] = this.qualityPreset.particleCount;
-
-        floats[UNIFORM.post + 0] = this.qualityPreset.bloomStrength;
-        floats[UNIFORM.post + 1] = this.qualityPreset.bloomThreshold;
-        floats[UNIFORM.post + 2] = this.qualityPreset.anamorphicStrength;
-        floats[UNIFORM.post + 3] = this.currentTier === 'high' || this.currentTier === 'ultra'
-            ? this.qualityPreset.temporalMix
-            : 0;
-
-        const emberColors = this.getEmberColors();
-        floats[UNIFORM.colorA + 0] = emberColors.core[0];
-        floats[UNIFORM.colorA + 1] = emberColors.core[1];
-        floats[UNIFORM.colorA + 2] = emberColors.core[2];
-        floats[UNIFORM.colorA + 3] = this.qualityPreset.exposure;
-
-        floats[UNIFORM.colorB + 0] = emberColors.outer[0];
-        floats[UNIFORM.colorB + 1] = emberColors.outer[1];
-        floats[UNIFORM.colorB + 2] = emberColors.outer[2];
-        floats[UNIFORM.colorB + 3] = 1;
-
-        floats[UNIFORM.misc + 0] = this.qualityPreset.vignetteStrength;
-        floats[UNIFORM.misc + 1] = this.qualityPreset.noiseStrength;
-        floats[UNIFORM.misc + 2] = this.qualityPreset.historyClamp;
-        floats[UNIFORM.misc + 3] = this.qualityPreset.sharpness ?? 0.12;
-
-        // Pack reactive gameplay channels into the fx slot
-        floats[UNIFORM.fx + 0] = this.runtime.shockwave;
-        floats[UNIFORM.fx + 1] = this.runtime.flare;
-        floats[UNIFORM.fx + 2] = this.runtime.hardDropFlash;
-        floats[UNIFORM.fx + 3] = this.runtime.intensity;
-
-        // StellarConductor life-state — drives the hero star (scene.wgsl)
-        const conductor = this.stellarConductor;
-        floats[UNIFORM.star0 + 0] = conductor.temperature;
-        floats[UNIFORM.star0 + 1] = conductor.agitation;
-        floats[UNIFORM.star0 + 2] = conductor.coronaEnergy;
-        floats[UNIFORM.star0 + 3] = conductor.breath;
-        floats[UNIFORM.star1 + 0] = conductor.novaFlash;
-        floats[UNIFORM.star1 + 1] = conductor.cmePulse;
-        floats[UNIFORM.star1 + 2] = conductor.cameraPush;
-        floats[UNIFORM.star1 + 3] = 0;
-
+        const floats = this.createUniformData();
         device.queue.writeBuffer(uniformBuffer, 0, floats);
     }
 

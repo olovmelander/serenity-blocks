@@ -456,6 +456,10 @@ function cubicDerivative(path, t, target, tempA = new THREE.Vector3(), tempB = n
 }
 
 export class OceanRareFaunaSystem {
+    get usesNodeMaterials() {
+        return this._usesNodeMaterials ?? this.isWebGPU === true;
+    }
+
     constructor({
         scene = null,
         camera = null,
@@ -466,7 +470,7 @@ export class OceanRareFaunaSystem {
         getFishSystem = () => null,
         getCamera = () => null,
         getGameplayEffects = () => null,
-        isWebGPU = false,
+        isWebGPU = false, usesNodeMaterials = isWebGPU,
         rng = Math.random,
     } = {}) {
         this.scene = scene;
@@ -479,6 +483,7 @@ export class OceanRareFaunaSystem {
         this.getCamera = getCamera;
         this.getGameplayEffects = getGameplayEffects;
         this.isWebGPU = isWebGPU;
+        this._usesNodeMaterials = usesNodeMaterials;
         this.rng = rng;
         this.settings = normalizeSettings(preset?.rareFauna);
         this.disposed = false;
@@ -644,7 +649,7 @@ export class OceanRareFaunaSystem {
 
                 const hasVertexColors = !!(child.geometry?.getAttribute?.('color'))
                     || mat.vertexColors === true;
-                const MaterialClass = this.isWebGPU ? MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
+                const MaterialClass = this.usesNodeMaterials ? MeshStandardNodeMaterial : THREE.MeshStandardMaterial;
                 const nodeMat = new MaterialClass({
                     color: mat.color || new THREE.Color(0xffffff),
                     map: mat.map ?? null,
@@ -663,8 +668,8 @@ export class OceanRareFaunaSystem {
                     toneMapped: true,
                 });
 
-                const uTime = this.isWebGPU ? uniform(0) : null;
-                if (this.isWebGPU) {
+                const uTime = this.usesNodeMaterials ? uniform(0) : null;
+                if (this.usesNodeMaterials) {
                     const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.18);
 
                     // Rim light for that Abzu / Subnautica depth look

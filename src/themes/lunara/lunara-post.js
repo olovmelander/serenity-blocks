@@ -108,7 +108,8 @@ export class LunaraPost {
         this.scene = scene;
         this.camera = camera;
         this.isWebGPU = renderer?.backend?.isWebGPUBackend === true;
-        this.useMRT = params.useMRT === true;
+        this.usesNodeMaterials = renderer?.isWebGPURenderer === true;
+        this.useMRT = this.isWebGPU && params.useMRT === true;
         this.useDualBloom = params.dualBloom === true;
         this.resolutionScale = params.resolutionScale ?? 1.0;
         this.bloomDownsample = params.bloomDownsample ?? 0.85;
@@ -122,7 +123,7 @@ export class LunaraPost {
         this.bloomPass = null;
         this.gradePass = null;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.setupWebGPU(params);
         } else {
             this.setupWebGL(params);

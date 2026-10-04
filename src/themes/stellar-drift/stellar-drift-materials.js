@@ -2,8 +2,8 @@
  * Stellar Drift - Material Factories (Phase 3)
  *
  * Dual-path strategy:
- * - WebGPU: Node materials (TSL) for MRT-ready rendering.
- * - WebGL: Shader/standard material fallbacks for parity and resilience.
+ * - Node renderer (WebGPU or WebGL2 backend): the same TSL materials.
+ * - Classic WebGLRenderer: legacy shader/standard material fallbacks.
  */
 
 import * as THREE from 'three';
@@ -41,6 +41,10 @@ import {
     vec3,
     vertexIndex,
 } from 'three/tsl';
+
+function usesNodeMaterials(params) {
+    return params.usesNodeMaterials ?? params.isWebGPU === true;
+}
 
 const nebulaNoiseGLSL = `
 float hash12(vec2 p) {
@@ -554,8 +558,8 @@ function createStellarStarfieldShaderMaterial({ pixelRatio = 1, starTexture = nu
 }
 
 export function createStellarStarfieldMaterial(params = {}) {
-    const isWebGPU = params.isWebGPU === true;
-    if (isWebGPU) {
+    const useNodes = usesNodeMaterials(params);
+    if (useNodes) {
         return createStellarStarfieldNodeMaterial();
     }
 
@@ -783,9 +787,9 @@ function createStellarPlanetShaderMaterial(planetTexture) {
 }
 
 export function createStellarPlanetMaterial(params = {}) {
-    const isWebGPU = params.isWebGPU === true;
+    const useNodes = usesNodeMaterials(params);
     const planetTexture = params.planetTexture || null;
-    if (isWebGPU) {
+    if (useNodes) {
         return createStellarPlanetNodeMaterial(planetTexture);
     }
     return createStellarPlanetShaderMaterial(planetTexture);
@@ -938,7 +942,7 @@ function createStellarPlanetRingFallbackMaterial(params = {}) {
 }
 
 export function createStellarPlanetRingMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStellarPlanetRingNodeMaterial(params);
     }
     return createStellarPlanetRingFallbackMaterial(params);
@@ -987,8 +991,8 @@ function createStellarGlowPlaneFallbackMaterial({ glowTexture, color, opacity })
 }
 
 export function createStellarGlowPlaneMaterial(params = {}) {
-    const isWebGPU = params.isWebGPU === true;
-    if (isWebGPU) {
+    const useNodes = usesNodeMaterials(params);
+    if (useNodes) {
         return createStellarGlowPlaneNodeMaterial({
             glowTexture: params.glowTexture,
             color: params.color,
@@ -1046,7 +1050,7 @@ function createStellarForegroundVeilFallbackMaterial({ veilTexture, color, opaci
 }
 
 export function createStellarForegroundVeilMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStellarForegroundVeilNodeMaterial({
             veilTexture: params.veilTexture,
             color: params.color,
@@ -1203,7 +1207,7 @@ function createStellarBloodMoonNebulaShaderMaterial(params = {}) {
 }
 
 export function createStellarBloodMoonNebulaMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStellarBloodMoonNebulaNodeMaterial(params);
     }
 
@@ -1488,7 +1492,7 @@ function createStellarNebulaShaderMaterial(params = {}) {
 }
 
 export function createStellarNebulaMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStellarNebulaNodeMaterial(params);
     }
 
@@ -1566,11 +1570,11 @@ function createStellarDustRingFallbackMaterial({ size, opacity }) {
 }
 
 export function createStellarDustRingMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStellarDustRingNodeMaterial({
             size: params.size ?? 2,
             opacity: params.opacity ?? 0.6,
-            dustCompute: params.dustCompute ?? null,
+            dustCompute: params.isWebGPU === true ? params.dustCompute ?? null : null,
         });
     }
 
@@ -1670,11 +1674,11 @@ function createStellarAmbientParticlesFallbackMaterial({ size, opacity }) {
 }
 
 export function createStellarAmbientParticlesMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStellarAmbientParticlesNodeMaterial({
             size: params.size ?? 2,
             opacity: params.opacity ?? 0.6,
-            ambientCompute: params.ambientCompute ?? null,
+            ambientCompute: params.isWebGPU === true ? params.ambientCompute ?? null : null,
         });
     }
 
@@ -1747,11 +1751,14 @@ function createStellarNebulaBurstNodeMaterial({ burstCompute }) {
     );
 }
 
-function createStellarNebulaBurstFallbackMaterial() {
-    const material = new THREE.PointsMaterial({
-        size: 220,
+function createStellarNebulaBurstCpuMaterial(params = {}) {
+    const Material = usesNodeMaterials(params) ? PointsNodeMaterial : THREE.PointsMaterial;
+    const material = new Material({
+        color: params.color ?? 0xffffff,
+        map: params.map ?? null,
+        size: params.size ?? 220,
         transparent: true,
-        opacity: 1.0,
+        opacity: params.opacity ?? 1.0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         sizeAttenuation: true,
@@ -1765,7 +1772,7 @@ function createStellarNebulaBurstFallbackMaterial() {
 }
 
 export function createStellarNebulaBurstMaterial(params = {}) {
-    const useCompute = params.isWebGPU === true
+    const useCompute = usesNodeMaterials(params) && params.isWebGPU === true
         && params.burstCompute?.getPositionBuffer
         && params.burstCompute?.getLifeBuffer
         && params.burstCompute?.getColorBuffer
@@ -1777,7 +1784,7 @@ export function createStellarNebulaBurstMaterial(params = {}) {
         });
     }
 
-    return createStellarNebulaBurstFallbackMaterial();
+    return createStellarNebulaBurstCpuMaterial(params);
 }
 
 function createStellarShockwaveRingNodeMaterial({ color, opacity }) {
@@ -1819,7 +1826,7 @@ function createStellarShockwaveRingFallbackMaterial({ color, opacity }) {
 }
 
 export function createStellarShockwaveRingMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStellarShockwaveRingNodeMaterial({
             color: params.color ?? 0xffaa66,
             opacity: params.opacity ?? 0.6,
@@ -1869,7 +1876,7 @@ function createStellarShootingStarFallbackMaterial({ color, opacity }) {
 }
 
 export function createStellarShootingStarMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStellarShootingStarNodeMaterial({
             color: params.color ?? 0xffffff,
             opacity: params.opacity ?? 1.0,
@@ -1958,7 +1965,7 @@ function createStellarCelestialBodyFallbackMaterial(params = {}) {
 }
 
 export function createStellarCelestialBodyMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStellarCelestialBodyNodeMaterial(params);
     }
     return createStellarCelestialBodyFallbackMaterial(params);
@@ -2000,7 +2007,7 @@ function createStellarMeteorFallbackMaterial() {
 }
 
 export function createStellarMeteorMaterial(params = {}) {
-    if (params.isWebGPU === true) {
+    if (usesNodeMaterials(params)) {
         return createStellarMeteorNodeMaterial();
     }
 

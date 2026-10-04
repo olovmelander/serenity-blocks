@@ -14,24 +14,24 @@ export class IceTemplePost {
         return new IceTemplePost(renderer, scene, camera, params, WEBGPU, TSL, BLOOM);
     }
 
-    constructor(renderer, scene, camera, params, WEBGPU, TSL, BLOOM) {
+    constructor(renderer, scene, camera, params, gpuModule, tslModule, bloomModule) {
         const {
             pass,
             mrt,
             output,
             emissive,
             float,
-        } = TSL;
-        const { bloom } = BLOOM;
+        } = tslModule;
+        const { bloom } = bloomModule;
 
         this.renderer = renderer;
-        this.useMRT = Boolean(params.useMRT);
+        this.useMRT = renderer?.backend?.isWebGPUBackend === true && Boolean(params.useMRT);
         this.postScale = params.postScale ?? 1.0;
         this.scenePass = pass(scene, camera);
         if (this.useMRT) {
             this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
-        this.postProcessing = new WEBGPU.RenderPipeline(renderer);
+        this.postProcessing = new gpuModule.RenderPipeline(renderer);
         this.size = { width: 0, height: 0 };
 
         const sceneColor = this.scenePass.getTextureNode('output');

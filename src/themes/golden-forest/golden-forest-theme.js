@@ -361,6 +361,8 @@ export default class GoldenForestTheme extends BaseTheme {
         this.fixedDeltaSeconds = this.flags.fixedDtMs ? this.flags.fixedDtMs / 1000 : null;
         this.fixedElapsedTime = 0;
         this.isWebGPU = false;
+        this.isWebGL = false;
+        this.usesNodeMaterials = false;
         this.capabilities = {};
         this.baselineFrames = [];
         this.baselineRenderStats = [];
@@ -635,7 +637,7 @@ export default class GoldenForestTheme extends BaseTheme {
 
         this.flags.usePost = supportsPost && postEnabledByPreset && !this.flags.noPost;
         // Keep MRT opt-in while WebGPU migration is still stabilizing.
-        this.flags.useMRT = this.flags.usePost
+        this.flags.useMRT = this.isWebGPU && this.flags.usePost
             && supportsMRT
             && !this.flags.noMRT
             && this.flags.forceMRT === true;
@@ -667,14 +669,14 @@ export default class GoldenForestTheme extends BaseTheme {
         }
 
         const gl = this.renderer?.getContext?.();
-        const isWebGL2 = typeof WebGL2RenderingContext !== 'undefined'
-            && gl instanceof WebGL2RenderingContext;
+        const isWebGL2 = this.renderer?.backend?.isWebGLBackend === true
+            || (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext);
         const maxColorAttachments = gl?.MAX_COLOR_ATTACHMENTS
             ? gl.getParameter(gl.MAX_COLOR_ATTACHMENTS)
             : 1;
-        const supportsMRT = isWebGL2 && Number.isFinite(maxColorAttachments) && maxColorAttachments > 1;
-        const supportsPost = this.renderer?.isWebGLRenderer === true;
-        const supportsCompute = this.renderer?.isWebGLRenderer === true; // Bird flocking compute uses GPUComputationRenderer on WebGL.
+        const supportsMRT = false;
+        const supportsPost = this.usesNodeMaterials || this.renderer?.isWebGLRenderer === true;
+        const supportsCompute = this.renderer?.isWebGLRenderer === true; // Dormant classic bird compute path.
 
         this.capabilities = {
             isWebGPU: false,
@@ -727,58 +729,44 @@ export default class GoldenForestTheme extends BaseTheme {
         const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
             && this.isActive
             && !this.cleanupComplete;
-        let webgpuRenderer = null;
-        let renderer = null;
-        const shouldTryWebGPU = !this.flags.forceWebGL;
-
-        if (shouldTryWebGPU) {
-            try {
-                const isWindows = typeof navigator !== 'undefined'
-                    && /win/i.test(navigator.userAgent || '');
-                const webgpuOptions = {
-                    alpha: true,
-                    antialias: this.getAntialiasEnabled(),
-                    preserveDrawingBuffer: this.flags.baseline === true,
-                };
-                if (!isWindows) {
-                    webgpuOptions.powerPreference = 'high-performance';
-                }
-                webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
-                    ...webgpuOptions,
-                });
-                await this.initializeRendererCandidate(webgpuRenderer, {
-                    label: 'Golden Forest WebGPU renderer init',
-                    ownerGeneration,
-                });
-            } catch (error) {
-                if (!ownsLifecycle()) return false;
-                console.warn('[GoldenForest] WebGPU init failed, falling back to WebGL:', error);
-                if (webgpuRenderer) {
-                    webgpuRenderer.dispose();
-                    webgpuRenderer = null;
-                }
-            }
+        const forceWebGL = this.flags.forceWebGL
+            || typeof navigator === 'undefined' || !navigator.gpu;
+        const isWindows = typeof navigator !== 'undefined' && /win/i.test(navigator.userAgent || '');
+        const rendererOptions = {
+            alpha: true,
+            antialias: this.getAntialiasEnabled(),
+            preserveDrawingBuffer: this.flags.baseline === true,
+        };
+        if (!isWindows) rendererOptions.powerPreference = 'high-performance';
+        const createRenderer = (webglOnly) => new THREE_WEBGPU.WebGPURenderer({
+            ...rendererOptions, forceWebGL: webglOnly,
+        });
+        let renderer = createRenderer(forceWebGL);
+        try {
+            await this.initializeRendererCandidate(renderer, {
+                label: `Golden Forest ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            });
+        } catch (error) {
+            if (!ownsLifecycle()) return false;
+            if (forceWebGL) throw error;
+            console.warn('[GoldenForest] WebGPU init failed, retrying the node WebGL2 backend:', error);
+            renderer = createRenderer(true);
+            await this.initializeRendererCandidate(renderer, {
+                label: 'Golden Forest WebGL2 renderer init',
+                ownerGeneration,
+            });
         }
 
-        const hasWebGPUBackend = webgpuRenderer?.backend?.isWebGPUBackend === true;
-        const compatibilityGuardEnabled = this.hasWebGLOnlyDependencies();
-
-        if (hasWebGPUBackend && compatibilityGuardEnabled) {
-            console.warn(
-                '[GoldenForest] WebGPU available, but Phase 1 compatibility guard keeps WebGL path:',
-                this.getWebGPUBlockers(),
-            );
-            if (this.flags.forceWebGPU) {
-                console.warn(
-                    '[GoldenForest] ?goldenForestForceWebGPU=1 was requested, '
-                    + 'but is blocked until remaining WebGPU material/compute migrations are complete.',
-                );
-            }
+        if (!ownsLifecycle()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return false;
         }
-
-        if (hasWebGPUBackend && !compatibilityGuardEnabled) {
-            renderer = webgpuRenderer;
-            this.isWebGPU = true;
+        this.renderer = renderer;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        this.isWebGL = !this.isWebGPU;
+        if (this.isWebGPU) {
             renderer.onDeviceLost = (info) => {
                 if (!ownsLifecycle() || this.renderer !== renderer) return;
                 // Terminal for this renderer: halt the theme loop so it stops
@@ -789,27 +777,7 @@ export default class GoldenForestTheme extends BaseTheme {
                     this.animationFrame = null;
                 }
             };
-        } else {
-            if (webgpuRenderer) {
-                webgpuRenderer.dispose();
-                webgpuRenderer = null;
-            }
-
-            if (!ownsLifecycle()) return false;
-            renderer = new THREE.WebGLRenderer({
-                alpha: true,
-                antialias: this.getAntialiasEnabled(),
-                powerPreference: 'high-performance',
-                preserveDrawingBuffer: this.flags.baseline === true,
-            });
-            this.isWebGPU = false;
         }
-
-        if (!ownsLifecycle()) {
-            this.disposeRenderer(renderer, { nullInstance: false });
-            return false;
-        }
-        this.renderer = renderer;
         // PCFShadowMap (not PCFSoft): on r185's WebGPURenderer PCFShadowFilter is
         // already soft — 5 Vogel-disk taps rotated per-pixel by interleaved
         // gradient noise, each a hardware-compared 2x2 tap, disk scaled by
@@ -822,6 +790,8 @@ export default class GoldenForestTheme extends BaseTheme {
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         container.appendChild(this.renderer.domElement);
         this.registerContainer(container);
+        this.removeRendererResilience();
+        this.setupRendererResilience(this.renderer);
 
         this.probeCapabilities();
         this.logPhaseZeroState();
@@ -892,7 +862,7 @@ export default class GoldenForestTheme extends BaseTheme {
 
         const rendererReady = await this.initRenderer(container, ownerGeneration);
         if (!rendererReady) return;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.uniforms.mistIntensity.value = Math.min(this.uniforms.mistIntensity.value, 0.38);
             this.targetMistIntensity = Math.min(this.targetMistIntensity, 0.42);
         }
@@ -927,7 +897,7 @@ export default class GoldenForestTheme extends BaseTheme {
         this.createShoreRocks(); // Warm-colored silhouette boulders along shoreline
         this.createShoreReeds(); // Dried grass/reeds at water's edge
         this.createLakeFramingTrees(); // Silhouette trees framing lake edges
-        if (!this.isWebGPU) {
+        if (!this.usesNodeMaterials) {
             this.createGrass(); // Golden sunset grass
         } else if (this.flags.debug || this.flags.baseline) {
             console.log('[GoldenForest] Skipping near-shore grass on WebGPU to avoid lake occlusion artifacts.');
@@ -935,7 +905,7 @@ export default class GoldenForestTheme extends BaseTheme {
         // this.createGlowingMushrooms(); // Disabled - cleaner Firewatch look
         this.createMistLayers(); // Atmospheric golden fog
         this.createStylizedClouds(); // Flat cloud layers near horizon
-        if (!this.isWebGPU) {
+        if (!this.usesNodeMaterials) {
             this.createSilhouetteGrass(); // Dense foreground grass framing
         } else if (this.flags.debug || this.flags.baseline) {
             console.log('[GoldenForest] Skipping silhouette foreground grass on WebGPU to prevent lake occlusion artifacts.');
@@ -956,7 +926,7 @@ export default class GoldenForestTheme extends BaseTheme {
         // Tag the finished environment so the WebGPU lake reflector mirrors it.
         this.applyReflectionLayer();
 
-        const shouldCompileAsync = this.isWebGPU
+        const shouldCompileAsync = this.usesNodeMaterials
             && this.renderer?.compileAsync
             && !this.flags.useMRT
             && !this.webgpuWater?.renderTarget;
@@ -966,7 +936,7 @@ export default class GoldenForestTheme extends BaseTheme {
             } catch (error) {
                 console.warn('[GoldenForest] WebGPU compileAsync failed:', error);
             }
-        } else if (this.isWebGPU && this.renderer?.compileAsync && this.webgpuWater?.renderTarget) {
+        } else if (this.usesNodeMaterials && this.renderer?.compileAsync && this.webgpuWater?.renderTarget) {
             if (this.flags.debug || this.flags.baseline) {
                 console.log('[GoldenForest] Skipping compileAsync for WebGPU reflection render-target path.');
             }
@@ -1000,7 +970,7 @@ export default class GoldenForestTheme extends BaseTheme {
     async initBirds() {
         if (!this.mainGroup || !this.renderer || !this.scene) return;
 
-        if (!this.flags.useCompute) {
+        if (this.flags.noCompute || (this.isWebGPU && !this.flags.useCompute)) {
             console.warn('[GoldenForest] Bird compute disabled by Phase 1 kill switch (?goldenForestNoCompute=1).');
             return;
         }
@@ -1028,8 +998,9 @@ export default class GoldenForestTheme extends BaseTheme {
         if (this.birds.mesh) {
             this.mainGroup.add(this.birds.mesh);
             if (this.flags.debug || this.flags.baseline) {
+                const mode = this.isWebGPU ? 'native compute' : 'attribute flight';
                 console.log(
-                    `[GoldenForest] Birds initialized (${this.isWebGPU ? 'WebGPU' : 'WebGL'} compute): ${this.birds.BIRDS}`,
+                    `[GoldenForest] Birds initialized (${mode}): ${this.birds.BIRDS}`,
                 );
             }
         }
@@ -1078,7 +1049,7 @@ export default class GoldenForestTheme extends BaseTheme {
             .normalize();
 
         this.skyNodeUniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const nodeSky = createSkyNodeMaterial({
                 time: this.uniforms.time.value,
                 topColor: COLORS.skyTop.clone(),
@@ -1198,7 +1169,7 @@ export default class GoldenForestTheme extends BaseTheme {
         let sunMaterial = null;
         this.sunNodeUniforms = null;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const nodeSun = createSunNodeMaterial({
                 time: this.uniforms.time.value,
                 intensity: 1.25,
@@ -1329,7 +1300,7 @@ export default class GoldenForestTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(1, 1);
             let material;
             let nodeUniforms = null;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const nodeFlare = createLensFlareNodeMaterial({
                     time: this.uniforms.time.value,
                     opacity: config.opacity,
@@ -1388,7 +1359,7 @@ export default class GoldenForestTheme extends BaseTheme {
         const dustCount = this.qualityPreset?.dustMoteCount ?? 150;
         if (dustCount <= 0) return;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.dustMoteNodes = [];
             const nodeDust = createDustMoteNodeMaterial({
                 time: this.uniforms.time.value,
@@ -1498,7 +1469,7 @@ export default class GoldenForestTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(config.width, config.height, 1, 1);
             const palette = COLORS.mountains.layers[Math.min(config.layerIndex, COLORS.mountains.layers.length - 1)];
             let material;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const nodeMountain = createMountainLayerNodeMaterial({
                     time: this.uniforms.time.value,
                     shadowColor: palette.shadow.clone(),
@@ -1781,7 +1752,7 @@ export default class GoldenForestTheme extends BaseTheme {
             },
         ];
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const nodePeakMaterial = createMountainPeakNodeMaterial({
                 time: this.uniforms.time.value,
                 shadowColor: new THREE.Color(0x2A1518),
@@ -2342,7 +2313,7 @@ export default class GoldenForestTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(config.width, config.height);
 
             let material = null;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const nodeHaze = createHazeNodeMaterial({
                     time: this.uniforms.time.value,
                     hazeColor: config.color.clone(),
@@ -2441,7 +2412,7 @@ export default class GoldenForestTheme extends BaseTheme {
         const geometry = new THREE.PlaneGeometry(300, 250, 64, 64);
         let material;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const groundNodeMaterial = createGroundNodeMaterial({
                 time: this.uniforms.time.value,
                 groundColor: COLORS.groundBase.clone(),
@@ -2541,7 +2512,7 @@ export default class GoldenForestTheme extends BaseTheme {
         );
 
         let grassMat;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const grassNodeMaterial = createGrassNodeMaterial({
                 time: this.uniforms.time.value,
                 windStrength: 0.18,
@@ -2754,7 +2725,7 @@ export default class GoldenForestTheme extends BaseTheme {
         );
 
         let grassMat;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const silhouetteGrassNodeMaterial = createSilhouetteGrassNodeMaterial({
                 time: this.uniforms.time.value,
                 windStrength: 0.15,
@@ -3083,7 +3054,7 @@ export default class GoldenForestTheme extends BaseTheme {
     // ReflectorNode mirrors it. The water surface and the reflector plane are
     // excluded to avoid the mirror feeding back on itself.
     applyReflectionLayer() {
-        if (!this.isWebGPU || !this.waterReflection) return;
+        if (!this.usesNodeMaterials || !this.waterReflection) return;
         const excluded = new Set([this.lakeMesh, this.waterReflection.target]);
         this.scene.traverse((object) => {
             if (!object.isObject3D || excluded.has(object)) return;
@@ -3209,7 +3180,7 @@ export default class GoldenForestTheme extends BaseTheme {
         console.log('[GoldenForest] Creating Three.js Water lake with organic shoreline...');
         const lakeGeometry = this.createLakeGeometry();
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.createWebGPUWater(lakeGeometry);
             return;
         }
@@ -3285,7 +3256,7 @@ export default class GoldenForestTheme extends BaseTheme {
         foamGeometry.computeVertexNormals();
 
         let foamMaterial;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const nodeFoam = createShoreFoamNodeMaterial({
                 time: this.uniforms.time.value,
                 foamColor: new THREE.Color(0.95, 0.75, 0.45),
@@ -3512,7 +3483,7 @@ export default class GoldenForestTheme extends BaseTheme {
     }
 
     createRockMaterials(rockColors) {
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             return rockColors.map((tint) => new THREE.MeshStandardMaterial({
                 color: tint,
                 roughness: 0.92,
@@ -3567,7 +3538,7 @@ export default class GoldenForestTheme extends BaseTheme {
 
     createRockShadowCatcher() {
         if (this.rockShadowCatcher || !this.mainGroup) return;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             // Avoid a large transparent shadow plane in WebGPU; it produces faceted dark artifacts over the lake.
             return;
         }
@@ -3862,7 +3833,7 @@ export default class GoldenForestTheme extends BaseTheme {
         ];
         const reedNodeVariants = [];
         this.shoreReedNodeUniforms = [];
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             reedColors.forEach((reedColor) => {
                 const tipColor = reedColor.clone().offsetHSL(0, 0.05, 0.08);
                 const reedNodeMaterial = createShoreReedNodeMaterial({
@@ -3916,7 +3887,7 @@ export default class GoldenForestTheme extends BaseTheme {
         for (let c = 0; c < 3; c++) {
             if (reedCountPerColor[c] === 0) continue;
             let material;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 material = reedNodeVariants[c].material;
             } else {
                 material = new THREE.MeshBasicMaterial({
@@ -3979,7 +3950,7 @@ export default class GoldenForestTheme extends BaseTheme {
         const framingFoliageNodeMaterials = [];
         this.framingTreeFoliageNodeUniforms = [];
         this.framingTreeTrunkNodeUniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             treeColors.forEach((treeColor) => {
                 const foliageNodeMaterial = createFramingTreeFoliageNodeMaterial({
                     time: this.uniforms.time.value,
@@ -4063,7 +4034,7 @@ export default class GoldenForestTheme extends BaseTheme {
 
             // Trunk
             const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, config.height * 0.25, 6);
-            const trunkMat = this.isWebGPU
+            const trunkMat = this.usesNodeMaterials
                 ? this.framingTreeTrunkNodeMaterial
                 : new THREE.MeshBasicMaterial({
                     color: new THREE.Color(0x0A0402),
@@ -4080,7 +4051,7 @@ export default class GoldenForestTheme extends BaseTheme {
                 const layerY = config.height * (0.2 + i * 0.2);
 
                 const coneGeo = new THREE.ConeGeometry(layerRadius, layerHeight, 8);
-                const coneMat = this.isWebGPU
+                const coneMat = this.usesNodeMaterials
                     ? framingFoliageNodeMaterials[config.colorIdx].material
                     : new THREE.MeshBasicMaterial({
                         color: treeColors[config.colorIdx],
@@ -4432,7 +4403,7 @@ export default class GoldenForestTheme extends BaseTheme {
         this.foliageNodeUniforms = null;
         this.trunkNodeUniforms = null;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const foliageNodeMaterial = createInstancedFoliageNodeMaterial({
                 time: this.uniforms.time.value,
                 glowIntensity: this.uniforms.glowIntensity.value,
@@ -4719,7 +4690,7 @@ export default class GoldenForestTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(config.width, config.height);
 
             let material;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const nodeMist = createMistNodeMaterial({
                     time: this.uniforms.time.value,
                     density: config.density,
@@ -4807,7 +4778,7 @@ export default class GoldenForestTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(layer.size.x, layer.size.y, 1, 1);
 
             let material = null;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const nodeCloud = createCloudNodeMaterial({
                     time: this.uniforms.time.value,
                     cloudColor: layer.color.clone(),
@@ -4875,7 +4846,7 @@ export default class GoldenForestTheme extends BaseTheme {
 
         // Create volumetric god ray material using advanced shader
         this.godRayNodeUniforms = null;
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             const nodeGodRays = createGodRayNodeMaterial({
                 time: this.uniforms.time.value,
                 opacity: 0.35, // Stronger presence
@@ -4933,7 +4904,7 @@ export default class GoldenForestTheme extends BaseTheme {
         const fireflyCount = this.qualityPreset?.fireflyCount ?? 200;
         if (fireflyCount <= 0) return;
 
-        if (this.isWebGPU) {
+        if (this.usesNodeMaterials) {
             this.fireflyNodes = [];
             const nodeFirefly = createFireflyNodeMaterial({
                 time: this.uniforms.time.value,
@@ -5066,7 +5037,7 @@ export default class GoldenForestTheme extends BaseTheme {
 
             let material;
             let nodeUniforms = null;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const nodeSpirit = createSpiritNodeMaterial({
                     time: this.uniforms.time.value,
                     opacity: 0.25 + this.random() * 0.3,
@@ -5140,7 +5111,7 @@ export default class GoldenForestTheme extends BaseTheme {
 
             let material;
             let nodeUniforms = null;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const nodeAurora = createAuroraNodeMaterial({
                     time: this.uniforms.time.value,
                     intensity: this.uniforms.auroraIntensity.value,
@@ -5195,7 +5166,7 @@ export default class GoldenForestTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(width, height, 48, 2);
             let material;
             let nodeUniforms = null;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const nodeWind = createSpiritWindNodeMaterial({
                     time: this.uniforms.time.value,
                     opacity: 0.18 + this.random() * 0.12,
@@ -5381,7 +5352,7 @@ export default class GoldenForestTheme extends BaseTheme {
             const geometry = new THREE.PlaneGeometry(band.width, band.height);
 
             let material;
-            if (this.isWebGPU) {
+            if (this.usesNodeMaterials) {
                 const nodeBand = createHazeNodeMaterial({
                     time: this.uniforms.time.value,
                     hazeColor: band.color.clone(),
@@ -5509,7 +5480,7 @@ export default class GoldenForestTheme extends BaseTheme {
             const presetRadius = this.qualityPreset?.bloomRadius ?? 0.35;
             const filmGrain = this.qualityPreset?.enableFilmGrain !== false;
 
-            const postParams = this.isWebGPU
+            const postParams = this.usesNodeMaterials
                 ? {
                     useMRT: this.flags.useMRT,
                     useBloom: this.flags.useBloom,
@@ -5852,7 +5823,7 @@ export default class GoldenForestTheme extends BaseTheme {
         }
 
         // Update Water Waves
-        const waterTimeScale = this.isWebGPU ? 0.38 : 0.25;
+        const waterTimeScale = this.usesNodeMaterials ? 0.38 : 0.25;
         if (this.lakeMesh?.material?.uniforms?.time) {
             this.lakeMesh.material.uniforms.time.value += delta * waterTimeScale;
         }
@@ -6532,6 +6503,7 @@ export default class GoldenForestTheme extends BaseTheme {
 
     stop() {
         super.stop();
+        this.removeRendererResilience();
         this.waterNormalsLoadVersion += 1;
 
         this.eventUnsubscribers.forEach((unsub) => unsub?.());
@@ -6614,6 +6586,9 @@ export default class GoldenForestTheme extends BaseTheme {
         this.scene = null;
         this.camera = null;
         this.renderer = null;
+        this.isWebGPU = false;
+        this.isWebGL = false;
+        this.usesNodeMaterials = false;
         this.mainGroup = null;
         this.foliageInstancedMesh = null;
         this.trunkInstancedMesh = null;

@@ -89,15 +89,21 @@ export default class FluidSimulator {
         let gl = canvas.getContext('webgl2', params);
         const isWebGL2 = !!gl;
         if (!isWebGL2) gl = canvas.getContext('webgl', params) || canvas.getContext('experimental-webgl', params);
+        if (!gl) throw new Error('Fluid themes require a WebGL context.');
 
         let halfFloat;
         let supportLinearFiltering;
         if (isWebGL2) {
-            gl.getExtension('EXT_color_buffer_float');
-            supportLinearFiltering = gl.getExtension('OES_texture_float_linear');
+            // Some phone GPUs expose renderable FLOAT16 without FLOAT32.
+            const colorBufferFloat = gl.getExtension('EXT_color_buffer_float');
+            if (!colorBufferFloat) gl.getExtension('EXT_color_buffer_half_float');
+            // HALF_FLOAT linear filtering is core in WebGL2. The optional
+            // OES_texture_float_linear extension only controls FLOAT32 here.
+            supportLinearFiltering = true;
         } else {
             halfFloat = gl.getExtension('OES_texture_half_float');
             supportLinearFiltering = gl.getExtension('OES_texture_half_float_linear');
+            if (!halfFloat) throw new Error('Fluid themes require half-float textures.');
         }
 
         gl.clearColor(0.0, 0.0, 0.0, 1.0);
@@ -115,6 +121,9 @@ export default class FluidSimulator {
             formatRGBA = this.getSupportedFormat(gl, gl.RGBA, gl.RGBA, halfFloatTexType);
             formatRG = this.getSupportedFormat(gl, gl.RGBA, gl.RGBA, halfFloatTexType);
             formatR = this.getSupportedFormat(gl, gl.RGBA, gl.RGBA, halfFloatTexType);
+        }
+        if (!formatRGBA || !formatRG || !formatR) {
+            throw new Error('Fluid themes require renderable half-float textures.');
         }
 
         return {
@@ -161,6 +170,11 @@ export default class FluidSimulator {
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
 
         const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        // Format probes are temporary, including failed probes on mobile GPUs.
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.deleteFramebuffer(fbo);
+        gl.deleteTexture(texture);
         return status == gl.FRAMEBUFFER_COMPLETE;
     }
 
@@ -629,9 +643,13 @@ export default class FluidSimulator {
         if (this.velocity == null) this.velocity = this.createDoubleFBO(simRes.width, simRes.height, rg.internalFormat, rg.format, texType, filtering);
         else this.velocity = this.resizeDoubleFBO(this.velocity, simRes.width, simRes.height, rg.internalFormat, rg.format, texType, filtering);
 
-        this.divergence = this.createFBO(simRes.width, simRes.height, r.internalFormat, r.format, texType, gl.NEAREST);
-        this.curl = this.createFBO(simRes.width, simRes.height, r.internalFormat, r.format, texType, gl.NEAREST);
-        this.pressure = this.createDoubleFBO(simRes.width, simRes.height, r.internalFormat, r.format, texType, gl.NEAREST);
+        this.divergence = this.ensureFBO(this.divergence, simRes.width, simRes.height, r.internalFormat, r.format, texType, gl.NEAREST);
+        this.curl = this.ensureFBO(this.curl, simRes.width, simRes.height, r.internalFormat, r.format, texType, gl.NEAREST);
+        if (!this.pressure || this.pressure.width !== simRes.width || this.pressure.height !== simRes.height) {
+            this.deleteFBO(this.pressure?.read);
+            this.deleteFBO(this.pressure?.write);
+            this.pressure = this.createDoubleFBO(simRes.width, simRes.height, r.internalFormat, r.format, texType, gl.NEAREST);
+        }
 
         this.initBloomFramebuffers();
         this.initSunraysFramebuffers();
@@ -646,18 +664,20 @@ export default class FluidSimulator {
         const rgba = ext.formatRGBA;
         const filtering = ext.supportLinearFiltering ? gl.LINEAR : gl.NEAREST;
 
-        this.bloom = this.createFBO(res.width, res.height, rgba.internalFormat, rgba.format, texType, filtering);
+        this.bloom = this.ensureFBO(this.bloom, res.width, res.height, rgba.internalFormat, rgba.format, texType, filtering);
 
-        this.bloomFramebuffers.length = 0;
+        let count = 0;
         for (let i = 0; i < this.config.BLOOM_ITERATIONS; i++) {
             const width = res.width >> (i + 1);
             const height = res.height >> (i + 1);
 
             if (width < 2 || height < 2) break;
 
-            const fbo = this.createFBO(width, height, rgba.internalFormat, rgba.format, texType, filtering);
-            this.bloomFramebuffers.push(fbo);
+            this.bloomFramebuffers[i] = this.ensureFBO(this.bloomFramebuffers[i], width, height, rgba.internalFormat, rgba.format, texType, filtering);
+            count += 1;
         }
+        for (let i = count; i < this.bloomFramebuffers.length; i++) this.deleteFBO(this.bloomFramebuffers[i]);
+        this.bloomFramebuffers.length = count;
     }
 
     initSunraysFramebuffers() {
@@ -669,8 +689,23 @@ export default class FluidSimulator {
         const r = ext.formatR;
         const filtering = ext.supportLinearFiltering ? gl.LINEAR : gl.NEAREST;
 
-        this.sunrays = this.createFBO(res.width, res.height, r.internalFormat, r.format, texType, filtering);
-        this.sunraysTemp = this.createFBO(res.width, res.height, r.internalFormat, r.format, texType, filtering);
+        this.sunrays = this.ensureFBO(this.sunrays, res.width, res.height, r.internalFormat, r.format, texType, filtering);
+        this.sunraysTemp = this.ensureFBO(this.sunraysTemp, res.width, res.height, r.internalFormat, r.format, texType, filtering);
+    }
+
+    deleteFBO(target) {
+        if (!target) return;
+        if (target.texture) this.gl.deleteTexture(target.texture);
+        if (target.fbo) this.gl.deleteFramebuffer(target.fbo);
+        target.texture = null;
+        target.fbo = null;
+    }
+
+    ensureFBO(target, w, h, internalFormat, format, type, param) {
+        if (target && target.width === w && target.height === h) return target;
+        const replacement = this.createFBO(w, h, internalFormat, format, type, param);
+        this.deleteFBO(target);
+        return replacement;
     }
 
     createFBO(w, h, internalFormat, format, type, param) {
@@ -742,12 +777,14 @@ export default class FluidSimulator {
         this.programs.copy.bind();
         this.gl.uniform1i(this.programs.copy.uniforms.uTexture, target.attach(0));
         this.blit(newFBO);
+        this.deleteFBO(target);
         return newFBO;
     }
 
     resizeDoubleFBO(target, w, h, internalFormat, format, type, param) {
         if (target.width == w && target.height == h) return target;
         target.read = this.resizeFBO(target.read, w, h, internalFormat, format, type, param);
+        this.deleteFBO(target.write);
         target.write = this.createFBO(w, h, internalFormat, format, type, param);
         target.width = w;
         target.height = h;

@@ -26,6 +26,17 @@ const TAU = Math.PI * 2;
 const MAX_BURSTS_PER_TICK = 8;
 const WORLD_LIMIT = 180;
 
+// Keep the authored desktop position, but leave room for the lunar halo on phones.
+export function getMoonPositionForCamera(camera) {
+    camera.updateMatrixWorld();
+    const position = new THREE.Vector3(74, 94, -285);
+    const center = position.clone().project(camera);
+    const haloEdge = position.clone().add(new THREE.Vector3(31, 0, 0)).project(camera);
+    const maxCenterX = Math.max(0, 0.94 - (haloEdge.x - center.x));
+    if (center.x > maxCenterX) position.x *= maxCenterX / center.x;
+    return position;
+}
+
 const QUALITY_TIERS = Object.freeze({
     Minimal: {
         stars: 26,
@@ -1510,6 +1521,7 @@ export function create({
             activeCamera.near = 0.1;
             activeCamera.far = 2400;
             activeCamera.updateProjectionMatrix();
+            moonGroup.position.copy(getMoonPositionForCamera(activeCamera));
             cameraConfigured = true;
         },
         update(time, suppliedDt) {
@@ -1550,7 +1562,9 @@ export function create({
                 veil.visible = comboVeilEnabled && uComboPulse.value > 0.012;
             }
         },
-        resize() {},
+        resize() {
+            if (cameraConfigured) moonGroup.position.copy(getMoonPositionForCamera(camera));
+        },
         getDiagnostics() {
             let meshCount = 0;
             let visibleMeshCount = 0;

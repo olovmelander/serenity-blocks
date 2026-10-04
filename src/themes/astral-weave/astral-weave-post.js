@@ -250,7 +250,7 @@ export class AstralWeavePost {
         this.profile = params.profile || 'full';
         this.lensDirtTexture = params.lensDirtTexture || null;
 
-        if (this.isWebGPU) {
+        if (renderer?.isWebGPURenderer === true) {
             this.setupWebGPU(params);
         } else if (renderer?.isWebGLRenderer === true) {
             this.setupWebGL(params);

@@ -6,11 +6,13 @@
  *
  *   LIVE   renderFrameSkip, renderScale, shakeMultiplier, particles,
  *          particleUpdateInterval, effectsEnabled.ripples
+ *   LOCAL  effectsEnabled.bloom — Bioluminescence II reads this for its default
+ *          bloom policy; other themes still own their post-processing budgets.
  *   UNREAD particleBudget.*  — SharedEffects checks only the `particles` boolean,
  *          so these per-effect caps do not limit anything today. Enforcing them
  *          would visibly cut effects at High and above; decide whether the
  *          numbers are a real budget before wiring them.
- *   UNREAD effectsEnabled.bloom / trails / comboPopups / backgroundEffects
+ *   UNREAD effectsEnabled.trails / comboPopups / backgroundEffects
  *
  * A declared-but-unread flag is worse than no flag: it reads as a guarantee.
  */
