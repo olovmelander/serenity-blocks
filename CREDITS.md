@@ -18,7 +18,7 @@ Assets are grouped by license obligation:
 
 | Asset | Author | License | Source | Used in |
 |-------|--------|---------|--------|---------|
-| Planet & moon maps — Saturn, Saturn ring, Moon, Mars, Jupiter, Neptune, Venus, Mercury, Uranus (`2k_*` under `public/textures/`) | **Solar System Scope** ("Textures by Solar System Scope") | CC BY 4.0 | https://www.solarsystemscope.com/textures/ | Stellar Drift, Chromadelic Highway, Lunara, Sakura Twilight, Sunset, Wolfhour + playground |
+| Planet & moon maps — Saturn, Saturn ring, Moon, Mars, Jupiter, Neptune, Venus, Mercury, Uranus (`2k_*` under `public/textures/`) | **Solar System Scope** ("Textures by Solar System Scope") | CC BY 4.0 | https://www.solarsystemscope.com/textures/ | Stellar Drift, Chromadelic Highway, Lunara, Sunset, Wolfhour + playground |
 
 > **Modifications (CC-BY requires stating changes):** these maps are used as planet/moon surface textures and are, in several themes, recolored, tinted, scaled, or sampled luminance-only for stylized rendering. This top-level list is authoritative; where a folder-level `ATTRIBUTION.md` differs, reconcile to this entry.
 
@@ -34,9 +34,9 @@ Assets are grouped by license obligation:
 | `kelp-google-ccby.glb` (Kelp) | **Poly by Google** (via Poly Pizza) | CC BY 4.0 | https://poly.pizza/m/4cFllH6Iazk | Ocean theme |
 | `kelp-christopher-ccby.glb` (Kelp) | **Christopher F** (via Poly Pizza) | CC BY 4.0 | https://poly.pizza/m/3VhttTFyADO | Ocean theme |
 | `Fox.glb` (animated fox) | **PixelMannen** (model) · **@tomkranis** (rig) · **@AsoboStudio** / **@scurest** (glTF conversion) | CC-BY 4.0 | https://github.com/KhronosGroup/glTF-Sample-Models — original: https://opengameart.org/content/fox-and-shiba | Sakura Twilight theme |
-| `landscape-glb.glb` (cherry-tree / landscape model) | **Leonardo Awen** (per embedded model metadata) | CC-BY *(assumed from the embedded attribution namespace — **confirm**)* | embedded author metadata; exact source URL to confirm | Sakura Twilight theme (tree meshes; ground sub-mesh disabled) |
+| `landscape-glb.glb` (cherry-tree / landscape model) | **Leonardo Awen** (per embedded model metadata) | CC-BY *(assumed from the embedded attribution namespace — **confirm**)* | embedded author metadata; exact source URL to confirm | Koi Pond theme (`koi-pond-forest.js` imports it for a hero canopy that ships disabled). Sakura Twilight used its tree meshes until its 2026-10-05 rebuild and no longer loads it. |
 
-> **Action — confirm before release:** `landscape-glb.glb` **is used and ships** — it provides the Sakura theme's cherry-tree meshes (only its ground sub-mesh is disabled in code). Its embedded metadata credits **Leonardo Awen** and carries an attribution namespace, but the repo has no source URL or explicit license text. Confirm the exact source and license and finalize the row above. *(This supersedes the earlier "quarantine / do not ship" note, which was inaccurate — the model is not quarantined; it is shipping.)*
+> **Action — confirm before release:** `landscape-glb.glb` **still ships** — Sakura Twilight no longer uses it (its cherries are project-owned Blender originals since the 2026-10-05 rebuild, see `src/themes/sakura-twilight/assets/ATTRIBUTION.md`), but `src/themes/koi-pond/rendering/koi-pond-forest.js` still imports it, so the build still emits the file. Its embedded metadata credits **Leonardo Awen** and carries an attribution namespace, but the repo has no source URL or explicit license text. Confirm the exact source and license and finalize the row above. *(This supersedes the earlier "quarantine / do not ship" note, which was inaccurate — the model is not quarantined; it is shipping.)*
 
 ---
 
