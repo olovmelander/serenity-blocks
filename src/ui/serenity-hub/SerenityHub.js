@@ -31,6 +31,7 @@ export class SerenityHub {
 
         // DOM elements
         this.hubIcon = null;
+        this.haleSessionsEntry = null;
         this.settingsBtn = null;
         this.panel = null;
         this.backdrop = null;
@@ -77,6 +78,7 @@ export class SerenityHub {
    */
     init() {
         this.createHubIcon();
+        this.createHaleSessionsEntry();
         this.createSettingsButton();
         this.createPanel();
         this.attachEventListeners();
@@ -130,6 +132,7 @@ export class SerenityHub {
 
         // Ensure it's visible
         this.hubIcon.classList.add('visible');
+        this.hubIcon.classList.add('serenity-hub');
 
         // Store bound handler references
         this.hubIconClickHandler = () => this.toggle();
@@ -137,6 +140,7 @@ export class SerenityHub {
         this.hubIconKeydownHandler = (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
+                e.stopPropagation();
                 this.toggle();
             }
         };
@@ -159,6 +163,43 @@ export class SerenityHub {
         this.hubIcon.addEventListener('keydown', this.hubIconKeydownHandler, { signal });
         this.hubIcon.addEventListener('mouseenter', this.hubIconMouseEnterHandler, { signal });
         this.hubIcon.addEventListener('mouseleave', this.hubIconMouseLeaveHandler, { signal });
+    }
+
+    /** A labelled route to guided sessions beside the permanent lotus control. */
+    createHaleSessionsEntry() {
+        if (this.haleSessionsEntry) return;
+        const button = document.getElementById('hale-sessions-btn') || document.createElement('button');
+        button.id = 'hale-sessions-btn';
+        button.type = 'button';
+        button.className = 'hale-sessions-entry serenity-hub';
+        button.setAttribute('aria-label', 'Hale sessions · guided breathwork');
+        button.setAttribute('aria-haspopup', 'dialog');
+        button.setAttribute('aria-controls', 'serenity-hub-panel');
+        button.setAttribute('aria-expanded', 'false');
+        button.innerHTML = `${csIcon('hale-base', 19)}<span><strong>Hale sessions</strong><small>Guided breathwork</small></span>`;
+        const { signal } = this.abortController;
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this.openHaleSessions();
+        }, { signal });
+        button.addEventListener('keydown', (event) => {
+            if (event.key === ' ' || event.key === 'Enter') event.stopPropagation();
+        }, { signal });
+        this.haleSessionsEntry = button;
+        if (!button.parentNode) document.body.appendChild(button);
+    }
+
+    openHaleSessions() {
+        if (!this.panel) return;
+        this.switchTab('sessions');
+        this.show();
+    }
+
+    /** Release guided breathwork when the application leaves or activates a mode. */
+    cancelGuidedSession() {
+        if (this.sessionsTab) this.sessionsTab.cancelForModeChange();
+        else this.sessionManager?.stopSession();
+        this.hide({ resumeGameplay: false });
     }
 
     /**
@@ -213,7 +254,7 @@ export class SerenityHub {
         // Create panel
         this.panel = document.createElement('div');
         this.panel.id = 'serenity-hub-panel';
-        this.panel.className = 'serenity-hub-panel';
+        this.panel.className = 'serenity-hub-panel serenity-hub';
         this.panel.setAttribute('role', 'dialog');
         this.panel.setAttribute('aria-modal', 'true');
         this.panel.setAttribute('aria-labelledby', 'hub-title');
@@ -267,8 +308,9 @@ export class SerenityHub {
           </svg>
           <span>Breathing</span>
         </button>
-        <button class="hub-tab"
+        <button id="hub-tab-sessions" class="hub-tab"
                 data-tab="sessions"
+                aria-label="Hale sessions · guided breathwork"
                 role="tab"
                 aria-selected="false"
                 aria-controls="tab-sessions">
@@ -276,7 +318,7 @@ export class SerenityHub {
             <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path>
             <path d="M12 6v6l4 2"></path>
           </svg>
-          <span>Sessions</span>
+          <span>Hale sessions</span>
         </button>
       </nav>
 
@@ -290,8 +332,8 @@ export class SerenityHub {
         <div id="tab-breathing" class="tab-panel" role="tabpanel" aria-labelledby="tab-breathing">
           <div class="tab-loading">Loading breathing techniques...</div>
         </div>
-        <div id="tab-sessions" class="tab-panel" role="tabpanel" aria-labelledby="tab-sessions">
-          <div class="tab-loading">Loading sessions...</div>
+        <div id="tab-sessions" class="tab-panel" role="tabpanel" aria-labelledby="hub-tab-sessions">
+          <div class="tab-loading">Loading Hale sessions...</div>
         </div>
       </div>
     `;
@@ -406,6 +448,7 @@ export class SerenityHub {
             const keydownHandler = (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
+                    e.stopPropagation();
                     const tabName = tab.dataset.tab;
                     this.switchTab(tabName);
                 }
@@ -575,6 +618,7 @@ export class SerenityHub {
             tab.classList.toggle('active', isActive);
             tab.setAttribute('aria-selected', isActive);
         });
+        this.revealActiveTab();
 
         // Update tab panels
         const panels = this.panel.querySelectorAll('.tab-panel');
@@ -587,6 +631,17 @@ export class SerenityHub {
         this.loadTabContent(tabName);
 
         console.log(`Switched to ${tabName} tab`);
+    }
+
+    /** Keep a selected tab visible without scrolling the Hub's dialog content. */
+    revealActiveTab() {
+        const nav = this.panel?.querySelector('.hub-tabs');
+        const tab = nav?.querySelector('.hub-tab[aria-selected="true"]');
+        if (!tab || !nav.clientWidth) return;
+        const left = tab.offsetLeft - (tab.offsetParent === nav ? 0 : nav.offsetLeft);
+        const right = left + tab.offsetWidth;
+        if (left < nav.scrollLeft) nav.scrollLeft = Math.max(0, left);
+        else if (right > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = right - nav.clientWidth;
     }
 
     /**
@@ -698,6 +753,10 @@ export class SerenityHub {
 
         this.clearScrollPerformanceMode();
         this.isOpen = true;
+        if (this.haleSessionsEntry) {
+            this.haleSessionsEntry.hidden = true;
+            this.haleSessionsEntry.setAttribute('aria-expanded', 'true');
+        }
 
         // Notify Serenity Mode to lower quality
         if (this.serenityMode && typeof this.serenityMode.onHubOpen === 'function') {
@@ -713,6 +772,7 @@ export class SerenityHub {
         this.backdrop.classList.add('visible');
         this.panel.classList.add('open');
         document.body.classList.add('serenity-hub-open');
+        this.revealActiveTab();
 
         // Keep icon visible
         this.showIcon();
@@ -748,13 +808,17 @@ export class SerenityHub {
     /**
    * Hide the hub panel
    */
-    hide() {
+    hide({ resumeGameplay = true } = {}) {
         if (!this.isOpen) {
             this.clearScrollPerformanceMode();
             return;
         }
 
         this.isOpen = false;
+        if (this.haleSessionsEntry) {
+            this.haleSessionsEntry.hidden = false;
+            this.haleSessionsEntry.setAttribute('aria-expanded', 'false');
+        }
         this.musicTab?.setActive(false);
         this.themesTab?.setActive(false);
         this.sessionsTab?.setActive(false);
@@ -781,7 +845,9 @@ export class SerenityHub {
         }
 
         // Resume game if callback is set (for single player, local MP, infinity mode)
-        if (this.onResumeCallback) {
+        // A guided journey keeps falling-block gameplay paused after the Hub
+        // closes. Completion returns to the Hub; its final close resumes play.
+        if (resumeGameplay && this.onResumeCallback && !this.sessionManager?.activeSession) {
             this.onResumeCallback();
         }
 
@@ -1170,6 +1236,8 @@ export class SerenityHub {
         // Don't remove hubIcon - it's a permanent element now
         // Just clear the reference and let event listeners be cleaned up by AbortController
         this.hubIcon = null;
+        this.haleSessionsEntry?.remove();
+        this.haleSessionsEntry = null;
         if (this.settingsBtn) {
             this.settingsBtn.remove();
             this.settingsBtn = null;

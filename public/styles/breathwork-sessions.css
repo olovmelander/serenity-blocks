@@ -151,6 +151,7 @@
 #serenity-hub-panel .preview-value { font-size:15px; font-weight:400; color:#dce7f7; }
 #serenity-hub-panel .preview-label { font-size:8px; letter-spacing:.8px; color:#95a4bd; }
 #serenity-hub-panel .prep-comfort-note { font-size:10px; line-height:1.65; color:#9eacc2; margin:18px 0; }
+#serenity-hub-panel .prep-story .prep-actions { margin:0 0 20px; }
 #serenity-hub-panel .prep-begin-btn,
 #serenity-hub-panel .completion-close-btn {
     display:flex; justify-content:space-between; align-items:center; gap:12px;
@@ -292,3 +293,31 @@ body.electron-app #serenity-hub-panel #tab-sessions .session-completion-overlay 
     backdrop-filter:none;
     -webkit-backdrop-filter:none;
 }
+
+/* A permanent labelled route sits beside the existing lotus in the control rail. */
+.hale-sessions-entry {
+    position:fixed; right:77px; bottom:max(24vh, 170px); z-index:1000;
+    display:flex; align-items:center; gap:9px; min-height:50px; padding:9px 13px;
+    border:1px solid rgba(149,219,233,.34); border-radius:13px;
+    background:linear-gradient(130deg,rgba(26,53,68,.97),rgba(13,22,40,.97));
+    box-shadow:0 5px 20px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.04);
+    color:#c5f0ef; font-family:'Inter','Segoe UI',sans-serif; text-align:left; cursor:pointer;
+    transition:border-color .2s ease,background .2s ease;
+}
+.hale-sessions-entry[hidden] { display:none; }
+.hale-sessions-entry .cs-icon { width:19px; height:19px; }
+.hale-sessions-entry > span { display:flex; flex-direction:column; gap:3px; }
+.hale-sessions-entry strong { font-size:11px; font-weight:600; letter-spacing:.1px; }
+.hale-sessions-entry small { font-size:9px; color:#a2b8ce; }
+.hale-sessions-entry:hover { border-color:rgba(160,237,239,.65); background:linear-gradient(130deg,rgba(35,70,86,.97),rgba(18,29,50,.97)); }
+.hale-sessions-entry:focus-visible { outline:2px solid #c7f6f2; outline-offset:3px; }
+#serenity-hub-panel .hub-tabs { overflow-x:auto; overflow-y:hidden; scrollbar-width:none; overscroll-behavior-x:contain; }
+#serenity-hub-panel .hub-tabs::-webkit-scrollbar { display:none; }
+@media (max-width:600px) {
+    .hale-sessions-entry { right:77px; bottom:max(24vh, 170px); min-height:50px; padding:9px 11px; gap:7px; }
+    #serenity-hub-panel .hub-tabs { margin:14px 14px 8px; }
+    #serenity-hub-panel .hub-tab { padding:8px 6px; font-size:11px; gap:4px; }
+    #serenity-hub-panel .hub-tab .tab-icon { width:14px; height:14px; }
+    #serenity-hub-panel .hub-tab[data-tab="sessions"] > span { display:inline; font-size:10px; white-space:normal; line-height:1.25; max-width:46px; }
+}
+@media (prefers-reduced-motion:reduce) { .hale-sessions-entry { transition:none; } }

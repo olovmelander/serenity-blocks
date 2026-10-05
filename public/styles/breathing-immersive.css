@@ -39,13 +39,55 @@
     background: radial-gradient(circle, rgba(var(--breath-color-r), var(--breath-color-g), var(--breath-color-b), .12), transparent 70%);
 }
 .enhanced-breathing-indicator .breathing-core::before { display: none; }
-.breathing-renderer-ready .breathing-ring { visibility: hidden; }
+.breathing-renderer-ready .breathing-ring,
+.breathing-renderer-ready .breathing-core { visibility: hidden; }
+/* Keep recognizable silhouettes when the GPU is unavailable or its context is lost. */
+.enhanced-breathing-indicator[data-technique="deep-relaxation"] .breathing-ring {
+    width: min(27vh, 32vw); height: min(62vh, 74vw); border-radius: 42% 58% 35% 65%;
+    border-top: none; border-bottom: none;
+}
+.enhanced-breathing-indicator[data-technique="box-breathing"] .breathing-ring { border-radius: 5px; }
+.enhanced-breathing-indicator[data-technique="calm-sleep"] .breathing-ring {
+    border-width: 0 0 2px 8px; border-radius: 50%; width: min(34vh, 42vw); height: min(34vh, 42vw);
+    top: 35%; left: 40%;
+}
+.enhanced-breathing-indicator[data-technique="energizing"] .breathing-ring {
+    border: none; background: repeating-conic-gradient(from 8deg, var(--breath-accent) 0deg 1deg, transparent 1deg 20deg);
+    mask-image: radial-gradient(circle, transparent 34%, #000 36% 48%, transparent 69%);
+}
+.enhanced-breathing-indicator[data-technique="coherence"] .breathing-ring { border-radius: 70% 30% 70% 30%; }
+.enhanced-breathing-indicator[data-technique="triangle"] .breathing-ring {
+    border: none; border-radius: 0; background: var(--breath-accent);
+    clip-path: polygon(evenodd, 50% 0%, 100% 100%, 0% 100%, 50% 0%, 50% 4%, 3% 98%, 97% 98%, 50% 4%);
+}
+.enhanced-breathing-indicator[data-technique="wim-hof"] .breathing-ring {
+    width: min(32vh, 38vw); height: min(64vh, 76vw); border-radius: 0; border: none;
+    background: linear-gradient(0deg, transparent, var(--breath-accent));
+    clip-path: polygon(50% 0%, 72% 36%, 63% 48%, 91% 68%, 81% 94%, 52% 100%, 19% 94%, 9% 72%, 29% 43%, 34% 70%, 48% 47%);
+}
+.enhanced-breathing-indicator[data-technique="ocean-breath"] .breathing-ring {
+    width: 90%; height: 24%; border-width: 2px 0 0; border-radius: 50%; top: 63%;
+}
+.enhanced-breathing-indicator[data-technique="zen-garden"] .breathing-ring {
+    border-width: 7px 4px 1px 0; border-radius: 48% 52% 42% 58%;
+}
+.enhanced-breathing-indicator[data-technique="cosmic-breath"] .breathing-ring {
+    width: 80%; height: 40%; border-width: 1px 0 1px 5px; border-radius: 50% 15% 50% 15%;
+}
+.enhanced-breathing-indicator[data-technique="forest-breath"] .breathing-ring {
+    border: none; border-radius: 0; background: var(--breath-accent);
+    clip-path: polygon(49% 100%, 49% 66%, 12% 36%, 15% 34%, 49% 57%, 49% 40%, 28% 10%, 30% 8%, 50% 32%, 69% 8%, 72% 10%, 51% 40%, 51% 57%, 85% 34%, 88% 36%, 51% 66%, 51% 100%);
+}
+.enhanced-breathing-indicator[data-technique="electric-storm"] .breathing-ring {
+    width: 80%; height: 70%; border: none; border-radius: 0; background: var(--breath-accent);
+    clip-path: polygon(12% 0%, 34% 25%, 24% 39%, 43% 68%, 28% 56%, 16% 33%, 27% 24%, 8% 0%, 89% 0%, 71% 24%, 83% 34%, 72% 60%, 57% 71%, 77% 38%, 66% 26%, 86% 0%);
+}
 .breathing-phase-track {
-    position: absolute; height: 52%; aspect-ratio: 1; top: 50%; left: 50%;
-    transform: translate(-50%, -50%) rotate(-90deg); overflow: visible; z-index: 4;
+    position: absolute; width: min(22vw, 180px); height: 4px; top: 60%; left: 50%;
+    transform: translate(-50%, -50%); overflow: visible; z-index: 4;
     opacity: .7; pointer-events: none;
 }
-.breathing-phase-track circle { fill: none; stroke-width: .3; }
+.breathing-phase-track line { fill: none; stroke-width: .7; }
 .breathing-phase-track-base { stroke: rgba(255,255,255,.12); }
 .breathing-phase-track-fill { stroke: var(--breath-accent); stroke-linecap: round; stroke-dasharray: 0 1; }
 .enhanced-breathing-indicator .breathing-text-enhanced {
@@ -117,7 +159,7 @@
 @keyframes breathing-arrive { from { opacity: 0; } to { opacity: 1; } }
 @media (max-width: 600px) {
     .enhanced-breathing-indicator .breathing-visual-container { width: 100vw; height: min(70dvh, 600px); }
-    .breathing-phase-track { height: 44%; }
+    .breathing-phase-track { width: 112px; }
     .breathing-phase-detail { top: 63%; font-size: 10px; }
     .breathing-phase-steps { gap: 18px; bottom: max(12vh, 88px); }
     .enhanced-breathing-indicator .breathing-technique-name { top: max(6vh, 35px); letter-spacing: .18em; }
