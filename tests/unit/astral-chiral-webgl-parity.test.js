@@ -348,10 +348,10 @@ describe('Astral Weave and Chiral Gold WebGL2 art parity', () => {
         expect(theme.burstPools.length).toBeGreaterThan(0);
         expect(theme.burstPools.every((pool) => pool.material.isNodeMaterial)).toBe(true);
         const active = theme.burstPools.find((pool) => pool.userData.cpuBurst.active);
-        const before = active.geometry.attributes.position.array.slice();
+        const before = active.geometry.attributes.aParticlePosition.array.slice();
         theme.updateBurstCpu(1 / 60);
-        expect(active.geometry.attributes.position.array).not.toEqual(before);
-        expect(active.geometry.attributes.position.array.every(Number.isFinite)).toBe(true);
+        expect(active.geometry.attributes.aParticlePosition.array).not.toEqual(before);
+        expect(active.geometry.attributes.aParticlePosition.array.every(Number.isFinite)).toBe(true);
         expect(theme.renderer.compute).not.toHaveBeenCalled();
     });
 

@@ -44,6 +44,9 @@ import {
     wispVertexShader,
 } from './chiral-gold-shaders.js';
 import { clamp } from '../../utils/helpers.js';
+import { createChiralGoldSculpture } from './chiral-gold-sculpture.js';
+import { revealHiddenDrawables, waitForSubmittedGpuWork } from '../shared/warm-hidden-drawables.js';
+import { createChiralParticleObject, chiralParticlePositions } from './chiral-gold-particles.js';
 
 function createSeededRandom(seed) {
     if (!Number.isFinite(seed)) return () => Math.random();
@@ -107,59 +110,59 @@ function parseChiralGoldFlags() {
 
 const QUALITY_PRESETS = {
     Extreme: {
-        goldDustCount: 30000,
-        burstSparkCount: 50000,
+        goldDustCount: 14000,
+        burstSparkCount: 24000,
         wispCount: 1000,
         strandCount: 6,
         strandParticles: 4200,
-        lightBeamCount: 4,
+        lightBeamCount: 0,
         bloomStrength: 0.85,
         bloomRadius: 0.6,
         enableCompute: true,
         enablePostProcessing: true,
         enableFilmGrain: true,
         enableChromaticAberr: true,
-        enableVolumetricBeams: true,
-        cpuBurstPoolSize: 16,
-        cpuBurstParticles: 2600,
+        enableVolumetricBeams: false,
+        cpuBurstPoolSize: 10,
+        cpuBurstParticles: 1400,
     },
     Ultra: {
-        goldDustCount: 20000,
-        burstSparkCount: 36000,
+        goldDustCount: 10000,
+        burstSparkCount: 18000,
         wispCount: 700,
         strandCount: 4,
         strandParticles: 3200,
-        lightBeamCount: 3,
+        lightBeamCount: 0,
         bloomStrength: 0.75,
         bloomRadius: 0.55,
         enableCompute: true,
         enablePostProcessing: true,
         enableFilmGrain: true,
         enableChromaticAberr: true,
-        enableVolumetricBeams: true,
-        cpuBurstPoolSize: 14,
-        cpuBurstParticles: 2400,
+        enableVolumetricBeams: false,
+        cpuBurstPoolSize: 8,
+        cpuBurstParticles: 1100,
     },
     High: {
-        goldDustCount: 12000,
-        burstSparkCount: 26000,
+        goldDustCount: 6000,
+        burstSparkCount: 12000,
         wispCount: 500,
         strandCount: 3,
         strandParticles: 2600,
-        lightBeamCount: 2,
+        lightBeamCount: 0,
         bloomStrength: 0.65,
         bloomRadius: 0.5,
         enableCompute: true,
         enablePostProcessing: true,
         enableFilmGrain: true,
         enableChromaticAberr: true,
-        enableVolumetricBeams: true,
-        cpuBurstPoolSize: 12,
-        cpuBurstParticles: 2200,
+        enableVolumetricBeams: false,
+        cpuBurstPoolSize: 6,
+        cpuBurstParticles: 900,
     },
     Medium: {
-        goldDustCount: 7000,
-        burstSparkCount: 16000,
+        goldDustCount: 3800,
+        burstSparkCount: 8000,
         wispCount: 300,
         strandCount: 2,
         strandParticles: 1800,
@@ -172,10 +175,10 @@ const QUALITY_PRESETS = {
         enableChromaticAberr: false,
         enableVolumetricBeams: false,
         cpuBurstPoolSize: 10,
-        cpuBurstParticles: 2000,
+        cpuBurstParticles: 700,
     },
     Low: {
-        goldDustCount: 3000,
+        goldDustCount: 1800,
         burstSparkCount: 0,
         wispCount: 150,
         strandCount: 0,
@@ -192,7 +195,7 @@ const QUALITY_PRESETS = {
         cpuBurstParticles: 900,
     },
     Minimal: {
-        goldDustCount: 1500,
+        goldDustCount: 900,
         burstSparkCount: 0,
         wispCount: 0,
         strandCount: 0,
@@ -234,7 +237,7 @@ export default class ChiralGoldTheme extends BaseTheme {
             supportsPost: false,
         };
 
-        this.clock = new THREE.Clock();
+        this.clock = new THREE.Timer();
         this.time = 0;
         this.deviceLossRecoveryInProgress = false;
 
@@ -344,6 +347,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.lastMrtDowngrade = null;
 
         this.backgroundEnvelope = null;
+        this.sculpture = null;
     }
 
     getTetrominoConfig() {
@@ -473,12 +477,12 @@ export default class ChiralGoldTheme extends BaseTheme {
         }
 
         if (this.burstPoints) {
-            this.burstPoints.scale.set(dustScaleX * 1.04, dustScaleY * 1.02, 1.0);
+            this.burstPoints.scale.set(1, 1, 1);
         }
 
         if (Array.isArray(this.burstPools)) {
             this.burstPools.forEach((points) => {
-                points.scale.set(dustScaleX * 1.04, dustScaleY * 1.02, 1.0);
+                points.scale.set(1, 1, 1);
             });
         }
         this.layoutStrandsForViewport();
@@ -486,7 +490,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
     layoutStrandsForViewport() {
         if (!this.camera || !this.strands?.length) return;
-        const aspect = this.camera.aspect;
+        const { aspect } = this.camera;
         const portrait = aspect < 1;
         const scale = portrait ? clamp(aspect, 0.35, 1) : 1;
         const edgeX = clamp(0.72 + (aspect - 1) * 0.06, 0.68, 0.88);
@@ -544,13 +548,12 @@ export default class ChiralGoldTheme extends BaseTheme {
         const buildCandidate = () => {
             const clampedIntensity = clamp(intensity, 0.2, 3.0);
             if (profile === 'hero_close') {
-                const x = ((this.rand() - 0.5) * 960) + (this.rand() - 0.5) * (50 + clampedIntensity * 120);
-                const y = ((this.rand() - 0.5) * 880) + (this.rand() - 0.5) * (38 + clampedIntensity * 100);
-                return new THREE.Vector3(
-                    clamp(x, -600, 600),
-                    clamp(y, -500, 500),
-                    760 + this.rand() * 420,
-                );
+                const side = (Math.abs(Math.floor(index)) % 2) ? 1 : -1;
+                return this.projectNdcToPlane(
+                    side * (0.67 + this.rand() * 0.12),
+                    (this.rand() - 0.5) * 1.25,
+                    -40 + this.rand() * 120,
+                ) || new THREE.Vector3(side * 800, 0, 0);
             }
 
             const anchor = resolveAnchor();
@@ -845,42 +848,55 @@ export default class ChiralGoldTheme extends BaseTheme {
         }
     }
 
-    async precompileSceneWithTimeout() {
-        if (!this.usesNodeMaterials || !this.renderer?.compileAsync || !this.scene || !this.camera) {
-            this.compileStats = {
-                status: 'skipped',
-                durationMs: 0,
-                message: 'compileAsync unavailable or non-WebGPU path',
-            };
-            return;
+    async initializeComputeSystems(ownerGeneration = this.lifecycleGeneration) {
+        const { renderer } = this;
+        const layers = [
+            ['dustCompute', 'dustPoints', 'createDustSystem'],
+            ['burstCompute', 'burstPoints', 'createBurstSystem'],
+            ['wispCompute', 'wispPoints', 'createWispSystem'],
+        ].map(([key, pointsKey, create]) => ({
+            key, pointsKey, create, system: this[key],
+        })).filter(({ system }) => system);
+        await Promise.all(layers.map(({ system }) => system.initialize(renderer)));
+        if (ownerGeneration !== this.lifecycleGeneration || this.renderer !== renderer || !this.isActive) return;
+        // A failed native system must not dispatch. Rebuild just that layer on the CPU.
+        for (const {
+            key, pointsKey, create, system,
+        } of layers) {
+            if (this[key] !== system || system.ready) continue;
+            const old = this[pointsKey];
+            old?.removeFromParent();
+            old?.geometry.dispose();
+            old?.material.dispose();
+            const { useCompute } = this.flags;
+            this.flags.useCompute = false;
+            try { this[create](); } finally { this.flags.useCompute = useCompute; }
         }
+        this.applySceneComposition();
+        this.ensureMrtMaterials();
+    }
 
-        const timeoutMs = 3000;
-        const compileStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        let timeoutId = null;
-
+    async precompileSceneWithTimeout() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        const { renderer } = this;
+        const started = performance.now();
+        const warm = revealHiddenDrawables(this.scene, { camera: this.camera });
         try {
-            await Promise.race([
-                this.renderer.compileAsync(this.scene, this.camera),
-                new Promise((_, reject) => {
-                    timeoutId = setTimeout(() => reject(new Error('compile timeout')), timeoutMs);
-                }),
-            ]);
-
+            // Warm through the actual post pass; bare compileAsync poisons MRT caches.
+            this.renderFrame();
+            const complete = await waitForSubmittedGpuWork(renderer, 3000);
             this.compileStats = {
-                status: 'success',
-                durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - compileStartMs,
+                status: complete || this.isWebGL ? 'success' : 'timeout',
+                durationMs: performance.now() - started,
                 message: null,
             };
         } catch (error) {
             this.compileStats = {
-                status: 'fallback',
-                durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - compileStartMs,
-                message: error.message,
+                status: 'fallback', durationMs: performance.now() - started, message: error.message,
             };
-            console.warn('[ChiralGold] compileAsync skipped:', error.message);
+            console.warn('[ChiralGold] Pipeline warmup skipped:', error.message);
         } finally {
-            if (timeoutId !== null) clearTimeout(timeoutId);
+            warm.restore();
         }
     }
 
@@ -984,6 +1000,10 @@ export default class ChiralGoldTheme extends BaseTheme {
             console.error('[ChiralGold] Background envelope init failed:', error);
         }
 
+        this.sculpture = createChiralGoldSculpture({
+            scene: this.scene, quality: this.currentQualityLevel, random: () => this.rand(),
+        });
+        this.sculpture.resize(window.innerWidth, window.innerHeight, this.cameraBasePosition.z);
         this.updateCompositionLayout();
         this.applySceneComposition();
         this.ensureMrtMaterials();
@@ -993,7 +1013,11 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.setupResizeHandler();
         this.setupEventListeners();
 
+        const sceneRenderer = this.renderer;
+        await this.initializeComputeSystems(ownerGeneration);
+        if (ownerGeneration !== this.lifecycleGeneration || this.renderer !== sceneRenderer || !this.isActive) return;
         await this.precompileSceneWithTimeout();
+        if (ownerGeneration !== this.lifecycleGeneration || this.renderer !== sceneRenderer || !this.isActive) return;
         this.startAnimation();
 
         container.style.transition = 'opacity 0.9s ease-in';
@@ -1054,8 +1078,9 @@ export default class ChiralGoldTheme extends BaseTheme {
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-        const material = new THREE.PointsMaterial({
-            size: 6,
+        const Material = this.usesNodeMaterials ? THREE_WEBGPU.PointsNodeMaterial : THREE.PointsMaterial;
+        const material = new Material({
+            size: 2,
             sizeAttenuation: true,
             vertexColors: true,
             transparent: true,
@@ -1190,7 +1215,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 pixelRatio: this.getEffectivePixelRatio(),
             });
 
-            this.dustPoints = new THREE.Points(geometry, material);
+            this.dustPoints = createChiralParticleObject(geometry, material);
             this.dustPoints.userData.uniforms = uniforms;
             this.scene.add(this.dustPoints);
             this.dustUniforms = uniforms;
@@ -1298,10 +1323,10 @@ export default class ChiralGoldTheme extends BaseTheme {
                 blending: THREE.AdditiveBlending,
                 vertexColors: true,
             });
-            uniforms = material.uniforms;
+            ({ uniforms } = material);
         }
 
-        this.dustPoints = new THREE.Points(geometry, material);
+        this.dustPoints = createChiralParticleObject(geometry, material);
         this.dustPoints.userData.uniforms = uniforms;
         this.scene.add(this.dustPoints);
         this.dustUniforms = uniforms;
@@ -1352,7 +1377,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 highQualityBurstClamp,
             });
 
-            this.burstPoints = new THREE.Points(geometry, material);
+            this.burstPoints = createChiralParticleObject(geometry, material);
             this.burstPoints.userData.uniforms = uniforms;
             this.scene.add(this.burstPoints);
             this.burstUniforms = uniforms;
@@ -1417,10 +1442,10 @@ export default class ChiralGoldTheme extends BaseTheme {
                     depthWrite: false,
                     blending: THREE.AdditiveBlending,
                 });
-                uniforms = material.uniforms;
+                ({ uniforms } = material);
             }
 
-            const points = new THREE.Points(geometry, material);
+            const points = createChiralParticleObject(geometry, material);
             points.userData = {
                 uniforms,
                 cpuBurst: {
@@ -1434,6 +1459,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 },
             };
 
+            points.visible = false;
             this.scene.add(points);
             this.burstPools.push(points);
         }
@@ -1475,7 +1501,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 pixelRatio: this.getEffectivePixelRatio(),
             });
 
-            this.wispPoints = new THREE.Points(geometry, material);
+            this.wispPoints = createChiralParticleObject(geometry, material);
             this.wispPoints.userData.uniforms = uniforms;
             this.scene.add(this.wispPoints);
             this.wispUniforms = uniforms;
@@ -1549,7 +1575,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 depthWrite: false,
                 blending: THREE.AdditiveBlending,
             });
-            uniforms = material.uniforms;
+            ({ uniforms } = material);
         }
 
         this.wispCpuState = {
@@ -1565,7 +1591,7 @@ export default class ChiralGoldTheme extends BaseTheme {
             group,
         };
 
-        this.wispPoints = new THREE.Points(geometry, material);
+        this.wispPoints = createChiralParticleObject(geometry, material);
         this.wispPoints.userData.uniforms = uniforms;
         this.scene.add(this.wispPoints);
         this.wispUniforms = uniforms;
@@ -1651,10 +1677,10 @@ export default class ChiralGoldTheme extends BaseTheme {
                     blending: THREE.AdditiveBlending,
                     vertexColors: true,
                 });
-                uniforms = material.uniforms;
+                ({ uniforms } = material);
             }
 
-            const points = new THREE.Points(geometry, material);
+            const points = createChiralParticleObject(geometry, material);
             points.userData.uniforms = uniforms;
             points.userData.basePositions = positions.slice(0);
             points.userData.phase = this.rand() * Math.PI * 2;
@@ -1684,6 +1710,7 @@ export default class ChiralGoldTheme extends BaseTheme {
     createTemporaryStrandSegment(options = {}) {
         if (!this.scene) return;
         if (this.currentQualityLevel === 'Low' || this.currentQualityLevel === 'Minimal') return;
+        if (this.tempStrandSegments.length >= 8) this.disposeTemporaryStrandSegment(this.tempStrandSegments.shift());
 
         const comboCount = Number.isFinite(options.comboCount) ? options.comboCount : 0;
         const particleCount = Math.floor(
@@ -1756,10 +1783,10 @@ export default class ChiralGoldTheme extends BaseTheme {
                 blending: THREE.AdditiveBlending,
                 vertexColors: true,
             });
-            uniforms = material.uniforms;
+            ({ uniforms } = material);
         }
 
-        const points = new THREE.Points(geometry, material);
+        const points = createChiralParticleObject(geometry, material);
         const origin = options.origin?.isVector3
             ? options.origin.clone()
             : this.getBurstOrigin('peripheral', {
@@ -1886,8 +1913,9 @@ export default class ChiralGoldTheme extends BaseTheme {
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-        const material = new THREE.PointsMaterial({
-            size: 4.5,
+        const Material = this.usesNodeMaterials ? THREE_WEBGPU.PointsNodeMaterial : THREE.PointsMaterial;
+        const material = new Material({
+            size: 2.2,
             sizeAttenuation: true,
             vertexColors: true,
             transparent: true,
@@ -1924,13 +1952,13 @@ export default class ChiralGoldTheme extends BaseTheme {
                         : this.qualityPreset.bloomStrength * 0.45,
                     bloomRadius: this.qualityPreset.bloomRadius,
                     bloomThreshold: this.flags.useMRT ? 0.0 : 0.88,
-                    chromaticStrength: this.qualityPreset.enableChromaticAberr ? 0.003 : 0.0,
-                    filmGrain: this.qualityPreset.enableFilmGrain ? 0.015 : 0.0,
-                    vignetteDarkness: 0.9,
-                    vignetteOffset: 1.1,
-                    saturation: 0.85,
-                    contrast: 1.1,
-                    blackFloor: 0.08,
+                    chromaticStrength: this.qualityPreset.enableChromaticAberr ? 0.001 : 0.0,
+                    filmGrain: this.qualityPreset.enableFilmGrain ? 0.0025 : 0.0,
+                    vignetteDarkness: 0.42,
+                    vignetteOffset: 1.16,
+                    saturation: 1.06,
+                    contrast: 1.03,
+                    blackFloor: 0.006,
                 });
                 this.postProcessing.setSize(window.innerWidth, window.innerHeight);
             } catch (error) {
@@ -1983,7 +2011,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
     startAnimation() {
         this.cancelAnimationLoop();
-        this.clock.start();
+        this.clock.reset();
         this.animate();
     }
 
@@ -1999,9 +2027,16 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         this.animationFrameId = requestAnimationFrame(() => this.animate());
         this.registerAnimation(this.animationFrameId);
+        if (document.hidden || window.isRenderingPaused) {
+            // Consume paused time so resume does not advance the visual choreography.
+            this.clock.reset();
+            return;
+        }
+        if (!this.shouldRenderFrame()) return;
 
         const frameStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
+        this.clock.update();
         const measuredDelta = this.clock.getDelta();
         const delta = Math.min(measuredDelta, 0.05);
         this.time += delta;
@@ -2031,6 +2066,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.burstSparkBoost = Math.max(0, this.burstSparkBoost - delta * 3.8);
 
         if (analysis.beatDetected) {
+            this.sculpture?.trigger('beat', 0.5);
             this.beatPulse = Math.min(1.0, this.beatPulse + 0.45);
         }
         // Bass-slam trigger: catch strong bass events the beat detector may miss
@@ -2046,6 +2082,9 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.updateBeams(delta, analysis);
         this.updateShockwaves(delta);
         this.updateCamera(delta, analysis);
+        this.sculpture?.update(this.time, delta, {
+            energy: this.audioChannels.atmosphere, pulse: this.reactiveEnvelope.pulse, beat: this.beatPulse,
+        });
         if (this.camera.aspect < 1) this.layoutStrandsForViewport();
 
         // Background envelope parallax tracking — follows camera at 45% of its motion
@@ -2072,12 +2111,12 @@ export default class ChiralGoldTheme extends BaseTheme {
         // Chromatic aberration — bass + beat driven for physical punch sensation
         const chromaticStrength = this.qualityPreset.enableChromaticAberr
             ? clamp(
-                0.003
-                + this.reactiveEnvelope.chroma * 0.007
-                + this.audioChannels.pulse * 0.003
-                + this.beatPulse * 0.004,
+                0.001
+                + this.reactiveEnvelope.chroma * 0.002
+                + this.audioChannels.pulse * 0.001
+                + this.beatPulse * 0.0015,
                 0,
-                0.014,
+                0.006,
             )
             : 0;
 
@@ -2087,8 +2126,8 @@ export default class ChiralGoldTheme extends BaseTheme {
             0,
             0.4,
         );
-        const vignetteDarkness = 0.9 - vignetteOpenness;
-        const vignetteOffset = 1.1 + vignetteOpenness * 0.3;
+        const vignetteDarkness = 0.42 - vignetteOpenness * 0.35;
+        const vignetteOffset = 1.16 + vignetteOpenness * 0.18;
 
         if (this.postProcessing && this.flags.usePost) {
             this.postProcessing.update({
@@ -2096,7 +2135,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 bloomStrength,
                 bloomBoost: this.reactiveEnvelope.bloom + audioBloomBoost,
                 chromaticStrength,
-                filmGrain: this.qualityPreset.enableFilmGrain ? 0.015 : 0,
+                filmGrain: this.qualityPreset.enableFilmGrain ? 0.0025 : 0,
                 vignetteDarkness,
                 vignetteOffset,
             });
@@ -2127,7 +2166,7 @@ export default class ChiralGoldTheme extends BaseTheme {
     updateAudioChannels(analysis, delta) {
         const shape = (value, gain, power = 0.84) => {
             const boosted = clamp(value * gain, 0, 1);
-            return Math.pow(boosted, power);
+            return boosted ** power;
         };
 
         const smooth = (current, target, attack, release) => {
@@ -2212,7 +2251,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 formationState: this.formationState,
                 formationProgress: this.formationProgress,
             });
-            this.renderer.compute(this.dustCompute.computeNode);
+            this.dustCompute.dispatch(this.renderer);
         }
 
         if (!this.dustPoints) return;
@@ -2263,7 +2302,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 time: this.time,
                 flowBlend: 0.22 + this.audioChannels.flow * 0.3,
             });
-            this.renderer.compute(this.burstCompute.computeNode);
+            this.burstCompute.dispatch(this.renderer);
         }
 
         if (this.burstPoints?.userData?.uniforms) {
@@ -2314,24 +2353,26 @@ export default class ChiralGoldTheme extends BaseTheme {
 
                 activeCount += 1;
 
-                const decel = Math.max(0.25, 1.0 - Math.pow(1.0 - nextLife, 1.5));
+                const decel = Math.max(0.25, 1.0 - (1.0 - nextLife) ** 1.5);
                 state.velocity[i3 + 1] += -8.0 * delta;
                 state.positions[i3] += state.velocity[i3] * delta * decel;
                 state.positions[i3 + 1] += state.velocity[i3 + 1] * delta * decel;
                 state.positions[i3 + 2] += state.velocity[i3 + 2] * delta * decel;
             }
 
+            const wasActive = state.active;
             state.active = activeCount > 0;
+            points.visible = state.active;
 
-            if (activeCount > 0) {
-                points.geometry.attributes.position.needsUpdate = true;
+            if (activeCount > 0 || wasActive) {
+                chiralParticlePositions(points).needsUpdate = true;
                 points.geometry.attributes.aLife.needsUpdate = true;
                 points.geometry.attributes.aVelocity.needsUpdate = true;
             }
         }
     }
 
-    updateWisps(delta, analysis) {
+    updateWisps(delta) {
         if (this.wispCompute?.computeNode && this.renderer?.compute && this.flags.useCompute) {
             const wispPulse = clamp(this.beatPulse + this.wispJolt * 0.65, 0, 1);
             this.wispCompute.update({
@@ -2341,10 +2382,10 @@ export default class ChiralGoldTheme extends BaseTheme {
                 mid: this.audioChannels.flow,
                 beatPulse: wispPulse,
             });
-            this.renderer.compute(this.wispCompute.computeNode);
+            this.wispCompute.dispatch(this.renderer);
         }
 
-        if (this.wispCpuState && this.wispPoints?.geometry?.attributes?.position) {
+        if (this.wispCpuState && this.wispPoints?.geometry && chiralParticlePositions(this.wispPoints)) {
             const {
                 positions, pulse, ampX, ampY, ampZ, freqA, freqB, freqC, phase, group,
             } = this.wispCpuState;
@@ -2396,7 +2437,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 pulse[i] = 1 + this.beatPulse * 0.22 + this.wispJolt * 0.12;
             }
 
-            this.wispPoints.geometry.attributes.position.needsUpdate = true;
+            chiralParticlePositions(this.wispPoints).needsUpdate = true;
             this.wispPoints.geometry.attributes.aPulse.needsUpdate = true;
         }
 
@@ -2414,7 +2455,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         }
     }
 
-    updateStrands(delta, analysis) {
+    updateStrands(delta) {
         if (!Array.isArray(this.strands) || this.strands.length === 0) return;
 
         const intensity = clamp(this.reactiveEnvelope.strand + this.audioChannels.flow * 0.8, 0, 1.3);
@@ -2431,7 +2472,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
             strand.rotation.y += delta * (strand.userData.spin * 0.4 + this.audioChannels.flow * 0.08);
             strand.position.addScaledVector(strand.userData.drift, delta * (0.3 + this.audioChannels.atmosphere * 0.1));
-            const home = strand.userData.home;
+            const { home } = strand.userData;
             if (home) {
                 strand.position.lerp(home, clamp(delta * 0.08, 0, 0.2));
             }
@@ -2450,7 +2491,8 @@ export default class ChiralGoldTheme extends BaseTheme {
                 strand.userData.drift.z *= -1;
             }
 
-            const positions = strand.geometry.attributes.position.array;
+            const positionsAttribute = chiralParticlePositions(strand);
+            const positions = positionsAttribute.array;
             // Radial swells reacting to bass and mids (using smoothed channels)
             const radiusScale = 1 + this.audioChannels.flow * 0.05 + this.audioChannels.pulse * 0.07 + unwind * 0.35;
             const scatter = unwind * 95;
@@ -2480,14 +2522,17 @@ export default class ChiralGoldTheme extends BaseTheme {
 
                 const musicRipple = Math.sin(paramT[p] * rippleFreq - this.time * rippleSpeed) * rippleAmp;
 
-                positions[i3] = Math.cos(angle + direction * this.time * 0.12 + twist) * (radial * radiusScale * undulate + musicRipple)
+                const radialOffset = radial * radiusScale * undulate + musicRipple;
+                const swirlAngle = angle + direction * this.time * 0.12 + twist;
+                positions[i3] = Math.cos(swirlAngle) * radialOffset
                     + Math.sin(t * 0.3) * scatter;
-                positions[i3 + 1] = baseY + Math.sin(this.time * 0.24 + p * 0.02) * 15 + Math.cos(t * 0.25) * scatter * 0.38;
-                positions[i3 + 2] = Math.sin(angle + direction * this.time * 0.12 + twist) * (radial * radiusScale * undulate + musicRipple)
+                positions[i3 + 1] = baseY + Math.sin(this.time * 0.24 + p * 0.02) * 15
+                    + Math.cos(t * 0.25) * scatter * 0.38;
+                positions[i3 + 2] = Math.sin(swirlAngle) * radialOffset
                     + Math.cos(t * 0.3) * scatter;
             }
 
-            strand.geometry.attributes.position.needsUpdate = true;
+            positionsAttribute.needsUpdate = true;
 
             if (uniforms?.uTime) uniforms.uTime.value = this.time;
             if (uniforms?.uIntensity) uniforms.uIntensity.value = intensity;
@@ -2503,8 +2548,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         const colorTemperature = this.getColorTemperatureValue();
         for (let i = this.tempStrandSegments.length - 1; i >= 0; i -= 1) {
             const segment = this.tempStrandSegments[i];
-            const geometry = segment?.geometry;
-            const positionsAttr = geometry?.attributes?.position;
+            const positionsAttr = segment?.geometry ? chiralParticlePositions(segment) : null;
             const basePositions = segment?.userData?.basePositions;
             const paramT = segment?.userData?.paramT;
             if (!segment || !positionsAttr || !basePositions || !paramT) {
@@ -2543,7 +2587,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
             positionsAttr.needsUpdate = true;
 
-            const uniforms = segment.userData.uniforms;
+            const { uniforms } = segment.userData;
             if (uniforms?.uTime) uniforms.uTime.value = this.time;
             if (uniforms?.uIntensity) {
                 uniforms.uIntensity.value = clamp(
@@ -2564,7 +2608,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         for (let i = 0; i < this.beams.length; i += 1) {
             const beam = this.beams[i];
-            const mesh = beam.mesh;
+            const { mesh } = beam;
             const speed = beam.baseSpeed * (1 + this.beamFlash * 2.1 + this.reactiveEnvelope.strand * 1.0);
             mesh.rotation.y += delta * speed;
             mesh.rotation.x = Math.sin(this.time * 0.4 + beam.wobblePhase) * 0.08;
@@ -2616,56 +2660,56 @@ export default class ChiralGoldTheme extends BaseTheme {
         const ct3 = this.time * 0.017; // ~370s period — ultra-slow sweep
 
         // --- Lissajous orbit with three frequency layers ---
-        const orbitX = Math.sin(ct1) * 220
-            + Math.cos(ct2 * 1.3 + 0.8) * 140
-            + Math.sin(ct3 * 0.7) * 80;
-        const orbitY = Math.cos(ct1 * 0.85) * 150
-            + Math.sin(ct2 * 1.1 + 1.4) * 90
-            + Math.cos(ct3 * 0.5 + 2.1) * 55;
+        const orbitX = Math.sin(ct1) * 24
+            + Math.cos(ct2 * 1.3 + 0.8) * 14
+            + Math.sin(ct3 * 0.7) * 8;
+        const orbitY = Math.cos(ct1 * 0.85) * 16
+            + Math.sin(ct2 * 1.1 + 1.4) * 9
+            + Math.cos(ct3 * 0.5 + 2.1) * 4;
 
         // --- Z-breathing with long-period depth sweeps (Framing board closer) ---
-        const breatheZ = this.cameraBasePosition.z - 180
-            + Math.sin(ct1 * 0.5) * 300
-            + Math.sin(ct2 * 0.35 + 1.0) * 180
-            + Math.sin(ct3 * 0.25) * 100;
+        const breatheZ = this.cameraBasePosition.z
+            + Math.sin(ct1 * 0.5) * 30
+            + Math.sin(ct2 * 0.35 + 1.0) * 18
+            + Math.sin(ct3 * 0.25) * 10;
 
         // --- Organic handheld camera drift / breathing cadence ---
         const breathT = this.time * 1.35; // ~4.6s breathing period
-        const breathX = Math.sin(breathT) * 18.0 + Math.cos(breathT * 0.6) * 8.0;
-        const breathY = Math.cos(breathT * 1.1) * 15.0 + Math.sin(breathT * 0.4) * 6.0;
-        const breathZ = Math.sin(breathT * 0.8) * 35.0;
+        const breathX = Math.sin(breathT) * 2.8 + Math.cos(breathT * 0.6) * 1.2;
+        const breathY = Math.cos(breathT * 1.1) * 2.2 + Math.sin(breathT * 0.4) * 1.0;
+        const breathZ = Math.sin(breathT * 0.8) * 6.0;
 
         // --- Smooth wandering drift (Brownian-like inertia) ---
-        const driftForce = 12;
+        const driftForce = 3;
         const driftDamping = 0.92;
-        const driftLimit = 160;
+        const driftLimit = 24;
         this.cameraDriftVelocity.x += (Math.sin(ct2 * 2.1 + 0.3) * driftForce
             + Math.cos(ct3 * 1.7) * driftForce * 0.6) * delta;
         this.cameraDriftVelocity.y += (Math.cos(ct2 * 1.8 + 1.9) * driftForce * 0.7
             + Math.sin(ct3 * 1.3 + 0.7) * driftForce * 0.4) * delta;
         this.cameraDriftVelocity.z += (Math.sin(ct2 * 1.4 + 2.5) * driftForce * 0.5) * delta;
-        this.cameraDriftVelocity.multiplyScalar(Math.pow(driftDamping, delta * 60));
+        this.cameraDriftVelocity.multiplyScalar(driftDamping ** (delta * 60));
         this.cameraDrift.add(this.cameraDriftVelocity.clone().multiplyScalar(delta));
         this.cameraDrift.clampScalar(-driftLimit, driftLimit);
 
         // --- Smoothed audio sway (gentle, interpolated response to music) ---
-        const swayTargetX = (this.audioChannels.flow ?? 0) * 45 * Math.sin(ct1 * 1.6);
-        const swayTargetY = (this.audioChannels.pulse ?? 0) * 30 * Math.cos(ct1 * 1.2);
-        const swayTargetZ = (this.audioChannels.atmosphere ?? 0) * 25;
+        const swayTargetX = (this.audioChannels.flow ?? 0) * 12 * Math.sin(ct1 * 1.6);
+        const swayTargetY = (this.audioChannels.pulse ?? 0) * 10 * Math.cos(ct1 * 1.2);
+        const swayTargetZ = (this.audioChannels.atmosphere ?? 0) * 8;
         const swaySmooth = clamp(delta * 1.8, 0, 0.15);
         this.cameraAudioSway.x += (swayTargetX - this.cameraAudioSway.x) * swaySmooth;
         this.cameraAudioSway.y += (swayTargetY - this.cameraAudioSway.y) * swaySmooth;
         this.cameraAudioSway.z += (swayTargetZ - this.cameraAudioSway.z) * swaySmooth;
 
         // --- Audio-reactive depth pull (smoothed & amplified for heavy drops) ---
-        const audioPush = (analysis.bassEnergy ?? 0) * 85 + (analysis.overallEnergy ?? 0) * 45 + this.beatPulse * 65;
+        const audioPush = (analysis.bassEnergy ?? 0) * 20 + (analysis.overallEnergy ?? 0) * 12 + this.beatPulse * 14;
 
         // --- Camera shake (event-driven only) ---
-        const shakeAmp = clamp(this.reactiveEnvelope.shake * 50, 0, 50);
+        const shakeAmp = clamp(this.reactiveEnvelope.shake * 8, 0, 8);
         this.cameraShake.set(
-            (Math.random() - 0.5) * shakeAmp,
-            (Math.random() - 0.5) * shakeAmp,
-            (Math.random() - 0.5) * shakeAmp * 0.5,
+            (this.rand() - 0.5) * shakeAmp,
+            (this.rand() - 0.5) * shakeAmp,
+            (this.rand() - 0.5) * shakeAmp * 0.5,
         );
 
         // --- Smooth pointer tracking (frame-rate independent damping) ---
@@ -2673,8 +2717,8 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, lerpFactor);
         this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, lerpFactor);
 
-        const parallaxX = this.smoothedPointerX * 180.0;
-        const parallaxY = -this.smoothedPointerY * 110.0;
+        const parallaxX = this.smoothedPointerX * 35.0;
+        const parallaxY = -this.smoothedPointerY * 22.0;
 
         // --- Compose final camera position ---
         this.camera.position.set(
@@ -2687,9 +2731,9 @@ export default class ChiralGoldTheme extends BaseTheme {
         );
 
         // --- Look-target drift (parallax-offset, never stares at dead center) ---
-        const lookOffsetX = Math.sin(ct1 * 0.6) * 90 + Math.cos(ct2 * 0.8 + 1.5) * 50 + parallaxX * 0.45;
-        const lookOffsetY = Math.cos(ct1 * 0.5 + 0.7) * 55
-            + Math.sin(ct2 * 0.65) * 30
+        const lookOffsetX = Math.sin(ct1 * 0.6) * 9 + Math.cos(ct2 * 0.8 + 1.5) * 8 + parallaxX * 0.45;
+        const lookOffsetY = Math.cos(ct1 * 0.5 + 0.7) * 4
+            + Math.sin(ct2 * 0.65) * 10
             + (analysis.overallEnergy ?? 0) * 8
             + this.comboFlashIntensity * 12
             + parallaxY * 0.45
@@ -2702,8 +2746,8 @@ export default class ChiralGoldTheme extends BaseTheme {
         );
 
         // --- Cinematic roll tilt (banking into the orbit direction) ---
-        const orbitVelX = Math.cos(ct1) * 220 * 0.04
-            - Math.sin(ct2 * 1.3 + 0.8) * 140 * 0.027 * 1.3;
+        const orbitVelX = Math.cos(ct1) * 24 * 0.04
+            - Math.sin(ct2 * 1.3 + 0.8) * 14 * 0.027 * 1.3;
         this.cameraRollTarget = clamp(orbitVelX * -0.0004, -0.035, 0.035);
         this.cameraRoll += (this.cameraRollTarget - this.cameraRoll) * clamp(delta * 1.2, 0, 0.1);
         this.camera.rotation.z += this.cameraRoll;
@@ -2750,6 +2794,7 @@ export default class ChiralGoldTheme extends BaseTheme {
     }
 
     onWindowResize() {
+        this.sculpture?.resize(window.innerWidth, window.innerHeight, this.cameraBasePosition.z);
         if (!this.renderer || !this.camera) return;
 
         const width = window.innerWidth;
@@ -2903,7 +2948,9 @@ export default class ChiralGoldTheme extends BaseTheme {
             return 0;
         }
 
-        let count = comboCount >= 10 ? 4 : comboCount >= 7 ? 3 : 2;
+        let count = 2;
+        if (comboCount >= 10) count = 4;
+        else if (comboCount >= 7) count = 3;
         if (this.currentQualityLevel === 'Medium') {
             count = Math.min(count, 2);
         }
@@ -2969,10 +3016,10 @@ export default class ChiralGoldTheme extends BaseTheme {
 
     handlePieceLock(eventPayload) {
         const detail = eventPayload?.detail || eventPayload || {};
-        const piece = detail.piece;
+        const { piece } = detail;
 
         const caps = this.getChoreographyCaps();
-        const eventScale = caps.eventScale;
+        const { eventScale } = caps;
         this.dustEventBoost = Math.min(this.dustEventBoost + 0.36 * eventScale, 2.0);
         this.wispJolt = Math.min(this.wispJolt + 0.18 * eventScale, 1.0);
         this.pushReactiveEnvelope({
@@ -2983,9 +3030,10 @@ export default class ChiralGoldTheme extends BaseTheme {
             shake: 0.07 * eventScale,
         });
 
-        this.cameraLookNudgeY = -18.0 * eventScale;
+        this.cameraLookNudgeY = -4.0 * eventScale;
 
         const lockOrigin3D = this.getOriginFromPiece(piece, detail.viewportOrigin);
+        this.sculpture?.trigger('lock', 0.55 * eventScale, lockOrigin3D);
         if (lockOrigin3D) {
             // Localized subtle golden burst at the exact locking location
             const lockIntensity = (0.32 + eventScale * 0.16) * (caps.allowAdvancedScreenFx ? 1.0 : 0.84);
@@ -3016,9 +3064,10 @@ export default class ChiralGoldTheme extends BaseTheme {
         const detail = eventPayload?.detail || eventPayload || {};
         const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
         const caps = this.getChoreographyCaps();
-        const eventScale = caps.eventScale;
+        const { eventScale } = caps;
 
         if (comboCount > 0) {
+            this.sculpture?.trigger('combo', Math.min(2.2, 0.7 + comboCount * 0.15));
             this.pendingComboCount = comboCount;
             this.pushReactiveEnvelope({
                 pulse: Math.min(0.05 + comboCount * 0.05, 0.5) * eventScale,
@@ -3049,15 +3098,18 @@ export default class ChiralGoldTheme extends BaseTheme {
         const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
         let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
         const caps = this.getChoreographyCaps();
-        const eventScale = caps.eventScale;
+        const { eventScale } = caps;
 
-        this.cameraLookNudgeY = -90.0 * eventScale;
-        this.cameraZoomNudgeZ = -160.0 * eventScale;
-
+        this.cameraLookNudgeY = -16.0 * eventScale;
+        this.cameraZoomNudgeZ = -38.0 * eventScale;
         if (!comboCount && this.pendingComboCount > 0) {
             comboCount = this.pendingComboCount;
-            this.pendingComboCount = 0;
         }
+        this.pendingComboCount = 0;
+        this.sculpture?.trigger(
+            lineCount >= 4 ? 'tetris' : 'clear',
+            Math.min(2.1, 0.75 + lineCount * 0.2 + comboCount * 0.045),
+        );
 
         const comboMultiplier = Math.min(1 + comboCount * 0.25, 2.5);
 
@@ -3105,14 +3157,16 @@ export default class ChiralGoldTheme extends BaseTheme {
                 0,
                 0.95,
             );
+            const heroSizeMultiplier = trail ? 0.74 : 0.86;
+            const heroVelocityMultiplier = trail ? 1.14 : 1.2;
             this.triggerBurst(heroIntensity, comboCount, {
                 profile: 'hero_close',
                 origin: this.getBurstOrigin('hero_close', {
                     intensity: 0.88 + comboCount * 0.08,
                     index: pulseIndex * 5 + 1,
                 }),
-                sizeMultiplier: heroAmplification ? (trail ? 1.45 : 1.6) : 1.0,
-                velocityMultiplier: heroAmplification ? (trail ? 1.14 : 1.2) : 1.0,
+                sizeMultiplier: heroAmplification ? heroSizeMultiplier : 1.0,
+                velocityMultiplier: heroAmplification ? heroVelocityMultiplier : 1.0,
                 sparkBoost: heroSparkBoost,
                 lifeMultiplier: 0.87,
             });
@@ -3231,25 +3285,25 @@ export default class ChiralGoldTheme extends BaseTheme {
             // clearedRows would otherwise map against the whole tall grid and mis-place.
             const viewport = readLockViewportOrigin(detail);
             clearedRows.forEach((y) => {
-                for (let colIdx = 0; colIdx < 5; colIdx++) {
-                    const ndcX = -0.20 + colIdx * 0.10;
+                for (let colIdx = 0; colIdx < 2; colIdx++) {
+                    const ndcX = -0.22 + colIdx * 0.44;
                     const ndcY = viewport
                         ? 0.36 - viewport.y * 0.72
                         : 0.36 - (y / (totalRows - 1)) * 0.72;
                     const origin3D = this.projectNdcToPlane(ndcX, ndcY, 0.0);
                     if (origin3D) {
                         const burstIntensity = Math.min(
-                            1.2 + comboCount * 0.12 + this.reactiveEnvelope.spark * 0.6,
-                            2.4,
+                            0.65 + comboCount * 0.025 + this.reactiveEnvelope.spark * 0.1,
+                            1.05,
                         ) * (0.65 + eventScale * 0.35);
 
                         this.triggerBurst(burstIntensity, comboCount, {
                             profile: 'dissolve',
                             origin: origin3D,
-                            sizeMultiplier: 1.1,
+                            sizeMultiplier: 0.35,
                             velocityMultiplier: 1.0,
-                            sparkBoost: clamp(0.22 + comboCount * 0.04, 0, 0.95),
-                            lifeMultiplier: 0.85,
+                            sparkBoost: 0.06,
+                            lifeMultiplier: 0.4,
                         });
                     }
                 }
@@ -3281,7 +3335,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 index: comboCount,
             });
 
-        const defaultSizeMultiplier = profile === 'hero_close' ? 1.6 : 1.0;
+        const defaultSizeMultiplier = profile === 'hero_close' ? 0.86 : 1.0;
         const defaultVelocityMultiplier = profile === 'hero_close' ? 1.2 : 1.0;
         const sizeMultiplier = Number.isFinite(options.sizeMultiplier)
             ? Math.max(0.35, options.sizeMultiplier)
@@ -3292,9 +3346,10 @@ export default class ChiralGoldTheme extends BaseTheme {
         const sparkBoost = Number.isFinite(options.sparkBoost)
             ? Math.max(0, options.sparkBoost)
             : 0;
+        const defaultLifeMultiplier = profile === 'hero_close' ? 0.87 : 1.0;
         const lifeMultiplier = Number.isFinite(options.lifeMultiplier)
             ? Math.max(0.35, options.lifeMultiplier)
-            : (profile === 'hero_close' ? 0.87 : 1.0);
+            : defaultLifeMultiplier;
 
         const effectiveSizeMultiplier = isMinimal ? Math.min(sizeMultiplier, 1.0) : sizeMultiplier;
         const effectiveVelocityMultiplier = isMinimal ? Math.min(velocityMultiplier, 1.0) : velocityMultiplier;
@@ -3329,7 +3384,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         }
         this.burstSparkBoost = Math.max(this.burstSparkBoost, sparkBoost);
 
-        if (this.burstCompute?.computeNode) {
+        if (this.burstCompute?.ready) {
             this.burstCompute.triggerBurst(this.time, intensity, burstOrigin, comboCount, {
                 profile,
                 sizeMultiplier: effectiveSizeMultiplier,
@@ -3368,14 +3423,18 @@ export default class ChiralGoldTheme extends BaseTheme {
         const batchMax = Math.max(batchMin, Math.floor(state.life.length * 0.26));
         const normalizedIntensity = clamp((intensity - 0.75) / 1.5, 0, 1);
         const baseBatch = Math.floor(batchMin + (batchMax - batchMin) * normalizedIntensity);
-        const targetBatch = profile === 'lock_burst' ? Math.floor(baseBatch * 0.35) : baseBatch;
+        let batchScale = 1;
+        if (profile === 'lock_burst') batchScale = 0.35;
+        if (profile === 'dissolve') batchScale = 0.2;
+        const targetBatch = Math.max(1, Math.floor(baseBatch * batchScale));
 
         const palette = this.getGoldPalette();
+        const spawnJitterByProfile = { hero_close: 12, lock_burst: 4, dissolve: 8 };
+        const spawnJitter = spawnJitterByProfile[profile] ?? 20;
 
         for (let i = 0; i < targetBatch; i += 1) {
             const index = (i + Math.floor(this.rand() * state.life.length)) % state.life.length;
             const i3 = index * 3;
-            const spawnJitter = profile === 'hero_close' ? 12 : (profile === 'lock_burst' ? 4 : (profile === 'dissolve' ? 8 : 20));
 
             const patternRoll = this.rand();
             let vx = 0;
@@ -3393,7 +3452,8 @@ export default class ChiralGoldTheme extends BaseTheme {
             } else if (profile === 'dissolve') {
                 const isLeftOrigin = burstOrigin.x < 0;
                 const sideDir = isLeftOrigin ? -1.0 : 1.0;
-                vx = (sideDir * (220.0 + this.rand() * 260.0) + (this.rand() - 0.5) * 60.0) * intensity * effectiveVelocityMultiplier;
+                vx = (sideDir * (220.0 + this.rand() * 260.0) + (this.rand() - 0.5) * 60.0)
+                    * intensity * effectiveVelocityMultiplier;
                 vy = (this.rand() - 0.5) * 120.0 * effectiveVelocityMultiplier;
                 vz = (this.rand() - 0.5) * 90.0 * effectiveVelocityMultiplier;
             } else if (patternRoll < 0.6) {
@@ -3444,7 +3504,8 @@ export default class ChiralGoldTheme extends BaseTheme {
         }
 
         state.active = true;
-        pool.geometry.attributes.position.needsUpdate = true;
+        pool.visible = true;
+        chiralParticlePositions(pool).needsUpdate = true;
         pool.geometry.attributes.aVelocity.needsUpdate = true;
         pool.geometry.attributes.aLife.needsUpdate = true;
         pool.geometry.attributes.aSize.needsUpdate = true;
@@ -3480,6 +3541,12 @@ export default class ChiralGoldTheme extends BaseTheme {
     }
 
     createShockwave(options = {}) {
+        if (this.shockwaves.length >= 12) {
+            const oldest = this.shockwaves.shift();
+            oldest.mesh.removeFromParent();
+            oldest.mesh.geometry.dispose();
+            oldest.mesh.material.dispose();
+        }
         const radius = options.radius ?? 30;
         const tube = options.tube ?? 1.6;
         const life = options.life ?? 1.8;
@@ -3614,7 +3681,7 @@ export default class ChiralGoldTheme extends BaseTheme {
     }
 
     getBurstEffectsSnapshot() {
-        const lastBurstDepth = this.burstDebugStats.lastBurstDepth;
+        const { lastBurstDepth } = this.burstDebugStats;
         return {
             lastBurstDepth: Number.isFinite(lastBurstDepth) ? Number(lastBurstDepth.toFixed(2)) : null,
             heroBurstCount: this.burstDebugStats.heroBurstCount,
@@ -3854,6 +3921,8 @@ export default class ChiralGoldTheme extends BaseTheme {
     disposeRuntimeResources({ removeCanvas = true } = {}) {
         this.removeRendererResilience();
         this.disposePostProcessingStack();
+        this.sculpture?.dispose();
+        this.sculpture = null;
         this.clearTempEffects();
         this.disposeComputeResources();
         this.disposeSceneResources();
@@ -3890,7 +3959,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
     stop() {
         this.cancelAnimationLoop();
-        this.clock.stop();
+        this.clock.dispose();
         this.clearDeferredTimeouts();
         this.clearEventSubscriptions();
         this.removeResizeListener();

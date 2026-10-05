@@ -16,6 +16,7 @@ import {
     output,
     pass,
     sin,
+    smoothstep,
     uniform,
     vec2,
     vec3,
@@ -23,7 +24,6 @@ import {
     viewportUV,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 
@@ -50,34 +50,46 @@ export class ChiralGoldPost {
         );
 
         this.uBloomBoost = uniform(params.bloomBoost ?? 0);
-        this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.003);
-        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.9);
-        this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.1);
-        this.uExposure = uniform(params.exposure ?? 1.0);
-        this.uContrast = uniform(params.contrast ?? 1.1);
-        this.uSaturation = uniform(params.saturation ?? 0.85);
-        this.uBlackFloor = uniform(params.blackFloor ?? 0.08);
-        this.uFilmGrain = uniform(params.filmGrain ?? 0.015);
-        this.uDitherStrength = uniform(params.ditherStrength ?? 0.0035);
-        this.uWarmTint = uniform(params.warmTint ?? new THREE.Color(1.0, 0.95, 0.85));
+        this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.001);
+        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.42);
+        this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.16);
+        this.uExposure = uniform(params.exposure ?? 0.94);
+        this.uContrast = uniform(params.contrast ?? 1.03);
+        this.uSaturation = uniform(params.saturation ?? 1.06);
+        this.uBlackFloor = uniform(params.blackFloor ?? 0.006);
+        this.uFilmGrain = uniform(params.filmGrain ?? 0.0025);
+        this.uDitherStrength = uniform(params.ditherStrength ?? 0.0015);
+        this.uWarmTint = uniform(params.warmTint ?? new THREE.Color(1.0, 0.92, 0.76));
+        this.uResolution = uniform(new THREE.Vector2(1, 1));
         this.uTime = uniform(0);
 
         const uv = viewportUV;
 
         const vigDist = length(uv.sub(0.5).mul(2.0));
-        const vig = clamp(
-            smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.7), vigDist),
-            0.0,
-            1.0,
-        );
+        const vignetteFalloff = smoothstep(this.uVignetteOffset.sub(0.65), this.uVignetteOffset, vigDist);
+        const vignette = float(1.0).sub(vignetteFalloff.mul(this.uVignetteDarkness));
 
-        const baseSample = sceneColor.sample(uv);
-        const vignetted = mix(baseSample.mul(float(1.0).sub(this.uVignetteDarkness)), baseSample, vig);
+        // Sample the existing scene texture directly. Applying the addon to an
+        // already-vignetted expression allocated an unnecessary intermediate
+        // render target and full-screen pass, especially costly on phones.
+        let chroma = sceneColor.sample(uv);
+        if (params.chromaticStrength !== 0) {
+            const radialOffset = uv.sub(0.5);
+            const chromaticOffset = radialOffset.mul(length(radialOffset))
+                .mul(this.uChromaticStrength).mul(0.12);
+            chroma = vec4(
+                sceneColor.sample(uv.add(chromaticOffset)).r,
+                chroma.g,
+                sceneColor.sample(uv.sub(chromaticOffset)).b,
+                1.0,
+            );
+        }
 
-        const chroma = chromaticAberration(vignetted, this.uChromaticStrength, vec2(0.5, 0.5), 1.1);
-
-        const bloomTint = this.uWarmTint.mul(float(0.9).add(this.uBloomBoost.mul(0.35)));
-        const combined = chroma.add(this.bloomNode.mul(vec4(bloomTint, 1.0)));
+        const bloomTint = this.uWarmTint.mul(float(0.82).add(this.uBloomBoost.mul(0.18)));
+        // Vignette the complete composition, including bloom, so corner halos
+        // do not float above the grade or reveal the edge of the canvas.
+        const combined = chroma.add(this.bloomNode.mul(vec4(bloomTint, 1.0)))
+            .mul(vignette);
 
         const exposed = combined.rgb.mul(this.uExposure);
 
@@ -89,7 +101,15 @@ export class ChiralGoldPost {
 
         const acesNum = exposed.mul(exposed.mul(acesA).add(acesB));
         const acesDen = exposed.mul(exposed.mul(acesC).add(acesD)).add(acesE);
-        let graded = clamp(acesNum.div(acesDen), 0.0, 1.0);
+        const filmic = clamp(acesNum.div(acesDen), 0.0, 1.0);
+
+        // A small luminance-preserving shoulder keeps bright amber/copper
+        // highlights from collapsing into a broad white patch during combos.
+        const inputLuma = max(dot(exposed, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
+        const lumaNum = inputLuma.mul(inputLuma.mul(acesA).add(acesB));
+        const lumaDen = inputLuma.mul(inputLuma.mul(acesC).add(acesD)).add(acesE);
+        const colorPreserving = exposed.mul(lumaNum.div(lumaDen).div(inputLuma));
+        let graded = mix(filmic, colorPreserving, 0.14);
 
         const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
         graded = mix(vec3(luma), graded, this.uSaturation);
@@ -98,10 +118,12 @@ export class ChiralGoldPost {
         const blackScale = max(float(0.0001), float(1.0).sub(this.uBlackFloor));
         graded = clamp(graded.sub(this.uBlackFloor).div(blackScale), 0.0, 1.0);
 
-        const grain = fract(sin(dot(uv.add(this.uTime.mul(0.01)), vec2(12.9898, 78.233))).mul(43758.5453));
-        graded = clamp(graded.add(grain.sub(0.5).mul(this.uFilmGrain)), 0.0, 1.0);
+        const pixel = uv.mul(this.uResolution);
+        const grain = fract(sin(dot(pixel.add(this.uTime.mul(7.6)), vec2(12.9898, 78.233))).mul(43758.5453));
+        const grainExposure = float(1.0).sub(clamp(luma, 0.0, 1.0).mul(0.7));
+        graded = clamp(graded.add(grain.sub(0.5).mul(this.uFilmGrain).mul(grainExposure)), 0.0, 1.0);
 
-        const dither = fract(sin(dot(uv, vec2(127.1, 311.7))).mul(43758.5453));
+        const dither = fract(fract(dot(pixel, vec2(0.06711056, 0.00583715))).mul(52.9829189));
         graded = clamp(graded.add(dither.sub(0.5).mul(this.uDitherStrength)), 0.0, 1.0);
 
         this.postProcessing.outputNode = vec4(graded, 1.0);
@@ -136,6 +158,15 @@ export class ChiralGoldPost {
         if (params.filmGrain !== undefined) {
             this.uFilmGrain.value = params.filmGrain;
         }
+        for (const [parameter, node] of [
+            ['exposure', this.uExposure],
+            ['contrast', this.uContrast],
+            ['saturation', this.uSaturation],
+            ['blackFloor', this.uBlackFloor],
+            ['ditherStrength', this.uDitherStrength],
+        ]) {
+            if (params[parameter] !== undefined) node.value = params[parameter];
+        }
     }
 
     render() {
@@ -145,6 +176,7 @@ export class ChiralGoldPost {
     setSize(width, height) {
         this.size.width = width;
         this.size.height = height;
+        this.uResolution.value.set(width, height);
         this.scenePass.setSize(width, height);
         if (this.bloomNode?._separableBlurMaterials?.length) {
             this.bloomNode.setSize(width, height);
@@ -156,9 +188,4 @@ export class ChiralGoldPost {
         disposeBloomNodeDeep(this.bloomNode);
         this.postProcessing?.dispose?.();
     }
-}
-
-function smoothstep(edge0, edge1, x) {
-    const t = clamp(x.sub(edge0).div(edge1.sub(edge0)), 0.0, 1.0);
-    return t.mul(t).mul(float(3.0).sub(t.mul(2.0)));
 }

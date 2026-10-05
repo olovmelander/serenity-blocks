@@ -23,10 +23,56 @@ import {
     uniform,
     vec2,
     vec3,
-    vec4,
 } from 'three/tsl';
+import { compileComputeAsync } from '../../rendering/webgpu-compute-pipeline-async.js';
 
 const TAU = Math.PI * 2;
+
+// Native r186 compilation yields during node construction. Do not dispatch a system
+// until the shared helper has checked the actual GPU pipeline slot, and do not let
+// an obsolete compile completion revive a retired system or a different renderer.
+async function initializeComputeSystem(system, renderer, options = {}) {
+    const node = system.computeNode;
+    const generation = (system.compileGeneration || 0) + 1;
+    system.compileGeneration = generation;
+    system.ready = false;
+    system.computeRenderer = renderer;
+    system.compileReport = { status: 'pending' };
+    if (!node) {
+        system.compileReport = { status: 'failed', message: 'No compute node' };
+        return system.compileReport;
+    }
+
+    let report;
+    try {
+        report = await compileComputeAsync(renderer, node, { timeoutMs: 4000, ...options });
+    } catch (error) {
+        report = { status: 'failed', message: error?.message || String(error) };
+    }
+    if (system.compileGeneration !== generation || system.computeNode !== node
+        || system.computeRenderer !== renderer) {
+        return { ...report, status: 'cancelled' };
+    }
+    system.compileReport = report;
+    system.ready = report.status === 'ready' && renderer?._isDeviceLost !== true;
+    return report;
+}
+
+function dispatchComputeSystem(system, renderer) {
+    if (!system.ready || !system.computeNode || renderer !== system.computeRenderer
+        || renderer?._isDeviceLost === true || typeof renderer?.compute !== 'function') return false;
+    renderer.compute(system.computeNode);
+    return true;
+}
+
+function retireComputeSystem(system) {
+    system.compileGeneration = (system.compileGeneration || 0) + 1;
+    system.ready = false;
+    system.computeRenderer = null;
+    system.compileReport = { status: 'retired' };
+    system.computeNode?.dispose?.();
+    system.computeNode = null;
+}
 
 function toLinearColorArray(colorPalette = []) {
     if (!Array.isArray(colorPalette) || colorPalette.length === 0) {
@@ -72,6 +118,10 @@ export class ChiralGoldDustCompute {
         this.uFormationProgress = uniform(0);
 
         this.computeNode = null;
+        this.ready = false;
+        this.computeRenderer = null;
+        this.compileReport = { status: 'idle' };
+        this.compileGeneration = 0;
 
         this.setInitialState(options);
     }
@@ -179,6 +229,8 @@ export class ChiralGoldDustCompute {
     }
 
     createComputeNode() {
+        retireComputeSystem(this);
+        this.compileReport = { status: 'idle' };
         const positions = storage(this.positionBuffer, 'vec4', this.count);
         const velocities = storage(this.velocityBuffer, 'vec4', this.count);
         const lifeData = storage(this.lifeBuffer, 'vec4', this.count);
@@ -366,8 +418,16 @@ export class ChiralGoldDustCompute {
         return this.colorBuffer;
     }
 
+    initialize(renderer, options = {}) {
+        return initializeComputeSystem(this, renderer, options);
+    }
+
+    dispatch(renderer) {
+        return dispatchComputeSystem(this, renderer);
+    }
+
     dispose() {
-        this.computeNode = null;
+        retireComputeSystem(this);
         this.positionBuffer = null;
         this.velocityBuffer = null;
         this.lifeBuffer = null;
@@ -416,6 +476,10 @@ export class ChiralGoldBurstCompute {
         this.origin = new THREE.Vector3(0, 0, 0);
         this.nextTriggerIndex = 0;
         this.computeNode = null;
+        this.ready = false;
+        this.computeRenderer = null;
+        this.compileReport = { status: 'idle' };
+        this.compileGeneration = 0;
 
         this.setInitialState(options);
     }
@@ -483,6 +547,8 @@ export class ChiralGoldBurstCompute {
     }
 
     createComputeNode() {
+        retireComputeSystem(this);
+        this.compileReport = { status: 'idle' };
         const spawnPosData = storage(this.spawnPosBuffer, 'vec4', this.count);
         const spawnVelData = storage(this.spawnVelBuffer, 'vec4', this.count);
         const spawnMiscData = storage(this.spawnMiscBuffer, 'vec4', this.count);
@@ -566,19 +632,20 @@ export class ChiralGoldBurstCompute {
         const sparkBoost = Number.isFinite(options.sparkBoost)
             ? Math.max(0, options.sparkBoost)
             : 0.0;
+        const defaultLifeMultiplier = options.profile === 'hero_close' ? 0.87 : 1.0;
         const lifeMultiplier = Number.isFinite(options.lifeMultiplier)
             ? Math.max(0.35, options.lifeMultiplier)
-            : (options.profile === 'hero_close' ? 0.87 : 1.0);
+            : defaultLifeMultiplier;
 
         const clampedIntensity = Math.max(0.75, Math.min(2.25, intensity));
         const normalizedIntensity = (clampedIntensity - 0.75) / 1.5;
         const minBatch = Math.max(120, Math.floor(this.count * 0.015));
         const maxBatch = Math.max(minBatch, Math.floor(this.count * 0.045));
         const baseBatch = Math.floor(minBatch + (maxBatch - minBatch) * normalizedIntensity);
-        const targetBatch = Math.min(
-            this.count,
-            options.profile === 'lock_burst' ? Math.floor(baseBatch * 0.35) : baseBatch,
-        );
+        let batchScale = 1;
+        if (options.profile === 'lock_burst') batchScale = 0.35;
+        if (options.profile === 'dissolve') batchScale = 0.2;
+        const targetBatch = Math.min(this.count, Math.max(1, Math.floor(baseBatch * batchScale)));
 
         const startIndex = this.nextTriggerIndex;
         for (let activated = 0; activated < targetBatch; activated += 1) {
@@ -691,8 +758,16 @@ export class ChiralGoldBurstCompute {
         return this.colorBuffer;
     }
 
+    initialize(renderer, options = {}) {
+        return initializeComputeSystem(this, renderer, options);
+    }
+
+    dispatch(renderer) {
+        return dispatchComputeSystem(this, renderer);
+    }
+
     dispose() {
-        this.computeNode = null;
+        retireComputeSystem(this);
         this.spawnPosBuffer = null;
         this.spawnVelBuffer = null;
         this.spawnMiscBuffer = null;
@@ -732,6 +807,10 @@ export class ChiralGoldWispCompute {
         this.uBeatPulse = uniform(0);
 
         this.computeNode = null;
+        this.ready = false;
+        this.computeRenderer = null;
+        this.compileReport = { status: 'idle' };
+        this.compileGeneration = 0;
 
         this.setInitialState(options);
     }
@@ -788,6 +867,8 @@ export class ChiralGoldWispCompute {
     }
 
     createComputeNode() {
+        retireComputeSystem(this);
+        this.compileReport = { status: 'idle' };
         const positions = storage(this.positionBuffer, 'vec4', this.count);
         const paramA = storage(this.paramABuffer, 'vec4', this.count);
         const paramB = storage(this.paramBBuffer, 'vec4', this.count);
@@ -871,8 +952,16 @@ export class ChiralGoldWispCompute {
         return this.colorBuffer;
     }
 
+    initialize(renderer, options = {}) {
+        return initializeComputeSystem(this, renderer, options);
+    }
+
+    dispatch(renderer) {
+        return dispatchComputeSystem(this, renderer);
+    }
+
     dispose() {
-        this.computeNode = null;
+        retireComputeSystem(this);
         this.positionBuffer = null;
         this.paramABuffer = null;
         this.paramBBuffer = null;
