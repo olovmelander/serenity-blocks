@@ -141,23 +141,28 @@ reports `WebGPU · nvidia ampere`), from the Vite dev server.
   gates, rebuilds, teardown). Two faults they caught were fixed: pulses accumulated twice
   whenever the curtain buffer refreshed below the simulation rate, and the reduced-motion
   preference was not applied until it changed.
-- Full suite: 550 of 551 files, 6,097 of 6,098 tests. The one failure was
-  `odyssey-world-bake-loader`, a 5 s timeout under full-suite load; it passes alone (8 of 8)
-  and touches nothing here.
-- Typecheck, TypeScript ratchet, theme lifecycle audit, dependency boundaries (1,084
-  modules) and the lint ratchet pass (1,070 errors against a ceiling of 1,103; the Aurora
-  files add none). Architecture fitness passes with fewer `ShaderMaterial` sites and one
-  fewer raw resize listener.
+The gates below were run on the tree integrated with main at `62784d4c` (the Stellar Drift
+depth overhaul, the Chiral Gold choreography and phaser 4.2.1), in a temporary worktree so
+the shared `dist` was not rewritten. That merge shares no file with this change and does
+not touch the shared theme runtime, so the captures above, taken before it, were not
+repeated. Local `node_modules` still held phaser 4.1.0; CI installs 4.2.1 from the lock.
+
+- Full suite: 554 files, 6,140 tests, all passing. An earlier run before integration had
+  one failure, `odyssey-world-bake-loader` timing out at 5 s under full-suite load; it
+  passed alone then and passed in this run.
+- Typecheck, TypeScript ratchet, theme lifecycle audit and dependency boundaries (1,087
+  modules) pass. The lint ratchet passes at exactly main's ceiling of 1,070 errors, so the
+  Aurora files add none. Architecture fitness passes with fewer `ShaderMaterial` sites and
+  fewer raw resize listeners than its baseline.
 - Production build with the boot-closure guard, the IP-string gate, the Pages artifact
-  check and the release gates pass, run in a temporary worktree so the shared `dist` was
-  not rewritten.
+  check, the release gates and the structural performance-budget gate pass.
 
 ## Not done, not measured
 
 - **No performance measurement.** No frame time, GPU time or battery figure is claimed
   (ADR-0016). The integrated GPU and physical phones were not exercised.
-- Shrink-only baselines (`lint-ratchet.json`, `architecture-fitness.json`) were left
-  untouched while other theme work is in flight; lower them at integration.
+- `architecture-fitness.json` was left untouched while other theme work is in flight, so
+  the lower `ShaderMaterial` and resize-listener counts are not locked in yet.
 - The stylesheet rules for the four removed DOM layers remain in `public/styles/main.css`;
   they match nothing now. The theme icon and `docs/theme-screenshots/aurora.png` still show
   the previous artwork.
