@@ -1,0 +1,112 @@
+{
+  "name": "before-playground-phone-low-webgl2-idle",
+  "stage": "before",
+  "mode": "playground",
+  "url": "http://127.0.0.1:5177/playground.html?effect=stellar-drift&t=8&quality=Low&seed=481516&orbit=0&profile=1&forceWebGL=1",
+  "ready": true,
+  "backend": "WebGL2",
+  "diagnostics": {
+    "quality": "Low",
+    "disabled": true,
+    "useMRT": false,
+    "arcs": 0,
+    "comets": 0,
+    "stars": 850,
+    "meteorCount": 100,
+    "dust": 320,
+    "analyticMotion": true,
+    "backend": "WebGL2"
+  },
+  "profile": {
+    "enabled": true,
+    "backend": "WebGL2",
+    "effect": "stellar-drift",
+    "seed": 481516,
+    "fixedTime": 8,
+    "captureMeta": null,
+    "internalResolution": {
+      "width": 390,
+      "height": 844,
+      "cssWidth": 390,
+      "cssHeight": 844,
+      "pixelRatio": 1
+    },
+    "cpuMs": {
+      "samples": 59,
+      "p50": 0.7999999998137355,
+      "p95": 1.7000000001862645,
+      "p99": 2.300000000745058,
+      "max": 2.300000000745058
+    },
+    "frameMs": {
+      "samples": 58,
+      "p50": 16.700000000186265,
+      "p95": 53.799999999813735,
+      "p99": 75,
+      "max": 75
+    },
+    "gpuMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "computeMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "droppedFrames": {
+      "budgetMs": 16.666666666666668,
+      "dropped": 36,
+      "total": 58,
+      "ratio": 0.6206896551724138
+    },
+    "memory": {
+      "supported": true,
+      "startBytes": 131000000,
+      "currentBytes": 131000000,
+      "peakBytes": 131000000,
+      "growthBytes": 0,
+      "growthMB": 0
+    },
+    "activeParticles": null,
+    "gpuTimestamp": {
+      "requested": false,
+      "renderStatus": "unavailable",
+      "computeStatus": "unavailable",
+      "error": null,
+      "computeError": null
+    },
+    "renderer": null,
+    "gpuMemory": {
+      "totalMB": 4.552984237670898,
+      "texturesMB": 4.266812324523926,
+      "attributesMB": 0.15929794311523438,
+      "indexAttributesMB": 0.0777740478515625,
+      "storageAttributesMB": 0,
+      "uniformBuffersMB": 0.00225830078125,
+      "programsMB": 0.04684162139892578,
+      "renderTargets": 1,
+      "textures": 4,
+      "geometries": 12
+    }
+  },
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "dpr": 1
+  },
+  "canvas": {
+    "width": 390,
+    "height": 844,
+    "left": 0,
+    "top": 0,
+    "cssWidth": 390,
+    "cssHeight": 844
+  },
+  "messages": []
+}

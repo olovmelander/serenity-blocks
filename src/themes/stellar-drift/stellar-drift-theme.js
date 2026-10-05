@@ -353,6 +353,13 @@ export default class StellarDriftTheme extends BaseTheme {
         );
         this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
         this.registerEventListener(window, 'gameOver', () => this.reactions?.reset());
+        this.registerEventListener(window, 'pointermove', (event) => {
+            if (event.pointerType === 'touch') return;
+            const { width, height } = this.appliedSize ?? getViewport();
+            this.atmosphere?.setPointer((event.clientX / width) * 2 - 1, 1 - (event.clientY / height) * 2);
+        }, { passive: true });
+        this.registerEventListener(document, 'pointerleave', () => this.atmosphere?.setPointer(0, 0));
+        this.registerEventListener(window, 'blur', () => this.atmosphere?.setPointer(0, 0));
     }
 
     clearEventSubscriptions() {

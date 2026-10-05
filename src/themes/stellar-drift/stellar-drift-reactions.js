@@ -28,6 +28,15 @@ const DECAY_RATES = Object.freeze({
 const TAU = Math.PI * 2;
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const EVENT_PRIORITY = Object.freeze({ lock: 0.3, clear: 1, combo: 1.4 });
+
+/** A quick rise and lingering release give feedback shape without global flashes. */
+export function stellarDriftEventEnvelope(progress) {
+    const phase = Number.isFinite(progress) ? clamp(progress, 0, 1) : 0;
+    const attack = clamp(phase / 0.085, 0, 1);
+    const release = clamp((1 - phase) / 0.58, 0, 1);
+    return attack * attack * (3 - 2 * attack) * release * release * (3 - 2 * release);
+}
 
 function unwrap(value) {
     if (!isObject(value)) return {};
@@ -135,7 +144,7 @@ export class StellarDriftReactions {
         const slots = type === 'arc' ? this.arcSlots : this.cometSlots;
         const cursorKey = type === 'arc' ? 'arcCursor' : 'cometCursor';
         let selected = -1;
-        let oldestProgress = -1;
+        let leastRetention = Infinity;
         for (let step = 0; step < slots.length; step++) {
             const index = (this[cursorKey] + step) % slots.length;
             const slot = slots[index];
@@ -143,14 +152,20 @@ export class StellarDriftReactions {
                 selected = index;
                 break;
             }
-            const progress = slot.age / slot.duration;
-            if (progress > oldestProgress) {
-                oldestProgress = progress;
+            const retention = (1 - slot.age / slot.duration) * slot.strength * EVENT_PRIORITY[slot.kind];
+            if (retention < leastRetention) {
+                leastRetention = retention;
                 selected = index;
             }
         }
+        // Rapid stacking must not erase the clear/combo choreography it just earned.
+        // Equal-priority ties still rotate through the fixed pool.
+        const candidate = slots[selected];
+        if (event.kind === 'lock' && candidate.active
+            && leastRetention > event.strength * EVENT_PRIORITY.lock) return false;
         Object.assign(slots[selected], event, { active: true });
         this[cursorKey] = (selected + 1) % slots.length;
+        return true;
     }
 
     schedule(type, event, delay = 0) {
@@ -276,6 +291,7 @@ export class StellarDriftReactions {
         const snapshots = (slots) => slots.filter((slot) => slot.active).map((slot) => ({
             ...slot,
             progress: clamp(slot.age / slot.duration, 0, 1),
+            energy: slot.strength * stellarDriftEventEnvelope(slot.age / slot.duration),
         }));
         return {
             ...this.envelopes,
