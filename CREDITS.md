@@ -42,17 +42,17 @@ Assets are grouped by license obligation:
 
 ## 1b. MIT-licensed bundled assets
 
-**SynthCity** city / vehicle textures under `public/textures/synthcity/` (~109 files) are from the SynthCity project by **Jeff Beene**, used under the MIT License. Used by the Neon District theme. Source: https://github.com/jeffbeene/synthcity
+None at present.
 
-> MIT License — Copyright (c) 2024 Jeff Beene
->
-> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
->
-> The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
->
-> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+The **SynthCity** city and vehicle textures by **Jeff Beene** (MIT License, source
+https://github.com/jeffbeene/synthcity) were bundled under `public/textures/synthcity/` for the
+first Neon District theme. That theme was rebuilt in October 2026 and no longer reads them, so the
+set was removed from the distribution on 2026-10-05.
 
-Note: the previously-bundled `0QuazDeckard…` car textures (unreferenced by any code, unclear provenance) were **removed** from `public/textures/synthcity/`, so the distribution now carries only the MIT-licensed SynthCity set.
+The rebuilt Neon District ships two atlases, `public/textures/neon-district/shopfronts.webp` and
+`billboards.webp` (and their half-size copies), baked from the shopfront and billboard images the
+project owner added in December 2025. The sources and the bake are in
+`scripts/neon-district/` (see `source-art/README.md`).
 
 ---
 
