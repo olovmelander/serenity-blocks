@@ -320,7 +320,7 @@ describe('breathing guide controls', () => {
         expect(guide.isActive).toBe(true);
     });
 
-    it('asks before ending a session, and only then tells its owner', () => {
+    it('asks before ending a session, holds the session while it asks, and only then ends it', () => {
         const control = vi.fn();
         guide.setExternalControl(true);
         guide.onControl = control;
@@ -328,12 +328,14 @@ describe('breathing guide controls', () => {
         key('Escape');
         expect(guide.isActive).toBe(true);
         expect(guide.confirm.hidden).toBe(false);
+        expect(guide.root.classList.contains('is-confirming')).toBe(true);
+        expect(control).toHaveBeenLastCalledWith('suspend');
         key('Escape');
         expect(guide.confirm.hidden).toBe(true);
-        expect(control).not.toHaveBeenCalled();
+        expect(control).toHaveBeenLastCalledWith('unsuspend');
         guide.root.fire('click', { target: targetMatching({ '[data-action]': { dataset: { action: 'end' } } }) });
         guide.root.fire('click', { target: targetMatching({ '[data-action]': { dataset: { action: 'confirm-end' } } }) });
-        expect(control).toHaveBeenCalledExactlyOnceWith('end');
+        expect(control.mock.calls.map(([action]) => action)).toEqual(['suspend', 'unsuspend', 'suspend', 'end']);
     });
 
     it('pauses and resumes a session with Space, never a standalone practice', () => {
@@ -410,6 +412,135 @@ describe('breathing guide under a session', () => {
         guide.updateProgress({ phase: 'retention', phaseIndex: 3, phaseProgress: 0.1, remainingTime: 54 });
         expect(text(guide.journeyDetail)).toBe('0:54 left');
         expect(marks.map((mark) => mark.dataset.state)).toEqual(['done', 'done', 'current']);
+    });
+
+    it('lets an open hold end when you breathe in: Space, a tap on the world, or the button', () => {
+        const control = vi.fn();
+        guide.setExternalControl(true);
+        guide.onControl = control;
+        guide.start();
+        guide.showProgress(true);
+        guide.overridePattern([0, 0, 0, 60]);
+        guide.setSessionPhase('retention', 0);
+        guide.setGuidance({ mode: 'open-hold', suggested: 60, cap: 120 });
+        expect(guide.root.dataset.guidance).toBe('open-hold');
+        expect(text(guide.holdLabel)).toBe('Suggested 1:00');
+        frame(100);
+        expect(text(guide.phaseWord)).toBe('Hold');
+        expect(text(guide.count)).toBe('');
+        expect(text(guide.hint)).toBe('Press Space or click to breathe in');
+        key(' ');
+        expect(control).toHaveBeenLastCalledWith('breathe');
+        guide.root.fire('click', { target: looseNode() });
+        expect(control).toHaveBeenCalledTimes(2);
+        guide.root.fire('click', { target: targetMatching({ '[data-action]': { dataset: { action: 'breathe' } } }) });
+        expect(control).toHaveBeenCalledTimes(3);
+        // P pauses; while paused, Space resumes instead of breathing.
+        key('p');
+        expect(control).toHaveBeenLastCalledWith('pause');
+        guide.pause();
+        key(' ');
+        expect(control).toHaveBeenLastCalledWith('resume');
+        guide.root.fire('click', { target: looseNode() });
+        expect(control).toHaveBeenCalledTimes(5);
+    });
+
+    it('draws the hold dial: counting up past the suggestion, or down through a timed pause', () => {
+        guide.setExternalControl(true);
+        guide.start();
+        guide.showProgress(true);
+        guide.overridePattern([0, 0, 0, 60]);
+        guide.setGuidance({ mode: 'open-hold', suggested: 60, cap: 120 });
+        guide.updateProgress({
+            phase: 'retention', phaseIndex: 1, phaseProgress: 0.5, holdElapsed: 30.6, holdSuggested: 60, holdReady: false,
+        });
+        expect(text(guide.holdTime)).toBe('0:30');
+        expect(guide.root.style['--hold']).toBe('0.5100');
+        expect(text(guide.journeyDetail)).toBe('Held 0:30');
+        expect(guide.root.classList.contains('is-hold-ready')).toBe(false);
+        guide.updateProgress({ holdElapsed: 72.4, holdReady: true, phaseProgress: 1 });
+        expect(text(guide.holdTime)).toBe('1:12');
+        expect(guide.root.style['--hold']).toBe('1.0000');
+        expect(guide.root.classList.contains('is-hold-ready')).toBe(true);
+        frame(100);
+        expect(text(guide.phaseWord)).toBe('Breathe in when ready');
+        guide.setGuidance({ mode: 'timed-hold', suggested: 25 });
+        expect(guide.root.classList.contains('is-hold-ready')).toBe(false);
+        guide.updateProgress({
+            phase: 'retention', holdElapsed: null, phaseProgress: 0.4, remainingTime: 15,
+        });
+        expect(text(guide.holdTime)).toBe('0:15');
+        expect(text(guide.holdLabel)).toBe('Rest in the pause');
+        expect(text(guide.journeyDetail)).toBe('0:15 left');
+        frame(100);
+        expect(text(guide.phaseWord)).toBe('Pause');
+    });
+
+    it('stops counting in the stages you breathe on your own', () => {
+        guide.setExternalControl(true);
+        guide.start();
+        guide.overridePattern([4, 4, 4, 4]);
+        [['carry', 'Keep the rhythm'], ['natural', 'Breathe naturally'], ['closing', 'Come back gently']].forEach(([mode, words]) => {
+            guide.setGuidance({ mode });
+            frame(100);
+            expect(text(guide.phaseWord)).toBe(words);
+            expect(text(guide.count)).toBe('');
+        });
+        guide.setGuidance({ mode: 'paced' });
+        frame(100);
+        expect(text(guide.phaseWord)).toBe('Breathe in');
+        expect(text(guide.count)).not.toBe('');
+    });
+
+    it('shows a round card for a few seconds, speaks stages to screen readers, and carries the intention', async () => {
+        guide.setExternalControl(true);
+        guide.start();
+        expect(guide.phaseWord.getAttribute('aria-live')).toBe('off');
+        guide.showChapter({ eyebrow: 'Round 2 of 3', title: 'Go Deeper', note: '40 breaths' });
+        expect(guide.chapter.classList.contains('is-showing')).toBe(true);
+        expect(text(guide.chapterTitle)).toBe('Go Deeper');
+        await vi.advanceTimersByTimeAsync(3700);
+        expect(guide.chapter.classList.contains('is-showing')).toBe(false);
+        guide.announce('Hold on empty lungs.');
+        await vi.advanceTimersByTimeAsync(100);
+        expect(text(guide.announcer)).toBe('Hold on empty lungs.');
+        guide.setIntention('Find calm');
+        expect(guide.intentionLine.hidden).toBe(false);
+        expect(text(guide.intentionLine)).toBe('Your intention · Find calm');
+        guide.setExternalControl(false);
+        expect(guide.intentionLine.hidden).toBe(true);
+        expect(guide.guidance).toBeNull();
+        expect(guide.phaseWord.getAttribute('aria-live')).toBe('polite');
+    });
+
+    it('answers a gamepad: A breathes in or pauses, B asks to end and B again ends', () => {
+        const control = vi.fn();
+        expect(guide.primaryAction()).toBe(false);
+        guide.setExternalControl(true);
+        guide.onControl = control;
+        guide.start();
+        guide.setGuidance({ mode: 'open-hold', suggested: 60 });
+        guide.primaryAction();
+        expect(control).toHaveBeenLastCalledWith('breathe');
+        guide.setGuidance({ mode: 'paced' });
+        guide.primaryAction();
+        expect(control).toHaveBeenLastCalledWith('pause');
+        guide.backAction();
+        expect(guide.confirm.hidden).toBe(false);
+        expect(guide.confirmHint.hidden).toBe(false);
+        expect(control).toHaveBeenLastCalledWith('suspend');
+        guide.backAction();
+        expect(control).toHaveBeenLastCalledWith('end');
+        expect(guide.confirm.hidden).toBe(true);
+    });
+
+    it('gives the pause button back its own name after a session ends paused', () => {
+        guide.setExternalControl(true);
+        guide.start();
+        guide.pause();
+        expect(guide.pauseButton.getAttribute('aria-label')).toBe('Resume session');
+        guide.setExternalControl(false);
+        expect(guide.pauseButton.getAttribute('aria-label')).toBe('Pause session');
     });
 
     it('cannot be restarted once destroyed', () => {

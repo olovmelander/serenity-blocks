@@ -292,19 +292,190 @@
 .breath-guide__paused {
     top: 40%;
     left: 50%;
-    padding: 9px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 11px 24px 10px;
     transform: translate(-50%, -50%);
     border: 1px solid rgba(var(--breath-ink), 0.22);
-    border-radius: 999px;
+    border-radius: 18px;
     background: rgba(6, 11, 22, 0.66);
-    font-size: 12px;
-    letter-spacing: 0.26em;
-    text-transform: uppercase;
+    text-align: center;
 }
+.breath-guide__paused b { font-size: 12px; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase; }
+.breath-guide__paused small { color: rgba(var(--breath-ink), 0.7); font-size: 11px; letter-spacing: 0.02em; }
 .breath-guide__paused[hidden] { display: none; }
+.breath-guide.is-confirming .breath-guide__paused { display: none; }
+.breath-guide__confirm-hint { flex: 1 0 100%; margin-top: 4px; color: rgba(var(--breath-ink), 0.6); font-size: 11px; }
+.breath-guide__confirm-hint[hidden] { display: none; }
 .breath-guide.is-paused .breath-guide__canvas,
 .breath-guide.is-paused .breath-guide__cue,
-.breath-guide.is-paused .breath-guide__cycle { opacity: 0.45; }
+.breath-guide.is-paused .breath-guide__cycle,
+.breath-guide.is-paused .breath-guide__button--breathe { opacity: 0.45; }
+
+/* Read to screen readers only: a session's stages, a hold that is ready to end. */
+.breath-guide__announcer {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* The intention you chose, as you arrive and as you rest. */
+.breath-guide__intention {
+    display: none;
+    margin: 12px auto 0;
+    color: rgb(var(--breath-accent));
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
+}
+.breath-guide[data-session-phase="grounding"] .breath-guide__intention:not([hidden]),
+.breath-guide[data-session-phase="integration"] .breath-guide__intention:not([hidden]) { display: block; }
+
+/* A round's title card: large, centred over the world, gone in a few seconds. */
+.breath-guide__chapter {
+    position: absolute;
+    z-index: 2;
+    top: 38%;
+    left: 50%;
+    width: min(90vw, 760px);
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+}
+.breath-guide__chapter p { margin: 0; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 2px 30px rgba(0, 0, 0, 0.75); }
+/* A soft dusk behind the card keeps it readable over the brightest worlds (sunlit water, a star). */
+.breath-guide__chapter::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: -45% -12%;
+    background: radial-gradient(closest-side, rgba(3, 6, 14, 0.5), rgba(3, 6, 14, 0.22) 55%, transparent);
+    pointer-events: none;
+}
+.breath-guide__chapter-eyebrow {
+    color: rgb(var(--breath-accent));
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+}
+.breath-guide__chapter-title {
+    margin-top: 10px !important;
+    font-size: clamp(38px, 6.4vw, 78px);
+    font-weight: 200;
+    letter-spacing: -0.01em;
+    line-height: 1.04;
+}
+.breath-guide__chapter-note { margin-top: 14px !important; color: rgba(var(--breath-ink), 0.86); font-size: clamp(13px, 1.3vw, 16px); letter-spacing: 0.04em; }
+.breath-guide__chapter.is-showing { animation: breath-guide-chapter 3.6s ease both; }
+@keyframes breath-guide-chapter {
+    0% { opacity: 0; transform: translate(-50%, calc(-50% + 14px)); filter: blur(6px); }
+    18% { opacity: 1; transform: translate(-50%, -50%); filter: blur(0); }
+    74% { opacity: 1; transform: translate(-50%, -50%); filter: blur(0); }
+    100% { opacity: 0; transform: translate(-50%, calc(-50% - 10px)); filter: blur(4px); }
+}
+/* While the card speaks, the header steps back so the two never compete. */
+.breath-guide__header { transition: opacity 0.6s ease; }
+.breath-guide.is-chaptering .breath-guide__header { opacity: 0.12; }
+
+/* The hold dial: a ring filling toward the suggested length, the time inside it. */
+.breath-guide__hold {
+    position: relative;
+    display: none;
+    place-items: center;
+    width: clamp(112px, 15vh, 148px);
+    aspect-ratio: 1;
+    margin: 14px auto 10px;
+}
+.breath-guide__hold-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(rgb(var(--breath-accent)) calc(var(--hold, 0) * 360deg), rgba(var(--breath-ink), 0.14) 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+    filter: drop-shadow(0 0 10px rgba(var(--breath-accent), 0.45));
+    transition: filter 0.8s ease;
+}
+.breath-guide__hold-time {
+    position: relative;
+    margin-top: -6px;
+    font-size: clamp(30px, 4.4vh, 40px);
+    font-weight: 200;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.8);
+}
+.breath-guide__hold-label {
+    position: absolute;
+    bottom: 26%;
+    left: 0;
+    right: 0;
+    color: rgba(var(--breath-ink), 0.66);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.breath-guide[data-guidance="open-hold"] .breath-guide__hold,
+.breath-guide[data-guidance="timed-hold"] .breath-guide__hold { display: grid; }
+.breath-guide.is-hold-ready .breath-guide__hold-ring {
+    filter: drop-shadow(0 0 16px rgba(var(--breath-accent), 0.85));
+    animation: breath-guide-ready 2.8s ease-in-out infinite;
+}
+@keyframes breath-guide-ready {
+    0%, 100% { opacity: 0.8; }
+    50% { opacity: 1; }
+}
+
+/* Stages that are not counted breaths: no count, no cycle bar, the world keeps breathing. */
+.breath-guide[data-guidance="open-hold"] .breath-guide__count,
+.breath-guide[data-guidance="timed-hold"] .breath-guide__count,
+.breath-guide[data-guidance="carry"] .breath-guide__count,
+.breath-guide[data-guidance="natural"] .breath-guide__count,
+.breath-guide[data-guidance="closing"] .breath-guide__count { display: none; }
+.breath-guide__cycle { transition: opacity 0.8s ease; }
+.breath-guide[data-guidance="open-hold"] .breath-guide__cycle,
+.breath-guide[data-guidance="timed-hold"] .breath-guide__cycle,
+.breath-guide[data-guidance="carry"] .breath-guide__cycle,
+.breath-guide[data-guidance="natural"] .breath-guide__cycle,
+.breath-guide[data-guidance="closing"] .breath-guide__cycle { opacity: 0; }
+.breath-guide[data-guidance="natural"] .breath-guide__phase,
+.breath-guide[data-guidance="closing"] .breath-guide__phase,
+.breath-guide[data-guidance="carry"] .breath-guide__phase,
+.breath-guide.is-hold-ready .breath-guide__phase { font-size: clamp(26px, 3.6vw, 40px); }
+
+/* An open hold ends when you breathe in: a wide, calm button where the cycle bar was. */
+.breath-guide__button--breathe {
+    position: absolute;
+    z-index: 2;
+    left: 50%;
+    bottom: clamp(70px, 11.5vh, 104px);
+    display: none;
+    min-width: 200px;
+    min-height: 50px;
+    padding: 0 30px;
+    transform: translateX(-50%);
+    border-color: rgba(var(--breath-accent), 0.6);
+    background: rgba(var(--breath-accent), 0.14);
+    color: rgb(var(--breath-ink));
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    backdrop-filter: blur(6px);
+}
+.breath-guide[data-guidance="open-hold"] .breath-guide__button--breathe { display: inline-block; }
+.breath-guide.is-hold-ready .breath-guide__button--breathe {
+    border-color: rgb(var(--breath-accent));
+    background: rgba(var(--breath-accent), 0.3);
+    box-shadow: 0 0 34px rgba(var(--breath-accent), 0.4);
+}
+.breath-guide[data-guidance="open-hold"] { cursor: pointer; }
+.breath-guide[data-guidance="open-hold"] .breath-guide__cue { bottom: clamp(140px, 23vh, 216px); }
 
 @media (max-width: 600px) {
     .breath-guide__header { top: max(5vh, 54px); }
@@ -316,6 +487,9 @@
     /* The Hub's lotus and the settings button sit in the bottom-right corner: stay clear of them. */
     .breath-guide__cycle,
     .breath-guide__journey { left: 20px; width: calc(100vw - 108px); transform: none; }
+    .breath-guide__button--breathe { left: 20px; min-width: 0; width: calc(100vw - 108px); transform: none; }
+    .breath-guide__chapter { top: 36%; }
+    .breath-guide__chapter-eyebrow { font-size: 10.5px; letter-spacing: 0.26em; }
 }
 @media (max-height: 520px) and (orientation: landscape) {
     .breath-guide__header { top: 10px; }
@@ -333,8 +507,21 @@
     .breath-guide__journey { bottom: 8px; }
     .breath-guide__journey-status { margin-bottom: 5px; }
     .breath-guide__orb { top: 44%; width: 54vh; }
+    .breath-guide__hold { width: 84px; margin: 4px auto; }
+    .breath-guide__hold-time { font-size: 22px; }
+    .breath-guide__hold-label { display: none; }
+    .breath-guide[data-guidance="open-hold"] .breath-guide__cue { bottom: 92px; }
+    .breath-guide__button--breathe { bottom: 44px; min-height: 40px; }
+    .breath-guide__chapter-title { font-size: 34px; }
+    .breath-guide__intention { margin-top: 4px; }
 }
 @media (prefers-reduced-motion: reduce) {
     .breath-guide,
     .breath-guide * { transition: none !important; }
+    .breath-guide__chapter.is-showing { animation-name: breath-guide-chapter-still; }
+    .breath-guide.is-hold-ready .breath-guide__hold-ring { animation: none; }
+}
+@keyframes breath-guide-chapter-still {
+    0%, 100% { opacity: 0; }
+    12%, 82% { opacity: 1; }
 }

@@ -48,7 +48,7 @@ export const BREATH_QUALITY = Object.freeze({
     },
 });
 const SESSION_CALM = {
-    grounding: 0.25, active: 0, retention: 1, recovery: 0.35, integration: 0.8,
+    grounding: 0.25, active: 0, retention: 1, carry: 0.45, recovery: 0.35, integration: 0.8,
 };
 const CAMERA_DISTANCE = 6;
 /** dolly: how far the view leans in at full lungs; drift: slow wander (hero units); period in seconds. */

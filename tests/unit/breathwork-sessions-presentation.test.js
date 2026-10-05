@@ -65,10 +65,16 @@ describe('Hale session facts', () => {
         expect(base.seconds).toBe(180 + 240 + 60 + 15 + 280 + 90 + 15 + 240 + 120 + 15 + 300);
         expect(base.stages).toHaveLength(11);
         expect(base.stages[1]).toEqual({
-            type: 'active', round: 1, seconds: 240, breaths: 30,
+            type: 'active', round: 1, seconds: 240, breaths: 30, hold: null, world: 'ocean-breath',
         });
+        expect(base.stages[2]).toMatchObject({ type: 'retention', hold: 'open', world: 'cosmic-breath' });
         expect(base.poster).toBe('./assets/breathing/ocean-breath.webp');
         expect(tab.getSessionDetails('REST').maxHold).toBe('30 sec');
+        // What the third fact on each card says: how each session's stillness works.
+        expect(base.feature).toBe('Holds at your pace');
+        expect(tab.getSessionDetails('REST').feature).toBe('Pauses to 30 sec');
+        expect(tab.getSessionDetails('FLOW').feature).toBe('Counts to 6');
+        expect(tab.getSessionDetails('FLOW').carrySeconds).toBe(130);
         expect(tab.getSessionDetails('ELIXIR').poster).toBe('./assets/breathing/wim-hof.webp');
         expect(tab.getSessionDetails('NOPE')).toBeNull();
     });
@@ -97,8 +103,10 @@ describe('Hale session flow', () => {
         expect(tab.flow.dataset.session).toBe('FLOW');
         expect(flow('.hale-flow__name').textContent).toBe('Hale Flow');
         expect(flow('.hale-flow__facts').textContent).toBe('25 min · Moderate · Box breathing');
-        expect(flow('.hale-flow__rounds').innerHTML).toContain('<b>Round 2</b> 15 breaths · hold 0:40 · recover');
+        expect(flow('.hale-flow__rounds').innerHTML).toContain('<b>Round 2</b> 15 breaths · 0:40 on your own · reset');
         expect(flow('.hale-flow__rounds').innerHTML).toContain('<b>Arrive</b> 2:00 of slow breathing');
+        expect(flow('.hale-flow__rounds').innerHTML).toContain("url('./assets/breathing/triangle.webp')");
+        expect(flow('.hale-flow__caution').hidden).toBe(true);
         expect(flow('.hale-flow__track').innerHTML.match(/<i /g)).toHaveLength(11);
         expect(flow('.hale-flow__begin').disabled).toBe(false);
         expect(hub.hide).toHaveBeenCalledOnce();
@@ -177,7 +185,11 @@ describe('Hale session flow', () => {
         expect(tab.holdsScreen).toBe(false);
         expect(hub.releaseGameplay).toHaveBeenCalledOnce();
         tab.setActive(true);
-        expect(container.querySelector('.hale__practice').textContent).toBe('1 session completed · 26 min of practice · last: Hale Base');
+        const practice = container.querySelector('.hale__practice');
+        expect(practice.hidden).toBe(false);
+        expect(practice.innerHTML).toContain('1 session completed · 26 min of practice · last: Hale Base');
+        expect(practice.innerHTML).toContain('<b>1</b><span>day</span>');
+        expect(container.querySelector('[data-mine="BASE"]').textContent).toBe('You · 1 completed');
     });
 
     it('offers the same session again from its result', () => {
@@ -253,8 +265,165 @@ describe('Hale catalogue while a session runs', () => {
         expect(live.querySelector('.hale__live-name').textContent).toBe('Hale Base · Round 2 of 3 · Hold');
         container.fire('click', { target: targetMatching({ '.hale__return': true }) });
         expect(hub.hide).toHaveBeenCalledTimes(2);
+        // Ending twenty minutes of practice takes a second press.
+        container.fire('click', { target: targetMatching({ '.hale__end': true }) });
+        expect(manager.stopSession).not.toHaveBeenCalled();
+        expect(container.querySelector('.hale__end').textContent).toBe('Press again to end');
         container.fire('click', { target: targetMatching({ '.hale__end': true }) });
         expect(manager.stopSession).toHaveBeenCalledOnce();
         expect(live.hidden).toBe(true);
+    });
+
+    it('forgets a single End press after a few seconds', async () => {
+        manager.activeSession = {};
+        tab.startSession('BASE');
+        container.fire('click', { target: targetMatching({ '.hale__end': true }) });
+        await vi.advanceTimersByTimeAsync(4100);
+        expect(container.querySelector('.hale__end').textContent).toBe('End session');
+        container.fire('click', { target: targetMatching({ '.hale__end': true }) });
+        expect(manager.stopSession).not.toHaveBeenCalled();
+    });
+
+    it('holds the session while the Hub is open over it and lets it go on when the Hub closes', () => {
+        manager.activeSession = {};
+        manager.suspend = vi.fn();
+        manager.unsuspend = vi.fn();
+        tab.startSession('BASE');
+        window.dispatchEvent({ type: 'serenityHubVisibilityChange', detail: { visible: true } });
+        expect(manager.suspend).toHaveBeenCalledExactlyOnceWith('hub');
+        window.dispatchEvent({ type: 'serenityHubVisibilityChange', detail: { visible: false } });
+        expect(manager.unsuspend).toHaveBeenCalledExactlyOnceWith('hub');
+        tab.stopSession();
+        window.dispatchEvent({ type: 'serenityHubVisibilityChange', detail: { visible: true } });
+        expect(manager.suspend).toHaveBeenCalledOnce();
+    });
+});
+
+describe('Hale preparation choices', () => {
+    it('asks once for the safety note before a session with strong holds, and remembers it', () => {
+        tab.showPrepScreen('ELIXIR');
+        expect(flow('.hale-flow__caution').hidden).toBe(false);
+        expect(flow('.hale-flow__ack').hidden).toBe(false);
+        expect(flow('.hale-flow__begin').disabled).toBe(true);
+        clickFlow({ '.hale-flow__begin': true });
+        expect(tab.step).toBe('prepare');
+        const ack = flow('.hale-flow__ack-input');
+        ack.checked = true;
+        ack.fire('change', { target: { checked: true } });
+        expect(flow('.hale-flow__begin').disabled).toBe(false);
+        expect(JSON.parse(stored.get('serenity.halePrefs'))).toMatchObject({ safetyAcknowledged: true });
+        tab.hidePrepScreen();
+        tab.showPrepScreen('BASE');
+        expect(flow('.hale-flow__ack').hidden).toBe(true);
+        expect(flow('.hale-flow__begin').disabled).toBe(false);
+        expect(flow('.hale-flow__switch--holds').hidden).toBe(false);
+        tab.showPrepScreen('REST');
+        expect(flow('.hale-flow__caution').hidden).toBe(true);
+        expect(flow('.hale-flow__switch--holds').hidden).toBe(true);
+    });
+
+    it('hands the session your intention and choices, and keeps the choices for next time', () => {
+        tab.showPrepScreen('BASE');
+        flow('.hale-flow__sounds').fire('change', { target: { checked: false } });
+        flow('.hale-flow__holds').fire('change', { target: { checked: false } });
+        expect(flow('.hale-flow__rounds').innerHTML).toContain('<b>Round 1</b> 30 breaths · hold 1:00 · recover');
+        tab.selectIntention('calm', 'BASE');
+        tab.startSession('BASE');
+        expect(manager.startSession.mock.calls[0][3]).toEqual({
+            intention: {
+                id: 'calm', icon: 'wave', label: 'Find calm', clip: 'intentions/base_calm.wav',
+            },
+            openHolds: false,
+            sounds: false,
+            vibration: true,
+        });
+        expect(JSON.parse(stored.get('serenity.halePrefs'))).toMatchObject({ sounds: false, openHolds: false });
+        tab.destroy();
+        tab = new SessionsTab(hub, manager);
+        expect(tab.prefs).toMatchObject({ sounds: false, openHolds: false, voice: true });
+    });
+
+    it('says "follow the light" when the voice is off', async () => {
+        tab.showPrepScreen('FLOW');
+        flow('.hale-flow__voice').fire('change', { target: { checked: false } });
+        tab.startCountdown();
+        await vi.advanceTimersByTimeAsync(3050);
+        expect(flow('.hale-flow__number').textContent).toBe('Begin');
+        expect(flow('.hale-flow__message').textContent).toBe('Follow the light');
+    });
+});
+
+describe('Hale results and your practice', () => {
+    const holds = (...seconds) => seconds.map((value, index) => ({
+        round: index + 1, seconds: value, suggested: [60, 90, 120][index], mode: 'open',
+    }));
+
+    it('shows what you measured: your holds round by round, and a new best when you beat it', () => {
+        tab.startSession('BASE');
+        manager.startSession.mock.calls[0][2]({
+            sessionName: 'Hale Base', totalDuration: 1500, rounds: 3, breaths: 110, holds: holds(64, 95, 118),
+        });
+        expect(flow('.hale-flow__stats').innerHTML).toContain('<dd>1:58</dd>');
+        expect(flow('.hale-flow__stats').innerHTML).toContain('<dt>Longest hold</dt>');
+        const chart = flow('.hale-flow__holds-chart');
+        expect(chart.hidden).toBe(false);
+        expect(chart.innerHTML.match(/<li /g)).toHaveLength(3);
+        expect(chart.innerHTML).toContain('<b>1:35</b>');
+        expect(chart.innerHTML).toContain('marks show the suggested length');
+        // A first measured hold is a beginning, not a record.
+        expect(flow('.hale-flow__record').hidden).toBe(true);
+        expect(flow('.hale-flow__streak-line').textContent).toBe('Practised today · 1 session · 25 min of practice');
+        clickFlow({ '.hale-flow__finish': true });
+
+        tab.startSession('BASE');
+        manager.startSession.mock.calls[1][2]({
+            sessionName: 'Hale Base', totalDuration: 1520, rounds: 3, breaths: 110, holds: holds(70, 101, 131),
+        });
+        expect(flow('.hale-flow__record').hidden).toBe(false);
+        expect(flow('.hale-flow__record').innerHTML).toContain('New best hold: 2:11');
+        expect(flow('.hale-flow__record').innerHTML).toContain('was 1:58');
+        expect(flow('.hale-flow__holds-chart').innerHTML).toContain('previous best 1:58');
+        tab.showPrepScreen('BASE');
+        expect(flow('.hale-flow__best').hidden).toBe(false);
+        expect(flow('.hale-flow__best').textContent).toBe('Your best hold in Hale Base: 2:11');
+    });
+
+    it('keeps the practice of a session you ended, but does not call it completed', () => {
+        manager.snapshot = vi.fn(() => ({
+            sessionId: 'ELIXIR', totalDuration: 420, rounds: 1, breaths: 70, holds: holds(80), intention: null,
+        }));
+        tab.startSession('ELIXIR');
+        manager.onEndRequested();
+        const log = JSON.parse(stored.get('serenity.haleSessions'));
+        expect(log).toMatchObject({ count: 0, seconds: 420, last: { id: 'ELIXIR' } });
+        expect(log.entries).toHaveLength(1);
+        expect(log.entries[0]).toMatchObject({ completed: false, breaths: 70 });
+        manager.snapshot = vi.fn(() => ({
+            sessionId: 'ELIXIR', totalDuration: 20, rounds: 0, breaths: 5, holds: [], intention: null,
+        }));
+        tab.startSession('ELIXIR');
+        manager.onEndRequested();
+        expect(JSON.parse(stored.get('serenity.haleSessions')).entries).toHaveLength(1);
+    });
+
+    it('names the stillness of each session in its result', () => {
+        tab.startSession('FLOW');
+        manager.startSession.mock.calls[0][2]({
+            sessionName: 'Hale Flow', totalDuration: 1460, rounds: 3, breaths: 45, holds: [],
+        });
+        expect(flow('.hale-flow__stats').innerHTML).toContain('<dt>On your own</dt><dd>2:10</dd>');
+        expect(flow('.hale-flow__holds-chart').hidden).toBe(true);
+        clickFlow({ '.hale-flow__finish': true });
+        tab.startSession('REST');
+        manager.startSession.mock.calls[1][2]({
+            sessionName: 'Hale Rest',
+            totalDuration: 1100,
+            rounds: 3,
+            breaths: 37,
+            holds: [{
+                round: 1, seconds: 20, suggested: 20, mode: 'timed',
+            }],
+        });
+        expect(flow('.hale-flow__stats').innerHTML).toContain('<dt>Longest pause</dt><dd>30 sec</dd>');
     });
 });
