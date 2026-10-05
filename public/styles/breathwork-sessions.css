@@ -1,0 +1,294 @@
+/* Guided breathwork: one quiet visual language across catalogue, preparation,
+   phase guidance and integration. All selectors stay on the Sessions surface. */
+#serenity-hub-panel #tab-sessions {
+    font-family:'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    --session-rgb: 125, 211, 252;
+    --session-soft-rgb: 94, 234, 212;
+    --session-accent: #a6e4ff;
+    --session-soft: #7cead8;
+}
+#serenity-hub-panel #tab-sessions [data-session="BASE"],
+#serenity-hub-panel #tab-sessions .session-base,
+#serenity-hub-panel #tab-sessions .session-hud.base {
+    --session-rgb: 125, 211, 252; --session-soft-rgb: 94, 234, 212;
+    --session-accent: #a6e4ff; --session-soft: #7cead8;
+}
+#serenity-hub-panel #tab-sessions [data-session="ELIXIR"],
+#serenity-hub-panel #tab-sessions .session-elixir,
+#serenity-hub-panel #tab-sessions .session-hud.elixir {
+    --session-rgb: 255, 146, 118; --session-soft-rgb: 255, 203, 123;
+    --session-accent: #ffa788; --session-soft: #ffcf8c;
+}
+#serenity-hub-panel #tab-sessions [data-session="REST"],
+#serenity-hub-panel #tab-sessions .session-rest,
+#serenity-hub-panel #tab-sessions .session-hud.rest {
+    --session-rgb: 192, 171, 255; --session-soft-rgb: 133, 160, 255;
+    --session-accent: #d6c5ff; --session-soft: #a7b7ff;
+}
+#serenity-hub-panel #tab-sessions [data-session="FLOW"],
+#serenity-hub-panel #tab-sessions .session-flow,
+#serenity-hub-panel #tab-sessions .session-hud.flow {
+    --session-rgb: 94, 234, 212; --session-soft-rgb: 99, 179, 246;
+    --session-accent: #98f0db; --session-soft: #9bcdff;
+}
+#serenity-hub-panel #tab-sessions h2,
+#serenity-hub-panel #tab-sessions h3,
+#serenity-hub-panel #tab-sessions button { font-family:inherit; }
+#serenity-hub-panel #tab-sessions .session-eyebrow {
+    display: block; color: var(--session-accent); font-size: 10px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 2.3px; line-height: 1.5;
+}
+#serenity-hub-panel .sessions-introduction { padding: 6px 10px 24px; max-width: 590px; }
+#serenity-hub-panel .sessions-introduction h2 {
+    color: #f3f3f7; font-size: clamp(23px, 3vw, 32px); font-weight: 400;
+    letter-spacing: -0.8px; line-height: 1.2; margin: 10px 0;
+}
+#serenity-hub-panel .sessions-introduction p {
+    color: #b0b6ca; font-size: 13px; line-height: 1.7; margin: 0;
+}
+#serenity-hub-panel .sessions-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 8px; gap: 16px;
+}
+#serenity-hub-panel .session-card {
+    min-height: 334px; padding: 20px; gap: 16px; isolation: isolate;
+    background: linear-gradient(160deg, rgba(var(--session-rgb), .10), rgba(7, 13, 27, .96) 70%);
+    border: 1px solid rgba(var(--session-rgb), .20); border-radius: 20px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+    transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease;
+}
+#serenity-hub-panel .session-card:hover, #serenity-hub-panel .session-card:focus-within {
+    background: linear-gradient(160deg, rgba(var(--session-rgb), .14), rgba(7, 13, 27, .96) 70%);
+    border-color: rgba(var(--session-rgb), .48); transform: translateY(-3px);
+    box-shadow: 0 16px 26px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.06);
+}
+#serenity-hub-panel .session-card-topline { display:flex; justify-content:space-between; align-items:center; z-index:1; }
+#serenity-hub-panel .session-edition { color:rgba(var(--session-rgb),.8); font-size:9px; letter-spacing:1.3px; text-transform:uppercase; }
+#serenity-hub-panel .session-card .session-icon {
+    width:32px; height:32px; border-radius:50%; margin:0; box-shadow:none;
+    background:rgba(6,12,22,.4); border-color:rgba(var(--session-rgb),.25);
+}
+#serenity-hub-panel .session-card .session-icon .cs-icon { width:18px; height:18px; }
+#serenity-hub-panel .session-card .session-info { margin-top:100px; position:relative; z-index:1; }
+#serenity-hub-panel .session-info .session-mood { color:var(--session-accent); font-size:11px; margin:0 0 6px; }
+#serenity-hub-panel .session-info h3 { font-size:25px; font-weight:400; margin:0 0 9px; letter-spacing:-.5px; }
+#serenity-hub-panel .session-info .session-summary { color:#aeb6c9; font-size:12px; line-height:1.65; max-width:290px; }
+#serenity-hub-panel .session-meta { margin:15px 0 0; gap:10px; align-items:center; flex-wrap:wrap; font-size:10px; text-transform:none; letter-spacing:.1px; color:#9ba8bf; }
+#serenity-hub-panel .session-meta .duration { display:inline-flex; align-items:center; gap:4px; color:#c9d4e6; }
+#serenity-hub-panel .session-meta .intensity { color:var(--session-accent); }
+#serenity-hub-panel .start-session-btn {
+    display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:500;
+    padding:12px 0 0; border:0; border-top:1px solid rgba(var(--session-rgb),.16); border-radius:0;
+    color:#e4edf6; background:transparent; box-shadow:none; z-index:1;
+}
+#serenity-hub-panel .start-session-btn span { color:var(--session-accent); font-size:18px; }
+#serenity-hub-panel .start-session-btn:hover { color:var(--session-accent); background:transparent; transform:none; box-shadow:none; }
+#serenity-hub-panel .start-session-btn:focus-visible { outline:2px solid var(--session-accent); outline-offset:5px; box-shadow:none; }
+#serenity-hub-panel .sessions-footnote { display:flex; gap:8px; align-items:center; justify-content:center; font-size:11px; color:#8d9cb6; padding:24px 12px 4px; }
+
+/* CSS landscapes are intentionally quiet when idle: no perpetual catalogue loops. */
+#serenity-hub-panel .session-landscape { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:-1; }
+#serenity-hub-panel .session-card .session-landscape { top:38px; bottom:auto; height:165px; }
+#serenity-hub-panel .landscape-halo { position:absolute; width:200px; height:200px; left:50%; top:48%; transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(circle,rgba(var(--session-rgb),.25),transparent 68%); }
+#serenity-hub-panel .landscape-core { position:absolute; width:78px; height:78px; left:50%; top:48%; transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(circle at 32% 24%,#edfaff 0%,var(--session-accent) 5%,rgba(var(--session-rgb),.25) 43%,rgba(var(--session-rgb),.02) 72%); box-shadow:inset 0 0 28px rgba(var(--session-rgb),.14),0 0 30px rgba(var(--session-rgb),.13); }
+#serenity-hub-panel .landscape-orbit { position:absolute; width:146px; height:146px; left:50%; top:48%; transform:translate(-50%,-50%) rotate(-25deg) scaleY(.48); border:1px solid rgba(var(--session-rgb),.38); border-radius:50%; box-shadow:0 0 12px rgba(var(--session-rgb),.05); }
+#serenity-hub-panel .landscape-orbit.orbit-two { width:202px; height:202px; opacity:.5; transform:translate(-50%,-50%) rotate(-25deg) scaleY(.48); }
+#serenity-hub-panel .landscape-orbit.orbit-three { width:254px; height:254px; opacity:.25; transform:translate(-50%,-50%) rotate(-25deg) scaleY(.48); }
+#serenity-hub-panel .landscape-horizon { position:absolute; left:10%; right:10%; top:80%; height:1px; background:linear-gradient(90deg,transparent,rgba(var(--session-rgb),.3),transparent); box-shadow:0 8px 14px rgba(var(--session-rgb),.12); }
+#serenity-hub-panel .landscape-spark { position:absolute; width:3px; height:3px; left:28%; top:24%; border-radius:50%; background:var(--session-accent); box-shadow:0 0 8px var(--session-accent); opacity:.6; }
+#serenity-hub-panel .landscape-spark.spark-two { left:75%; top:65%; width:2px; height:2px; opacity:.4; }
+#serenity-hub-panel .session-landscape.elixir .landscape-core { background:radial-gradient(circle at 45% 38%,#fff8e6 0%,#ffe1a5 18%,#ffa788 52%,rgba(255,115,110,.4) 75%); box-shadow:0 0 24px rgba(255,163,91,.38),0 0 70px rgba(255,128,90,.12); }
+#serenity-hub-panel .session-landscape.elixir .landscape-orbit { transform:translate(-50%,-50%); border-style:dashed; opacity:.45; }
+#serenity-hub-panel .session-landscape.elixir .landscape-horizon { transform:rotate(-17deg); top:50%; }
+#serenity-hub-panel .session-landscape.rest .landscape-core { background:radial-gradient(circle at 32% 30%,#eeebff 0%,#d3c3ff 18%,#8a82d0 80%); box-shadow:inset -24px -10px 0 1px #11182c,0 0 50px rgba(175,161,250,.1); }
+#serenity-hub-panel .session-landscape.rest .landscape-orbit { transform:translate(-50%,-50%) rotate(25deg) scaleY(.6); border-color:rgba(190,178,255,.18); }
+#serenity-hub-panel .session-landscape.rest .landscape-spark { box-shadow:18px 20px 0 rgba(211,200,255,.3),120px 14px 0 rgba(211,200,255,.4),65px -9px 0 rgba(211,200,255,.3); }
+#serenity-hub-panel .session-landscape.flow .landscape-core { width:90px; height:90px; border-radius:35%; transform:translate(-50%,-50%) rotate(45deg); background:linear-gradient(145deg,rgba(178,255,226,.7),rgba(94,234,212,.06) 60%); border:1px solid rgba(133,234,217,.48); box-shadow:inset 0 0 20px rgba(112,219,244,.22),0 0 35px rgba(94,234,212,.1); }
+#serenity-hub-panel .session-landscape.flow .landscape-orbit { border-radius:30%; transform:translate(-50%,-50%) rotate(45deg); width:120px; height:120px; opacity:.4; }
+#serenity-hub-panel .session-landscape.flow .landscape-orbit.orbit-two { width:162px; height:162px; opacity:.18; }
+#serenity-hub-panel .session-landscape.flow .landscape-orbit.orbit-three { width:198px; height:198px; opacity:.1; }
+
+/* Preparation: a session portrait and the person's intention, side by side. */
+#serenity-hub-panel .session-prep-overlay,
+#serenity-hub-panel .session-countdown-overlay,
+#serenity-hub-panel .active-session-overlay,
+#serenity-hub-panel .session-completion-overlay {
+    background:radial-gradient(ellipse at 50% 0%,rgba(var(--session-rgb),.08),transparent 60%),rgba(5,10,21,.97);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-radius:inherit;
+    overflow:auto; overscroll-behavior:contain; padding:20px;
+}
+#serenity-hub-panel .session-prep { width:100%; max-width:760px; display:grid; grid-template-columns:1fr 1fr; align-items:start; gap:28px; padding:28px 20px 16px; }
+#serenity-hub-panel .prep-story, #serenity-hub-panel .prep-choices { min-width:0; position:relative; }
+#serenity-hub-panel .prep-close-btn { top:-2px; right:-3px; width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,.05); z-index:2; color:#bdc7dc; display:grid; place-items:center; }
+#serenity-hub-panel .prep-art { height:166px; position:relative; isolation:isolate; margin:-10px 0 0; }
+#serenity-hub-panel .prep-art .session-landscape { z-index:0; }
+#serenity-hub-panel .prep-header { text-align:left; }
+#serenity-hub-panel .prep-session-icon { display:none; }
+#serenity-hub-panel .prep-session-name { color:#f0f5ff; font-size:30px; font-weight:400; text-transform:none; text-shadow:none; letter-spacing:-.7px; margin:9px 0 5px; }
+#serenity-hub-panel .prep-mood { font-size:13px; color:var(--session-accent); margin:0 0 14px; }
+#serenity-hub-panel .prep-session-meta { justify-content:flex-start; gap:8px; }
+#serenity-hub-panel .prep-duration, #serenity-hub-panel .prep-intensity { font-size:10px; padding:5px 8px; background:rgba(var(--session-rgb),.06); border:1px solid rgba(var(--session-rgb),.14); color:var(--session-accent); border-radius:6px; }
+#serenity-hub-panel .prep-description { margin:18px 0; text-align:left; }
+#serenity-hub-panel .prep-about { margin:0; color:#aeb9cd; font-size:12px; line-height:1.75; }
+#serenity-hub-panel .prep-structure { padding:0; background:transparent; border:0; gap:11px; }
+#serenity-hub-panel .structure-text { font-size:11px; color:#aab8cf; line-height:1.55; }
+#serenity-hub-panel .structure-icon { color:var(--session-accent); display:flex; align-items:center; }
+#serenity-hub-panel .prep-journey { display:flex; justify-content:space-between; gap:6px; padding:20px 0 0; margin-top:20px; border-top:1px solid rgba(var(--session-rgb),.15); }
+#serenity-hub-panel .prep-journey span { display:flex; flex-direction:column; gap:6px; color:#a9b6c9; font-size:10px; }
+#serenity-hub-panel .prep-journey i { color:var(--session-accent); font-size:9px; letter-spacing:1px; font-style:normal; }
+#serenity-hub-panel .prep-choices { padding-top:14px; }
+#serenity-hub-panel .prep-intention-section { text-align:left; }
+#serenity-hub-panel .prep-section-title { font-weight:400; font-size:21px; line-height:1.35; letter-spacing:-.3px; margin:9px 0; }
+#serenity-hub-panel .prep-section-desc { font-style:normal; font-size:12px; line-height:1.6; color:#9eacc5; margin-bottom:20px; }
+#serenity-hub-panel .intention-grid { gap:9px; }
+#serenity-hub-panel .intention-card { align-items:flex-start; text-align:left; padding:13px 12px; gap:6px; min-height:111px; background:rgba(255,255,255,.025); border-color:rgba(var(--session-rgb),.13); border-radius:12px; }
+#serenity-hub-panel .intention-card:hover { transform:none; background:rgba(var(--session-rgb),.08); border-color:rgba(var(--session-rgb),.3); }
+#serenity-hub-panel .intention-card.selected { background:rgba(var(--session-rgb),.10); border-color:rgba(var(--session-rgb),.55); box-shadow:inset 0 1px 0 rgba(var(--session-rgb),.18); }
+#serenity-hub-panel .intention-icon { color:var(--session-accent); font-size:20px; margin-bottom:2px; }
+#serenity-hub-panel .intention-icon .cs-icon { width:21px; height:21px; }
+#serenity-hub-panel .intention-label { font-size:11px; font-weight:500; color:#ebf0fa; }
+#serenity-hub-panel .intention-desc { font-size:10px; color:#9caac1; line-height:1.45; }
+#serenity-hub-panel .prep-preview { gap:0; justify-content:space-between; border-top:1px solid rgba(var(--session-rgb),.13); margin-top:18px; padding:18px 2px 0; }
+#serenity-hub-panel .preview-value { font-size:15px; font-weight:400; color:#dce7f7; }
+#serenity-hub-panel .preview-label { font-size:8px; letter-spacing:.8px; color:#95a4bd; }
+#serenity-hub-panel .prep-comfort-note { font-size:10px; line-height:1.65; color:#9eacc2; margin:18px 0; }
+#serenity-hub-panel .prep-begin-btn,
+#serenity-hub-panel .completion-close-btn {
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    width:100%; min-height:46px; padding:13px 16px; border:1px solid rgba(var(--session-rgb),.38);
+    background:linear-gradient(130deg,var(--session-accent),var(--session-soft)); border-radius:12px;
+    color:#091526; font-size:12px; font-weight:600; text-transform:none; letter-spacing:0; cursor:pointer;
+    transition:transform .2s ease, box-shadow .2s ease;
+}
+#serenity-hub-panel .prep-begin-btn:hover:not(:disabled), #serenity-hub-panel .completion-close-btn:hover { background:linear-gradient(130deg,var(--session-accent),var(--session-soft)); transform:translateY(-1px); box-shadow:0 6px 24px rgba(var(--session-rgb),.16); }
+#serenity-hub-panel .prep-begin-btn:disabled { background:rgba(var(--session-rgb),.07); border-color:rgba(var(--session-rgb),.2); color:#a2b2ca; opacity:.7; }
+#serenity-hub-panel .prep-skip-btn { display:block; width:100%; font-size:10px; padding:13px 0 0; color:#98a8c1; }
+
+/* Countdown and live phase: light, rings and typography share the same palette. */
+#serenity-hub-panel .session-countdown-overlay { isolation:isolate; }
+#serenity-hub-panel .countdown-art { position:absolute; inset:0; opacity:.55; z-index:-1; }
+#serenity-hub-panel .countdown-art .session-landscape { z-index:0; transform:scale(1.8); }
+#serenity-hub-panel .countdown-content { width:100%; max-width:480px; padding:32px 10px; }
+#serenity-hub-panel .countdown-intention { font-family:inherit; font-size:12px; font-style:normal; letter-spacing:.1px; color:#b2c0d6; margin:14px 0 38px; }
+#serenity-hub-panel .countdown-number { font-family:inherit; font-weight:200; font-size:clamp(64px,10vw,108px); text-shadow:0 0 40px rgba(var(--session-rgb),.25); letter-spacing:-4px; margin-bottom:34px; }
+#serenity-hub-panel .countdown-message { font-size:16px; font-weight:400; letter-spacing:0; text-transform:none; color:#e2ebfa; }
+#serenity-hub-panel .countdown-quiet { display:block; font-size:11px; color:#8a9ab5; margin-top:14px; }
+#serenity-hub-panel .countdown-cancel-btn { margin-top:28px; padding:10px 14px; min-height:42px; border:1px solid rgba(var(--session-rgb),.16); border-radius:9px; background:rgba(5,10,21,.25); color:#a9b9d1; font-size:10px; cursor:pointer; }
+#serenity-hub-panel .active-session-overlay { align-items:flex-start; }
+#serenity-hub-panel .session-hud { max-width:510px; padding:22px 24px; gap:0; }
+#serenity-hub-panel .session-hud-header { width:100%; }
+#serenity-hub-panel .session-name { font-family:inherit; font-size:29px; font-weight:400; text-transform:none; letter-spacing:-.6px; text-shadow:none; margin:9px 0 7px; }
+#serenity-hub-panel .session-round { font-size:10px; letter-spacing:1px; color:#a3b2c9; }
+#serenity-hub-panel .session-stage-trail { display:flex; gap:6px; align-items:center; justify-content:center; width:100%; margin:22px 0 24px; }
+#serenity-hub-panel .session-stage { height:4px; flex:1; max-width:25px; border-radius:4px; background:rgba(var(--session-rgb),.12); position:relative; }
+#serenity-hub-panel .session-stage[data-state="complete"] { background:rgba(var(--session-rgb),.42); }
+#serenity-hub-panel .session-stage[data-state="current"] { background:var(--session-accent); box-shadow:0 0 10px rgba(var(--session-rgb),.4); }
+#serenity-hub-panel .session-phase-scene { width:100%; display:flex; flex-direction:column; align-items:center; }
+#serenity-hub-panel .session-progress-ring { width:188px; height:188px; margin:3px 0 18px; }
+#serenity-hub-panel .session-ring-aura { position:absolute; inset:-12px; border-radius:50%; background:radial-gradient(circle,rgba(var(--session-rgb),.08) 0%,rgba(var(--session-rgb),.04) 45%,transparent 70%); border:1px solid rgba(var(--session-rgb),.055); }
+#serenity-hub-panel .session-hud .progress-background { stroke:rgba(var(--session-rgb),.12); }
+#serenity-hub-panel .session-hud .progress-fill { stroke:var(--session-accent); filter:drop-shadow(0 0 3px rgba(var(--session-rgb),.35)); }
+#serenity-hub-panel .phase-timer { font-family:inherit; font-size:42px; font-weight:300; font-variant-numeric:tabular-nums; letter-spacing:-1.5px; text-shadow:none; }
+#serenity-hub-panel .phase-label { color:var(--session-accent); font-size:10px; letter-spacing:1.4px; margin-top:9px; }
+#serenity-hub-panel .phase-time-caption { font-size:8px; letter-spacing:.1px; color:#8497b5; margin-top:6px; }
+#serenity-hub-panel .session-hud[data-phase="retention"] .session-ring-aura { background:radial-gradient(circle,rgba(var(--session-rgb),.10),transparent 68%); border-color:rgba(var(--session-rgb),.12); }
+#serenity-hub-panel .session-hud[data-phase="recovery"] .session-ring-aura { box-shadow:0 0 35px rgba(var(--session-rgb),.10); }
+#serenity-hub-panel .breath-counter { margin:0; gap:5px; }
+#serenity-hub-panel .breath-counter.visible { margin-bottom:16px; }
+#serenity-hub-panel .breath-current { font-family:inherit; font-size:20px; font-weight:400; }
+#serenity-hub-panel .breath-total, #serenity-hub-panel .breath-separator { font-family:inherit; font-size:14px; color:#8ea1be; }
+#serenity-hub-panel .breath-label { font-size:9px; color:#8397b6; }
+#serenity-hub-panel .session-guidance { max-width:390px; min-height:69px; margin-bottom:20px; }
+#serenity-hub-panel .guidance-main { font-size:18px; font-weight:400; letter-spacing:-.2px; color:#eff4ff; line-height:1.5; margin-bottom:8px; }
+#serenity-hub-panel .guidance-sub { font-size:12px; font-style:normal; line-height:1.8; color:#9daec7; }
+#serenity-hub-panel .session-overall-progress { width:100%; display:flex; justify-content:space-between; font-size:9px; color:#8fa3c0; margin-bottom:8px; }
+#serenity-hub-panel .phase-progress-bar { height:3px; background:rgba(var(--session-rgb),.11); }
+#serenity-hub-panel .session-hud .phase-fill { background:linear-gradient(90deg,var(--session-accent),var(--session-soft)); }
+#serenity-hub-panel .session-hud-actions { width:100%; display:flex; gap:12px; align-items:center; margin-top:22px; }
+#serenity-hub-panel .session-immerse-btn { flex:1; border:1px solid rgba(var(--session-rgb),.27); border-radius:10px; background:rgba(var(--session-rgb),.07); color:var(--session-accent); font-size:11px; padding:12px; min-height:44px; cursor:pointer; }
+#serenity-hub-panel .stop-session-btn { background:transparent; border:0; color:#9eacc0; font-size:10px; text-transform:none; letter-spacing:0; padding:12px; min-height:44px; }
+#serenity-hub-panel .stop-session-btn:hover { color:#edb5b5; background:rgba(244,138,138,.06); }
+
+/* Closing integration is visible, even when the Hub was closed during practice. */
+#serenity-hub-panel .session-completion-overlay { position:absolute; inset:0; z-index:16; display:flex; align-items:center; justify-content:center; }
+#serenity-hub-panel .session-completion { width:100%; max-width:420px; padding:20px 24px; position:relative; text-align:center; }
+#serenity-hub-panel .completion-art { height:178px; isolation:isolate; position:relative; }
+#serenity-hub-panel .completion-art .session-landscape { z-index:0; }
+#serenity-hub-panel .session-completion h2 { font-size:31px; font-weight:400; letter-spacing:-.7px; line-height:1.25; margin:14px 0; color:#f4f7ff; }
+#serenity-hub-panel .completion-session-name { font-size:11px; color:var(--session-accent); margin:0 0 24px; }
+#serenity-hub-panel .completion-stats { display:flex; justify-content:center; gap:38px; padding:20px 8px; border-top:1px solid rgba(var(--session-rgb),.13); border-bottom:1px solid rgba(var(--session-rgb),.13); }
+#serenity-hub-panel .completion-stats div { display:flex; flex-direction:column; gap:8px; }
+#serenity-hub-panel .completion-stats strong { font-size:25px; font-weight:300; font-variant-numeric:tabular-nums; color:#edf4ff; }
+#serenity-hub-panel .completion-stats span { font-size:9px; color:#8fa3bc; }
+#serenity-hub-panel .completion-intention { font-size:11px; color:var(--session-accent); line-height:1.6; margin:20px 0 8px; }
+#serenity-hub-panel .completion-reflection { font-size:12px; line-height:1.75; color:#a1b1c9; margin:0 0 24px; }
+#serenity-hub-panel #tab-sessions button:focus-visible { outline:2px solid var(--session-accent); outline-offset:3px; }
+
+@media (max-width:600px) {
+    #serenity-hub-panel .sessions-introduction { padding:2px 2px 18px; }
+    #serenity-hub-panel .sessions-grid { padding:0; gap:12px; }
+    #serenity-hub-panel .session-card { padding:14px; min-height:321px; gap:12px; }
+    #serenity-hub-panel .session-card-topline { align-items:flex-start; }
+    #serenity-hub-panel .session-edition { font-size:8px; max-width:95px; line-height:1.6; }
+    #serenity-hub-panel .session-info h3 { font-size:22px; }
+    #serenity-hub-panel .session-info .session-mood { font-size:10px; }
+    #serenity-hub-panel .session-info .session-summary { font-size:11px; }
+    #serenity-hub-panel .session-meta { gap:7px; font-size:9px; }
+    #serenity-hub-panel .session-meta > span:last-child { display:none; }
+    #serenity-hub-panel .start-session-btn { font-size:10px; }
+    #serenity-hub-panel .sessions-footnote { font-size:10px; text-align:center; }
+    #serenity-hub-panel .session-prep-overlay, #serenity-hub-panel .active-session-overlay, #serenity-hub-panel .session-completion-overlay { padding:14px; }
+    #serenity-hub-panel .session-prep { grid-template-columns:1fr; padding:12px 4px 6px; gap:20px; }
+    #serenity-hub-panel .prep-close-btn { top:0; right:0; }
+    #serenity-hub-panel .prep-art { height:132px; margin-top:0; }
+    #serenity-hub-panel .prep-description { margin:13px 0; }
+    #serenity-hub-panel .prep-about { font-size:12px; }
+    #serenity-hub-panel .prep-journey { padding-top:13px; margin-top:14px; }
+    #serenity-hub-panel .prep-choices { padding-top:0; }
+    #serenity-hub-panel .prep-section-title { font-size:20px; }
+    #serenity-hub-panel .intention-card { min-height:98px; }
+    #serenity-hub-panel .prep-actions { padding-bottom:6px; }
+    #serenity-hub-panel .session-hud { padding:16px 6px; }
+    #serenity-hub-panel .session-progress-ring { width:176px; height:176px; }
+    #serenity-hub-panel .session-completion { padding:12px 8px; }
+    #serenity-hub-panel .session-completion h2 { font-size:27px; }
+}
+@media (max-width:360px) {
+    #serenity-hub-panel .sessions-grid { grid-template-columns:1fr; }
+    #serenity-hub-panel .session-card { min-height:306px; }
+}
+@media (max-height:550px) and (min-width:601px) {
+    #serenity-hub-panel .session-prep { max-width:790px; padding-top:10px; gap:22px; }
+    #serenity-hub-panel .prep-art { height:95px; }
+    #serenity-hub-panel .prep-choices { padding-top:7px; }
+    #serenity-hub-panel .prep-section-title { font-size:18px; }
+    #serenity-hub-panel .prep-section-desc { margin-bottom:11px; }
+    #serenity-hub-panel .intention-card { min-height:90px; padding:10px; }
+    #serenity-hub-panel .prep-preview { margin-top:12px; padding-top:12px; }
+    #serenity-hub-panel .prep-comfort-note { margin:12px 0; }
+    #serenity-hub-panel .session-hud { display:grid; grid-template-columns:160px 1fr; column-gap:28px; max-width:710px; padding:10px 20px; align-items:center; }
+    #serenity-hub-panel .session-hud-header { grid-column:1 / -1; }
+    #serenity-hub-panel .session-name { font-size:22px; margin:4px 0; }
+    #serenity-hub-panel .session-stage-trail { grid-column:1 / -1; margin:12px 0; }
+    #serenity-hub-panel .session-phase-scene { grid-column:1; grid-row:3 / 7; }
+    #serenity-hub-panel .session-progress-ring { width:145px; height:145px; margin:0; }
+    #serenity-hub-panel .phase-timer { font-size:34px; }
+    #serenity-hub-panel .session-guidance { grid-column:2; margin:0 0 15px; min-height:0; }
+    #serenity-hub-panel .session-overall-progress, #serenity-hub-panel .phase-progress-bar, #serenity-hub-panel .session-hud-actions { grid-column:2; }
+    #serenity-hub-panel .session-hud-actions { margin-top:14px; }
+    #serenity-hub-panel .session-completion-overlay { align-items:flex-start; }
+    #serenity-hub-panel .completion-art { height:100px; }
+}
+@media (prefers-reduced-motion:reduce) {
+    #serenity-hub-panel #tab-sessions *, #serenity-hub-panel #tab-sessions *::before, #serenity-hub-panel #tab-sessions *::after { animation:none !important; transition:none !important; }
+    #serenity-hub-panel .session-card:hover, #serenity-hub-panel .session-card:focus-within { transform:none; }
+}
+
+/* The desktop shell disables backdrop filtering; retain an opaque tinted base. */
+body.electron-app #serenity-hub-panel #tab-sessions .session-prep-overlay,
+body.electron-app #serenity-hub-panel #tab-sessions .session-countdown-overlay,
+body.electron-app #serenity-hub-panel #tab-sessions .active-session-overlay,
+body.electron-app #serenity-hub-panel #tab-sessions .session-completion-overlay {
+    background:radial-gradient(ellipse at 50% 0%,rgba(var(--session-rgb),.09),transparent 60%),rgba(5,10,21,.99);
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+}

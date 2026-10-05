@@ -104,7 +104,7 @@ describe('breathing presentation retains identical state', () => {
         expect(dots[5].style.transform).toBe('scale(1.2)');
         expect(dots[0].writes.length).toBe(writes[0]);
         expect(indicator.roundIndicator.textContent).toBe('ROUND 1/3');
-        expect(indicator.progressBarFill.style.width).toBe('30%');
+        expect(indicator.progressBarFill.style.transform).toBe('scaleX(0.3)');
     });
 
     it('retains hidden progress and catches up on show without repeated hidden writes', () => {
@@ -116,7 +116,7 @@ describe('breathing presentation retains identical state', () => {
         expect(indicator.breathDotsContainer.querySelectorAll).not.toHaveBeenCalled();
         indicator.showProgress(true);
         expect(indicator.roundIndicator.textContent).toBe('ROUND 2/3');
-        expect(indicator.progressBarFill.style.width).toBe('70%');
+        expect(indicator.progressBarFill.style.transform).toBe('scaleX(0.7)');
         expect(dots[8].style.transform).toBe('scale(1.2)');
     });
 
@@ -136,8 +136,8 @@ describe('breathing presentation retains identical state', () => {
         for (const value of [0, 0.3, 0.9, 1]) {
             indicator._updateRings(value);
             indicator._updateColors(value);
-            const scale = 0.3 + value * 0.7;
-            expect(indicator.outerRing.style.transform).toBe(`translate(-50%, -50%) scale(${scale * 1.3})`);
+            const scale = 0.68 + value * 0.32;
+            expect(indicator.outerRing.style.transform).toBe(`translate(-50%, -50%) scale(${scale.toFixed(4)})`);
             expect(indicator.indicator.style['--breath-brightness']).toBe(String(0.7 + value * 0.3));
         }
         indicator.technique.color.r = 99;
