@@ -18,6 +18,8 @@ import {
 
 const INIT_TIMEOUT_MS = 6000;
 const DIP_MS = 420;
+/** Longest wait for a world's pipelines before it is shown anyway (see _settlePipelines). */
+const SETTLE_MS = 20000;
 
 const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
@@ -188,12 +190,17 @@ export class BreathStage {
         if (!this.disposed && this.host) this.onState?.('ready');
     }
 
-    /** Draw hidden frames until the new world's pipelines exist, without blocking the compositor. */
+    /**
+     * Draw hidden frames until the new world's pipelines exist, without blocking the compositor.
+     * The wait is generous: until it ends the guide keeps its CSS orb, words and timing, which is
+     * far better than unveiling a canvas whose pipelines are still compiling (their draws are
+     * skipped, so it shows black). A heavy world's shaders can take seconds on some drivers.
+     */
     async _settlePipelines() {
         const session = this.backend === 'webgpu' ? beginAsyncRenderPipelines(this, { label: 'breathing' }) : null;
         try {
             this._draw(0);
-            if (session) await session.settle({ maxMs: 5000, quietFrames: 3 });
+            if (session) await session.settle({ maxMs: SETTLE_MS, quietFrames: 3 });
             else await wait(32);
         } finally {
             session?.end();
