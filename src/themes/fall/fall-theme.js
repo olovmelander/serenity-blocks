@@ -26,8 +26,9 @@ const PIXEL_RATIO_CAP = Object.freeze({
     Extreme: 1.5, Ultra: 1.35, High: 1.25, Medium: 1, Low: 0.9, Minimal: 0.75,
 });
 
-// Compatibility ceilings for historical preset readers. What a tier really draws is
-// set by FALL_TIERS in fall-quality.js and reported by world.getDiagnostics().
+// Kept only for historical preset readers; these numbers no longer describe the scene.
+// What a tier really draws is set by FALL_TIERS in fall-quality.js and reported by
+// world.getDiagnostics().
 export const QUALITY_PRESETS = Object.freeze({
     Extreme: {
         leafCount: 4000, treeCount: 150, enablePost: true, enablePostProcessing: true,
@@ -591,7 +592,7 @@ export default class FallTheme extends BaseTheme {
         this.post = null;
         release('World', this.world);
         this.world = null;
-        disposeFallAssets(this.assets);
+        release('Assets', { dispose: () => disposeFallAssets(this.assets) });
         this.assets = null;
         this.reactions?.reset();
         release('Reactions', this.reactions);
