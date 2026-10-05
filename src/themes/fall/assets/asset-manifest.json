@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender authoring",
+  "license": "MIT-project-local",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "birch-grove-a.glb",
+      "bytes": 75152,
+      "sha256": "d454b94f84f2feb503858182d4d9a0fca0bbba8257e581a0ad5798740a8ff5f3",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 105,
+      "barkTriangles": 3192
+    },
+    {
+      "file": "birch-grove-b.glb",
+      "bytes": 69564,
+      "sha256": "c65ebc9bbfb669ba0e1fbf915ad3ca33646e42b4d04f528f5d6102487fdb02b2",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 82,
+      "barkTriangles": 2968
+    },
+    {
+      "file": "fall-foliage.glb",
+      "bytes": 49316,
+      "sha256": "2f8c56204e811f95e512d8efeacaed9387cda162284d11c850bf57a836e1886a",
+      "kind": "foliage",
+      "meshes": {
+        "maple_spray_0": {
+          "leaves": 11,
+          "triangles": 234
+        },
+        "maple_spray_1": {
+          "leaves": 11,
+          "triangles": 234
+        },
+        "maple_clump_0": {
+          "leaves": 10,
+          "triangles": 80
+        },
+        "maple_clump_1": {
+          "leaves": 10,
+          "triangles": 80
+        },
+        "oak_spray_0": {
+          "leaves": 11,
+          "triangles": 172
+        },
+        "oak_spray_1": {
+          "leaves": 11,
+          "triangles": 172
+        },
+        "birch_strand_0": {
+          "leaves": 13,
+          "triangles": 120
+        },
+        "birch_strand_1": {
+          "leaves": 13,
+          "triangles": 120
+        },
+        "leaf_maple": {
+          "leaves": 1,
+          "triangles": 18
+        },
+        "leaf_maple_far": {
+          "leaves": 1,
+          "triangles": 8
+        },
+        "leaf_oak": {
+          "leaves": 1,
+          "triangles": 6
+        },
+        "leaf_birch": {
+          "leaves": 1,
+          "triangles": 6
+        }
+      }
+    },
+    {
+      "file": "fall-impostors.png",
+      "bytes": 946095,
+      "sha256": "52197c50b7d2cfc8bd4fae806a5e05ccd50547049cd692259d369ae69c8092e0",
+      "kind": "impostors",
+      "atlasWidth": 1856,
+      "atlasHeight": 448,
+      "tiles": [
+        {
+          "asset": "maple-grove-a",
+          "species": "maple",
+          "x": 0,
+          "pixels": 448,
+          "width": 15.082204081406667,
+          "height": 15.082204081406667,
+          "trunk": -0.011078244561855683,
+          "coverage": 0.32480169802295916
+        },
+        {
+          "asset": "maple-grove-b",
+          "species": "maple",
+          "x": 448,
+          "pixels": 512,
+          "width": 17.395339418377972,
+          "height": 15.220921991080726,
+          "trunk": -0.05678886875607614,
+          "coverage": 0.29044015066964285
+        },
+        {
+          "asset": "maple-grove-c",
+          "species": "maple",
+          "x": 960,
+          "pixels": 512,
+          "width": 14.365269140440917,
+          "height": 12.569610497885803,
+          "trunk": 0.12035267415755767,
+          "coverage": 0.3526524135044643
+        },
+        {
+          "asset": "birch-grove-a",
+          "species": "birch",
+          "x": 1472,
+          "pixels": 192,
+          "width": 7.32518859121267,
+          "height": 17.092106712829562,
+          "trunk": 0.05763787009828123,
+          "coverage": 0.1827334449404762
+        },
+        {
+          "asset": "birch-grove-b",
+          "species": "birch",
+          "x": 1664,
+          "pixels": 192,
+          "width": 6.195581629324516,
+          "height": 14.456357135090537,
+          "trunk": -0.07262230121425081,
+          "coverage": 0.20579892113095238
+        }
+      ]
+    },
+    {
+      "file": "maple-grove-a.glb",
+      "bytes": 118940,
+      "sha256": "4df3fcbd1d2b7824a65bc28bf00c0369de25f1b8a0c09c82403ca1fb57788a5b",
+      "kind": "tree",
+      "species": "maple",
+      "role": "grove",
+      "sites": 243,
+      "barkTriangles": 5006
+    },
+    {
+      "file": "maple-grove-b.glb",
+      "bytes": 125880,
+      "sha256": "cfd20b64391f969ff8c175aa5fb759347abe48510f0e32fadc94445efd50c62c",
+      "kind": "tree",
+      "species": "maple",
+      "role": "grove",
+      "sites": 244,
+      "barkTriangles": 5272
+    },
+    {
+      "file": "maple-grove-c.glb",
+      "bytes": 123112,
+      "sha256": "61fea18ddc4033be2a0e5baa4b2da5b48e4d92ac8288627f729744691323e078",
+      "kind": "tree",
+      "species": "maple",
+      "role": "grove",
+      "sites": 221,
+      "barkTriangles": 5226
+    },
+    {
+      "file": "maple-hero.glb",
+      "bytes": 985756,
+      "sha256": "4bf7638f3e3caf575fc720dcfec560f05f1ca32ed1b6fc58d9cf0c41d496d5c9",
+      "kind": "tree",
+      "species": "maple",
+      "role": "hero",
+      "sites": 1293,
+      "barkTriangles": 39460
+    },
+    {
+      "file": "oak-hero.glb",
+      "bytes": 923364,
+      "sha256": "44be9f4382e38cb0db8e2a1201b311a155f7c7429d332e8f68eaea6dca47513f",
+      "kind": "tree",
+      "species": "oak",
+      "role": "hero",
+      "sites": 1205,
+      "barkTriangles": 36960
+    }
+  ]
+}
