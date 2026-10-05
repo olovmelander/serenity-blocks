@@ -191,6 +191,17 @@ Shown at picker size beside the previous icon and two neighbours:
   re-activation). Its capture is the new `docs/theme-screenshots/sakura-twilight.png`:
 
   ![in game](sakura-twilight-overhaul/in-game.jpg)
+
+- **In play**: a scratch Electron harness booted the real game on the dev server with the
+  theme pinned, started a single-player session and hard-dropped four pieces with real
+  key events. The director held a `lock` emitter raised by the game's own `PIECE_LOCK`,
+  the stage had measured the real board card (x 0.395–0.605 of the screen), and the
+  console carried nothing from the theme. The second frame is the same session after a
+  ten-step combo raised through the theme's own `onCombo` handler:
+
+  | Hard drop, real input | Combo, four seconds on |
+  | --- | --- |
+  | ![hard drop in the game](sakura-twilight-overhaul/in-game-hard-drop.jpg) | ![combo in the game](sakura-twilight-overhaul/in-game-combo.jpg) |
 - **Build**: `npm run build` — boot closure OK; the theme chunk is 112 kB before gzip.
   `npm run typecheck`, `check:boundaries` and `check:ip-strings` pass. `check:palette`
   fails on `main` and here alike, on Stillwater's palette; this theme's is unchanged.
@@ -204,7 +215,8 @@ Shown at picker size beside the previous icon and two neighbours:
   four-line clear on the lower tiers, fireflies were placed at a quarter of their tier's
   count, one constellation lay outside the frame, and lanterns set afloat from the left
   bank found no water. Its reading of the layout also showed the torii and the bridge
-  standing on dry ground and several lanterns in the lake; all were moved.
+  standing on dry ground and several lanterns in the lake; all were moved. The
+  repository's full unit suite passes with them (563 files, 6,770 tests).
 
 ### Frame pacing (one rough reading, not a budget)
 
