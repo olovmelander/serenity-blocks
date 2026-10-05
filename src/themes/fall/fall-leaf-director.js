@@ -58,6 +58,11 @@ export class FallLeafDirector {
         return Number.isFinite(value) ? Math.max(0, Math.min(0.999999, value)) : 0.5;
     }
 
+    /** A spawn height kept clear of the forest floor: the lowest board rows sit at ground level. */
+    above(x, y, z) {
+        return Math.max(y, this.groundHeight(x, z) + 0.2);
+    }
+
     /** How many leaves an emitter may release this frame to stay on its schedule. */
     due(emitter, total, window) {
         const target = total * Math.min(1, emitter.age / window);
@@ -75,10 +80,12 @@ export class FallLeafDirector {
             const count = Math.round((8 + 22 * strength) * this.scale);
             for (let i = 0; i < count; i += 1) {
                 const speed = (2.4 + 4.6 * this.random()) * (0.6 + strength);
+                const x = edge.x + side * this.random() * 0.3;
+                const z = edge.z + (this.random() - 0.5) * 1.2;
                 sim.spawn(
-                    edge.x + side * this.random() * 0.3,
-                    edge.y + (this.random() - 0.5) * 0.9,
-                    edge.z + (this.random() - 0.5) * 1.2,
+                    x,
+                    this.above(x, edge.y + (this.random() - 0.5) * 0.9, z),
+                    z,
                     side * speed,
                     0.6 + 3 * this.random(),
                     (this.random() - 0.5) * 3,
@@ -109,10 +116,11 @@ export class FallLeafDirector {
         const count = this.due(emitter, (24 + 26 * lines) * this.scale, CLEAR_WINDOW);
         for (let i = 0; i < count; i += 1) {
             const speed = (5 + 7 * this.random()) * (0.7 + 0.5 * strength);
+            const z = edge.z + (this.random() - 0.5) * 1.6;
             sim.spawn(
                 edge.x,
-                edge.y + (this.random() - 0.5) * (0.7 + 0.5 * lines),
-                edge.z + (this.random() - 0.5) * 1.6,
+                this.above(edge.x, edge.y + (this.random() - 0.5) * (0.7 + 0.5 * lines), z),
+                z,
                 side * speed,
                 -0.4 + 3 * this.random(),
                 (this.random() - 0.5) * 4.4,
@@ -175,7 +183,7 @@ export class FallLeafDirector {
                 const speed = 3 + 0.12 * i;
                 sim.spawn(
                     x,
-                    edge.y + (this.random() - 0.5) * 0.6,
+                    this.above(x, edge.y + (this.random() - 0.5) * 0.6, edge.z),
                     edge.z,
                     Math.cos(angle) * speed * 0.8 + side * 2,
                     Math.sin(angle) * speed * 0.6 + 1.5,

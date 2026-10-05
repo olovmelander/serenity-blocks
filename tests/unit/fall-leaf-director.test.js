@@ -448,6 +448,22 @@ describe('reading the board card from the page', () => {
 
 describe('Fall leaf director', () => {
     describe('locks', () => {
+        // The lowest board rows map to the foot of the card, which sits at (or under) ground level
+        // on the stage plane: leaves thrown there must still start above the forest floor.
+        it.each([['lock'], ['clear'], ['spin']])('starts %s leaves for the bottom row above the forest floor', (kind) => {
+            const { stage, sim, director } = createDirector();
+            const foot = stage.edge(-1, 0);
+            expect(foot.y).toBeLessThan(fallTerrainHeight(foot.x, foot.z) + 0.2);
+            play(director, sim, [{
+                kind, side: -1, row: 0, strength: 0.8, lines: 2,
+            }], { seconds: 0.6 });
+            const thrown = sim.thrown();
+            expect(thrown.length).toBeGreaterThan(3);
+            for (const leaf of thrown) {
+                expect(leaf.y).toBeGreaterThanOrEqual(fallTerrainHeight(leaf.x, leaf.z) + 0.2 - 1e-9);
+            }
+        });
+
         it.each([[-1], [1]])('throws a fresh puff once from the card edge on side %i, outward', (side) => {
             const { stage, sim, director } = createDirector();
             const lock = {

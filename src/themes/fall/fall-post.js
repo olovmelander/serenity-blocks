@@ -34,7 +34,8 @@ export class FallPost {
         this.uAspect = uniform(16 / 9);
         this.uExposure = uniform(1.0);
         this.uShafts = uniform(1);
-        this.uSunScreen = uniform(new THREE.Vector2(0.25, 0.6));
+        this.uSunScreen = uniform(new THREE.Vector2(0.27, 0.45));
+        this.sunPoint = new THREE.Vector3();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
         this.scenePass = pass(scene, camera, { samples: 0 });
@@ -88,6 +89,14 @@ export class FallPost {
         this.uExposure.value = 1.0 + warmth * 0.05;
         this.uShafts.value = 1 + shafts * 1.4;
         if (this.bloomNode) this.bloomNode.strength.value = 0.22 + warmth * 0.1;
+        if (this.light && this.camera?.isCamera) {
+            // Screen position of the sun (uv, y down) for the shaft tint.
+            const point = this.sunPoint.copy(this.camera.position)
+                .addScaledVector(this.light.uSunDir.value, 500).project(this.camera);
+            if (Number.isFinite(point.x) && Number.isFinite(point.y) && point.z < 1) {
+                this.uSunScreen.value.set(point.x * 0.5 + 0.5, 0.5 - point.y * 0.5);
+            }
+        }
     }
 
     render() {
