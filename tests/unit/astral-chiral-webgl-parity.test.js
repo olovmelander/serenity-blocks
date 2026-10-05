@@ -305,6 +305,12 @@ describe('Astral Weave and Chiral Gold WebGL2 art parity', () => {
         for (const key of ['glow', 'nebula', 'lensDirt', 'centerVeil']) theme.textures[key] = new THREE.Texture();
         theme.createSceneGraph();
         assertNoClassicShaders(theme.scene);
+        for (const particles of [theme.starfield, theme.flowParticles, theme.dustParticles]) {
+            expect(particles.isInstancedMesh).toBe(true);
+            expect(particles.geometry.getAttribute('uv').count).toBe(4);
+            expect(particles.geometry.getAttribute('aCenter').isInstancedBufferAttribute).toBe(true);
+            expect(particles.geometry.getAttribute('aCenter').count).toBe(particles.count);
+        }
         expect(theme.nexusNodeData.length).toBeGreaterThan(0);
         expect(theme.burstNodeData.meta.usesCompute).toBe(false);
         expect(theme.cpuBurstSimulation.count).toBeLessThanOrEqual(128);
