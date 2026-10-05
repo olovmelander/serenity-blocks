@@ -1,58 +1,5 @@
 import * as THREE from 'three/webgpu';
-import {
-    Fn,
-    attribute,
-    uniform,
-    uniformTexture,
-    varying,
-    positionLocal,
-    positionWorld,
-    normalLocal,
-    positionView,
-    uv,
-    vertexColor,
-    vec2,
-    vec3,
-    vec4,
-    float,
-    sin,
-    fract,
-    floor,
-    abs,
-    dot,
-    length,
-    mix,
-    smoothstep,
-    pow,
-    exp,
-    step,
-    clamp,
-    max,
-    mod,
-    normalize,
-    sqrt,
-    time,
-    texture,
-    normalMap,
-} from 'three/tsl';
-
-const hash2D = /* @__PURE__ */ Fn(([p]) => {
-    return fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
-});
-
-const noise2D = /* @__PURE__ */ Fn(([p]) => {
-    const i = floor(p);
-    const f = fract(p);
-    const u = f.mul(f).mul(float(3.0).sub(f.mul(2.0)));
-
-    const a = hash2D(i);
-    const b = hash2D(i.add(vec2(1.0, 0.0)));
-    const c = hash2D(i.add(vec2(0.0, 1.0)));
-    const d = hash2D(i.add(vec2(1.0, 1.0)));
-
-    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-});
-
+import { createBuildingNodeMaterial } from './neon-district-materials.js';
 /**
  * BUILDING LOD SYSTEM - Simplified materials for distant buildings
  *
@@ -116,9 +63,13 @@ export function createBakedWindowTexture() {
                 let color;
                 let intensity = 1.0;
 
-                if (rand > 0.6) { color = '#ffffff'; intensity = 1.8; } // Pure white
-                else if (rand > 0.3) { color = '#ffe9c8'; intensity = 1.5; } // Warm white
-                else { color = '#f6f1e2'; intensity = 1.2; } // Soft white
+                if (rand > 0.6) {
+                    color = '#a0efff'; intensity = 1.8;
+                } else if (rand > 0.3) {
+                    color = '#ffd0ae'; intensity = 1.5;
+                } else {
+                    color = '#ff8ebd'; intensity = 1.2;
+                }
 
                 // Skip the "glow pass" to make them sharper/subtler
 
@@ -206,185 +157,15 @@ export function createBuildingMaterialLowLOD(bakedTexture, color = 0x000000) {
 
 /**
  * Tier 1 (Medium LOD) - Procedural Shader (Simplified)
- * Uses the exact same window logic/quantization as High Quality to ensure visual match,
+ * Shares the derivative-filtered architectural grid with High quality,
  * but removes expensive noise gloss/roughness/normal calculations.
  * ENFORCES constant "lower resolution" (blocky) look to prevent aliasing at distance.
  */
 export function createProceduralBuildingNodeMaterialLOD1() {
-    const uTime = uniform(0);
-    const uSeed = uniform(0);
-    const uGlowIntensity = uniform(1.0);
-    const uWindowScale = uniform(1.0);
-
-    const pos = positionLocal;
-    const norm = normalLocal;
-    const worldPos = positionWorld;
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PERF: FIXED RESOLUTION SCALING
-    // We force the "Medium/Far" look directly.
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    // Increased quantization for even "chunkier" look (less noise)
-    const quantStep = float(15.0);
-    const windowScaleFactor = float(4.0);
-
-    const quantizedPos = floor(pos.div(quantStep)).mul(quantStep);
-    const patternPos = quantizedPos;
-
-    const positionSeed = hash2D(floor(worldPos.xz.div(50.0)));
-    const effectiveSeed = uSeed.add(positionSeed.mul(1000.0));
-
-    // Pure black body
-    const baseColor = vec3(0.01);
-
-    const aspectParams = hash2D(vec2(effectiveSeed, 123.45));
-
-    const baseGridW = float(5.0).add(aspectParams.mul(5.0)).mul(uWindowScale.mul(0.4).add(0.8));
-    const baseGridH = float(8.0).add(hash2D(vec2(effectiveSeed, 678.9)).mul(8.0)).mul(uWindowScale.mul(0.4).add(0.8));
-
-    const gridW = baseGridW.mul(windowScaleFactor);
-    const gridH = baseGridH.mul(windowScaleFactor);
-
-    const isSide = float(1.0).sub(step(0.1, abs(norm.y)));
-    const gridXY = vec2(patternPos.x, patternPos.y);
-    const gridXZ = vec2(patternPos.x, patternPos.z);
-    const gridStr = mix(gridXZ, gridXY, isSide).add(effectiveSeed.mul(50.0));
-
-    const cell = floor(gridStr.div(vec2(gridW, gridH)));
-    const frac = fract(gridStr.div(vec2(gridW, gridH)));
-
-    const baseGap = float(0.2).add(hash2D(vec2(effectiveSeed, 333.33)).mul(0.15));
-    const gap = baseGap.add(0.15); // Large gaps for LOD
-
-    const edgeSoftness = float(0.05);
-    const isWindow = smoothstep(gap, gap.add(edgeSoftness), frac.x)
-        .mul(smoothstep(frac.x, frac.x.add(edgeSoftness), float(1.0).sub(gap)))
-        .mul(smoothstep(gap, gap.add(edgeSoftness), frac.y))
-        .mul(smoothstep(frac.y, frac.y.add(edgeSoftness), float(1.0).sub(gap)));
-
-    // Window Density Logic - DRASTICALLY REDUCED to prevent "Grey/White" washout
-    const baseLitDensity = float(0.2).add(hash2D(vec2(effectiveSeed, 999.0)).mul(0.4)); // Range 0.2 - 0.6
-
-    // Cap mostly low
-    const effectiveDensity = max(baseLitDensity.mul(0.2), float(0.1));
-
-    const h = hash2D(cell.add(vec2(effectiveSeed)));
-    const isLit = isWindow.mul(step(float(1.0).sub(effectiveDensity), h));
-
-    const hue = hash2D(cell.mul(2.0));
-
-    // Colors: Pure White & Warm White only
-    const pureWhite = vec3(1.0, 1.0, 1.0);
-    const warmWhite = vec3(1.0, 0.94, 0.85);
-    const winColor = mix(pureWhite, warmWhite, smoothstep(0.2, 0.8, hue));
-
-    const wBright = float(0.75).add(hash2D(cell.mul(3.0)).mul(0.35));
-
-    // Slightly higher brightness for pink to make it pop against black
-    const effectiveBright = wBright.mul(0.5);
-
-    const windowGlow = winColor.mul(effectiveBright).mul(0.8).mul(isLit);
-
-    const finalColor = baseColor.add(windowGlow);
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = finalColor;
-    material.emissiveNode = windowGlow;
-
-    return {
-        material,
-        uniforms: {
-            uTime, uSeed, uGlowIntensity, uWindowScale,
-        },
-    };
+    return createBuildingNodeMaterial({ detail: 'medium' });
 }
 
-/**
- * Tier 2 (Low LOD) - Procedural Shader (White/Warm Windows)
- * Replaces the texture lookup for distant buildings to ensure consistent style.
- */
+/** Distant facades use the same stable rooms with inexpensive cladding. */
 export function createProceduralBuildingNodeMaterialLOD2() {
-    const uTime = uniform(0);
-    const uSeed = uniform(0);
-    const uGlowIntensity = uniform(1.0);
-    const uWindowScale = uniform(1.0);
-
-    const pos = positionLocal;
-    const norm = normalLocal;
-    const worldPos = positionWorld;
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PERF: FIXED RESOLUTION SCALING
-    // Same settings as LOD1 for consistency
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    const quantStep = float(15.0);
-    const windowScaleFactor = float(4.0);
-
-    const quantizedPos = floor(pos.div(quantStep)).mul(quantStep);
-    const patternPos = quantizedPos;
-
-    const positionSeed = hash2D(floor(worldPos.xz.div(50.0)));
-    const effectiveSeed = uSeed.add(positionSeed.mul(1000.0));
-
-    const baseColor = vec3(0.01);
-
-    const aspectParams = hash2D(vec2(effectiveSeed, 123.45));
-
-    const baseGridW = float(5.0).add(aspectParams.mul(5.0)).mul(uWindowScale.mul(0.4).add(0.8));
-    const baseGridH = float(8.0).add(hash2D(vec2(effectiveSeed, 678.9)).mul(8.0)).mul(uWindowScale.mul(0.4).add(0.8));
-
-    const gridW = baseGridW.mul(windowScaleFactor);
-    const gridH = baseGridH.mul(windowScaleFactor);
-
-    const isSide = float(1.0).sub(step(0.1, abs(norm.y)));
-    const gridXY = vec2(patternPos.x, patternPos.y);
-    const gridXZ = vec2(patternPos.x, patternPos.z);
-    const gridStr = mix(gridXZ, gridXY, isSide).add(effectiveSeed.mul(50.0));
-
-    const cell = floor(gridStr.div(vec2(gridW, gridH)));
-    const frac = fract(gridStr.div(vec2(gridW, gridH)));
-
-    const baseGap = float(0.2).add(hash2D(vec2(effectiveSeed, 333.33)).mul(0.15));
-    const gap = baseGap.add(0.15);
-
-    const edgeSoftness = float(0.05);
-    const isWindow = smoothstep(gap, gap.add(edgeSoftness), frac.x)
-        .mul(smoothstep(frac.x, frac.x.add(edgeSoftness), float(1.0).sub(gap)))
-        .mul(smoothstep(gap, gap.add(edgeSoftness), frac.y))
-        .mul(smoothstep(frac.y, frac.y.add(edgeSoftness), float(1.0).sub(gap)));
-
-    const baseLitDensity = float(0.2).add(hash2D(vec2(effectiveSeed, 999.0)).mul(0.4));
-    const effectiveDensity = max(baseLitDensity.mul(0.2), float(0.1));
-
-    const h = hash2D(cell.add(vec2(effectiveSeed)));
-    const isLit = isWindow.mul(step(float(1.0).sub(effectiveDensity), h));
-
-    const hue = hash2D(cell.mul(2.0));
-
-    // Tier 2 (Low LOD) - Standard White/Warm Windows
-    const pureWhite = vec3(1.0, 1.0, 1.0);
-    const warmWhite = vec3(1.0, 0.94, 0.85);
-    const winColor = mix(pureWhite, warmWhite, smoothstep(0.2, 0.8, hue));
-
-    const wBright = float(0.75).add(hash2D(cell.mul(3.0)).mul(0.35));
-
-    // Slightly higher brightness for pink
-    const effectiveBright = wBright.mul(0.5);
-
-    const windowGlow = winColor.mul(effectiveBright).mul(0.8).mul(isLit);
-
-    const finalColor = baseColor.add(windowGlow);
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = finalColor;
-    material.emissiveNode = windowGlow;
-
-    return {
-        material,
-        uniforms: {
-            uTime, uSeed, uGlowIntensity, uWindowScale,
-        },
-    };
+    return createBuildingNodeMaterial({ detail: 'low' });
 }

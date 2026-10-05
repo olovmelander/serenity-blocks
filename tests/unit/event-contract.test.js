@@ -37,7 +37,6 @@ const KNOWN_VIOLATIONS = new Set([
     'src/themes/electric-dreams-v3/electric-dreams-v3-theme.js EVENTS.GAME_OVER',
     'src/themes/electric-dreams-v3/electric-dreams-v3-theme.js EVENTS.GAME_START',
     'src/themes/electric-dreams-v3/sim/fluid-emitters.js EVENTS.GAME_OVER',
-    'src/themes/neon-district/neon-district-theme.js EVENTS.LINES_CLEARED',
 ]);
 
 // String-literal event names on the multiplayer bus that predate the map
