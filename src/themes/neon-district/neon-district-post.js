@@ -23,8 +23,6 @@ import {
     step,
     saturation,
     getViewPosition,
-    cameraProjectionMatrixInverse,
-    cameraWorldMatrix,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
@@ -33,6 +31,7 @@ import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
 export class NeonDistrictPost {
     constructor(renderer, scene, camera, params) {
         this.renderer = renderer;
+        this.camera = camera;
         this.useMRT = params?.useMRT ?? false;
         this.postProcessing = new THREE.RenderPipeline(renderer);
         this.scenePass = pass(scene, camera);
@@ -44,14 +43,13 @@ export class NeonDistrictPost {
         const bloomSource = this.useMRT ? this.scenePass.getTextureNode('emissive') : scenePassColor;
 
         const strength = params?.bloomStrength ?? 1.0;
-        const radius = params?.bloomRadius ?? 0.6;
+        const bloomRadius = params?.bloomRadius ?? 0.6;
         const threshold = params?.bloomThreshold ?? 0.2;
-        this.bloomNode = bloom(bloomSource, strength, radius, threshold);
+        this.bloomNode = bloom(bloomSource, strength, bloomRadius, threshold);
         this.bloomDownsample = params?.bloomDownsample ?? 0.8;
-        const originalBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
-        this.bloomNode.setSize = (width, height) => {
-            originalBloomSetSize(width * this.bloomDownsample, height * this.bloomDownsample);
-        };
+        // r186's public resolution control preserves the old half-resolution
+        // bloom footprint without patching a private implementation method.
+        this.bloomNode.setResolutionScale(0.5 * this.bloomDownsample);
         this.size = { width: 0, height: 0 };
 
         this.chromaticAmount = uniform(0.0);
@@ -140,8 +138,12 @@ export class NeonDistrictPost {
         // ── 2a. Reconstruct world position from depth for height-banded fog ─────
         const depthTex = this.scenePass.getTextureNode('depth');
         const rawDepth = depthTex.sample(uv).x;
-        const viewPos = getViewPosition(uv, rawDepth, cameraProjectionMatrixInverse);
-        const worldPos = cameraWorldMatrix.mul(vec4(viewPos, 1.0)).xyz;
+        // The final pass renders a fullscreen quad with its own camera. These
+        // matrices must refer to the city camera for height fog to stay world-locked.
+        const sceneProjectionInverse = uniform(camera.projectionMatrixInverse);
+        const sceneWorldMatrix = uniform(camera.matrixWorld);
+        const viewPos = getViewPosition(uv, rawDepth, sceneProjectionInverse);
+        const worldPos = sceneWorldMatrix.mul(vec4(viewPos, 1.0)).xyz;
 
         const distFog = smoothstep(this.fogNear, this.fogFar, linearDepth);
         const heightFalloff = float(1.0).sub(
@@ -191,10 +193,11 @@ export class NeonDistrictPost {
 
         // ── 3b. Anamorphic horizontal light streaks off bright neon ─────────────
         if (this.enableAnamorphic) {
-            const streakTap = (dx, weight) => bloomSource
-                .sample(uv.add(vec2(float(dx), 0.0)))
-                .xyz
-                .mul(weight);
+            const streakTap = (dx, weight) => {
+                const light = bloomSource.sample(uv.add(vec2(float(dx), 0.0))).xyz;
+                const luminance = dot(light, vec3(0.2126, 0.7152, 0.0722));
+                return light.mul(smoothstep(0.4, 1.4, luminance)).mul(weight);
+            };
             const streak = streakTap(0.006, 0.22)
                 .add(streakTap(-0.006, 0.22))
                 .add(streakTap(0.014, 0.16))
@@ -209,14 +212,16 @@ export class NeonDistrictPost {
         // ── 3d. Procedural filmic grade — teal shadows / magenta highlights ─────
         let gradedRgb = composited.xyz;
         if (this.enableGrade) {
-            const luma = dot(gradedRgb, vec3(0.299, 0.587, 0.114));
-            const shadowTint = vec3(-0.02, 0.015, 0.04); // cool/teal lift in shadows
-            const highlightTint = vec3(0.05, -0.01, 0.04); // magenta in highlights
-            const splitToned = gradedRgb
-                .add(shadowTint.mul(float(1.0).sub(luma)))
-                .add(highlightTint.mul(luma));
-            const contrasted = splitToned.sub(0.5).mul(this.uContrast).add(0.5);
-            gradedRgb = saturation(contrasted, this.uSaturation);
+            const luma = dot(max(gradedRgb, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
+            // HDR values exceed one before ACES. Bounded split-toning keeps hot
+            // neon saturated instead of turning the shadow tint negative.
+            const highlight = smoothstep(0.12, 1.4, luma);
+            const shadowTone = mix(vec3(1.0), vec3(0.94, 1.045, 1.085), float(1.0).sub(highlight));
+            const highlightTone = mix(vec3(1.0), vec3(1.035, 0.99, 1.035), highlight);
+            const splitToned = max(gradedRgb, vec3(0.0)).mul(shadowTone).mul(highlightTone);
+            // A mid-grey contrast pivot preserves the city's dark facade detail.
+            const contrasted = max(splitToned.sub(0.18).mul(this.uContrast).add(0.18), vec3(0.0));
+            gradedRgb = max(saturation(contrasted, this.uSaturation), vec3(0.0));
         }
 
         // ── 6b. Rain droplets clinging to the camera lens ───────────────────────
@@ -282,15 +287,16 @@ export class NeonDistrictPost {
         }
         if (params?.bloomDownsample !== undefined) {
             this.bloomDownsample = params.bloomDownsample;
+            this.bloomNode.setResolutionScale(0.5 * this.bloomDownsample);
             if (this.size.width && this.size.height && this.bloomNode?._separableBlurMaterials?.length) {
                 this.bloomNode.setSize(this.size.width, this.size.height);
             }
         }
         if (params?.fogColor !== undefined && this.fogColor) {
-            this.fogColor.value = params.fogColor;
+            this.fogColor.value.copy(params.fogColor);
         }
         if (params?.fogColorFar !== undefined && this.fogColorFar) {
-            this.fogColorFar.value = params.fogColorFar;
+            this.fogColorFar.value.copy(params.fogColorFar);
         }
         if (params?.fogNear !== undefined && this.fogNear) {
             this.fogNear.value = params.fogNear;
@@ -358,6 +364,7 @@ export class NeonDistrictPost {
     }
 
     render() {
+        this.camera.updateMatrixWorld();
         this.postProcessing.render();
     }
 
