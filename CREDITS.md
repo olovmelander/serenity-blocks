@@ -114,6 +114,10 @@ third-party or CC assets:
   far-shore sprite sheet). These are authored procedurally in Blender by
   `scripts/blender/golden_forest_assets.py` with no generative model and no third-party
   source; see `src/themes/golden-forest/assets/ATTRIBUTION.md`.
+- Crystal Cave: `src/themes/crystal-cave/assets/cavern.glb` (the hall of rock with its
+  baked light, the crystal layout, the glow-worm and drip points). Authored procedurally
+  in Blender by `scripts/blender/crystal_cave_assets.py` with no generative model and no
+  third-party source; see `src/themes/crystal-cave/assets/ATTRIBUTION.md`.
 
 ---
 

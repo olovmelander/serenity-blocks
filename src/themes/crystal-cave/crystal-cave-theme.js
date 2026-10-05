@@ -1,7 +1,12 @@
 /**
- * Crystal Cave — opaline mineral facets, a subterranean mirror and traveling
- * resonance. Both backends render the same artwork proven in the playground;
- * this owner handles generation-safe startup, events, sizing and disposal.
+ * Crystal Cave — a hall of light-bearing crystals over a still pool.
+ *
+ * The cavern is authored in Blender (scripts/blender/crystal_cave_assets.py) with the
+ * light of every mineral family baked into the rock; the crystals are traced in the
+ * fragment shader. This owner handles generation-safe startup, the asset load, gameplay
+ * events, sizing and disposal; the artwork lives in CrystalCaveWorld, which the
+ * playground mounts unchanged. WebGPU-primary; the same node scene runs on the WebGL2
+ * backend.
  */
 import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
@@ -10,16 +15,19 @@ import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { CRYSTAL_CAVE_TETROMINOS } from './crystal-cave-tetrominos.js';
-import { CrystalCaveAtmosphere } from './crystal-cave-atmosphere.js';
+import { disposeCrystalCaveAssets, loadCrystalCaveAssets } from './crystal-cave-assets.js';
+import { CrystalCaveWorld } from './crystal-cave-world.js';
 import { CrystalCaveReactions } from './crystal-cave-reactions.js';
-import { CrystalCavePost } from './crystal-cave-post.js';
+import { CRYSTAL_CAVE_EXPOSURE, CrystalCavePost } from './crystal-cave-post.js';
+import { readCrystalCaveBoardRect } from './crystal-cave-stage.js';
 import { QUALITY_PRESETS } from './crystal-cave-quality.js';
-import { revealHiddenDrawables } from '../shared/warm-hidden-drawables.js';
 
 export { QUALITY_PRESETS } from './crystal-cave-quality.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
+const BOARD_POLL_S = 0.75;
+
 function searchParams() {
     return new URLSearchParams(typeof window === 'undefined' ? '' : window.location?.search || '');
 }
@@ -54,11 +62,13 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.atmosphere = null;
+        this.assets = null;
+        this.world = null;
         this.reactions = null;
         this.post = null;
         this.timer = null;
         this.time = 0;
+        this.boardPoll = 0;
         this.quality = 'High';
         this.currentQuality = 'High';
         this.pointer = { x: 0, y: 0 };
@@ -84,7 +94,7 @@ export default class CrystalCaveTheme extends BaseTheme {
     }
 
     getWarmupRoots() {
-        return [this.atmosphere?.group, this.reactions?.group].filter(Boolean);
+        return [this.world?.group].filter(Boolean);
     }
 
     usesMrtScenePass() {
@@ -122,23 +132,40 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.renderer = renderer;
         this.usesNodeMaterials = renderer.isWebGPURenderer === true;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
-        renderer.setClearColor(0x080913, 1);
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 0.95;
+        renderer.setClearColor(0x020308, 1);
+        renderer.toneMapping = THREE.NeutralToneMapping;
+        renderer.toneMappingExposure = CRYSTAL_CAVE_EXPOSURE;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.domElement.setAttribute('aria-hidden', 'true');
         renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
         // The registry's static container is never registered for removal.
         container.appendChild(renderer.domElement);
         this.setupGpuResilience();
+        let assets = null;
+        try {
+            assets = await this.loadAssets(current);
+        } catch (error) {
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            throw error;
+        }
+        if (!assets || !current()) {
+            // A newer start, stop or cleanup owns the theme now; this one keeps nothing.
+            disposeCrystalCaveAssets(assets);
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            return;
+        }
+        this.assets = assets;
         try {
             this.buildScene();
             const { width, height } = getViewport();
             this.resize(width, height);
             this.setupEventListeners();
             this.time = 0;
+            this.boardPoll = 0;
             this.update(0);
-            this.warmEventPools();
+            // Every event pool is always drawn (collapsed while idle), so one frame through
+            // the shipped path builds each pipeline before the first lock.
+            this.renderFrame();
             this.timer = new THREE.Timer();
             this.timer.connect(document);
             this.timer.reset();
@@ -180,17 +207,17 @@ export default class CrystalCaveTheme extends BaseTheme {
         }
     }
 
+    /** The cavern authored in Blender; see crystal-cave-assets.js. */
+    loadAssets(isCurrent = () => true) {
+        return loadCrystalCaveAssets({ isCurrent });
+    }
+
     buildScene() {
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 260);
-        this.atmosphere = new CrystalCaveAtmosphere({
-            scene: this.scene, camera: this.camera, quality: this.quality,
-        });
-        this.reactions = new CrystalCaveReactions({
-            scene: this.scene,
-            anchors: this.atmosphere.anchors,
-            quality: this.qualityPreset,
-            uniforms: this.atmosphere.uniforms,
+        this.camera = new THREE.PerspectiveCamera(55, 1, 0.2, 320);
+        this.reactions = new CrystalCaveReactions();
+        this.world = new CrystalCaveWorld({
+            scene: this.scene, camera: this.camera, assets: this.assets, quality: this.quality,
         });
         this.post = new CrystalCavePost({
             renderer: this.renderer, scene: this.scene, camera: this.camera, quality: this.quality,
@@ -205,8 +232,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         return {
             quality: this.quality,
             backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
-            crystalCount: this.atmosphere?.art.crystalCount ?? 0,
-            reactions: this.reactions?.debug ?? null,
+            world: this.world?.getDiagnostics() ?? null,
             post: this.post?.getDiagnostics?.() ?? null,
         };
     }
@@ -237,20 +263,31 @@ export default class CrystalCaveTheme extends BaseTheme {
 
     effectsAllowed() {
         return this.isActive && !this.isPaused && !this.cleanupComplete
-            && (typeof window === 'undefined' || window.settings?.backgroundComboEffects !== false);
+            && (typeof document === 'undefined' || document.hidden !== true)
+            && (typeof window === 'undefined' || (window.isRenderingPaused !== true
+                && window.settings?.backgroundComboEffects !== false));
+    }
+
+    lockEffectsAllowed() {
+        return this.effectsAllowed() && (typeof window === 'undefined' || window.settings?.pieceLockRipple !== false);
     }
 
     setupEventListeners() {
         this.teardownEventListeners();
         this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.HARD_DROP, (payload) => this.onHardDrop(payload)),
             eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(payload)),
             eventBus.on(EVENTS.LINE_CLEAR, (payload) => this.onLineClear(payload)),
             eventBus.on(EVENTS.COMBO, (payload) => this.onCombo(payload)),
+            eventBus.on(EVENTS.TSPIN, (payload) => this.onFlourish('onTSpin', payload)),
+            eventBus.on(EVENTS.B2B, () => this.onFlourish('onBackToBack')),
+            eventBus.on(EVENTS.PERFECT_CLEAR, () => this.onFlourish('onPerfectClear')),
+            eventBus.on(EVENTS.LEVEL_UP, () => this.onFlourish('onLevelUp')),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
         );
         this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
-        this.registerEventListener(window, 'gameOver', () => this.reactions?.reset());
+        this.registerEventListener(window, 'gameOver', () => this.reactions?.onGameOver());
         this.registerEventListener(window, 'pointermove', (event) => {
             if (!this.isActive || this.isPaused || event.pointerType === 'touch') return;
             this.pointer.x = THREE.MathUtils.clamp((event.clientX / window.innerWidth) * 2 - 1, -1, 1);
@@ -263,23 +300,30 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.clearTrackedResources();
     }
 
+    onHardDrop(payload) {
+        // The payload's piece is pooled and reset after this call: read it synchronously.
+        if (this.lockEffectsAllowed()) this.reactions?.onHardDrop(eventDetail(payload));
+    }
+
     onPieceLock(payload) {
-        if (!this.effectsAllowed()
-            || (typeof window !== 'undefined' && window.settings?.pieceLockRipple === false)) return;
-        this.reactions?.pieceLock(eventDetail(payload));
+        if (this.lockEffectsAllowed()) this.reactions?.onPieceLock(eventDetail(payload));
     }
 
     onLineClear(payload) {
         if (!this.effectsAllowed()) return;
         const count = readCrystalCaveEventCount(payload, ['lineCount', 'count', 'lines'], 1);
         if (count <= 0) return;
-        this.reactions?.lineClear(Math.max(1, Math.min(4, count)));
+        this.reactions?.onLineClear(Math.max(1, Math.min(4, count)), eventDetail(payload));
     }
 
     onCombo(payload) {
         if (!this.effectsAllowed()) return;
         const count = readCrystalCaveEventCount(payload, ['comboCount', 'combo', 'count'], 0);
-        if (count > 0) this.reactions?.combo(Math.min(32, count));
+        if (count > 0) this.reactions?.onCombo(Math.min(32, count));
+    }
+
+    onFlourish(method, payload) {
+        if (this.effectsAllowed()) this.reactions?.[method]?.(eventDetail(payload));
     }
 
     handleSettingsChanged(payload) {
@@ -336,39 +380,30 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.renderer.setPixelRatio(dpr);
         this.renderer.setSize(view.width, view.height);
         this.post?.setSize?.(view.width, view.height);
-        this.atmosphere?.prepareCamera?.(this.camera.aspect);
+        this.world?.prepareCamera?.(this.camera.aspect);
     }
 
     update(delta) {
         const dt = Math.max(0, Math.min(MAX_DELTA_S, Number.isFinite(delta) ? delta : 0));
         this.time += dt;
-        this.reactions?.update(dt, this.time);
+        this.reactions?.update(dt);
+        this.boardPoll -= dt;
+        if (this.boardPoll <= 0) {
+            // The board card can move (mode, resize, multiplayer); follow it cheaply.
+            this.boardPoll = BOARD_POLL_S;
+            this.world?.setBoard?.(readCrystalCaveBoardRect());
+        }
         const smoothing = 1 - Math.exp(-dt * 3);
         this.smoothedPointer.x += (this.pointer.x - this.smoothedPointer.x) * smoothing;
         this.smoothedPointer.y += (this.pointer.y - this.smoothedPointer.y) * smoothing;
-        this.atmosphere?.update(this.time, dt, this.smoothedPointer);
-        const uniforms = this.atmosphere?.uniforms;
-        this.post?.update?.({ energy: uniforms?.energy.value ?? 0, resonance: uniforms?.resonance.value ?? 0 });
+        this.world?.update(this.time, dt, this.reactions, this.smoothedPointer);
+        this.post?.update?.(this.reactions?.getFrame());
     }
 
     renderFrame() {
         if (!this.renderer || !this.scene || !this.camera) return;
         if (this.post) this.post.render();
         else this.renderer.render(this.scene, this.camera);
-    }
-
-    warmEventPools() {
-        if (!this.renderer || !this.scene || !this.camera || !this.reactions?.group) return 0;
-        const reveal = revealHiddenDrawables(this.reactions.group, { camera: this.camera });
-        try {
-            this.reactions.group.updateMatrixWorld(true);
-            // Use the shipped post/direct render so target and material context match
-            // gameplay. The loading-surface session owns async pipeline completion.
-            this.renderFrame();
-            return reveal.revealed;
-        } finally {
-            reveal.restore();
-        }
     }
 
     startAnimation() {
@@ -400,7 +435,7 @@ export default class CrystalCaveTheme extends BaseTheme {
     }
 
     resume() {
-        if (!this.renderer || !this.scene || !this.atmosphere) return false;
+        if (!this.renderer || !this.scene || !this.world) return false;
         const resumed = super.resume();
         if (resumed) {
             this.timer?.reset();
@@ -427,11 +462,16 @@ export default class CrystalCaveTheme extends BaseTheme {
         };
         release('Post', this.post);
         this.post = null;
-        release('Atmosphere', this.atmosphere);
-        this.atmosphere = null;
-        this.reactions?.reset();
+        release('World', this.world);
+        this.world = null;
         release('Reactions', this.reactions);
         this.reactions = null;
+        try {
+            disposeCrystalCaveAssets(this.assets);
+        } catch (error) {
+            console.warn('[CrystalCave] Asset disposal failed.', error);
+        }
+        this.assets = null;
         release('Timer', this.timer);
         this.timer = null;
         this.scene?.clear();
