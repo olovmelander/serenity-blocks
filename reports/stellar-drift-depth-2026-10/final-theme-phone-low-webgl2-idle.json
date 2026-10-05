@@ -1,0 +1,93 @@
+{
+  "name": "final-theme-phone-low-webgl2-idle",
+  "stage": "final",
+  "mode": "theme",
+  "url": "http://127.0.0.1:5199/__stellar-drift-validation.html?effect=stellar-drift&t=8&quality=Low&seed=481516&orbit=0&profile=1&eventAge=0.35&forceWebGL=1&themeValidation=1",
+  "ready": true,
+  "backend": "WebGL2",
+  "diagnostics": {
+    "quality": "Low",
+    "stars": 1300,
+    "meteorCount": 100,
+    "dust": 320,
+    "analyticMotion": true,
+    "fullscreenBackdrop": true,
+    "foregroundDebris": 10,
+    "spaceDust": 550,
+    "pointer": [
+      0,
+      0
+    ],
+    "camera": [
+      0.25772023750668754,
+      0.0887209752506551,
+      45.09933466539753
+    ],
+    "eventDraws": 4,
+    "orbitalArcBudget": 4,
+    "cometRibbonBudget": 1,
+    "localizedImpactBudget": 1,
+    "eventRenderResourceAllocationsPerFrame": 0,
+    "disabled": true,
+    "useMRT": false,
+    "arcs": 0,
+    "comets": 0,
+    "reactions": {
+      "rim": 0,
+      "aurora": 0,
+      "dust": 0,
+      "stars": 0,
+      "glow": 0,
+      "impact": 0,
+      "arcs": [],
+      "comets": []
+    },
+    "lastRenderPath": "webgl2-node-direct",
+    "capabilities": {
+      "webgpu": false,
+      "webgl": true,
+      "maxColorAttachments": 1,
+      "supportsPost": true,
+      "supportsMRT": false,
+      "supportsCompute": false,
+      "post": false,
+      "mrt": false,
+      "compute": false
+    }
+  },
+  "profile": null,
+  "camera": {
+    "position": [
+      0.25772023750668754,
+      0.0887209752506551,
+      45.09933466539753
+    ],
+    "fov": 48,
+    "aspect": 0.46208530805687204,
+    "near": 0.1,
+    "far": 500
+  },
+  "renderInfo": {
+    "calls": 2,
+    "triangles": 0
+  },
+  "gpuErrors": [],
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "dpr": 1
+  },
+  "canvas": {
+    "width": 351,
+    "height": 759,
+    "left": 0,
+    "top": 0,
+    "cssWidth": 390,
+    "cssHeight": 844
+  },
+  "teardown": {
+    "active": false,
+    "canvasCount": 0
+  },
+  "messages": []
+}

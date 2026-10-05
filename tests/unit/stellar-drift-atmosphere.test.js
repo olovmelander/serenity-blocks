@@ -9,7 +9,6 @@ import {
     StellarDriftAtmosphere,
 } from '../../src/themes/stellar-drift/stellar-drift-atmosphere.js';
 import {
-    STELLAR_DRIFT_COMET_CONTACT,
     STELLAR_DRIFT_REACTION_LIMITS,
     StellarDriftReactions,
 } from '../../src/themes/stellar-drift/stellar-drift-reactions.js';
@@ -40,19 +39,6 @@ function resources(atmosphere) {
         if (object.material) result.add(object.material);
     });
     return result;
-}
-
-function contact(id, angle, impactAge) {
-    return {
-        id,
-        angle,
-        impactAge,
-        active: true,
-        impacted: true,
-        progress: 0.8,
-        strength: 0.7,
-        seed: 0.5,
-    };
 }
 
 afterEach(() => {
@@ -101,12 +87,17 @@ describe('Stellar Drift orbital scene contracts', () => {
                 'stellar-drift-distant-moon', 'stellar-drift-inner-moon']) {
                 expect(drawables.filter((mesh) => mesh.name === name)).toHaveLength(1);
             }
-            expect(drawables.filter((mesh) => mesh.name.startsWith('stellar-drift-pooled-comet-')))
-                .toHaveLength(limits.comets);
-            expect(atmosphere.arcVectors).toHaveLength(limits.arcs);
-            expect(atmosphere.cometVectors).toHaveLength(limits.comets);
-            expect(atmosphere.cometTargetVectors).toHaveLength(limits.comets);
-            expect(atmosphere.cometApproachVectors).toHaveLength(limits.comets);
+            for (const [name, count] of [
+                ['stellar-drift-orbital-event-arcs', limits.arcs],
+                ['stellar-drift-curved-event-comets', limits.comets],
+                ['stellar-drift-contact-coronas', limits.comets],
+            ]) {
+                const mesh = drawables.find((entry) => entry.name === name);
+                expect(mesh.geometry.instanceCount).toBe(count);
+            }
+            expect(atmosphere.effects.arcData).toHaveLength(limits.arcs);
+            expect(atmosphere.effects.cometData).toHaveLength(limits.comets);
+            expect(atmosphere.effects.cometTargetVectors).toHaveLength(limits.comets);
             for (const mesh of drawables) {
                 expect(mesh.material.isNodeMaterial).toBe(true);
                 expect(mesh.material.isShaderMaterial).not.toBe(true);
@@ -122,10 +113,10 @@ describe('Stellar Drift orbital scene contracts', () => {
         const reactions = new StellarDriftReactions({ quality: 'Low', rng: () => 0.5 });
         const originalMeshes = meshes(scene);
         const originalResources = resources(atmosphere);
-        const arcs = [...atmosphere.arcVectors];
-        const comets = [...atmosphere.cometVectors];
-        const targets = [...atmosphere.cometTargetVectors];
-        const approaches = [...atmosphere.cometApproachVectors];
+        const arcs = [...atmosphere.effects.arcData];
+        const comets = [...atmosphere.effects.cometData];
+        const targets = [...atmosphere.effects.cometTargetVectors];
+        const tangents = [...atmosphere.effects.cometTangentVectors];
         for (let frame = 0; frame < 180; frame++) {
             if (frame % 5 === 0) {
                 reactions.onPieceLock();
@@ -136,9 +127,9 @@ describe('Stellar Drift orbital scene contracts', () => {
         }
         expect(meshes(scene)).toEqual(originalMeshes);
         expect(resources(atmosphere)).toEqual(originalResources);
-        for (const [current, original] of [[atmosphere.arcVectors, arcs],
-            [atmosphere.cometVectors, comets], [atmosphere.cometTargetVectors, targets],
-            [atmosphere.cometApproachVectors, approaches]]) {
+        for (const [current, original] of [[atmosphere.effects.arcData, arcs],
+            [atmosphere.effects.cometData, comets], [atmosphere.effects.cometTargetVectors, targets],
+            [atmosphere.effects.cometTangentVectors, tangents]]) {
             current.forEach((value, index) => expect(value).toBe(original[index]));
         }
         atmosphere.dispose();
@@ -167,8 +158,8 @@ describe('Stellar Drift orbital scene contracts', () => {
 
     it('maps sparse active event IDs into their own uniform slots and clears them on reset', () => {
         const { atmosphere } = createAtmosphere('High');
-        const arcId = atmosphere.arcVectors.length - 1;
-        const cometId = atmosphere.cometVectors.length - 1;
+        const arcId = atmosphere.effects.arcData.length - 1;
+        const cometId = atmosphere.effects.cometData.length - 1;
         atmosphere.update(8, 1 / 60, {
             arcs: [{
                 id: arcId, active: true, angle: 1.1, progress: 0.4, direction: -1, strength: 0.6,
@@ -177,17 +168,17 @@ describe('Stellar Drift orbital scene contracts', () => {
                 id: cometId, active: true, angle: 2.1, progress: 0.3, strength: 0.7, seed: 0.4,
             }],
         });
-        expect(atmosphere.arcVectors[arcId].z).toBeGreaterThan(0);
-        expect(atmosphere.arcVectors[0].z).toBe(0);
-        expect(atmosphere.cometVectors[cometId].x).toBe(0.3);
-        expect(atmosphere.cometVectors[cometId].y).toBe(2.1);
-        expect(atmosphere.cometVectors[cometId].z).toBe(0.7);
-        expect(atmosphere.cometVectors[0].z).toBe(0);
+        expect(atmosphere.effects.arcData[arcId].y).toBeGreaterThan(0);
+        expect(atmosphere.effects.arcData[0].y).toBe(0);
+        expect(atmosphere.effects.cometData[cometId].x).toBe(0.3);
+        expect(atmosphere.effects.cometData[cometId].y).toBe(0.7);
+        expect(atmosphere.effects.cometData[cometId].z).toBe(0.4);
+        expect(atmosphere.effects.cometData[0].y).toBe(0);
         atmosphere.update(0, 0, new StellarDriftReactions().frame);
-        expect(atmosphere.arcVectors.every((entry) => entry.z === 0)).toBe(true);
-        expect(atmosphere.cometVectors.every((entry) => entry.z === 0)).toBe(true);
-        for (const entry of [...atmosphere.arcVectors, ...atmosphere.cometVectors,
-            ...atmosphere.cometTargetVectors, ...atmosphere.cometApproachVectors]) {
+        expect(atmosphere.effects.arcData.every((entry) => entry.y === 0)).toBe(true);
+        expect(atmosphere.effects.cometData.every((entry) => entry.y === 0)).toBe(true);
+        for (const entry of [...atmosphere.effects.arcData, ...atmosphere.effects.cometData,
+            ...atmosphere.effects.cometTargetVectors, ...atmosphere.effects.cometTangentVectors]) {
             expect(entry.toArray().every(Number.isFinite)).toBe(true);
         }
     });
@@ -213,79 +204,32 @@ describe('Stellar Drift orbital scene contracts', () => {
         }
     });
 
-    it('places comet targets on the visible planet tangent and keeps contact on the newest impact', () => {
-        const { camera, atmosphere } = createAtmosphere('High');
-        const newest = contact(0, 2.1, 0.02);
-        const older = contact(atmosphere.maxComets - 1, 0.7, 0.25);
-        atmosphere.update(8, 0.02, { impact: 0.7, comets: [newest, older] });
-        atmosphere.group.updateMatrixWorld(true);
-        const { radius } = atmosphere.planet.geometry.parameters;
-        const localCamera = atmosphere.hero.worldToLocal(camera.getWorldPosition(new THREE.Vector3()));
-        for (const comet of [newest, older]) {
-            const target = atmosphere.cometTargetVectors[comet.id];
-            expect(target.length()).toBeCloseTo(radius, 5);
-            // A tangent surface normal is perpendicular to the view ray at contact.
-            expect(target.dot(localCamera.clone().sub(target))).toBeCloseTo(0, 4);
-        }
-        const latestTarget = atmosphere.cometTargetVectors[newest.id];
-        expect(atmosphere.impactMesh.position.distanceTo(latestTarget)).toBeLessThan(0.1);
-        expect(atmosphere.impactMesh.position.dot(latestTarget)).toBeGreaterThan(latestTarget.lengthSq());
-        const position = atmosphere.impactMesh.position.clone();
-        atmosphere.update(8.01, 0.01, { impact: 0.6, comets: [older, newest] });
-        expect(atmosphere.impactMesh.position.distanceTo(position)).toBeLessThan(0.00001);
-        atmosphere.update(8.02, 0.01, { impact: 0.5, comets: [] });
-        expect(atmosphere.impactMesh.position.distanceTo(position)).toBeLessThan(0.00001);
+    it('smooths pointer camera travel and keeps near/far parallax bounded', () => {
+        const { atmosphere, camera } = createAtmosphere('Minimal');
+        atmosphere.resize(1440, 900);
+        atmosphere.update(8, 0, {});
+        const center = camera.position.clone();
+        atmosphere.setPointer(1, 1);
+        atmosphere.update(8, 1 / 60, {});
+        expect(camera.position.distanceTo(center)).toBeGreaterThan(0);
+        expect(camera.position.distanceTo(center)).toBeLessThan(0.3);
+        for (let i = 0; i < 120; i++) atmosphere.update(8, 1 / 60, {});
+        expect(camera.position.x - center.x).toBeCloseTo(2.2, 3);
+        expect(camera.position.y - center.y).toBeCloseTo(1.1, 3);
+        atmosphere.setPointer(NaN, Infinity);
+        for (let i = 0; i < 120; i++) atmosphere.update(8, 1 / 60, {});
+        expect(camera.position.distanceTo(center)).toBeLessThan(0.0001);
     });
 
-    it('keeps every comet approach outside the planet through its visible tangent contact', () => {
-        for (const [width, height, board] of [
-            [1440, 900, {
-                left: 545, top: 76, width: 350, height: 762,
-            }],
-            [390, 844, {
-                left: 73, top: 101, width: 244, height: 642,
-            }],
-        ]) {
-            const { atmosphere } = createAtmosphere('Minimal', width / height);
-            atmosphere.resize(width, height, board);
-            const { radius } = atmosphere.planet.geometry.parameters;
-            expect(atmosphere.cometApproaches.array).toBe(atmosphere.cometApproachVectors);
-            expect(atmosphere.cometTargets.array).toBe(atmosphere.cometTargetVectors);
-            for (let quadrant = 0; quadrant < 16; quadrant++) {
-                for (const direction of [-1, 1]) {
-                    for (const seed of [0, 0.5, 1]) {
-                        for (const progress of [0, 0.1, 0.35, 0.6, 0.68, STELLAR_DRIFT_COMET_CONTACT]) {
-                            atmosphere.update(8, 0, {
-                                comets: [{
-                                    id: 0,
-                                    active: true,
-                                    angle: (quadrant * Math.PI) / 8,
-                                    direction,
-                                    seed,
-                                    progress,
-                                    strength: 0.7,
-                                }],
-                            });
-                            const target = atmosphere.cometTargets.array[0];
-                            const approach = atmosphere.cometApproaches.array[0];
-                            expect(target.dot(approach)).toBeGreaterThan(0);
-                            // Sample the uploaded trajectory contract, including the old
-                            // failure at progress .68 on the bottom planetary limb.
-                            const travel = Math.min(1, atmosphere.comets.array[0].x / STELLAR_DRIFT_COMET_CONTACT);
-                            const head = target.clone().addScaledVector(approach, 1 - travel);
-                            expect(head.length()).toBeGreaterThanOrEqual(radius - 1e-8);
-                            if (progress < STELLAR_DRIFT_COMET_CONTACT) {
-                                expect(head.length()).toBeGreaterThan(radius);
-                            } else {
-                                expect(head.distanceTo(target)).toBeLessThan(1e-8);
-                            }
-                            head.addScaledVector(atmosphere.contactNormalNode.value, 0.035);
-                            expect(head.length()).toBeGreaterThan(radius);
-                        }
-                    }
-                }
-            }
-        }
+    it.each([[390, 844], [844, 390], [1440, 900], [3440, 1440]])('covers %sx%s', (width, height) => {
+        const { atmosphere } = createAtmosphere('Minimal');
+        atmosphere.resize(width, height);
+        const { sky } = atmosphere.backdrop;
+        expect(sky.material.vertexNode.isNode).toBe(true);
+        expect(sky.frustumCulled).toBe(false);
+        expect(sky.material.depthTest).toBe(false);
+        expect(atmosphere.backdrop.aspect.value).toBe(width / height);
+        expect(atmosphere.viewHalfWidth.value / atmosphere.viewHalfHeight.value).toBe(width / height);
     });
 
     it.each([

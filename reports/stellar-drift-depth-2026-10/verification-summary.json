@@ -1,0 +1,87 @@
+{
+  "sourceSHA256": {
+    "src/themes/stellar-drift/stellar-drift-atmosphere.js": "1ed1767330563eae7c1d2ef3982f49e665460c7e3bb9556b0b0c23c484572b53",
+    "src/themes/stellar-drift/stellar-drift-backdrop.js": "4cf775dc84a74967567f704a03aacee08cd40b909257cd4e295e4d4eef3bed22",
+    "src/themes/stellar-drift/stellar-drift-event-effects.js": "d98d511be8bb7f14dce6136d5a997df06372ce47cee71a0020cf375a3ad2a439",
+    "src/themes/stellar-drift/stellar-drift-planets.js": "ca454dc3e156833bcbf79f2c70b323f84ab0b84dc42c4600b9abd19b0d261682",
+    "src/themes/stellar-drift/stellar-drift-post.js": "d2d9ebf9a665c633ebdeea5ebcad18a7bc7e82464159716c92fdfa94fb38e41b",
+    "src/themes/stellar-drift/stellar-drift-reactions.js": "af8cd1d5dc175c01b7b246f9a34414ba287709d627b83363d56baed9e04c6754",
+    "src/themes/stellar-drift/stellar-drift-tetrominos.js": "ef995aa0ea1fb291be0171247e7e1d9eb33fbd344ab5f322b57f6b4899e39a76",
+    "src/themes/stellar-drift/stellar-drift-theme.js": "170eb12b6210b18ad57b5dcbef77ba941df258a30ce7cac45dcd02f4adc12310",
+    "src/playground/effects/stellar-drift.effect.js": "89290915548f3bd8f54b25bbb01ce1a2b8bc40c1f2f2cd863f33e475511f3056"
+  },
+  "visualStates": 17,
+  "renderers": [
+    "WebGPU",
+    "WebGL2"
+  ],
+  "viewports": [
+    [
+      1440,
+      900
+    ],
+    [
+      390,
+      844
+    ],
+    [
+      2560,
+      1080
+    ],
+    [
+      844,
+      390
+    ]
+  ],
+  "consoleErrors": 0,
+  "gpuErrors": 0,
+  "pointerDisplacementWorldUnits": 1.9677069555981055,
+  "focusedTests": {
+    "files": 6,
+    "passed": 124
+  },
+  "fullSuite": {
+    "files": 543,
+    "tests": 5934,
+    "passedInitial": 5932,
+    "timingFailures": [
+      "binary-decoder-fuzz.test.js: 5000ms timeout; isolated rerun 5/5 passed",
+      "odyssey-cloud-field.test.js: bake 1633ms >1500ms under concurrent rendering; isolated rerun 12/12 passed"
+    ]
+  },
+  "checks": {
+    "build": "pass",
+    "bootClosure": "pass",
+    "typecheck": "pass",
+    "tsRatchet": "pass",
+    "lintRatchet": "pass",
+    "changedFileLint": "pass",
+    "architecture": "pass",
+    "boundaries": "pass",
+    "lifecycle": "pass",
+    "release": "pass",
+    "perfBudgetScaffolding": "pass",
+    "ipStrings": "pass",
+    "palette": "unchanged Stillwater mapping fails the optional palette gate",
+    "pagesArtifact": "pass after verified clean Vite CLI rebuild"
+  },
+  "curatedScreenshots": [
+    "before-playground-desktop-high-webgl2-idle.png",
+    "before-playground-phone-low-webgl2-idle.png",
+    "final-game-desktop-high-webgpu.png",
+    "final-game-phone-low-webgl2.png",
+    "final-playground-desktop-high-webgpu-combo.png",
+    "final-playground-desktop-high-webgpu-corona.png",
+    "final-playground-desktop-high-webgpu-idle-pointer-center.png",
+    "final-playground-desktop-high-webgpu-idle-pointer-corner.png",
+    "final-playground-desktop-high-webgpu-idle.png",
+    "final-playground-phone-landscape-low-webgl2-combo.png",
+    "final-playground-phone-low-webgl2-idle.png",
+    "final-playground-ultrawide-high-webgl2-idle.png",
+    "final-theme-phone-low-webgl2-combo.png"
+  ],
+  "notes": [
+    "GPU captures use software SwiftShader and establish correctness, not physical-device FPS.",
+    "Baseline idle screenshots are the old scene. Baseline combo snapshots were taken during director editing and are excluded."
+  ]
+}

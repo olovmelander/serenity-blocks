@@ -1,0 +1,145 @@
+{
+  "name": "final-playground-phone-landscape-low-webgl2-idle",
+  "stage": "final",
+  "mode": "playground",
+  "url": "http://127.0.0.1:5177/playground.html?effect=stellar-drift&t=8&quality=Low&seed=481516&orbit=0&profile=1&eventAge=0.35&forceWebGL=1",
+  "ready": true,
+  "backend": "WebGL2",
+  "diagnostics": {
+    "quality": "Low",
+    "disabled": true,
+    "useMRT": false,
+    "arcs": 0,
+    "comets": 0,
+    "stars": 1300,
+    "meteorCount": 100,
+    "dust": 320,
+    "analyticMotion": true,
+    "fullscreenBackdrop": true,
+    "foregroundDebris": 10,
+    "spaceDust": 550,
+    "pointer": [
+      0,
+      0
+    ],
+    "camera": [
+      0.2577202375066883,
+      0.08872097525065537,
+      45.09933466539753
+    ],
+    "eventDraws": 4,
+    "orbitalArcBudget": 4,
+    "cometRibbonBudget": 1,
+    "localizedImpactBudget": 1,
+    "eventRenderResourceAllocationsPerFrame": 0,
+    "backend": "WebGL2"
+  },
+  "profile": {
+    "enabled": true,
+    "backend": "WebGL2",
+    "effect": "stellar-drift",
+    "seed": 481516,
+    "fixedTime": 8,
+    "captureMeta": null,
+    "internalResolution": {
+      "width": 844,
+      "height": 390,
+      "cssWidth": 844,
+      "cssHeight": 390,
+      "pixelRatio": 1
+    },
+    "cpuMs": {
+      "samples": 47,
+      "p50": 1.1000000005587935,
+      "p95": 1.900000000372529,
+      "p99": 2.099999999627471,
+      "max": 2.099999999627471
+    },
+    "frameMs": {
+      "samples": 46,
+      "p50": 16.700000000186265,
+      "p95": 19.799999999813735,
+      "p99": 291.20000000018626,
+      "max": 291.20000000018626
+    },
+    "gpuMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "computeMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "droppedFrames": {
+      "budgetMs": 16.666666666666668,
+      "dropped": 28,
+      "total": 46,
+      "ratio": 0.6086956521739131
+    },
+    "memory": {
+      "supported": true,
+      "startBytes": 131000000,
+      "currentBytes": 131000000,
+      "peakBytes": 131000000,
+      "growthBytes": 0,
+      "growthMB": 0
+    },
+    "activeParticles": null,
+    "gpuTimestamp": {
+      "requested": false,
+      "renderStatus": "unavailable",
+      "computeStatus": "unavailable",
+      "error": null,
+      "computeError": null
+    },
+    "renderer": null,
+    "gpuMemory": {
+      "totalMB": 4.621066093444824,
+      "texturesMB": 4.266812324523926,
+      "attributesMB": 0.18343353271484375,
+      "indexAttributesMB": 0.07865524291992188,
+      "storageAttributesMB": 0,
+      "uniformBuffersMB": 0.00469970703125,
+      "programsMB": 0.08746528625488281,
+      "renderTargets": 1,
+      "textures": 4,
+      "geometries": 20
+    }
+  },
+  "camera": {
+    "position": [
+      0.2577202375066883,
+      0.08872097525065537,
+      45.09933466539753
+    ],
+    "fov": 48,
+    "aspect": 2.164102564102564,
+    "near": 0.1,
+    "far": 500
+  },
+  "renderInfo": {
+    "calls": 104,
+    "triangles": 32229
+  },
+  "gpuErrors": [],
+  "viewport": {
+    "width": 844,
+    "height": 390,
+    "dpr": 1
+  },
+  "canvas": {
+    "width": 844,
+    "height": 390,
+    "left": 0,
+    "top": 0,
+    "cssWidth": 844,
+    "cssHeight": 390
+  },
+  "messages": []
+}

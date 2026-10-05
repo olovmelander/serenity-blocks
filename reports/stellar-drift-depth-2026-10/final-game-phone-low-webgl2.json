@@ -1,0 +1,127 @@
+{
+  "backend": "WebGL2",
+  "quality": "Low",
+  "canvas": {
+    "width": 351,
+    "height": 759,
+    "x": 0,
+    "y": 0,
+    "cssWidth": 390,
+    "cssHeight": 844
+  },
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "dpr": 1
+  },
+  "atmosphere": {
+    "quality": "Low",
+    "stars": 1300,
+    "meteorCount": 100,
+    "dust": 320,
+    "analyticMotion": true,
+    "fullscreenBackdrop": true,
+    "foregroundDebris": 10,
+    "spaceDust": 550,
+    "pointer": [
+      0,
+      0
+    ],
+    "camera": [
+      0.25823770036282945,
+      0.08890148300696057,
+      45.09953883730587
+    ],
+    "eventDraws": 4,
+    "orbitalArcBudget": 4,
+    "cometRibbonBudget": 1,
+    "localizedImpactBudget": 1,
+    "eventRenderResourceAllocationsPerFrame": 0
+  },
+  "post": {
+    "quality": "Low",
+    "disabled": true,
+    "useMRT": false
+  },
+  "capabilities": {
+    "webgpu": false,
+    "webgl": true,
+    "maxColorAttachments": 1,
+    "supportsPost": true,
+    "supportsMRT": false,
+    "supportsCompute": false,
+    "post": false,
+    "mrt": false,
+    "compute": false
+  },
+  "lastRenderPath": "webgl2-node-direct",
+  "gpuErrors": [],
+  "mode": {
+    "id": "single",
+    "running": true
+  },
+  "boardEls": [
+    {
+      "id": "single-player-card",
+      "class": "single-player-card player-card",
+      "rect": {
+        "x": 21.5,
+        "y": 45,
+        "width": 347,
+        "height": 756
+      }
+    },
+    {
+      "id": "player-1-card",
+      "class": "player-card",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      }
+    },
+    {
+      "id": "player-2-card",
+      "class": "player-card",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      }
+    },
+    {
+      "id": "player-3-card",
+      "class": "player-card",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      }
+    },
+    {
+      "id": "player-4-card",
+      "class": "player-card",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      }
+    },
+    {
+      "id": "online-player-card",
+      "class": "player-card",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      }
+    }
+  ],
+  "bodyClass": "startup-intro-skipped phaser-hud-ready",
+  "messages": []
+}

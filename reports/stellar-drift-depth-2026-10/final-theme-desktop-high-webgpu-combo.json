@@ -1,0 +1,155 @@
+{
+  "name": "final-theme-desktop-high-webgpu-combo",
+  "stage": "final",
+  "mode": "theme",
+  "url": "http://127.0.0.1:5199/__stellar-drift-validation.html?effect=stellar-drift&t=8&quality=High&seed=481516&orbit=0&profile=1&eventAge=0.35&event=combo&combo=5&themeValidation=1",
+  "ready": true,
+  "backend": "WebGPU",
+  "diagnostics": {
+    "quality": "High",
+    "stars": 3400,
+    "meteorCount": 300,
+    "dust": 900,
+    "analyticMotion": true,
+    "fullscreenBackdrop": true,
+    "foregroundDebris": 28,
+    "spaceDust": 1500,
+    "pointer": [
+      0,
+      0
+    ],
+    "camera": [
+      0.25772023750668754,
+      0.0887209752506551,
+      45.09933466539753
+    ],
+    "eventDraws": 4,
+    "orbitalArcBudget": 8,
+    "cometRibbonBudget": 3,
+    "localizedImpactBudget": 3,
+    "eventRenderResourceAllocationsPerFrame": 0,
+    "disabled": false,
+    "useMRT": true,
+    "arcs": 2,
+    "comets": 2,
+    "reactions": {
+      "rim": 0.2434170719223826,
+      "aurora": 0.4402563624715055,
+      "dust": 0.19922935697552804,
+      "stars": 0.3048131651793232,
+      "glow": 0.1946906183648095,
+      "impact": 0,
+      "arcs": [
+        {
+          "id": 0,
+          "active": true,
+          "angle": 1.8853057353680107,
+          "direction": 1,
+          "age": 0.36666666666666536,
+          "duration": 2.5,
+          "strength": 0.6555640524968118,
+          "seed": 0.029638203017832647,
+          "kind": "combo",
+          "impacted": false,
+          "progress": 0.14666666666666614,
+          "energy": 0.6555640524968118
+        },
+        {
+          "id": 1,
+          "active": true,
+          "angle": 5.5056249649600755,
+          "direction": -1,
+          "age": 0.22666666666666568,
+          "duration": 2.5,
+          "strength": 0.6555640524968118,
+          "seed": 0.1886488340192044,
+          "kind": "combo",
+          "impacted": false,
+          "progress": 0.09066666666666627,
+          "energy": 0.6555640524968118
+        }
+      ],
+      "comets": [
+        {
+          "id": 0,
+          "active": true,
+          "angle": 5.240970563261058,
+          "direction": 1,
+          "age": 0.36666666666666536,
+          "duration": 2.15,
+          "strength": 0.6463589171392136,
+          "seed": 0.42070473251028806,
+          "kind": "combo",
+          "impacted": false,
+          "progress": 0.17054263565891414,
+          "energy": 0.6463589171392136,
+          "impactProgress": 0.72,
+          "impactAge": 0
+        },
+        {
+          "id": 1,
+          "active": true,
+          "angle": 1.1689127192484863,
+          "direction": -1,
+          "age": 0.12666666666666515,
+          "duration": 2.33,
+          "strength": 0.6463589171392136,
+          "seed": 0.5529663923182442,
+          "kind": "combo",
+          "impacted": false,
+          "progress": 0.054363376251787617,
+          "energy": 0.4549825210688353,
+          "impactProgress": 0.72,
+          "impactAge": 0
+        }
+      ]
+    },
+    "lastRenderPath": "webgpu-post",
+    "capabilities": {
+      "webgpu": true,
+      "webgl": false,
+      "maxColorAttachments": 8,
+      "supportsPost": true,
+      "supportsMRT": true,
+      "supportsCompute": true,
+      "post": true,
+      "mrt": true,
+      "compute": false
+    }
+  },
+  "profile": null,
+  "camera": {
+    "position": [
+      0.25772023750668754,
+      0.0887209752506551,
+      45.09933466539753
+    ],
+    "fov": 48,
+    "aspect": 1.6,
+    "near": 0.1,
+    "far": 500
+  },
+  "renderInfo": {
+    "calls": 14,
+    "triangles": 0
+  },
+  "gpuErrors": [],
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "dpr": 1
+  },
+  "canvas": {
+    "width": 1440,
+    "height": 900,
+    "left": 0,
+    "top": 0,
+    "cssWidth": 1440,
+    "cssHeight": 900
+  },
+  "teardown": {
+    "active": false,
+    "canvasCount": 0
+  },
+  "messages": []
+}
