@@ -23,7 +23,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 // retired. NEVER add a name: that is a new dual-maintenance burden.
 const DUAL_STATE_ALLOWLIST = [
     'chiral-gold',
-    'cosmic-noir', 'fluid-dreams', 'ice-temple', 'lunara',
+    'cosmic-noir', 'fluid-dreams', 'lunara',
     'ocean',
     'stellar-velocity', 'golden-forest', 'winter', 'wolfhour',
 ];
