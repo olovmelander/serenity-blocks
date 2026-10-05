@@ -1,0 +1,1517 @@
+{
+  "schemaVersion": 1,
+  "status": "pass",
+  "environment": {
+    "browser": "151.0.7922.34",
+    "softwareRendering": true,
+    "pixelRatio": 1,
+    "isolatedSessionSeed": 481516
+  },
+  "scope": {
+    "techniques": 12,
+    "guidedSessions": [
+      "BASE",
+      "ELIXIR",
+      "REST",
+      "FLOW"
+    ],
+    "matrixCaptureCount": 153,
+    "finalSettledUICaptureCount": 69,
+    "actualApplicationCaptureCount": 4,
+    "guidedSceneStages": [
+      "grounding",
+      "active",
+      "retention",
+      "recovery",
+      "integration"
+    ],
+    "guidedUIStages": [
+      "preparation",
+      "countdown",
+      "journey-overview",
+      "completion"
+    ]
+  },
+  "limits": [
+    "The isolated matrix uses actual shipping components with deterministic scene time and session selection; audio and game background themes are absent.",
+    "Session phase transitions and completion are accelerated through the actual manager to avoid waiting through entire sessions.",
+    "The actual-application smoke runs the Vite development entry with a minimal forest background; it is separate from production-build validation.",
+    "The actual-application smoke mutes session audio using the supported audioManager.setEnabled(false) API.",
+    "Software-browser checks establish rendering, shader compatibility and resource bounds; they do not measure physical-phone or hardware GPU frame rate."
+  ],
+  "matrix": {
+    "status": "pass",
+    "sourceStable": true,
+    "sourceSHA256": {
+      "index.html": "614b3baa5a1c30044d456fa9e12db67448bf368431b27c1b3356b49bd0b3a35c",
+      "src/core/game-modes/SerenityMode.js": "8f622e8c2d0904cfe953304dcd7a2e5a98c25cdaf474cab8bbaa847d157a6a1e",
+      "src/ui/serenity-hub/SerenityHub.js": "44d90725a5e3bd5534b30bea0ff5e9a4e7d9d7f18056818b3efff34bf1f2b9c3",
+      "src/ui/effects/threejs-breathing-renderer.js": "807eb61aa3a5642e5db124cbd18f5b69cc65b90234e1b36c8b4fe61c71d442d6",
+      "src/ui/effects/breathing-atmosphere.js": "aebd6f8bcb562698d70f82b7bfc0701edc6398f4cb04f8b890d819b601edebfc",
+      "src/ui/effects/enhanced-breathing-indicator.js": "96614a31e50ff1e3a23e78752767410742e5069ddd60ed256ac3fb8f2c492a3f",
+      "src/ui/effects/breathwork-session-manager.js": "eefa7d7ee2c88ca0bdf2a35dd09d6daaac6bfdbd32e1d157a0802ad6f542a324",
+      "src/ui/serenity-hub/SessionsTab.js": "0a3417d25ab59a485058449e53fb9aa9f7cc2746396b6b9cd0916e9e57d39656",
+      "src/ui/serenity-hub/BreathingTab.js": "66992eae58840c342b8cdc089b90b95f07e557bc2c5b007a610e6852afad2e70",
+      "public/styles/main.css": "b9e4afd13b0a116d15552ca7ed88d0d8ffc668191fbfe0588de91b113486d780",
+      "public/styles/serenity-hub.css": "2f0c962b56372076f39f1ec39267641d6c2c8961bf60e3e164c2ecdefd4290b0",
+      "public/styles/serenity-hub-aaa.css": "aa7bb2d19ff3eb562d459dc63606f5759916ee2f3f40609bd1652ea26b8ddf3a",
+      "public/styles/breathing-immersive.css": "4c777955869e8173b6a7a10d2d16e1e38a7fac256f9a44f287f1f7a1764c5fe0",
+      "public/styles/breathwork-sessions.css": "70cbd659a841c83953c49be994af4e8b647d76d8334f975c55106235f24d6571",
+      "public/styles/breathing-library.css": "622b2f1d0edb31b4bcd622be78e2985249b9461faae4f26d49f223dce79b1ede"
+    },
+    "profiles": [
+      {
+        "profile": {
+          "id": "desktop",
+          "width": 1440,
+          "height": 900,
+          "quality": "High",
+          "mobile": false
+        },
+        "status": "pass",
+        "captureCount": 51,
+        "captures": [
+          "desktop-deep-relaxation-inhale.png",
+          "desktop-box-breathing-inhale.png",
+          "desktop-calm-sleep-inhale.png",
+          "desktop-energizing-inhale.png",
+          "desktop-coherence-inhale.png",
+          "desktop-triangle-inhale.png",
+          "desktop-wim-hof-inhale.png",
+          "desktop-ocean-breath-inhale.png",
+          "desktop-zen-garden-inhale.png",
+          "desktop-cosmic-breath-inhale.png",
+          "desktop-forest-breath-inhale.png",
+          "desktop-electric-storm-inhale.png",
+          "desktop-breathing-library.png",
+          "desktop-sessions-catalogue.png",
+          "desktop-base-preparation.png",
+          "desktop-base-countdown.png",
+          "desktop-base-grounding.png",
+          "desktop-breathing-library-guided-session.png",
+          "desktop-base-journey-overview.png",
+          "desktop-base-active.png",
+          "desktop-base-retention.png",
+          "desktop-base-recovery.png",
+          "desktop-base-integration.png",
+          "desktop-base-completion.png",
+          "desktop-elixir-preparation.png",
+          "desktop-elixir-countdown.png",
+          "desktop-elixir-grounding.png",
+          "desktop-elixir-journey-overview.png",
+          "desktop-elixir-active.png",
+          "desktop-elixir-retention.png",
+          "desktop-elixir-recovery.png",
+          "desktop-elixir-integration.png",
+          "desktop-elixir-completion.png",
+          "desktop-rest-preparation.png",
+          "desktop-rest-countdown.png",
+          "desktop-rest-grounding.png",
+          "desktop-rest-journey-overview.png",
+          "desktop-rest-active.png",
+          "desktop-rest-retention.png",
+          "desktop-rest-recovery.png",
+          "desktop-rest-integration.png",
+          "desktop-rest-completion.png",
+          "desktop-flow-preparation.png",
+          "desktop-flow-countdown.png",
+          "desktop-flow-grounding.png",
+          "desktop-flow-journey-overview.png",
+          "desktop-flow-active.png",
+          "desktop-flow-retention.png",
+          "desktop-flow-recovery.png",
+          "desktop-flow-integration.png",
+          "desktop-flow-completion.png"
+        ],
+        "consoleErrorCount": 0,
+        "consoleWarningCount": 0,
+        "horizontalControlOverflowCount": 0,
+        "maxDrawCalls": 6,
+        "maxResidentGeometries": 10,
+        "maxResidentTextures": 0,
+        "maxParticlePoints": 650,
+        "failures": [],
+        "teardown": {
+          "active": false,
+          "rendererRunning": false,
+          "raf": null,
+          "pendingUI": 0,
+          "phaseTimeouts": 0,
+          "canvasCount": 0
+        },
+        "repeatedTechniqueSwitches": {
+          "switches": 26,
+          "before": {
+            "geometries": 10,
+            "textures": 0,
+            "programs": 4
+          },
+          "after": {
+            "geometries": 10,
+            "textures": 0,
+            "programs": 4
+          }
+        },
+        "boundedSubmissionSample": {
+          "sampleCount": 24,
+          "maxCalls": 6
+        },
+        "nativeResizeObserver": [
+          {
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "container": {
+              "width": 390,
+              "height": 590.796875,
+              "clientWidth": 390,
+              "clientHeight": 591
+            },
+            "canvas": {
+              "width": 390,
+              "height": 591
+            },
+            "camera": {
+              "aspect": 0.6598984771573604,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            },
+            "contextLost": false
+          },
+          {
+            "viewport": {
+              "width": 844,
+              "height": 390,
+              "dpr": 1
+            },
+            "container": {
+              "width": 725.828125,
+              "height": 366.59375,
+              "clientWidth": 726,
+              "clientHeight": 367
+            },
+            "canvas": {
+              "width": 726,
+              "height": 367
+            },
+            "camera": {
+              "aspect": 1.978201634877384,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            },
+            "contextLost": false
+          },
+          {
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "container": {
+              "width": 1020,
+              "height": 738,
+              "clientWidth": 1020,
+              "clientHeight": 738
+            },
+            "canvas": {
+              "width": 1020,
+              "height": 738
+            },
+            "camera": {
+              "aspect": 1.3821138211382114,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            },
+            "contextLost": false
+          }
+        ]
+      },
+      {
+        "profile": {
+          "id": "portrait",
+          "width": 390,
+          "height": 844,
+          "quality": "Low",
+          "mobile": true
+        },
+        "status": "pass",
+        "captureCount": 51,
+        "captures": [
+          "portrait-deep-relaxation-inhale.png",
+          "portrait-box-breathing-inhale.png",
+          "portrait-calm-sleep-inhale.png",
+          "portrait-energizing-inhale.png",
+          "portrait-coherence-inhale.png",
+          "portrait-triangle-inhale.png",
+          "portrait-wim-hof-inhale.png",
+          "portrait-ocean-breath-inhale.png",
+          "portrait-zen-garden-inhale.png",
+          "portrait-cosmic-breath-inhale.png",
+          "portrait-forest-breath-inhale.png",
+          "portrait-electric-storm-inhale.png",
+          "portrait-breathing-library.png",
+          "portrait-sessions-catalogue.png",
+          "portrait-base-preparation.png",
+          "portrait-base-countdown.png",
+          "portrait-base-grounding.png",
+          "portrait-breathing-library-guided-session.png",
+          "portrait-base-journey-overview.png",
+          "portrait-base-active.png",
+          "portrait-base-retention.png",
+          "portrait-base-recovery.png",
+          "portrait-base-integration.png",
+          "portrait-base-completion.png",
+          "portrait-elixir-preparation.png",
+          "portrait-elixir-countdown.png",
+          "portrait-elixir-grounding.png",
+          "portrait-elixir-journey-overview.png",
+          "portrait-elixir-active.png",
+          "portrait-elixir-retention.png",
+          "portrait-elixir-recovery.png",
+          "portrait-elixir-integration.png",
+          "portrait-elixir-completion.png",
+          "portrait-rest-preparation.png",
+          "portrait-rest-countdown.png",
+          "portrait-rest-grounding.png",
+          "portrait-rest-journey-overview.png",
+          "portrait-rest-active.png",
+          "portrait-rest-retention.png",
+          "portrait-rest-recovery.png",
+          "portrait-rest-integration.png",
+          "portrait-rest-completion.png",
+          "portrait-flow-preparation.png",
+          "portrait-flow-countdown.png",
+          "portrait-flow-grounding.png",
+          "portrait-flow-journey-overview.png",
+          "portrait-flow-active.png",
+          "portrait-flow-retention.png",
+          "portrait-flow-recovery.png",
+          "portrait-flow-integration.png",
+          "portrait-flow-completion.png"
+        ],
+        "consoleErrorCount": 0,
+        "consoleWarningCount": 0,
+        "horizontalControlOverflowCount": 0,
+        "maxDrawCalls": 6,
+        "maxResidentGeometries": 10,
+        "maxResidentTextures": 0,
+        "maxParticlePoints": 220,
+        "failures": [],
+        "teardown": {
+          "active": false,
+          "rendererRunning": false,
+          "raf": null,
+          "pendingUI": 0,
+          "phaseTimeouts": 0,
+          "canvasCount": 0
+        },
+        "repeatedTechniqueSwitches": {
+          "switches": 26,
+          "before": {
+            "geometries": 10,
+            "textures": 0,
+            "programs": 4
+          },
+          "after": {
+            "geometries": 10,
+            "textures": 0,
+            "programs": 4
+          }
+        },
+        "boundedSubmissionSample": {
+          "sampleCount": 24,
+          "maxCalls": 6
+        },
+        "nativeResizeObserver": [
+          {
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "container": {
+              "width": 390,
+              "height": 590.796875,
+              "clientWidth": 390,
+              "clientHeight": 591
+            },
+            "canvas": {
+              "width": 390,
+              "height": 591
+            },
+            "camera": {
+              "aspect": 0.6598984771573604,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            },
+            "contextLost": false
+          },
+          {
+            "viewport": {
+              "width": 844,
+              "height": 390,
+              "dpr": 1
+            },
+            "container": {
+              "width": 725.828125,
+              "height": 366.59375,
+              "clientWidth": 726,
+              "clientHeight": 367
+            },
+            "canvas": {
+              "width": 726,
+              "height": 367
+            },
+            "camera": {
+              "aspect": 1.978201634877384,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            },
+            "contextLost": false
+          },
+          {
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "container": {
+              "width": 390,
+              "height": 590.796875,
+              "clientWidth": 390,
+              "clientHeight": 591
+            },
+            "canvas": {
+              "width": 390,
+              "height": 591
+            },
+            "camera": {
+              "aspect": 0.6598984771573604,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            },
+            "contextLost": false
+          }
+        ]
+      },
+      {
+        "profile": {
+          "id": "landscape",
+          "width": 844,
+          "height": 390,
+          "quality": "Low",
+          "mobile": true
+        },
+        "status": "pass",
+        "captureCount": 51,
+        "captures": [
+          "landscape-deep-relaxation-inhale.png",
+          "landscape-box-breathing-inhale.png",
+          "landscape-calm-sleep-inhale.png",
+          "landscape-energizing-inhale.png",
+          "landscape-coherence-inhale.png",
+          "landscape-triangle-inhale.png",
+          "landscape-wim-hof-inhale.png",
+          "landscape-ocean-breath-inhale.png",
+          "landscape-zen-garden-inhale.png",
+          "landscape-cosmic-breath-inhale.png",
+          "landscape-forest-breath-inhale.png",
+          "landscape-electric-storm-inhale.png",
+          "landscape-breathing-library.png",
+          "landscape-sessions-catalogue.png",
+          "landscape-base-preparation.png",
+          "landscape-base-countdown.png",
+          "landscape-base-grounding.png",
+          "landscape-breathing-library-guided-session.png",
+          "landscape-base-journey-overview.png",
+          "landscape-base-active.png",
+          "landscape-base-retention.png",
+          "landscape-base-recovery.png",
+          "landscape-base-integration.png",
+          "landscape-base-completion.png",
+          "landscape-elixir-preparation.png",
+          "landscape-elixir-countdown.png",
+          "landscape-elixir-grounding.png",
+          "landscape-elixir-journey-overview.png",
+          "landscape-elixir-active.png",
+          "landscape-elixir-retention.png",
+          "landscape-elixir-recovery.png",
+          "landscape-elixir-integration.png",
+          "landscape-elixir-completion.png",
+          "landscape-rest-preparation.png",
+          "landscape-rest-countdown.png",
+          "landscape-rest-grounding.png",
+          "landscape-rest-journey-overview.png",
+          "landscape-rest-active.png",
+          "landscape-rest-retention.png",
+          "landscape-rest-recovery.png",
+          "landscape-rest-integration.png",
+          "landscape-rest-completion.png",
+          "landscape-flow-preparation.png",
+          "landscape-flow-countdown.png",
+          "landscape-flow-grounding.png",
+          "landscape-flow-journey-overview.png",
+          "landscape-flow-active.png",
+          "landscape-flow-retention.png",
+          "landscape-flow-recovery.png",
+          "landscape-flow-integration.png",
+          "landscape-flow-completion.png"
+        ],
+        "consoleErrorCount": 0,
+        "consoleWarningCount": 0,
+        "horizontalControlOverflowCount": 0,
+        "maxDrawCalls": 6,
+        "maxResidentGeometries": 10,
+        "maxResidentTextures": 0,
+        "maxParticlePoints": 220,
+        "failures": [],
+        "teardown": {
+          "active": false,
+          "rendererRunning": false,
+          "raf": null,
+          "pendingUI": 0,
+          "phaseTimeouts": 0,
+          "canvasCount": 0
+        },
+        "repeatedTechniqueSwitches": {
+          "switches": 26,
+          "before": {
+            "geometries": 10,
+            "textures": 0,
+            "programs": 4
+          },
+          "after": {
+            "geometries": 10,
+            "textures": 0,
+            "programs": 4
+          }
+        },
+        "boundedSubmissionSample": {
+          "sampleCount": 24,
+          "maxCalls": 6
+        },
+        "nativeResizeObserver": [
+          {
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "container": {
+              "width": 390,
+              "height": 590.796875,
+              "clientWidth": 390,
+              "clientHeight": 591
+            },
+            "canvas": {
+              "width": 390,
+              "height": 591
+            },
+            "camera": {
+              "aspect": 0.6598984771573604,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            },
+            "contextLost": false
+          },
+          {
+            "viewport": {
+              "width": 844,
+              "height": 390,
+              "dpr": 1
+            },
+            "container": {
+              "width": 725.828125,
+              "height": 366.59375,
+              "clientWidth": 726,
+              "clientHeight": 367
+            },
+            "canvas": {
+              "width": 726,
+              "height": 367
+            },
+            "camera": {
+              "aspect": 1.978201634877384,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            },
+            "contextLost": false
+          },
+          {
+            "viewport": {
+              "width": 844,
+              "height": 390,
+              "dpr": 1
+            },
+            "container": {
+              "width": 725.828125,
+              "height": 366.59375,
+              "clientWidth": 726,
+              "clientHeight": 367
+            },
+            "canvas": {
+              "width": 726,
+              "height": 367
+            },
+            "camera": {
+              "aspect": 1.978201634877384,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            },
+            "contextLost": false
+          }
+        ]
+      }
+    ],
+    "supersededUICaptures": "Preparation/countdown/catalogue/completion UI evidence is replaced by the final settled UI supplement."
+  },
+  "finalSettledUI": {
+    "status": "pass",
+    "sourceStable": true,
+    "sourceSHA256": {
+      "index.html": "614b3baa5a1c30044d456fa9e12db67448bf368431b27c1b3356b49bd0b3a35c",
+      "src/core/game-modes/SerenityMode.js": "8972b1267af1b9e9cae649ad87cfcc61e8a2cfe062f80cda073da469d110183c",
+      "src/ui/serenity-hub/SerenityHub.js": "44d90725a5e3bd5534b30bea0ff5e9a4e7d9d7f18056818b3efff34bf1f2b9c3",
+      "src/ui/effects/threejs-breathing-renderer.js": "807eb61aa3a5642e5db124cbd18f5b69cc65b90234e1b36c8b4fe61c71d442d6",
+      "src/ui/effects/breathing-atmosphere.js": "aebd6f8bcb562698d70f82b7bfc0701edc6398f4cb04f8b890d819b601edebfc",
+      "src/ui/effects/enhanced-breathing-indicator.js": "e319413a61b96efac82437b3740213bfc3f2a4221291554c156106d2e3247168",
+      "src/ui/effects/breathwork-session-manager.js": "eefa7d7ee2c88ca0bdf2a35dd09d6daaac6bfdbd32e1d157a0802ad6f542a324",
+      "src/ui/serenity-hub/SessionsTab.js": "e4dab3a4bdba965288298415761a86f369a2de056a1d3b9b521c7495c9c83bb7",
+      "src/ui/serenity-hub/BreathingTab.js": "4e74f3de6790231731b4314c92cb7478c03de364fc8cf3d7ccf7eaf3cf99b89d",
+      "public/styles/main.css": "b9e4afd13b0a116d15552ca7ed88d0d8ffc668191fbfe0588de91b113486d780",
+      "public/styles/serenity-hub.css": "2f0c962b56372076f39f1ec39267641d6c2c8961bf60e3e164c2ecdefd4290b0",
+      "public/styles/serenity-hub-aaa.css": "aa7bb2d19ff3eb562d459dc63606f5759916ee2f3f40609bd1652ea26b8ddf3a",
+      "public/styles/breathing-immersive.css": "4c777955869e8173b6a7a10d2d16e1e38a7fac256f9a44f287f1f7a1764c5fe0",
+      "public/styles/breathwork-sessions.css": "4cef52314b215e68b5ab964492fc2d1476da15a8180b19677b76d5588a570226",
+      "public/styles/breathing-library.css": "622b2f1d0edb31b4bcd622be78e2985249b9461faae4f26d49f223dce79b1ede"
+    },
+    "profiles": [
+      {
+        "profile": {
+          "id": "desktop",
+          "width": 1440,
+          "height": 900,
+          "quality": "High",
+          "mobile": false
+        },
+        "status": "pass",
+        "captureCount": 23,
+        "captures": [
+          "desktop-breathing-library.png",
+          "desktop-sessions-catalogue.png",
+          "desktop-base-preparation.png",
+          "desktop-base-countdown.png",
+          "desktop-base-grounding.png",
+          "desktop-breathing-library-guided-session.png",
+          "desktop-base-journey-overview.png",
+          "desktop-base-completion.png",
+          "desktop-elixir-preparation.png",
+          "desktop-elixir-countdown.png",
+          "desktop-elixir-grounding.png",
+          "desktop-elixir-journey-overview.png",
+          "desktop-elixir-completion.png",
+          "desktop-rest-preparation.png",
+          "desktop-rest-countdown.png",
+          "desktop-rest-grounding.png",
+          "desktop-rest-journey-overview.png",
+          "desktop-rest-completion.png",
+          "desktop-flow-preparation.png",
+          "desktop-flow-countdown.png",
+          "desktop-flow-grounding.png",
+          "desktop-flow-journey-overview.png",
+          "desktop-flow-completion.png"
+        ],
+        "consoleErrorCount": 0,
+        "consoleWarningCount": 0,
+        "horizontalControlOverflowCount": 0,
+        "maxDrawCalls": 6,
+        "maxResidentGeometries": 7,
+        "maxResidentTextures": 0,
+        "maxParticlePoints": 650,
+        "failures": [],
+        "teardown": {
+          "active": false,
+          "rendererRunning": false,
+          "raf": null,
+          "pendingUI": 0,
+          "phaseTimeouts": 0,
+          "canvasCount": 0
+        },
+        "completionBounds": [
+          {
+            "capture": "desktop-base-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 941,
+                "clientHeight": 635,
+                "rect": {
+                  "top": 210,
+                  "bottom": 845,
+                  "height": 635
+                },
+                "art": {
+                  "top": 246.953125,
+                  "bottom": 424.953125,
+                  "height": 178
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 638,
+                "clientHeight": 635,
+                "rect": {
+                  "top": 210,
+                  "bottom": 845,
+                  "height": 635
+                },
+                "art": {
+                  "top": 246.953125,
+                  "bottom": 424.953125,
+                  "height": 178
+                }
+              }
+            ]
+          },
+          {
+            "capture": "desktop-elixir-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 941,
+                "clientHeight": 635,
+                "rect": {
+                  "top": 210,
+                  "bottom": 845,
+                  "height": 635
+                },
+                "art": {
+                  "top": 246.953125,
+                  "bottom": 424.953125,
+                  "height": 178
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 638,
+                "clientHeight": 635,
+                "rect": {
+                  "top": 210,
+                  "bottom": 845,
+                  "height": 635
+                },
+                "art": {
+                  "top": 246.953125,
+                  "bottom": 424.953125,
+                  "height": 178
+                }
+              }
+            ]
+          },
+          {
+            "capture": "desktop-rest-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 941,
+                "clientHeight": 635,
+                "rect": {
+                  "top": 210,
+                  "bottom": 845,
+                  "height": 635
+                },
+                "art": {
+                  "top": 246.953125,
+                  "bottom": 424.953125,
+                  "height": 178
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 638,
+                "clientHeight": 635,
+                "rect": {
+                  "top": 210,
+                  "bottom": 845,
+                  "height": 635
+                },
+                "art": {
+                  "top": 246.953125,
+                  "bottom": 424.953125,
+                  "height": 178
+                }
+              }
+            ]
+          },
+          {
+            "capture": "desktop-flow-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 941,
+                "clientHeight": 635,
+                "rect": {
+                  "top": 210,
+                  "bottom": 845,
+                  "height": 635
+                },
+                "art": {
+                  "top": 246.953125,
+                  "bottom": 424.953125,
+                  "height": 178
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 638,
+                "clientHeight": 635,
+                "rect": {
+                  "top": 210,
+                  "bottom": 845,
+                  "height": 635
+                },
+                "art": {
+                  "top": 246.953125,
+                  "bottom": 424.953125,
+                  "height": 178
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "profile": {
+          "id": "portrait",
+          "width": 390,
+          "height": 844,
+          "quality": "Low",
+          "mobile": true
+        },
+        "status": "pass",
+        "captureCount": 23,
+        "captures": [
+          "portrait-breathing-library.png",
+          "portrait-sessions-catalogue.png",
+          "portrait-base-preparation.png",
+          "portrait-base-countdown.png",
+          "portrait-base-grounding.png",
+          "portrait-breathing-library-guided-session.png",
+          "portrait-base-journey-overview.png",
+          "portrait-base-completion.png",
+          "portrait-elixir-preparation.png",
+          "portrait-elixir-countdown.png",
+          "portrait-elixir-grounding.png",
+          "portrait-elixir-journey-overview.png",
+          "portrait-elixir-completion.png",
+          "portrait-rest-preparation.png",
+          "portrait-rest-countdown.png",
+          "portrait-rest-grounding.png",
+          "portrait-rest-journey-overview.png",
+          "portrait-rest-completion.png",
+          "portrait-flow-preparation.png",
+          "portrait-flow-countdown.png",
+          "portrait-flow-grounding.png",
+          "portrait-flow-journey-overview.png",
+          "portrait-flow-completion.png"
+        ],
+        "consoleErrorCount": 0,
+        "consoleWarningCount": 0,
+        "horizontalControlOverflowCount": 0,
+        "maxDrawCalls": 6,
+        "maxResidentGeometries": 7,
+        "maxResidentTextures": 0,
+        "maxParticlePoints": 220,
+        "failures": [],
+        "teardown": {
+          "active": false,
+          "rendererRunning": false,
+          "raf": null,
+          "pendingUI": 0,
+          "phaseTimeouts": 0,
+          "canvasCount": 0
+        },
+        "completionBounds": [
+          {
+            "capture": "portrait-base-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 935,
+                "clientHeight": 586,
+                "rect": {
+                  "top": 206.640625,
+                  "bottom": 792.359375,
+                  "height": 585.71875
+                },
+                "art": {
+                  "top": 213.453125,
+                  "bottom": 391.453125,
+                  "height": 178
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 605,
+                "clientHeight": 586,
+                "rect": {
+                  "top": 206.640625,
+                  "bottom": 792.359375,
+                  "height": 585.71875
+                },
+                "art": {
+                  "top": 213.453125,
+                  "bottom": 391.453125,
+                  "height": 178
+                }
+              }
+            ]
+          },
+          {
+            "capture": "portrait-elixir-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 935,
+                "clientHeight": 586,
+                "rect": {
+                  "top": 206.640625,
+                  "bottom": 792.359375,
+                  "height": 585.71875
+                },
+                "art": {
+                  "top": 213.453125,
+                  "bottom": 391.453125,
+                  "height": 178
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 605,
+                "clientHeight": 586,
+                "rect": {
+                  "top": 206.640625,
+                  "bottom": 792.359375,
+                  "height": 585.71875
+                },
+                "art": {
+                  "top": 213.453125,
+                  "bottom": 391.453125,
+                  "height": 178
+                }
+              }
+            ]
+          },
+          {
+            "capture": "portrait-rest-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 935,
+                "clientHeight": 586,
+                "rect": {
+                  "top": 206.640625,
+                  "bottom": 792.359375,
+                  "height": 585.71875
+                },
+                "art": {
+                  "top": 213.453125,
+                  "bottom": 391.453125,
+                  "height": 178
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 605,
+                "clientHeight": 586,
+                "rect": {
+                  "top": 206.640625,
+                  "bottom": 792.359375,
+                  "height": 585.71875
+                },
+                "art": {
+                  "top": 213.453125,
+                  "bottom": 391.453125,
+                  "height": 178
+                }
+              }
+            ]
+          },
+          {
+            "capture": "portrait-flow-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 935,
+                "clientHeight": 586,
+                "rect": {
+                  "top": 206.640625,
+                  "bottom": 792.359375,
+                  "height": 585.71875
+                },
+                "art": {
+                  "top": 213.453125,
+                  "bottom": 391.453125,
+                  "height": 178
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 605,
+                "clientHeight": 586,
+                "rect": {
+                  "top": 206.640625,
+                  "bottom": 792.359375,
+                  "height": 585.71875
+                },
+                "art": {
+                  "top": 213.453125,
+                  "bottom": 391.453125,
+                  "height": 178
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "profile": {
+          "id": "landscape",
+          "width": 844,
+          "height": 390,
+          "quality": "Low",
+          "mobile": true
+        },
+        "status": "pass",
+        "captureCount": 23,
+        "captures": [
+          "landscape-breathing-library.png",
+          "landscape-sessions-catalogue.png",
+          "landscape-base-preparation.png",
+          "landscape-base-countdown.png",
+          "landscape-base-grounding.png",
+          "landscape-breathing-library-guided-session.png",
+          "landscape-base-journey-overview.png",
+          "landscape-base-completion.png",
+          "landscape-elixir-preparation.png",
+          "landscape-elixir-countdown.png",
+          "landscape-elixir-grounding.png",
+          "landscape-elixir-journey-overview.png",
+          "landscape-elixir-completion.png",
+          "landscape-rest-preparation.png",
+          "landscape-rest-countdown.png",
+          "landscape-rest-grounding.png",
+          "landscape-rest-journey-overview.png",
+          "landscape-rest-completion.png",
+          "landscape-flow-preparation.png",
+          "landscape-flow-countdown.png",
+          "landscape-flow-grounding.png",
+          "landscape-flow-journey-overview.png",
+          "landscape-flow-completion.png"
+        ],
+        "consoleErrorCount": 0,
+        "consoleWarningCount": 0,
+        "horizontalControlOverflowCount": 0,
+        "maxDrawCalls": 6,
+        "maxResidentGeometries": 7,
+        "maxResidentTextures": 0,
+        "maxParticlePoints": 220,
+        "failures": [],
+        "teardown": {
+          "active": false,
+          "rendererRunning": false,
+          "raf": null,
+          "pendingUI": 0,
+          "phaseTimeouts": 0,
+          "canvasCount": 0
+        },
+        "completionBounds": [
+          {
+            "capture": "landscape-base-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 933,
+                "clientHeight": 186,
+                "rect": {
+                  "top": 179.40625,
+                  "bottom": 365.59375,
+                  "height": 186.1875
+                },
+                "art": {
+                  "top": 219.40625,
+                  "bottom": 319.40625,
+                  "height": 100
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 563,
+                "clientHeight": 186,
+                "rect": {
+                  "top": 179.40625,
+                  "bottom": 365.59375,
+                  "height": 186.1875
+                },
+                "art": {
+                  "top": 219.40625,
+                  "bottom": 319.40625,
+                  "height": 100
+                }
+              }
+            ]
+          },
+          {
+            "capture": "landscape-elixir-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 933,
+                "clientHeight": 186,
+                "rect": {
+                  "top": 179.40625,
+                  "bottom": 365.59375,
+                  "height": 186.1875
+                },
+                "art": {
+                  "top": 219.40625,
+                  "bottom": 319.40625,
+                  "height": 100
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 563,
+                "clientHeight": 186,
+                "rect": {
+                  "top": 179.40625,
+                  "bottom": 365.59375,
+                  "height": 186.1875
+                },
+                "art": {
+                  "top": 219.40625,
+                  "bottom": 319.40625,
+                  "height": 100
+                }
+              }
+            ]
+          },
+          {
+            "capture": "landscape-rest-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 933,
+                "clientHeight": 186,
+                "rect": {
+                  "top": 179.40625,
+                  "bottom": 365.59375,
+                  "height": 186.1875
+                },
+                "art": {
+                  "top": 219.40625,
+                  "bottom": 319.40625,
+                  "height": 100
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 563,
+                "clientHeight": 186,
+                "rect": {
+                  "top": 179.40625,
+                  "bottom": 365.59375,
+                  "height": 186.1875
+                },
+                "art": {
+                  "top": 219.40625,
+                  "bottom": 319.40625,
+                  "height": 100
+                }
+              }
+            ]
+          },
+          {
+            "capture": "landscape-flow-completion.png",
+            "overlays": [
+              {
+                "className": "hub-tab-content",
+                "scrollTop": 0,
+                "scrollHeight": 933,
+                "clientHeight": 186,
+                "rect": {
+                  "top": 179.40625,
+                  "bottom": 365.59375,
+                  "height": 186.1875
+                },
+                "art": {
+                  "top": 219.40625,
+                  "bottom": 319.40625,
+                  "height": 100
+                }
+              },
+              {
+                "className": "session-completion-overlay",
+                "scrollTop": 0,
+                "scrollHeight": 563,
+                "clientHeight": 186,
+                "rect": {
+                  "top": 179.40625,
+                  "bottom": 365.59375,
+                  "height": 186.1875
+                },
+                "art": {
+                  "top": 219.40625,
+                  "bottom": 319.40625,
+                  "height": 100
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "actualApplication": {
+    "status": "pass",
+    "sourceStable": true,
+    "sourceSHA256": {
+      "index.html": "614b3baa5a1c30044d456fa9e12db67448bf368431b27c1b3356b49bd0b3a35c",
+      "src/core/game-modes/SerenityMode.js": "8972b1267af1b9e9cae649ad87cfcc61e8a2cfe062f80cda073da469d110183c",
+      "src/ui/serenity-hub/SerenityHub.js": "44d90725a5e3bd5534b30bea0ff5e9a4e7d9d7f18056818b3efff34bf1f2b9c3",
+      "src/ui/effects/threejs-breathing-renderer.js": "807eb61aa3a5642e5db124cbd18f5b69cc65b90234e1b36c8b4fe61c71d442d6",
+      "src/ui/effects/breathing-atmosphere.js": "aebd6f8bcb562698d70f82b7bfc0701edc6398f4cb04f8b890d819b601edebfc",
+      "src/ui/effects/enhanced-breathing-indicator.js": "e319413a61b96efac82437b3740213bfc3f2a4221291554c156106d2e3247168",
+      "src/ui/effects/breathwork-session-manager.js": "eefa7d7ee2c88ca0bdf2a35dd09d6daaac6bfdbd32e1d157a0802ad6f542a324",
+      "src/ui/serenity-hub/SessionsTab.js": "e4dab3a4bdba965288298415761a86f369a2de056a1d3b9b521c7495c9c83bb7",
+      "src/ui/serenity-hub/BreathingTab.js": "4e74f3de6790231731b4314c92cb7478c03de364fc8cf3d7ccf7eaf3cf99b89d",
+      "public/styles/main.css": "b9e4afd13b0a116d15552ca7ed88d0d8ffc668191fbfe0588de91b113486d780",
+      "public/styles/serenity-hub.css": "2f0c962b56372076f39f1ec39267641d6c2c8961bf60e3e164c2ecdefd4290b0",
+      "public/styles/serenity-hub-aaa.css": "aa7bb2d19ff3eb562d459dc63606f5759916ee2f3f40609bd1652ea26b8ddf3a",
+      "public/styles/breathing-immersive.css": "4c777955869e8173b6a7a10d2d16e1e38a7fac256f9a44f287f1f7a1764c5fe0",
+      "public/styles/breathwork-sessions.css": "4cef52314b215e68b5ab964492fc2d1476da15a8180b19677b76d5588a570226",
+      "public/styles/breathing-library.css": "622b2f1d0edb31b4bcd622be78e2985249b9461faae4f26d49f223dce79b1ede"
+    },
+    "result": {
+      "id": "game-smoke",
+      "console": [],
+      "screenshots": [
+        "game-smoke-breathing.png",
+        "game-smoke-preparation.png",
+        "game-smoke-guided.png",
+        "game-smoke-completion.png"
+      ],
+      "failures": [],
+      "globalHub": {
+        "hasModeControls": false,
+        "afterStart": true,
+        "afterStop": false
+      },
+      "breathing": {
+        "mode": "serenity",
+        "active": true,
+        "technique": "deep-relaxation",
+        "canvasCount": 1
+      },
+      "session": {
+        "session": "BASE",
+        "externallyControlled": true,
+        "phase": "grounding",
+        "hasHUDState": true,
+        "hubHidden": true
+      },
+      "completion": {
+        "activeSession": false,
+        "indicatorActive": false,
+        "completionSession": "BASE",
+        "currentTab": "sessions"
+      },
+      "completionScroll": {
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "scrollTop": 378,
+        "scrollHeight": 563,
+        "clientHeight": 185,
+        "dialog": {
+          "top": 180.40625,
+          "bottom": 365.59375
+        },
+        "button": {
+          "top": 279.5,
+          "bottom": 325.5
+        },
+        "reachable": true,
+        "clicked": true
+      },
+      "breathingConsoleErrors": [],
+      "status": "pass"
+    }
+  },
+  "postMatrixSourceChanges": [
+    {
+      "path": "src/core/game-modes/SerenityMode.js",
+      "matrixSHA256": "8f622e8c2d0904cfe953304dcd7a2e5a98c25cdaf474cab8bbaa847d157a6a1e",
+      "finalSHA256": "8972b1267af1b9e9cae649ad87cfcc61e8a2cfe062f80cda073da469d110183c",
+      "reason": "Guided session input/settings guards and mode-exit cancellation; scene artwork unchanged."
+    },
+    {
+      "path": "src/ui/effects/enhanced-breathing-indicator.js",
+      "matrixSHA256": "96614a31e50ff1e3a23e78752767410742e5069ddd60ed256ac3fb8f2c492a3f",
+      "finalSHA256": "e319413a61b96efac82437b3740213bfc3f2a4221291554c156106d2e3247168",
+      "reason": "Catch-up resolves timing before emitting one current-phase callback; scene artwork unchanged."
+    },
+    {
+      "path": "src/ui/serenity-hub/SessionsTab.js",
+      "matrixSHA256": "0a3417d25ab59a485058449e53fb9aa9f7cc2746396b6b9cd0916e9e57d39656",
+      "finalSHA256": "e4dab3a4bdba965288298415761a86f369a2de056a1d3b9b521c7495c9c83bb7",
+      "reason": "Dialog focus resets ancestor and overlay scroll and prevents automatic scrolling."
+    },
+    {
+      "path": "src/ui/serenity-hub/BreathingTab.js",
+      "matrixSHA256": "66992eae58840c342b8cdc089b90b95f07e557bc2c5b007a610e6852afad2e70",
+      "finalSHA256": "4e74f3de6790231731b4314c92cb7478c03de364fc8cf3d7ccf7eaf3cf99b89d",
+      "reason": "Guided session notice copy correction and global Hub start/stop fallback."
+    },
+    {
+      "path": "public/styles/breathwork-sessions.css",
+      "matrixSHA256": "70cbd659a841c83953c49be994af4e8b647d76d8334f975c55106235f24d6571",
+      "finalSHA256": "4cef52314b215e68b5ab964492fc2d1476da15a8180b19677b76d5588a570226",
+      "reason": "Completion desktop vertical padding reduced to preserve full artwork and controls."
+    }
+  ],
+  "artworkSourceUnchangedSinceMatrix": [
+    "src/ui/effects/threejs-breathing-renderer.js",
+    "src/ui/effects/breathing-atmosphere.js",
+    "public/styles/breathing-immersive.css",
+    "public/styles/breathing-library.css"
+  ],
+  "supersededHarnessAttempts": {
+    "note": "These failures came from capture helpers. The final smoke corrects the hidden-switch selector, final-phase transition and audio muting API without changing shipping source.",
+    "attempts": [
+      {
+        "attempt": "initial-matrix-game-smoke",
+        "status": "fail",
+        "failures": [
+          "locator.check: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#breathing-guide-toggle')\u001b[22m\n\u001b[2m    - locator resolved to <input type=\"checkbox\" id=\"breathing-guide-toggle\" aria-label=\"Show breathing guide\"/>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 \u00d7 waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not stable\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 \u00d7 waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    29 \u00d7 waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is not visible\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n\n    at runGameSmoke (/workspace/scratch/223df242e47a/serenity-blocks/scripts/capture-breathing-overhaul.mjs:418:55)\n    at async file:///workspace/scratch/223df242e47a/serenity-blocks/scripts/capture-breathing-overhaul.mjs:503:45"
+        ]
+      },
+      {
+        "attempt": "ui-supplement-game-smoke",
+        "status": "fail",
+        "failures": [
+          "page.evaluate: TypeError: Cannot read properties of undefined (reading 'round')\n    at BreathworkSessionManager._runPhase (http://127.0.0.1:5173/src/ui/effects/breathwork-session-manager.js:745:19)\n    at eval (eval at evaluate (:290:30), <anonymous>:5:21)\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at runGameSmoke (/workspace/scratch/223df242e47a/serenity-blocks/scripts/capture-breathing-overhaul.mjs:500:20)\n    at async file:///workspace/scratch/223df242e47a/serenity-blocks/scripts/capture-breathing-overhaul.mjs:554:45"
+        ]
+      },
+      {
+        "attempt": "audio-harness-game-smoke",
+        "status": "fail",
+        "failures": [
+          "TypeError: Cannot read properties of null (reading 'isVoicePlaying')\n    at BreathworkSessionManager._onBreathPhaseChange (http://127.0.0.1:5173/src/ui/effects/breathwork-session-manager.js:978:31)\n    at EnhancedBreathingIndicator.indicatorPhaseHandler [as onPhaseChangeCallback] (http://127.0.0.1:5173/src/ui/effects/breathwork-session-manager.js:613:22)\n    at EnhancedBreathingIndicator._animate (http://127.0.0.1:5173/src/ui/effects/enhanced-breathing-indicator.js:706:56)\n    at http://127.0.0.1:5173/src/ui/effects/enhanced-breathing-indicator.js:733:64"
+        ]
+      }
+    ]
+  },
+  "selectedArtifacts": [
+    {
+      "file": "worlds-desktop.jpg",
+      "sourceRun": "matrix",
+      "sourceCapture": "desktop-worlds-contact-sheet.jpg",
+      "SHA256": "30c35c06e474cc79941d720d23a1a398606b9dc679bd70d64f6b2fc82b406e56",
+      "bytes": 82878
+    },
+    {
+      "file": "sessions-desktop.jpg",
+      "sourceRun": "settled-ui",
+      "sourceCapture": "desktop-sessions-catalogue.png",
+      "SHA256": "f6ddd0f57e4f2e4abf32743c09eaa81f07030ffe13c968125af23200ec5b705b",
+      "bytes": 97062
+    },
+    {
+      "file": "preparation-desktop.jpg",
+      "sourceRun": "settled-ui",
+      "sourceCapture": "desktop-base-preparation.png",
+      "SHA256": "44a45fcf1596a13b3377fcbf2cb5c13b406519f478163de57310f264a18c297c",
+      "bytes": 97048
+    },
+    {
+      "file": "completion-desktop.jpg",
+      "sourceRun": "settled-ui",
+      "sourceCapture": "desktop-base-completion.png",
+      "SHA256": "6a312165d9962216af221d78d7ef06ffb00b67309de1c0cb8016f9accf7c68d3",
+      "bytes": 64903
+    },
+    {
+      "file": "aurora-phone.jpg",
+      "sourceRun": "matrix",
+      "sourceCapture": "portrait-deep-relaxation-inhale.png",
+      "SHA256": "a7f0c4684e31ce73894f3a40aa688e938e20176269087c6fe29e3444e8383a6a",
+      "bytes": 29459
+    },
+    {
+      "file": "hale-base-hold-phone.jpg",
+      "sourceRun": "matrix",
+      "sourceCapture": "portrait-base-retention.png",
+      "SHA256": "40f47f6146646b69bc61bf8333236115a16d230103af42c1472fcbf5ffd70b5f",
+      "bytes": 44881
+    },
+    {
+      "file": "game-guided.jpg",
+      "sourceRun": "actual-application",
+      "sourceCapture": "game-smoke-guided.png",
+      "SHA256": "1d34c608a4547aa0153c4fac2f9e2d32149b516365815860d0abcca324906ba9",
+      "bytes": 79483
+    }
+  ],
+  "reproduction": {
+    "matrix": "PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome node scripts/capture-breathing-overhaul.mjs --out /tmp/breathing-matrix",
+    "settledUI": "PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome node scripts/capture-breathing-overhaul.mjs --uiOnly --out /tmp/breathing-ui",
+    "actualApplication": "PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome node scripts/capture-breathing-overhaul.mjs --profile none --gameSmoke --out /tmp/breathing-app",
+    "harnessSHA256": "fd2766a7e34294e1602e961bdbbc77d902dfa4ebc31c7ea0bb39ca27f2149eae"
+  },
+  "finalIntegrationRevision": {
+    "status": "pass",
+    "change": "Repeated window.breathingIndicator reads in SerenityMode are consolidated into one local reference per operation to satisfy the existing architecture fitness limit. Behavior and artwork are unchanged.",
+    "previousEvidenceSHA256": "bee2f344f816a544a478600895c3242733c3aa8aa4b1bb9da08ded67a784c876",
+    "sourceStable": true,
+    "sourceSHA256": {
+      "index.html": "614b3baa5a1c30044d456fa9e12db67448bf368431b27c1b3356b49bd0b3a35c",
+      "src/core/game-modes/SerenityMode.js": "98e667cec6b17c370dd8ce716f0190d5f0b0ceebc7b8cc855280a60703bc6409",
+      "src/ui/serenity-hub/SerenityHub.js": "44d90725a5e3bd5534b30bea0ff5e9a4e7d9d7f18056818b3efff34bf1f2b9c3",
+      "src/ui/effects/threejs-breathing-renderer.js": "807eb61aa3a5642e5db124cbd18f5b69cc65b90234e1b36c8b4fe61c71d442d6",
+      "src/ui/effects/breathing-atmosphere.js": "aebd6f8bcb562698d70f82b7bfc0701edc6398f4cb04f8b890d819b601edebfc",
+      "src/ui/effects/enhanced-breathing-indicator.js": "e319413a61b96efac82437b3740213bfc3f2a4221291554c156106d2e3247168",
+      "src/ui/effects/breathwork-session-manager.js": "eefa7d7ee2c88ca0bdf2a35dd09d6daaac6bfdbd32e1d157a0802ad6f542a324",
+      "src/ui/serenity-hub/SessionsTab.js": "e4dab3a4bdba965288298415761a86f369a2de056a1d3b9b521c7495c9c83bb7",
+      "src/ui/serenity-hub/BreathingTab.js": "4e74f3de6790231731b4314c92cb7478c03de364fc8cf3d7ccf7eaf3cf99b89d",
+      "public/styles/main.css": "b9e4afd13b0a116d15552ca7ed88d0d8ffc668191fbfe0588de91b113486d780",
+      "public/styles/serenity-hub.css": "2f0c962b56372076f39f1ec39267641d6c2c8961bf60e3e164c2ecdefd4290b0",
+      "public/styles/serenity-hub-aaa.css": "aa7bb2d19ff3eb562d459dc63606f5759916ee2f3f40609bd1652ea26b8ddf3a",
+      "public/styles/breathing-immersive.css": "4c777955869e8173b6a7a10d2d16e1e38a7fac256f9a44f287f1f7a1764c5fe0",
+      "public/styles/breathwork-sessions.css": "4cef52314b215e68b5ab964492fc2d1476da15a8180b19677b76d5588a570226",
+      "public/styles/breathing-library.css": "622b2f1d0edb31b4bcd622be78e2985249b9461faae4f26d49f223dce79b1ede"
+    },
+    "changedSourceSincePreviousIntegration": [
+      {
+        "path": "src/core/game-modes/SerenityMode.js",
+        "previousSHA256": "8972b1267af1b9e9cae649ad87cfcc61e8a2cfe062f80cda073da469d110183c",
+        "finalSHA256": "98e667cec6b17c370dd8ce716f0190d5f0b0ceebc7b8cc855280a60703bc6409"
+      }
+    ],
+    "validationScope": "Actual-application Vite development smoke only; existing matrix, settled UI and selected image evidence retain their original immutable fingerprints.",
+    "browserVersion": "151.0.7922.34",
+    "softwareRendering": true,
+    "captureCount": 4,
+    "result": {
+      "id": "game-smoke",
+      "console": [],
+      "screenshots": [
+        "game-smoke-breathing.png",
+        "game-smoke-preparation.png",
+        "game-smoke-guided.png",
+        "game-smoke-completion.png"
+      ],
+      "failures": [],
+      "globalHub": {
+        "hasModeControls": false,
+        "afterStart": true,
+        "afterStop": false
+      },
+      "breathing": {
+        "mode": "serenity",
+        "active": true,
+        "technique": "deep-relaxation",
+        "canvasCount": 1
+      },
+      "session": {
+        "session": "BASE",
+        "externallyControlled": true,
+        "phase": "grounding",
+        "hasHUDState": true,
+        "hubHidden": true
+      },
+      "completion": {
+        "activeSession": false,
+        "indicatorActive": false,
+        "completionSession": "BASE",
+        "currentTab": "sessions"
+      },
+      "completionScroll": {
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "scrollTop": 378,
+        "scrollHeight": 563,
+        "clientHeight": 185,
+        "dialog": {
+          "top": 180.40625,
+          "bottom": 365.59375
+        },
+        "button": {
+          "top": 279.5,
+          "bottom": 325.5
+        },
+        "reachable": true,
+        "clicked": true
+      },
+      "breathingConsoleErrors": [],
+      "status": "pass"
+    },
+    "rawReportSHA256": "6bfe4ad783c0319974f0d653648e0a30638e915fd84ded69ebdc4f4184dd2a57",
+    "harnessSHA256": "fd2766a7e34294e1602e961bdbbc77d902dfa4ebc31c7ea0bb39ca27f2149eae"
+  },
+  "latestValidatedIntegration": "finalIntegrationRevision"
+}

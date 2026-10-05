@@ -644,6 +644,9 @@ export class BreathworkSessionManager {
             }
             this.indicatorPhaseHandler = null;
             this.indicator.setExternalControl(false);
+            this.indicator.setSessionPhase?.(null, 0);
+            this.indicator.setSessionTheme?.(null);
+            this.indicator.setPrompt?.('');
             this.indicator.stop();
 
             // Hide session progress UI
@@ -705,6 +708,20 @@ export class BreathworkSessionManager {
         return labels[type] || type;
     }
 
+    /** Keep the visual cycle inside the phase's existing timing budget. */
+    _getVisualPattern(phase) {
+        if (phase.type === 'retention') {
+            // Retention follows the release: hold the visual at its empty state.
+            return [0, 0, 0, phase.duration];
+        }
+        if (phase.type === 'recovery') {
+            // Reserve time for both the recovery inhale and its final release.
+            const breathDuration = Math.min(2, phase.duration / 2);
+            return [breathDuration, phase.duration - breathDuration * 2, breathDuration, 0];
+        }
+        return phase.pattern || [5, 2, 5, 2];
+    }
+
     /**
      * Run the current phase
      * @private
@@ -760,17 +777,8 @@ export class BreathworkSessionManager {
             this.lastTheme = theme;
             this.indicator.setTechnique(theme, false); // false = no info popup
 
-            // Set breathing pattern based on phase type
-            if (phase.type === 'active') {
-                this.indicator.overridePattern(phase.pattern);
-            } else if (phase.type === 'retention') {
-                this.indicator.overridePattern([0, phase.duration, 0, 0]); // Long hold
-            } else if (phase.type === 'recovery') {
-                this.indicator.overridePattern([2, phase.duration, 2, 0]); // Inhale, hold, exhale
-            } else {
-                // Grounding/Integration - slow, gentle
-                this.indicator.overridePattern([5, 2, 5, 2]);
-            }
+            this.indicator.overridePattern(this._getVisualPattern(phase));
+            this.indicator.setSessionPhase?.(phase.type, 0);
         }
 
         // Notify phase change
@@ -1176,6 +1184,8 @@ export class BreathworkSessionManager {
             }
             if (!this.activeSession || phaseToken !== this.phaseToken) return;
 
+            this.indicator?.setSessionPhase?.(phase.type, phaseProgress);
+
             // Update breathing indicator's progress UI
             if (this.indicator && this.indicator.updateProgress) {
                 this.indicator.updateProgress({
@@ -1247,6 +1257,8 @@ export class BreathworkSessionManager {
         this.isPaused = true;
         this.pauseTime = Date.now();
         this._clearPhaseTimers();
+        if (this.indicator?.pause) this.indicator.pause();
+        else this.indicator?.stop();
 
         console.log('[BreathworkSessionManager] Session paused');
 
@@ -1265,6 +1277,9 @@ export class BreathworkSessionManager {
         const pauseDuration = Date.now() - this.pauseTime;
         this.phaseStartTime += pauseDuration;
         this.sessionStartTime += pauseDuration;
+
+        if (this.indicator?.resume) this.indicator.resume();
+        else this.indicator?.start();
 
         // Resume phase (simplified - restarts current phase)
         this._runPhase();
