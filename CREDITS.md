@@ -109,6 +109,11 @@ third-party or CC assets:
   the shared leaf geometry and the distant-forest sprite sheet). These are authored
   procedurally in Blender by `scripts/blender/fall_grove_assets.py` with no generative
   model and no third-party source; see `src/themes/fall/assets/ATTRIBUTION.md`.
+- Golden Forest: every file under `src/themes/golden-forest/assets/` (the spruce and pine
+  trees, the shared needle geometry, the rowboat, jetty, boulders and dead pine, and the
+  far-shore sprite sheet). These are authored procedurally in Blender by
+  `scripts/blender/golden_forest_assets.py` with no generative model and no third-party
+  source; see `src/themes/golden-forest/assets/ATTRIBUTION.md`.
 
 ---
 

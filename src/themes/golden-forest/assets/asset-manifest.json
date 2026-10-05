@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender authoring",
+  "license": "MIT-project-local",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "golden-forest-foliage.glb",
+      "bytes": 46024,
+      "sha256": "21ca5a101a1c369423d38548eee2822fa24f9eab64090b9f75a09d8573413b70",
+      "kind": "foliage",
+      "meshes": {
+        "spruce_frond_0": {
+          "shoots": 10,
+          "triangles": 200
+        },
+        "spruce_frond_1": {
+          "shoots": 10,
+          "triangles": 200
+        },
+        "spruce_bough_0": {
+          "shoots": 7,
+          "triangles": 64
+        },
+        "spruce_bough_1": {
+          "shoots": 7,
+          "triangles": 64
+        },
+        "pine_tuft_0": {
+          "shoots": 46,
+          "triangles": 196
+        },
+        "pine_tuft_1": {
+          "shoots": 46,
+          "triangles": 196
+        },
+        "pine_clump_0": {
+          "shoots": 30,
+          "triangles": 60
+        },
+        "pine_clump_1": {
+          "shoots": 30,
+          "triangles": 60
+        }
+      }
+    },
+    {
+      "file": "golden-forest-impostors.png",
+      "bytes": 641271,
+      "sha256": "89ef99f880069c3991433e89a81984f6a58b1cdf92d6b13191e4ac0b71578a43",
+      "kind": "impostors",
+      "atlasWidth": 1088,
+      "atlasHeight": 448,
+      "tiles": [
+        {
+          "asset": "spruce-grove-a",
+          "species": "spruce",
+          "x": 0,
+          "pixels": 160,
+          "width": 9.136177841026834,
+          "height": 25.581297954875133,
+          "trunk": -0.008681260929060373,
+          "coverage": 0.36527622767857143
+        },
+        {
+          "asset": "spruce-grove-b",
+          "species": "spruce",
+          "x": 160,
+          "pixels": 160,
+          "width": 10.799446330291692,
+          "height": 30.238449724816743,
+          "trunk": -0.0021942947299709243,
+          "coverage": 0.33364955357142856
+        },
+        {
+          "asset": "spruce-grove-c",
+          "species": "spruce",
+          "x": 320,
+          "pixels": 192,
+          "width": 8.525835081347784,
+          "height": 19.8936151898115,
+          "trunk": 0.017518928400504716,
+          "coverage": 0.31840587797619047
+        },
+        {
+          "asset": "spruce-grove-d",
+          "species": "spruce",
+          "x": 512,
+          "pixels": 160,
+          "width": 8.409104912477641,
+          "height": 23.545493754937393,
+          "trunk": -0.012495330916138926,
+          "coverage": 0.2790457589285714
+        },
+        {
+          "asset": "pine-grove-a",
+          "species": "pine",
+          "x": 672,
+          "pixels": 208,
+          "width": 11.8807153235794,
+          "height": 25.589233004632558,
+          "trunk": -0.030797272725661896,
+          "coverage": 0.18695269574175824
+        },
+        {
+          "asset": "pine-grove-b",
+          "species": "pine",
+          "x": 880,
+          "pixels": 208,
+          "width": 8.839175071329958,
+          "height": 19.038223230556834,
+          "trunk": -0.04480308305516628,
+          "coverage": 0.24541766826923078
+        }
+      ]
+    },
+    {
+      "file": "golden-forest-props.glb",
+      "bytes": 225844,
+      "sha256": "238869a36004c242347ece791845ec2a249ddaa25a58c469bfde9bdc8b98e772",
+      "kind": "props",
+      "meshes": {
+        "rowboat": {
+          "triangles": 1444
+        },
+        "jetty": {
+          "triangles": 948
+        },
+        "boulder_a": {
+          "triangles": 1280
+        },
+        "boulder_b": {
+          "triangles": 1280
+        },
+        "boulder_c": {
+          "triangles": 1280
+        },
+        "snag": {
+          "triangles": 2280
+        }
+      }
+    },
+    {
+      "file": "pine-grove-a.glb",
+      "bytes": 140820,
+      "sha256": "d365ff21ca5752a62e69b01f04cf35e6fad406835d434ec15c90e51d7edf4845",
+      "kind": "tree",
+      "species": "pine",
+      "role": "grove",
+      "sites": 99,
+      "barkTriangles": 5346
+    },
+    {
+      "file": "pine-grove-b.glb",
+      "bytes": 132852,
+      "sha256": "a86072e3ae5e1e0c4b3542d76bfbfc10e1b410f9320e4c80aa9648aa45f59f66",
+      "kind": "tree",
+      "species": "pine",
+      "role": "grove",
+      "sites": 92,
+      "barkTriangles": 5056
+    },
+    {
+      "file": "pine-hero.glb",
+      "bytes": 549824,
+      "sha256": "ad19fb60d9f1f755ea39501532d495cfc785686f9a1782c9261075c6ee754b3a",
+      "kind": "tree",
+      "species": "pine",
+      "role": "hero",
+      "sites": 340,
+      "barkTriangles": 23232
+    },
+    {
+      "file": "spruce-grove-a.glb",
+      "bytes": 119520,
+      "sha256": "5ab370ba13263187d3e6e8e5c5f94b09792b63549dde71594bfac6b6ecb6648a",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 264,
+      "barkTriangles": 4586
+    },
+    {
+      "file": "spruce-grove-b.glb",
+      "bytes": 140824,
+      "sha256": "b824b0b38ce01c22102e094a80ad97f2142b236059c677d5c7519444355b4d23",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 333,
+      "barkTriangles": 5384
+    },
+    {
+      "file": "spruce-grove-c.glb",
+      "bytes": 95912,
+      "sha256": "d0617cca4038066c0c29f8689110882f1ac1edac97ce05bd86d962f13351335e",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 187,
+      "barkTriangles": 3704
+    },
+    {
+      "file": "spruce-grove-d.glb",
+      "bytes": 94160,
+      "sha256": "b08bb5625631878e4d3441787dcc88972885ec9a670baef78b97928349bb3447",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 161,
+      "barkTriangles": 3662
+    },
+    {
+      "file": "spruce-hero.glb",
+      "bytes": 731080,
+      "sha256": "5a41542fa8e0dee3f867111e0726f83f9804effdcebba816e9b5259a3af6ff26",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "hero",
+      "sites": 1090,
+      "barkTriangles": 32844
+    }
+  ]
+}
