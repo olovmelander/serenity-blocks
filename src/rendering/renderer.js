@@ -1230,34 +1230,6 @@ export class WebGLRenderer {
             this.particleSystems.push(new ParticleSystem(this.gl, 60, crystalConfig));
 
             this.start();
-        } else if (themeName === 'ice-temple') {
-            const snowCrystalConfig = {
-                behavior: 'petal', // Use petal logic for gentle falling snow
-                speed: 0.5,
-                minSize: 2.0,
-                maxSize: 5.0,
-                minAlpha: 0.5,
-                maxAlpha: 1.0,
-                lifetime: 1600,
-                zIndex: -0.5,
-                color: [0.9, 0.95, 1.0],
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 80, snowCrystalConfig));
-
-            const iceGrowthConfig = {
-                behavior: 'crystal-growth',
-                speed: 1.0, // Controls growth rate
-                minSize: 0.0,
-                maxSize: 4.0,
-                minAlpha: 0.0,
-                maxAlpha: 0.7,
-                lifetime: 500, // shorter life, they appear and disappear
-                zIndex: -0.3, // On top of most things
-                color: [0.8, 0.9, 1.0],
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 100, iceGrowthConfig));
-
-            this.start();
         } else if (themeName === 'lunara') {
             const orbitCenters = [
                 { x: window.innerWidth * 0.35, y: window.innerHeight * 0.25 },
