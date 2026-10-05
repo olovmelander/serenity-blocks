@@ -11,7 +11,7 @@
  * petals                  petals in the air (ambient plus the hidden event reserve)
  * lamps                   lanterns that light the ground and bark in the shader
  * paperLanterns           paper lanterns hung in the trees
- * fireflies, foxfire      drifting lights; spirit flames a combo can summon
+ * fireflies, foxfire      fireflies over the grass; spirit flames a combo can kindle
  * waterLanterns, skyLanterns   floats on the lake; lanterns a level-up releases
  * mist                    mist banks over the water
  * mirror                  resolution scale of the lake's planar reflection (0: the lake

@@ -24,13 +24,16 @@
  *   game over     the wind dies and the lanterns burn low
  */
 
+// Every handler firing in one frame (a hard-dropped lock, four lines, a combo, a T-spin,
+// a perfect clear and a level-up) asks for seventeen emitters; no tier's pool is smaller,
+// so none is reclaimed before the garden has played it.
 export const SAKURA_REACTION_LIMITS = Object.freeze({
-    Minimal: 6,
-    Low: 8,
-    Medium: 12,
-    High: 16,
-    Ultra: 18,
-    Extreme: 20,
+    Minimal: 18,
+    Low: 18,
+    Medium: 20,
+    High: 20,
+    Ultra: 22,
+    Extreme: 24,
 });
 
 const DECAY_RATES = Object.freeze({
