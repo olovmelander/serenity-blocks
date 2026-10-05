@@ -7,7 +7,6 @@ import LunaraTheme from '../../src/themes/lunara/lunara-theme.js';
 import IceTempleTheme from '../../src/themes/ice-temple/ice-temple-theme.js';
 import LuminousTidesTheme from '../../src/themes/luminous-tides/luminous-tides-theme.js';
 import MoonlitForestTheme from '../../src/themes/moonlit-forest/moonlit-forest-theme.js';
-import NeonDistrictTheme from '../../src/themes/neon-district/neon-district-theme.js';
 import { OceanPost } from '../../src/themes/ocean/ocean-post.js';
 import { LunaraPost } from '../../src/themes/lunara/lunara-post.js';
 import { IceTemplePost } from '../../src/themes/ice-temple/ice-temple-post.js';
@@ -80,7 +79,6 @@ afterEach(() => {
 
 const themes = [
     ['Ocean', OceanTheme], ['Lunara', LunaraTheme], ['Ice Temple', IceTempleTheme],
-    ['Neon District', NeonDistrictTheme],
 ];
 
 describe('portable theme renderer selection', () => {
@@ -150,34 +148,6 @@ describe('portable theme renderer selection', () => {
         expect(state.instances).toHaveLength(1);
         expect(theme.isWebGPU).toBe(true);
         expect(theme.usesNodeMaterials).toBe(true);
-    });
-});
-
-describe('Neon District failed and cancelled initialization', () => {
-    it('does not retry a failed candidate after its runtime generation is superseded', async () => {
-        const theme = createTheme(NeonDistrictTheme);
-        state.initialize = () => {
-            theme.runtimeGeneration += 1;
-            throw new Error('Renderer init timeout');
-        };
-        expect(await theme.initRenderer({ appendChild: vi.fn() })).toBe(false);
-        expect(state.instances).toHaveLength(1);
-        expect(theme.disposeRenderer).toHaveBeenCalledTimes(1);
-        expect(theme.renderer).toBeNull();
-    });
-
-    it('retires a successful late candidate instead of attaching it', async () => {
-        const theme = createTheme(NeonDistrictTheme);
-        state.initialize = () => { theme.runtimeGeneration += 1; };
-        const container = { appendChild: vi.fn() };
-        expect(await theme.initRenderer(container)).toBe(false);
-        expect(theme.disposeRenderer).toHaveBeenCalledTimes(1);
-        expect(container.appendChild).not.toHaveBeenCalled();
-    });
-
-    it('reads selected effect quality before the legacy alias', () => {
-        window.settings.graphicsQuality = 'Extreme';
-        expect(NeonDistrictTheme.prototype.getCurrentQualityLevel.call({})).toBe('Low');
     });
 });
 
