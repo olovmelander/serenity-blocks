@@ -101,8 +101,8 @@ export default defineConfig({
     createPrunePlaygroundReferencesPlugin(),
     // Copy top-level legal/credit notices into the build output so they ship with
     // both the web build (dist → GitHub Pages) and the Electron build (which packs
-    // dist/**/*). Required so third-party attributions (CC-BY, the SynthCity MIT
-    // notice, etc.) actually reach end users.
+    // dist/**/*). Required so third-party attributions (CC-BY and the like)
+    // actually reach end users.
     createCopyLegalNoticesPlugin(),
   ],
 

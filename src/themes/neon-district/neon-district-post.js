@@ -1,388 +1,358 @@
+/**
+ * Neon District — post stack (TSL RenderPipeline, both WebGPURenderer backends).
+ *
+ * One scene pass (no MRT: the district is authored in scene-linear HDR, so a max-channel knee
+ * selects what blooms), one bloom chain (Medium and up) and ONE full-screen pass:
+ *
+ *   lens fringe (a radial chromatic split that widens toward the corners and jumps on an impact)
+ *   → calm zones (what shows through the translucent board card and HUD is soft-clipped and its
+ *   bloom attenuated) → bloom → anamorphic streaks (the bloom dragged sideways: every tube sign
+ *   throws a thin horizontal flare, as through a cinema lens in the rain) → canyon rays (the bloom
+ *   dragged radially out of the vanishing point behind the board: the light of the far street
+ *   streaming toward the viewer; a line clear floods them) → exposure and event flash →
+ *   "neon filmic" tone map (hue preserving, hot cores roll to white) → grade (cold lifted shadows,
+ *   a saturation lift) → vignette → sRGB → grain and triangular dither.
+ *
+ * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
+ * outputColorTransform is off (the output node encodes sRGB itself).
+ */
+
 import * as THREE from 'three/webgpu';
 import {
-    emissive,
-    mrt,
-    output,
-    pass,
-    viewportUV,
-    uniform,
-    float,
-    mix,
-    length,
-    smoothstep,
+    Fn,
+    If,
+    abs,
     clamp,
+    exp,
+    float,
+    floor,
+    length,
+    max,
+    min,
+    mix,
+    pass,
+    renderOutput,
+    screenCoordinate,
+    screenUV,
+    select,
+    smoothstep,
+    step,
+    uniform,
+    uv,
     vec2,
     vec3,
     vec4,
-    sin,
-    max,
-    dot,
-    fract,
-    floor,
-    pow,
-    step,
-    saturation,
-    getViewPosition,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
-import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
+import { ndHash21, ndLuma, ndMax3 } from './neon-district-tsl.js';
+
+/**
+ * Per-tier look. `bloom: false` builds no BloomNode (and so no streaks or rays). `streak` and
+ * `rays` are tap counts (0 = off); `fringe` = the chromatic split (two more scene taps);
+ * `msaa` = scene-pass samples.
+ */
+export const POST_LOOK = Object.freeze({
+    Extreme: {
+        bloom: true, bloomStrength: 0.52, bloomResolution: 0.5, streak: 8, rays: 12, fringe: true, msaa: 4,
+    },
+    Ultra: {
+        bloom: true, bloomStrength: 0.52, bloomResolution: 0.5, streak: 8, rays: 12, fringe: true, msaa: 4,
+    },
+    High: {
+        bloom: true, bloomStrength: 0.5, bloomResolution: 0.45, streak: 6, rays: 10, fringe: true, msaa: 4,
+    },
+    Medium: {
+        bloom: true, bloomStrength: 0.48, bloomResolution: 0.33, streak: 4, rays: 6, fringe: false, msaa: 0,
+    },
+    Low: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, streak: 0, rays: 0, fringe: false, msaa: 0,
+    },
+    Minimal: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, streak: 0, rays: 0, fringe: false, msaa: 0,
+    },
+});
+
+export const BLOOM_THRESHOLD = 1.0;
+export const BLOOM_KNEE = 0.5;
+export const BLOOM_RADIUS = 0.5;
+export const EXPOSURE = 1.0;
+
+/** Calm rects (board cards + HUD) the output pass evaluates. */
+export const CALM_RECTS_MAX = 5;
+
+/** Rounded-box signed distance in pixels. rect = (x0, y0, x1, y1) in pixels (top-left origin). */
+const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
+    const c = rect.xy.add(rect.zw).mul(0.5);
+    const h = rect.zw.sub(rect.xy).mul(0.5);
+    const q = abs(p.sub(c)).sub(h).add(radius);
+    return length(max(q, vec2(0.0))).add(min(max(q.x, q.y), 0.0)).sub(radius);
+}).setLayout({
+    name: 'nd_roundBoxSdf',
+    type: 'float',
+    inputs: [{ name: 'p', type: 'vec2' }, { name: 'rect', type: 'vec4' }, { name: 'radius', type: 'float' }],
+});
+
+/**
+ * Neon filmic: a hue-preserving shoulder on the max channel (identity below `k`), then a path to
+ * white for the hottest values, so a rose tube stays rose and only its core burns clean.
+ */
+const neonFilmic = /* @__PURE__ */ Fn(([cIn]) => {
+    const c = max(cIn, vec3(0.0));
+    const peak = max(ndMax3(c), 1e-5);
+    const k = float(0.5);
+    const shoulder = k.add(float(1.0).sub(k).mul(float(1.0).sub(exp(peak.sub(k).div(float(1.0).sub(k)).negate()))));
+    const mapped = select(peak.greaterThan(k), shoulder, peak);
+    const toned = c.mul(mapped.div(peak));
+    return mix(toned, vec3(mapped, mapped, mapped), smoothstep(1.6, 7.0, peak).mul(0.8));
+}).setLayout({ name: 'nd_neonFilmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
 
 export class NeonDistrictPost {
-    constructor(renderer, scene, camera, params) {
-        this.renderer = renderer;
-        this.camera = camera;
-        this.useMRT = params?.useMRT ?? false;
-        this.postProcessing = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera);
-        if (this.useMRT) {
-            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
+    /**
+     * @param {THREE.WebGPURenderer} renderer
+     * @param {THREE.Scene} scene
+     * @param {THREE.Camera} camera
+     * @param {object} params
+     * @param {object} params.look        POST_LOOK entry
+     * @param {boolean} [params.falseColor=false]
+     */
+    constructor(renderer, scene, camera, params = {}) {
+        const look = params.look || POST_LOOK.High;
+        this.look = look;
+        this.pipeline = new THREE.RenderPipeline(renderer);
+        this.scenePass = pass(scene, camera, { samples: params.samples ?? look.msaa ?? 0 });
+        const sceneColor = this.scenePass.getTextureNode('output');
+
+        this.uAspect = uniform(16 / 9);
+        this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
+        this.uViewport = uniform(new THREE.Vector2(1920, 1080));
+        /** The street's vanishing point, screen UV (y down): where the rays come from. */
+        this.uHeart = uniform(new THREE.Vector2(0.5, 0.6));
+        this.uTime = uniform(0);
+        this.uExposure = uniform(EXPOSURE);
+        this.uFlash = uniform(0); // event flash (a lift), 0..1
+        this.uKick = uniform(0); // impact, 0..1: widens the fringe
+        this.uRays = uniform(0.3); // canyon rays, 0..1.5
+        this.uStreak = uniform(1.0);
+        this.uBloomBoost = uniform(0);
+
+        this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
+        this.uCalm = this.calmRects.map((v) => uniform(v));
+        this.uCalmStrength = uniform(0);
+
+        // ── Bloom: max-channel soft knee over a 4-tap box ──
+        this.bloomNode = null;
+        if (look.bloom) {
+            this.bloomNode = bloom(sceneColor, look.bloomStrength, BLOOM_RADIUS, BLOOM_THRESHOLD);
+            this.bloomNode.threshold.value = BLOOM_THRESHOLD;
+            this.bloomNode.smoothWidth.value = BLOOM_KNEE;
+            this.bloomNode.setResolutionScale(look.bloomResolution);
+            const { uSrcTexel } = this;
+            // BloomNode's documented hook, read once at setup. Inline (no setLayout): `input`
+            // must stay the raw scene TextureNode for .sample().
+            this.bloomNode.highPassFn = Fn(({ input, threshold, smoothWidth }) => {
+                const st = uv();
+                const o = uSrcTexel.mul(1.25);
+                // Hue-preserving clamp on the max channel: a per-channel clamp would turn a rose
+                // tube orange and a cyan one white.
+                const tap = (dx, dy) => {
+                    const c = max(vec3(input.sample(st.add(vec2(o.x.mul(dx), o.y.mul(dy)))).rgb), vec3(0.0));
+                    return c.mul(min(float(1.0), float(7.0).div(max(ndMax3(c), 1e-4))));
+                };
+                const c = tap(1, 1).add(tap(-1, 1)).add(tap(1, -1)).add(tap(-1, -1))
+                    .mul(0.25);
+                const br = ndMax3(c);
+                const soft = clamp(br.sub(threshold).add(smoothWidth), 0.0, smoothWidth.mul(2.0));
+                const w = max(soft.mul(soft).div(smoothWidth.mul(4.0).add(1e-4)), br.sub(threshold)).div(max(br, 1e-4));
+                return vec4(c.mul(w), 1.0);
+            });
         }
 
-        const scenePassColor = this.scenePass.getTextureNode('output');
-        const bloomSource = this.useMRT ? this.scenePass.getTextureNode('emissive') : scenePassColor;
+        const falseColor = params.falseColor === true;
+        const streakTaps = this.bloomNode ? look.streak : 0;
+        const rayTaps = this.bloomNode ? look.rays : 0;
 
-        const strength = params?.bloomStrength ?? 1.0;
-        const bloomRadius = params?.bloomRadius ?? 0.6;
-        const threshold = params?.bloomThreshold ?? 0.2;
-        this.bloomNode = bloom(bloomSource, strength, bloomRadius, threshold);
-        this.bloomDownsample = params?.bloomDownsample ?? 0.8;
-        // r186's public resolution control preserves the old half-resolution
-        // bloom footprint without patching a private implementation method.
-        this.bloomNode.setResolutionScale(0.5 * this.bloomDownsample);
-        this.size = { width: 0, height: 0 };
+        const outputFn = Fn(() => {
+            const st = screenUV;
+            const px = st.mul(this.uViewport);
+            const fromCentre = st.sub(0.5);
 
-        this.chromaticAmount = uniform(0.0);
-        this.time = uniform(0);
-        this.grainAmount = uniform(0.0);
-
-        // ── Atmospheric fog (AAA Phase 2a) ─────────────────────────────────────
-        // Two-tone, world-space, height-banded volumetric fog. Denser at street
-        // level and with distance; thinner up high so the sky/moon stay readable.
-        this.fogColor = uniform(params?.fogColor ?? new THREE.Color(0x1a0b2a));
-        this.fogColorFar = uniform(params?.fogColorFar ?? new THREE.Color(0x0a0518));
-        this.fogNear = uniform(params?.fogNear ?? 0.18);
-        this.fogFar = uniform(params?.fogFar ?? 0.92);
-        this.fogDensity = uniform(params?.fogDensity ?? 0.85);
-        this.fogBloomAttenuation = uniform(params?.fogBloomAttenuation ?? 0.5);
-        this.fogHeightBase = uniform(params?.fogHeightBase ?? 0.0);
-        this.fogHeightTop = uniform(params?.fogHeightTop ?? 900.0);
-        this.fogHeightFloor = uniform(params?.fogHeightFloor ?? 0.2);
-
-        // ── Volumetric god-rays (AAA Phase 2b) ─────────────────────────────────
-        this.enableGodrays = (params?.enableGodrays ?? false) && this.useMRT;
-        this.uGodrayIntensity = uniform(params?.godrayIntensity ?? 0.5);
-        this.uMoonScreen = uniform(new THREE.Vector2(0.5, 0.55));
-
-        // ── Cinematic post (AAA Phase 3) ───────────────────────────────────────
-        // Radial chromatic aberration (3c), far-only DOF bokeh (3a), anamorphic
-        // light streaks (3b), film grain (3c) and a procedural filmic grade (3d).
-        this.uAberration = uniform(params?.aberration ?? 0.0); // base radial RGB split
-        this.uAberrationBoost = uniform(0.0); // transient (combo/glitch)
-        this.uGrainIntensity = uniform(params?.grainIntensity ?? 0.0);
-        this.enableDOF = params?.enableDOF ?? false;
-        this.uDofFocus = uniform(params?.dofFocus ?? 0.32);
-        this.uDofRange = uniform(params?.dofRange ?? 2.0);
-        this.uDofStrength = uniform(params?.dofStrength ?? 0.85);
-        this.uDofMaxRadius = uniform(params?.dofMaxRadius ?? 0.0045);
-        this.enableAnamorphic = (params?.enableAnamorphic ?? false) && this.useMRT;
-        this.uAnamorphicIntensity = uniform(params?.anamorphicIntensity ?? 0.0);
-        this.enableGrade = params?.enableGrade ?? false;
-        this.uSaturation = uniform(params?.saturationAmount ?? 1.12);
-        this.uContrast = uniform(params?.contrast ?? 1.06);
-
-        // ── 6b. Rain on the lens ───────────────────────────────────────────────
-        this.enableLensDroplets = params?.enableLensDroplets ?? false;
-        this.uLensDropletAmount = uniform(0.0); // driven by rain intensity each frame
-        this.uLensAspect = uniform(16 / 9); // updated in setSize so beads stay round
-
-        const vignetteOffset = float(params?.vignetteOffset ?? 1.0);
-        const vignetteDarkness = float(params?.vignetteDarkness ?? 0.3);
-        const uv = viewportUV;
-        const centered = uv.sub(0.5).mul(2.0);
-        const dist = length(centered);
-        const vignette = smoothstep(vignetteOffset, vignetteOffset.sub(0.5), dist);
-
-        // Distance/height fog needs the true (undistorted) depth at this pixel.
-        const linearDepth = this.scenePass.getLinearDepthNode();
-
-        // ── 3c. Radial chromatic aberration (sharp center, splits toward edges) ──
-        const caAmt = this.uAberration.add(this.uAberrationBoost).mul(dist);
-        const caOffset = centered.mul(caAmt);
-        const caColor = vec4(
-            scenePassColor.sample(uv.add(caOffset)).x,
-            scenePassColor.sample(uv).y,
-            scenePassColor.sample(uv.sub(caOffset)).z,
-            float(1.0),
-        );
-
-        // ── 3a. Far-only depth-of-field (keeps the hero near-street crisp) ──────
-        let baseSample = caColor;
-        if (this.enableDOF) {
-            const coc = clamp(
-                max(float(0.0), linearDepth.sub(this.uDofFocus)).mul(this.uDofRange),
-                float(0.0),
-                float(1.0),
-            ).mul(this.uDofStrength);
-            const o = coc.mul(this.uDofMaxRadius);
-            const c0 = scenePassColor.sample(uv);
-            const c1 = scenePassColor.sample(uv.add(vec2(o, o)));
-            const c2 = scenePassColor.sample(uv.add(vec2(o.negate(), o)));
-            const c3 = scenePassColor.sample(uv.add(vec2(o, o.negate())));
-            const c4 = scenePassColor.sample(uv.add(vec2(o.negate(), o.negate())));
-            const dofColor = c0.add(c1).add(c2).add(c3).add(c4)
-                .mul(float(0.2));
-            baseSample = mix(caColor, dofColor, coc);
-        }
-
-        // ── 2a. Reconstruct world position from depth for height-banded fog ─────
-        const depthTex = this.scenePass.getTextureNode('depth');
-        const rawDepth = depthTex.sample(uv).x;
-        // The final pass renders a fullscreen quad with its own camera. These
-        // matrices must refer to the city camera for height fog to stay world-locked.
-        const sceneProjectionInverse = uniform(camera.projectionMatrixInverse);
-        const sceneWorldMatrix = uniform(camera.matrixWorld);
-        const viewPos = getViewPosition(uv, rawDepth, sceneProjectionInverse);
-        const worldPos = sceneWorldMatrix.mul(vec4(viewPos, 1.0)).xyz;
-
-        const distFog = smoothstep(this.fogNear, this.fogFar, linearDepth);
-        const heightFalloff = float(1.0).sub(
-            smoothstep(this.fogHeightBase, this.fogHeightTop, worldPos.y),
-        );
-        const heightFog = clamp(heightFalloff, this.fogHeightFloor, float(1.0));
-        const fogNoise = sin(worldPos.x.mul(0.004).add(this.time.mul(0.05)))
-            .mul(sin(worldPos.z.mul(0.0032).sub(this.time.mul(0.04))))
-            .mul(0.14)
-            .add(0.9);
-        const fogAmount = clamp(
-            distFog.mul(heightFog).mul(this.fogDensity).mul(fogNoise),
-            0.0,
-            1.0,
-        );
-        const fogTint = mix(this.fogColor, this.fogColorFar, distFog);
-        const fogged = mix(baseSample, fogTint, fogAmount);
-
-        const vignetteColor = mix(
-            fogged.mul(float(1.0).sub(vignetteDarkness)),
-            fogged,
-            vignette,
-        );
-
-        const bloomAtten = clamp(float(1.0).sub(fogAmount.mul(this.fogBloomAttenuation)), 0.0, 1.0);
-        let composited = vignetteColor.add(this.bloomNode.mul(bloomAtten));
-
-        // ── 2b. God-ray shafts (radial march over the emissive buffer) ──────────
-        if (this.enableGodrays) {
-            const moonUV = clamp(this.uMoonScreen, vec2(0.0, 0.0), vec2(1.0, 1.0));
-            const rayDir = moonUV.sub(uv);
-            const stepVec = rayDir.mul(float(1.0 / 6.0));
-            const sampleRay = (offset, weight) => bloomSource
-                .sample(uv.add(stepVec.mul(offset)))
-                .xyz
-                .mul(weight);
-            const rays = sampleRay(float(1.0), float(0.20))
-                .add(sampleRay(float(2.0), float(0.17)))
-                .add(sampleRay(float(3.0), float(0.14)))
-                .add(sampleRay(float(4.0), float(0.11)))
-                .add(sampleRay(float(5.0), float(0.08)))
-                .add(sampleRay(float(6.0), float(0.06)))
-                .mul(this.uGodrayIntensity)
-                .mul(max(float(0.0), float(1.0).sub(length(rayDir))));
-            composited = composited.add(vec4(rays, 0.0));
-        }
-
-        // ── 3b. Anamorphic horizontal light streaks off bright neon ─────────────
-        if (this.enableAnamorphic) {
-            const streakTap = (dx, weight) => {
-                const light = bloomSource.sample(uv.add(vec2(float(dx), 0.0))).xyz;
-                const luminance = dot(light, vec3(0.2126, 0.7152, 0.0722));
-                return light.mul(smoothstep(0.4, 1.4, luminance)).mul(weight);
-            };
-            const streak = streakTap(0.006, 0.22)
-                .add(streakTap(-0.006, 0.22))
-                .add(streakTap(0.014, 0.16))
-                .add(streakTap(-0.014, 0.16))
-                .add(streakTap(0.026, 0.10))
-                .add(streakTap(-0.026, 0.10))
-                .mul(vec3(0.8, 0.9, 1.15)) // subtle cool anamorphic tint
-                .mul(this.uAnamorphicIntensity);
-            composited = composited.add(vec4(streak, 0.0));
-        }
-
-        // ── 3d. Procedural filmic grade — teal shadows / magenta highlights ─────
-        let gradedRgb = composited.xyz;
-        if (this.enableGrade) {
-            const luma = dot(max(gradedRgb, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
-            // HDR values exceed one before ACES. Bounded split-toning keeps hot
-            // neon saturated instead of turning the shadow tint negative.
-            const highlight = smoothstep(0.12, 1.4, luma);
-            const shadowTone = mix(vec3(1.0), vec3(0.94, 1.045, 1.085), float(1.0).sub(highlight));
-            const highlightTone = mix(vec3(1.0), vec3(1.035, 0.99, 1.035), highlight);
-            const splitToned = max(gradedRgb, vec3(0.0)).mul(shadowTone).mul(highlightTone);
-            // A mid-grey contrast pivot preserves the city's dark facade detail.
-            const contrasted = max(splitToned.sub(0.18).mul(this.uContrast).add(0.18), vec3(0.0));
-            gradedRgb = max(saturation(contrasted, this.uSaturation), vec3(0.0));
-        }
-
-        // ── 6b. Rain droplets clinging to the camera lens ───────────────────────
-        // Sparse aspect-corrected beads that slowly fade in/out, gently magnify the
-        // scene behind them and catch a specular sparkle off the neon.
-        if (this.enableLensDroplets) {
-            const hash2 = (p) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
-            const cols = float(9.0).mul(this.uLensAspect); // square cells → round beads
-            const su = vec2(uv.x.mul(cols), uv.y.mul(9.0));
-            const cell = floor(su);
-            const f = fract(su).sub(0.5);
-            const r1 = hash2(cell);
-            const r2 = hash2(cell.add(vec2(19.3, 7.1)));
-            const r3 = hash2(cell.add(vec2(3.7, 41.2)));
-            const cyc = fract(r3.add(this.time.mul(0.05).mul(r2.add(0.3))));
-            const life = sin(cyc.mul(3.14159));
-            // Sparse: only ~14% of cells hold a bead, so it reads as occasional rain
-            // beads rather than a lens caked in bubbles.
-            const beadAmt = step(0.86, r1).mul(life).mul(this.uLensDropletAmount);
-            const center = vec2(r1.sub(0.5), r2.sub(0.5)).mul(0.5);
-            const fd = f.sub(center);
-            const d = length(fd);
-            const radius = mix(float(0.09), float(0.22), r2);
-            const beadMask = smoothstep(radius, radius.mul(0.5), d).mul(beadAmt);
-
-            // Magnify-refraction of the scene behind the bead.
-            const fdUv = vec2(fd.x.div(cols), fd.y.div(9.0));
-            const refractUv = uv.sub(fdUv.mul(float(2.0)).mul(beadMask));
-            const refracted = scenePassColor.sample(refractUv).xyz;
-            let withDrops = mix(gradedRgb, refracted, beadMask.mul(0.65));
-
-            // Specular sparkle (toward a fixed light dir) + a faint cool rim — bright
-            // enough that the beads read as water catching light, not dark spots.
-            const specD = length(fd.sub(vec2(-0.06, 0.08)));
-            const spec = pow(smoothstep(radius.mul(0.6), 0.0, specD), float(2.0)).mul(beadMask);
-            const rim = smoothstep(radius, radius.mul(0.82), d)
-                .mul(smoothstep(radius.mul(0.55), radius, d))
-                .mul(beadMask);
-            withDrops = withDrops.add(vec3(spec.mul(0.7)));
-            withDrops = withDrops.add(vec3(0.45, 0.6, 0.9).mul(rim.mul(0.32)));
-            gradedRgb = withDrops;
-        }
-
-        // ── 3c. Film grain (animated) ───────────────────────────────────────────
-        const grainNoise = fract(
-            sin(dot(uv.mul(900.0).add(this.time.mul(1.7)), vec2(12.9898, 78.233))).mul(43758.5453),
-        ).sub(0.5);
-        gradedRgb = gradedRgb.add(grainNoise.mul(this.uGrainIntensity));
-
-        this.postProcessing.outputNode = vec4(gradedRgb, composited.w);
-        this.postProcessing.needsUpdate = true;
-    }
-
-    updateParams(params) {
-        if (params?.bloomStrength !== undefined) {
-            this.bloomNode.strength.value = params.bloomStrength;
-        }
-        if (params?.bloomRadius !== undefined) {
-            this.bloomNode.radius.value = params.bloomRadius;
-        }
-        if (params?.bloomThreshold !== undefined) {
-            this.bloomNode.threshold.value = params.bloomThreshold;
-        }
-        if (params?.bloomDownsample !== undefined) {
-            this.bloomDownsample = params.bloomDownsample;
-            this.bloomNode.setResolutionScale(0.5 * this.bloomDownsample);
-            if (this.size.width && this.size.height && this.bloomNode?._separableBlurMaterials?.length) {
-                this.bloomNode.setSize(this.size.width, this.size.height);
+            // ── Calm zones (board cards + HUD) ──
+            const hScale = this.uViewport.y.div(1080.0);
+            const calm = float(0.0).toVar();
+            for (let i = 0; i < CALM_RECTS_MAX; i++) {
+                const r = this.uCalm[i];
+                const sdf = roundBoxSdf(px, r.mul(vec4(this.uViewport, this.uViewport)), hScale.mul(16.0));
+                const inside = float(1.0).sub(smoothstep(-20.0, 6.0, sdf)).mul(step(0.001, r.z.sub(r.x)));
+                calm.assign(max(calm, inside));
             }
-        }
-        if (params?.fogColor !== undefined && this.fogColor) {
-            this.fogColor.value.copy(params.fogColor);
-        }
-        if (params?.fogColorFar !== undefined && this.fogColorFar) {
-            this.fogColorFar.value.copy(params.fogColorFar);
-        }
-        if (params?.fogNear !== undefined && this.fogNear) {
-            this.fogNear.value = params.fogNear;
-        }
-        if (params?.fogFar !== undefined && this.fogFar) {
-            this.fogFar.value = params.fogFar;
-        }
-        if (params?.fogDensity !== undefined && this.fogDensity) {
-            this.fogDensity.value = params.fogDensity;
-        }
-        if (params?.fogBloomAttenuation !== undefined && this.fogBloomAttenuation) {
-            this.fogBloomAttenuation.value = params.fogBloomAttenuation;
-        }
-        if (params?.godrayIntensity !== undefined && this.uGodrayIntensity) {
-            this.uGodrayIntensity.value = params.godrayIntensity;
-        }
-        if (params?.aberration !== undefined && this.uAberration) {
-            this.uAberration.value = params.aberration;
-        }
-        if (params?.grainIntensity !== undefined && this.uGrainIntensity) {
-            this.uGrainIntensity.value = params.grainIntensity;
-        }
-        if (params?.saturationAmount !== undefined && this.uSaturation) {
-            this.uSaturation.value = params.saturationAmount;
-        }
-        if (params?.contrast !== undefined && this.uContrast) {
-            this.uContrast.value = params.contrast;
-        }
+            calm.mulAssign(this.uCalmStrength);
+
+            // ── Lens fringe: wider toward the corners, and on an impact ──
+            const S = vec3(sceneColor.sample(st).rgb).toVar();
+            if (look.fringe) {
+                const r2 = fromCentre.dot(fromCentre);
+                const fringe = r2.mul(0.006).add(this.uKick.mul(0.006)).mul(float(1.0).sub(calm));
+                If(fringe.greaterThan(2e-4), () => {
+                    const spread = fromCentre.mul(fringe);
+                    S.assign(vec3(
+                        sceneColor.sample(st.sub(spread)).level(0).r,
+                        S.g,
+                        sceneColor.sample(st.add(spread)).level(0).b,
+                    ));
+                });
+            }
+
+            // What shows through the card is soft-clipped (hue-preserving).
+            const m = max(ndMax3(S), 1e-5);
+            const clipped = S.mul(min(m, float(0.22).add(m.mul(0.2))).div(m));
+            S.assign(mix(S, clipped, calm.mul(0.9)));
+
+            // ── Bloom, streaks, rays ──
+            const glare = vec3(0.0).toVar();
+            if (this.bloomNode) {
+                const bt = this.bloomNode.getTextureNode();
+                const B = vec3(bt.sample(st).rgb);
+                glare.assign(B.mul(float(1.0).add(this.uBloomBoost.mul(0.5))));
+                if (streakTaps > 0) {
+                    // The bloom dragged sideways: a thin horizontal flare through every hot light.
+                    const streak = vec3(0.0).toVar();
+                    let total = 0;
+                    for (let i = 1; i <= streakTaps; i++) {
+                        const o = (i / streakTaps) ** 1.5 * 0.2;
+                        const w = Math.exp(-3.2 * (i / streakTaps));
+                        total += 2 * w;
+                        streak.addAssign(bt.sample(st.add(vec2(o, 0.0))).rgb.mul(w));
+                        streak.addAssign(bt.sample(st.sub(vec2(o, 0.0))).rgb.mul(w));
+                    }
+                    // Cold-tinted, as an anamorphic lens gives.
+                    glare.addAssign(streak.mul(1 / total).mul(vec3(0.55, 0.8, 1.25)).mul(this.uStreak).mul(0.85));
+                }
+                if (rayTaps > 0) {
+                    // The bloom dragged out of the vanishing point: the canyon's light, streaming.
+                    const toHeart = this.uHeart.sub(st);
+                    const jitter = ndHash21(floor(screenCoordinate).add(vec2(3.0, 71.0)));
+                    const rays = vec3(0.0).toVar();
+                    let total = 0;
+                    for (let i = 0; i < rayTaps; i++) {
+                        const w = 1 - (i / rayTaps) * 0.75;
+                        total += w;
+                        const f = jitter.add(i).div(rayTaps).mul(0.82);
+                        rays.addAssign(bt.sample(st.add(toHeart.mul(f))).rgb.mul(w));
+                    }
+                    const reach = float(1.0).sub(smoothstep(0.0, 0.95, length(toHeart.mul(vec2(this.uAspect, 1.0)))));
+                    glare.addAssign(rays.mul(1 / total).mul(this.uRays).mul(reach.mul(0.7).add(0.3)));
+                }
+                glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
+            }
+            const H = S.add(glare);
+
+            // ── Tone map + grade ──
+            const X = H.mul(this.uExposure).mul(float(1.0).add(this.uFlash.mul(0.35)));
+            const T = neonFilmic(X).toVar();
+            const L = ndLuma(T);
+            // Cold, slightly lifted shadows (rain haze in the lens); the lights keep their hues.
+            const lo = float(1.0).sub(smoothstep(0.0, 0.32, L));
+            T.assign(mix(T, T.mul(vec3(0.86, 0.97, 1.16)).add(vec3(0.0006, 0.0012, 0.003)), lo.mul(0.5)));
+            T.assign(mix(vec3(ndLuma(T)), T, 1.12));
+            // Vignette, measured from the frame, a touch heavier in the corners.
+            const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
+            const vig = smoothstep(0.42, 1.05, length(cv.mul(1.5)));
+            T.mulAssign(float(1.0).sub(vig.mul(0.4)));
+
+            // ── Encode, then finish in display space ──
+            const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
+            const pxi = floor(screenCoordinate);
+            const frame = floor(this.uTime.mul(24.0));
+            const grain = ndHash21(pxi.add(vec2(frame.mul(1.7), frame.mul(-2.3)))).sub(0.5);
+            D.addAssign(grain.mul(0.022).mul(float(1.0).sub(calm.mul(0.7))));
+            const dth = ndHash21(pxi).add(ndHash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
+            D.addAssign(dth.div(255.0));
+
+            let out = vec4(clamp(D, 0.0, 1.0), 1.0);
+            if (falseColor) {
+                const mx = ndMax3(H);
+                const fc = select(
+                    mx.lessThan(0.1),
+                    vec3(0.05, 0.1, 0.6),
+                    select(mx.lessThan(0.6), vec3(0.1, 0.55, 0.15), select(
+                        mx.lessThan(1.0),
+                        vec3(0.85, 0.8, 0.1),
+                        select(mx.lessThan(2.5), vec3(1.0, 0.45, 0.05), vec3(0.95, 0.05, 0.05)),
+                    )),
+                );
+                out = vec4(fc, 1.0);
+            }
+            return out;
+        });
+
+        this.pipeline.outputColorTransform = false;
+        this.pipeline.outputNode = outputFn();
+        this.pipeline.needsUpdate = true;
     }
 
-    updateTime(time) {
-        if (this.time) {
-            this.time.value = time;
-        }
-    }
-
-    /** AAA 6b — set the rain-on-lens droplet amount (0 = none). */
-    setLensDroplets(amount) {
-        if (this.uLensDropletAmount) {
-            this.uLensDropletAmount.value = amount;
-        }
+    /** Per-frame values (all optional). */
+    update({
+        heart, flash, kick, bloomBoost, exposure, rays, streak, time,
+    } = {}) {
+        if (heart) this.uHeart.value.set(heart.x, heart.y);
+        if (flash !== undefined) this.uFlash.value = flash;
+        if (kick !== undefined) this.uKick.value = kick;
+        if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
+        if (exposure !== undefined) this.uExposure.value = exposure;
+        if (rays !== undefined) this.uRays.value = rays;
+        if (streak !== undefined) this.uStreak.value = streak;
+        if (time !== undefined) this.uTime.value = time;
     }
 
     /**
-     * AAA Phase 2b — update the god-ray anchor (screen-space UV of the moon) and
-     * optionally its intensity. Call each frame after projecting the moon to NDC.
+     * Calm rects in screen fractions (x0, y0, x1, y1; y down), at most CALM_RECTS_MAX, and the
+     * eased strength (0 = off).
      */
-    updateGodrays(screenUV, intensity) {
-        if (screenUV && this.uMoonScreen) {
-            this.uMoonScreen.value.copy(screenUV);
+    setCalmRects(rects, strength) {
+        for (let i = 0; i < CALM_RECTS_MAX; i++) {
+            const r = rects?.[i];
+            if (r) this.calmRects[i].set(r.x0, r.y0, r.x1, r.y1);
+            else this.calmRects[i].set(0, 0, 0, 0);
         }
-        if (intensity !== undefined && this.uGodrayIntensity) {
-            this.uGodrayIntensity.value = intensity;
-        }
+        this.uCalmStrength.value = strength;
     }
 
-    /**
-     * AAA Phase 3c — transient chromatic-aberration boost for combo/glitch events.
-     * @param {number} amount - extra radial CA on top of the base amount.
-     */
-    setAberrationBoost(amount) {
-        if (this.uAberrationBoost) {
-            this.uAberrationBoost.value = amount;
+    setSize(width, height, bufferWidth = width, bufferHeight = height) {
+        if (width > 0 && height > 0) this.uAspect.value = width / height;
+        if (bufferWidth > 0 && bufferHeight > 0) {
+            this.uSrcTexel.value.set(1 / bufferWidth, 1 / bufferHeight);
+            this.uViewport.value.set(bufferWidth, bufferHeight);
         }
     }
 
     render() {
-        this.camera.updateMatrixWorld();
-        this.postProcessing.render();
-    }
-
-    setSize(width, height) {
-        this.size.width = width;
-        this.size.height = height;
-        this.scenePass.setSize(width, height);
-        if (this.uLensAspect && height > 0) {
-            this.uLensAspect.value = width / height; // keep lens beads round
-        }
-        if (this.bloomNode?._separableBlurMaterials?.length) {
-            this.bloomNode.setSize(width, height);
-        }
+        this.pipeline.render();
     }
 
     dispose() {
-        this.scenePass.dispose();
-        disposeBloomNodeDeep(this.bloomNode);
-        this.postProcessing.dispose();
+        this.scenePass?.dispose();
+        if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
+        this.pipeline?.dispose();
+        this.scenePass = null;
+        this.bloomNode = null;
+        this.pipeline = null;
     }
+}
+
+/** A render pipeline that only encodes the scene (the fallback path if the post fails to build). */
+export function createPassThroughPipeline(renderer, scene, camera) {
+    const pipeline = new THREE.RenderPipeline(renderer);
+    const scenePass = pass(scene, camera, { samples: 0 });
+    pipeline.outputNode = scenePass;
+    return {
+        render: () => pipeline.render(),
+        update() {},
+        setCalmRects() {},
+        setSize() {},
+        dispose() {
+            scenePass.dispose();
+            pipeline.dispose();
+        },
+    };
 }
