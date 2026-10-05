@@ -12,7 +12,6 @@ export const wolfhourBackgroundCache = new Map();
 export const himalayanPeakCache = new Map();
 export const iceTempleCache = new Map();
 export const crystalCaveCache = new Map();
-export const lunaraBackgroundCache = new Map();
 
 /**
  * Grid cache for rendering the game board grid lines
@@ -51,5 +50,4 @@ export function clearThemeCaches() {
     himalayanPeakCache.clear();
     iceTempleCache.clear();
     crystalCaveCache.clear();
-    lunaraBackgroundCache.clear();
 }

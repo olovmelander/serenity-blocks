@@ -1,314 +1,338 @@
-/* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
- * Lunara Theme — Post-processing.
+ * Lunara — post stack (TSL RenderPipeline, both WebGPURenderer backends).
  *
- * WebGPU: TSL PostProcessing with optional MRT bloom + filmic grade + vignette.
- * WebGL2: EffectComposer with UnrealBloomPass + grade ShaderPass.
+ * One scene pass (no MRT: the valley is authored in scene-linear HDR, so a max-channel knee
+ * selects what blooms), one bloom chain (Medium and up) and ONE full-screen pass:
+ *
+ *   lens fringe (a radial chromatic split that widens toward the corners and jumps on an impact)
+ *   → calm zones (what shows through the translucent board card and HUD is soft-clipped and its
+ *   bloom attenuated) → bloom → moon shafts (the bloom dragged radially out of the great moon:
+ *   its light streaming past the spires and the range; a clear floods them) → exposure and event
+ *   flash → "moon filmic" tone map (hue preserving, the hottest cores roll to white) → grade
+ *   (cold violet shadows, a saturation lift) → vignette → sRGB → grain and triangular dither.
+ *
+ * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
+ * outputColorTransform is off (the output node encodes sRGB itself).
  */
 
-import * as THREE from 'three';
-import * as WEBGPU from 'three/webgpu';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import * as THREE from 'three/webgpu';
 import {
-    pass,
-    mrt,
-    output,
-    emissive,
-    viewportUV,
-    uniform,
+    Fn,
+    If,
+    abs,
+    clamp,
+    exp,
     float,
+    floor,
+    length,
+    max,
+    min,
+    mix,
+    pass,
+    renderOutput,
+    screenCoordinate,
+    screenUV,
+    select,
+    smoothstep,
+    step,
+    uniform,
+    uv,
     vec2,
     vec3,
     vec4,
-    dot,
-    length,
-    mix,
-    smoothstep,
-    clamp,
-    fract,
-    sin,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
-import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
+import { luHash21, luLuma, luMax3 } from './lunara-tsl.js';
 
-const LUNARA_GRADE_SHADER = {
-    uniforms: {
-        tDiffuse: { value: null },
-        uExposure: { value: 1.05 },
-        uContrast: { value: 1.06 },
-        uSaturation: { value: 1.18 },
-        uTintColor: { value: new THREE.Color(0.95, 0.88, 1.05) },
-        uTintStrength: { value: 0.14 },
-        uVignetteOffset: { value: 1.06 },
-        uVignetteDarkness: { value: 0.32 },
-        uGrainStrength: { value: 0.0028 },
-        uTime: { value: 0 },
+/**
+ * Per-tier look. `bloom: false` builds no BloomNode (and so no shafts). `shafts` is a tap count
+ * (0 = off); `fringe` = the chromatic split (two more scene taps); `msaa` = scene-pass samples.
+ */
+export const POST_LOOK = Object.freeze({
+    Extreme: {
+        bloom: true, bloomStrength: 0.62, bloomResolution: 0.5, shafts: 14, fringe: true, msaa: 4,
     },
-    vertexShader: `
-        varying vec2 vUv;
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-    fragmentShader: `
-        varying vec2 vUv;
-        uniform sampler2D tDiffuse;
-        uniform float uExposure;
-        uniform float uContrast;
-        uniform float uSaturation;
-        uniform vec3 uTintColor;
-        uniform float uTintStrength;
-        uniform float uVignetteOffset;
-        uniform float uVignetteDarkness;
-        uniform float uGrainStrength;
-        uniform float uTime;
+    Ultra: {
+        bloom: true, bloomStrength: 0.62, bloomResolution: 0.5, shafts: 12, fringe: true, msaa: 4,
+    },
+    High: {
+        bloom: true, bloomStrength: 0.6, bloomResolution: 0.45, shafts: 10, fringe: true, msaa: 4,
+    },
+    Medium: {
+        bloom: true, bloomStrength: 0.56, bloomResolution: 0.33, shafts: 6, fringe: false, msaa: 0,
+    },
+    Low: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: 0, fringe: false, msaa: 0,
+    },
+    Minimal: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: 0, fringe: false, msaa: 0,
+    },
+});
 
-        float grainNoise(vec2 uv) {
-            float x = dot(uv + vec2(uTime * 0.0029, uTime * 0.0019), vec2(12.9898, 78.233));
-            return fract(sin(x) * 43758.5453) - 0.5;
-        }
+export const BLOOM_THRESHOLD = 0.9;
+export const BLOOM_KNEE = 0.5;
+export const BLOOM_RADIUS = 0.6;
+export const EXPOSURE = 1.0;
 
-        void main() {
-            vec4 colorSample = texture2D(tDiffuse, vUv);
-            vec3 color = colorSample.rgb * uExposure;
+/** Calm rects (board cards + HUD) the output pass evaluates. */
+export const CALM_RECTS_MAX = 5;
 
-            float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
-            color = mix(vec3(luma), color, uSaturation);
-            color = (color - 0.5) * uContrast + 0.5;
-            color = mix(color, color * uTintColor, uTintStrength);
+/** Rounded-box signed distance in pixels. rect = (x0, y0, x1, y1) in pixels (top-left origin). */
+const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
+    const c = rect.xy.add(rect.zw).mul(0.5);
+    const h = rect.zw.sub(rect.xy).mul(0.5);
+    const q = abs(p.sub(c)).sub(h).add(radius);
+    return length(max(q, vec2(0.0))).add(min(max(q.x, q.y), 0.0)).sub(radius);
+}).setLayout({
+    name: 'lu_roundBoxSdf',
+    type: 'float',
+    inputs: [{ name: 'p', type: 'vec2' }, { name: 'rect', type: 'vec4' }, { name: 'radius', type: 'float' }],
+});
 
-            // Split-tone: cool violet shadows, warm rose highlights.
-            float gluma = dot(color, vec3(0.2126, 0.7152, 0.0722));
-            vec3 shadowTint = vec3(0.86, 0.92, 1.1);
-            vec3 highTint = vec3(1.08, 0.99, 0.93);
-            color *= mix(shadowTint, highTint, smoothstep(0.18, 0.82, gluma));
-
-            vec2 centered = (vUv - 0.5) * 2.0;
-            float dist = length(centered);
-            float vignette = smoothstep(uVignetteOffset, uVignetteOffset - 0.55, dist);
-            color = mix(color * (1.0 - uVignetteDarkness), color, vignette);
-
-            float grain = grainNoise(vUv * 110.0) * uGrainStrength;
-            color += vec3(grain);
-            color = clamp(color, vec3(0.0), vec3(1.0));
-
-            gl_FragColor = vec4(color, colorSample.a);
-        }
-    `,
-};
+/**
+ * Moon filmic: a hue-preserving shoulder on the max channel (identity below `k`), then a path to
+ * white for the hottest values, so a rose flash stays rose and only its core burns clean.
+ */
+const moonFilmic = /* @__PURE__ */ Fn(([cIn]) => {
+    const c = max(cIn, vec3(0.0));
+    const peak = max(luMax3(c), 1e-5);
+    const k = float(0.5);
+    const shoulder = k.add(float(1.0).sub(k).mul(float(1.0).sub(exp(peak.sub(k).div(float(1.0).sub(k)).negate()))));
+    const mapped = select(peak.greaterThan(k), shoulder, peak);
+    const toned = c.mul(mapped.div(peak));
+    return mix(toned, vec3(mapped, mapped, mapped), smoothstep(1.8, 8.0, peak).mul(0.75));
+}).setLayout({ name: 'lu_moonFilmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
 
 export class LunaraPost {
+    /**
+     * @param {THREE.WebGPURenderer} renderer
+     * @param {THREE.Scene} scene
+     * @param {THREE.Camera} camera
+     * @param {object} params
+     * @param {object} params.look        POST_LOOK entry
+     * @param {boolean} [params.falseColor=false]
+     */
     constructor(renderer, scene, camera, params = {}) {
-        this.renderer = renderer;
-        this.scene = scene;
-        this.camera = camera;
-        this.isWebGPU = renderer?.backend?.isWebGPUBackend === true;
-        this.usesNodeMaterials = renderer?.isWebGPURenderer === true;
-        this.useMRT = this.isWebGPU && params.useMRT === true;
-        this.useDualBloom = params.dualBloom === true;
-        this.resolutionScale = params.resolutionScale ?? 1.0;
-        this.bloomDownsample = params.bloomDownsample ?? 0.85;
-        this.size = { width: 0, height: 0 };
-
-        this.scenePass = null;
-        this.bloomNode = null;
-        this.bloomNodeTight = null;
-        this.postProcessing = null;
-        this.composer = null;
-        this.bloomPass = null;
-        this.gradePass = null;
-
-        if (this.usesNodeMaterials) {
-            this.setupWebGPU(params);
-        } else {
-            this.setupWebGL(params);
-        }
-    }
-
-    setupWebGPU(params) {
-        this.postProcessing = new WEBGPU.RenderPipeline(this.renderer);
-        this.scenePass = pass(this.scene, this.camera);
-        if (this.useMRT) {
-            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
-        }
-
+        const look = params.look || POST_LOOK.High;
+        this.look = look;
+        this.pipeline = new THREE.RenderPipeline(renderer);
+        this.scenePass = pass(scene, camera, { samples: params.samples ?? look.msaa ?? 0 });
         const sceneColor = this.scenePass.getTextureNode('output');
-        const bloomSource = this.useMRT ? this.scenePass.getTextureNode('emissive') : sceneColor;
 
-        this.bloomNode = bloom(
-            bloomSource,
-            params.bloomStrength ?? 0.55,
-            params.bloomRadius ?? 0.42,
-            params.bloomThreshold ?? 0.32,
-        );
-
-        const originalSetSize = this.bloomNode.setSize.bind(this.bloomNode);
-        this.bloomNode.setSize = (w, h) => {
-            originalSetSize(w * this.bloomDownsample, h * this.bloomDownsample);
-        };
-
-        // Dual bloom: a tight, bright-core bloom on top of the wide veil for the
-        // "expensive" cinematic look. Gated (High+) via params.dualBloom.
-        if (this.useDualBloom) {
-            this.bloomNodeTight = bloom(
-                bloomSource,
-                (params.bloomStrength ?? 0.55) * 0.7,
-                (params.bloomRadius ?? 0.42) * 0.32,
-                (params.bloomThreshold ?? 0.32) + 0.22,
-            );
-            const tightSetSize = this.bloomNodeTight.setSize.bind(this.bloomNodeTight);
-            this.bloomNodeTight.setSize = (w, h) => {
-                tightSetSize(w * this.bloomDownsample, h * this.bloomDownsample);
-            };
-        }
-
-        this.uExposure = uniform(params.exposure ?? 1.05);
-        this.uContrast = uniform(params.contrast ?? 1.06);
-        this.uSaturation = uniform(params.saturation ?? 1.18);
-        this.uTintStrength = uniform(params.tintStrength ?? 0.14);
-        this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.06);
-        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.32);
-        this.uGrainStrength = uniform(params.grainStrength ?? 0.0028);
-        this.uTintColor = uniform(new THREE.Color(0.95, 0.88, 1.05));
+        this.uAspect = uniform(16 / 9);
+        this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
+        this.uViewport = uniform(new THREE.Vector2(1920, 1080));
+        /** The great moon on screen, UV (y down): where the shafts come from. */
+        this.uHeart = uniform(new THREE.Vector2(0.24, 0.3));
         this.uTime = uniform(0);
+        this.uExposure = uniform(EXPOSURE);
+        this.uFlash = uniform(0); // event flash (a lift), 0..1
+        this.uKick = uniform(0); // impact, 0..1: widens the fringe
+        this.uShafts = uniform(0.3); // moon shafts, 0..1.5
+        this.uBloomBoost = uniform(0);
 
-        const uv = viewportUV;
-        const baseColor = sceneColor.sample(uv);
-        const bloomColor = this.useDualBloom && this.bloomNodeTight
-            ? baseColor.add(this.bloomNode).add(this.bloomNodeTight)
-            : baseColor.add(this.bloomNode);
+        this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
+        this.uCalm = this.calmRects.map((v) => uniform(v));
+        this.uCalmStrength = uniform(0);
 
-        const centered = uv.sub(0.5).mul(2.0);
-        const dist = length(centered);
-        const vignette = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.55), dist);
-        const vignetteColor = mix(
-            bloomColor.mul(float(1.0).sub(this.uVignetteDarkness)),
-            bloomColor,
-            vignette,
-        );
+        // ── Bloom: max-channel soft knee over a 4-tap box ──
+        this.bloomNode = null;
+        if (look.bloom) {
+            this.bloomNode = bloom(sceneColor, look.bloomStrength, BLOOM_RADIUS, BLOOM_THRESHOLD);
+            this.bloomNode.threshold.value = BLOOM_THRESHOLD;
+            this.bloomNode.smoothWidth.value = BLOOM_KNEE;
+            this.bloomNode.setResolutionScale(look.bloomResolution);
+            const { uSrcTexel } = this;
+            // BloomNode's documented hook, read once at setup. Inline (no setLayout): `input`
+            // must stay the raw scene TextureNode for .sample().
+            this.bloomNode.highPassFn = Fn(({ input, threshold, smoothWidth }) => {
+                const st = uv();
+                const o = uSrcTexel.mul(1.25);
+                // Hue-preserving clamp on the max channel: a per-channel clamp would turn a rose
+                // flash orange and a teal one white.
+                const tap = (dx, dy) => {
+                    const c = max(vec3(input.sample(st.add(vec2(o.x.mul(dx), o.y.mul(dy)))).rgb), vec3(0.0));
+                    return c.mul(min(float(1.0), float(7.0).div(max(luMax3(c), 1e-4))));
+                };
+                const c = tap(1, 1).add(tap(-1, 1)).add(tap(1, -1)).add(tap(-1, -1))
+                    .mul(0.25);
+                const br = luMax3(c);
+                const soft = clamp(br.sub(threshold).add(smoothWidth), 0.0, smoothWidth.mul(2.0));
+                const w = max(soft.mul(soft).div(smoothWidth.mul(4.0).add(1e-4)), br.sub(threshold)).div(max(br, 1e-4));
+                return vec4(c.mul(w), 1.0);
+            });
+        }
 
-        let graded = vignetteColor.xyz.mul(this.uExposure);
-        const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
-        graded = mix(vec3(luma), graded, this.uSaturation);
-        graded = graded.sub(0.5).mul(this.uContrast).add(0.5);
-        graded = mix(graded, graded.mul(this.uTintColor), this.uTintStrength);
+        const falseColor = params.falseColor === true;
+        const shaftTaps = this.bloomNode ? look.shafts : 0;
 
-        // Split-tone: cool violet shadows, warm rose highlights — cohesive grade.
-        const gradeLuma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
-        const shadowTint = vec3(0.86, 0.92, 1.1);
-        const highTint = vec3(1.08, 0.99, 0.93);
-        const splitTone = mix(shadowTint, highTint, smoothstep(float(0.18), float(0.82), gradeLuma));
-        graded = graded.mul(splitTone);
+        const outputFn = Fn(() => {
+            const st = screenUV;
+            const px = st.mul(this.uViewport);
+            const fromCentre = st.sub(0.5);
 
-        const noise = fract(sin(dot(uv.mul(110.0), vec2(12.9898, 78.233))).mul(43758.5453));
-        const grain = noise.sub(0.5).mul(this.uGrainStrength);
-        graded = clamp(graded.add(vec3(grain)), float(0.0), float(1.0));
+            // ── Calm zones (board cards + HUD) ──
+            const hScale = this.uViewport.y.div(1080.0);
+            const calm = float(0.0).toVar();
+            for (let i = 0; i < CALM_RECTS_MAX; i++) {
+                const r = this.uCalm[i];
+                const sdf = roundBoxSdf(px, r.mul(vec4(this.uViewport, this.uViewport)), hScale.mul(16.0));
+                const inside = float(1.0).sub(smoothstep(-20.0, 6.0, sdf)).mul(step(0.001, r.z.sub(r.x)));
+                calm.assign(max(calm, inside));
+            }
+            calm.mulAssign(this.uCalmStrength);
 
-        this.postProcessing.outputNode = vec4(graded, vignetteColor.w);
-        this.postProcessing.needsUpdate = true;
+            // ── Lens fringe: wider toward the corners, and on an impact ──
+            const S = vec3(sceneColor.sample(st).rgb).toVar();
+            if (look.fringe) {
+                const r2 = fromCentre.dot(fromCentre);
+                const fringe = r2.mul(0.005).add(this.uKick.mul(0.005)).mul(float(1.0).sub(calm));
+                If(fringe.greaterThan(2e-4), () => {
+                    const spread = fromCentre.mul(fringe);
+                    S.assign(vec3(
+                        sceneColor.sample(st.sub(spread)).level(0).r,
+                        S.g,
+                        sceneColor.sample(st.add(spread)).level(0).b,
+                    ));
+                });
+            }
+
+            // What shows through the card is soft-clipped (hue-preserving).
+            const m = max(luMax3(S), 1e-5);
+            const clipped = S.mul(min(m, float(0.22).add(m.mul(0.2))).div(m));
+            S.assign(mix(S, clipped, calm.mul(0.9)));
+
+            // ── Bloom and moon shafts ──
+            const glare = vec3(0.0).toVar();
+            if (this.bloomNode) {
+                const bt = this.bloomNode.getTextureNode();
+                const B = vec3(bt.sample(st).rgb);
+                glare.assign(B.mul(float(1.0).add(this.uBloomBoost.mul(0.5))));
+                if (shaftTaps > 0) {
+                    // The bloom dragged out of the great moon: its light, streaming.
+                    const toHeart = this.uHeart.sub(st);
+                    const jitter = luHash21(floor(screenCoordinate).add(vec2(3.0, 71.0)));
+                    const shafts = vec3(0.0).toVar();
+                    let total = 0;
+                    for (let i = 0; i < shaftTaps; i++) {
+                        const w = 1 - (i / shaftTaps) * 0.8;
+                        total += w;
+                        const f = jitter.add(i).div(shaftTaps).mul(0.7);
+                        shafts.addAssign(bt.sample(st.add(toHeart.mul(f))).rgb.mul(w));
+                    }
+                    const reach = float(1.0).sub(smoothstep(0.0, 1.1, length(toHeart.mul(vec2(this.uAspect, 1.0)))));
+                    glare.addAssign(shafts.mul(1 / total).mul(this.uShafts).mul(reach.mul(0.8).add(0.2)));
+                }
+                glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
+            }
+            const H = S.add(glare);
+
+            // ── Tone map + grade ──
+            const X = H.mul(this.uExposure).mul(float(1.0).add(this.uFlash.mul(0.35)));
+            const T = moonFilmic(X).toVar();
+            const L = luLuma(T);
+            // Cold violet, slightly lifted shadows (night air in the lens); the lights keep their hues.
+            const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
+            T.assign(mix(T, T.mul(vec3(0.92, 0.94, 1.14)).add(vec3(0.0016, 0.0008, 0.0042)), lo.mul(0.55)));
+            T.assign(mix(vec3(luLuma(T)), T, 1.14));
+            // Vignette, measured from the frame, a touch heavier in the corners.
+            const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
+            const vig = smoothstep(0.45, 1.08, length(cv.mul(1.5)));
+            T.mulAssign(float(1.0).sub(vig.mul(0.42)));
+
+            // ── Encode, then finish in display space ──
+            const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
+            const pxi = floor(screenCoordinate);
+            const frame = floor(this.uTime.mul(24.0));
+            const grain = luHash21(pxi.add(vec2(frame.mul(1.7), frame.mul(-2.3)))).sub(0.5);
+            D.addAssign(grain.mul(0.018).mul(float(1.0).sub(calm.mul(0.7))));
+            const dth = luHash21(pxi).add(luHash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
+            D.addAssign(dth.div(255.0));
+
+            let out = vec4(clamp(D, 0.0, 1.0), 1.0);
+            if (falseColor) {
+                const mx = luMax3(H);
+                const fc = select(
+                    mx.lessThan(0.1),
+                    vec3(0.05, 0.1, 0.6),
+                    select(mx.lessThan(0.6), vec3(0.1, 0.55, 0.15), select(
+                        mx.lessThan(1.0),
+                        vec3(0.85, 0.8, 0.1),
+                        select(mx.lessThan(2.5), vec3(1.0, 0.45, 0.05), vec3(0.95, 0.05, 0.05)),
+                    )),
+                );
+                out = vec4(fc, 1.0);
+            }
+            return out;
+        });
+
+        this.pipeline.outputColorTransform = false;
+        this.pipeline.outputNode = outputFn();
+        this.pipeline.needsUpdate = true;
     }
 
-    setupWebGL(params) {
-        this.composer = new EffectComposer(this.renderer);
-        this.renderPass = new RenderPass(this.scene, this.camera);
-        this.bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            params.bloomStrength ?? 0.55,
-            params.bloomRadius ?? 0.42,
-            params.bloomThreshold ?? 0.32,
-        );
-
-        this.gradePass = new ShaderPass(LUNARA_GRADE_SHADER);
-        const u = this.gradePass.uniforms;
-        if (params.exposure !== undefined) u.uExposure.value = params.exposure;
-        if (params.contrast !== undefined) u.uContrast.value = params.contrast;
-        if (params.saturation !== undefined) u.uSaturation.value = params.saturation;
-        if (params.tintStrength !== undefined) u.uTintStrength.value = params.tintStrength;
-        if (params.vignetteOffset !== undefined) u.uVignetteOffset.value = params.vignetteOffset;
-        if (params.vignetteDarkness !== undefined) u.uVignetteDarkness.value = params.vignetteDarkness;
-        if (params.grainStrength !== undefined) u.uGrainStrength.value = params.grainStrength;
-
-        this.composer.addPass(this.renderPass);
-        this.composer.addPass(this.bloomPass);
-        this.composer.addPass(this.gradePass);
-    }
-
+    /** Per-frame values (all optional). */
     update({
-        time,
-        bloomStrength,
-        exposure,
-        vignetteDarkness,
-        tintStrength,
+        heart, flash, kick, bloomBoost, exposure, shafts, time,
     } = {}) {
-        if (time !== undefined) {
-            if (this.uTime) this.uTime.value = time;
-            if (this.gradePass?.uniforms?.uTime) this.gradePass.uniforms.uTime.value = time;
+        if (heart) this.uHeart.value.set(heart.x, heart.y);
+        if (flash !== undefined) this.uFlash.value = flash;
+        if (kick !== undefined) this.uKick.value = kick;
+        if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
+        if (exposure !== undefined) this.uExposure.value = exposure;
+        if (shafts !== undefined) this.uShafts.value = shafts;
+        if (time !== undefined) this.uTime.value = time;
+    }
+
+    /**
+     * Calm rects in screen fractions (x0, y0, x1, y1; y down), at most CALM_RECTS_MAX, and the
+     * eased strength (0 = off).
+     */
+    setCalmRects(rects, strength) {
+        for (let i = 0; i < CALM_RECTS_MAX; i++) {
+            const r = rects?.[i];
+            if (r) this.calmRects[i].set(r.x0, r.y0, r.x1, r.y1);
+            else this.calmRects[i].set(0, 0, 0, 0);
         }
-        if (bloomStrength !== undefined) {
-            if (this.bloomNode) this.bloomNode.strength.value = bloomStrength;
-            if (this.bloomNodeTight) this.bloomNodeTight.strength.value = bloomStrength * 0.7;
-            if (this.bloomPass) this.bloomPass.strength = bloomStrength;
-        }
-        if (exposure !== undefined) {
-            if (this.uExposure) this.uExposure.value = exposure;
-            if (this.gradePass?.uniforms?.uExposure) this.gradePass.uniforms.uExposure.value = exposure;
-        }
-        if (vignetteDarkness !== undefined) {
-            if (this.uVignetteDarkness) this.uVignetteDarkness.value = vignetteDarkness;
-            if (this.gradePass?.uniforms?.uVignetteDarkness) {
-                this.gradePass.uniforms.uVignetteDarkness.value = vignetteDarkness;
-            }
-        }
-        if (tintStrength !== undefined) {
-            if (this.uTintStrength) this.uTintStrength.value = tintStrength;
-            if (this.gradePass?.uniforms?.uTintStrength) {
-                this.gradePass.uniforms.uTintStrength.value = tintStrength;
-            }
+        this.uCalmStrength.value = strength;
+    }
+
+    setSize(width, height, bufferWidth = width, bufferHeight = height) {
+        if (width > 0 && height > 0) this.uAspect.value = width / height;
+        if (bufferWidth > 0 && bufferHeight > 0) {
+            this.uSrcTexel.value.set(1 / bufferWidth, 1 / bufferHeight);
+            this.uViewport.value.set(bufferWidth, bufferHeight);
         }
     }
 
     render() {
-        if (this.postProcessing) {
-            this.postProcessing.render();
-            return;
-        }
-        if (this.composer) {
-            this.composer.render();
-            return;
-        }
-        this.renderer.render(this.scene, this.camera);
-    }
-
-    setSize(width, height) {
-        this.size.width = width;
-        this.size.height = height;
-        const w = Math.max(1, Math.round(width * this.resolutionScale));
-        const h = Math.max(1, Math.round(height * this.resolutionScale));
-
-        if (this.scenePass?.setSize) this.scenePass.setSize(w, h);
-        if (this.bloomNode?._separableBlurMaterials?.length) this.bloomNode.setSize(w, h);
-        if (this.bloomNodeTight?._separableBlurMaterials?.length) this.bloomNodeTight.setSize(w, h);
-        if (this.composer) this.composer.setSize(w, h);
-        if (this.bloomPass?.setSize) this.bloomPass.setSize(w, h);
+        this.pipeline.render();
     }
 
     dispose() {
-        if (this.scenePass?.dispose) this.scenePass.dispose();
-        disposeBloomNodeDeep(this.bloomNode);
-        disposeBloomNodeDeep(this.bloomNodeTight);
-        if (this.postProcessing?.dispose) this.postProcessing.dispose();
-        if (this.composer?.dispose) this.composer.dispose();
+        this.scenePass?.dispose();
+        if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
+        this.pipeline?.dispose();
         this.scenePass = null;
         this.bloomNode = null;
-        this.bloomNodeTight = null;
-        this.postProcessing = null;
-        this.composer = null;
-        this.bloomPass = null;
-        this.gradePass = null;
+        this.pipeline = null;
     }
+}
+
+/** A render pipeline that only encodes the scene (the fallback path if the post fails to build). */
+export function createPassThroughPipeline(renderer, scene, camera) {
+    const pipeline = new THREE.RenderPipeline(renderer);
+    const scenePass = pass(scene, camera, { samples: 0 });
+    pipeline.outputNode = scenePass;
+    return {
+        render: () => pipeline.render(),
+        update() {},
+        setCalmRects() {},
+        setSize() {},
+        dispose() {
+            scenePass.dispose();
+            pipeline.dispose();
+        },
+    };
 }
