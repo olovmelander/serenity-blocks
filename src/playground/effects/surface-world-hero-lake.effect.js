@@ -11,7 +11,7 @@
 //
 // Self-contained (Ch3 palette + SURFACE_SUN_DIR baked in) so the proven technique ports back
 // into the chapter's own buildGoldenWaterMaterial later, rather than importing a theme material.
-// Pattern proven by src/playground/effects/golden-forest-water.effect.js (reflector wiring) and
+// Pattern proven by src/themes/golden-forest/golden-forest-lake.js (reflector wiring) and
 // the swedish-forest golden-water memory (analytic-only reads as copper until a real reflector +
 // dark treeline + sun are present — so this isolation deliberately includes both).
 // ═══════════════════════════════════════════════════════════════════════════════
