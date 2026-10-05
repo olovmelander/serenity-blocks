@@ -1,0 +1,92 @@
+{
+  "backend": "WebGPU",
+  "quality": "High",
+  "flags": {
+    "forceWebGL": false,
+    "noCompute": false,
+    "noMRT": false,
+    "noPost": false,
+    "debug": false,
+    "seed": 1234,
+    "usePost": true,
+    "useMRT": true,
+    "useCompute": true
+  },
+  "compile": {
+    "status": "success",
+    "durationMs": 1658.4000000001397,
+    "message": null
+  },
+  "compute": {
+    "dustCompute": {
+      "ready": true,
+      "report": {
+        "status": "ready",
+        "created": 1,
+        "failed": 0,
+        "results": [
+          {
+            "ok": true
+          }
+        ],
+        "ms": 84,
+        "skippedPending": 0
+      }
+    },
+    "burstCompute": {
+      "ready": true,
+      "report": {
+        "status": "ready",
+        "created": 1,
+        "failed": 0,
+        "results": [
+          {
+            "ok": true
+          }
+        ],
+        "ms": 62,
+        "skippedPending": 0
+      }
+    },
+    "wispCompute": {
+      "ready": true,
+      "report": {
+        "status": "ready",
+        "created": 1,
+        "failed": 0,
+        "results": [
+          {
+            "ok": true
+          }
+        ],
+        "ms": 69,
+        "skippedPending": 0
+      }
+    }
+  },
+  "sculpture": {
+    "quality": "High",
+    "ribbonCount": 6,
+    "filamentCount": 12,
+    "haloPoolSize": 6,
+    "activeHalos": 1,
+    "travelFrontPoolSize": 4,
+    "activeTravelFronts": 1,
+    "disposed": false
+  },
+  "bursts": {
+    "lastBurstDepth": 1544.9986555111884,
+    "heroBurstCount": 0,
+    "peripheralBurstCount": 0,
+    "centerGuardRejections": 0
+  },
+  "renderInfo": {
+    "calls": 60,
+    "triangles": 0
+  },
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "devicePixelRatio": 1
+  }
+}
