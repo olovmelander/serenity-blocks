@@ -25,6 +25,8 @@ import { SakuraTerrain, sakuraLand, sakuraSurfaceHeight } from './sakura-terrain
 import { SAKURA_UNMIRRORED_LAYER, SakuraWater } from './sakura-water.js';
 
 const UNMIRRORED = /^Sakura(SpringGrass|Fireflies|Foxfire|PetalFlashes|MistBank|PetalsInTheAir)/;
+// Open water whatever the shape of the banks: straight out from the cove.
+const LAKE_HEART_Z = -22;
 
 export class SakuraWorld {
     constructor({
@@ -148,10 +150,15 @@ export class SakuraWorld {
 
     /** Set a lantern afloat at (x, z), or on the nearest open water beyond it. */
     floatLantern(x, z, vx, vz, power) {
+        // From wherever the bank is, walk toward the middle of the lake until afloat.
+        let lakeX = x;
         let lakeZ = z;
-        for (let step = 0; step < 8 && sakuraLand(x, lakeZ) > -0.8; step += 1) lakeZ -= 2.5;
-        if (sakuraLand(x, lakeZ) > -0.8) return false;
-        return this.spirits?.launchWater(x, lakeZ, vx, vz, power) ?? false;
+        for (let step = 0; step < 24 && sakuraLand(lakeX, lakeZ) > -0.8; step += 1) {
+            lakeX -= Math.sign(lakeX) * Math.min(2, Math.abs(lakeX));
+            lakeZ += Math.sign(LAKE_HEART_Z - lakeZ) * Math.min(1.5, Math.abs(LAKE_HEART_Z - lakeZ));
+        }
+        if (sakuraLand(lakeX, lakeZ) > -0.8) return false;
+        return this.spirits?.launchWater(lakeX, lakeZ, vx, vz, power) ?? false;
     }
 
     /** The measured board card in screen fractions (y down), or null for the default. */

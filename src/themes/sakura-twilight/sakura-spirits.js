@@ -118,7 +118,8 @@ export class SakuraSpirits {
         const { light, rng } = this;
         const eye = SAKURA_VIEWS.landscape.position;
         const homes = [];
-        for (let attempt = 0; homes.length < this.tier.fireflies && attempt < this.tier.fireflies * 30; attempt += 1) {
+        const wanted = this.tier.fireflies * 4; // x, y, z, seed for each
+        for (let attempt = 0; homes.length < wanted && attempt < this.tier.fireflies * 30; attempt += 1) {
             const depth = rng() ** 1.4;
             const z = eye[2] - 5 - depth * 58;
             const x = (rng() * 2 - 1) * (6 + (eye[2] - z) * 0.9);

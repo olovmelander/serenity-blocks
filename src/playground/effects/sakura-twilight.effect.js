@@ -53,11 +53,11 @@ export function create({
     // the moon brought round beside it. Wide framings read dark and off-centre at 80 px.
     const frameIcon = () => {
         if (params.get('icon') !== '1' || !world) return;
-        camera.fov = 30;
-        camera.position.set(2, 3.5, 6);
-        camera.lookAt(-20.3, 10.8, -49.2);
+        camera.fov = 40;
+        camera.position.set(5.1, 4.9, 12.5);
+        camera.lookAt(-19.3, 11.6, -42.3);
         camera.updateProjectionMatrix();
-        world.light.setMoon(-14.6, 15.8);
+        world.light.setMoon(-13.5, 17.5);
         world.stage.refresh();
     };
     const ready = loadSakuraAssets().then((loaded) => {
