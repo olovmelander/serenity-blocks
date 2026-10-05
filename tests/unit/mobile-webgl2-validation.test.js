@@ -89,8 +89,8 @@ describe('mobile WebGL2 acceptance verdict', () => {
         expect(mobileWebgl2Failures(cleanResult())).toEqual([]);
     });
 
-    it('rejects a nonblank old classic scene even with active meshes and no console errors', () => {
-        const result = cleanResult();
+    it.each(['wolfhour', 'crystal-cave'])('rejects a nonblank old %s classic scene even with active meshes and no console errors', (id) => {
+        const result = cleanResult(id);
         result.portrait.rendererKind = 'WebGLRenderer';
         result.portrait.nodeMaterials = 0;
         expect(mobileWebgl2Failures(result)).toContain('portrait: modern node WebGL2 scene missing.');
