@@ -59,9 +59,19 @@ advance 0.7 simulation seconds while paused; live animation is checked separatel
 Native [idle](native-idle.json) and
 [combo](native-combo.json) checks report clean validation and console error lists.
 The focused Fall tests currently total **70 passing tests** across the reaction,
-artwork and theme lifecycle suites (15 + 18 + 37). Validation rerun on 2026-10-05 passed all 5,790 repository tests (537 files),
-type checking, production build/boot closure, the ESLint error-count ratchet,
-dependency boundaries, theme lifecycle audit and release gates. Fall passes the
+artwork and theme lifecycle suites (15 + 18 + 37). Validation on 2026-10-05 passed all
+5,790 repository tests before the concurrent Crystal Cave merge. After integrating
+main at `4236bb79`, the combined run passed 5,858 of 5,859 tests (539 of 540 files).
+The only failure was the unchanged Odyssey cloud-field bake-time check: 1,558 ms
+against its 1,500 ms budget while browser and build checks ran concurrently. After
+those checks finished, the unchanged cloud-field file passed all 12 tests in
+isolation; its bake-budget test took 538 ms. The budget was not changed.
+Type checking, production build/boot closure, the ESLint error-count ratchet
+(1,133 errors, with the ceiling lowered to that count), dependency boundaries,
+theme lifecycle audit and release gates passed on the combined tree. Fresh
+[post-merge game checks](production-postmerge-results.json) passed desktop High and
+portrait Low, including gameplay, event effects, pause/resume, complete cleanup
+and fresh reactivation, with zero errors or warnings. Fall passes the
 palette gate; its repository-wide result remains blocked by the existing Stillwater
 full hue mapping. No Stillwater source was changed.
 
