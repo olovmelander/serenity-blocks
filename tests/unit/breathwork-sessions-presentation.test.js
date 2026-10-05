@@ -343,6 +343,14 @@ describe('Hale preparation choices', () => {
         expect(tab.prefs).toMatchObject({ sounds: false, openHolds: false, voice: true });
     });
 
+    it('never hands a session another session\'s intention', () => {
+        tab.showPrepScreen('BASE');
+        tab.selectIntention('calm', 'BASE');
+        tab.startSession('REST');
+        expect(manager.startSession.mock.calls[0][3].intention).toBeNull();
+        expect(tab.selectedIntention).toBeNull();
+    });
+
     it('says "follow the light" when the voice is off', async () => {
         tab.showPrepScreen('FLOW');
         flow('.hale-flow__voice').fire('change', { target: { checked: false } });

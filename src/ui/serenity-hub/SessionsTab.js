@@ -679,7 +679,10 @@ export class SessionsTab {
         this.completedSession = null;
         this.sessionRunning = true;
         const generation = ++this.sessionGeneration;
-        const intention = this.selectedIntention;
+        // Only an intention of this session: each one has its own spoken clip.
+        const intention = (INTENTIONS[sessionId] || []).some((item) => item.id === this.selectedIntention?.id)
+            ? this.selectedIntention : null;
+        this.selectedIntention = intention;
         this.sessionManager.audioManager?.setEnabled(this.voiceGuidance);
         this.sessionManager.onEndRequested = () => this.stopSession();
         this.sessionManager.startSession(
@@ -866,6 +869,7 @@ export class SessionsTab {
         this.showStep(null);
         this.completedSession = null;
         this.pendingSessionId = null;
+        this.selectedIntention = null;
         this.renderPractice();
         this.hub.releaseGameplay?.();
     }
