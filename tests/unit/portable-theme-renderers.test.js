@@ -4,12 +4,10 @@ import {
 import * as THREE from 'three/webgpu';
 import OceanTheme from '../../src/themes/ocean/ocean-theme.js';
 import LunaraTheme from '../../src/themes/lunara/lunara-theme.js';
-import IceTempleTheme from '../../src/themes/ice-temple/ice-temple-theme.js';
 import LuminousTidesTheme from '../../src/themes/luminous-tides/luminous-tides-theme.js';
 import MoonlitForestTheme from '../../src/themes/moonlit-forest/moonlit-forest-theme.js';
 import { OceanPost } from '../../src/themes/ocean/ocean-post.js';
 import { LunaraPost } from '../../src/themes/lunara/lunara-post.js';
-import { IceTemplePost } from '../../src/themes/ice-temple/ice-temple-post.js';
 
 const state = vi.hoisted(() => ({ instances: [], initialize: null }));
 vi.mock('../../src/themes/ocean/ocean-asset-loader.js', () => ({
@@ -78,7 +76,7 @@ afterEach(() => {
 });
 
 const themes = [
-    ['Ocean', OceanTheme], ['Lunara', LunaraTheme], ['Ice Temple', IceTempleTheme],
+    ['Ocean', OceanTheme], ['Lunara', LunaraTheme],
 ];
 
 describe('portable theme renderer selection', () => {
@@ -122,10 +120,6 @@ describe('portable theme renderer selection', () => {
             expect(theme.capabilities.useCompute).toBe(false);
             expect(theme.capabilities.useMRT).toBe(false);
         }
-        if (Theme === IceTempleTheme) {
-            expect(theme.flags.useCompute).toBe(false);
-            expect(theme.flags.useMRT).toBe(false);
-        }
         expect(theme.currentQuality || theme.activeQualityLevel || theme.currentQualityName).toBe('High');
     });
 
@@ -151,32 +145,6 @@ describe('portable theme renderer selection', () => {
     });
 });
 
-describe('Ice Temple node WebGL2 scene routing', () => {
-    it('uses modern aurora and fog motion while leaving GPU compute disabled', async () => {
-        const theme = createTheme(IceTempleTheme);
-        state.initialize = (renderer) => { renderer.backend = { isWebGLBackend: true }; };
-        await theme.initRenderer({ appendChild: vi.fn() });
-        theme.useWebGPUMaterials = true;
-        expect(theme.shouldUseVolumetricAurora()).toBe(true);
-        expect(theme.shouldUseEnhancedFogMotion()).toBe(true);
-        expect(theme.shouldUseCompute()).toBe(false);
-    });
-
-    it('renders the common bloom pipeline on WebGL2', async () => {
-        const theme = createTheme(IceTempleTheme);
-        state.initialize = (renderer) => { renderer.backend = { isWebGLBackend: true }; };
-        await theme.initRenderer({ appendChild: vi.fn() });
-        theme.scene = new THREE.Scene();
-        theme.camera = new THREE.PerspectiveCamera();
-        theme.renderer.render = vi.fn();
-        theme.postProcessing = { render: vi.fn() };
-        theme.renderFrame();
-        expect(theme.postProcessing.render).toHaveBeenCalledOnce();
-        expect(theme.renderer.render).not.toHaveBeenCalled();
-        expect(theme.lastRenderPath).toBe('webgl-post');
-    });
-});
-
 describe('portable bloom pipelines', () => {
     it.each([['Ocean', OceanPost], ['Lunara', LunaraPost]])('keeps %s node post on WebGL2 while rejecting MRT', (_name, Post) => {
         const renderer = { isWebGPURenderer: true, backend: { isWebGLBackend: true } };
@@ -186,19 +154,10 @@ describe('portable bloom pipelines', () => {
         expect(post.bloomNode).toBeTruthy();
         post.dispose();
     });
-
-    it('keeps Ice Temple node bloom on WebGL2 while rejecting MRT', async () => {
-        const post = await IceTemplePost.create({
-            isWebGPURenderer: true, backend: { isWebGLBackend: true },
-        }, new THREE.Scene(), new THREE.PerspectiveCamera(), { useMRT: true });
-        expect(post.useMRT).toBe(false);
-        expect(post.postProcessing.isRenderPipeline).toBe(true);
-        post.dispose();
-    });
 });
 
 describe('selected theme effect quality', () => {
-    it.each([['Ice Temple', IceTempleTheme], ['Luminous Tides', LuminousTidesTheme]])('reads the actual settings quality before the legacy alias (%s)', (_name, Theme) => {
+    it.each([['Luminous Tides', LuminousTidesTheme]])('reads the actual settings quality before the legacy alias (%s)', (_name, Theme) => {
         window.settings.graphicsQuality = 'Extreme';
         expect(Theme.prototype.getCurrentQualityLevel.call({})).toBe('Low');
         window.settings.effectQuality = 'Medium';

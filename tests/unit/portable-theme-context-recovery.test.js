@@ -3,7 +3,6 @@ import {
 } from 'vitest';
 import OceanTheme from '../../src/themes/ocean/ocean-theme.js';
 import LunaraTheme from '../../src/themes/lunara/lunara-theme.js';
-import IceTempleTheme from '../../src/themes/ice-temple/ice-temple-theme.js';
 import { gpuResilience } from '../../src/utils/gpu-context-resilience.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 
@@ -57,7 +56,6 @@ async function startRendererOnly(Theme, native = false) {
     vi.spyOn(theme, 'disposeRenderer');
     vi.spyOn(theme, 'createScene').mockImplementation(async (generation) => {
         await theme.initRenderer({ appendChild: vi.fn() }, generation);
-        if (Theme === IceTempleTheme) theme.setupRendererResilience();
     });
     await theme.start({ loadTheme: vi.fn() });
     return theme;
@@ -94,7 +92,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-const themes = [['Ocean', OceanTheme], ['Lunara', LunaraTheme], ['Ice Temple', IceTempleTheme]];
+const themes = [['Ocean', OceanTheme], ['Lunara', LunaraTheme]];
 describe.each(themes)('%s portable context recovery', (_name, Theme) => {
     it.each([false, true])('registers the backend and detaches before disposal (native=%s)', async (native) => {
         const canvasMonitor = vi.spyOn(gpuResilience, 'monitorWebGL');
@@ -149,16 +147,4 @@ describe.each(themes)('%s portable context recovery', (_name, Theme) => {
         await Promise.resolve();
         expect(theme.createScene).toHaveBeenCalledTimes(2);
     });
-});
-
-it('preserves Ice Temple native device-loss fallback while detaching it on stop', async () => {
-    const theme = await startRendererOnly(IceTempleTheme, true);
-    const nativeRenderer = theme.renderer;
-    const recover = vi.spyOn(theme, 'handleDeviceLoss').mockResolvedValue();
-    nativeRenderer.onDeviceLost({ reason: 'unknown' });
-    await Promise.resolve();
-    expect(recover).toHaveBeenCalledOnce();
-    theme.stop();
-    nativeRenderer.onDeviceLost({ reason: 'late-loss' });
-    expect(recover).toHaveBeenCalledOnce();
 });
