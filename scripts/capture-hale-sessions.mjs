@@ -90,10 +90,38 @@ async function prewarm(world) {
 }
 
 /**
- * Jump the running session to one of its stages, its world loaded first: under software
- * rendering a world takes many seconds to compile, longer than a pause or a title card lasts.
+ * Stop the session's clock where it is: its stage timers and its progress reports. Under software
+ * rendering a screenshot can take longer than a whole stage (a 20 s pause), so every captured
+ * stage is held still first.
+ */
+async function holdStill() {
+    await page.evaluate(() => {
+        const manager = window.serenityBlocks.serenityHub.sessionManager;
+        manager.phaseTimeouts.forEach((entry) => clearTimeout(entry.timer));
+        manager.phaseTimeouts.clear();
+        clearInterval(manager.progressUpdateTimer);
+        manager.progressUpdateTimer = null;
+    });
+}
+
+/** One progress report, as the running session sends ten times a second. */
+async function tick() {
+    await page.evaluate(() => {
+        const manager = window.serenityBlocks.serenityHub.sessionManager;
+        const phase = manager.activeSession.phases[manager.currentPhaseIndex];
+        manager._startProgressUpdates(phase, manager.currentPhaseDuration);
+        clearInterval(manager.progressUpdateTimer);
+        manager.progressUpdateTimer = null;
+    });
+    await page.waitForTimeout(400);
+}
+
+/**
+ * Jump the session to one of its stages, held still, with its world loaded first: a software
+ * world takes many seconds to compile, longer than a pause or a title card lasts.
  */
 async function stage(index) {
+    await holdStill();
     const world = await page.evaluate((i) => {
         const manager = window.serenityBlocks.serenityHub.sessionManager;
         return manager._worldFor(manager.activeSession.phases[i]);
@@ -104,15 +132,16 @@ async function stage(index) {
         manager.currentPhaseIndex = i;
         manager._runPhase();
     }, index);
-    await page.waitForTimeout(700);
+    await holdStill();
+    await page.waitForTimeout(500);
 }
 
-/** Pretend the current stage began `seconds` ago (the clock the progress reports read). */
+/** The current stage began `seconds` ago; the HUD is refreshed to say so. */
 async function elapsed(seconds) {
     await page.evaluate((ms) => {
         window.serenityBlocks.serenityHub.sessionManager.phaseStartTime = Date.now() - ms;
     }, seconds * 1000);
-    await page.waitForTimeout(500);
+    await tick();
 }
 
 try {
@@ -182,7 +211,9 @@ try {
         await page.click('.hale-flow__begin');
     }
     await page.waitForFunction(() => window.breathingIndicator?.isExternallyControlled, null, { timeout: 60000 });
+    await holdStill();
     await worldLive();
+    await elapsed(15);
     if (!PHONE) {
         // The arrival card has long faded by the time a software world compiles: show it again.
         await page.evaluate(() => {
@@ -198,19 +229,20 @@ try {
     await stage(2);
     await elapsed(42);
     if (!PHONE) await shot('hold-open', { freezeAt: 3400 });
-    await elapsed(72);
     await page.evaluate(() => window.serenityBlocks.serenityHub.sessionManager._holdReady());
-    await page.waitForTimeout(800);
+    await elapsed(72);
     await shot('hold-ready', { freezeAt: 3400 });
 
     if (!PHONE) {
         // Breathing in ends the hold: the recovery breath (its world loaded first).
         await prewarm('coherence');
         await page.click('.breath-guide__button--breathe');
-        await page.waitForTimeout(800);
+        await holdStill();
+        await page.waitForTimeout(3500);
         await shot('recovery');
         // The rest, breathed naturally, and its closing.
         await stage(10);
+        await elapsed(6);
         await shot('rest-natural', { freezeAt: 1400 });
         // The closing comes minutes into the rest, long after the rest's card has gone.
         await page.evaluate(() => {
@@ -255,7 +287,6 @@ try {
                 const tab = window.serenityBlocks.serenityHub.sessionsTab;
                 tab.startSession(id);
             }, sessionId);
-            await worldLive();
             await stage(index);
             await elapsed(shift / 1000);
             await shot(name, { freezeAt: 3400 });
