@@ -39,6 +39,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [architectural-review-prompt.md](archive/2026-10-agent-prompts/architectural-review-prompt.md) | Superseded | Archived 2026-10-03. Historical input to an AI session — not instructions; its "known context" facts are outdated. |
 | [ASSET_PIPELINE_BLACKWELL.md](ASSET_PIPELINE_BLACKWELL.md) | Reference | Asset-pipeline context; harvest before execution. |
 | [blind-mode-plan.md](blind-mode-plan.md) | Reference | Feature plan; not part of current Movement A scope. |
+| [BLACK_HOLE_VISUAL_OVERHAUL_2026-10.md](BLACK_HOLE_VISUAL_OVERHAUL_2026-10.md) | Reference | Black Hole rebuilt as one ray-traced Schwarzschild hole: a geodesic march with a closed-form far field, an exact shadow edge, a sheared gas disk with beaming, a lensed galaxy and per-pixel stars; closed-form dust, fed pieces, ejecta and jets; a director that turns locks into streams and hot arcs, clears into pressure waves and streaks into lit jets. WebGPU, WebGL2 and integrated-GPU in-game captures. No performance measurement; phones remain open. |
 | [BREATHING_INDICATOR_GUIDE.md](BREATHING_INDICATOR_GUIDE.md) | Reference | Feature guide. |
 | [BREATHING_IMMERSIVE_OVERHAUL_2026-10.md](BREATHING_IMMERSIVE_OVERHAUL_2026-10.md) | Reference | Twelve breathing worlds and four Hale sessions; responsive visual design, retained WebGL2 renderer, session control/lifecycle repairs, and validation evidence. |
 | [cascade-bot-payload-planning-plan.md](cascade-bot-payload-planning-plan.md) | Reference | Bot/payload planning notes. |
