@@ -44,8 +44,13 @@ describe('breathing world registry', () => {
 
     it('sets every stage of every Hale session in a world that exists', () => {
         Object.entries(SESSION_WORLDS).forEach(([session, stages]) => {
-            ['grounding', 'active', 'retention', 'recovery', 'integration'].forEach((stage) => {
-                [stages[stage]].flat().forEach((id) => {
+            ['grounding', 'active', 'recovery', 'integration'].forEach((stage) => {
+                expect(stages[stage], `${session}.${stage}`).toBeTruthy();
+            });
+            // A round's stillness is a hold, or in Flow the rhythm kept on your own.
+            expect(stages.retention || stages.carry, `${session} stillness`).toBeTruthy();
+            Object.entries(stages).forEach(([stage, ids]) => {
+                [ids].flat().forEach((id) => {
                     expect(BREATH_WORLD_BUILDERS[id], `${session}.${stage} → ${id}`).toBeTypeOf('function');
                 });
             });
