@@ -22,7 +22,9 @@
     "errors": 1137,
     "warnings": 985,
     "fatal": 0,
-    "previousCeiling": 1170
+    "previousCeiling": 1170,
+    "ceilingChangeIncluded": false,
+    "note": "Historical measurement on sourceCommit; preserve main's newer inherited ceiling on merge."
   },
   "captureProfiles": [
     {
