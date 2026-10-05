@@ -1,6 +1,9 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
+import { Color, SRGBColorSpace } from 'three';
+import { ThreeJSBreathingRenderer } from '../../src/ui/effects/threejs-breathing-renderer.js';
+import { BREATHING_VISUAL_PROFILES } from '../../src/ui/effects/breathing-atmosphere.js';
 
 // Keep real Three.js scene/geometry/material objects. Only the browser GL adapter
 // is replaced; shader compatibility is exercised by the browser capture harness.
@@ -8,8 +11,13 @@ vi.mock('three', async (importOriginal) => {
     const three = await importOriginal();
     class RendererAdapter {
         constructor() {
-            this.domElement = { className: '', setAttribute: vi.fn(), remove: vi.fn(),
-                addEventListener: vi.fn(), removeEventListener: vi.fn() };
+            this.domElement = {
+                className: '',
+                setAttribute: vi.fn(),
+                remove: vi.fn(),
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+            };
             this.setClearColor = vi.fn();
             this.setSize = vi.fn();
             this.setPixelRatio = vi.fn();
@@ -20,9 +28,6 @@ vi.mock('three', async (importOriginal) => {
     }
     return { ...three, WebGLRenderer: RendererAdapter };
 });
-
-import { ThreeJSBreathingRenderer } from '../../src/ui/effects/threejs-breathing-renderer.js';
-import { BREATHING_VISUAL_PROFILES } from '../../src/ui/effects/breathing-atmosphere.js';
 
 let renderer;
 let container;
@@ -55,9 +60,11 @@ beforeEach(() => {
     vi.stubGlobal('window', {
         devicePixelRatio: 3,
         matchMedia(query) {
-            if (!mediaQueries.has(query)) mediaQueries.set(query, {
-                matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(),
-            });
+            if (!mediaQueries.has(query)) {
+                mediaQueries.set(query, {
+                    matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+                });
+            }
             return mediaQueries.get(query);
         },
     });
@@ -66,15 +73,18 @@ beforeEach(() => {
         addEventListener: vi.fn((name, callback) => listeners.set(name, callback)),
         removeEventListener: vi.fn((name) => listeners.delete(name)),
     });
-    vi.stubGlobal('ResizeObserver', class {
-        constructor(callback) {
-            this.callback = callback;
-            this.observe = vi.fn();
-            this.disconnect = vi.fn();
-            observer = this;
-        }
+    vi.stubGlobal('ResizeObserver', function ResizeObserverAdapter(callback) {
+        this.callback = callback;
+        this.observe = vi.fn();
+        this.disconnect = vi.fn();
+        observer = this;
     });
-    container = { clientWidth: 720, clientHeight: 720, appendChild: vi.fn() };
+    container = {
+        clientWidth: 720,
+        clientHeight: 720,
+        appendChild: vi.fn(),
+        closest: vi.fn(() => ({ classList: { add: vi.fn(), remove: vi.fn() } })),
+    };
     renderer = new ThreeJSBreathingRenderer(container);
 });
 
@@ -91,8 +101,13 @@ describe('retained breathing renderer', () => {
         renderer.scene.traverse((object) => {
             if (object.geometry) initialObjects.push([object, object.geometry, object.material]);
         });
+        expect(initialObjects).toHaveLength(3);
+        expect(new Set(initialObjects.map(([, geometry]) => geometry)).size).toBe(3);
+        expect(new Set(initialObjects.map(([, , material]) => material)).size).toBe(3);
+        expect(renderer.sceneObjects.motifs).toBeUndefined();
+        const shaderVersions = new Map(initialObjects.map(([, , material]) => [material, material.version]));
         expect(Object.keys(BREATHING_VISUAL_PROFILES)).toHaveLength(12);
-        for (let repeat = 0; repeat < 3; repeat += 1) {
+        Array.from({ length: 3 }).forEach(() => {
             Object.keys(BREATHING_VISUAL_PROFILES).forEach((technique) => {
                 renderer.setTechnique(technique);
                 renderer.updateIntensity(0.8, 'inhale', 0.75);
@@ -102,12 +117,47 @@ describe('retained breathing renderer', () => {
                 initialObjects.forEach(([object, geometry, material]) => {
                     expect(object.geometry).toBe(geometry);
                     expect(object.material).toBe(material);
+                    expect(material.version).toBe(shaderVersions.get(material));
                 });
+                expect(renderer.scene.children).toHaveLength(3);
             });
-        }
+        });
         expect(container.appendChild).toHaveBeenCalledOnce();
         renderer.setTechnique('unknown-technique');
         expect(renderer.currentTechnique).toBe('deep-relaxation');
+    });
+
+    it('shares one mode selector across atmosphere, form and particle motion independently of palette', () => {
+        renderer.init();
+        const layers = ['atmosphere', 'form', 'particles'].map((key) => renderer.sceneObjects[key]);
+        const neutral = { r: 128, g: 128, b: 128 };
+        const params = { color: neutral, secondaryColor: neutral, tertiaryColor: neutral };
+        const selectedModes = new Set();
+        const expectedColor = new Color().setRGB(128 / 255, 128 / 255, 128 / 255, SRGBColorSpace).toArray();
+        Object.entries(BREATHING_VISUAL_PROFILES).forEach(([name, profile]) => {
+            renderer.setTechnique(name, params);
+            selectedModes.add(renderer.uniforms.uMode.value);
+            layers.forEach((layer) => {
+                expect(layer.material.uniforms).toBe(renderer.uniforms);
+                expect(layer.material.uniforms.uMode.value).toBe(profile.mode);
+                ['uColorA', 'uColorB', 'uColorC'].forEach((key) => {
+                    expect(layer.material.uniforms[key].value.toArray()).toEqual(expectedColor);
+                });
+            });
+        });
+        expect(selectedModes.size).toBe(12);
+    });
+
+    it('uses each world\'s own palette when the caller provides no color overrides', () => {
+        renderer.init();
+        const palettes = new Set();
+        Object.entries(BREATHING_VISUAL_PROFILES).forEach(([name, profile]) => {
+            renderer.setTechnique(name);
+            const actualColors = ['uColorA', 'uColorB', 'uColorC'].map((key) => renderer.uniforms[key].value.toArray());
+            expect(actualColors).toEqual(profile.colors.map((hex) => new Color(hex).toArray()));
+            palettes.add(JSON.stringify(actualColors));
+        });
+        expect(palettes.size).toBe(12);
     });
 
     it('changes particle draw range and pixel ratio while preserving the artwork', () => {
@@ -181,14 +231,40 @@ describe('retained breathing renderer', () => {
         expect(renderer.uniforms.uBreath.value).toBe(0.6);
         expect(renderer.uniforms.uPhaseProgress.value).toBe(0.4);
         expect(renderer.uniforms.uSession.value).toBe(3);
-        expect(renderer.motifs.geometry.rotation.y).toBe(0);
-        expect(renderer.motifs.geometry.scale.x).toBe(1);
-        expect(renderer.sceneObjects.motifs.scale.x).toBeCloseTo(0.944);
+        ['atmosphere', 'form', 'particles'].forEach((key) => {
+            expect(renderer.sceneObjects[key].material.uniforms.uMotion.value).toBe(0);
+            expect(renderer.sceneObjects[key].material.uniforms.uBreath.value).toBe(0.6);
+        });
         renderer.setSessionPhase(null);
         expect(renderer.uniforms.uSession.value).toBe(0);
     });
 
-    it('disposes nested resources once and removes all frame, resize and media owners', () => {
+    it('restores a lost context with the same three resources and only one frame owner', () => {
+        renderer.start();
+        const adapter = renderer.renderer;
+        const layers = Object.values(renderer.sceneObjects);
+        const registrations = new Map(adapter.domElement.addEventListener.mock.calls);
+        const lost = { preventDefault: vi.fn() };
+        registrations.get('webglcontextlost')(lost);
+        expect(lost.preventDefault).toHaveBeenCalledOnce();
+        expect(renderer.contextLost).toBe(true);
+        expect(frames.size).toBe(0);
+        registrations.get('webglcontextrestored')();
+        registrations.get('webglcontextrestored')();
+        expect(renderer.contextLost).toBe(false);
+        expect(frames.size).toBe(1);
+        const restoredLayers = Object.values(renderer.sceneObjects);
+        expect(restoredLayers).toHaveLength(3);
+        layers.forEach((layer, index) => expect(restoredLayers[index]).toBe(layer));
+        expect(container.appendChild).toHaveBeenCalledOnce();
+        advanceFrame(5000);
+        expect(adapter.render).toHaveBeenCalledOnce();
+        renderer.stop();
+        registrations.get('webglcontextrestored')();
+        expect(frames.size).toBe(0);
+    });
+
+    it('disposes retained resources once and removes all frame, resize and media owners', () => {
         renderer.start();
         const adapter = renderer.renderer;
         const geometries = new Set();

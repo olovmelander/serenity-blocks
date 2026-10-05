@@ -1,14 +1,8 @@
 /**
- * Enhanced Breathing Indicator - The most beautiful breathing guide ever created
- *
- * Features:
- * - Multiple concentric circles with independent animations
- * - Dynamic color transitions (blue → purple → pink → gold)
- * - Particle effects that sync with breathing rhythm
- * - Glow effects and ethereal shadows
- * - Smooth easing with perfect timing
- * - Multiple breathing techniques with descriptions
+ * Breath timing, accessible phase cues and a lazily loaded visual world.
+ * The CSS shapes keep essential guidance available without WebGL.
  */
+import { BREATHING_GUIDANCE } from './breathing-guidance.js';
 
 // APP BOOT (2026-08-21): the three.js breathing renderer is the ONLY static path from main.js
 // to 'three' — keep it out of the menu boot closure because nothing draws it
@@ -213,16 +207,17 @@ export class EnhancedBreathingIndicator {
         this.phaseCountdown.setAttribute('aria-hidden', 'true');
         this.phaseDetail = document.createElement('div');
         this.phaseDetail.className = 'breathing-phase-detail';
-        this.phaseDetail.textContent = 'Follow the expanding light';
+        this.phaseDetail.textContent = BREATHING_GUIDANCE[this.currentTechnique][0];
         this.phaseDetail.setAttribute('aria-hidden', 'true');
 
         const ns = 'http://www.w3.org/2000/svg';
         this.phaseTrack = document.createElementNS(ns, 'svg');
         this.phaseTrack.classList.add('breathing-phase-track');
-        this.phaseTrack.setAttribute('viewBox', '0 0 100 100');
+        this.phaseTrack.setAttribute('viewBox', '0 0 100 2');
         this.phaseTrack.setAttribute('aria-hidden', 'true');
-        const track = document.createElementNS(ns, 'circle');
-        track.setAttribute('cx', '50'); track.setAttribute('cy', '50'); track.setAttribute('r', '45');
+        const track = document.createElementNS(ns, 'line');
+        track.setAttribute('x1', '2'); track.setAttribute('y1', '1');
+        track.setAttribute('x2', '98'); track.setAttribute('y2', '1');
         track.classList.add('breathing-phase-track-base');
         this.phaseArc = track.cloneNode();
         this.phaseArc.classList.remove('breathing-phase-track-base');
@@ -717,10 +712,11 @@ export class EnhancedBreathingIndicator {
             ? 'Hold gently' : labels[this.currentPhase];
         this._writeText(this.textPrompt, phaseLabel);
         this._writeText(this.phaseCountdown, `${Math.ceil(Math.max(0, duration - elapsed))}`);
+        const guidance = BREATHING_GUIDANCE[this.currentTechnique] || BREATHING_GUIDANCE['deep-relaxation'];
         this._writeText(this.phaseDetail, {
-            inhale: 'Follow the expanding light',
+            inhale: guidance[0],
             hold1: 'Let the light settle',
-            exhale: 'Soften as the light recedes',
+            exhale: guidance[1],
             hold2: this.sessionPhase === 'retention' ? 'A quiet moment within' : 'A quiet moment between breaths',
         }[this.currentPhase]);
         this._writeStyle(this.phaseArc, 'strokeDasharray', `${progress.toFixed(4)} 1`);

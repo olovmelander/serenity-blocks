@@ -2,15 +2,32 @@
 
 ## Delivered experience
 
-All twelve breathing worlds share a responsive, breath-led visual language. A luminous aperture expands on inhale, settles during a hold, and recedes on exhale. Phase text remains readable, seconds count down, and a slim progress arc and phase steps explain the rhythm. Each world has its own atmosphere: aurora curtains and mountains, sacred patterns, moonlit reflections, solar filaments, rose light, prismatic rays, molten ridges, underwater caustics, raked sand, nebula clouds, forest silhouettes, and electric currents.
+All twelve breathing worlds now have distinct foreground forms and particle movement, as well as their own atmospheres. The follow-up removes the shared circular aperture, circular phase track and reused wireframes that made the first overhaul feel like color variants. A neutral linear phase track, readable instructions, countdown and phase steps explain the rhythm without imposing a common silhouette.
 
-The four Hale-inspired journeys (BASE, ELIXIR, REST, FLOW) have distinct illustrated selection cards, durations calculated from the actual session definitions, preparation and intention screens, a cancellable countdown, separate phase and overall journey progress, and completion results. Guided instructions sit above the artwork with session progress below it. Portrait and landscape layouts use the same artwork.
+| World | Foreground form | Breath movement |
+| --- | --- | --- |
+| Aurora Dreams | Four flowing vertical ribbons | Ribbons spread and rise, then fall |
+| Sacred Geometry | Square with four traced edges | Square opens; each breathing phase advances its own edge |
+| Moonlit Waters | Crescent moon and reflected horizon | Moonlit tides lift and settle |
+| Solar Flare | Long solar rays and corona | Rays extend and draw inward |
+| Heart Glow | Six petals and a second flower whorl | Petals unfold and close |
+| Crystal Prism | Triangular prism and refracted beams | Prism expands; its beams diverge |
+| Volcanic Fire | Tall flame with nested fire tongues | Flame rises and settles |
+| Ocean Tide | Four broad horizontal wave crests | Crests lift and return |
+| Zen Garden | Incomplete textured brush stroke, stone and sand | Brush stroke opens subtly and settles |
+| Cosmic Nebula | Three spiral arms | Spiral unfurls and gathers |
+| Ancient Forest | Branching tree with individual leaves | Canopy opens and branches rest |
+| Electric Storm | Two forked currents | Branches reach outward with continuous travelling light |
+
+The visible **Hale sessions** control opens guided journeys directly. The Hub tab uses the same label, and Breathing includes a permanent **Choose a Hale session** action. Select **Start Hale Base**, **Elixir**, **Rest**, or **Flow**, then use the enabled **Start** button in preparation; intentions are optional. A cancellable countdown leads into the session.
+
+The four journeys have illustrated selection cards, durations calculated from their session definitions, separate phase and overall progress, and completion results. Guided instructions sit above the artwork with session progress below it. Starting a session acquires ownership before the Hub closes, so paused falling-block gameplay remains paused throughout the journey; closing the Hub after ending/completing restores play. Portrait and landscape layouts use the same artwork.
 
 ## Rendering ownership and cost
 
 The breathing overlay remains an intentional **classic WebGL2 surface**, compatible with three.js **0.186.1**, under ADR-0008. This does not change the game's theme renderer or the existing dependency pin. There is no second WebGPU renderer to initialize for breathing.
 
-A retained scene replaces twelve separately rebuilt scenes. Two transparent shader planes supply atmosphere and the breathing aperture; GPU particles and a small retained 3D motif complete the scene. Technique changes update uniforms and visibility. There are no external textures, bloom framebuffers, CPU particle-array uploads, or renderer-module imports at menu boot. Analytic glow preserves transparency over the selected game theme.
+A retained scene replaces twelve separately rebuilt scenes. Two transparent shader planes supply atmosphere and the distinct foreground forms; a single GPU particle layer supplies mode-specific movement. The renderer retains exactly three draw objects, geometries and materials. Technique changes update shared uniforms without replacing resources or recompiling materials. There are no external textures, bloom framebuffers, CPU particle-array uploads, or renderer-module imports at menu boot. Analytic glow preserves transparency over the selected game theme.
 
 | Tier | Particle budget | Maximum pixel ratio | Render cadence |
 | --- | ---: | ---: | --- |
@@ -20,7 +37,7 @@ A retained scene replaces twelve separately rebuilt scenes. Two transparent shad
 | Low | 220 | 1 | up to 30 Hz |
 | Minimal | 100 | 0.8 | up to 30 Hz |
 
-Coarse-pointer/small-screen devices default to Low. Reduced motion removes ambient particle/orbit/environment motion while retaining the essential breathing cue. ResizeObserver updates the camera and canvas after viewport changes. Page visibility suspends renderer work; stop and disposal retire frame requests and all nested scene resources. Context loss or WebGL startup failure leaves an animated CSS guide available.
+Coarse-pointer/small-screen devices default to Low. Reduced motion removes ambient particle/form/environment motion while retaining the essential breathing cue. ResizeObserver updates the camera and canvas after viewport changes. Page visibility suspends renderer work; stop and disposal retire frame requests and all nested scene resources. Context loss or WebGL startup failure leaves an animated CSS guide with technique-specific silhouettes available.
 
 ## Behavior repairs
 
@@ -29,7 +46,7 @@ Coarse-pointer/small-screen devices default to Low. Reduced motion removes ambie
 - Grounding uses each session's declared pattern. Retention shows the empty hold. Recovery's inhale, hold, and release fit within its existing duration. Prescribed phase durations and audio assets are retained.
 - Guided sessions own their rhythm. Library controls, keyboard shortcuts, and gamepad cycling cannot replace it; Space returns to session controls.
 - Native session/library controls consume their activation keys without also triggering global shortcuts. Dialogs retain accessible keyboard focus without scrolling their parent surface out of view.
-- Ending a session or leaving Serenity cancels countdowns and stale callbacks. Completion cannot reopen the Hub in another mode. Indicator destruction also removes its sibling progress display.
+- Ending a session, stopping a game mode or activating another mode cancels countdowns, guided audio and stale callbacks. Completion cannot reopen the Hub in another mode. Indicator destruction also removes its sibling progress display.
 
 The session manager's pre-existing programmatic pause/resume restarts the current session phase; this change does not expose a new pause control. The indicator's own pause/resume preserves its breathing position.
 
@@ -39,7 +56,7 @@ The capture runner is `scripts/capture-breathing-overhaul.mjs`. It imports shipp
 
 Validation results are recorded alongside the final capture report. Software Chromium evidence establishes rendering compatibility, composition and bounded work. It does not establish native desktop or physical-phone FPS, and long session audio is covered by lifecycle tests rather than a real-time replay of every full journey.
 
-### Recorded checks
+### First-overhaul checks (historical, before the identity follow-up)
 
 - The twelve-world/four-session matrix captured 153 frames across desktop, portrait and landscape, with no shader/console failures, control overflow, ResizeObserver failures or teardown leaks.
 - After warming every world and switching techniques 26 times, renderer counts remained at 10 geometries, zero textures and four programs. The most complex visible world used six draw calls.
@@ -49,3 +66,10 @@ Validation results are recorded alongside the final capture report. Software Chr
 The matrix's source fingerprints are preserved. Final dialog-layout, copy and timing/input repairs are verified separately with settled UI captures, regression tests and a real-application Vite smoke flow. This distinguishes the artwork/resource evidence from the final interaction evidence.
 
 Final targeted coverage passes **117 tests in nine files**. The settled UI pass captures **69 frames** (23 per viewport), including all four preparation, countdown, active and completion flows. Screenshots and the compact source-provenance report live in [reports/breathing-immersive-overhaul](../reports/breathing-immersive-overhaul/README.md).
+
+
+### Identity and Hale entry follow-up
+
+The new captures and interaction evidence are recorded separately in
+[reports/breathing-identity-and-hale-entry](../reports/breathing-identity-and-hale-entry/README.md).
+The earlier report above preserves the source fingerprints and resource counts of the first overhaul.

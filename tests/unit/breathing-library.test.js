@@ -204,16 +204,27 @@ describe('breathing library accessible selection', () => {
         expect(notice.hidden).toBe(true);
     });
 
-    it('provides a direct route to the active Sessions controls', () => {
+    it('offers Hale session entry before any guided session is running', () => {
+        const tab = tabHarness();
+        const section = tab.createHaleSessionsSection();
+        expect(tab.breathingIndicator.isExternallyControlled).toBeFalsy();
+        expect(section.hidden).not.toBe(true);
+        expect(section.innerHTML).toContain('Start a Hale session');
+        expect(section.innerHTML).toContain('Choose a Hale session');
+        expect(section.innerHTML).toContain('type="button"');
+    });
+
+    it('binds both the permanent Hale entry and active-session return controls', () => {
         const tab = tabHarness();
         tab.hub = { switchTab: vi.fn() };
-        const button = { addEventListener: vi.fn() };
+        const buttons = Array.from({ length: 2 }, () => ({ addEventListener: vi.fn() }));
         tab.container = {
             addEventListener: vi.fn(),
-            querySelector: (selector) => (selector === '.breath-open-sessions' ? button : null),
+            querySelectorAll: (selector) => (selector === '.breath-open-sessions' ? buttons : []),
         };
         tab.attachEventListeners();
-        button.addEventListener.mock.calls[0][1]();
-        expect(tab.hub.switchTab).toHaveBeenCalledWith('sessions');
+        buttons.forEach((button) => button.addEventListener.mock.calls[0][1]());
+        expect(tab.hub.switchTab).toHaveBeenCalledTimes(2);
+        expect(tab.hub.switchTab).toHaveBeenLastCalledWith('sessions');
     });
 });
