@@ -1065,7 +1065,7 @@ Resync chunks (16 KB × window 4) go reliable-immediate, bypassing `_queueSnapsh
 **Depends on:** Phase 3c (tripwire + GPU gate). **Parallelizable** with Phases 5–6. One theme per session (TDR constraint).
 
 ### 7.1 Scope and definition of done *(S)*
-- Descope as permanent WebGL: `renderer.js` (WebGL1 background), `WarpTransitionRenderer.js`, **and the four UI-effect files the old plan never dispositioned** (`threejs-intro-renderer.js`, `CosmicExplorationEffect.js`, `CosmicParticleSystem.js`, `threejs-breathing-renderer.js`) — without this disposition, the "allowlist shrinks to the documented permanent set" exit criterion is unmeasurable. Record in the ADR + tripwire allowlist.
+- Descope as permanent WebGL: `renderer.js` (WebGL1 background), `WarpTransitionRenderer.js`, **and the four UI-effect files the old plan never dispositioned** (`threejs-intro-renderer.js`, `CosmicExplorationEffect.js`, `CosmicParticleSystem.js`; `threejs-breathing-renderer.js` was on this list until 2026-10-05, when breathing was rebuilt as a WebGPU/TSL node scene — see BREATHING_OVERHAUL_2026-10.md) — without this disposition, the "allowlist shrinks to the documented permanent set" exit criterion is unmeasurable. Record in the ADR + tripwire allowlist.
 - **Done =** every theme that constructs a `WebGPURenderer` renders NodeMaterials only, on both backends, with the GLSL twins deleted.
 
 ### 7.2 Retire the 19 GLSL twins *(L)*

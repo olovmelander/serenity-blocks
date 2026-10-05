@@ -2,58 +2,45 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import { BreathingTab } from '../../src/ui/serenity-hub/BreathingTab.js';
+import { BREATH_WORLDS } from '../../src/ui/effects/breathing/breath-catalogue.js';
+import { looseNode, looseWindow, targetMatching } from './helpers/loose-dom.js';
 
-function createNode(tagName = 'DIV') {
-    const classes = new Set();
-    const attributes = new Map();
-    return {
-        tagName: tagName.toUpperCase(),
-        dataset: {},
-        style: { setProperty: vi.fn() },
-        setAttribute: (key, value) => attributes.set(key, value),
-        getAttribute: (key) => attributes.get(key),
-        classList: {
-            add: (name) => classes.add(name),
-            contains: (name) => classes.has(name),
-            toggle: (name, active) => (active ? classes.add(name) : classes.delete(name)),
-        },
+let container;
+let cards;
+let guide;
+let hub;
+let settings;
+let win;
+
+function createTab({ mode = {} } = {}) {
+    hub.serenityMode = {
+        deps: { settingsManager: { get: () => settings, update: vi.fn((patch) => Object.assign(settings, patch)) } },
+        ...mode,
     };
+    return new BreathingTab(hub, guide);
 }
 
-function tabHarness() {
-    const tab = Object.create(BreathingTab.prototype);
-    tab.breathingIndicator = {
-        currentTechnique: 'deep-relaxation',
-        isActive: false,
-        start: vi.fn(() => { tab.breathingIndicator.isActive = true; }),
-        stop: vi.fn(() => { tab.breathingIndicator.isActive = false; }),
-        setTechnique: vi.fn(),
-        setShowText: vi.fn(),
-        techniques: {
-            'deep-relaxation': {
-                name: 'Aurora Dreams',
-                pattern: [5, 2, 7, 2],
-                color: { r: 80, g: 200, b: 255 },
-            },
-            coherence: {
-                name: 'Heart Glow',
-                pattern: [5, 0, 5, 0],
-                color: { r: 255, g: 100, b: 150 },
-            },
-        },
-    };
-    tab.techniques = tab.getTechniques();
-    tab.serenityMode = {
-        _showBreathingIndicator: vi.fn(() => { tab.breathingIndicator.isActive = true; }),
-        _hideBreathingIndicator: vi.fn(() => { tab.breathingIndicator.isActive = false; }),
-        deps: { settingsManager: { update: vi.fn() } },
-    };
-    return tab;
-}
+const hero = (selector) => container.querySelector('.breath-lib__hero').querySelector(selector);
+const click = (matches) => container.fire('click', { target: targetMatching(matches) });
 
 beforeEach(() => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.stubGlobal('document', { createElement: createNode, getElementById: () => null });
+    container = looseNode();
+    cards = BREATH_WORLDS.map((world) => Object.assign(looseNode('button'), { dataset: { techniqueId: world.id } }));
+    container.lists['.breath-world'] = cards;
+    settings = { breathingTechnique: 'calm-sleep', breathingText: false, breathingGuideAutoStart: false };
+    guide = {
+        currentTechnique: 'deep-relaxation',
+        isActive: false,
+        isExternallyControlled: false,
+        start: vi.fn(() => { guide.isActive = true; }),
+        stop: vi.fn(() => { guide.isActive = false; }),
+        setTechnique: vi.fn((id) => { guide.currentTechnique = id; }),
+        setShowText: vi.fn(),
+    };
+    hub = { hide: vi.fn(), switchTab: vi.fn(), releaseGameplay: vi.fn() };
+    win = looseWindow();
+    vi.stubGlobal('window', win);
+    vi.stubGlobal('document', { getElementById: (id) => (id === 'tab-breathing' ? container : null) });
 });
 
 afterEach(() => {
@@ -61,170 +48,115 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-describe('breathing library accessible selection', () => {
-    it('uses a native button with a complete rhythm label and selected state', () => {
-        const tab = tabHarness();
-        const card = tab.createTechniqueCard(tab.techniques[0]);
-        expect(card.tagName).toBe('BUTTON');
-        expect(card.type).toBe('button');
-        expect(card.getAttribute('aria-pressed')).toBe('true');
-        expect(card.getAttribute('aria-label')).toContain('Inhale 5s → Hold 2s → Exhale 7s → Hold 2s');
-        expect(card.innerHTML).toContain('data-world="deep-relaxation"');
-        expect(card.innerHTML).toContain('aria-hidden="true"');
+describe('breathing library', () => {
+    it('features the current world with its rhythm, pace and a button that names it', () => {
+        createTab();
+        expect(hero('.breath-lib__name').textContent).toBe('Aurora Dreams');
+        expect(hero('.breath-lib__eyebrow').textContent).toBe('Unwind · A long out-breath under northern lights.');
+        expect(hero('.breath-rhythm').getAttribute('aria-label')).toBe('Inhale 5s → Hold 2s → Exhale 7s → Rest 2s');
+        expect(hero('.breath-lib__cycle').textContent).toBe('16 s per breath · about 3.8 a minute');
+        expect(hero('.breath-lib__begin').textContent).toBe('Begin Aurora Dreams');
+        expect(hero('.breath-lib__hero-art').style.backgroundImage).toBe("url('./assets/breathing/deep-relaxation.webp')");
+        expect(cards.filter((card) => card.getAttribute('aria-pressed') === 'true').map((card) => card.dataset.techniqueId))
+            .toEqual(['deep-relaxation']);
     });
 
-    it('changes exactly one pressed state and persists selection without replacing buttons', () => {
-        const tab = tabHarness();
-        const cards = tab.techniques.map((technique) => tab.createTechniqueCard(technique));
-        tab.container = { querySelectorAll: vi.fn(() => cards), querySelector: vi.fn(() => null) };
-        tab.selectTechnique('coherence');
-        expect(cards.map((card) => card.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
-        expect(cards.map((card) => card.classList.contains('active'))).toEqual([false, true]);
-        expect(tab.breathingIndicator.setTechnique).toHaveBeenCalledWith('coherence');
-        expect(tab.serenityMode.deps.settingsManager.update).toHaveBeenCalledWith({ breathingTechnique: 'coherence' });
-        tab.selectTechnique('unknown');
-        expect(tab.breathingIndicator.setTechnique).toHaveBeenCalledOnce();
-    });
-
-    it('omits zero-duration holds from the visible rhythm', () => {
-        const tab = tabHarness();
+    it('leaves the phases a rhythm skips out of its description', () => {
+        const tab = createTab();
+        expect(tab.formatPattern([4, 7, 8, 0])).toBe('Inhale 4s → Hold 7s → Exhale 8s');
+        expect(tab.formatPattern([5, 0, 5, 0])).toBe('Inhale 5s → Exhale 5s');
         const rhythm = tab.renderRhythm([5, 0, 5, 0]);
-        expect(rhythm).toContain('data-phase="0"');
-        expect(rhythm).toContain('data-phase="2"');
-        expect(rhythm).not.toContain('data-phase="1"');
-        expect(rhythm).not.toContain('data-phase="3"');
+        expect(rhythm.match(/breath-rhythm__step/g)).toHaveLength(2);
+        expect(rhythm).not.toContain('Hold');
     });
 
-    it.each([' ', 'Enter'])('keeps native %s activation from firing the global guide shortcut', (key) => {
-        const tab = tabHarness();
-        const control = createNode('button');
-        tab.container = {
-            addEventListener: vi.fn(),
-            querySelector: () => null,
-            contains: (node) => node === control,
-        };
-        tab.attachEventListeners();
-        const event = {
-            key,
-            target: { closest: () => control },
-            stopPropagation: vi.fn(),
-            preventDefault: vi.fn(),
-        };
-        tab.interactionKeydownHandler(event);
-        expect(event.stopPropagation).toHaveBeenCalledOnce();
-        expect(event.preventDefault).not.toHaveBeenCalled();
+    it('selects a world: one pressed card, the guide follows, the choice is saved', () => {
+        const tab = createTab();
+        click({ '.breath-world': cards[4] });
+        expect(guide.setTechnique).toHaveBeenLastCalledWith('coherence');
+        expect(tab.serenityMode.deps.settingsManager.update).toHaveBeenLastCalledWith({ breathingTechnique: 'coherence' });
+        expect(cards.filter((card) => card.getAttribute('aria-pressed') === 'true')).toEqual([cards[4]]);
+        expect(hero('.breath-lib__name').textContent).toBe('Heart Glow');
+        tab.selectTechnique('not-a-world');
+        expect(guide.setTechnique).toHaveBeenCalledTimes(1);
     });
 
-    it('refreshes external technique and guide changes within its own container', () => {
-        const tab = tabHarness();
-        const cards = tab.techniques.map((technique) => tab.createTechniqueCard(technique));
-        const toggle = {};
-        const description = {};
-        tab.container = {
-            querySelectorAll: vi.fn(() => cards),
-            querySelector: (selector) => ({
-                '#breathing-guide-toggle': toggle,
-                '.breathing-toggle-section .section-description': description,
-            }[selector] || null),
-        };
-        tab.breathingIndicator.currentTechnique = 'coherence';
-        tab.breathingIndicator.isActive = true;
-        tab.refresh();
-        expect(toggle.checked).toBe(true);
-        expect(cards.map((card) => card.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
-        expect(description.textContent).toContain('Guide is on');
-        expect(tab.serenityMode.deps.settingsManager.update).not.toHaveBeenCalled();
-    });
-
-    it('keeps the guide switch and saved setting consistent', () => {
-        const tab = tabHarness();
-        tab.container = { querySelector: vi.fn(() => null), querySelectorAll: () => [] };
-        tab.toggleBreathingGuide(true);
-        expect(tab.serenityMode._showBreathingIndicator).toHaveBeenCalledOnce();
-        expect(tab.serenityMode.deps.settingsManager.update).toHaveBeenLastCalledWith({ breathingGuideEnabled: true });
-        tab.toggleBreathingGuide(false);
-        expect(tab.serenityMode._hideBreathingIndicator).toHaveBeenCalledOnce();
-        expect(tab.serenityMode.deps.settingsManager.update).toHaveBeenLastCalledWith({ breathingGuideEnabled: false });
-    });
-
-    it('starts and stops directly from the global Hub wrapper and reflects actual state', () => {
-        const tab = tabHarness();
-        delete tab.serenityMode._showBreathingIndicator;
-        delete tab.serenityMode._hideBreathingIndicator;
-        tab.serenityMode._toggleBreathingIndicator = vi.fn();
-        const toggle = {};
-        const description = {};
-        tab.container = {
-            querySelectorAll: () => [],
-            querySelector: (selector) => ({
-                '#breathing-guide-toggle': toggle,
-                '.breathing-toggle-section .section-description': description,
-            }[selector] || null),
-        };
-        tab.toggleBreathingGuide(true);
-        expect(tab.breathingIndicator.start).toHaveBeenCalledOnce();
-        expect(toggle.checked).toBe(true);
+    it('begins through Serenity Mode, closes the Hub so the world has the screen, and saves the state', () => {
+        const show = vi.fn(() => { guide.isActive = true; });
+        const tab = createTab({ mode: { _showBreathingIndicator: show, _hideBreathingIndicator: vi.fn(() => { guide.isActive = false; }) } });
+        click({ '.breath-lib__begin': true });
+        expect(show).toHaveBeenCalledOnce();
+        expect(guide.start).not.toHaveBeenCalled();
         expect(tab.serenityMode.breathingIndicatorActive).toBe(true);
-        expect(description.textContent).toContain('Guide is on');
-        expect(tab.serenityMode.deps.settingsManager.update).toHaveBeenLastCalledWith({ breathingGuideEnabled: true });
-        tab.toggleBreathingGuide(false);
-        expect(tab.breathingIndicator.stop).toHaveBeenCalledOnce();
-        expect(toggle.checked).toBe(false);
-        expect(tab.serenityMode.breathingIndicatorActive).toBe(false);
-        expect(tab.serenityMode.deps.settingsManager.update).toHaveBeenLastCalledWith({ breathingGuideEnabled: false });
-        expect(tab.serenityMode._toggleBreathingIndicator).not.toHaveBeenCalled();
+        expect(settings.breathingGuideEnabled).toBe(true);
+        expect(hub.hide).toHaveBeenCalledOnce();
+        expect(hero('.breath-lib__begin').textContent).toBe('Stop breathing');
+        click({ '.breath-lib__begin': true });
+        expect(tab.serenityMode._hideBreathingIndicator).toHaveBeenCalledOnce();
+        expect(settings.breathingGuideEnabled).toBe(false);
+        expect(hub.releaseGameplay).toHaveBeenCalledOnce();
+        expect(hero('.breath-lib__begin').textContent).toBe('Begin Aurora Dreams');
     });
 
-    it('protects the prescribed guided rhythm and unlocks its controls when the session ends', () => {
-        const tab = tabHarness();
-        tab.breathingIndicator.isExternallyControlled = true;
-        const cards = tab.techniques.map((technique) => tab.createTechniqueCard(technique));
-        const toggle = {};
-        const notice = {};
-        tab.container = {
-            querySelectorAll: () => cards,
-            querySelector: (selector) => ({
-                '#breathing-guide-toggle': toggle,
-                '.breath-guided-session-notice': notice,
-            }[selector] || null),
-        };
+    it('begins directly from another mode with the saved world and wording preference', () => {
+        createTab();
+        click({ '.breath-lib__begin': true });
+        expect(guide.setTechnique).toHaveBeenCalledWith('calm-sleep');
+        expect(guide.setShowText).toHaveBeenCalledWith(false);
+        expect(guide.start).toHaveBeenCalledOnce();
+        expect(hub.hide).toHaveBeenCalledOnce();
+    });
+
+    it('locks its controls while a Hale session owns the rhythm, and unlocks them after', () => {
+        const tab = createTab();
+        guide.isExternallyControlled = true;
+        guide.isActive = true;
         tab.refresh();
+        expect(container.querySelector('.breath-lib__notice').hidden).toBe(false);
+        expect(hero('.breath-lib__begin').disabled).toBe(true);
         expect(cards.every((card) => card.disabled)).toBe(true);
-        expect(toggle.disabled).toBe(true);
-        expect(notice.hidden).toBe(false);
-        tab.selectTechnique('coherence');
-        tab.toggleBreathingGuide(false);
-        expect(tab.breathingIndicator.setTechnique).not.toHaveBeenCalled();
-        expect(tab.serenityMode._hideBreathingIndicator).not.toHaveBeenCalled();
-        expect(tab.serenityMode.deps.settingsManager.update).not.toHaveBeenCalled();
-        tab.breathingIndicator.isExternallyControlled = false;
+        click({ '.breath-world': cards[2] });
+        click({ '.breath-lib__begin': true });
+        expect(guide.setTechnique).not.toHaveBeenCalled();
+        expect(guide.stop).not.toHaveBeenCalled();
+        guide.isExternallyControlled = false;
+        guide.isActive = false;
         tab.refresh();
+        expect(container.querySelector('.breath-lib__notice').hidden).toBe(true);
         expect(cards.every((card) => !card.disabled)).toBe(true);
-        expect(toggle.disabled).toBe(false);
-        expect(notice.hidden).toBe(true);
     });
 
-    it('offers Hale session entry before any guided session is running', () => {
-        const tab = tabHarness();
-        const section = tab.createHaleSessionsSection();
-        expect(tab.breathingIndicator.isExternallyControlled).toBeFalsy();
-        expect(section.hidden).not.toBe(true);
-        expect(section.innerHTML).toContain('Start a Hale session');
-        expect(section.innerHTML).toContain('Choose a Hale session');
-        expect(section.innerHTML).toContain('type="button"');
+    it('opens the Hale sessions from either entry and applies preferences at once', () => {
+        const tab = createTab();
+        click({ '.breath-open-sessions': true });
+        expect(hub.switchTab).toHaveBeenCalledWith('sessions');
+        container.fire('change', { target: { id: 'breathing-text-toggle', checked: true } });
+        expect(guide.setShowText).toHaveBeenLastCalledWith(true);
+        expect(settings.breathingText).toBe(true);
+        container.fire('change', { target: { id: 'breathing-auto-start', checked: true } });
+        expect(settings.breathingGuideAutoStart).toBe(true);
+        expect(tab.serenityMode.deps.settingsManager.update).toHaveBeenCalledTimes(2);
     });
 
-    it('binds both the permanent Hale entry and active-session return controls', () => {
-        const tab = tabHarness();
-        tab.hub = { switchTab: vi.fn() };
-        const buttons = Array.from({ length: 2 }, () => ({ addEventListener: vi.fn() }));
-        tab.container = {
-            addEventListener: vi.fn(),
-            querySelectorAll: (selector) => (selector === '.breath-open-sessions' ? buttons : []),
-        };
-        tab.attachEventListeners();
-        buttons.forEach((button) => button.addEventListener.mock.calls[0][1]());
-        expect(tab.hub.switchTab).toHaveBeenCalledTimes(2);
-        expect(tab.hub.switchTab).toHaveBeenLastCalledWith('sessions');
+    it('follows changes the guide makes on its own and stops listening when destroyed', () => {
+        const tab = createTab();
+        guide.currentTechnique = 'zen-garden';
+        win.dispatchEvent({ type: 'breathingTechniqueChange', detail: { id: 'zen-garden' } });
+        expect(hero('.breath-lib__name').textContent).toBe('Zen Garden');
+        guide.isActive = true;
+        win.dispatchEvent({ type: 'breathingGuideChange', detail: { active: true } });
+        expect(hero('.breath-lib__begin').textContent).toBe('Stop breathing');
+        tab.destroy();
+        expect(win.listenerCount('breathingGuideChange')).toBe(0);
+        expect(container.listenerCount('click')).toBe(0);
+        expect(() => tab.refresh()).not.toThrow();
+    });
+
+    it('keeps native activation keys away from the mode\'s global shortcuts', () => {
+        createTab();
+        const onButton = container.fire('keydown', { key: ' ', target: targetMatching({ 'button': true }) });
+        expect(onButton.stopped).toBe(true);
+        const elsewhere = container.fire('keydown', { key: ' ', target: targetMatching({}) });
+        expect(elsewhere.stopped).toBeUndefined();
     });
 });

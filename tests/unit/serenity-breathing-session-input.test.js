@@ -7,6 +7,7 @@ vi.mock('../../src/ui/serenity-hub/SerenityHub.js', () => ({ SerenityHub: class 
 
 import { SerenityMode } from '../../src/core/game-modes/SerenityMode.js';
 import { SessionsTab } from '../../src/ui/serenity-hub/SessionsTab.js';
+import { looseNode } from './helpers/loose-dom.js';
 
 let mode;
 let indicator;
@@ -47,32 +48,17 @@ afterEach(() => {
 });
 
 function attachSessionsTab() {
-    const element = () => ({
-        style: {},
-        dataset: {},
-        classList: { add: vi.fn(), remove: vi.fn() },
-        querySelector: vi.fn(() => null),
-    });
-    const overlay = element();
-    const preparation = element();
-    preparation.style.display = 'flex';
-    const countdownOverlay = element();
-    const countdownNumber = element();
-    const nodes = {
-        '.active-session-overlay': overlay,
-        '.session-prep-overlay': preparation,
-        '.session-countdown-overlay': countdownOverlay,
-        '.countdown-number': countdownNumber,
-    };
     const manager = { startSession: vi.fn(), stopSession: vi.fn() };
-    mode.serenityHub.panel = element();
+    const flow = looseNode();
+    flow.hidden = true;
     const tab = Object.assign(Object.create(SessionsTab.prototype), {
         hub: mode.serenityHub,
         sessionManager: manager,
-        container: { querySelector: (selector) => nodes[selector] || null },
-        SESSION_INFO: { BASE: { name: 'Hale Base' } },
+        container: looseNode(),
+        flow,
         active: false,
         destroyed: false,
+        voiceGuidance: true,
         pendingTimers: new Map(),
         countdownGeneration: 0,
         sessionGeneration: 0,
@@ -81,7 +67,7 @@ function attachSessionsTab() {
     mode.serenityHub.hide = vi.fn();
     mode.serenityHub.sessionsTab = tab;
     mode.serenityHub.sessionManager = manager;
-    return { tab, manager, preparation, countdownOverlay };
+    return { tab, manager, flow };
 }
 
 function expectSessionUntouched() {
@@ -191,18 +177,49 @@ describe('Serenity mode exit cancels guided journeys', () => {
     });
 
     it('settles pending countdown waits and prevents late session startup', async () => {
-        const { tab, manager, preparation, countdownOverlay } = attachSessionsTab();
+        const { tab, manager, flow } = attachSessionsTab();
         const countdown = tab.startCountdown();
         await vi.advanceTimersByTimeAsync(10);
-        expect(countdownOverlay.style.display).toBe('flex');
+        expect(flow.hidden).toBe(false);
+        expect(flow.dataset.step).toBe('countdown');
         await mode.onStop();
         await countdown;
         await vi.advanceTimersByTimeAsync(5000);
         expect(manager.startSession).not.toHaveBeenCalled();
         expect(tab.pendingSessionId).toBeNull();
-        expect(preparation.style.display).toBe('none');
-        expect(countdownOverlay.style.display).toBe('none');
+        expect(flow.hidden).toBe(true);
+        expect(mode.serenityHub.show).not.toHaveBeenCalled();
         expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('begins breathing with the mode only when the player asked for that', async () => {
+        indicator.isExternallyControlled = false;
+        indicator.isActive = false;
+        mode.isActive = true;
+        mode._ensureMusicPlaying = vi.fn();
+        mode._setupKeyboardControls = vi.fn();
+        mode._setupCursorAutoHide = vi.fn();
+        mode._setupInteractiveEffects = vi.fn();
+        mode.serenityHub.setMode = vi.fn();
+        window.serenityBlocks = { serenityHub: mode.serenityHub };
+        await mode.onStart();
+        expect(indicator.start).not.toHaveBeenCalled();
+        settingsManager.get.mockReturnValue({ breathingTechnique: 'coherence', breathingText: false, breathingGuideAutoStart: true });
+        await mode.onStart();
+        expect(indicator.setTechnique).toHaveBeenLastCalledWith('coherence');
+        expect(indicator.setShowText).toHaveBeenLastCalledWith(false);
+        expect(indicator.start).toHaveBeenCalledOnce();
+        expect(mode.breathingIndicatorActive).toBe(true);
+    });
+
+    it('keeps its flag and the saved preference in step when the guide ends itself', () => {
+        mode.breathingIndicatorActive = true;
+        mode.onBreathingGuideChange(false);
+        expect(mode.breathingIndicatorActive).toBe(false);
+        expect(settingsManager.update).toHaveBeenLastCalledWith({ breathingGuideEnabled: false });
+        settingsManager.update.mockClear();
+        mode.onBreathingGuideChange(false);
+        expect(settingsManager.update).not.toHaveBeenCalled();
     });
 
     it('stops a manager when the Sessions tab has not been created', async () => {

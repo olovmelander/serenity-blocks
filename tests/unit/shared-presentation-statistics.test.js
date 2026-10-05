@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PerformanceMonitor } from '../../src/utils/performance-monitor.js';
-import { EnhancedBreathingIndicator } from '../../src/ui/effects/enhanced-breathing-indicator.js';
+import { BreathingGuide } from '../../src/ui/effects/breathing/breathing-guide.js';
+import { getBreathWorld } from '../../src/ui/effects/breathing/breath-catalogue.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -78,85 +79,95 @@ function node() {
     return element;
 }
 
-function progressIndicator() {
-    const indicator = Object.create(EnhancedBreathingIndicator.prototype);
-    const dots = Array.from({ length: 20 }, () => Object.assign(node(), { dataset: { group: '1' } }));
-    Object.assign(indicator, {
-        progressContainer: node(), roundIndicator: node(), progressBarFill: node(),
-        breathDotsContainer: { querySelectorAll: vi.fn(() => dots) },
-        _progressState: { visible: true, totalBreaths: 20, currentBreath: 0 },
+/** A guide with write-counting nodes in place of its DOM: only the presentation paths run. */
+function presentationGuide() {
+    const guide = Object.create(BreathingGuide.prototype);
+    Object.assign(guide, {
+        _presentation: new WeakMap(),
+        root: node(),
+        phaseWord: node(),
+        count: node(),
+        hint: node(),
+        eyebrow: node(),
+        journeyStage: node(),
+        journeyDetail: node(),
+        journeyRemaining: node(),
+        journeyTrack: Object.assign(node(), { attributes: [], setAttribute(key, value) { this.attributes.push([key, value]); } }),
+        segments: Array.from({ length: 4 }, () => ({ segment: node(), fill: node() })),
+        world: getBreathWorld('deep-relaxation'),
+        sessionPhase: null,
+        isExternallyControlled: true,
+        _progressVisible: true,
+        _progress: {},
     });
-    return { indicator, dots };
+    guide._journeyMarks = Array.from({ length: 3 }, () => {
+        const fill = node();
+        return Object.assign(node(), { firstChild: fill });
+    });
+    return guide;
 }
 
-const progress = { round: 1, totalRounds: 3, totalBreaths: 20, breathCount: 4, sessionProgress: 0.3, sessionColor: { r: 100, g: 200, b: 255 } };
+const everyNode = (guide) => [
+    guide.root, guide.phaseWord, guide.count, guide.hint, guide.eyebrow, guide.journeyStage, guide.journeyDetail,
+    guide.journeyRemaining, ...guide.segments.flatMap(({ segment, fill }) => [segment, fill]),
+    ...guide._journeyMarks.flatMap((mark) => [mark, mark.firstChild]),
+];
+const writeCount = (guide) => everyNode(guide).reduce((sum, el) => sum + el.writes.length, 0);
+
+const progress = {
+    sessionName: 'Hale Base', phase: 'active', phaseIndex: 2, phaseProgress: 0.3, round: 1, totalRounds: 3,
+    totalBreaths: 20, breathCount: 4, remainingTime: 90, sessionProgress: 0.3, sessionRemaining: 600,
+};
 
 describe('breathing presentation retains identical state', () => {
-    it('writes unchanged progress once and updates only the affected breath dots', () => {
-        const { indicator, dots } = progressIndicator();
-        indicator.updateProgress(progress);
-        const writes = [...dots, indicator.roundIndicator, indicator.progressBarFill].map((el) => el.writes.length);
-        for (let i = 0; i < 100; i++) indicator.updateProgress(progress);
-        expect([...dots, indicator.roundIndicator, indicator.progressBarFill].map((el) => el.writes.length)).toEqual(writes);
-        expect(indicator.breathDotsContainer.querySelectorAll).toHaveBeenCalledTimes(1);
-        indicator.updateProgress({ breathCount: 5 });
-        expect(dots[4].style.background).toBe('rgba(255, 255, 255, 0.9)');
-        expect(dots[5].style.transform).toBe('scale(1.2)');
-        expect(dots[0].writes.length).toBe(writes[0]);
-        expect(indicator.roundIndicator.textContent).toBe('ROUND 1/3');
-        expect(indicator.progressBarFill.style.transform).toBe('scaleX(0.3)');
+    it('writes an unchanged frame once: a hold costs no DOM work', () => {
+        const guide = presentationGuide();
+        guide._render(1, 0.4, 1, 3.2);
+        const first = writeCount(guide);
+        expect(first).toBeGreaterThan(0);
+        for (let i = 0; i < 240; i++) guide._render(1, 0.4, 1, 3.2);
+        expect(writeCount(guide)).toBe(first);
+        // Only what moved is written: the fill of the current segment.
+        guide._render(1, 0.45, 1, 3.1);
+        expect(writeCount(guide)).toBe(first + 1);
+        expect(guide.segments[1].fill.style.transform).toBe('scaleX(0.4500)');
+        guide._render(1, 0.9, 1, 2.9);
+        expect(guide.count.textContent).toBe('3');
     });
 
-    it('retains hidden progress and catches up on show without repeated hidden writes', () => {
-        const { indicator, dots } = progressIndicator();
-        indicator.showProgress(false);
-        for (let i = 0; i < 100; i++) indicator.updateProgress({ ...progress, round: 2, breathCount: 8, sessionProgress: 0.7 });
-        expect(indicator.roundIndicator.writes).toHaveLength(0);
-        expect(indicator.progressBarFill.writes).toHaveLength(0);
-        expect(indicator.breathDotsContainer.querySelectorAll).not.toHaveBeenCalled();
-        indicator.showProgress(true);
-        expect(indicator.roundIndicator.textContent).toBe('ROUND 2/3');
-        expect(indicator.progressBarFill.style.transform).toBe('scaleX(0.7)');
-        expect(dots[8].style.transform).toBe('scale(1.2)');
-    });
-
-    it('retains ring and color values during holds, but follows every changing inhale value', () => {
-        const indicator = Object.create(EnhancedBreathingIndicator.prototype);
-        Object.assign(indicator, {
-            outerRing: node(), middleRing: node(), innerRing: node(), coreCircle: node(), indicator: node(),
-            currentPhase: 'hold1', technique: { color: { r: 100, g: 200, b: 255 } },
-        });
-        indicator._updateRings(1);
-        indicator._updateColors(0);
-        const elements = [indicator.outerRing, indicator.middleRing, indicator.innerRing, indicator.coreCircle, indicator.indicator];
-        const writes = elements.map((el) => el.writes.length);
-        for (let i = 0; i < 240; i++) { indicator._updateRings(1); indicator._updateColors(i / 240); }
-        expect(elements.map((el) => el.writes.length)).toEqual(writes);
-        indicator.currentPhase = 'inhale';
+    it('follows every changing value through an inhale', () => {
+        const guide = presentationGuide();
         for (const value of [0, 0.3, 0.9, 1]) {
-            indicator._updateRings(value);
-            indicator._updateColors(value);
-            const scale = 0.68 + value * 0.32;
-            expect(indicator.outerRing.style.transform).toBe(`translate(-50%, -50%) scale(${scale.toFixed(4)})`);
-            expect(indicator.indicator.style['--breath-brightness']).toBe(String(0.7 + value * 0.3));
+            guide._render(0, value, value, 5 * (1 - value));
+            expect(guide.root.style['--breath']).toBe(value.toFixed(4));
+            expect(guide.segments[0].fill.style.transform).toBe(`scaleX(${value.toFixed(4)})`);
         }
-        indicator.technique.color.r = 99;
-        indicator._updateColors(1);
-        expect(indicator.indicator.style['--breath-color-r']).toBe('99');
+        expect(guide.phaseWord.textContent).toBe('Breathe in');
+        expect(guide.hint.textContent).toBe('Lift the lights');
     });
 
-    it('new dot geometry invalidates retained breath states even if the count is unchanged', () => {
-        const { indicator } = progressIndicator();
-        const children = [];
-        indicator.breathDotsContainer = { innerHTML: '', appendChild: (el) => children.push(el) };
-        vi.stubGlobal('document', { createElement: () => node() });
-        try {
-            indicator._createBreathDots(40);
-            indicator._updateBreathDots(4);
-            expect(children[2].style.transform).toBe('scale(1.2)');
-            indicator._createBreathDots(20);
-            indicator._updateBreathDots(4);
-            expect(children[24].style.transform).toBe('scale(1.2)');
-        } finally { vi.unstubAllGlobals(); }
+    it('writes unchanged session progress once and moves only the current stage', () => {
+        const guide = presentationGuide();
+        guide.updateProgress(progress);
+        const first = writeCount(guide);
+        for (let i = 0; i < 100; i++) guide.updateProgress(progress);
+        expect(writeCount(guide)).toBe(first);
+        expect(guide.journeyTrack.attributes).toEqual([['aria-valuenow', '30']]);
+        guide.updateProgress({ phaseProgress: 0.35 });
+        expect(writeCount(guide)).toBe(first + 1);
+        expect(guide._journeyMarks[1].firstChild.style.transform).toBe('scaleX(0.3500)');
+        expect(guide.journeyDetail.textContent).toBe('Breath 5 of 20');
+    });
+
+    it('retains hidden progress and catches up on show without hidden writes', () => {
+        const guide = presentationGuide();
+        guide.journey = { hidden: false };
+        guide.showProgress(false);
+        for (let i = 0; i < 100; i++) guide.updateProgress({ ...progress, round: 2, breathCount: 8 });
+        expect(writeCount(guide)).toBe(0);
+        guide.showProgress(true);
+        expect(guide.eyebrow.textContent).toBe('Hale Base · Round 2 of 3');
+        expect(guide.journeyDetail.textContent).toBe('Breath 9 of 20');
+        expect(guide.journey.hidden).toBe(false);
     });
 });

@@ -1,298 +1,260 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SessionsTab } from '../../src/ui/serenity-hub/SessionsTab.js';
+import {
+    afterEach, beforeEach, describe, expect, it, vi,
+} from 'vitest';
+import { HALE_SESSIONS, SessionsTab } from '../../src/ui/serenity-hub/SessionsTab.js';
+import { BreathworkSessionManager } from '../../src/ui/effects/breathwork-session-manager.js';
+import { looseNode, looseWindow, targetMatching } from './helpers/loose-dom.js';
 
-function node(children = {}) {
-    const attributes = new Map();
-    return {
-        style: {}, dataset: {}, textContent: '', innerHTML: '', className: '',
-        classList: { add: vi.fn(), remove: vi.fn(), toggle: vi.fn(), contains: () => false },
-        querySelector: (selector) => children[selector] || null,
-        querySelectorAll: () => [],
-        setAttribute: (key, value) => attributes.set(key, value),
-        getAttribute: (key) => attributes.get(key),
-        removeAttribute: (key) => attributes.delete(key),
-        addEventListener: vi.fn(), focus: vi.fn(), contains: vi.fn(() => true),
+let container;
+let hub;
+let manager;
+let tab;
+let stored;
+
+const flow = (selector) => tab.flow.querySelector(selector);
+const clickFlow = (matches) => tab.flow.fire('click', { target: targetMatching(matches) });
+const keyFlow = (key) => tab.flow.fire('keydown', { key, target: targetMatching({}) });
+
+beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    stored = new Map();
+    vi.stubGlobal('Audio', class {
+        constructor() {
+            this.pause = vi.fn();
+            this.play = vi.fn().mockResolvedValue();
+            this.load = vi.fn();
+        }
+    });
+    vi.stubGlobal('window', looseWindow({
+        localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
+    }));
+    const body = looseNode('body');
+    vi.stubGlobal('document', { body, createElement: (tag) => looseNode(tag), activeElement: null });
+    container = looseNode();
+    manager = new BreathworkSessionManager({});
+    manager.startSession = vi.fn();
+    manager.stopSession = vi.fn();
+    manager.audioManager.setEnabled = vi.fn();
+    manager.audioManager.playVoice = vi.fn();
+    hub = {
+        panel: { querySelector: () => container },
+        hide: vi.fn(),
+        show: vi.fn(),
+        switchTab: vi.fn(),
+        releaseGameplay: vi.fn(),
+        breathingTab: { refresh: vi.fn() },
     };
-}
-
-const instances = [];
-afterEach(() => {
-    instances.splice(0).forEach((tab) => tab.destroy());
-    vi.restoreAllMocks();
-    vi.useRealTimers();
+    tab = new SessionsTab(hub, manager);
 });
 
-function harness() {
-    const labels = ['session-name', 'session-round', 'phase-timer', 'phase-label',
-        'progress-fill', 'breath-counter', 'breath-current', 'breath-total',
-        'phase-fill', 'guidance-main', 'guidance-sub', 'session-percent', 'phase-progress-bar'];
-    const hudNodes = Object.fromEntries(labels.map((label) => [`.${label}`, node()]));
-    const hud = node(hudNodes);
-    const overlay = node({ '.session-hud': hud });
-    const completionNodes = Object.fromEntries(['completion-art', 'completion-session-name',
-        'completion-duration', 'completion-rounds', 'completion-intention', 'completion-close-btn']
-        .map((label) => [`.${label}`, node()]));
-    const completion = node(completionNodes);
-    const startButton = node();
-    startButton.dataset.session = 'BASE';
-    const container = node({
-        '.active-session-overlay': overlay,
-        '.session-completion-overlay': completion,
-        '.completion-close-btn': completionNodes['.completion-close-btn'],
-    });
-    container.querySelectorAll = (selector) => (selector === '.start-session-btn' ? [startButton] : []);
-    const hubScroll = node();
-    const hub = {
-        panel: { querySelector: (selector) => (selector === '.hub-tab-content' ? hubScroll : container) },
-        hide: vi.fn(), show: vi.fn(), switchTab: vi.fn(),
-    };
-    const manager = {
-        startSession: vi.fn(), stopSession: vi.fn(),
-        SESSIONS: { BASE: { totalRounds: 3, phases: [
-            { type: 'grounding', duration: 180 },
-            { type: 'active', pattern: [4, 0, 4, 0], breaths: 30 },
-            { type: 'retention', duration: 120 },
-            { type: 'recovery', duration: 15 },
-            { type: 'integration', duration: 300 },
-        ] } },
-    };
-    const tab = new SessionsTab(hub, manager);
-    instances.push(tab);
-    return { tab, hub, hubScroll, manager, container, hudNodes, completion, completionNodes, startButton };
-}
+afterEach(() => {
+    tab.destroy();
+    manager.destroy();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+});
 
-describe('guided breathwork presentation contracts', () => {
-    it('shows duration and pause length from the practice the manager actually runs', () => {
-        const { tab, container } = harness();
-        // 180 + (8 × 30) + 120 + 15 + 300 = 855 seconds, rounded up for the catalogue.
-        expect(tab.getSessionDetails('BASE')).toMatchObject({ duration: '15 min', rounds: 3, maxHold: '2 min' });
-        expect(container.innerHTML).toContain('15 min');
-        expect(tab.getSessionDetails('UNKNOWN')).toBeNull();
-    });
-
-    it('clearly names all four start actions and keeps intentions optional', () => {
-        const { container } = harness();
-        ['Hale Base', 'Hale Elixir', 'Hale Rest', 'Hale Flow'].forEach((name) => {
-            expect(container.innerHTML).toContain(`Start ${name}`);
+describe('Hale session facts', () => {
+    it('reads length, holds and breaths from the practice the manager actually runs', () => {
+        const base = tab.getSessionDetails('BASE');
+        expect(base).toMatchObject({
+            name: 'Hale Base', duration: '26 min', rounds: 3, maxHold: '2 min', breaths: 110,
         });
-        expect(container.innerHTML).toContain('Intentions are optional');
-        expect(container.innerHTML).toContain('class="prep-begin-btn"');
-        expect(container.innerHTML).not.toContain('class="prep-begin-btn" disabled');
-        expect(container.innerHTML).not.toContain('prep-skip-btn');
-        // Starting is available before optional choices, including the stacked phone layout.
-        expect(container.innerHTML.indexOf('class="prep-begin-btn"'))
-            .toBeLessThan(container.innerHTML.indexOf('class="prep-choices"'));
-    });
-
-    it('starts the prepared Hale journey without requiring an intention first', async () => {
-        vi.useFakeTimers();
-        const { tab, container, manager } = harness();
-        const countdown = node();
-        const number = node();
-        const query = container.querySelector;
-        container.querySelector = (selector) => ({
-            '.session-countdown-overlay': countdown,
-            '.countdown-number': number,
-        }[selector] || query(selector));
-        tab.pendingSessionId = 'BASE';
-        tab.selectedIntention = null;
-        const sequence = tab.startCountdown();
-        expect(tab.selectedIntention).toMatchObject({ id: 'none' });
-        await vi.advanceTimersByTimeAsync(5000);
-        await sequence;
-        expect(manager.startSession).toHaveBeenCalledWith('BASE', expect.any(Function), expect.any(Function));
-        expect(countdown.style.display).toBe('none');
-    });
-
-    it('acquires the guided session before hiding the Hub to retain gameplay pause', () => {
-        const { tab, hub, manager } = harness();
-        manager.startSession.mockImplementation(() => { manager.activeSession = { name: 'Hale Base' }; });
-        hub.hide.mockImplementation(() => { expect(manager.activeSession).toBeTruthy(); });
-        tab.startSession('BASE');
-        expect(manager.startSession.mock.invocationCallOrder[0]).toBeLessThan(hub.hide.mock.invocationCallOrder[0]);
-    });
-
-    it('opens the selected practice when the click originates on a nested arrow', () => {
-        const { tab, startButton } = harness();
-        const handler = startButton.addEventListener.mock.calls.find(([name]) => name === 'click')[1];
-        const open = vi.spyOn(tab, 'showPrepScreen').mockImplementation(() => {});
-        handler({ currentTarget: startButton, target: { dataset: {} } });
-        expect(open).toHaveBeenCalledWith('BASE');
-    });
-
-    it('separates phase time from overall journey progress', () => {
-        const { tab, hudNodes } = harness();
-        tab.setActive(true);
-        tab.updateHUD({
-            sessionId: 'BASE', phase: 'retention', phaseLabel: 'Hold',
-            phaseIndex: 3, totalPhases: 5, round: 1, totalRounds: 3,
-            phaseProgress: 0.75, sessionProgress: 0.4, remainingTime: 30,
-            prompt: 'Find stillness', subPrompt: '',
+        expect(base.seconds).toBe(180 + 240 + 60 + 15 + 280 + 90 + 15 + 240 + 120 + 15 + 300);
+        expect(base.stages).toHaveLength(11);
+        expect(base.stages[1]).toEqual({
+            type: 'active', round: 1, seconds: 240, breaths: 30,
         });
-        expect(hudNodes['.progress-fill'].style.strokeDashoffset).toBe(String(283 * 0.25));
-        expect(hudNodes['.phase-fill'].style.transform).toBe('scaleX(0.4)');
-        expect(hudNodes['.session-percent'].textContent).toBe('40%');
-        expect(hudNodes['.phase-progress-bar'].getAttribute('aria-valuenow')).toBe('40');
-        expect(hudNodes['.phase-timer'].textContent).toBe('0:30');
+        expect(base.poster).toBe('./assets/breathing/ocean-breath.webp');
+        expect(tab.getSessionDetails('REST').maxHold).toBe('30 sec');
+        expect(tab.getSessionDetails('ELIXIR').poster).toBe('./assets/breathing/wim-hof.webp');
+        expect(tab.getSessionDetails('NOPE')).toBeNull();
     });
 
-    it('returns to a visible completion result after a natural finish', () => {
-        const { tab, hub, hubScroll, manager, completion, completionNodes } = harness();
-        hubScroll.scrollTop = 306;
-        completion.scrollTop = 73;
-        tab.selectedIntention = { id: 'calm', label: 'Find Calm' };
-        tab.startSession('BASE');
-        const complete = manager.startSession.mock.calls[0][2];
-        complete({ sessionName: 'Hale Base', totalDuration: 855, rounds: 3, completed: true });
-        expect(completion.style.display).toBe('flex');
-        expect(completionNodes['.completion-duration'].textContent).toBe('14:15');
-        expect(completionNodes['.completion-intention'].textContent).toBe('You arrived with: Find Calm');
+    it('never shows NaN when a session definition is incomplete', () => {
+        manager.SESSIONS.BASE = { totalRounds: 3, phases: [{ type: 'grounding' }, { type: 'retention', duration: 45 }] };
+        expect(tab.getSessionDetails('BASE')).toMatchObject({ duration: '1 min', maxHold: '45 sec', breaths: 0 });
+        manager.SESSIONS.BASE = undefined;
+        expect(tab.getSessionDetails('BASE')).toMatchObject({ duration: '1 min', maxHold: 'no holds', rounds: 3 });
+    });
+
+    it('names all four sessions and a way to begin each', () => {
+        expect(Object.keys(HALE_SESSIONS)).toEqual(['BASE', 'ELIXIR', 'REST', 'FLOW']);
+        Object.entries(HALE_SESSIONS).forEach(([id, info]) => {
+            expect(container.innerHTML).toContain(`data-session="${id}"`);
+            expect(container.innerHTML).toContain(`Begin ${info.name}`);
+        });
+    });
+});
+
+describe('Hale session flow', () => {
+    it('opens preparation as its own surface: the Hub steps aside but nothing starts yet', () => {
+        container.fire('click', { target: targetMatching({ '.hale-card__begin': { dataset: { session: 'FLOW' } } }) });
+        expect(tab.flowOpen).toBe(true);
+        expect(tab.step).toBe('prepare');
+        expect(tab.flow.dataset.session).toBe('FLOW');
+        expect(flow('.hale-flow__name').textContent).toBe('Hale Flow');
+        expect(flow('.hale-flow__facts').textContent).toBe('25 min · Moderate · Box breathing');
+        expect(flow('.hale-flow__rounds').innerHTML).toContain('<b>Round 2</b> 15 breaths · hold 0:40 · recover');
+        expect(flow('.hale-flow__rounds').innerHTML).toContain('<b>Arrive</b> 2:00 of slow breathing');
+        expect(flow('.hale-flow__track').innerHTML.match(/<i /g)).toHaveLength(11);
+        expect(flow('.hale-flow__begin').disabled).toBe(false);
+        expect(hub.hide).toHaveBeenCalledOnce();
+        expect(manager.startSession).not.toHaveBeenCalled();
+    });
+
+    it('keeps the intention optional: choosing speaks it, choosing again clears it', () => {
+        tab.showPrepScreen('BASE');
+        const calm = Object.assign(looseNode('button'), { dataset: { intention: 'calm' } });
+        tab.flow.lists['.hale-flow__intention'] = [calm];
+        clickFlow({ '.hale-flow__intention': calm });
+        expect(tab.selectedIntention.label).toBe('Find calm');
+        expect(calm.getAttribute('aria-pressed')).toBe('true');
+        expect(manager.audioManager.playVoice).toHaveBeenCalledWith('intentions/base_calm.wav');
+        expect(flow('.hale-flow__begin').getAttribute('aria-label')).toBe('Begin Hale Base with intention: Find calm');
+        clickFlow({ '.hale-flow__intention': calm });
+        expect(tab.selectedIntention).toBeNull();
+        expect(calm.getAttribute('aria-pressed')).toBe('false');
+        expect(manager.audioManager.playVoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('counts down, then hands the session to the manager with the voice preference', async () => {
+        tab.showPrepScreen('REST');
+        tab.flow.querySelector('.hale-flow__voice').fire('change', { target: { checked: false } });
+        clickFlow({ '.hale-flow__begin': true });
+        expect(tab.step).toBe('countdown');
+        expect(flow('.hale-flow__number').textContent).toBe('3');
+        expect(flow('.hale-flow__intent').textContent).toBe('Nothing to achieve. Just be here.');
+        await vi.advanceTimersByTimeAsync(2100);
+        expect(flow('.hale-flow__number').textContent).toBe('1');
+        expect(manager.startSession).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(manager.startSession).toHaveBeenCalledOnce();
+        expect(manager.startSession.mock.calls[0][0]).toBe('REST');
+        expect(manager.audioManager.setEnabled).toHaveBeenLastCalledWith(false);
+        expect(tab.flowOpen).toBe(false);
+        expect(hub.hide).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns from the countdown to preparation, and from preparation to the catalogue', async () => {
+        tab.showPrepScreen('BASE');
+        const countdown = tab.startCountdown();
+        await vi.advanceTimersByTimeAsync(500);
+        const escape = keyFlow('Escape');
+        await countdown;
+        expect(escape.defaultPrevented).toBe(true);
+        expect(tab.step).toBe('prepare');
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(manager.startSession).not.toHaveBeenCalled();
+        keyFlow('Escape');
+        expect(tab.flowOpen).toBe(false);
+        expect(tab.pendingSessionId).toBeNull();
         expect(hub.switchTab).toHaveBeenCalledWith('sessions');
         expect(hub.show).toHaveBeenCalledOnce();
-        expect(completionNodes['.completion-close-btn'].focus).toHaveBeenCalledWith({ preventScroll: true });
-        expect(hubScroll.scrollTop).toBe(0);
-        expect(completion.scrollTop).toBe(0);
     });
 
-    it.each(['.prep-close-btn', '.countdown-cancel-btn'])(
-        'keeps %s focus from moving the dialog outside the Hub viewport',
-        (selector) => {
-            const { tab, hubScroll } = harness();
-            const control = node();
-            const overlay = node({ [selector]: control });
-            hubScroll.scrollTop = 306;
-            overlay.scrollTop = 92;
-            tab.focusDialog(overlay, selector);
-            expect(hubScroll.scrollTop).toBe(0);
-            expect(overlay.scrollTop).toBe(0);
-            expect(control.focus).toHaveBeenCalledWith({ preventScroll: true });
-        },
-    );
-
-    it('does not show a result for manual cancellation or a callback after destruction', () => {
-        const { tab, hub, manager, completion } = harness();
+    it('shows a result after a natural finish, counts it, and resumes play when dismissed', () => {
+        tab.showPrepScreen('BASE');
+        tab.selectIntention('ground', 'BASE');
         tab.startSession('BASE');
-        const complete = manager.startSession.mock.calls[0][2];
-        tab.stopSession();
-        complete({ sessionName: 'Hale Base', totalDuration: 855, rounds: 3, completed: true });
-        expect(hub.show).not.toHaveBeenCalled();
-        expect(completion.style.display).not.toBe('flex');
-        tab.destroy();
-        complete({ sessionName: 'Hale Base', totalDuration: 855, rounds: 3, completed: true });
-        expect(hub.show).not.toHaveBeenCalled();
+        const finish = manager.startSession.mock.calls[0][2];
+        // The guide has already stopped here; the session still holds the screen for its result.
+        expect(tab.holdsScreen).toBe(true);
+        tab.showStep(null);
+        expect(tab.holdsScreen).toBe(true);
+        finish({ sessionName: 'Hale Base', totalDuration: 1555, rounds: 3 });
+        expect(tab.step).toBe('complete');
+        expect(flow('.hale-flow__done-name').textContent).toBe('Hale Base');
+        expect(flow('.hale-flow__stats').innerHTML).toContain('<dd>25:55</dd>');
+        expect(flow('.hale-flow__stats').innerHTML).toContain('<dd>110</dd>');
+        expect(flow('.hale-flow__closing').textContent).toContain('You arrived with: Ground myself.');
+        expect(JSON.parse(stored.get('serenity.haleSessions'))).toMatchObject({ count: 1, seconds: 1555, last: { id: 'BASE' } });
+        expect(hub.releaseGameplay).not.toHaveBeenCalled();
+        clickFlow({ '.hale-flow__finish': true });
+        expect(tab.flowOpen).toBe(false);
+        expect(tab.holdsScreen).toBe(false);
+        expect(hub.releaseGameplay).toHaveBeenCalledOnce();
+        tab.setActive(true);
+        expect(container.querySelector('.hale__practice').textContent).toBe('1 session completed · 26 min of practice · last: Hale Base');
     });
 
-    it('clears active and pending session surfaces without late results or focus after a mode change', async () => {
-        vi.useFakeTimers();
-        const { tab, hub, container, manager, completion, completionNodes } = harness();
-        const prep = node();
-        const countdown = node();
-        const query = container.querySelector;
-        container.querySelector = (selector) => ({
-            '.session-prep-overlay': prep,
-            '.session-countdown-overlay': countdown,
-        }[selector] || query(selector));
+    it('offers the same session again from its result', () => {
+        tab.startSession('FLOW');
+        manager.startSession.mock.calls[0][2]({ sessionName: 'Hale Flow', totalDuration: 900, rounds: 3 });
+        clickFlow({ '.hale-flow__again': true });
+        expect(tab.step).toBe('prepare');
+        expect(tab.pendingSessionId).toBe('FLOW');
+    });
+
+    it('ends without a result when the player stops, and ignores the old session\'s late callbacks', () => {
         tab.startSession('BASE');
-        const complete = manager.startSession.mock.calls[0][2];
-        const returnFocus = node();
-        tab.pendingSessionId = 'BASE';
-        tab.selectedIntention = { id: 'calm', label: 'Find Calm' };
-        tab.completedSession = { sessionId: 'BASE' };
-        tab.focusReturn = returnFocus;
-        [prep, countdown, completion].forEach((overlay) => { overlay.style.display = 'flex'; });
-        const delayedFocus = vi.fn();
-        tab.scheduleUI(delayedFocus, 10);
-        const pendingWait = tab.waitForCountdown(1000);
-
-        tab.cancelForModeChange();
-
-        await expect(pendingWait).resolves.toBe(false);
-        await vi.runAllTimersAsync();
-        complete({ sessionName: 'Hale Base', totalDuration: 855, rounds: 3, completed: true });
-        ['.session-prep-overlay', '.session-countdown-overlay', '.active-session-overlay',
-            '.session-completion-overlay'].forEach((selector) => {
-            expect(container.querySelector(selector).style.display).toBe('none');
-        });
+        const [, report, finish] = manager.startSession.mock.calls[0];
+        manager.onEndRequested();
+        expect(tab.holdsScreen).toBe(false);
         expect(manager.stopSession).toHaveBeenCalledOnce();
-        expect(tab.pendingTimers.size).toBe(0);
+        expect(hub.releaseGameplay).toHaveBeenCalledOnce();
+        expect(hub.breathingTab.refresh).toHaveBeenCalled();
+        finish({ sessionName: 'Hale Base', totalDuration: 60, rounds: 3 });
+        report({ sessionName: 'Hale Base', phase: 'active' });
+        expect(tab.flowOpen).toBe(false);
+        expect(tab.activeSessionData).toBeNull();
+        expect(stored.size).toBe(0);
+    });
+
+    it('closes every surface on a mode change without reopening the Hub or resuming play', async () => {
+        tab.showPrepScreen('ELIXIR');
+        const countdown = tab.startCountdown();
+        await vi.advanceTimersByTimeAsync(1200);
+        hub.show.mockClear();
+        tab.cancelForModeChange();
+        await countdown;
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(manager.startSession).not.toHaveBeenCalled();
+        expect(manager.stopSession).toHaveBeenCalledOnce();
+        expect(tab.flowOpen).toBe(false);
         expect(tab.pendingSessionId).toBeNull();
-        expect(tab.selectedIntention).toBeNull();
-        expect(tab.completedSession).toBeNull();
-        expect(tab.focusReturn).toBeNull();
-        expect(delayedFocus).not.toHaveBeenCalled();
-        expect(returnFocus.focus).not.toHaveBeenCalled();
-        expect(completionNodes['.completion-close-btn'].focus).not.toHaveBeenCalled();
         expect(hub.show).not.toHaveBeenCalled();
+        expect(hub.releaseGameplay).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('settles an in-flight countdown during a mode change without starting the previous practice', async () => {
-        vi.useFakeTimers();
-        const { tab, container, manager } = harness();
-        const countdown = node();
-        const number = node();
-        const query = container.querySelector;
-        container.querySelector = (selector) => ({
-            '.session-countdown-overlay': countdown,
-            '.countdown-number': number,
-        }[selector] || query(selector));
-        tab.pendingSessionId = 'BASE';
-        const sequence = tab.startCountdown();
-        tab.cancelForModeChange();
-        await sequence;
-        await vi.runAllTimersAsync();
+    it('removes its surface and timers when destroyed mid-countdown', async () => {
+        tab.showPrepScreen('BASE');
+        const surface = tab.flow;
+        const countdown = tab.startCountdown();
+        tab.destroy();
+        await countdown;
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(surface.removed).toBe(true);
         expect(manager.startSession).not.toHaveBeenCalled();
+        expect(manager.onEndRequested).toBeNull();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+});
+
+describe('Hale catalogue while a session runs', () => {
+    it('does no work while the Hub is closed and shows the latest stage when it opens', () => {
+        manager.activeSession = {};
+        tab.startSession('BASE');
+        const report = manager.startSession.mock.calls[0][1];
+        const live = container.querySelector('.hale__live');
+        live.hidden = true;
+        for (let i = 0; i < 50; i++) {
+            report({
+                sessionName: 'Hale Base', round: 2, totalRounds: 3, phase: 'retention',
+            });
+        }
+        expect(live.hidden).toBe(true);
+        expect(live.querySelector('.hale__live-name').textContent).toBe('');
+        tab.setActive(true);
+        expect(live.hidden).toBe(false);
+        expect(live.querySelector('.hale__live-name').textContent).toBe('Hale Base · Round 2 of 3 · Hold');
+        container.fire('click', { target: targetMatching({ '.hale__return': true }) });
+        expect(hub.hide).toHaveBeenCalledTimes(2);
+        container.fire('click', { target: targetMatching({ '.hale__end': true }) });
         expect(manager.stopSession).toHaveBeenCalledOnce();
-        expect(countdown.style.display).toBe('none');
-        expect(tab.pendingTimers.size).toBe(0);
-    });
-
-    it.each([' ', 'Enter'])('keeps native %j activation from also reaching the global guide shortcut', (key) => {
-        const { container } = harness();
-        const handler = container.addEventListener.mock.calls.find(([type]) => type === 'keydown')[1];
-        const control = node();
-        const event = {
-            key, target: { closest: vi.fn(() => control) },
-            stopPropagation: vi.fn(), preventDefault: vi.fn(),
-        };
-        handler(event);
-        expect(event.target.closest).toHaveBeenCalledWith('button, input');
-        expect(container.contains).toHaveBeenCalledWith(control);
-        expect(event.stopPropagation).toHaveBeenCalledOnce();
-        // Space/Enter still click the focused session/intention/begin control natively.
-        expect(event.preventDefault).not.toHaveBeenCalled();
-    });
-
-    it('leaves unrelated shortcuts and controls outside the Sessions surface untouched', () => {
-        const { tab, container } = harness();
-        const stop = vi.fn();
-        container.contains.mockReturnValue(false);
-        tab.handleOverlayKey({ key: ' ', target: { closest: () => node() }, stopPropagation: stop });
-        tab.handleOverlayKey({ key: 'Enter', target: { closest: () => null }, stopPropagation: stop });
-        tab.handleOverlayKey({ key: 't', target: { closest: () => node() }, stopPropagation: stop });
-        expect(stop).not.toHaveBeenCalled();
-    });
-
-    it('owns Escape during the countdown and returns to preparation', () => {
-        const { tab, container, manager } = harness();
-        const countdown = node();
-        countdown.style.display = 'flex';
-        countdown.classList.contains = (name) => name === 'session-countdown-overlay';
-        const query = container.querySelector;
-        container.querySelector = (selector) => (selector === '.session-countdown-overlay' ? countdown : query(selector));
-        tab.pendingSessionId = 'BASE';
-        const prepare = vi.spyOn(tab, 'showPrepScreen').mockImplementation(() => {});
-        const event = { key: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() };
-        tab.handleOverlayKey(event);
-        expect(prepare).toHaveBeenCalledWith('BASE');
-        expect(event.preventDefault).toHaveBeenCalledOnce();
-        expect(event.stopPropagation).toHaveBeenCalledOnce();
-        expect(manager.startSession).not.toHaveBeenCalled();
-    });
-
-    it('handles missing and invalid timing without displaying NaN', () => {
-        const { tab } = harness();
-        expect(tab.formatTime(undefined)).toBe('0:00');
-        expect(tab.formatTime(-5)).toBe('0:00');
-        expect(tab.formatTime(65)).toBe('1:05');
+        expect(live.hidden).toBe(true);
     });
 });
