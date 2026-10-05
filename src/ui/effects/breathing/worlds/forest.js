@@ -22,7 +22,7 @@ import { MOTE_MOTION } from '../stage/breath-motes.js';
 const SUN = [-0.1, 0.44];
 /** Light streams from the canopy band: this far below the screen's top and up. */
 const RAY_REGION = 0.5;
-const GOLD = vec3(1.0, 0.76, 0.4);
+const GOLD = vec3(1.0, 0.72, 0.36);
 const SUNLIGHT = vec3(1.0, 0.92, 0.7);
 const MIST = vec3(0.18, 0.31, 0.3);
 const SHADE = vec3(0.005, 0.014, 0.016);
@@ -104,6 +104,8 @@ export function createForestWorld({ u, quality }) {
         const mist = SHADE.add(MIST.mul(eyeLevel.mul(haze.mul(0.7).add(0.45)).mul(0.26))).toVar();
         mist.addAssign(MIST.mul(exp(sunDistance.mul(-1.6))).mul(haze.mul(0.6).add(0.7)).mul(0.5).mul(glow));
         mist.addAssign(GOLD.mul(exp(sunDistance.mul(-3.6))).mul(0.45).mul(glow));
+        // Away from the sun the haze cools toward blue, as distance does: warm light, cool depth.
+        mist.mulAssign(mix(vec3(1.0), vec3(0.78, 0.94, 1.3), float(1).sub(exp(sunDistance.mul(-1.1)))));
         // What trunks dissolve into: the haze, never the sun's core (that would light them up).
         const fogColor = mist.toVar();
         const air = mist.add(SUNLIGHT.mul(exp(sunDistance.mul(-13))).mul(1.4).mul(glow)).toVar();
@@ -127,8 +129,11 @@ export function createForestWorld({ u, quality }) {
         const gz = groundDepth.toVar();
         const litter = fbm(vec2(gx.mul(1.4), gz.mul(1.4)), Math.max(3, octaves - 1)).toVar();
         const fleck = gnoise(vec2(gx.mul(9), gz.mul(9)));
+        // Moss in the hollows, russet leaf litter on the rises.
+        const russet = smoothstep(0.45, 0.75, fbm(vec2(gx.mul(0.8), gz.mul(0.8)).add(9.3), 3));
         const floorBase = mix(vec3(0.012, 0.013, 0.008), MOSS, litter.mul(1.4).sub(0.35).saturate())
             .mul(fleck.mul(0.5).add(0.75)).toVar();
+        floorBase.assign(mix(floorBase.mul(1.4), vec3(0.09, 0.05, 0.018).mul(fleck.mul(0.6).add(0.7)), russet.mul(0.7)));
         // Dapples: light that slipped between trunks and leaves, stretched by the low angle.
         const dapple = voronoi(vec2(gx.mul(2.6), gz.mul(1.1)).add(vec2(drift.mul(4), 0)), u.time.mul(0.08));
         const broken = gnoise(vec2(gx.mul(7), gz.mul(3))).mul(0.18);
@@ -137,7 +142,7 @@ export function createForestWorld({ u, quality }) {
         const path = fadeOut(0.2, 0.9, pathX);
         const sunDx = gq.x.sub(SUN[0]).toVar();
         const sunward = exp(sunDx.mul(sunDx).mul(-1.8)).mul(exp(groundDepth.mul(-0.1)));
-        floorBase.addAssign(GOLD.mul(spots.mul(sunward).mul(path.mul(0.7).add(0.3)).mul(0.55)).mul(glow));
+        floorBase.addAssign(GOLD.mul(spots.mul(sunward).mul(path.mul(0.7).add(0.3)).mul(0.8)).mul(glow));
         floorBase.addAssign(vec3(0.025, 0.04, 0.016).mul(path).mul(glow));
         // Aerial perspective on the floor too: it melts into the haze toward the horizon.
         const floorFog = float(1).sub(exp(groundDepth.mul(-0.12)));
@@ -218,15 +223,17 @@ export function createForestWorld({ u, quality }) {
                 const depth = 1.75;
                 const bq = layer(p, u, HERO_DEPTH / depth).toVar();
                 const baseLine = horizon.sub(ground.div(depth)).toVar();
-                const mounds = fbm(vec2(bq.x.mul(2.4), 7.1), 3).sub(0.4).mul(0.32).max(0)
-                    .add(0.012);
+                const mounds = fbm(vec2(bq.x.mul(2.4), 7.1), 3).sub(0.4).mul(0.32).max(0);
                 const leafy = gnoise(bq.mul(vec2(46, 34))).sub(0.5).mul(0.03);
                 const crest = baseLine.add(mounds).add(leafy).toVar();
-                const bush = softStep(0, crest.sub(bq.y), u).mul(smoothstep(baseLine.sub(0.05), baseLine.sub(0.01), bq.y));
+                // Clumps with forest floor between them, not a hedge.
+                const clumps = smoothstep(0.46, 0.58, fbm(vec2(bq.x.mul(1.3), 3.3), 3));
+                const bush = softStep(0, crest.sub(bq.y), u).mul(smoothstep(baseLine.sub(0.05), baseLine.sub(0.01), bq.y))
+                    .mul(clumps);
                 const bdx = bq.x.sub(SUN[0]).toVar();
                 const bushRim = exp(crest.sub(bq.y).max(0).mul(-220)).mul(exp(bdx.mul(bdx).mul(-2.5)));
                 const leaves = gnoise(bq.mul(vec2(55, 48))).mul(0.6).add(0.6);
-                const bushColor = MOSS.mul(0.22).mul(leaves).add(GOLD.mul(bushRim).mul(0.35).mul(glow));
+                const bushColor = mix(MOSS.mul(0.45).mul(leaves), fogColor.mul(0.6), 0.3).add(GOLD.mul(bushRim).mul(0.35).mul(glow));
                 col.assign(mix(col, mix(bushColor, fogColor, 1 - Math.exp(-depth * 0.14)), bush));
             }
         });
@@ -288,12 +295,12 @@ export function createForestWorld({ u, quality }) {
         source: [SUN[0], 0.42, 0.15],
         region: 0.2,
         radius: 0.4,
-        strength: 0.95,
+        strength: 1.15,
         threshold: 0.8,
         decay: 0.975,
         length: 0.7,
-        tint: [1.0, 0.88, 0.66],
-        breath: 0.65,
+        tint: [1.0, 0.86, 0.62],
+        breath: 0.75,
     };
     return {
         backdrop,
