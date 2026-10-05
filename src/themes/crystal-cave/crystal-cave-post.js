@@ -1,35 +1,23 @@
-/** Crystal Cave: crisp jewel facets, restrained bloom and a cool cave grade. */
+/**
+ * Crystal Cave — the lens.
+ *
+ * Bloom lets the crystal cores, the glints and the event light spill; a hue-preserving
+ * tone curve keeps amethyst purple and rose pink instead of sliding them toward blue and
+ * red; a gentle grade deepens the shadows. Low and Minimal draw the same scene directly.
+ */
 import * as THREE from 'three/webgpu';
 import {
-    Fn,
-    acesFilmicToneMapping,
-    clamp,
-    dot,
-    float,
-    floor,
-    fract,
-    length,
-    mix,
-    pass,
-    renderOutput,
-    screenCoordinate,
-    screenUV,
-    sin,
-    smoothstep,
-    uniform,
-    vec2,
-    vec3,
-    vec4,
+    Fn, clamp, dot, float, floor, fract, length, mix, neutralToneMapping, pass, renderOutput, screenCoordinate,
+    screenUV, sin, smoothstep, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { QUALITY_PRESETS } from './crystal-cave-quality.js';
 
-const BLOOM_RESOLUTION = Object.freeze({
-    Extreme: 0.6, Ultra: 0.55, High: 0.45, Medium: 0.3,
-});
-const EXPOSURE = 0.95;
-const BLOOM_STRENGTH = 0.23;
-const BLOOM_THRESHOLD = 0.85;
+export const CRYSTAL_CAVE_EXPOSURE = 1.06;
+const BLOOM_STRENGTH = 0.34;
+const BLOOM_THRESHOLD = 0.9;
 const bounded = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
 
 export class CrystalCavePost {
@@ -40,75 +28,60 @@ export class CrystalCavePost {
         this.scene = scene;
         this.camera = camera;
         this.quality = quality;
-        this.disabled = quality === 'Low' || quality === 'Minimal';
+        const preset = QUALITY_PRESETS[quality] ?? QUALITY_PRESETS.High;
+        this.disabled = preset.enablePost !== true;
         this.useMRT = false;
         this.disposed = false;
         this.pipeline = null;
         this.scenePass = null;
         this.bloomNode = null;
-        this.resolutionScale = this.disabled ? 0 : (BLOOM_RESOLUTION[quality] ?? BLOOM_RESOLUTION.High);
-        this.size = { width: 0, height: 0 };
-        this.uExposure = uniform(EXPOSURE);
+        this.resolutionScale = this.disabled ? 0 : preset.bloomScale;
+        this.uExposure = uniform(CRYSTAL_CAVE_EXPOSURE);
         this.uAspect = uniform(16 / 9);
         this.uReaction = uniform(0);
-
-        // The same crystal light, rock and water scene renders directly on phone tiers.
-        // No scene targets, bloom targets or fullscreen pipeline are allocated there.
         if (this.disabled) return;
 
         this.pipeline = new THREE.RenderPipeline(renderer);
+        // No MSAA: the pool and the beam read the viewport depth, and a multisampled
+        // depth cannot be shared with the (single-sample) mirror pass. FXAA below.
         this.scenePass = pass(scene, camera, { samples: 0 });
         const sceneColor = this.scenePass.getTextureNode('output');
-        // Full-scene luminance bloom keeps node-material highlights and additive glints
-        // consistent on WebGPU and WebGL2 without a second color attachment.
-        this.bloomNode = bloom(sceneColor, BLOOM_STRENGTH, 0.4, BLOOM_THRESHOLD);
-        this.bloomNode.smoothWidth.value = 0.25;
+        this.bloomNode = bloom(sceneColor, BLOOM_STRENGTH, 0.55, BLOOM_THRESHOLD);
+        this.bloomNode.smoothWidth.value = 0.3;
         this.bloomNode.setResolutionScale(this.resolutionScale);
 
-        const outputFn = Fn(() => {
-            const combined = sceneColor.rgb.add(this.bloomNode.rgb);
-            const toned = acesFilmicToneMapping(combined.max(0), this.uExposure).toVar();
+        const graded = Fn(() => {
+            const combined = sceneColor.rgb.add(this.bloomNode.rgb).max(0);
+            const toned = neutralToneMapping(combined, this.uExposure).toVar();
             const luma = dot(toned, vec3(0.2126, 0.7152, 0.0722));
-            const shadow = float(1).sub(smoothstep(0.035, 0.4, luma));
-            const highlight = smoothstep(0.42, 0.92, luma);
-
-            // A subtle violet shadow bias and cool gleam support the amethyst/cyan
-            // palette; multiplication preserves the scene's shadow detail and depth.
-            toned.mulAssign(mix(vec3(1), vec3(1.025, 0.985, 1.075), shadow.mul(0.2)));
-            toned.mulAssign(mix(vec3(1), vec3(0.985, 1.025, 1.04), highlight.mul(0.16)));
-            const gradedLuma = dot(toned, vec3(0.2126, 0.7152, 0.0722));
-            // Keep dark rock neutral while restoring jewel chroma after the ACES shoulder.
-            const saturation = mix(
-                float(1),
-                this.uReaction.mul(0.055).add(1.065),
-                smoothstep(0.035, 0.22, gradedLuma),
-            );
-            toned.assign(mix(vec3(gradedLuma), toned, saturation));
-
+            // Cool, slightly violet shadows; the lit stone keeps its own colour.
+            const shadow = float(1).sub(smoothstep(0.02, 0.32, luma));
+            toned.mulAssign(mix(vec3(1), vec3(0.94, 0.97, 1.1), shadow.mul(0.55)));
+            // A touch more colour in the mid-tones, more still while the cave is excited.
+            const lifted = dot(toned, vec3(0.2126, 0.7152, 0.0722));
+            const saturation = mix(float(1), this.uReaction.mul(0.08).add(1.1), smoothstep(0.03, 0.3, lifted));
+            toned.assign(mix(vec3(lifted), toned, saturation).max(0));
             const radial = length(screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1)).mul(2));
-            toned.mulAssign(float(1).sub(smoothstep(0.72, 1.6, radial).mul(0.065)));
-
-            // Apply the display transform once, then add half an 8-bit step of dither
-            // to keep the cave haze smooth without animated grain or colored fringes.
+            toned.mulAssign(float(1).sub(smoothstep(0.65, 1.55, radial).mul(0.24)));
             const display = renderOutput(vec4(clamp(toned, 0, 1), 1), THREE.NoToneMapping).rgb.toVar();
+            // Half an 8-bit step of dither keeps the dark haze free of banding.
             const pixel = floor(screenCoordinate.xy);
             const noise = fract(sin(dot(pixel, vec2(12.9898, 78.233))).mul(43758.5453));
             display.addAssign(noise.sub(0.5).div(255));
             return vec4(clamp(display, 0, 1), 1);
         });
         this.pipeline.outputColorTransform = false;
-        this.pipeline.outputNode = outputFn();
+        this.pipeline.outputNode = fxaa(graded());
     }
 
     update(frame = {}) {
         if (this.disposed) return;
         const response = frame ?? {};
         const reaction = Math.sqrt(Math.max(bounded(response.energy), bounded(response.resonance) * 0.8));
-        // Crystal surfaces, ripples and traveling glints carry the event. This bounded
-        // response retains facet color and never turns gameplay into a screen flash.
         this.uReaction.value = reaction;
-        this.uExposure.value = EXPOSURE;
-        if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + reaction * 0.11;
+        // The cave brightens a little with play; it never whites out the board.
+        this.uExposure.value = CRYSTAL_CAVE_EXPOSURE * (1 + reaction * 0.06) * (1 - bounded(response.dim) * 0.25);
+        if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + reaction * 0.16;
     }
 
     render() {
@@ -121,7 +94,7 @@ export class CrystalCavePost {
         const previousToneMapping = renderer.toneMapping;
         const previousExposure = renderer.toneMappingExposure;
         try {
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMapping = THREE.NeutralToneMapping;
             renderer.toneMappingExposure = this.uExposure.value;
             renderer.render(this.scene, this.camera);
         } finally {
@@ -132,10 +105,7 @@ export class CrystalCavePost {
 
     setSize(width, height) {
         if (this.disposed || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
-        this.size = { width, height };
         this.uAspect.value = width / height;
-        this.scenePass?.setSize(width, height);
-        if (this.bloomNode?._separableBlurMaterials?.length) this.bloomNode.setSize(width, height);
     }
 
     getDiagnostics() {

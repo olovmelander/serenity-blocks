@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks (generated in Blender; no third-party source)",
+  "license": "Project-owned",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "cavern.glb",
+      "bytes": 3772740,
+      "sha256": "f9f4cd250de6b819d752552c8179f39143b97a44566419718c29559125abd1c3",
+      "kind": "cavern",
+      "vertices": 73338,
+      "triangles": 146520,
+      "crystals": 2087,
+      "glowworms": 3200,
+      "drips": 28
+    }
+  ]
+}
