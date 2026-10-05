@@ -115,6 +115,24 @@ Run `npm run dev:playground` and open:
 as real consecutive clearing locks. Other parameters: `event=clear|tspin|perfect|level`,
 `lines`, `reduce=1`.
 
+### Theme icon
+
+`src/themes/aurora/aurora-theme-icon.png` (and its copy under `public/assets/themes/`) is a
+frame of the scene itself, 2.4 s after a four-line clear, when the pink has spread through
+the curtains and the lake ring has gone:
+
+- `/playground.html?effect=aurora&quality=Extreme&t=20&icon=1&event=quad&eventAge=2.4`
+
+`icon=1` selects a tighter lens — 48° field of view, turned 7° toward the fold of the
+leading arc, horizon at 0.29 of the frame — so the ribbon, the peaks and the mirrored lake
+all sit inside the circle the theme picker cuts (`iconFov`, `iconYaw` and `iconHorizon`
+override it). The frame was captured at 1400 × 1400 on WebGPU and reduced to 512 × 512;
+two captures were byte-identical. The file follows the house style of the other theme
+icons (`scripts/process_icons.py`): a circle touching all four edges on a transparent
+ground, with an anti-aliased rim. Inside the circle the pixels are the capture's,
+untouched. Checked in the real theme picker: the Aurora card loads the 512 px file and
+shows it in its 80 px circle. Not checked on an Odyssey level orb.
+
 ## Acceptance evidence
 
 Captures were taken through Electron on this machine's discrete GPU (the playground
@@ -164,8 +182,9 @@ repeated. Local `node_modules` still held phaser 4.1.0; CI installs 4.2.1 from t
 - `architecture-fitness.json` was left untouched while other theme work is in flight, so
   the lower `ShaderMaterial` and resize-listener counts are not locked in yet.
 - The stylesheet rules for the four removed DOM layers remain in `public/styles/main.css`;
-  they match nothing now. The theme icon and `docs/theme-screenshots/aurora.png` still show
-  the previous artwork.
+  they match nothing now. `docs/theme-screenshots/aurora.png` still shows the previous
+  artwork; `scripts/capture-theme-screenshots.mjs` writes it during a fleet capture, which
+  was not run.
 - Minimal's 8-sample march shows slight stepping on the tightest fold. Portrait is framed
   by camera only; the arcs are authored for landscape.
 - Online multiplayer and Odyssey levels that use this theme were not played through.
