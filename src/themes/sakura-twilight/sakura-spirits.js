@@ -271,11 +271,29 @@ export class SakuraSpirits {
     /** Send ambient lantern `index` out from one of the banks. */
     drift(index, birth = this.light.uTime.value) {
         const { rng } = this;
-        const side = rng() < 0.5 ? -1 : 1;
-        const x = side * (9 + rng() * 22);
-        const z = -6 - rng() * 44;
+        // Somewhere out on the water, on a slow course that is still afloat when it ends.
+        let x = 0;
+        let z = -24;
+        let vx = 0;
+        let vz = 0;
+        for (let attempt = 0; attempt < 24; attempt += 1) {
+            const tryX = (rng() * 2 - 1) * 34;
+            const tryZ = -4 - rng() * 64;
+            const heading = rng() * TAU;
+            const speed = 0.015 + rng() * 0.035;
+            const tryVx = Math.cos(heading) * speed;
+            const tryVz = Math.sin(heading) * speed;
+            if (sakuraLand(tryX, tryZ) < -4
+                && sakuraLand(tryX + tryVx * WATER_LIFE, tryZ + tryVz * WATER_LIFE) < -1.5) {
+                x = tryX;
+                z = tryZ;
+                vx = tryVx;
+                vz = tryVz;
+                break;
+            }
+        }
         this.waterSlots.setXYZW(index, x, z, birth, rng());
-        this.waterMotion.setXYZW(index, -side * (0.05 + rng() * 0.1), -0.03 - rng() * 0.08, WATER_LIFE, 0.8 + rng() * 0.4);
+        this.waterMotion.setXYZW(index, vx, vz, WATER_LIFE, 0.8 + rng() * 0.4);
         this.waterSlots.needsUpdate = true;
         this.waterMotion.needsUpdate = true;
     }

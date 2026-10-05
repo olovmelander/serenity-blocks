@@ -91,7 +91,7 @@ export class SakuraPetalSim {
             this.state[i] = PETAL_IDLE;
             this.velocity.fill(0, i * 3, i * 3 + 3);
             if (i < this.ambient) {
-                // Start mid-cycle: most petals are already down, some are falling.
+                // Start mid-cycle: some petals are already down, the rest are falling.
                 if (this.random() < 0.42) this.settle(i, true);
                 else this.release(i, this.random());
             }

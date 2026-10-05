@@ -1,9 +1,9 @@
 # Sakura Twilight — the moonlit garden (visual overhaul, 2026-10-05)
 
 **Status: implemented (branch `feature/sakura-twilight-masterpiece`). A record of what was
-built and how it was checked — not a backlog.** Replaces the 2025 WebGL/GLSL scene
-(instanced copies of one third-party cherry tree on a rolling lawn) with a node scene on
-three 0.186.1 that the game and the playground share.
+built and how it was checked — not a backlog.** Replaces the WebGL/GLSL scene (instanced
+copies of one third-party cherry tree on a rolling lawn) with a node scene on three
+0.186.1 that the game and the playground share.
 
 | Before | After (High, native WebGPU) |
 | --- | --- |
@@ -34,7 +34,7 @@ rings on the lake, lanterns and stars.
 | Event | Response |
 | --- | --- |
 | Piece lock | A glint of light and a puff of lit petals from the card's edge beside the piece, at its row. The piece seems to fall through the card into the lake: a ring spreads from under its column, flashes where it catches the moon, and passes on through grass and blossom as a breath of pink light. Every lantern in the garden breathes once. A long hard drop (`HARD_DROP` distance) makes all of it harder. |
-| Line clear (1–3) | Twin jets of petals blown out of both sides of the card at the cleared rows, a wide ring from the middle of the lake, the blossom lit from within, and one lantern set afloat for each line. From two lines a gust front crosses the garden (boughs and garlands swing, fallen petals lift, the foxes run); three lines send a shooting star. |
+| Line clear (1–3) | Twin jets of petals blown out of both sides of the card at the cleared rows, a wide ring from the middle of the lake, the blossom lit from within, and one lantern set afloat for each line. From two lines a gust front crosses the garden (boughs and garlands swing, fallen petals lift); three lines send a shooting star and set the foxes running. |
 | Four lines | Hanafubuki: the crowns let go a blizzard of petals, under a flaring moon and two shooting stars, and the constellations begin to trace themselves in. |
 | Combo / streak | A stream of lit petals winds around the board and climbs. Foxfire kindles one flame at a time in two rows either side of the card — a gauge of the combo — and the constellations (the Fox, the Blossom, the Crane) draw themselves line by line. Cascade depth (`COMBO`) or consecutive clearing locks raise all three; past half strength the petals burn white. Long combos release sky lanterns. A lock without a clear ends the streak; the stream unwinds, the flames go out, the figures fade. |
 | T-spin | A spiral flourish of petals beside the board and a shooting star. |
@@ -44,10 +44,10 @@ rings on the lake, lanterns and stars.
 | Game over | The wind dies and the lanterns burn low until play resumes. |
 
 Everything honours `backgroundComboEffects` and `pieceLockRipple`, pauses with the theme
-and is driven by simulation seconds. No event allocates: petals come from a fixed hidden
-reserve, emitters from a fixed pool (18–24 by tier, sized so that every handler firing in
-one frame still loses none), and rings, flashes, floating and sky
-lanterns each rewrite one slot of a fixed buffer.
+and is driven by simulation seconds. Every effect is bounded: petals come from a fixed
+hidden reserve, emitters from a fixed pool (18–24 by tier, sized so that every handler
+firing in one frame still loses none), and rings, flashes, floating and sky lanterns each
+rewrite one slot of a fixed buffer.
 
 | Hard drop | Three lines | Four lines |
 | --- | --- | --- |
@@ -137,12 +137,15 @@ Three things cost time; they are now in the TSL skill's gotcha table
   uniforms (`unresolved value 'NodeBuffer_…'`). The shared helpers here are inline `Fn`s
   with real `Loop`s instead.
 - **First-frame compile is a matter of pipeline count, not shader size.** The scene
-  first created 200 pipelines (14.7 s of stalled frames after "ready" in a scratch
-  Electron window on this machine).
-  Priming the shadow rig with the ground alone rather than the whole scene, keeping grass,
-  petals, foxes and the small lights out of the reflection pass (a camera layer), and
-  moving per-instance data from the node graph onto the geometry so all trees share two
-  materials brought it to 113 pipelines and 7.5 s.
+  first created 200 pipelines, none of them large, and froze for 13.6 and 14.7 s after
+  "ready" (two runs in a scratch Electron window, with other sessions on the machine).
+  Priming the shadow rig with the ground alone rather than the whole scene, and keeping
+  grass, petals, foxes and the small lights out of the reflection pass (a camera layer),
+  brought it to 113 pipelines; the freeze then measured 7.5, 10.8 and 11.5 s. Shorter,
+  but the readings are too noisy to say by how much. Sharing a material does **not**
+  reduce the count: three creates a pipeline per mesh per pass (twelve for the six bark
+  meshes, which share one material, in two passes), and sharing one across the furniture
+  as well changed nothing measurable and was reverted.
 - **The sample fox has no normals**, so a `varying(normalWorld)` on it reaches for
   `dFdx` in the vertex stage; its material is flat-shaded and takes lantern light without
   a normal.
@@ -193,7 +196,15 @@ Shown at picker size beside the previous icon and two neighbours:
   fails on `main` and here alike, on Stillwater's palette; this theme's is unchanged.
 - **Lint**: 0 ESLint errors in `src/themes/sakura-twilight` and the playground effect;
   the repository ratchet drops because the old file's errors are gone.
-- **Tests**: see the suites under `tests/unit/sakura-*.test.js`.
+- **Tests**: 420 tests in six suites under `tests/unit/sakura-*.test.js` — the director
+  (74), the petal simulation (39), the stage and petal director (61), the asset pack and
+  its manifest (45), the world, composition and post built from the real GLBs in Node (84),
+  and the theme adapter (117). They were written by a second agent from the modules alone,
+  and found four defects that are fixed here: the emitter pool overflowed within one
+  four-line clear on the lower tiers, fireflies were placed at a quarter of their tier's
+  count, one constellation lay outside the frame, and lanterns set afloat from the left
+  bank found no water. Its reading of the layout also showed the torii and the bridge
+  standing on dry ground and several lanterns in the lake; all were moved.
 
 ### Frame pacing (one rough reading, not a budget)
 
@@ -213,9 +224,11 @@ hardware.
   the board covers most of the lake.
 - The shadow map is static, so swaying crowns do not move their shadows, and the foxes
   have a soft patch under them instead of a cast shadow.
-- First activation still stalls while about a hundred pipelines compile (7.5 s in a
-  scratch Electron window on this machine; how much a warm driver cache saves was not
-  measured).
+- First activation still has about a hundred pipelines to compile. In the playground,
+  which creates them synchronously, that froze the picture for 7.5 to 11.5 s over three
+  runs on this machine. The game's theme prewarm creates pipelines asynchronously behind
+  its loading surface (ADR-0020); how long this theme takes there, and how much a warm
+  driver cache saves, was not measured.
 - Blossom is stylised: flowers are several times life size so that they read as flowers.
 - The lake reflects a second view of the garden on Medium and above; grass, petals, foxes
   and the small lights are deliberately left out of it.

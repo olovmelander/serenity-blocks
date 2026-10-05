@@ -458,6 +458,7 @@ export class SakuraReactions {
             if (this.foxfire < 0.01) this.foxfire = 0;
         }
         this.spirit = ease(this.spirit, Math.max(this.vortex, this.constellation * 0.7), 1.4, dt);
+        if (this.spirit < 0.0005) this.spirit = 0;
         this.hush = ease(this.hush, this.hushTarget, this.hushTarget > this.hush ? 0.8 : 2.4, dt);
         if (this.hush < 0.0005) this.hush = 0;
         if (this.front.active) {
