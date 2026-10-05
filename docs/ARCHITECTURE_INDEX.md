@@ -37,6 +37,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [ASSET_PIPELINE_BLACKWELL.md](ASSET_PIPELINE_BLACKWELL.md) | Reference | Asset-pipeline context; harvest before execution. |
 | [blind-mode-plan.md](blind-mode-plan.md) | Reference | Feature plan; not part of current Movement A scope. |
 | [BREATHING_INDICATOR_GUIDE.md](BREATHING_INDICATOR_GUIDE.md) | Reference | Feature guide. |
+| [BREATHING_IMMERSIVE_OVERHAUL_2026-10.md](BREATHING_IMMERSIVE_OVERHAUL_2026-10.md) | Reference | Twelve breathing worlds and four Hale sessions; responsive visual design, retained WebGL2 renderer, session control/lifecycle repairs, and validation evidence. |
 | [cascade-bot-payload-planning-plan.md](cascade-bot-payload-planning-plan.md) | Reference | Bot/payload planning notes. |
 | [CHROMADELIC_HIGHWAY_ART_DIRECTION.md](CHROMADELIC_HIGHWAY_ART_DIRECTION.md) | Reference | Theme art direction. |
 | [CHROMADELIC_HIGHWAY_BASELINE_CAPTURE_PROTOCOL.md](CHROMADELIC_HIGHWAY_BASELINE_CAPTURE_PROTOCOL.md) | Reference | Theme validation context. |

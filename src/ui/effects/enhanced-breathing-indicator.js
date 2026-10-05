@@ -11,8 +11,8 @@
  */
 
 // APP BOOT (2026-08-21): the three.js breathing renderer is the ONLY static path from main.js
-// to 'three' (1.75 MB) — it welded three onto the menu's boot closure although nothing draws it
-// until the indicator starts. Loaded on first use (and warmed at idle) instead.
+// to 'three' — keep it out of the menu boot closure because nothing draws it
+// until the indicator starts. Loaded only on deliberate first use.
 let rendererModulePromise = null;
 function loadBreathingRendererModule() {
     if (!rendererModulePromise) {
@@ -29,8 +29,6 @@ export class EnhancedBreathingIndicator {
         this.currentPhase = 'inhale';
         this.phaseStartTime = 0;
         this.showText = true;
-        this.particles = [];
-        this.maxParticles = 50; // More particles for stunning effect
         this.selectorVisible = false;
         this.selectorTimeout = null;
 
@@ -140,8 +138,20 @@ export class EnhancedBreathingIndicator {
 
         // Create UI elements
         this._createElements();
-        this._createParticles();
-        this._preloadWebGL();
+        this._isPaused = false;
+        this._visibilityHandler = () => {
+            if (!this.isActive || this._isPaused) return;
+            if (document.hidden) {
+                this._hiddenAt = performance.now();
+                if (this.animationFrame !== null) cancelAnimationFrame(this.animationFrame);
+                this.animationFrame = null;
+            } else if (this._hiddenAt !== null && this._hiddenAt !== undefined) {
+                if (!this.isExternallyControlled) this.phaseStartTime += performance.now() - this._hiddenAt;
+                this._hiddenAt = null;
+                this._animate();
+            }
+        };
+        document.addEventListener('visibilitychange', this._visibilityHandler);
     }
 
     /**
@@ -159,6 +169,7 @@ export class EnhancedBreathingIndicator {
         this.indicator.id = 'enhanced-breathing-indicator';
         this.indicator.className = 'enhanced-breathing-indicator';
         this.indicator.style.display = 'none';
+        this.indicator.dataset.technique = this.currentTechnique;
 
         // Content wrapper
         const contentWrapper = document.createElement('div');
@@ -167,12 +178,6 @@ export class EnhancedBreathingIndicator {
         // Visual container for all breathing elements
         const visualContainer = document.createElement('div');
         visualContainer.className = 'breathing-visual-container';
-
-        // Particle canvas (now WebGL)
-        this.particleCanvas = document.createElement('canvas');
-        this.particleCanvas.className = 'breathing-particles';
-        this.particleCanvas.width = 700;
-        this.particleCanvas.height = 700;
 
         // Three.js Renderer is created lazily on first start() (SB-07);
         // keep the container reference it needs.
@@ -198,7 +203,45 @@ export class EnhancedBreathingIndicator {
         // Text prompt (now absolutely positioned in center)
         this.textPrompt = document.createElement('div');
         this.textPrompt.className = 'breathing-text-enhanced';
-        this.textPrompt.textContent = 'Breathe';
+        this.textPrompt.textContent = 'Breathe in';
+        this.textPrompt.setAttribute('role', 'status');
+        this.textPrompt.setAttribute('aria-live', 'polite');
+        this.textPrompt.setAttribute('aria-atomic', 'true');
+
+        this.phaseCountdown = document.createElement('div');
+        this.phaseCountdown.className = 'breathing-phase-countdown';
+        this.phaseCountdown.setAttribute('aria-hidden', 'true');
+        this.phaseDetail = document.createElement('div');
+        this.phaseDetail.className = 'breathing-phase-detail';
+        this.phaseDetail.textContent = 'Follow the expanding light';
+        this.phaseDetail.setAttribute('aria-hidden', 'true');
+
+        const ns = 'http://www.w3.org/2000/svg';
+        this.phaseTrack = document.createElementNS(ns, 'svg');
+        this.phaseTrack.classList.add('breathing-phase-track');
+        this.phaseTrack.setAttribute('viewBox', '0 0 100 100');
+        this.phaseTrack.setAttribute('aria-hidden', 'true');
+        const track = document.createElementNS(ns, 'circle');
+        track.setAttribute('cx', '50'); track.setAttribute('cy', '50'); track.setAttribute('r', '45');
+        track.classList.add('breathing-phase-track-base');
+        this.phaseArc = track.cloneNode();
+        this.phaseArc.classList.remove('breathing-phase-track-base');
+        this.phaseArc.classList.add('breathing-phase-track-fill');
+        this.phaseArc.setAttribute('pathLength', '1');
+        this.phaseTrack.append(track, this.phaseArc);
+
+        this.phaseSteps = document.createElement('div');
+        this.phaseSteps.className = 'breathing-phase-steps';
+        this.phaseStepNodes = ['inhale', 'hold1', 'exhale', 'hold2'].map((phase, i) => {
+            const node = document.createElement('span');
+            node.className = 'breathing-phase-step';
+            node.dataset.phase = phase;
+            node.textContent = ['Inhale', 'Hold', 'Exhale', 'Rest'][i];
+            this.phaseSteps.appendChild(node);
+            return node;
+        });
+        this.sessionPhaseLabel = document.createElement('div');
+        this.sessionPhaseLabel.className = 'breathing-session-phase';
 
         // Floating text for session guidance (main prompt)
         this.floatingText = document.createElement('div');
@@ -213,12 +256,11 @@ export class EnhancedBreathingIndicator {
         this.subFloatingText.textContent = '';
 
         // Assemble visual elements
-        visualContainer.appendChild(this.particleCanvas);
         visualContainer.appendChild(this.outerRing);
         visualContainer.appendChild(this.middleRing);
         visualContainer.appendChild(this.innerRing);
         visualContainer.appendChild(this.coreCircle);
-        visualContainer.appendChild(this.textPrompt);
+        visualContainer.append(this.phaseTrack, this.textPrompt, this.phaseCountdown, this.phaseDetail);
         // visualContainer.appendChild(this.floatingText); // Moved to main indicator for better positioning
 
         // Technique name display (top)
@@ -242,6 +284,7 @@ export class EnhancedBreathingIndicator {
         // Assemble content wrapper
         contentWrapper.appendChild(this.techniqueName);
         contentWrapper.appendChild(visualContainer);
+        contentWrapper.append(this.phaseSteps, this.sessionPhaseLabel);
         contentWrapper.appendChild(this.techniqueDesc);
         contentWrapper.appendChild(this.techniqueSelector);
 
@@ -312,50 +355,6 @@ export class EnhancedBreathingIndicator {
     }
 
     /**
-     * Create particle system
-     * @private
-     */
-    _createParticles() {
-        this.particles = [];
-        for (let i = 0; i < this.maxParticles; i++) {
-            this.particles.push({
-                angle: (Math.PI * 2 * i) / this.maxParticles,
-                distance: 0,
-                speed: 0.02 + Math.random() * 0.03,
-                size: 2 + Math.random() * 3,
-                alpha: 0,
-                rotationSpeed: (Math.random() - 0.5) * 0.02,
-            });
-        }
-    }
-
-    /**
-     * Preload WebGL context and shaders asynchronously
-     * @private
-     */
-    _preloadWebGL() {
-        const preload = () => {
-            // Renderer is lazy-created on first start() (SB-07); nothing to preload before then.
-            // Deliberately NO idle warm of the renderer MODULE either: it pulls the classic three
-            // build (a second 1.2 MB bundle next to three/webgpu) and an idle warm landed inside
-            // the Odyssey startup's compile pool (+0.5 s measured, 2026-08-21). The first start()
-            // — a deliberate action in Serenity mode — loads it on demand.
-            if (!this.threeRenderer) return;
-            console.log('[EnhancedBreathingIndicator] Preloading Three.js resources...');
-            this.threeRenderer.init();
-        };
-
-        // Run preload during idle time when available to reduce long-task warnings.
-        if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-            window.requestIdleCallback(preload, { timeout: 2500 });
-            return;
-        }
-
-        // Delay initialization locally to avoid blocking main thread during app startup
-        setTimeout(preload, 1000);
-    }
-
-    /**
      * Start the breathing indicator animation
      */
     start() {
@@ -365,26 +364,39 @@ export class EnhancedBreathingIndicator {
         }
 
         console.log('[EnhancedBreathingIndicator] Starting with technique:', this.currentTechnique);
+        if (this._destroyed) return;
         this.isActive = true;
+        this._isPaused = false;
+        this._hiddenAt = null;
+        this.backdrop.style.display = 'block';
+        this.indicator.style.display = 'block';
+        this.indicator.classList.remove('breathing-renderer-ready', 'breathing-paused');
+        this._updateColors(0);
 
         // Lazily create the Three.js renderer on first use (SB-07) — from a lazily LOADED
-        // module: the first start() attaches it when the chunk resolves (warmed at idle).
+        // module: the first start() attaches it when the chunk resolves.
         if (this.threeRenderer) {
-            this.threeRenderer.init();
-            this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
-            this.threeRenderer.start();
+            try {
+                this.threeRenderer.init();
+                this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
+                this.threeRenderer.setSessionPhase(this.sessionPhase);
+                this.threeRenderer.start();
+                this.indicator.classList.toggle('breathing-renderer-ready', !this.threeRenderer.contextLost);
+            } catch (error) {
+                this._handleRendererFailure(error);
+            }
         } else {
             this._rendererStartToken = (this._rendererStartToken || 0) + 1;
             const startToken = this._rendererStartToken;
             loadBreathingRendererModule().then(({ ThreeJSBreathingRenderer }) => {
-                if (!this.isActive || startToken !== this._rendererStartToken) return; // stopped meanwhile
+                if (this._destroyed || !this.isActive || startToken !== this._rendererStartToken) return; // stopped meanwhile
                 if (!this.threeRenderer) this.threeRenderer = new ThreeJSBreathingRenderer(this.visualContainer);
                 this.threeRenderer.init();
                 this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
-                this.threeRenderer.start();
-            }).catch((error) => {
-                console.warn('[EnhancedBreathingIndicator] Three.js renderer unavailable:', error?.message || error);
-            });
+                this.threeRenderer.setSessionPhase(this.sessionPhase);
+                if (!this._isPaused) this.threeRenderer.start();
+                this.indicator.classList.toggle('breathing-renderer-ready', !this.threeRenderer.contextLost);
+            }).catch((error) => this._handleRendererFailure(error));
         }
 
         // Show backdrop, indicator, and hover area
@@ -404,6 +416,14 @@ export class EnhancedBreathingIndicator {
         this._animate();
     }
 
+    _handleRendererFailure(error) {
+        this.indicator.classList.remove('breathing-renderer-ready');
+        const renderer = this.threeRenderer;
+        this.threeRenderer = null;
+        try { renderer?.dispose(); } catch { /* A partially initialized context may already be lost. */ }
+        console.warn('[EnhancedBreathingIndicator] Three.js renderer unavailable:', error?.message || error);
+    }
+
     /**
      * Stop the breathing indicator animation
      */
@@ -411,6 +431,10 @@ export class EnhancedBreathingIndicator {
         if (!this.isActive) return;
 
         this.isActive = false;
+        this._isPaused = false;
+        this._rendererStartToken = (this._rendererStartToken || 0) + 1;
+        this._hiddenAt = null;
+        this.indicator.classList.remove('breathing-paused');
 
         // Hide backdrop, indicator, and hover area
         this.backdrop.style.display = 'none';
@@ -458,6 +482,8 @@ export class EnhancedBreathingIndicator {
             this.currentTechnique = techniqueName;
             this.technique = this.techniques[techniqueName];
             this.pattern = this.technique.pattern;
+            this.indicator.dataset.technique = techniqueName;
+            this._updateColors(0);
 
             // Update UI
             this.techniqueName.textContent = this.technique.name;
@@ -489,6 +515,7 @@ export class EnhancedBreathingIndicator {
      * @param {number} direction - 1 for next, -1 for previous
      */
     cycleTechnique(direction = 1) {
+        if (this.isExternallyControlled) return;
         const techniqueKeys = Object.keys(this.techniques);
         const currentIndex = techniqueKeys.indexOf(this.currentTechnique);
         let newIndex = currentIndex + direction;
@@ -507,6 +534,8 @@ export class EnhancedBreathingIndicator {
     setShowText(show) {
         this.showText = show;
         this.textPrompt.style.display = show ? 'block' : 'none';
+        this.phaseCountdown.style.display = show ? 'block' : 'none';
+        this.phaseDetail.style.display = show ? 'block' : 'none';
     }
 
     /**
@@ -515,6 +544,7 @@ export class EnhancedBreathingIndicator {
      */
     setExternalControl(enabled) {
         this.isExternallyControlled = enabled;
+        this.indicator.classList.toggle('breathing-guided-session', enabled);
         if (enabled) {
             // Hide technique selector when externally controlled
             this.techniqueSelector.style.display = 'none';
@@ -534,10 +564,12 @@ export class EnhancedBreathingIndicator {
      * @param {number[]} newPattern - [inhale, hold1, exhale, hold2]
      */
     overridePattern(newPattern) {
-        this.pattern = newPattern;
-        // Restart phase to sync with new pattern
+        if (!Array.isArray(newPattern) || newPattern.length !== 4
+            || newPattern.some((duration) => !Number.isFinite(duration) || duration < 0)
+            || !newPattern.some((duration) => duration > 0)) return;
+        this.pattern = [...newPattern];
         this.phaseStartTime = performance.now();
-        this.currentPhase = 'inhale';
+        this.currentPhase = ['inhale', 'hold1', 'exhale', 'hold2'][newPattern.findIndex((duration) => duration > 0)];
     }
 
     /**
@@ -549,6 +581,40 @@ export class EnhancedBreathingIndicator {
         this.phaseStartTime = performance.now();
         this.currentPhase = 'inhale';
         console.log('[EnhancedBreathingIndicator] Cycle reset manually to Inhale');
+    }
+
+    pause() {
+        if (!this.isActive || this._isPaused) return;
+        this._isPaused = true;
+        this._pausedAt = this._hiddenAt ?? performance.now();
+        if (this.animationFrame !== null) cancelAnimationFrame(this.animationFrame);
+        this.animationFrame = null;
+        this.threeRenderer?.stop();
+        this.indicator.classList.add('breathing-paused');
+    }
+
+    resume() {
+        if (!this.isActive || !this._isPaused) return;
+        this.phaseStartTime += performance.now() - this._pausedAt;
+        this._isPaused = false;
+        this._hiddenAt = document.hidden ? performance.now() : null;
+        this.indicator.classList.remove('breathing-paused');
+        this.threeRenderer?.start();
+        if (!document.hidden) this._animate();
+    }
+
+    setSessionPhase(type, progress = 0) {
+        this.sessionPhase = type;
+        this.indicator.dataset.sessionPhase = type || '';
+        this._writeText(this.sessionPhaseLabel, {
+            grounding: 'Arrive · Grounding',
+            active: 'Find your rhythm',
+            retention: 'Stillness · Retention',
+            recovery: 'Return · Recovery',
+            integration: 'Rest · Integration',
+        }[type] || '');
+        this._writeStyle(this.indicator, '--session-phase-progress', Math.max(0, Math.min(1, progress)));
+        this.threeRenderer?.setSessionPhase(type);
     }
 
     /**
@@ -611,80 +677,59 @@ export class EnhancedBreathingIndicator {
      * @private
      */
     _animate() {
-        if (!this.isActive) return;
-
+        if (!this.isActive || this._isPaused || document.hidden) return;
         const now = performance.now();
-        const elapsed = (now - this.phaseStartTime) / 1000;
-
-        // Get current phase duration
-        const [inhale, hold1, exhale, hold2] = this.pattern;
-        let phaseDuration;
-        let nextPhase;
-        let phaseText;
-
-        // Determine current phase
-        if (this.currentPhase === 'inhale') {
-            phaseDuration = inhale;
-            nextPhase = hold1 > 0 ? 'hold1' : 'exhale';
-            phaseText = 'Breathe In';
-        } else if (this.currentPhase === 'hold1') {
-            phaseDuration = hold1;
-            nextPhase = 'exhale';
-            phaseText = 'Hold';
-        } else if (this.currentPhase === 'exhale') {
-            phaseDuration = exhale;
-            nextPhase = hold2 > 0 ? 'hold2' : 'inhale';
-            phaseText = 'Breathe Out';
-        } else { // hold2
-            phaseDuration = hold2;
-            nextPhase = 'inhale';
-            phaseText = 'Hold';
+        const phases = ['inhale', 'hold1', 'exhale', 'hold2'];
+        const previousPhase = this.currentPhase;
+        let index = phases.indexOf(this.currentPhase);
+        if (index < 0) index = 0;
+        let elapsed = Math.max(0, (now - this.phaseStartTime) / 1000);
+        const cycle = this.pattern.reduce((sum, duration) => sum + duration, 0);
+        if (elapsed > cycle * 2) {
+            // Skip whole missed cycles after a long suspension; don't replay stale voice cues.
+            const missedCycles = Math.floor(elapsed / cycle) - 1;
+            this.phaseStartTime += missedCycles * cycle * 1000;
+            elapsed -= missedCycles * cycle;
         }
-
-        // Check if phase is complete
-        if (elapsed >= phaseDuration) {
-            const previousPhase = this.currentPhase;
-            this.currentPhase = nextPhase;
-            this.phaseStartTime = now;
-
-            // Fire phase change callback if registered
-            if (this.onPhaseChangeCallback) {
-                this.onPhaseChangeCallback(nextPhase, previousPhase);
-            }
-
-            this.animationFrame = requestAnimationFrame(() => this._animate());
-            return;
+        // Keep fractional overshoot and skip empty phases in this frame. Resolve all
+        // missed boundaries before notifying audio so a resumed tab never replays
+        // old inhale/exhale instructions during its current hold.
+        let crossings = 0;
+        while (elapsed >= this.pattern[index] && crossings < 16) {
+            const duration = this.pattern[index];
+            elapsed -= duration;
+            this.phaseStartTime += duration * 1000;
+            do { index = (index + 1) % 4; } while (this.pattern[index] === 0);
+            this.currentPhase = phases[index];
+            crossings += 1;
         }
-
-        // Calculate progress through current phase (0 to 1)
-        const progress = elapsed / phaseDuration;
-
-        // Calculate intensity
+        if (crossings > 0) this.onPhaseChangeCallback?.(this.currentPhase, previousPhase);
+        const duration = this.pattern[index];
+        const progress = Math.min(1, elapsed / duration);
         const intensity = this._calculateIntensity(progress, 0.3);
-
-        // Update Three.js Renderer
-        if (this.threeRenderer) {
-            this.threeRenderer.updateIntensity(intensity, this.currentPhase);
-        }
-
-        // Update DOM rings (keep these for UI consistency)
+        this.threeRenderer?.updateIntensity(intensity, this.currentPhase, progress);
         this._updateRings(intensity);
         this._updateColors(progress);
-
-        // Update text if enabled
-        // Update text if enabled
-        if (this.showText) {
-            // Center text ALWAYS shows phase text (Breathe In/Out/Hold)
-            this._writeText(this.textPrompt, phaseText);
-
-            // Floating text shows custom prompt (handled in setPrompt)
-            // No drift animation needed for fixed position
-            if (this.customPrompt) {
-                // Optional: Add subtle pulse or glow if desired
-            }
-        }
-
-        // Continue animation
+        const labels = {
+            inhale: 'Breathe in', hold1: 'Hold gently', exhale: 'Breathe out', hold2: 'Rest gently',
+        };
+        const phaseLabel = this.currentPhase === 'hold2' && this.sessionPhase === 'retention'
+            ? 'Hold gently' : labels[this.currentPhase];
+        this._writeText(this.textPrompt, phaseLabel);
+        this._writeText(this.phaseCountdown, `${Math.ceil(Math.max(0, duration - elapsed))}`);
+        this._writeText(this.phaseDetail, {
+            inhale: 'Follow the expanding light',
+            hold1: 'Let the light settle',
+            exhale: 'Soften as the light recedes',
+            hold2: this.sessionPhase === 'retention' ? 'A quiet moment within' : 'A quiet moment between breaths',
+        }[this.currentPhase]);
+        this._writeStyle(this.phaseArc, 'strokeDasharray', `${progress.toFixed(4)} 1`);
+        this.phaseStepNodes.forEach((node, i) => {
+            this._writeText(node, ['Inhale', 'Hold', 'Exhale', this.sessionPhase === 'retention' ? 'Hold' : 'Rest'][i]);
+            node.hidden = this.pattern[i] === 0;
+            node.classList.toggle('active', i === index);
+        });
+        this.indicator.dataset.breathPhase = this.currentPhase;
         this.animationFrame = requestAnimationFrame(() => this._animate());
     }
 
@@ -711,20 +756,12 @@ export class EnhancedBreathingIndicator {
      * @private
      */
     _updateRings(intensity) {
-        const scale = 0.3 + intensity * 0.7;
-
-        // Apply transforms
-        this._writeStyle(this.outerRing, 'transform', `translate(-50%, -50%) scale(${scale * 1.3})`);
-        this._writeStyle(this.outerRing, 'opacity', intensity * 0.3);
-
-        this._writeStyle(this.middleRing, 'transform', `translate(-50%, -50%) scale(${scale})`);
-        this._writeStyle(this.middleRing, 'opacity', intensity * 0.5);
-
-        this._writeStyle(this.innerRing, 'transform', `translate(-50%, -50%) scale(${scale * 0.7})`);
-        this._writeStyle(this.innerRing, 'opacity', intensity * 0.7);
-
-        this._writeStyle(this.coreCircle, 'transform', `translate(-50%, -50%) scale(${scale * 0.5})`);
-        this._writeStyle(this.coreCircle, 'opacity', intensity);
+        const scale = 0.68 + intensity * 0.32;
+        this._writeStyle(this.outerRing, 'transform', `translate(-50%, -50%) scale(${scale.toFixed(4)})`);
+        this._writeStyle(this.middleRing, 'transform', `translate(-50%, -50%) scale(${(scale * 0.84).toFixed(4)})`);
+        this._writeStyle(this.innerRing, 'transform', `translate(-50%, -50%) scale(${(scale * 0.64).toFixed(4)})`);
+        this._writeStyle(this.coreCircle, 'transform', `translate(-50%, -50%) scale(${scale.toFixed(4)})`);
+        this._writeStyle(this.indicator, '--breath-intensity', intensity.toFixed(4));
     }
 
     _presentationFor(node) {
@@ -754,26 +791,20 @@ export class EnhancedBreathingIndicator {
     }
 
     /**
-     * Route to technique-specific animation
-     * @private
-     */
-    _animateTechniqueSpecific(progress) {
-        // Technique-specific animations are handled by ThreeJSBreathingRenderer
-    }
-
-    /**
      * Update colors based on phase
      * @private
      */
     _updateColors(progress) {
-        const { color } = this.technique;
+        const color = this.sessionColor || this.technique.color;
+        const secondary = this.technique.secondaryColor || color;
+        this._writeStyle(this.indicator, '--breath-secondary', `${secondary.r}, ${secondary.g}, ${secondary.b}`);
         // Update CSS custom properties for dynamic colors
         this._writeStyle(this.indicator, '--breath-color-r', color.r);
         this._writeStyle(this.indicator, '--breath-color-g', color.g);
         this._writeStyle(this.indicator, '--breath-color-b', color.b);
 
         // Adjust brightness based on phase
-        let brightness = 1.0;
+        let brightness = this.currentPhase === 'hold2' ? 0.7 : 1.0;
         if (this.currentPhase === 'inhale') {
             brightness = 0.7 + progress * 0.3;
         } else if (this.currentPhase === 'exhale') {
@@ -801,6 +832,8 @@ export class EnhancedBreathingIndicator {
      */
     _setupKeyboardListener() {
         this._handleKeyPress = (event) => {
+            if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')
+                || event.ctrlKey || event.metaKey || event.altKey || this.isExternallyControlled) return;
             if (event.key.toLowerCase() === 's') {
                 this.toggleSelector();
                 event.preventDefault();
@@ -895,7 +928,11 @@ export class EnhancedBreathingIndicator {
      * Cleanup
      */
     destroy() {
+        this._destroyed = true;
+        this._rendererStartToken = (this._rendererStartToken || 0) + 1;
         this.stop();
+        document.removeEventListener('visibilitychange', this._visibilityHandler);
+        this.progressContainer?.remove();
 
         // Release the Three.js renderer and its GL context (SB-07)
         this.threeRenderer?.dispose();
@@ -976,7 +1013,8 @@ export class EnhancedBreathingIndicator {
         this.progressBarFill = document.createElement('div');
         this.progressBarFill.className = 'session-progress-bar-fill';
         this.progressBarFill.style.cssText = `
-            width: 0%;
+            width: 100%;
+            transform: scaleX(0);
             height: 100%;
             background: linear-gradient(90deg, #00d4ff, #7c3aed);
             border-radius: 2px;
@@ -1053,7 +1091,7 @@ export class EnhancedBreathingIndicator {
 
         // Update progress bar
         if (data.sessionProgress !== undefined) {
-            this._writeStyle(this.progressBarFill, 'width', `${Math.min(100, data.sessionProgress * 100)}%`);
+            this._writeStyle(this.progressBarFill, 'transform', `scaleX(${Math.max(0, Math.min(1, data.sessionProgress))})`);
         }
 
         // Update progress bar color to match session theme

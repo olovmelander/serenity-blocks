@@ -603,6 +603,8 @@ export class SerenityHub {
             }
         }
 
+        if (tabName === 'breathing') this.breathingTab?.refresh();
+
         // Load music tab
         if (tabName === 'music' && !this.musicTab) {
             const soundManager = this.serenityMode.deps?.soundManager;
