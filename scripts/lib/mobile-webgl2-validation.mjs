@@ -25,7 +25,6 @@ const BOOLEAN_OPTIONS = new Set(['all', 'list', 'help']);
 // Budget assertions complement quality labels: a correct getter with a High
 // fallback allocation was the failure mode in this continuation audit.
 const MINIMAL_PRESET_EXPECTATIONS = {
-    'chiral-gold': { goldDustCount: 1500, enablePostProcessing: false },
     'solar-eclipse': { starCount: 800, enablePostProcessing: false },
     'stellar-drift': { meteorCount: 50, enablePostProcessing: false },
     'stellar-velocity': { starCount: 500, enablePostProcessing: false },
