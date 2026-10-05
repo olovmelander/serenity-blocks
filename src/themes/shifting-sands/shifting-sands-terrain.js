@@ -18,11 +18,19 @@
  * shadows come from the horizon tangent (the suns sit ~6° apart in elevation: slopes between the
  * two horizons are lit by the companion alone — coloured double shadows); wind ripples, grain
  * glitter, the backlit forward-scatter sheen, spice stains, and the shared aerial perspective.
+ *
+ * The worm writes itself into the sand through three small uniform sets: its sign (a travelling
+ * mound with a collapsing wake), a ground wave per breach, and the wells — the sand around each
+ * foot of the arch, which domes, bursts into a rim, slumps and craters. The wells displace the
+ * grid, but their slope is re-evaluated per pixel like the ridges, so a rim still catches the low
+ * sun where the grid is too coarse to carry it.
  */
 
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
+    atan,
     attribute,
     cameraPosition,
     clamp,
@@ -41,7 +49,6 @@ import {
     pow,
     reflect,
     smoothstep,
-    uniform,
     uniformArray,
     vec2,
     vec3,
@@ -375,6 +382,10 @@ export function bakeTerrainGeometry(field, { tier, shadowDir }) {
 
 /** Thumper rings (piece locks) and other ground pulses: (x, z, t0, strength). */
 export const GROUND_PULSE_SLOTS = 4;
+/** Worms that can mark the sand at once: each owns a sign, a ground wave and two wells. */
+export const WORM_GROUND_SLOTS = 2;
+/** Wells: where each worm comes up and where it goes down. */
+export const WELL_SLOTS = WORM_GROUND_SLOTS * 2;
 
 /**
  * @param {object} shared   the world's shared uniform nodes + atmosphere helpers
@@ -391,37 +402,70 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
     const EW = DUNE.expWindward;
     const EL = DUNE.expLee;
 
-    const pulseSlots = Array.from({ length: GROUND_PULSE_SLOTS }, () => new THREE.Vector4(0, 0, -100, 0));
-    const uPulses = uniformArray(pulseSlots, 'vec4');
-    const uSign = uniform(new THREE.Vector4(0, 0, 0, 0)); // worm sign: (x, z, heading, strength)
-    const uSignDir = uniform(new THREE.Vector2(1, 0));
-    const uMounds = uniformArray([new THREE.Vector4(0, 0, 0, 0), new THREE.Vector4(0, 0, 0, 0)], 'vec4');
+    // The thumper's slots first, then one ground wave per worm.
+    const PULSES = GROUND_PULSE_SLOTS + WORM_GROUND_SLOTS;
+    const vec4s = (n, x, y, z, w) => Array.from({ length: n }, () => new THREE.Vector4(x, y, z, w));
+    const uPulses = uniformArray(vec4s(PULSES, 0, 0, -100, 0), 'vec4');
+    const uSigns = uniformArray(vec4s(WORM_GROUND_SLOTS, 0, 0, 1, 0), 'vec4'); // x, z, wake length, strength
+    const uSignDirs = uniformArray(vec4s(WORM_GROUND_SLOTS, 1, 0, 0, 0), 'vec4'); // heading.xz
+    const uWells = uniformArray(vec4s(WELL_SLOTS, 0, 0, 40, 20), 'vec4'); // x, z, rim radius, rim width
+    const uWellH = uniformArray(vec4s(WELL_SLOTS, 0, 0, 0, 0), 'vec4'); // rim, bulge, crater (heights), scar
+
+    /** The parts of well i at a ground point: shared by the displaced grid and the per-pixel slope. */
+    const wellShape = (xz, i) => {
+        const W = uWells.element(i);
+        const H = uWellH.element(i);
+        const rel = xz.sub(W.xy);
+        const d = length(rel);
+        const n = rel.div(max(d, 1e-3));
+        // Thrown sand never lands in a circle: two fixed lobes around the hole.
+        const cos3 = n.x.mul(n.x).mul(4.0).sub(3.0).mul(n.x);
+        const lobe = cos3.mul(0.2).add(n.x.mul(n.y).mul(0.28)).add(1.0);
+        const u = d.sub(W.z).div(W.w);
+        const sb = W.z.mul(1.1);
+        const sc = W.z.mul(0.8);
+        return {
+            W,
+            H,
+            d,
+            n,
+            u,
+            sb,
+            sc,
+            rim: exp(u.mul(u).negate()).mul(H.x).mul(lobe),
+            bulge: exp(d.mul(d).div(sb.mul(sb)).negate()).mul(H.y),
+            crater: exp(d.mul(d).div(sc.mul(sc)).negate()).mul(H.z),
+        };
+    };
 
     const aDune = attribute('aDune', 'vec4');
     const aShade = attribute('aShade', 'vec4');
 
-    // ── Vertex: ground pulses (thumper rings), the worm sign mound and breach mounds ──
+    // ── Vertex: ground pulses (thumper rings), the worm signs and the wells ──
     const disp = Fn(() => {
         const p = positionLocal;
         const h = float(0.0).toVar();
         const gx = float(0.0).toVar();
         const gz = float(0.0).toVar();
-        // Worm sign: a travelling mound with a collapsing wake behind it.
-        const rel = p.xz.sub(uSign.xy);
-        const along = dot(rel, uSignDir);
-        const across = dot(rel, vec2(uSignDir.y.negate(), uSignDir.x));
-        const lat = exp(across.mul(across).div(-26.0 * 26.0));
-        const ahead = exp(along.mul(along).div(-34.0 * 34.0));
-        const wake = smoothstep(-520.0, 0.0, along).mul(float(1.0).sub(smoothstep(-10.0, 30.0, along)));
-        const mound = ahead.mul(9.0).sub(wake.mul(2.6)).mul(lat).mul(uSign.w);
-        h.addAssign(mound);
-        // d/dalong of the mound (dominant) along the heading.
-        const dAlong = ahead.mul(along).mul(-2.0 / (34.0 * 34.0)).mul(9.0).mul(lat)
-            .mul(uSign.w);
-        gx.addAssign(dAlong.mul(uSignDir.x));
-        gz.addAssign(dAlong.mul(uSignDir.y));
-        // Thumper waves: a low swell of sand running out from each beat.
-        for (let i = 0; i < GROUND_PULSE_SLOTS; i++) {
+        // Worm sign: a travelling mound with a collapsing wake behind it (as long as it has run).
+        for (let i = 0; i < WORM_GROUND_SLOTS; i++) {
+            const S = uSigns.element(i);
+            const dir = uSignDirs.element(i).xy;
+            const rel = p.xz.sub(S.xy);
+            const along = dot(rel, dir);
+            const across = dot(rel, vec2(dir.y.negate(), dir.x));
+            const lat = exp(across.mul(across).div(-26.0 * 26.0));
+            const ahead = exp(along.mul(along).div(-34.0 * 34.0));
+            const wake = smoothstep(S.z.negate(), 0.0, along).mul(float(1.0).sub(smoothstep(-10.0, 30.0, along)));
+            h.addAssign(ahead.mul(9.0).sub(wake.mul(2.6)).mul(lat).mul(S.w));
+            // d/dalong of the mound (dominant) along the heading.
+            const dAlong = ahead.mul(along).mul(-2.0 / (34.0 * 34.0)).mul(9.0).mul(lat)
+                .mul(S.w);
+            gx.addAssign(dAlong.mul(dir.x));
+            gz.addAssign(dAlong.mul(dir.y));
+        }
+        // Thumper waves: a low swell of sand running out from each beat (and each worm strike).
+        for (let i = 0; i < PULSES; i++) {
             const P = uPulses.element(i);
             const age = uTime.sub(P.z);
             const d = length(p.xz.sub(P.xy));
@@ -429,12 +473,10 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
             const env = exp(age.mul(-1.3)).mul(smoothstep(0.0, 0.05, age)).mul(P.w);
             h.addAssign(exp(x.mul(x).negate()).mul(env).mul(0.8));
         }
-        // Breach mounds: sand heaved up where the body pierces the surface.
-        for (let i = 0; i < 2; i++) {
-            const m = uMounds.element(i);
-            const d = length(p.xz.sub(m.xy));
-            const ring = exp(d.sub(m.z).div(18.0).pow(2.0).negate()).mul(m.w);
-            h.addAssign(ring);
+        // Wells: the sand heaved, rimmed and cratered where a body pierces the surface.
+        for (let i = 0; i < WELL_SLOTS; i++) {
+            const well = wellShape(p.xz, i);
+            h.addAssign(well.rim.add(well.bulge).sub(well.crater));
         }
         return vec3(h, gx, gz);
     })();
@@ -463,9 +505,31 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         const prof = mix(pow(pw.div(C), EW), pow(float(1.0).sub(q), EL), crestT);
         const detail = float(1.0).sub(smoothstep(0.22, 0.6, fwu));
         const grad = aShade.xy.add(vDispGrad).add(aDune.yz.mul(dprof.mul(aDune.w).mul(detail))).toVar();
+        const nz = ssTexNoise(noiseTex, wp.xz.mul(0.035)).toVar();
+
+        // ── Wells: the exact slope of the heaved sand, and the scar of churned sand around it ──
+        // (rays of thrown sand; no ripples, no glitter until the wind has written them back)
+        const scar = float(0.0).toVar();
+        const scarTone = float(1.0).toVar();
+        for (let i = 0; i < WELL_SLOTS; i++) {
+            const well = wellShape(wp.xz, i);
+            If(well.H.w.greaterThan(0.002).and(well.d.lessThan(well.W.z.mul(3.4))), () => {
+                const slope = well.rim.mul(well.u.mul(-2.0).div(well.W.w))
+                    .add(well.bulge.mul(well.d.mul(-2.0).div(well.sb.mul(well.sb))))
+                    .sub(well.crater.mul(well.d.mul(-2.0).div(well.sc.mul(well.sc))));
+                grad.addAssign(well.n.mul(slope));
+                const rays = ssTexNoise(noiseTex, vec2(
+                    atan(well.n.y, well.n.x).mul(5.1).add(i * 3.7),
+                    well.d.div(well.W.z).mul(0.9),
+                ));
+                const reach = well.d.div(well.W.z.mul(mix(1.25, 2.3, rays.x)));
+                const here = exp(reach.mul(reach).negate()).mul(well.H.w);
+                scarTone.assign(mix(scarTone, mix(0.84, 1.1, rays.y), here));
+                scar.assign(max(scar, here));
+            });
+        }
 
         // ── Wind ripples (transverse, asymmetric), off the slip faces, faded by footprint ──
-        const nz = ssTexNoise(noiseTex, wp.xz.mul(0.035)).toVar();
         if (ripples) {
             // Ripples bend with a fine warp (tuning-fork junctions where the warp folds) and
             // their wavelength breathes, so they read as wind-written sand, not corduroy.
@@ -477,7 +541,8 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
                 .mul(float(1.0).sub(smoothstep(0.88, 1.0, rf)));
             const rFade = float(1.0).sub(smoothstep(0.08, 0.32, fwidth(rc)));
             const rMask = float(1.0).sub(crestT).mul(smoothstep(0.02, 0.15, p))
-                .mul(smoothstep(0.25, 0.75, nr.y.mul(0.6).add(nz.z.mul(0.4))));
+                .mul(smoothstep(0.25, 0.75, nr.y.mul(0.6).add(nz.z.mul(0.4))))
+                .mul(float(1.0).sub(scar));
             grad.addAssign(rDir.mul(rSlope.mul(0.075).mul(rFade).mul(rMask)));
         }
         const N = normalize(vec3(grad.x.negate(), 1.0, grad.y.negate())).toVar();
@@ -500,6 +565,8 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         sand.assign(mix(sand, sand.mul(1.08).add(vec3(0.03, 0.02, 0.01)), prof.mul(prof).mul(0.8)));
         const spice = aShade.w.mul(smoothstep(0.35, 0.75, nz.y));
         sand.assign(mix(sand, vec3(0.62, 0.21, 0.07), spice.mul(0.75)));
+        // Sand turned up from below is duller and cooler than the wind-polished surface.
+        sand.mulAssign(mix(vec3(1.0, 1.0, 1.0), vec3(0.92, 0.94, 1.0).mul(scarTone), scar));
 
         // ── Light ──
         const ao = mix(0.58, 1.0, smoothstep(0.0, 0.45, prof)).mul(mix(0.85, 1.0, smoothstep(-0.2, 0.5, N.y)));
@@ -539,7 +606,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
             const H = normalize(V.add(uSunA));
             const g = pow(clamp(dot(facet, H), 0.0, 1.0), 420.0);
             const pick = smoothstep(0.55, 0.6, ssHash21(cell.add(17.3)));
-            const near = float(1.0).sub(smoothstep(40.0, 320.0, dist));
+            const near = float(1.0).sub(smoothstep(40.0, 320.0, dist)).mul(float(1.0).sub(scar));
             const tint = mix(vec3(1.0, 0.86, 0.62), vec3(1.0, 0.55, 0.2), spice);
             col.addAssign(tint.mul(uSunLightA).mul(g.mul(dotM).mul(pick).mul(near).mul(visA)
                 .mul(9.0)));
@@ -547,7 +614,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
 
         // ── Thumper rings: each lock sends a ring of lifted sand across the erg ──
         const ringSum = float(0.0).toVar();
-        for (let i = 0; i < GROUND_PULSE_SLOTS; i++) {
+        for (let i = 0; i < PULSES; i++) {
             const P = uPulses.element(i);
             const age = uTime.sub(P.z);
             const front = age.mul(260.0);
@@ -580,7 +647,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
     return {
         material,
         uniforms: {
-            uPulses, uSign, uSignDir, uMounds,
+            uPulses, uSigns, uSignDirs, uWells, uWellH,
         },
     };
 }

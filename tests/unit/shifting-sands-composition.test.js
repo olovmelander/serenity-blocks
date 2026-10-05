@@ -12,7 +12,7 @@ import {
     readLayoutRects,
     restVerticalFov,
 } from '../../src/themes/shifting-sands/shifting-sands-composition.js';
-import { BREACH_RECIPES } from '../../src/themes/shifting-sands/shifting-sands-worm.js';
+import { WormDirector } from '../../src/themes/shifting-sands/shifting-sands-worm.js';
 
 const ASPECTS = [4 / 3, 16 / 10, 16 / 9, 1600 / 769, 2560 / 1080];
 const DEG = Math.PI / 180;
@@ -94,14 +94,31 @@ describe('shifting sands composition', () => {
         expect(top.y).toBeLessThan(1);
     });
 
-    it.each(ASPECTS)('breaches the worm in the free left zone at aspect %f', (aspect) => {
+    it.each(ASPECTS)('breaches the worm in frame and clear of the board and the HUD at aspect %f', (aspect) => {
         const cam = restCamera(aspect);
         const card = cardNdc(aspect);
-        for (const recipe of Object.values(BREACH_RECIPES)) {
-            const site = groundPointAt(recipe.az, recipe.dist);
-            const apex = new THREE.Vector3(site.x, recipe.b - recipe.k, site.z).project(cam);
-            expect(apex.x).toBeLessThan(card.x0);
-            expect(apex.x).toBeGreaterThan(-1.05);
+        // What the world tells the director: the lens, and the azimuths the layout covers.
+        const halfAz = Math.atan(Math.tan((cam.fov * DEG) / 2) * aspect) / DEG;
+        const azOf = (ndcX) => Math.atan(ndcX * Math.tan(halfAz * DEG)) / DEG;
+        const director = new WormDirector(() => 0, { eye: { x: 0, y: 60, z: 0 } });
+        director.setView({
+            halfAz,
+            bands: [[azOf(card.x0), azOf(card.x1)], [azOf(card.hx0), azOf(card.hx1)]],
+        });
+        const sites = Array.from({ length: 40 }, (_, cycle) => director.idleBreach(cycle));
+        const clean = sites.filter((br) => director.faults(br) === 0);
+        expect(clean.length).toBeGreaterThan(sites.length * 0.85);
+        for (const br of clean) {
+            // Where it comes up and where it goes down are both on screen, beside the layout.
+            for (const foot of [br.up, br.down]) {
+                const p = new THREE.Vector3(foot.x, foot.y, foot.z).project(cam);
+                expect(Math.abs(p.x)).toBeLessThan(1);
+                expect(Math.abs(p.y)).toBeLessThan(1);
+                expect(p.x > card.x0 && p.x < card.x1).toBe(false);
+                expect(p.x > card.hx0 && p.x < card.hx1).toBe(false);
+            }
+            const apex = new THREE.Vector3(br.ox, br.oy + br.b - br.k, br.oz).project(cam);
+            expect(Math.abs(apex.x)).toBeLessThan(1);
         }
     });
 
