@@ -139,7 +139,7 @@ export class SakuraForest {
             const asset = this.assets.trees[name];
             const data = new Float32Array(trees.length * 4);
             // Per-tree data rides on the geometry, so every specimen shares one bark
-            // material (and one set of pipelines) instead of owning a copy of it.
+            // material (one node graph to build) instead of owning a copy of it.
             asset.bark.setAttribute('sakuraTree', new THREE.InstancedBufferAttribute(data, 4));
             if (!this.barkMaterial) this.barkMaterial = this.createBarkMaterial();
             const mesh = new THREE.InstancedMesh(asset.bark, this.barkMaterial, trees.length);
@@ -279,7 +279,7 @@ export class SakuraForest {
             if (!geometry) throw new Error(`[Sakura] Blossom mesh "${key}" is missing from the asset pack.`);
             const count = bucket.matrices.length / 16;
             // Spray kinds differ only in geometry and instance data: the data rides on the
-            // geometry, so all of them share one material and one set of pipelines.
+            // geometry, so all of them share one material.
             geometry.setAttribute('sakuraCrown', new THREE.InstancedBufferAttribute(new Float32Array(bucket.crown), 4));
             geometry.setAttribute('sakuraBent', new THREE.InstancedBufferAttribute(new Float32Array(bucket.bent), 4));
             geometry.setAttribute('sakuraTree', new THREE.InstancedBufferAttribute(new Float32Array(bucket.tree), 4));

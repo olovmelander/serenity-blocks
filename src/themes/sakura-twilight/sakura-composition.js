@@ -44,32 +44,32 @@ export const SAKURA_FEATURE_TREES = Object.freeze([
     },
     // The islet at the end of the bridge, and the right point behind it.
     {
-        asset: 'sakura-grove-weeping', x: 16.6, z: -27.6, yaw: 0.9, scale: 1.2, tone: 0.85,
+        asset: 'sakura-grove-weeping', x: 15.2, z: -27.8, yaw: 0.9, scale: 1.2, tone: 0.85,
     },
     {
-        asset: 'sakura-grove-a', x: 30.5, z: -17, yaw: 1.4, scale: 1.12, tone: 0.36,
+        asset: 'sakura-grove-a', x: 33.5, z: -17, yaw: 1.4, scale: 1.12, tone: 0.36,
     },
     {
-        asset: 'sakura-grove-c', x: 27.5, z: -33, yaw: 3.0, scale: 1.2, tone: 0.55,
+        asset: 'sakura-grove-c', x: 31.5, z: -34, yaw: 3.0, scale: 1.2, tone: 0.55,
     },
 ]);
 
 /** Lanterns in priority order: tiers light a prefix of this list in the shaders. */
 export const SAKURA_STONE_LANTERNS = Object.freeze([
     {
-        kind: 'stone_lantern', x: -6.4, z: 1.2, yaw: 0.5,
+        kind: 'stone_lantern', x: -6.4, z: 2.1, yaw: 0.5,
     },
     {
-        kind: 'stone_lantern', x: 7.8, z: 1.6, yaw: 2.4,
+        kind: 'stone_lantern', x: 7.8, z: 2.2, yaw: 2.4,
     },
     {
-        kind: 'snow_lantern', x: 14.4, z: -23.4, yaw: 0.8,
+        kind: 'snow_lantern', x: 13.6, z: -24.2, yaw: 0.8,
     },
     {
-        kind: 'stone_lantern', x: -19.5, z: -8.5, yaw: 1.3,
+        kind: 'stone_lantern', x: -22.6, z: -8.8, yaw: 1.3,
     },
     {
-        kind: 'stone_lantern', x: 25.5, z: -11.5, yaw: 4.2,
+        kind: 'stone_lantern', x: 31.5, z: -11.5, yaw: 4.2,
     },
     {
         kind: 'snow_lantern', x: -17.6, z: -18.6, yaw: 2.6,
@@ -89,10 +89,10 @@ export const SAKURA_LANTERN_GLOW = Object.freeze({
 });
 
 export const SAKURA_TORII = Object.freeze({
-    x: -21, z: -45, yaw: 0.1, scale: 1.15,
+    x: -25, z: -64, yaw: 0.1, scale: 1.45,
 });
 export const SAKURA_BRIDGE = Object.freeze({
-    x: 21.4, z: -25.4, yaw: -0.42, scale: 1,
+    x: 23.4, z: -26.2, yaw: -0.16, scale: 1,
 });
 export const SAKURA_PAGODA = Object.freeze({
     x: 118, z: -166, yaw: 0.5, scale: 1.75,

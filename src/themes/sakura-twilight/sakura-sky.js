@@ -37,8 +37,8 @@ export const SAKURA_CONSTELLATIONS = Object.freeze([
     },
     {
         name: 'The Blossom',
-        at: [14.5, 20],
-        scale: 0.5,
+        at: [-14, 18.6],
+        scale: 0.45,
         points: [[0, 0], [0, 4.2], [4, 1.3], [2.5, -3.4], [-2.5, -3.4], [-4, 1.3]],
         lines: [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [1, 2], [2, 3], [3, 4], [4, 5], [5, 1]],
     },

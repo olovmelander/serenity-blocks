@@ -34,8 +34,9 @@ export function sakuraLand(x, z) {
     const wobble = 0.9 * Math.sin(x * 0.31 + z * 0.17) + 0.6 * Math.sin(x * 0.13 - z * 0.41 + 2);
     const nearBank = z - sakuraShore(x);
     const leftPoint = (1 - Math.hypot((x + 42) / 26, (z + 28) / 37)) * 24 + wobble;
-    const rightPoint = (1 - Math.hypot((x - 46) / 25, (z + 32) / 37)) * 24 + wobble;
-    const islet = (1 - Math.hypot(x - 17, z + 27) / 5.6) * 5.6 + wobble * 0.3;
+    const rightPoint = (1 - Math.hypot((x - 51) / 25, (z + 32) / 37)) * 24 + wobble;
+    // A channel of open water lies between the islet and the right point: the bridge's.
+    const islet = (1 - Math.hypot(x - 15.5, z + 27) / 5) * 5 + wobble * 0.3;
     const farShore = -152 - z + 8 * Math.sin(x * 0.013 + 1) + 4 * Math.sin(x * 0.041);
     return Math.max(nearBank, leftPoint, rightPoint, islet, farShore);
 }
