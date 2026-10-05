@@ -499,7 +499,13 @@ export function createMoonlitWorld({ u, quality }) {
             strength: 0.4, radius: 0.72, threshold: 0.86, breath: 0.55,
         },
         grade: {
-            shadows: [0.84, 0.94, 1.14], highlights: [1.0, 1.0, 1.03], saturation: 0.86, contrast: 1.05, vignette: 0.5,
+            shadows: [0.84, 0.94, 1.14],
+            highlights: [1.0, 1.0, 1.03],
+            saturation: 0.86,
+            contrast: 1.05,
+            vignette: 0.5,
+            // Point-like sparkles would fringe toward the corners: keep the lens quiet.
+            chroma: 0.35,
         },
         camera: { dolly: 0.02, drift: [0.03, 0.01], period: 80 },
         exposure: 1.0,

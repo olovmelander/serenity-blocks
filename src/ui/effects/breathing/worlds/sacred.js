@@ -434,6 +434,8 @@ export function createSacredWorld({ u, quality }) {
             strength: 0.36, radius: 0.65, threshold: 0.75, breath: 0.5,
         },
         grade: {
+            // Fine bright lines would fringe red and blue toward the corners: keep the lens quiet.
+            chroma: 0.35,
             shadows: [0.94, 0.88, 1.1],
             highlights: [1.06, 0.99, 0.88],
             saturation: 1.06,

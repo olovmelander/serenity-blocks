@@ -27,7 +27,7 @@ export const DEFAULT_BLOOM = Object.freeze({
     strength: 0.35, radius: 0.6, threshold: 0.7, breath: 0.35,
 });
 export const NEUTRAL_GRADE = Object.freeze({
-    shadows: [1, 1, 1], highlights: [1, 1, 1], saturation: 1, contrast: 1, vignette: 0.3,
+    shadows: [1, 1, 1], highlights: [1, 1, 1], saturation: 1, contrast: 1, vignette: 0.3, chroma: 1,
 });
 const LUMA = vec3(0.2126, 0.7152, 0.0722);
 
@@ -90,7 +90,7 @@ export class BreathPost {
             const at = coord.toVar();
             const sum = vec3(0).toVar();
             const weight = float(1).toVar();
-            Loop(count, () => {
+            Loop(count, ({ i }) => {
                 at.addAssign(stride);
                 const sample = sceneColor.sample(at).rgb.toVar();
                 const lum = dot(sample, LUMA);
@@ -100,7 +100,10 @@ export class BreathPost {
                 const source = smoothstep(this.uShaftThreshold, this.uShaftThreshold.add(0.5), lum)
                     .mul(fadeOut(this.uShaftRegion.sub(0.04), this.uShaftRegion.add(0.04), at.y))
                     .mul(exp(dot(off, off).div(this.uShaftRadius.mul(this.uShaftRadius)).negate()));
-                sum.addAssign(sample.mul(source).mul(weight));
+                // The last steps fade out: when a short march (length < 1) only just reaches a large
+                // emitter, it must not switch on at a hard radius around it.
+                const taper = fadeOut(count * 0.72, count, float(i).add(1));
+                sum.addAssign(sample.mul(source).mul(weight).mul(taper));
                 weight.mulAssign(this.uShaftDecay);
             });
             return vec4(sum.div(count), 1);
@@ -181,6 +184,8 @@ export class BreathPost {
         this.uSaturation.value = grade.saturation;
         this.uContrast.value = grade.contrast;
         this.uVignette.value = grade.vignette;
+        // Worlds of fine bright lines or sparkles turn the lens's edge colour down.
+        this.uChroma.value = grade.chroma;
         const shafts = world.shafts || null;
         this.shafts = shafts ? {
             strength: 1, threshold: 0.6, decay: 0.96, length: 0.85, tint: [1, 1, 1], breath: 0.5, region: null, radius: 10, ...shafts,
