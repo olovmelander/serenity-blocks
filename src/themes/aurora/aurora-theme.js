@@ -1,834 +1,479 @@
-import * as THREE from 'three';
+/**
+ * Aurora — a playable sky. Marched auroral curtains hang over snow peaks and a lake that
+ * mirrors them; every lock plucks the curtain above the piece, every clear strums the whole
+ * display, and a streak of clears winds it up into a storm.
+ *
+ * Both backends render the artwork proven in the playground (aurora-world.js). This owner
+ * handles generation-safe startup, gameplay events, sizing and disposal.
+ */
+import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { ThemeCameraRig } from '../shared/camera-rig.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { getViewport } from '../../utils/viewport.js';
+import { readBoardSpans } from './aurora-board-rects.js';
+import { AuroraPost } from './aurora-post.js';
+import { QUALITY_PRESETS, normalizeAuroraQuality } from './aurora-quality.js';
 import { AURORA_TETROMINOS } from './aurora-tetrominos.js';
-import { normalizeQuality } from '../../utils/quality.js';
-import {
-    auroraCurtainVertexShader,
-    auroraCurtainFragmentShader,
-    starVertexShader,
-    starFragmentShader,
-    nebulaVertexShader,
-    nebulaFragmentShader,
-    shootingStarVertexShader,
-    shootingStarFragmentShader,
-    pulseWaveVertexShader,
-    pulseWaveFragmentShader,
-    auroraSparkVertexShader,
-    auroraSparkFragmentShader,
-} from './aurora-shaders.js';
+import { AuroraWorld } from './aurora-world.js';
 
-/**
- * Aurora Theme - Three.js 3D Edition
- *
- * Features:
- * - Immersive 3D aurora borealis with flowing green curtains
- * - Deep space background with twinkling stars
- * - Nebula ambient particles
- * - Shooting stars on combos
- * - Dynamic lighting and atmospheric effects
- */
+export { QUALITY_PRESETS } from './aurora-quality.js';
+
+const INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+/** Boards settle over a few frames after a layout change; re-read them at these delays. */
+const BOARD_READ_DELAYS_S = [0, 0.6, 1.8];
+
+function searchParams() {
+    return new URLSearchParams(typeof window === 'undefined' ? '' : window.location?.search || '');
+}
+
+function enabledParam(params, ...keys) {
+    return keys.some((key) => params.has(key)
+        && ['', '1', 'true', 'yes', 'on'].includes((params.get(key) || '').toLowerCase()));
+}
+
+function eventDetail(payload) {
+    return payload?.detail ?? payload;
+}
+
 export default class AuroraTheme extends BaseTheme {
     constructor() {
         super('aurora');
-        this.eventUnsubscribers = [];
-        this.boundResizeHandler = this.onWindowResize.bind(this);
-
-        // Three.js components
+        this.resourceProfile = 'heavy-gpu';
+        this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.renderer = null;
-        this.mainGroup = null; // Container for drifting elements
-        this.auroraCurtains = [];
-        this.starSystem = null;
-        this.nebulaParticles = null;
-        this.shootingStars = [];
-        this.pulseWaves = [];
-        this.auroraSparks = []; // Pool of spark particle systems
-        this.auroraSparkIndex = 0; // Cycle through pool
-
-        // Animation
-        this.animationFrame = null;
-        this.clock = new THREE.Clock();
-
-        // Pointer tracking for parallax camera
-        this.pointerX = 0;
-        this.pointerY = 0;
-        this.smoothedPointerX = 0;
-        this.smoothedPointerY = 0;
-
-        // Impact shake. The theme owns its own sway/parallax, so the rig contributes
-        // only the shake; `cameraBase` is the scratch this frame's sway is written into.
-        this.cameraRig = null;
-        this.cameraBase = { x: 0, y: -5, z: 15 };
-
-        // Uniforms
-        this.uniforms = {
-            time: { value: 0 },
-            intensity: { value: 1.0 },
-            comboWave: { value: 0.0 },
-        };
-
-        // Aurora color palette - Deep greens with cyan/violet accents
-        this.auroraColors = {
-            primary: new THREE.Color(0x00ff6a), // Vibrant emerald green
-            secondary: new THREE.Color(0x00e5ff), // Electric cyan
-            tertiary: new THREE.Color(0xaa66ff), // Soft violet
-        };
-
-        // Quality settings
-        this.qualityPresets = {
-            Minimal: {
-                starCount: 500, curtainLayers: 2, nebulaCount: 50, auroraSparks: 800,
-            },
-            Low: {
-                starCount: 800, curtainLayers: 3, nebulaCount: 80, auroraSparks: 1200,
-            },
-            Medium: {
-                starCount: 1200, curtainLayers: 4, nebulaCount: 120, auroraSparks: 1800,
-            },
-            High: {
-                starCount: 2000, curtainLayers: 5, nebulaCount: 180, auroraSparks: 2500,
-            },
-            Ultra: {
-                starCount: 3000, curtainLayers: 6, nebulaCount: 250, auroraSparks: 3500,
-            },
-            Extreme: {
-                starCount: 4000, curtainLayers: 7, nebulaCount: 350, auroraSparks: 5000,
-            },
-        };
+        this.world = null;
+        this.post = null;
+        this.timer = null;
+        this.time = 0;
+        this.qualityPresets = QUALITY_PRESETS;
+        this.quality = 'High';
         this.currentQuality = 'High';
-    }
-
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        const quality = settings?.effectQuality || settings?.graphicsQuality;
-        const legacyMinimum = String(quality).trim().toLowerCase() === 'minimum';
-        return normalizeQuality(legacyMinimum ? 'Minimal' : quality);
-    }
-
-    async createScene() {
-        console.log('[Aurora3D] Initializing Three.js scene...');
-
-        const container = document.getElementById('aurora-theme');
-        if (!container) {
-            console.error('[Aurora3D] Container not found');
-            return;
-        }
-
-        container.innerHTML = '';
-        this.currentQuality = this.getGraphicsQuality();
-        const preset = this.qualityPresets[this.currentQuality] || this.qualityPresets.High;
-
-        // Setup Scene
-        this.scene = new THREE.Scene();
-        // Deep space atmosphere - dark greenish-black
-        this.scene.background = new THREE.Color(0x000a05);
-        this.scene.fog = new THREE.FogExp2(0x001a10, 0.008);
-
-        // Setup Camera
-        this.camera = new THREE.PerspectiveCamera(
-            75,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            1000,
-        );
-        this.camera.position.set(0, -5, 15);
-        this.camera.lookAt(0, 5, 0);
-        this.cameraRig = new ThemeCameraRig(this.camera, {
-            focus: { x: 0, y: 5, z: 0 },
-            // The theme's own orbit has a ~105 s period, so over a few seconds it barely
-            // reads as motion. The rig adds a faster 18/27 s float on top so the frame
-            // feels alive at a glance, without flattening that slow cinematic drift.
-            breathe: true,
-            pointer: false, // the theme already applies its own mouse parallax
-        });
-
-        // Setup Renderer
-        this.renderer = new THREE.WebGLRenderer({
-            alpha: true,
-            antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance',
-        });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        container.appendChild(this.renderer.domElement);
-
-        // Create main group for drifting
-        this.mainGroup = new THREE.Group();
-        this.scene.add(this.mainGroup);
-
-        // Create all elements
-        this.createStars(preset.starCount);
-        this.createAuroraCurtains(preset.curtainLayers);
-        this.createNebulaParticles(preset.nebulaCount);
-        this.createAuroraSparks(preset.auroraSparks);
-        this.setupLighting();
-
-        // Event listeners
-        this.setupEventListeners();
-        window.addEventListener('resize', this.boundResizeHandler);
-
-        // Start animation
-        this.animate();
-
-        console.log(`[Aurora3D] Scene initialized with ${this.currentQuality} quality.`);
-    }
-
-    createStars(count) {
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(count * 3);
-        const sizes = new Float32Array(count);
-        const phases = new Float32Array(count);
-        const colors = new Float32Array(count * 3);
-
-        // Star color palette - whites, pale blues, pale greens
-        const starColors = [
-            new THREE.Color(0xffffff), // White
-            new THREE.Color(0xaaddff), // Pale blue
-            new THREE.Color(0xddffdd), // Pale green
-            new THREE.Color(0xffffee), // Warm white
-            new THREE.Color(0xbbffee), // Cyan tint
-        ];
-
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-
-            // Spread stars in a wide dome/hemisphere around camera
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.random() * Math.PI * 0.6; // Upper hemisphere mostly
-            const radius = 40 + Math.random() * 60;
-
-            positions[i3] = Math.sin(phi) * Math.cos(theta) * radius;
-            positions[i3 + 1] = Math.cos(phi) * radius * 0.8 + 10; // Bias upward
-            positions[i3 + 2] = Math.sin(phi) * Math.sin(theta) * radius - 20;
-
-            sizes[i] = Math.random() * 2.0 + 0.5;
-            phases[i] = Math.random() * Math.PI * 2;
-
-            const color = starColors[Math.floor(Math.random() * starColors.length)];
-            colors[i3] = color.r;
-            colors[i3 + 1] = color.g;
-            colors[i3 + 2] = color.b;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-            },
-            vertexShader: starVertexShader,
-            fragmentShader: starFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.starSystem = new THREE.Points(geometry, material);
-        this.scene.add(this.starSystem); // Stars in background, not in mainGroup
-    }
-
-    createAuroraCurtains(layerCount) {
-        // Clear existing curtains
-        this.auroraCurtains.forEach((c) => {
-            this.mainGroup.remove(c);
-            c.geometry.dispose();
-            c.material.dispose();
-        });
-        this.auroraCurtains = [];
-
-        for (let i = 0; i < layerCount; i++) {
-            const t = i / (layerCount - 1 || 1);
-
-            // Create a wide, tall plane for each curtain
-            const width = 60 + t * 20;
-            const height = 25 + t * 10;
-            const geometry = new THREE.PlaneGeometry(width, height, 80, 40);
-
-            // Vary colors per layer
-            const primaryHue = 0.38 + t * 0.08; // Green varying to cyan
-            const primary = new THREE.Color().setHSL(primaryHue, 0.9, 0.5);
-            const secondary = new THREE.Color().setHSL(primaryHue + 0.1, 0.85, 0.55);
-            const tertiary = new THREE.Color().setHSL(0.75 - t * 0.1, 0.7, 0.6); // Purple
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: this.uniforms.time,
-                    intensity: this.uniforms.intensity,
-                    comboWave: this.uniforms.comboWave,
-                    waveSpeed: { value: 0.3 + t * 0.2 },
-                    waveAmplitude: { value: 2.0 + t * 1.0 },
-                    layerOffset: { value: i * 3.0 },
-                    colorPrimary: { value: primary },
-                    colorSecondary: { value: secondary },
-                    colorTertiary: { value: tertiary },
-                },
-                vertexShader: auroraCurtainVertexShader,
-                fragmentShader: auroraCurtainFragmentShader,
-                transparent: true,
-                depthWrite: false,
-                side: THREE.DoubleSide,
-                blending: THREE.AdditiveBlending,
-            });
-
-            const curtain = new THREE.Mesh(geometry, material);
-
-            // Position layers at different depths and heights
-            const zPos = -5 - i * 8;
-            const yPos = 8 + i * 3;
-            const xOffset = (Math.random() - 0.5) * 10;
-
-            curtain.position.set(xOffset, yPos, zPos);
-            curtain.rotation.x = -0.2 - t * 0.1; // Slight tilt
-
-            this.mainGroup.add(curtain);
-            this.auroraCurtains.push(curtain);
-        }
-    }
-
-    createNebulaParticles(count) {
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(count * 3);
-        const randoms = new Float32Array(count);
-
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-
-            // Spread around the aurora area
-            positions[i3] = (Math.random() - 0.5) * 80;
-            positions[i3 + 1] = Math.random() * 30 + 5;
-            positions[i3 + 2] = (Math.random() - 0.5) * 60 - 10;
-
-            randoms[i] = Math.random();
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                color: { value: new THREE.Color(0x88ffaa) }, // Soft green glow
-            },
-            vertexShader: nebulaVertexShader,
-            fragmentShader: nebulaFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.nebulaParticles = new THREE.Points(geometry, material);
-        this.mainGroup.add(this.nebulaParticles);
-    }
-
-    setupLighting() {
-        // Ambient light - deep space blue
-        const ambient = new THREE.AmbientLight(0x1a2a40, 0.5);
-        this.scene.add(ambient);
-
-        // Aurora glow light
-        const auroraLight = new THREE.PointLight(0x00ff88, 1.5, 60);
-        auroraLight.position.set(0, 15, -10);
-        this.mainGroup.add(auroraLight);
-
-        // Secondary light for depth
-        const secondaryLight = new THREE.PointLight(0x00ccff, 0.8, 40);
-        secondaryLight.position.set(-15, 20, -20);
-        this.mainGroup.add(secondaryLight);
-    }
-
-    createAuroraSparks(totalCount) {
-        // Pool of particle systems for overlapping bursts
-        const poolSize = 6;
-        const countPerSystem = Math.floor(totalCount / poolSize);
-
-        // Green/cyan aurora color palette
-        const colorOptions = [
-            new THREE.Color(0x00ff66), // Vibrant emerald
-            new THREE.Color(0x44ffaa), // Mint green
-            new THREE.Color(0x00ffcc), // Cyan-green
-            new THREE.Color(0x88ff88), // Light green
-            new THREE.Color(0x00dd88), // Deep green
-        ];
-
-        for (let p = 0; p < poolSize; p++) {
-            const geometry = new THREE.BufferGeometry();
-
-            const thetas = new Float32Array(countPerSystem);
-            const phis = new Float32Array(countPerSystem);
-            const radii = new Float32Array(countPerSystem);
-            const randoms = new Float32Array(countPerSystem);
-            const colors = new Float32Array(countPerSystem * 3);
-            const positions = new Float32Array(countPerSystem * 3);
-            const origins = new Float32Array(countPerSystem * 3);
-
-            for (let i = 0; i < countPerSystem; i++) {
-                // Distribute particles across aurora area
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(2 * Math.random() - 1);
-
-                thetas[i] = theta;
-                phis[i] = phi;
-                radii[i] = 1.0; // Not used for spherical origin
-                randoms[i] = Math.random();
-
-                // Origin points spread across aurora viewing area
-                const originX = (Math.random() - 0.5) * 50;
-                const originY = 5 + Math.random() * 20;
-                const originZ = -5 - Math.random() * 25;
-
-                origins[i * 3] = originX;
-                origins[i * 3 + 1] = originY;
-                origins[i * 3 + 2] = originZ;
-
-                // Color selection
-                const c = colorOptions[Math.floor(Math.random() * colorOptions.length)];
-                colors[i * 3] = c.r;
-                colors[i * 3 + 1] = c.g;
-                colors[i * 3 + 2] = c.b;
-
-                positions[i * 3] = originX;
-                positions[i * 3 + 1] = originY;
-                positions[i * 3 + 2] = originZ;
-            }
-
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('aTheta', new THREE.BufferAttribute(thetas, 1));
-            geometry.setAttribute('aPhi', new THREE.BufferAttribute(phis, 1));
-            geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
-            geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-            geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-            geometry.setAttribute('aOrigin', new THREE.BufferAttribute(origins, 3));
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: this.uniforms.time,
-                    uPulseTimer: { value: -100.0 },
-                },
-                vertexShader: auroraSparkVertexShader,
-                fragmentShader: auroraSparkFragmentShader,
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-            });
-
-            const sparks = new THREE.Points(geometry, material);
-            this.mainGroup.add(sparks);
-            this.auroraSparks.push(sparks);
-        }
-
-        console.log(`[Aurora3D] Aurora sparks pool created with ${poolSize} systems, ${countPerSystem} particles each`);
-    }
-
-    triggerAuroraSparks() {
-        // Trigger the next spark system in the pool
-        if (this.auroraSparks.length === 0) return;
-
-        const sparks = this.auroraSparks[this.auroraSparkIndex];
-        if (sparks && sparks.material.uniforms) {
-            sparks.material.uniforms.uPulseTimer.value = 0.0;
-        }
-
-        // Cycle to next system in pool
-        this.auroraSparkIndex = (this.auroraSparkIndex + 1) % this.auroraSparks.length;
-    }
-
-    animate() {
-        if (!this.isActive) return;
-
-        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
-
-        const delta = this.clock.getDelta();
-        const elapsedTime = this.clock.getElapsedTime();
-        this.uniforms.time.value = elapsedTime;
-
-        // Slow star rotation
-        if (this.starSystem) {
-            this.starSystem.rotation.y = elapsedTime * 0.005;
-            this.starSystem.rotation.z = Math.sin(elapsedTime * 0.02) * 0.02;
-        }
-
-        // Subtle drift for main group
-        if (this.mainGroup) {
-            const driftTime = elapsedTime * 0.08;
-            this.mainGroup.position.x = Math.sin(driftTime) * 1.5;
-            this.mainGroup.position.y = Math.cos(driftTime * 0.7) * 0.8;
-            this.mainGroup.rotation.z = Math.sin(driftTime * 0.3) * 0.02;
-        }
-
-        // Slow camera orbit for parallax depth (matches other themes)
-        if (this.camera) {
-            const cameraTime = elapsedTime * 0.06; // Slow but noticeable orbit
-            const orbitRadiusX = 8; // Wide horizontal sway
-            const orbitRadiusY = 6; // Vertical sway range
-            const orbitRadiusZ = 5; // Depth breathing
-
-            // Smooth pointer tracking (frame-rate independent damping)
-            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
-            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
-
-            const parallaxX = this.smoothedPointerX * 6.0;
-            const parallaxY = -this.smoothedPointerY * 3.0;
-
-            // Orbital sway + mouse parallax - creates parallax with starfield/aurora
-            this.cameraBase.x = Math.sin(cameraTime) * orbitRadiusX
-                + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4
-                + parallaxX;
-            this.cameraBase.y = -5 + Math.cos(cameraTime * 0.8) * orbitRadiusY
-                + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3
-                + parallaxY;
-            this.cameraBase.z = 15 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
-
-            // LookAt drift for dynamic framing (also nudged by mouse at 0.4x)
-            const lookOffsetX = Math.sin(cameraTime * 0.4) * 4 + parallaxX * 0.4;
-            const lookOffsetY = 5 + Math.cos(cameraTime * 0.5) * 3 + parallaxY * 0.4;
-            const lookOffsetZ = -5 + Math.sin(cameraTime * 0.3) * 3;
-
-            // The rig writes the final position and does the lookAt, layering impact
-            // shake on top of the sway above. Aiming at the drifting target (rather than
-            // a fixed point) is what turns a shake offset into visible view rotation.
-            this.cameraRig.setFocus(lookOffsetX, lookOffsetY, lookOffsetZ);
-            this.cameraRig.apply(delta, this.cameraBase);
-        }
-
-        // Decay intensity back to baseline
-        if (this.uniforms.intensity.value > 1.0) {
-            this.uniforms.intensity.value = THREE.MathUtils.lerp(
-                this.uniforms.intensity.value,
-                1.0,
-                delta * 1.5,
-            );
-        }
-
-        // Decay combo wave back to zero
-        if (this.uniforms.comboWave.value > 0.0) {
-            this.uniforms.comboWave.value = THREE.MathUtils.lerp(
-                this.uniforms.comboWave.value,
-                0.0,
-                delta * 2.0,
-            );
-            if (this.uniforms.comboWave.value < 0.01) {
-                this.uniforms.comboWave.value = 0.0;
-            }
-        }
-
-        // Update shooting stars
-        this.updateShootingStars(delta);
-
-        // Update pulse waves
-        this.updatePulseWaves(delta);
-
-        // Update aurora sparks pool (slower progression)
-        for (const sparks of this.auroraSparks) {
-            if (sparks && sparks.material.uniforms) {
-                // Progress pulse timer (slower for gentler effect)
-                if (sparks.material.uniforms.uPulseTimer.value > -50.0) {
-                    sparks.material.uniforms.uPulseTimer.value += delta * 5.0;
-
-                    // Reset when animation completes
-                    if (sparks.material.uniforms.uPulseTimer.value > 65.0) {
-                        sparks.material.uniforms.uPulseTimer.value = -100.0;
-                    }
-                }
-            }
-        }
-
-        this.renderer.render(this.scene, this.camera);
-    }
-
-    createShootingStar() {
-        const trailLength = 20;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(trailLength * 3);
-        const progress = new Float32Array(trailLength);
-
-        // Random start position in upper area
-        const startX = (Math.random() - 0.5) * 60;
-        const startY = 20 + Math.random() * 15;
-        const startZ = -10 - Math.random() * 20;
-
-        // Random direction (downward diagonal)
-        const dirX = (Math.random() - 0.5) * 2 - 0.5;
-        const dirY = -1 - Math.random() * 0.5;
-        const dirZ = (Math.random() - 0.5);
-
-        for (let i = 0; i < trailLength; i++) {
-            positions[i * 3] = startX;
-            positions[i * 3 + 1] = startY;
-            positions[i * 3 + 2] = startZ;
-            progress[i] = i / trailLength;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aProgress', new THREE.BufferAttribute(progress, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                color: { value: new THREE.Color(0xaaffdd) }, // Pale green-white
-                opacity: { value: 1.0 },
-            },
-            vertexShader: shootingStarVertexShader,
-            fragmentShader: shootingStarFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        const star = new THREE.Points(geometry, material);
-        star.userData = {
-            direction: new THREE.Vector3(dirX, dirY, dirZ).normalize(),
-            speed: 30 + Math.random() * 20,
-            life: 1.5,
-            maxLife: 1.5,
-            headPosition: new THREE.Vector3(startX, startY, startZ),
-        };
-
-        this.scene.add(star);
-        this.shootingStars.push(star);
-    }
-
-    updateShootingStars(delta) {
-        for (let i = this.shootingStars.length - 1; i >= 0; i--) {
-            const star = this.shootingStars[i];
-            const data = star.userData;
-
-            data.life -= delta;
-
-            // Move the head
-            data.headPosition.addScaledVector(data.direction, data.speed * delta);
-
-            // Update trail positions (shift down, add new head)
-            const positions = star.geometry.attributes.position.array;
-            const trailLength = positions.length / 3;
-
-            // Shift existing points
-            for (let j = trailLength - 1; j > 0; j--) {
-                positions[j * 3] = positions[(j - 1) * 3];
-                positions[j * 3 + 1] = positions[(j - 1) * 3 + 1];
-                positions[j * 3 + 2] = positions[(j - 1) * 3 + 2];
-            }
-
-            // Set new head position
-            positions[0] = data.headPosition.x;
-            positions[1] = data.headPosition.y;
-            positions[2] = data.headPosition.z;
-
-            star.geometry.attributes.position.needsUpdate = true;
-
-            // Fade out
-            star.material.uniforms.opacity.value = data.life / data.maxLife;
-
-            // Remove if dead
-            if (data.life <= 0) {
-                this.scene.remove(star);
-                star.geometry.dispose();
-                star.material.dispose();
-                this.shootingStars.splice(i, 1);
-            }
-        }
-    }
-
-    createPulseWave(intensity) {
-        const geometry = new THREE.TorusGeometry(5, 0.3, 8, 64);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                opacity: { value: 0.8 },
-                color: { value: new THREE.Color(0x00ffaa) },
-            },
-            vertexShader: pulseWaveVertexShader,
-            fragmentShader: pulseWaveFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-        });
-
-        const wave = new THREE.Mesh(geometry, material);
-        wave.position.set(0, 10, -15);
-        wave.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.3;
-
-        wave.userData = {
-            speed: 4 + intensity * 1.5,
-            life: 2.0,
-            maxLife: 2.0,
-        };
-
-        this.mainGroup.add(wave);
-        this.pulseWaves.push(wave);
-    }
-
-    updatePulseWaves(delta) {
-        for (let i = this.pulseWaves.length - 1; i >= 0; i--) {
-            const wave = this.pulseWaves[i];
-            const data = wave.userData;
-
-            data.life -= delta;
-
-            // Expand
-            const expansion = data.speed * delta;
-            wave.scale.x += expansion * 0.5;
-            wave.scale.y += expansion * 0.5;
-            wave.scale.z += expansion * 0.3;
-
-            // Fade out
-            wave.material.uniforms.opacity.value = (data.life / data.maxLife) * 0.6;
-
-            if (data.life <= 0) {
-                this.mainGroup.remove(wave);
-                wave.geometry.dispose();
-                wave.material.dispose();
-                this.pulseWaves.splice(i, 1);
-            }
-        }
-    }
-
-    setupEventListeners() {
-        // Line Clear - aurora intensifies
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (!this.isActive) return;
-            this.uniforms.intensity.value += data.lineCount * 0.3;
-            this.cameraRig?.shakeClear(data.lineCount, 0);
-            if (data.lineCount >= 2) {
-                this.createPulseWave(data.lineCount);
-            }
-        });
-
-        // Combo - aurora sway, shooting stars, and aurora spark explosions
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (!this.isActive) return;
-            this.uniforms.intensity.value += 0.2;
-
-            // Trigger aurora sway/wave effect
-            this.uniforms.comboWave.value = Math.min(1.0, 0.3 + data.comboCount * 0.15);
-
-            // Combo shake. LINE_CLEAR fires its own for the line count; whichever is
-            // larger wins, so the two never stack and neither depends on arrival order.
-            this.cameraRig?.shakeClear(1, data.comboCount);
-
-            if (data.comboCount >= 2) {
-                this.createShootingStar();
-                // Trigger aurora spark explosion
-                this.triggerAuroraSparks();
-            }
-            if (data.comboCount >= 4) {
-                this.createShootingStar(); // Extra shooting star for big combos
-                this.triggerAuroraSparks(); // Extra spark explosion for big combos
-            }
-        });
-
-        // Piece Lock - subtle shimmer
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            if (!this.isActive) return;
-            this.uniforms.intensity.value += 0.08;
-            this.cameraRig?.shakeLock();
-        });
-
-        // Pointer tracking for parallax camera
-        const onPointerMove = (e) => {
-            if (!this.isActive) return;
-            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
-        };
-        window.addEventListener('pointermove', onPointerMove);
-        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
-    }
-
-    onWindowResize() {
-        if (!this.camera || !this.renderer) return;
-
-        this.camera.aspect = window.innerWidth / window.innerHeight;
-        this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-
-    dispose() {
-        window.removeEventListener('resize', this.boundResizeHandler);
-
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-        }
-
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        this.qualityPreset = QUALITY_PRESETS.High;
+        this.pendingQuality = null;
+        this.pointer = { x: 0, y: 0 };
+        this.isWebGPU = false;
+        this.usesNodeMaterials = false;
+        this.forceWebGL = false;
+        this.runtimeGeneration = 0;
+        this.animationLoopStarted = false;
+        this.animationFrameId = null;
         this.eventUnsubscribers = [];
-
-        // Cleanup shooting stars
-        this.shootingStars.forEach((star) => {
-            this.scene.remove(star);
-            star.geometry.dispose();
-            star.material.dispose();
-        });
-        this.shootingStars = [];
-
-        // Cleanup pulse waves
-        this.pulseWaves.forEach((wave) => {
-            this.mainGroup.remove(wave);
-            wave.geometry.dispose();
-            wave.material.dispose();
-        });
-        this.pulseWaves = [];
-
-        // Cleanup aurora sparks pool
-        this.auroraSparks.forEach((sparks) => {
-            this.mainGroup.remove(sparks);
-            sparks.geometry.dispose();
-            sparks.material.dispose();
-        });
-        this.auroraSparks = [];
-
-        // Cleanup renderer
-        if (this.renderer) {
-            this.disposeRenderer(this.renderer, { nullInstance: false });
-            const container = document.getElementById('aurora-theme');
-            if (container && container.contains(this.renderer.domElement)) {
-                container.removeChild(this.renderer.domElement);
-            }
-        }
-
-        // Dispose all scene objects
-        if (this.scene) {
-            this.scene.traverse((object) => {
-                if (object.geometry) object.geometry.dispose();
-                if (object.material) {
-                    if (Array.isArray(object.material)) {
-                        object.material.forEach((m) => m.dispose());
-                    } else {
-                        object.material.dispose();
-                    }
-                }
-            });
-        }
-
-        this.scene = null;
-        this.camera = null;
-        this.renderer = null;
-        this.mainGroup = null;
-        this.auroraCurtains = [];
-        this.starSystem = null;
-        this.nebulaParticles = null;
-    }
-
-    cleanup() {
-        if (this.cleanupComplete) return;
-
-        try {
-            this.dispose();
-        } finally {
-            // BaseTheme owns the canonical terminal lifecycle contract. Keep
-            // this in finally so its safety nets run even if legacy disposal
-            // encounters an already-lost renderer or scene resource.
-            super.cleanup();
-        }
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        this.appliedSize = null;
+        this.drawingBuffer = new THREE.Vector2();
+        this.boardReads = [];
+        this.modeManager = null;
+        this.reducedMotionQuery = null;
     }
 
     getTetrominoConfig() {
         return AURORA_TETROMINOS;
+    }
+
+    usesMrtScenePass() {
+        return this.post?.useMRT === true;
+    }
+
+    /** The tier the player chose; `Minimum` is the legacy label for the cheapest one. */
+    getGraphicsQuality() {
+        const settings = typeof window === 'undefined' ? null : window.settings;
+        return normalizeAuroraQuality(settings?.effectQuality || settings?.graphicsQuality);
+    }
+
+    applyQualityPreset(quality) {
+        this.quality = normalizeAuroraQuality(quality);
+        this.currentQuality = this.quality;
+        this.qualityPreset = QUALITY_PRESETS[this.quality];
+    }
+
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const container = document.getElementById('aurora-theme');
+        if (!container) throw new Error('[Aurora] Theme container not found.');
+        this.disposeRuntime();
+        const runtimeGeneration = ++this.runtimeGeneration;
+        const current = () => runtimeGeneration === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        this.applyQualityPreset(this.pendingQuality ?? this.getGraphicsQuality());
+        this.pendingQuality = null;
+
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return;
+        if (!current()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return;
+        }
+        this.renderer = renderer;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        renderer.setClearColor(0x02040a, 1);
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+        // The registry's static container is never registered for removal.
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
+        try {
+            this.buildScene();
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.setupEventListeners();
+            this.time = 0;
+            this.update(0);
+            this.timer = new THREE.Timer();
+            this.timer.connect(document);
+            this.timer.reset();
+            if (enabledParam(searchParams(), 'themeValidation')) window.__AURORA_THEME__ = this;
+            if (!this.isPaused && current()) this.startAnimation();
+        } catch (error) {
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            throw error;
+        }
+    }
+
+    async createRenderer(ownerGeneration) {
+        const forceWebGL = this.forceWebGL || enabledParam(searchParams(), 'forceWebGL', 'auroraForceWebGL');
+        const current = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        const attempt = (force) => this.initializeRendererCandidate(new THREE.WebGPURenderer({
+            antialias: this.getAntialiasEnabled(),
+            alpha: false,
+            forceWebGL: force,
+            powerPreference: 'high-performance',
+        }), {
+            timeoutMs: INIT_TIMEOUT_MS,
+            label: `Aurora ${force ? 'WebGL2' : 'WebGPU'} renderer init`,
+            ownerGeneration,
+        });
+        if (!forceWebGL && typeof navigator !== 'undefined' && navigator.gpu) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!current()) return null;
+                console.warn('[Aurora] WebGPU initialization failed; trying node WebGL2.', error);
+            }
+        }
+        if (!current()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!current()) return null;
+            throw new Error('Aurora could not initialize WebGPU or WebGL2.', { cause: error });
+        }
+    }
+
+    buildScene() {
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(55, 1, 0.5, 12000);
+        this.world = new AuroraWorld({ scene: this.scene, camera: this.camera, quality: this.quality });
+        this.post = new AuroraPost({
+            renderer: this.renderer,
+            scene: this.scene,
+            camera: this.camera,
+            preset: this.qualityPreset,
+            antialias: this.getAntialiasEnabled(),
+        });
+        this.applyMotionPreference();
+    }
+
+    getDiagnostics() {
+        return {
+            quality: this.quality,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            world: this.world?.getDiagnostics() ?? null,
+            post: this.post?.getDiagnostics() ?? null,
+        };
+    }
+
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+        });
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return;
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Aurora WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true;
+                if (this.isActive) {
+                    await this.start(this.webglRenderer, {
+                        assetManager: this.assetManager,
+                        audioManager: this.audioManager,
+                        onRuntimeFailure: this.onRuntimeFailure,
+                    });
+                }
+            },
+        });
+    }
+
+    effectsAllowed() {
+        return this.isActive && !this.isPaused && !this.cleanupComplete && Boolean(this.world)
+            && (typeof window === 'undefined' || window.settings?.backgroundComboEffects !== false);
+    }
+
+    setupEventListeners() {
+        this.teardownEventListeners();
+        const whenAllowed = (handler) => (payload) => {
+            if (this.effectsAllowed()) handler(eventDetail(payload));
+        };
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.HARD_DROP, whenAllowed((payload) => this.world.director.onHardDrop(payload))),
+            eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(eventDetail(payload))),
+            eventBus.on(EVENTS.LINE_CLEAR, whenAllowed((payload) => this.world.director.onLineClear(payload))),
+            eventBus.on(EVENTS.COMBO, whenAllowed((payload) => this.world.director.onCascade(payload))),
+            eventBus.on(EVENTS.TSPIN, whenAllowed((payload) => this.world.director.onTSpin(payload))),
+            eventBus.on(EVENTS.B2B, whenAllowed((payload) => this.world.director.onBackToBack(payload))),
+            eventBus.on(EVENTS.PERFECT_CLEAR, whenAllowed((payload) => this.world.director.onPerfectClear(payload))),
+            eventBus.on(EVENTS.LEVEL_UP, whenAllowed((payload) => this.world.director.onLevelUp(payload))),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
+        );
+        this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
+        this.registerEventListener(window, 'gameOver', () => this.world?.director.calm());
+        this.registerEventListener(window, 'pointermove', (event) => {
+            if (!this.isActive || this.isPaused || event.pointerType === 'touch') return;
+            this.pointer.x = THREE.MathUtils.clamp((event.clientX / window.innerWidth) * 2 - 1, -1, 1);
+            this.pointer.y = THREE.MathUtils.clamp((event.clientY / window.innerHeight) * 2 - 1, -1, 1);
+        }, { passive: true });
+        this.reducedMotionQuery = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+        if (typeof this.reducedMotionQuery?.addEventListener === 'function') {
+            this.registerEventListener(this.reducedMotionQuery, 'change', () => this.applyMotionPreference());
+        }
+        // The scene was built before this query existed; apply what it says now.
+        this.applyMotionPreference();
+        this.ensureModeManagerListeners();
+    }
+
+    /** The mode manager may appear after the first build (boot prewarm); subscribe once it does. */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const relayout = () => this.scheduleBoardReads();
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', relayout),
+            manager.on('modeActivated', relayout),
+            manager.on('modeStopped', () => this.world?.director.calm()),
+        );
+    }
+
+    teardownEventListeners() {
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+        this.modeManager = null;
+        this.reducedMotionQuery = null;
+    }
+
+    applyMotionPreference() {
+        const reduced = this.reducedMotionQuery?.matches === true
+            || (typeof window !== 'undefined' && window.settings?.reducedMotion === true);
+        this.world?.setReducedMotion(reduced);
+    }
+
+    /** `pieceLockRipple` switches off the visible pluck, never the streak bookkeeping. */
+    onPieceLock(payload) {
+        if (!this.effectsAllowed()) return;
+        const visible = typeof window === 'undefined' || window.settings?.pieceLockRipple !== false;
+        this.world.director.onPieceLock(payload, visible);
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.isActive || !this.renderer) return;
+        const detail = eventDetail(payload) || {};
+        const quality = detail.type === 'effectQuality' ? detail.value
+            : detail.effectQuality ?? detail.settings?.effectQuality ?? detail.changed?.effectQuality;
+        if (quality !== undefined && normalizeAuroraQuality(quality) !== this.quality) {
+            this.pendingQuality = normalizeAuroraQuality(quality);
+            this.queueRebuild();
+            return;
+        }
+        if (typeof window !== 'undefined' && window.settings?.backgroundComboEffects === false) {
+            this.world?.director.calm();
+        }
+        this.applyMotionPreference();
+        if (detail.type === 'renderScale' || detail.renderScale !== undefined
+            || detail.settings?.renderScale !== undefined || detail.changed?.renderScale !== undefined) {
+            const generation = this.runtimeGeneration;
+            queueMicrotask(() => {
+                if (!this.isActive || generation !== this.runtimeGeneration) return;
+                this.appliedSize = null;
+                const { width, height } = getViewport();
+                this.resize(width, height);
+            });
+        }
+    }
+
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const generation = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || generation !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true;
+                return;
+            }
+            this.start(this.webglRenderer, {
+                assetManager: this.assetManager,
+                audioManager: this.audioManager,
+                onRuntimeFailure: this.onRuntimeFailure,
+            }).catch((error) => this.onRuntimeFailure?.(error));
+        });
+    }
+
+    resize(width, height) {
+        if (!this.renderer || !this.camera || !this.world) return;
+        const view = width > 0 && height > 0 ? { width, height } : getViewport();
+        if (!(view.width > 0) || !(view.height > 0)) return;
+        const dpr = this.getEffectivePixelRatio(this.qualityPreset.pixelRatio);
+        if (this.appliedSize?.width === view.width && this.appliedSize?.height === view.height
+            && this.appliedSize?.dpr === dpr) return;
+        this.appliedSize = { width: view.width, height: view.height, dpr };
+        this.renderer.setPixelRatio(dpr);
+        this.renderer.setSize(view.width, view.height);
+        this.world.prepareCamera(view.width / view.height);
+        this.renderer.getDrawingBufferSize(this.drawingBuffer);
+        this.world.setViewport(this.drawingBuffer.x, this.drawingBuffer.y);
+        this.post?.setSize(view.width, view.height);
+        this.scheduleBoardReads();
+    }
+
+    /** Queue board-rect reads on simulation time; the frame loop performs them. */
+    scheduleBoardReads() {
+        this.boardReads = BOARD_READ_DELAYS_S.map((delay) => this.time + delay);
+    }
+
+    readBoards() {
+        if (!this.world) return;
+        for (const span of readBoardSpans()) this.world.setBoardSpan(span.slot, span.left, span.right);
+    }
+
+    update(delta) {
+        if (!this.world) return;
+        const dt = Math.max(0, Math.min(MAX_DELTA_S, Number.isFinite(delta) ? delta : 0));
+        this.time += dt;
+        if (this.boardReads.length > 0 && this.time >= this.boardReads[0]) {
+            this.boardReads.shift();
+            this.readBoards();
+        }
+        this.world.update(this.time, dt, this.pointer);
+        const { director } = this.world;
+        this.post?.update({ activity: director.activity, surge: director.surge });
+    }
+
+    renderFrame() {
+        if (!this.renderer || !this.scene || !this.camera || !this.world) return;
+        this.world.renderBuffers(this.renderer);
+        if (this.post) this.post.render();
+        else this.renderer.render(this.scene, this.camera);
+    }
+
+    startAnimation() {
+        if (this.animationLoopStarted || !this.isActive || this.isPaused || !this.timer) return;
+        this.animationLoopStarted = true;
+        this.timer.reset();
+        const generation = this.runtimeGeneration;
+        const animate = (timestamp) => {
+            if (generation !== this.runtimeGeneration || !this.isActive || this.isPaused) return;
+            this.animationFrameId = requestAnimationFrame(animate);
+            this.registerAnimation(this.animationFrameId);
+            if (!this.shouldRenderFrame() || document.hidden === true) {
+                // FPS skips accumulate elapsed time; a hidden/paused surface does not.
+                if (document.hidden === true || window.isRenderingPaused) this.timer.reset();
+                return;
+            }
+            this.timer.update(timestamp);
+            this.update(this.timer.getDelta());
+            this.renderFrame();
+        };
+        this.animationFrameId = requestAnimationFrame(animate);
+        this.registerAnimation(this.animationFrameId);
+    }
+
+    pause() {
+        const paused = super.pause();
+        if (paused) this.timer?.reset();
+        return paused;
+    }
+
+    resume() {
+        if (!this.renderer || !this.scene || !this.world) return false;
+        const resumed = super.resume();
+        if (resumed) {
+            this.timer?.reset();
+            this.ensureModeManagerListeners();
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.scheduleBoardReads();
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            } else this.startAnimation();
+        }
+        return resumed;
+    }
+
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.teardownEventListeners();
+        this.removeRendererResilience();
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        const release = (label, value) => {
+            try { value?.dispose?.(); } catch (error) { console.warn(`[Aurora] ${label} disposal failed.`, error); }
+        };
+        release('Post', this.post);
+        this.post = null;
+        release('World', this.world);
+        this.world = null;
+        release('Timer', this.timer);
+        this.timer = null;
+        this.scene?.clear();
+        this.scene = null;
+        this.camera = null;
+        if (this.renderer) this.disposeRenderer(this.renderer);
+        this.isWebGPU = false;
+        this.usesNodeMaterials = false;
+        this.appliedSize = null;
+        this.boardReads = [];
+        if (typeof window !== 'undefined' && window.__AURORA_THEME__ === this) delete window.__AURORA_THEME__;
+    }
+
+    releaseManagedGpuResources() {
+        this.disposeRuntime();
+        super.releaseManagedGpuResources();
+    }
+
+    stop() {
+        super.stop();
+        this.disposeRuntime();
+    }
+
+    /** Release everything this theme built; safe to call more than once. */
+    dispose() {
+        this.disposeRuntime();
+    }
+
+    cleanup() {
+        if (this.cleanupComplete) return;
+        try {
+            this.dispose();
+        } finally {
+            // BaseTheme owns the terminal lifecycle contract; it runs even when this
+            // theme's own disposal meets an already-lost renderer or scene resource.
+            super.cleanup();
+        }
     }
 }
