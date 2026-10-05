@@ -1295,29 +1295,6 @@ export class WebGLRenderer {
             this.particleSystems.push(new ParticleSystem(this.gl, 140, driftingMist));
 
             this.start();
-        } else if (themeName === 'crystal-cave') {
-            const shardConfig = {
-                speed: 0.8,
-                minSize: 4.0,
-                maxSize: 10.0,
-                minAlpha: 0.4,
-                maxAlpha: 0.8,
-                lifetime: 1500,
-                zIndex: -0.4,
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 25, shardConfig));
-
-            const dustConfig = {
-                speed: 0.2,
-                minSize: 1.0,
-                maxSize: 2.5,
-                minAlpha: 0.3,
-                maxAlpha: 0.7,
-                lifetime: 2000,
-                zIndex: -0.3,
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 100, dustConfig));
-            this.start();
         } else if (themeName === 'forest') {
             // Magical spores floating slowly
             const sporeConfig = {
