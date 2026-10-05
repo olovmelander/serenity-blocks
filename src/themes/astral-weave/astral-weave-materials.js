@@ -6,6 +6,7 @@ import {
 import {
     Fn,
     abs,
+    atan,
     attribute,
     cameraPosition,
     clamp,
@@ -15,6 +16,7 @@ import {
     float,
     fract,
     floor,
+    fwidth,
     instanceIndex,
     length,
     max,
@@ -24,6 +26,7 @@ import {
     normalWorld,
     normalize,
     positionLocal,
+    positionGeometry,
     positionWorld,
     pow,
     sin,
@@ -36,14 +39,14 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 
 const TAU = 6.28318530718;
 
 const tslHash = Fn(([pInput]) => {
     const p = vec2(pInput).toVar();
     return fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
-});
+}).setLayout({ name: 'astralWeaveHash2', type: 'float', inputs: [{ name: 'pInput', type: 'vec2' }] });
 
 const tslNoise = Fn(([pInput]) => {
     const p = vec2(pInput).toVar();
@@ -55,7 +58,7 @@ const tslNoise = Fn(([pInput]) => {
     const c = tslHash(i.add(vec2(0.0, 1.0)));
     const d = tslHash(i.add(vec2(1.0, 1.0)));
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-});
+}).setLayout({ name: 'astralWeaveNoise2', type: 'float', inputs: [{ name: 'pInput', type: 'vec2' }] });
 
 const tslFbm = Fn(([pInput]) => {
     const p = vec2(pInput).toVar();
@@ -66,7 +69,7 @@ const tslFbm = Fn(([pInput]) => {
     v.addAssign(a.mul(tslNoise(p))); p.mulAssign(2.0); a.mulAssign(0.5);
     v.addAssign(a.mul(tslNoise(p)));
     return v;
-});
+}).setLayout({ name: 'astralWeaveFbm2', type: 'float', inputs: [{ name: 'pInput', type: 'vec2' }] });
 
 function resolveStorageAttr(storageNode, fallbackAccessor) {
     if (!storageNode) return fallbackAccessor;
@@ -109,18 +112,31 @@ export function createAstralNexusCoreNodeMaterial(params = {}) {
     const uColorB = uniform(params.colorB || new THREE.Color(0xd95bff));
     const uColorC = uniform(params.colorC || new THREE.Color(0xffdb72));
 
-    const worldDir = normalize(positionWorld);
-    const vNoise = tslFbm(worldDir.xz.mul(2.6).add(vec2(uTime.mul(0.06), uTime.mul(0.08))));
-    const vNoise2 = tslFbm(worldDir.yz.mul(3.4).add(vec2(uTime.mul(-0.04), uTime.mul(0.05))));
-    const coreMix = clamp(vNoise.mul(0.55).add(vNoise2.mul(0.45)).add(uComboEnergy.mul(0.05)), 0.0, 1.0);
+    // Sample the pearl itself: world-space normalization collapses the pattern
+    // when the nexus is translated away from the scene origin.
+    const localDir = normalize(positionGeometry);
+    const vNoise = tslNoise(localDir.xz.mul(2.4).add(vec2(uTime.mul(0.04), uTime.mul(0.055))));
+    const filamentPhase = localDir.y.mul(19.0).add(localDir.x.mul(4.0))
+        .add(vNoise.mul(5.0)).sub(uTime.mul(0.36));
+    const filaments = pow(sin(filamentPhase).mul(0.5).add(0.5), 12.0);
+    const coreMix = clamp(localDir.y.mul(0.28).add(vNoise.mul(0.56)).add(0.2), 0.0, 1.0);
     const baseColor = mix(uColorA, uColorB, coreMix);
-    const wovenColor = mix(baseColor, uColorC, clamp(uLinePulse.mul(0.35).add(vNoise2.mul(0.25)), 0.0, 1.0));
+    const pearl = vec3(0.72, 0.88, 1.0);
+    const warmFlare = filaments.mul(uLinePulse.mul(0.24).add(uComboEnergy.mul(0.1)));
+    const wovenColor = mix(baseColor, uColorC, clamp(warmFlare, 0.0, 0.34));
 
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const fresnel = pow(float(1.0).sub(max(dot(normalWorld, viewDir), 0.0)), 2.2);
-    const pulse = sin(uTime.mul(2.3).add(vNoise.mul(TAU))).mul(0.08).add(0.82);
-    const alpha = clamp(float(0.18).add(fresnel.mul(0.12)).add(uEnergy.mul(0.05)).mul(pulse), 0.0, 0.5);
-    const emissive = wovenColor.mul(float(0.12).add(fresnel.mul(0.16)).add(uEnergy.mul(0.08)));
+    const facing = abs(dot(normalWorld, viewDir));
+    const fresnel = pow(float(1.0).sub(facing), 2.3);
+    const pearlLight = pow(max(dot(normalWorld, normalize(vec3(-0.4, 0.8, 0.65))), 0.0), 7.0);
+    const pulse = sin(uTime.mul(1.35)).mul(0.045).add(0.92);
+    const colorNode = wovenColor.mul(float(0.48).add(fresnel.mul(0.65)).add(filaments.mul(0.28)))
+        .add(pearl.mul(pearlLight.mul(0.8).add(fresnel.mul(0.16))));
+    const alpha = clamp(float(0.32).add(fresnel.mul(0.24)).add(filaments.mul(0.08))
+        .add(uEnergy.mul(0.025))
+        .mul(pulse), 0.0, 0.75);
+    const emissive = wovenColor.mul(fresnel.mul(0.48).add(filaments.mul(0.12))
+        .add(uEnergy.mul(0.12))).add(pearl.mul(pearlLight.mul(0.12)));
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -129,7 +145,7 @@ export function createAstralNexusCoreNodeMaterial(params = {}) {
         side: THREE.DoubleSide,
     });
 
-    material.colorNode = wovenColor;
+    material.colorNode = colorNode;
     material.opacityNode = alpha;
     material.emissiveNode = emissive;
 
@@ -156,17 +172,20 @@ export function createAstralNexusShellNodeMaterial(params = {}) {
     const uOpacity = uniform(Number.isFinite(params.opacity) ? params.opacity : 0.26);
     const uPulseBias = uniform(Number.isFinite(params.pulseBias) ? params.pulseBias : 0.18);
 
-    const worldDir = normalize(positionWorld);
-    const shellNoise = tslFbm(worldDir.xy.mul(4.2).add(vec2(uTime.mul(0.04), uTime.mul(-0.03))));
-    const strandNoise = tslFbm(worldDir.zy.mul(6.0).add(vec2(uTime.mul(0.09), uTime.mul(0.05))));
-    const colorMix = clamp(shellNoise.mul(0.6).add(strandNoise.mul(0.4)), 0.0, 1.0);
+    const shellUv = uv();
+    const wave = sin(shellUv.x.mul(TAU * 3.0).sub(uTime.mul(0.3))).mul(0.5).add(0.5);
+    const strand = pow(sin(shellUv.y.mul(TAU * 3.0).add(shellUv.x.mul(12.0))
+        .sub(uTime.mul(0.8))).mul(0.5).add(0.5), 8.0);
+    const colorMix = clamp(wave.mul(0.72).add(shellUv.y.mul(0.28)), 0.0, 1.0);
     const baseColor = mix(uColorA, uColorB, colorMix);
 
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const fresnel = pow(float(1.0).sub(max(dot(normalWorld, viewDir), 0.0)), 2.8);
-    const shellMask = smoothstep(0.12, 0.95, shellNoise.add(fresnel.mul(0.65)));
-    const alpha = shellMask.mul(uOpacity).mul(float(0.42).add(uEnergy.mul(uPulseBias.mul(0.28))));
-    const emissive = baseColor.mul(alpha.mul(0.22).add(fresnel.mul(0.05)));
+    const fresnel = pow(float(1.0).sub(abs(dot(normalWorld, viewDir))), 2.4);
+    const alpha = uOpacity.mul(float(0.58).add(fresnel.mul(0.85)).add(strand.mul(0.34)))
+        .mul(float(1.0).add(uEnergy.mul(uPulseBias)));
+    const shellColor = baseColor.mul(float(0.85).add(strand.mul(0.8)).add(fresnel.mul(0.4)))
+        .add(vec3(0.7, 0.82, 1.0).mul(fresnel.mul(0.18)));
+    const emissive = baseColor.mul(strand.mul(0.32).add(fresnel.mul(0.44)).add(uEnergy.mul(0.08)));
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -175,7 +194,8 @@ export function createAstralNexusShellNodeMaterial(params = {}) {
         side: THREE.DoubleSide,
     });
 
-    material.colorNode = baseColor;
+    material.colorNode = shellColor;
+    material.forceSinglePass = params.additive === true;
     material.opacityNode = clamp(alpha, 0.0, 0.9);
     material.emissiveNode = emissive;
 
@@ -198,70 +218,91 @@ export function createAstralRibbonNodeMaterial(params = {}) {
     const uEnergy = uniform(0);
     const uLinePulse = uniform(0);
     const uComboEnergy = uniform(0);
+    const uLineWaveProgress = uniform(1);
+    const uWeaveCharge = uniform(0);
+    const uCrownPulse = uniform(0);
+    const uEventHue = uniform(0);
+    const uEventColor = uniform(params.eventColor || new THREE.Color(0xffd293));
     const uFlowSpeed = uniform(Number.isFinite(params.flowSpeed) ? params.flowSpeed : 1);
     const uPulseOffset = uniform(Number.isFinite(params.pulseOffset) ? params.pulseOffset : 0);
+    const uOpacity = uniform(Number.isFinite(params.opacity) ? params.opacity : 0.54);
     const uColorA = uniform(params.colorA || new THREE.Color(0x73f8ff));
     const uColorB = uniform(params.colorB || new THREE.Color(0xd95bff));
-    const uColorC = uniform(params.colorC || new THREE.Color(0xffdb72));
+    const uColorC = uniform(params.colorC || new THREE.Color(0xff8de1));
 
+    // UV x follows the complete ribbon from the loom; UV y spans the silk.
+    // Broad bodies and fine threads keep the weave readable without neon tubes.
     const vUv = uv();
-    const centerMask = pow(max(float(1.0).sub(abs(vUv.y.sub(0.5)).mul(2.0)), 0.0), 1.5);
-    const braidA = sin(vUv.x.mul(TAU * 4.0).sub(uTime.mul(uFlowSpeed).mul(1.3)).add(uPulseOffset));
-    const braidB = sin(vUv.x.mul(TAU * 7.0).add(vUv.y.mul(18.0)).sub(uTime.mul(uFlowSpeed).mul(2.0)));
-    const braidMask = clamp(braidA.mul(0.32).add(braidB.mul(0.24)).add(0.7), 0.0, 1.0);
-    const pulsePacket = pow(
-        max(
-            sin(vUv.x.mul(TAU * 2.2).sub(uTime.mul(3.4)).add(uPulseOffset)).mul(0.5).add(0.5),
-            0.0,
-        ),
-        3.0,
-    );
-    const noise = tslFbm(vUv.mul(vec2(7.0, 3.2)).add(vec2(uTime.mul(0.08), uTime.mul(-0.04))));
+    const width = abs(vUv.y.sub(0.5)).mul(2.0);
+    const widthFade = float(1.0).sub(smoothstep(0.8, 1.0, width));
+    const lengthFade = smoothstep(0.0, 0.055, vUv.x)
+        .mul(float(1.0).sub(smoothstep(0.86, 1.0, vUv.x)));
+    const body = pow(max(float(1.0).sub(width.mul(width)), 0.0), 0.45);
+    const travel = vUv.x.mul(TAU * 2.1).sub(uTime.mul(uFlowSpeed).mul(0.35)).add(uPulseOffset);
+    const fold = sin(travel.add(vUv.y.mul(3.0))).mul(0.5).add(0.5);
+    const fiberWarp = sin(vUv.x.mul(19.0).sub(uTime.mul(0.35)).add(uPulseOffset)).mul(0.13);
+    const finePhase = vUv.y.mul(TAU * 28.0).add(fiberWarp);
+    const fineVisibility = float(1.0).sub(smoothstep(0.7, 2.8, fwidth(finePhase)));
+    const fineThreads = pow(sin(finePhase).mul(0.5).add(0.5), 10.0).mul(fineVisibility);
+    const broadThreads = pow(sin(vUv.y.mul(TAU * 6.0).add(fiberWarp.mul(0.6)))
+        .mul(0.5).add(0.5), 14.0);
+    const edgeThread = float(1.0).sub(smoothstep(0.018, 0.085, abs(width.sub(0.82))));
+
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const fresnel = pow(float(1.0).sub(max(dot(normalWorld, viewDir), 0.0)), 2.2);
+    const fresnel = pow(float(1.0).sub(abs(dot(normalWorld, viewDir))), 2.0);
+    const sheen = pow(fold, 5.0).mul(body);
+    const colorTravel = sin(travel.mul(0.7).add(vUv.y.mul(0.7))).mul(0.5).add(0.5);
+    const baseColor = mix(uColorA, uColorB, smoothstep(0.05, 0.92, colorTravel));
+    const roseVeil = sin(travel.mul(0.56).sub(1.1)).mul(0.5).add(0.5);
+    const silkColor = mix(baseColor, uColorC, roseVeil.mul(0.36));
+    const pearl = vec3(0.72, 0.86, 1.0);
 
-    const baseColor = mix(uColorA, uColorB, clamp(vUv.x.mul(0.65).add(noise.mul(0.25)), 0.0, 1.0));
-    const wovenColor = mix(baseColor, uColorC, clamp(pulsePacket.mul(0.6).add(uLinePulse.mul(0.18)), 0.0, 1.0));
-    const travelPhase = vUv.x.mul(TAU).sub(uTime.mul(uFlowSpeed));
-    const comboWarp = float(0.12).add(uComboEnergy.mul(0.05)).add(uLinePulse.mul(0.04));
-    const flowDisplacement = vec3(
-        sin(travelPhase.mul(2.4).add(uPulseOffset)).mul(comboWarp),
-        cos(travelPhase.mul(3.1).sub(uPulseOffset.mul(1.4))).mul(comboWarp.mul(0.85))
-            .add(noise.sub(0.5).mul(0.08)),
-        sin(travelPhase.mul(1.7).add(vUv.y.mul(TAU * 2.0)).sub(uPulseOffset.mul(0.8))).mul(comboWarp.mul(0.78)),
-    );
+    // A single coherent energy front runs all the way out from the nexus.
+    // The front's lifetime is independent of the shorter impact envelope.
+    const waveDistance = abs(vUv.x.sub(uLineWaveProgress));
+    const waveActive = smoothstep(0.0, 0.02, uLineWaveProgress)
+        .mul(float(1.0).sub(smoothstep(0.96, 1.0, uLineWaveProgress)));
+    const eventWave = float(1.0).sub(smoothstep(0.018, 0.1, waveDistance))
+        .mul(waveActive).mul(float(0.75).add(uLinePulse.mul(0.3)));
+    const waveFilament = float(1.0).sub(smoothstep(0.008, 0.025, waveDistance)).mul(waveActive);
+    const eventColor = mix(uColorA, uEventColor, clamp(uEventHue, 0.0, 1.0));
+    const slowPacket = pow(sin(travel.mul(1.55)).mul(0.5).add(0.5), 14.0)
+        .mul(uWeaveCharge.mul(0.2).add(uComboEnergy.mul(0.08)));
+    const silkLight = float(0.67).add(sheen.mul(0.46)).add(fineThreads.mul(0.16))
+        .add(broadThreads.mul(0.14))
+        .add(fresnel.mul(0.16));
+    const colorNode = silkColor.mul(silkLight)
+        .add(pearl.mul(sheen.mul(0.22).add(edgeThread.mul(0.24))))
+        .add(eventColor.mul(eventWave.mul(0.62).add(waveFilament.mul(0.6)).add(slowPacket)))
+        .add(pearl.mul(uCrownPulse.mul(edgeThread).mul(0.3)));
+    const alpha = body.mul(uOpacity)
+        .mul(float(0.63).add(sheen.mul(0.21)).add(broadThreads.mul(0.13)))
+        .add(edgeThread.mul(0.2)).add(eventWave.mul(0.14))
+        .mul(widthFade)
+        .mul(lengthFade);
+    const emissiveColor = silkColor.mul(edgeThread.mul(0.42).add(fineThreads.mul(0.075))
+        .add(sheen.mul(0.1)).add(uWeaveCharge.mul(0.12)))
+        .add(eventColor.mul(eventWave.mul(0.7).add(waveFilament.mul(0.85)).add(slowPacket.mul(0.65))))
+        .add(pearl.mul(edgeThread.mul(uCrownPulse).mul(0.75)));
 
-    // Ribbon pulsation Wave (width swell)
-    const pulseWave = sin(vUv.x.mul(TAU * 8.0).sub(uTime.mul(uFlowSpeed).mul(3.5)).add(uPulseOffset))
-        .mul(0.06)
-        .mul(float(1.0).add(uLinePulse.mul(1.5).add(uComboEnergy.mul(0.8))));
-    const shellBreath = normalLocal.mul(
-        pulseWave.add(sin(travelPhase.mul(3.2)).mul(0.02).mul(float(1.0).add(uEnergy.mul(0.2)))),
-    );
-
-    // High-end glowing neon emissive
-    const emissiveColor = wovenColor.mul(
-        float(1.15)
-            .add(centerMask.mul(0.4))
-            .add(pulsePacket.mul(1.2))
-            .add(uComboEnergy.mul(0.85))
-            .add(fresnel.mul(0.3)),
-    );
-    const alpha = centerMask
-        .mul(float(0.26).add(braidMask.mul(0.18)))
-        .mul(float(0.88).add(uEnergy.mul(0.12)))
-        .mul(float(0.88).add(fresnel.mul(0.12)));
+    const waveAmplitude = float(0.04).add(uWeaveCharge.mul(0.045)).add(eventWave.mul(0.065));
+    const flutter = sin(vUv.x.mul(17.0).sub(uTime.mul(uFlowSpeed)).add(uPulseOffset))
+        .mul(vUv.y.sub(0.5)).mul(waveAmplitude);
+    const breathing = sin(travel.mul(0.75)).mul(0.018).mul(body);
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
-        blending: THREE.AdditiveBlending,
+        blending: THREE.NormalBlending,
         depthWrite: false,
         side: THREE.DoubleSide,
     });
 
-    material.positionNode = positionLocal.add(flowDisplacement).add(shellBreath);
-    material.colorNode = wovenColor;
-    material.opacityNode = clamp(alpha, 0.0, 0.95);
+    // Vertex displacement deliberately avoids fragment derivatives and view masks.
+    material.positionNode = positionLocal.add(normalLocal.mul(flutter.add(breathing)));
+    material.colorNode = colorNode;
+    material.opacityNode = clamp(alpha, 0.0, 0.84);
+    // Thin silk has no enclosed back volume; draw both sides in one pass.
+    material.forceSinglePass = true;
     material.emissiveNode = emissiveColor;
 
     return {
@@ -271,8 +312,14 @@ export function createAstralRibbonNodeMaterial(params = {}) {
             uEnergy,
             uLinePulse,
             uComboEnergy,
+            uLineWaveProgress,
+            uWeaveCharge,
+            uCrownPulse,
+            uEventHue,
+            uEventColor,
             uFlowSpeed,
             uPulseOffset,
+            uOpacity,
             uColorA,
             uColorB,
             uColorC,
@@ -282,19 +329,22 @@ export function createAstralRibbonNodeMaterial(params = {}) {
 }
 
 export function createAstralStarfieldNodeMaterial(params = {}) {
+    const useBillboards = params.billboard === true;
     const uTime = uniform(0);
     const uPixelRatio = uniform(params.pixelRatio || 1);
     const uScintillation = uniform(0);
-    const uDiffractionStrength = uniform(Number.isFinite(params.diffractionStrength) ? params.diffractionStrength : 0.28);
+    const uDiffractionStrength = uniform(
+        Number.isFinite(params.diffractionStrength) ? params.diffractionStrength : 0.28,
+    );
 
     const aSize = attribute('aSize');
     const aTwinkle = attribute('aTwinkle', 'vec2');
     const aBrightness = attribute('aBrightness');
     const aColor = attribute('color', 'vec3');
+    const center = useBillboards ? attribute('aCenter', 'vec3') : positionLocal;
 
-    const positionNode = Fn(() => positionLocal)();
-    const mvPosition = modelViewMatrix.mul(vec4(positionLocal.x, positionLocal.y, positionLocal.z, 1.0));
-    const depthFactor = smoothstep(90.0, 260.0, abs(positionLocal.z));
+    const mvPosition = modelViewMatrix.mul(vec4(center, 1.0));
+    const depthFactor = smoothstep(90.0, 260.0, abs(center.z));
     const attenuation = float(320.0).div(max(mvPosition.z.negate(), 0.001));
     const sizeNode = clamp(
         aSize.mul(uPixelRatio).mul(attenuation).mul(float(0.9).add(depthFactor.mul(0.55))),
@@ -313,15 +363,20 @@ export function createAstralStarfieldNodeMaterial(params = {}) {
     const colorNode = aColor.mul(starBrightness).mul(float(1.15).add(depthFactor.mul(0.25)));
     const alphaNode = softCircle.mul(starBrightness.add(0.12)).add(diffraction.mul(0.55));
 
-    const material = new PointsNodeMaterial({
+    const MaterialClass = useBillboards ? MeshBasicNodeMaterial : PointsNodeMaterial;
+    const material = new MaterialClass({
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        vertexColors: true,
+        // colorNode already consumes the authored color attribute.
+        vertexColors: false,
     });
 
-    material.positionNode = positionNode;
-    material.sizeNode = sizeNode;
+    material.positionNode = useBillboards ? createBillboardQuadPosition({
+        centerNode: center,
+        sizeNode: clamp(aSize.mul(0.1), 0.12, 0.4),
+    }) : positionLocal;
+    if (!useBillboards) material.sizeNode = sizeNode;
     material.colorNode = colorNode;
     material.opacityNode = clamp(alphaNode, 0.0, 1.0);
     material.emissiveNode = colorNode.mul(alphaNode.mul(0.14)).add(vec3(diffraction.mul(0.08)));
@@ -334,7 +389,7 @@ export function createAstralStarfieldNodeMaterial(params = {}) {
             uScintillation,
             uDiffractionStrength,
         },
-        meta: { emitsBloom: true },
+        meta: { emitsBloom: true, usesBillboards: useBillboards },
     };
 }
 
@@ -349,29 +404,34 @@ export function createAstralNebulaNodeMaterial(params = {}) {
     const uTintC = uniform(params.tintC || new THREE.Color(0xffdb72));
 
     const vUv = uv();
-    const texNode = texture(tex);
     const warped = vec2(
-        vUv.x.add(sin(vUv.y.mul(6.0).add(uTime.mul(uDrift))).mul(0.06)).add(cos(vUv.x.mul(3.5).sub(uTime.mul(uDrift.mul(0.4)))).mul(0.04)),
-        vUv.y.add(cos(vUv.x.mul(5.0).sub(uTime.mul(uDrift.mul(0.8)))).mul(0.055)).add(sin(vUv.y.mul(4.0).add(uTime.mul(uDrift.mul(0.5)))).mul(0.035)),
+        vUv.x.add(sin(vUv.y.mul(7.0).add(uTime.mul(uDrift))).mul(0.045)),
+        vUv.y.add(cos(vUv.x.mul(5.0).sub(uTime.mul(uDrift.mul(0.65)))).mul(0.032)),
     );
-    const detail = tslFbm(warped.mul(vec2(5.5, 3.2)).add(vec2(uTime.mul(0.06), uTime.mul(-0.04))));
+    const texNode = texture(tex, warped);
+    // Stretched low-frequency noise yields gauzy wisps, with only eight cheap
+    // value-noise samples instead of several complete fractal stacks.
+    const driftUv = warped.add(vec2(uTime.mul(0.008), uTime.mul(-0.006)));
+    const detail = tslNoise(driftUv.mul(vec2(2.8, 6.5)));
+    const secondary = tslNoise(driftUv.mul(vec2(6.0, 13.0)).add(detail.mul(0.32)));
+    const density = smoothstep(0.22, 0.78, detail.mul(0.7).add(secondary.mul(0.3)));
     const edgeFade = smoothstep(0.03, 0.28, vUv.x)
         .mul(smoothstep(0.97, 0.72, vUv.x))
         .mul(smoothstep(0.02, 0.28, vUv.y))
         .mul(smoothstep(0.98, 0.72, vUv.y));
-    const tintMix1 = clamp(detail.mul(0.72).add(texNode.r.mul(0.28)), 0.0, 1.0);
-    const tintMix2 = clamp(sin(warped.x.mul(3.0).add(detail.mul(2.0))).mul(0.5).add(0.5).add(uPulse.mul(0.12)), 0.0, 1.0);
+    const tintMix1 = clamp(detail.mul(0.8).add(warped.x.mul(0.2)), 0.0, 1.0);
+    const tintMix2 = clamp(secondary.mul(0.7).add(uPulse.mul(0.08)), 0.0, 1.0);
 
     let colorNode = mix(uTintA, uTintB, tintMix1);
-    colorNode = mix(colorNode, uTintC, tintMix2.mul(0.42))
-        .mul(texNode.rgb.add(0.18))
-        .mul(float(0.85).add(uPulse.mul(0.35)));
+    colorNode = mix(colorNode, uTintC, tintMix2.mul(0.1))
+        .mul(float(0.58).add(texNode.r.mul(0.28)))
+        .mul(float(0.82).add(uPulse.mul(0.18)));
 
     const alphaNode = texNode.a
-        .mul(float(0.4).add(detail.mul(0.7)))
+        .mul(float(0.12).add(density.mul(0.88)))
         .mul(edgeFade)
         .mul(uOpacity)
-        .mul(float(1.0).add(uPulse.mul(0.25)));
+        .mul(float(1.0).add(uPulse.mul(0.14)));
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -382,6 +442,7 @@ export function createAstralNebulaNodeMaterial(params = {}) {
 
     material.colorNode = colorNode;
     material.opacityNode = clamp(alphaNode, 0.0, 0.8);
+    material.forceSinglePass = true;
     material.emissiveNode = colorNode.mul(alphaNode.mul(0.04));
 
     return {
@@ -406,6 +467,7 @@ export function createAstralFlowParticleNodeMaterial(params = {}) {
         opacity = 0.22,
         emissiveScale = 0.05,
     } = params;
+    const useBillboards = params.billboard === true;
 
     const useCompute = Boolean(
         flowCompute?.getPositionBuffer
@@ -439,8 +501,10 @@ export function createAstralFlowParticleNodeMaterial(params = {}) {
         ? storage(flowCompute.getMiscBuffer(), 'vec4', flowCompute.count)
         : null;
 
-    const positionAttr = useCompute ? resolveStorageAttr(positionStorage, positionStorage.element(instanceIndex)) : null;
-    const stateAttr = useCompute ? resolveStorageAttr(stateStorage, stateStorage.element(instanceIndex)) : null;
+    const positionAttr = useCompute
+        ? resolveStorageAttr(positionStorage, positionStorage.element(instanceIndex)) : null;
+    const stateAttr = useCompute
+        ? resolveStorageAttr(stateStorage, stateStorage.element(instanceIndex)) : null;
     const miscAttr = useCompute ? resolveStorageAttr(miscStorage, miscStorage.element(instanceIndex)) : null;
 
     const particlePosition = useCompute ? positionAttr.xyz : aCenter;
@@ -477,15 +541,19 @@ export function createAstralFlowParticleNodeMaterial(params = {}) {
         .mul(float(0.88).add(uLinePulse.mul(0.12)))
         .mul(pulse);
 
-    const material = new PointsNodeMaterial({
+    const MaterialClass = useBillboards ? MeshBasicNodeMaterial : PointsNodeMaterial;
+    const material = new MaterialClass({
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        vertexColors: true,
+        vertexColors: false,
     });
 
-    material.positionNode = particlePosition;
-    material.sizeNode = clamp(sizeNode, 1.0, 18.0);
+    material.positionNode = useBillboards ? createBillboardQuadPosition({
+        centerNode: particlePosition,
+        sizeNode: clamp(particleSize.mul(0.03).mul(float(1.0).add(uComboEnergy.mul(0.15))), 0.03, 0.12),
+    }) : particlePosition;
+    if (!useBillboards) material.sizeNode = clamp(sizeNode, 1.0, 18.0);
     material.colorNode = colorNode;
     material.opacityNode = clamp(alphaNode, 0.0, 1.0);
     material.emissiveNode = colorNode.mul(alphaNode.mul(emissiveScale).add(core.mul(0.05)));
@@ -502,7 +570,7 @@ export function createAstralFlowParticleNodeMaterial(params = {}) {
             uColorB,
             uColorC,
         },
-        meta: { emitsBloom: true, usesCompute: useCompute },
+        meta: { emitsBloom: true, usesCompute: useCompute, usesBillboards: useBillboards },
     };
 }
 
@@ -536,7 +604,8 @@ export function createAstralBurstNodeMaterial(params = {}) {
         ? storage(burstCompute.getMiscBuffer(), 'vec4', burstCompute.count)
         : null;
 
-    const positionAttr = useCompute ? resolveStorageAttr(positionStorage, positionStorage.element(instanceIndex)) : null;
+    const positionAttr = useCompute
+        ? resolveStorageAttr(positionStorage, positionStorage.element(instanceIndex)) : null;
     const miscAttr = useCompute ? resolveStorageAttr(miscStorage, miscStorage.element(instanceIndex)) : null;
 
     const particlePosition = useCompute ? positionAttr.xyz : cpuPosition.xyz;
@@ -556,7 +625,8 @@ export function createAstralBurstNodeMaterial(params = {}) {
         .mul(max(particleLife, float(0.05)));
     const stretchY = float(1.08).add(particleSeed.mul(0.26)).add(uEnergy.mul(0.04));
     const burstColor = mix(uColorA, uColorB, particleTone);
-    const colorNode = mix(burstColor, uColorC, clamp(particleLife.mul(0.4).add(particleSeed.mul(0.18)), 0.0, 1.0)).mul(aColor);
+    const warmMix = clamp(particleLife.mul(0.4).add(particleSeed.mul(0.18)), 0.0, 1.0);
+    const colorNode = mix(burstColor, uColorC, warmMix).mul(aColor);
     const alphaNode = glow.mul(particleLife).mul(pulse).mul(0.42).mul(particleActive);
 
     const material = new MeshBasicNodeMaterial({
@@ -595,16 +665,32 @@ export function createAstralShockwaveNodeMaterial(params = {}) {
     const uOpacity = uniform(Number.isFinite(params.opacity) ? params.opacity : 1);
     const uColorA = uniform(params.colorA || new THREE.Color(0x73f8ff));
     const uColorB = uniform(params.colorB || new THREE.Color(0xff8de1));
+    const uColorC = uniform(params.colorC || new THREE.Color(0xffdb72));
 
     const centered = uv().sub(0.5);
     const dist = length(centered).mul(2.0);
-    const ringRadius = uProgress.mul(1.18);
-    const ringWidth = float(0.12).mul(float(1.0).sub(uProgress.mul(0.5)));
-    const ring = smoothstep(ringRadius.sub(ringWidth), ringRadius.sub(ringWidth.mul(0.35)), dist)
-        .mul(smoothstep(ringRadius.add(ringWidth.mul(0.35)), ringRadius, dist));
-    const fade = float(1.0).sub(uProgress).mul(uOpacity);
-    const ringColor = mix(uColorA, uColorB, uProgress.mul(0.75));
-    const alpha = ring.mul(fade);
+    const angle = atan(centered.y, centered.x.add(0.00001));
+    // Keep the final radius inside the plane; its silhouette must never hit a
+    // square edge. Thin nested threads replace the old thick fog doughnut.
+    const ringRadius = float(0.055).add(uProgress.mul(0.87));
+    const ringWidth = float(0.026).sub(uProgress.mul(0.012));
+    const ringDist = abs(dist.sub(ringRadius));
+    const ring = float(1.0).sub(smoothstep(ringWidth.mul(0.23), ringWidth, ringDist));
+    const echoDist = abs(dist.sub(ringRadius.sub(0.055)));
+    const echo = float(1.0).sub(smoothstep(0.003, 0.014, echoDist)).mul(0.38);
+    const halo = float(1.0).sub(smoothstep(0.016, 0.075, ringDist)).mul(0.16);
+    const sparkAngular = pow(sin(angle.mul(23.0).add(uProgress.mul(10.0)))
+        .mul(0.5).add(0.5), 28.0);
+    const sparkOrbit = ringRadius.add(sin(angle.mul(7.0).sub(uProgress.mul(3.0))).mul(0.035));
+    const sparks = sparkAngular.mul(float(1.0).sub(smoothstep(0.007, 0.029, abs(dist.sub(sparkOrbit)))))
+        .mul(smoothstep(0.04, 0.18, uProgress));
+    const fade = smoothstep(0.0, 0.06, uProgress)
+        .mul(pow(max(float(1.0).sub(uProgress), 0.0), 0.7)).mul(uOpacity);
+    const colorTravel = sin(angle.mul(2.0).add(uProgress.mul(2.0))).mul(0.5).add(0.5);
+    const ringColor = mix(uColorA, uColorB, colorTravel);
+    const colorNode = ringColor.mul(1.25).add(vec3(0.78, 0.86, 1.0).mul(ring.mul(0.38)))
+        .add(uColorC.mul(sparks.mul(0.55)));
+    const alpha = ring.add(echo).add(halo).add(sparks.mul(0.8)).mul(fade);
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -613,9 +699,11 @@ export function createAstralShockwaveNodeMaterial(params = {}) {
         side: THREE.DoubleSide,
     });
 
-    material.colorNode = ringColor;
+    material.colorNode = colorNode;
     material.opacityNode = clamp(alpha, 0.0, 1.0);
-    material.emissiveNode = ringColor.mul(alpha.mul(0.25));
+    material.forceSinglePass = true;
+    material.emissiveNode = ringColor.mul(ring.add(echo).mul(fade).mul(0.68))
+        .add(uColorC.mul(sparks.mul(fade).mul(0.82)));
 
     return {
         material,
@@ -624,7 +712,7 @@ export function createAstralShockwaveNodeMaterial(params = {}) {
             uOpacity,
             uColorA,
             uColorB,
-            uColorC: uniform(new THREE.Color(0xffdb72)),
+            uColorC,
         },
         meta: { emitsBloom: true },
     };
@@ -687,7 +775,9 @@ export function createAstralConstellationNodeMaterial(params = {}) {
     const pulseFactor = twinkle.mul(float(1.0).add(uScintillation.mul(0.5)));
 
     const finalColor = mix(uColorA, uColorB, vUv.x).mul(pulseFactor);
-    const alpha = uOpacity.mul(pulseFactor).mul(smoothstep(float(0.0), float(0.12), vUv.x).mul(smoothstep(float(1.0), float(0.88), vUv.x)));
+    const lengthFade = smoothstep(float(0.0), float(0.12), vUv.x)
+        .mul(smoothstep(float(1.0), float(0.88), vUv.x));
+    const alpha = uOpacity.mul(pulseFactor).mul(lengthFade);
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
