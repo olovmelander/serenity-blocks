@@ -1,0 +1,288 @@
+{
+  "generatedAt": "2026-10-05T05:39:17.996Z",
+  "softwareGpu": true,
+  "mode": "theme",
+  "native": false,
+  "mobile": true,
+  "quality": "Low",
+  "passed": true,
+  "errors": [],
+  "warnings": [
+    "[.WebGL-0x201400151e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): Running out of reserved outsideRenderPass queueSerial. ending renderPass now.",
+    "[.WebGL-0x201400151e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): Running out of reserved outsideRenderPass queueSerial. ending renderPass now.",
+    "[.WebGL-0x201400151e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): Running out of reserved outsideRenderPass queueSerial. ending renderPass now.",
+    "[.WebGL-0x201400151e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): Running out of reserved outsideRenderPass queueSerial. ending renderPass now. (this message will no longer repeat)"
+  ],
+  "snapshots": [
+    {
+      "state": "idle",
+      "diagnostics": {
+        "backend": "WebGL2",
+        "quality": "Low",
+        "flags": {
+          "forceWebGL": true,
+          "noCompute": false,
+          "noMRT": false,
+          "noPost": false,
+          "debug": false,
+          "seed": 1234,
+          "usePost": false,
+          "useMRT": false,
+          "useCompute": false
+        },
+        "compile": {
+          "status": "success",
+          "durationMs": 94.9000000001397,
+          "message": null
+        },
+        "compute": {
+          "dustCompute": null,
+          "burstCompute": null,
+          "wispCompute": null
+        },
+        "sculpture": {
+          "quality": "Low",
+          "ribbonCount": 4,
+          "filamentCount": 6,
+          "haloPoolSize": 4,
+          "activeHalos": 0,
+          "travelFrontPoolSize": 4,
+          "activeTravelFronts": 0,
+          "disposed": false
+        },
+        "bursts": {
+          "lastBurstDepth": null,
+          "heroBurstCount": 0,
+          "peripheralBurstCount": 0,
+          "centerGuardRejections": 0
+        },
+        "renderInfo": {
+          "calls": 6,
+          "triangles": 16335
+        },
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "devicePixelRatio": 3
+        }
+      }
+    },
+    {
+      "state": "lock",
+      "diagnostics": {
+        "backend": "WebGL2",
+        "quality": "Low",
+        "flags": {
+          "forceWebGL": true,
+          "noCompute": false,
+          "noMRT": false,
+          "noPost": false,
+          "debug": false,
+          "seed": 1234,
+          "usePost": false,
+          "useMRT": false,
+          "useCompute": false
+        },
+        "compile": {
+          "status": "success",
+          "durationMs": 94.9000000001397,
+          "message": null
+        },
+        "compute": {
+          "dustCompute": null,
+          "burstCompute": null,
+          "wispCompute": null
+        },
+        "sculpture": {
+          "quality": "Low",
+          "ribbonCount": 4,
+          "filamentCount": 6,
+          "haloPoolSize": 4,
+          "activeHalos": 1,
+          "travelFrontPoolSize": 4,
+          "activeTravelFronts": 1,
+          "disposed": false
+        },
+        "bursts": {
+          "lastBurstDepth": 1544.998449819652,
+          "heroBurstCount": 0,
+          "peripheralBurstCount": 0,
+          "centerGuardRejections": 0
+        },
+        "renderInfo": {
+          "calls": 8,
+          "triangles": 0
+        },
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "devicePixelRatio": 3
+        }
+      }
+    },
+    {
+      "state": "clear",
+      "diagnostics": {
+        "backend": "WebGL2",
+        "quality": "Low",
+        "flags": {
+          "forceWebGL": true,
+          "noCompute": false,
+          "noMRT": false,
+          "noPost": false,
+          "debug": false,
+          "seed": 1234,
+          "usePost": false,
+          "useMRT": false,
+          "useCompute": false
+        },
+        "compile": {
+          "status": "success",
+          "durationMs": 94.9000000001397,
+          "message": null
+        },
+        "compute": {
+          "dustCompute": null,
+          "burstCompute": null,
+          "wispCompute": null
+        },
+        "sculpture": {
+          "quality": "Low",
+          "ribbonCount": 4,
+          "filamentCount": 6,
+          "haloPoolSize": 4,
+          "activeHalos": 3,
+          "travelFrontPoolSize": 4,
+          "activeTravelFronts": 2,
+          "disposed": false
+        },
+        "bursts": {
+          "lastBurstDepth": 1544.4538477968827,
+          "heroBurstCount": 1,
+          "peripheralBurstCount": 0,
+          "centerGuardRejections": 0
+        },
+        "renderInfo": {
+          "calls": 10,
+          "triangles": 0
+        },
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "devicePixelRatio": 3
+        }
+      }
+    },
+    {
+      "state": "combo",
+      "diagnostics": {
+        "backend": "WebGL2",
+        "quality": "Low",
+        "flags": {
+          "forceWebGL": true,
+          "noCompute": false,
+          "noMRT": false,
+          "noPost": false,
+          "debug": false,
+          "seed": 1234,
+          "usePost": false,
+          "useMRT": false,
+          "useCompute": false
+        },
+        "compile": {
+          "status": "success",
+          "durationMs": 94.9000000001397,
+          "message": null
+        },
+        "compute": {
+          "dustCompute": null,
+          "burstCompute": null,
+          "wispCompute": null
+        },
+        "sculpture": {
+          "quality": "Low",
+          "ribbonCount": 4,
+          "filamentCount": 6,
+          "haloPoolSize": 4,
+          "activeHalos": 4,
+          "travelFrontPoolSize": 4,
+          "activeTravelFronts": 4,
+          "disposed": false
+        },
+        "bursts": {
+          "lastBurstDepth": 1529.459368249798,
+          "heroBurstCount": 2,
+          "peripheralBurstCount": 0,
+          "centerGuardRejections": 0
+        },
+        "renderInfo": {
+          "calls": 12,
+          "triangles": 0
+        },
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "devicePixelRatio": 3
+        }
+      }
+    },
+    {
+      "state": "landscape",
+      "diagnostics": {
+        "backend": "WebGL2",
+        "quality": "Low",
+        "flags": {
+          "forceWebGL": true,
+          "noCompute": false,
+          "noMRT": false,
+          "noPost": false,
+          "debug": false,
+          "seed": 1234,
+          "usePost": false,
+          "useMRT": false,
+          "useCompute": false
+        },
+        "compile": {
+          "status": "success",
+          "durationMs": 94.9000000001397,
+          "message": null
+        },
+        "compute": {
+          "dustCompute": null,
+          "burstCompute": null,
+          "wispCompute": null
+        },
+        "sculpture": {
+          "quality": "Low",
+          "ribbonCount": 4,
+          "filamentCount": 6,
+          "haloPoolSize": 4,
+          "activeHalos": 0,
+          "travelFrontPoolSize": 4,
+          "activeTravelFronts": 0,
+          "disposed": false
+        },
+        "bursts": {
+          "lastBurstDepth": 1529.459368249798,
+          "heroBurstCount": 2,
+          "peripheralBurstCount": 0,
+          "centerGuardRejections": 0
+        },
+        "renderInfo": {
+          "calls": 14,
+          "triangles": 0
+        },
+        "viewport": {
+          "width": 844,
+          "height": 390,
+          "devicePixelRatio": 3
+        }
+      }
+    }
+  ],
+  "teardown": {
+    "active": false,
+    "canvasCount": 0
+  },
+  "failure": null
+}

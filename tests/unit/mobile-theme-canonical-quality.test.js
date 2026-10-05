@@ -13,7 +13,7 @@ import WavesTheme from '../../src/themes/waves/waves-theme.js';
 import WinterTheme from '../../src/themes/winter/winter-theme.js';
 
 const themes = [
-    ['Chiral Gold', ChiralGoldTheme, 'goldDustCount', 3000, 1500],
+    ['Chiral Gold', ChiralGoldTheme, 'goldDustCount', 1800, 900],
     ['Solar Eclipse', SolarEclipseTheme, 'starCount', 1500, 800],
     ['Stellar Drift', StellarDriftTheme, 'meteorCount', 100, 50],
     ['Stellar Velocity', StellarVelocityTheme, 'starCount', 1000, 500],
