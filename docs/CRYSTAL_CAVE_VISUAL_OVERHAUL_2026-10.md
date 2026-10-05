@@ -44,7 +44,8 @@ shared theme lifecycle.
 | Minimal | 10 | 120 | 36 | 2 / 2 | — | — | 0.75 |
 
 The application's render scale also applies to the DPR cap. These are allocation
-budgets, not measurements of physical-device frame rate.
+budgets, not measurements of physical-device frame rate. Medium phone reflections
+are visibly softer at the reduced mirror resolution; Low omits the mirror pass.
 
 ## Reproducible preview
 
@@ -59,12 +60,37 @@ The playground shares production artwork, fixed event pools and post-processing.
 
 ## Acceptance evidence
 
-The original unpublished checkout was removed by workspace maintenance before
-merge. The source patches were restored on current main; acceptance checks and
-screenshots are rerun against the restored files. Fresh results are recorded
-below before merging.
+Fresh isolated playground and production captures were inspected using headless
+Chromium 153.0.8010.0 with software WebGL2. The production theme was instantiated
+directly, without a gameplay board. These verify artwork and lifecycle behavior;
+they do not establish hardware frame rates.
 
-Native WebGPU hardware and physical-phone performance acceptance remain separate
-from software-browser WebGL2 captures. The earlier environment lost native GPU
-devices on this theme and unrelated control scenes, so it did not establish
-native-hardware visual or performance acceptance.
+- High desktop: 1280 × 720, effective pixel ratio 1; full mirror and post active.
+- Low phone: 390 × 844, effective ratio 0.45, rotated to landscape and back;
+  direct rendering, no mirror or post allocations.
+- Medium phone: 390 × 844, effective ratio 0.75, rotated to landscape and back;
+  mirror and post remained active.
+
+Each production surface passed a 750-event burst without growing its geometry
+or material pools, two pause/resume cycles, two stop/start cycles, and repeated
+cleanup. Captures had zero console errors, warnings, GL errors or non-finite
+geometry values. Cleanup removed all canvases and preserved the static theme
+container. The icon is a fresh 512 × 512 render of the shared artwork.
+
+The restored candidate passed the full suite (531 files / 5,708 tests), build and
+boot-closure checks, typecheck, lint ratchet, dependency boundaries, architecture
+fitness, theme lifecycle, TS ratchet, performance-budget and release gates.
+Current main's breathing overhaul was then integrated, preserving its lower
+ratchets; focused integration checks and a new build verify the combined tree.
+
+Evidence: [idle](crystal-cave-overhaul/idle.webp),
+[combo](crystal-cave-overhaul/combo.webp),
+[Low portrait](crystal-cave-overhaul/low-portrait.webp),
+[Medium portrait](crystal-cave-overhaul/medium-portrait.webp),
+[Medium landscape](crystal-cave-overhaul/medium-landscape.webp), and
+[acceptance metadata](crystal-cave-overhaul/validation.json).
+
+Native WebGPU hardware and physical-phone performance acceptance remain open.
+The fresh captures exercise the modern renderer's WebGL2 backend; native WebGPU
+was not freshly validated in this run. An earlier environment lost native GPU
+devices on this theme and unrelated control scenes.

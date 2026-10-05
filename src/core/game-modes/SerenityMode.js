@@ -147,10 +147,12 @@ export class SerenityMode extends BaseGameMode {
         super.onPause();
         console.log('[Serenity] Paused');
 
-        // Pause breathing indicator if it's active
-        if (this.breathingIndicatorActive && window.breathingIndicator) {
+        // Settings pause the standalone guide. A journey keeps its own timers
+        // and rhythm, so stopping/restarting its visual would desynchronize it.
+        const indicator = window.breathingIndicator;
+        if (this.breathingIndicatorActive && indicator && !indicator.isExternallyControlled) {
             this.breathingIndicatorWasActive = true;
-            window.breathingIndicator.stop();
+            indicator.stop();
             console.log('[Serenity] Breathing indicator paused');
         } else {
             this.breathingIndicatorWasActive = false;
@@ -171,8 +173,9 @@ export class SerenityMode extends BaseGameMode {
         }
 
         // Resume breathing indicator if it was active before pause
-        if (this.breathingIndicatorWasActive && window.breathingIndicator) {
-            window.breathingIndicator.start();
+        const indicator = window.breathingIndicator;
+        if (this.breathingIndicatorWasActive && indicator && !indicator.isExternallyControlled) {
+            indicator.start();
             console.log('[Serenity] Breathing indicator resumed');
         }
     }
@@ -184,6 +187,16 @@ export class SerenityMode extends BaseGameMode {
         await super.onStop();
 
         console.log('[Serenity] Stopping Serenity mode...');
+
+        // The global Hub survives mode changes, so end its journey and pending
+        // preparation here before a delayed countdown or completion can reopen it.
+        const sessionsTab = this.serenityHub?.sessionsTab;
+        if (sessionsTab) {
+            sessionsTab.stopSession();
+            sessionsTab.hidePrepScreen?.();
+        } else {
+            this.serenityHub?.sessionManager?.stopSession();
+        }
 
         // Hide breathing indicator if shown
         this._hideBreathingIndicator();
@@ -263,6 +276,9 @@ export class SerenityMode extends BaseGameMode {
      * Handle settings change
      */
     onSettingsChange(settings) {
+        const indicator = window.breathingIndicator;
+        // A guided journey owns the indicator's rhythm until the session ends.
+        if (indicator?.isExternallyControlled) return;
         // Check if breathing guide was toggled
         if (settings.breathingGuideEnabled && !this.breathingIndicatorActive) {
             this._showBreathingIndicator();
@@ -723,8 +739,14 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _toggleBreathingIndicator() {
+        const indicator = window.breathingIndicator;
+        if (indicator?.isExternallyControlled) {
+            this.serenityHub?.switchTab('sessions');
+            this.serenityHub?.show();
+            return;
+        }
         // Toggle based on actual state, not settings
-        if (this.breathingIndicatorActive) {
+        if (indicator?.isActive) {
             this._hideBreathingIndicator();
             this._showNotification('Breathing Guide Off');
             // Update settings
@@ -742,17 +764,19 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _showBreathingIndicator() {
+        const indicator = window.breathingIndicator;
+        if (indicator?.isExternallyControlled) return;
         // Use the global enhanced breathing indicator instance
-        if (window.breathingIndicator) {
+        if (indicator) {
             const settings = this.deps.settingsManager.get();
 
             // Apply settings before starting
             const technique = settings.breathingTechnique || 'deep-relaxation';
-            window.breathingIndicator.setTechnique(technique);
-            window.breathingIndicator.setShowText(settings.breathingText !== false);
+            indicator.setTechnique(technique);
+            indicator.setShowText(settings.breathingText !== false);
 
             // Start the animation
-            window.breathingIndicator.start();
+            indicator.start();
             this.breathingIndicatorActive = true;
 
             // Update Serenity Hub icon state
@@ -789,14 +813,16 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _cycleBreathingTechnique() {
-        if (!window.breathingIndicator || !this.breathingIndicatorActive) {
+        const indicator = window.breathingIndicator;
+        if (indicator?.isExternallyControlled) return;
+        if (!indicator || !this.breathingIndicatorActive) {
             this._showNotification('Enable breathing guide first (Space)');
             return;
         }
 
         // Get techniques dynamically from the breathing indicator
-        const techniques = Object.keys(window.breathingIndicator.techniques);
-        const currentTechnique = window.breathingIndicator.currentTechnique || 'deep-relaxation';
+        const techniques = Object.keys(indicator.techniques);
+        const currentTechnique = indicator.currentTechnique || 'deep-relaxation';
         const currentIndex = techniques.indexOf(currentTechnique);
         const nextIndex = (currentIndex + 1) % techniques.length;
         const nextTechnique = techniques[nextIndex];
@@ -806,7 +832,7 @@ export class SerenityMode extends BaseGameMode {
 
         // Apply to breathing indicator
         // The breathing indicator itself will show the technique name, no need for separate notification
-        window.breathingIndicator.setTechnique(nextTechnique);
+        indicator.setTechnique(nextTechnique);
     }
 
     /**
