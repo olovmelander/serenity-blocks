@@ -1,8 +1,9 @@
 /**
- * Fall — a luminous autumn forest glade shared with the isolated playground.
- * The theme owns lifecycle, renderer and gameplay subscriptions; FallWorld owns
- * the artwork and FallReactions owns bounded, seconds-based event envelopes.
- * Both renderer backends use the same node scene and RenderPipeline.
+ * Fall — an enchanted autumn grove shared with the isolated playground.
+ * The theme owns lifecycle, renderer, asset loading and gameplay subscriptions; FallWorld
+ * owns the artwork (Blender-grown trees, living leaves, light and air) and FallReactions
+ * owns bounded, seconds-based event envelopes. Both renderer backends use the same node
+ * scene and RenderPipeline.
  */
 import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
@@ -11,6 +12,8 @@ import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { seededRandom } from '../../utils/helpers.js';
+import { disposeFallAssets, loadFallAssets } from './fall-assets.js';
+import { readFallBoardRect } from './fall-stage.js';
 import { FALL_TETROMINOS } from './fall-tetrominos.js';
 import { FallWorld } from './fall-world.js';
 import { FallReactions } from './fall-reactions.js';
@@ -18,12 +21,13 @@ import { FallPost } from './fall-post.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
+const BOARD_POLL_S = 0.75;
 const PIXEL_RATIO_CAP = Object.freeze({
     Extreme: 1.5, Ultra: 1.35, High: 1.25, Medium: 1, Low: 0.9, Minimal: 0.75,
 });
 
-// Compatibility ceilings for historical preset readers; the actual, lower
-// artwork counts are exposed by world.getDiagnostics() and its budget table.
+// Compatibility ceilings for historical preset readers. What a tier really draws is
+// set by FALL_TIERS in fall-quality.js and reported by world.getDiagnostics().
 export const QUALITY_PRESETS = Object.freeze({
     Extreme: {
         leafCount: 4000, treeCount: 150, enablePost: true, enablePostProcessing: true,
@@ -106,8 +110,10 @@ export default class FallTheme extends BaseTheme {
         this.world = null;
         this.reactions = null;
         this.post = null;
+        this.assets = null;
         this.timer = null;
         this.time = 0;
+        this.boardPoll = 0;
         this.quality = 'High';
         this.qualityPreset = QUALITY_PRESETS.High;
         this.pendingQuality = null;
@@ -183,8 +189,8 @@ export default class FallTheme extends BaseTheme {
         // Settings listeners are detached while the replacement renderer starts.
         // Reconcile an intervening settings change before any artwork is built,
         // while retaining an explicit event target if global settings stayed put.
-        const latestSettingsQuality = this.getCurrentQualityLevel();
-        if (latestSettingsQuality !== initialSettingsQuality) this.applyQualityPreset(latestSettingsQuality);
+        let seenSettingsQuality = this.getCurrentQualityLevel();
+        if (seenSettingsQuality !== initialSettingsQuality) this.applyQualityPreset(seenSettingsQuality);
         this.renderer = renderer;
         this.usesNodeMaterials = renderer.isWebGPURenderer === true;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
@@ -192,11 +198,34 @@ export default class FallTheme extends BaseTheme {
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.0;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
+        // The grove is lit through one static shadow map of the low sun.
+        renderer.shadowMap.enabled = true;
         renderer.domElement.setAttribute('aria-hidden', 'true');
         renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
         // The registry's static container is never registered for removal.
         container.appendChild(renderer.domElement);
         this.setupGpuResilience();
+        let assets = null;
+        try {
+            assets = await this.loadAssets(current);
+        } catch (error) {
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            throw error;
+        }
+        if (!assets || !current()) {
+            // A newer start, stop or cleanup owns the theme now; this one keeps nothing.
+            disposeFallAssets(assets);
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            return;
+        }
+        this.assets = assets;
+        // The same reconciliation again: the pack is the same for every tier, so a change
+        // made while it loaded only has to pick the tier the grove is built at.
+        const loadedSettingsQuality = this.getCurrentQualityLevel();
+        if (loadedSettingsQuality !== seenSettingsQuality) {
+            seenSettingsQuality = loadedSettingsQuality;
+            this.applyQualityPreset(loadedSettingsQuality);
+        }
         try {
             this.buildScene();
             const { width, height } = getViewport();
@@ -245,6 +274,11 @@ export default class FallTheme extends BaseTheme {
         }
     }
 
+    /** Trees, sprays and sprites authored in Blender; see fall-assets.js. */
+    loadAssets(isCurrent = () => true) {
+        return loadFallAssets({ isCurrent });
+    }
+
     buildScene() {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 240);
@@ -255,14 +289,19 @@ export default class FallTheme extends BaseTheme {
         const rng = seededRandom(Number.isFinite(seed) ? seed : 271);
         this.reactions = new FallReactions({ quality: this.quality, rng });
         this.world = new FallWorld({
-            scene: this.scene, camera: this.camera, quality: this.quality, rng,
+            scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });
         // Keep ownership even if an art module throws halfway through its build.
         this.world.build();
         // FallPost retains the same artwork on both node backends.
         this.post = new FallPost({
-            renderer: this.renderer, scene: this.scene, camera: this.camera, quality: this.quality,
+            renderer: this.renderer,
+            scene: this.scene,
+            camera: this.camera,
+            quality: this.quality,
+            light: this.world.light,
         });
+        this.boardPoll = 0;
     }
 
     setupGpuResilience() {
@@ -301,14 +340,19 @@ export default class FallTheme extends BaseTheme {
         this.comboEffects = enabledSetting(window.settings?.backgroundComboEffects);
         this.lockRipple = enabledSetting(window.settings?.pieceLockRipple);
         this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.HARD_DROP, (payload) => this.onHardDrop(payload)),
             eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(payload)),
             eventBus.on(EVENTS.LINE_CLEAR, (payload) => this.onLineClear(payload)),
             eventBus.on(EVENTS.COMBO, (payload) => this.onCombo(payload)),
+            eventBus.on(EVENTS.TSPIN, (payload) => this.onFlourish('onTSpin', payload)),
+            eventBus.on(EVENTS.B2B, (payload) => this.onFlourish('onBackToBack', payload)),
+            eventBus.on(EVENTS.PERFECT_CLEAR, (payload) => this.onFlourish('onPerfectClear', payload)),
+            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onFlourish('onLevelUp', payload)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
         );
         this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
-        this.registerEventListener(window, 'gameOver', () => this.reactions?.reset());
+        this.registerEventListener(window, 'gameOver', () => this.reactions?.onGameOver());
         this.registerEventListener(window, 'pointermove', (event) => {
             if (!this.isActive || this.isPaused || this.reducedMotion) return;
             if (event.pointerType && event.pointerType !== 'mouse') return;
@@ -336,9 +380,21 @@ export default class FallTheme extends BaseTheme {
         this.clearTrackedResources();
     }
 
+    onHardDrop(payload) {
+        if (!this.effectsAllowed() || !this.lockRipple) return;
+        // The payload's piece is pooled and reset after this call: read it synchronously.
+        this.reactions?.onHardDrop(eventDetail(payload));
+    }
+
     onPieceLock(payload) {
         if (!this.effectsAllowed() || !this.lockRipple) return;
         this.reactions?.onPieceLock(eventDetail(payload));
+    }
+
+    /** T-spins, back-to-backs, perfect clears and level-ups share one gate. */
+    onFlourish(method, payload) {
+        if (!this.effectsAllowed()) return;
+        this.reactions?.[method]?.(eventDetail(payload));
     }
 
     onLineClear(payload) {
@@ -359,7 +415,10 @@ export default class FallTheme extends BaseTheme {
         const effects = settingUpdate(payload, 'backgroundComboEffects');
         if (effects.present) {
             this.comboEffects = enabledSetting(effects.value);
-            if (!this.comboEffects) this.reactions?.reset();
+            if (!this.comboEffects) {
+                this.reactions?.reset();
+                this.world?.resetEffects?.();
+            }
         }
         const lock = settingUpdate(payload, 'pieceLockRipple');
         if (lock.present) this.lockRipple = enabledSetting(lock.value);
@@ -435,6 +494,12 @@ export default class FallTheme extends BaseTheme {
         this.time += dt;
         this.reactions?.update(dt);
         const frame = this.reactions?.getFrame();
+        this.boardPoll -= dt;
+        if (this.boardPoll <= 0) {
+            // The board card can move (mode, resize, multiplayer); follow it cheaply.
+            this.boardPoll = BOARD_POLL_S;
+            this.world?.setBoard?.(readFallBoardRect());
+        }
         this.updateCamera(dt);
         this.world?.update(this.time, dt, frame);
         this.post?.update?.({ ...frame, time: this.time });
@@ -526,6 +591,8 @@ export default class FallTheme extends BaseTheme {
         this.post = null;
         release('World', this.world);
         this.world = null;
+        disposeFallAssets(this.assets);
+        this.assets = null;
         this.reactions?.reset();
         release('Reactions', this.reactions);
         this.reactions = null;

@@ -1,5 +1,10 @@
 # Fall — amber glade visual overhaul
 
+> **Superseded 2026-10-05.** This report describes the "amber glade" rebuild that shipped in #335. The theme was
+> rebuilt again as the enchanted grove; the artwork, event language and modules described below no longer exist.
+> Current record: [docs/FALL_ENCHANTED_GROVE_OVERHAUL_2026-10.md](../../docs/FALL_ENCHANTED_GROVE_OVERHAUL_2026-10.md).
+> The captures in this folder are kept as the "before" evidence.
+
 The Fall background now places the player inside an autumn grove: sculpted trunks and
 roots frame a winding, leaf-covered path, gold and crimson maple crowns bridge overhead,
 and layered woodland fades into cool blue-grey mist. A broad offscreen sunset glow and

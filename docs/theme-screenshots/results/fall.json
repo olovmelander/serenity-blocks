@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:18:21.688Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-05T08:20:03.692Z",
+  "runId": "2026-10-05T08-19-36-942Z",
   "theme": "fall",
   "themeMeta": {
     "displayName": "Fall",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:4294/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-10-05T08-19-36-942Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -83,7 +83,7 @@
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9278",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -334,14 +334,16 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 16,
+          "renderCalls": 20,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
+            "animationIds",
             "animationFrameId"
           ],
           "changedHeartbeatFields": [
+            "animationIds",
             "animationFrameId"
           ],
           "sharedRendererHeartbeatAvailable": false,
@@ -714,6 +716,13 @@
         }
       },
       {
+        "id": "outgoing-eventListeners-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
         "id": "outgoing-eventUnsubscribers-cleared",
         "passed": true,
         "details": {
@@ -831,7 +840,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -844,7 +853,7 @@
         "id": "outgoing-container-descendants-restored",
         "passed": true,
         "details": {
-          "baseline": 10,
+          "baseline": 0,
           "actual": 0
         }
       },
@@ -852,7 +861,7 @@
         "id": "outgoing-container-canvases-restored",
         "passed": true,
         "details": {
-          "baseline": 1,
+          "baseline": 0,
           "actual": 0
         }
       },
@@ -1200,14 +1209,16 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 16,
+          "renderCalls": 20,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
+            "animationIds",
             "animationFrameId"
           ],
           "changedHeartbeatFields": [
+            "animationIds",
             "animationFrameId"
           ],
           "sharedRendererHeartbeatAvailable": false,
@@ -1471,10 +1482,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.09999999997671694,
-      "firstTargetSelection": 368.10000000009313,
-      "cleanup-anchor": 42.300000000046566,
-      "secondTargetSelection": 144.79999999993015
+      "initial-anchor": 0.3999999985098839,
+      "firstTargetSelection": 5143.89999999851,
+      "cleanup-anchor": 34.19999999552965,
+      "secondTargetSelection": 739.2999999970198
     },
     "mode": {
       "modeId": "single",
@@ -1507,14 +1518,16 @@
     "firstRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 16,
+      "renderCalls": 20,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
+        "animationIds",
         "animationFrameId"
       ],
       "changedHeartbeatFields": [
+        "animationIds",
         "animationFrameId"
       ],
       "sharedRendererHeartbeatAvailable": false,
@@ -1525,14 +1538,16 @@
     "secondRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 16,
+      "renderCalls": 20,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
+        "animationIds",
         "animationFrameId"
       ],
       "changedHeartbeatFields": [
+        "animationIds",
         "animationFrameId"
       ],
       "sharedRendererHeartbeatAvailable": false,
@@ -1552,23 +1567,23 @@
     }
   },
   "screenshot": {
-    "path": "docs\\theme-screenshots\\fall.png",
+    "path": "artifacts\\fall\\theme-validation\\fall.png",
     "passed": true,
     "width": 1584,
     "height": 787,
     "byteLength": 4986432,
     "samples": 20107,
     "luminance": {
-      "min": 2.4934000000000003,
-      "max": 241.7208,
-      "mean": 38.95597538171232,
-      "range": 239.2274,
-      "variance": 848.7543542074507
+      "min": 30.067,
+      "max": 246.41320000000002,
+      "mean": 104.96686544984351,
+      "range": 216.3462,
+      "variance": 2705.863335224436
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 136,
+    "entryCount": 133,
     "warningCount": 2,
     "errorCount": 0,
     "processFailureCount": 0,
@@ -1577,21 +1592,22 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-21T06:18:09.103Z",
+        "timestamp": "2026-10-05T08:19:46.603Z",
         "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:4294/assets/three-ybFifxlT.js"
       },
       {
-        "timestamp": "2026-08-21T06:18:14.544Z",
+        "timestamp": "2026-10-05T08:19:56.508Z",
         "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:4294/assets/three-ybFifxlT.js"
       }
     ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }
