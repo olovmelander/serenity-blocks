@@ -62,6 +62,9 @@ export const backdropPoint = (u) => uv().mul(2).sub(1).mul(u.ext)
  */
 export const layer = (p, u, k) => p.div(u.zoom.sub(1).mul(k).add(1)).add(u.pan.mul(k));
 
+/** The inverse of `layer`: where on screen (backdrop space) a point of layer k appears now. */
+export const unlayer = (q, u, k) => q.sub(u.pan.mul(k)).mul(u.zoom.sub(1).mul(k).add(1));
+
 export const hash21 = /* @__PURE__ */ Fn(([p]) => {
     const q = fract(vec3(p.x, p.y, p.x).mul(0.1031)).toVar();
     q.addAssign(dot(q, q.yzx.add(33.33)));
