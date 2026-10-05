@@ -1,0 +1,16 @@
+{
+  "width": 1440,
+  "height": 900,
+  "backend": "WebGPU",
+  "diagnostics": {
+    "quality": "High",
+    "leaves": 700,
+    "motes": 230,
+    "rays": 8,
+    "burstLeaves": 32,
+    "burstSlots": 12
+  },
+  "errors": [],
+  "consoleErrors": [],
+  "browser": "153.0.8010.12"
+}
