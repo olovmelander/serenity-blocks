@@ -11,8 +11,8 @@ import { SESSION_WORLDS } from '../../src/ui/effects/breathwork-session-manager.
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 
-/** The light tiers draw without a post pipeline, so a stub renderer is enough to mount a world. */
-function createHost(quality = 'Low') {
+/** The lightest tier draws without a post pipeline, so a stub renderer is enough to mount a world. */
+function createHost(quality = 'Minimal') {
     const renderer = { render: vi.fn(), toneMapping: 0, toneMappingExposure: 1 };
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(20, 1, 0.1, 60);
@@ -130,9 +130,41 @@ describe('breathing world host', () => {
 
     it('offers the same tier names as the game\'s effect quality setting', () => {
         expect(Object.keys(BREATH_QUALITY)).toEqual(['Extreme', 'Ultra', 'High', 'Medium', 'Low', 'Minimal']);
-        // The cheap tiers skip the bloom chain entirely rather than paying for a zeroed one.
-        expect(BREATH_QUALITY.Low.bloom).toBe(0);
+        // Phones run Low: a light post pipeline (quarter-resolution bloom and shafts) keeps the glow.
+        expect(BREATH_QUALITY.Low.bloom).toBeGreaterThan(0);
+        expect(BREATH_QUALITY.Low.shaftScale).toBeLessThanOrEqual(0.25);
+        // Minimal skips the post chain entirely rather than paying for a zeroed one.
         expect(BREATH_QUALITY.Minimal.bloom).toBe(0);
+        expect(BREATH_QUALITY.Minimal.shafts).toBe(0);
         expect(createHost('Minimal').host.pipeline).toBeNull();
+        // Every tier draws the same artwork: only cost knobs differ.
+        Object.values(BREATH_QUALITY).forEach((tier) => {
+            expect(tier.detail).toBeGreaterThan(0);
+            expect(tier.detail).toBeLessThanOrEqual(1);
+        });
+    });
+
+    it('leans the camera in with the breath and keeps painted layers in step with meshes', () => {
+        const { host, camera } = createHost();
+        host.setWorld('deep-relaxation');
+        host.setFocus(0.14);
+        host.setSize(1600, 900);
+        host.setBreath({ breath: 1, phase: 1, progress: 0.5 });
+        host.seek(0);
+        const zoom = host.uniforms.zoom.value;
+        expect(zoom).toBeGreaterThan(1);
+        expect(zoom).toBeLessThan(1.1);
+        // The z = 0 plane must show hero point P at screen point (P - pan) * zoom.
+        const pan = host.uniforms.pan.value;
+        const point = new THREE.Vector3(0.4, 0.25, 0).project(camera);
+        const ext = host.uniforms.ext.value;
+        expect(point.x * ext.x).toBeCloseTo((0.4 - pan.x) * zoom, 5);
+        expect(point.y * ext.y - 0.14).toBeCloseTo((0.25 - pan.y) * zoom, 5);
+        // Reduced motion holds the lens still whatever the breath does.
+        host.setReducedMotion(true);
+        host.step(1 / 60);
+        expect(host.uniforms.zoom.value).toBe(1);
+        expect(host.uniforms.pan.value.length()).toBe(0);
+        host.dispose();
     });
 });
