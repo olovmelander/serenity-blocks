@@ -8,10 +8,18 @@
 
 import * as THREE from 'three/webgpu';
 import { WebGLRenderer } from 'three';
-import { float, uniformTexture, vec3 } from 'three/tsl';
+import {
+    clamp, float, uniform, uniformTexture, vec3,
+} from 'three/tsl';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 
 const TEXTURE_PATH = './textures/synthcity/';
+
+// Fixed hues keep the district's architecture coherent across captures and visits.
+const WINDOW_PALETTE = [
+    0x65e6ff, 0xff689f, 0xffc690, 0x8bacff, 0x65ffd7,
+    0xff8dc0, 0x81d8ff, 0xf4b875, 0xc194ff, 0x9aeeff,
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Star Shader - Soft, twinkling neon sky stars
@@ -69,6 +77,7 @@ export class NeonDistrictAssets {
     constructor(renderer = null) {
         this.textures = {};
         this.materials = {};
+        this.districtGlow = uniform(1.0);
         this.adAtlas = {
             small: null,
             large: null,
@@ -234,19 +243,23 @@ export class NeonDistrictAssets {
         console.log('[NeonDistrictAssets] Loading textures...');
 
         // Helper to load texture with high-quality settings and KTX2 fallback
-        const loadTex = (name, wrap = false, aniso = true, colorSpace = THREE.SRGBColorSpace) => {
-            return new Promise((resolve) => {
-                // TRY KTX2 FIRST (if file exists logic would be here, but we try/fail)
-                // For now, we assume if .ktx2 exists we use it, otherwise fall back.
-                // Since checking file existence via HTTP is slow/complex without manifest,
-                // we will stick to standard loading but provide the mechanism to easy switch.
+        const loadTex = (
+            name,
+            wrap = false,
+            aniso = true,
+            colorSpace = THREE.SRGBColorSpace,
+        ) => new Promise((resolve) => {
+            // TRY KTX2 FIRST (if file exists logic would be here, but we try/fail)
+            // For now, we assume if .ktx2 exists we use it, otherwise fall back.
+            // Since checking file existence via HTTP is slow/complex without manifest,
+            // we will stick to standard loading but provide the mechanism to easy switch.
 
-                // NOTE: To enable KTX2, ensure .ktx2 files exist and uncomment logic below
-                // or ensure server serves .ktx2.
-                // For this implementation, we default to standard loader to avoid 404 console spam
-                // until user generates the assets.
+            // NOTE: To enable KTX2, ensure .ktx2 files exist and uncomment logic below
+            // or ensure server serves .ktx2.
+            // For this implementation, we default to standard loader to avoid 404 console spam
+            // until user generates the assets.
 
-                /*
+            /*
                 ktx2Loader.load(
                     texPath + baseName + '.ktx2',
                     (tex) => {
@@ -261,10 +274,9 @@ export class NeonDistrictAssets {
                 );
                 */
 
-                // Default path (Standard)
-                this.loadStandardTexture(name, wrap, aniso, colorSpace, generation).then(resolve);
-            });
-        };
+            // Default path (Standard)
+            this.loadStandardTexture(name, wrap, aniso, colorSpace, generation).then(resolve);
+        });
 
         // Build array of all texture load promises for PARALLEL loading
         const texturePromises = [];
@@ -457,6 +469,9 @@ export class NeonDistrictAssets {
             material.emissiveNode = vec3(0.0, 0.0, 0.0);
         }
 
+        if (material.userData.districtGlow === true) {
+            material.emissiveNode = material.emissiveNode.mul(clamp(this.districtGlow, 0.3, 2.5));
+        }
         material.needsUpdate = true;
     }
 
@@ -485,8 +500,10 @@ export class NeonDistrictAssets {
                 emissive: 0xffffff,
                 emissiveMap: this.getTexture(`storefront_${id}`), // Use diffuse as emissive
                 emissiveIntensity: this.storefrontEmissiveIntensity,
-                shininess: 0,
+                shininess: 10,
+                specular: 0x243449,
             });
+            this.materials[`storefront_${id}`].userData.districtGlow = true;
         }
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -496,26 +513,26 @@ export class NeonDistrictAssets {
         for (let i = 1; i <= 10; i++) {
             const id = this.padNumber(i);
 
-            // Random emissive hue per material for color variety
-            const hue = Math.random() * 360;
-            const emissiveColor = new THREE.Color(`hsl(${hue}, 100%, 92%)`);
+            const emissiveColor = new THREE.Color(WINDOW_PALETTE[i - 1]);
 
             const buildingMaterial = new MaterialClass({
                 map: this.getTexture(`building_${id}`),
-                specular: 0xffffff,
+                specular: 0x5a7595,
+                shininess: 22,
                 specularMap: this.getTexture(`building_${id}_spec`),
                 envMap,
                 emissive: emissiveColor,
                 emissiveMap: this.getTexture(`building_${id}_em`),
                 emissiveIntensity: this.windowsEmissiveIntensity,
                 bumpMap: this.getTexture(`building_${id}`),
-                bumpScale: 5,
+                bumpScale: 2.2,
             });
 
             if (buildingMaterial.color?.isColor) {
                 buildingMaterial.color.multiplyScalar(this.buildingDiffuseBoost);
             }
 
+            buildingMaterial.userData.districtGlow = true;
             this.materials[`building_${id}`] = buildingMaterial;
         }
 
@@ -524,17 +541,18 @@ export class NeonDistrictAssets {
         // ═══════════════════════════════════════════════════════════════════════════
         const megaBuildingMaterial = new MaterialClass({
             map: this.getTexture('mega_building_01'),
-            specular: 0x777777,
-            shininess: 1,
-            emissive: 0xffffff,
+            specular: 0x527591,
+            shininess: 22,
+            emissive: 0x9deaff,
             emissiveMap: this.getTexture('mega_building_01_em'),
             emissiveIntensity: this.windowsEmissiveIntensity,
             bumpMap: this.getTexture('mega_building_01'),
-            bumpScale: 10,
+            bumpScale: 3,
         });
         if (megaBuildingMaterial.color?.isColor) {
             megaBuildingMaterial.color.multiplyScalar(this.buildingDiffuseBoost);
         }
+        megaBuildingMaterial.userData.districtGlow = true;
         this.materials.mega_building_01 = megaBuildingMaterial;
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -685,7 +703,9 @@ export class NeonDistrictAssets {
             // Shuffle using Fisher-Yates
             for (let i = this.availableStorefronts.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                [this.availableStorefronts[i], this.availableStorefronts[j]] = [this.availableStorefronts[j], this.availableStorefronts[i]];
+                [this.availableStorefronts[i], this.availableStorefronts[j]] = [
+                    this.availableStorefronts[j], this.availableStorefronts[i],
+                ];
             }
         }
 
