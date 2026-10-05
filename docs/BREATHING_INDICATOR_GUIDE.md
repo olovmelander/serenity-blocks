@@ -1,5 +1,8 @@
 # 🌟 Stunning Breathing Indicator - User Guide
 
+> **Superseded 2026-10-05** by [BREATHING_OVERHAUL_2026-10.md](BREATHING_OVERHAUL_2026-10.md). This guide describes the
+> original ring indicator, which no longer exists.
+
 ## Overview
 
 The Enhanced Breathing Indicator is the most beautiful meditation and breathing guide ever created for Serenity Blocks. It features stunning visual effects, multiple breathing techniques, and guaranteed visibility on any background.

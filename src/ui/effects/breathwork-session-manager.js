@@ -1,15 +1,34 @@
 /**
- * BreathworkSessionManager - Manages multi-phase breathwork journeys
- * Inspired by Hale Center's "Base" and "Elixir" classes.
+ * BreathworkSessionManager - runs the four Hale sessions.
  *
- * Enhanced with:
- * - Rich progress tracking (round, breath count, timers)
- * - Atmospheric guidance prompts with sub-prompts
- * - Session-specific theming
- * - Smooth phase transitions
+ * A session is a journey of stages (arrive, three rounds of breathing / stillness / recovery,
+ * rest). The manager owns its clock and its voice; the breathing guide follows it: each stage
+ * hands the guide a rhythm, a world to show and what to say.
+ *
+ * Every piece of stage work is scheduled through _schedulePhase, so a pause can freeze the
+ * session exactly where it is and a resume continues from the same moment.
  */
 
 import { BreathworkAudioManager } from './breathwork-audio-manager.js';
+
+/**
+ * The world each stage is set in. One journey per session, the same every time: the scenery is
+ * part of the practice, not decoration to shuffle. An array is indexed by round.
+ */
+export const SESSION_WORLDS = Object.freeze({
+    BASE: {
+        grounding: 'forest-breath', active: 'ocean-breath', retention: 'cosmic-breath', recovery: 'coherence', integration: 'calm-sleep',
+    },
+    ELIXIR: {
+        grounding: 'zen-garden', active: ['wim-hof', 'energizing', 'electric-storm'], retention: 'cosmic-breath', recovery: 'coherence', integration: 'deep-relaxation',
+    },
+    REST: {
+        grounding: 'ocean-breath', active: 'calm-sleep', retention: 'zen-garden', recovery: 'coherence', integration: 'deep-relaxation',
+    },
+    FLOW: {
+        grounding: 'zen-garden', active: 'box-breathing', retention: 'triangle', recovery: 'coherence', integration: 'ocean-breath',
+    },
+});
 
 export class BreathworkSessionManager {
     constructor(breathingIndicator) {
@@ -20,8 +39,6 @@ export class BreathworkSessionManager {
         this.currentRound = 0;
         this.isPaused = false;
         this.timer = null;
-        this.breathTimer = null;
-        this.audioTimer = null;
         this.progressUpdateTimer = null;
         this.phaseTimeouts = new Set();
         this.phaseToken = 0;
@@ -33,18 +50,9 @@ export class BreathworkSessionManager {
         this.onProgressCallback = null;
         this.onCompleteCallback = null;
         this.onPhaseChangeCallback = null;
-
-        // Theme Pools for Randomized Selection
-        // Ensures all 12 themes are utilized across appropriate phases
-        this.THEME_POOLS = {
-            grounding: ['forest-breath', 'zen-garden', 'ocean-breath', 'calm-sleep'],
-            active: ['energizing', 'electric-storm', 'wim-hof'],
-            retention: ['box-breathing', 'triangle', 'coherence', 'cosmic-breath'],
-            recovery: ['coherence', 'deep-relaxation'],
-            integration: ['deep-relaxation', 'calm-sleep', 'ocean-breath', 'zen-garden'],
-        };
-
-        this.lastTheme = null;
+        /** Set by the Sessions surface: called when the guide's own End control is confirmed. */
+        this.onEndRequested = null;
+        this.currentPhaseDuration = 0;
 
         // Enhanced Session Definitions with atmospheric prompts
         this.SESSIONS = {
@@ -548,14 +556,29 @@ export class BreathworkSessionManager {
     _calculateTotalDuration(sessionId) {
         const session = this.SESSIONS[sessionId];
         if (!session) return 0;
+        return session.phases.reduce((total, phase) => total + this._phaseSeconds(phase), 0);
+    }
 
-        return session.phases.reduce((total, phase) => {
-            if (phase.type === 'active') {
-                const breathDuration = phase.pattern.reduce((a, b) => a + b, 0);
-                return total + (breathDuration * phase.breaths);
-            }
-            return total + phase.duration;
-        }, 0);
+    /** How long a stage lasts: counted breaths for the active rounds, a fixed time otherwise. */
+    _phaseSeconds(phase) {
+        if (phase.type === 'active') return phase.pattern.reduce((a, b) => a + b, 0) * phase.breaths;
+        return phase.duration;
+    }
+
+    /** The world a stage is set in (see SESSION_WORLDS). */
+    _worldFor(phase) {
+        const worlds = SESSION_WORLDS[this.sessionId] || SESSION_WORLDS.BASE;
+        const choice = worlds[phase.type] || worlds.grounding;
+        return Array.isArray(choice) ? choice[Math.max(0, (phase.round || 1) - 1) % choice.length] : choice;
+    }
+
+    _onIndicatorControl(action) {
+        if (action === 'pause') this.pauseSession();
+        else if (action === 'resume') this.resumeSession();
+        else if (action === 'end') {
+            if (this.onEndRequested) this.onEndRequested();
+            else this.stopSession();
+        }
     }
 
     /**
@@ -584,8 +607,7 @@ export class BreathworkSessionManager {
         let elapsed = 0;
         this.phaseDurationOffsets = session.phases.map((phase) => {
             const offset = elapsed;
-            elapsed += phase.type === 'active'
-                ? phase.pattern.reduce((a, b) => a + b, 0) * phase.breaths : phase.duration;
+            elapsed += this._phaseSeconds(phase);
             return offset;
         });
         this.onProgressCallback = onProgress;
@@ -607,6 +629,11 @@ export class BreathworkSessionManager {
             if (this.indicator.setSessionTheme) {
                 this.indicator.setSessionTheme(sessionId);
             }
+            this.indicator.setJourney?.(session.phases.map((phase) => ({
+                type: phase.type, round: phase.round || 0, seconds: this._phaseSeconds(phase),
+            })));
+            // The guide's own Pause and End controls act on this session.
+            this.indicator.onControl = (action) => this._onIndicatorControl(action);
 
             // Register callback to sync audio with visual phase changes
             this.indicatorPhaseHandler = (newPhase, prevPhase) => {
@@ -663,26 +690,32 @@ export class BreathworkSessionManager {
 
     _clearPhaseTimers() {
         this.phaseToken += 1;
-        clearTimeout(this.timer);
-        clearInterval(this.breathTimer);
-        clearInterval(this.audioTimer);
         clearInterval(this.progressUpdateTimer);
         this.timer = null;
-        this.breathTimer = null;
-        this.audioTimer = null;
         this.progressUpdateTimer = null;
-        for (const timer of this.phaseTimeouts) clearTimeout(timer);
+        for (const entry of this.phaseTimeouts) clearTimeout(entry.timer);
         this.phaseTimeouts.clear();
     }
 
+    /**
+     * Run `callback` after `delay` ms of session time. A pause holds every pending entry at
+     * its remaining time; a resume re-arms them, so nothing is lost and nothing fires early.
+     */
     _schedulePhase(callback, delay) {
         const { phaseToken } = this;
-        const timer = setTimeout(() => {
-            this.phaseTimeouts.delete(timer);
-            if (this.activeSession && !this.isPaused && phaseToken === this.phaseToken) callback();
-        }, delay);
-        this.phaseTimeouts.add(timer);
-        return timer;
+        const entry = {
+            timer: null, due: 0, remaining: delay, arm: null,
+        };
+        entry.arm = (ms) => {
+            entry.due = Date.now() + ms;
+            entry.timer = setTimeout(() => {
+                this.phaseTimeouts.delete(entry);
+                if (this.activeSession && !this.isPaused && phaseToken === this.phaseToken) callback();
+            }, ms);
+        };
+        this.phaseTimeouts.add(entry);
+        entry.arm(delay);
+        return entry;
     }
 
     destroy() {
@@ -746,14 +779,8 @@ export class BreathworkSessionManager {
             this.currentRound = phase.round;
         }
 
-        // Calculate phase duration
-        let phaseDuration;
-        if (phase.type === 'active') {
-            const breathCycle = phase.pattern.reduce((a, b) => a + b, 0);
-            phaseDuration = breathCycle * phase.breaths;
-        } else {
-            phaseDuration = phase.duration;
-        }
+        const phaseDuration = this._phaseSeconds(phase);
+        this.currentPhaseDuration = phaseDuration;
 
         // Update UI/Indicator
         if (this.indicator) {
@@ -764,18 +791,7 @@ export class BreathworkSessionManager {
                 this.indicator.setPrompt(phase.prompt);
             }
 
-            // Select random theme from appropriate pool
-            const pool = this.THEME_POOLS[phase.type] || this.THEME_POOLS.grounding;
-            let theme = pool[Math.floor(Math.random() * pool.length)];
-
-            // Try to avoid repeating the same theme consecutively if possible
-            if (this.lastTheme === theme && pool.length > 1) {
-                const filteredPool = pool.filter((t) => t !== theme);
-                theme = filteredPool[Math.floor(Math.random() * filteredPool.length)];
-            }
-
-            this.lastTheme = theme;
-            this.indicator.setTechnique(theme, false); // false = no info popup
+            this.indicator.setTechnique(this._worldFor(phase), false);
 
             this.indicator.overridePattern(this._getVisualPattern(phase));
             this.indicator.setSessionPhase?.(phase.type, 0);
@@ -798,20 +814,8 @@ export class BreathworkSessionManager {
         this._startProgressUpdates(phase, phaseDuration);
         if (phaseToken !== this.phaseToken || !this.activeSession) return;
 
-        // Handle timing
-        if (phase.type === 'active') {
-            // For active breathing, count breaths
-            const breathCycle = phase.pattern.reduce((a, b) => a + b, 0);
-            const totalDuration = breathCycle * phase.breaths * 1000; // ms
-
-            // Start breath counter
-            this._startBreathCounter(phase.pattern, phase.breaths);
-
-            this.timer = this._schedulePhase(() => this._nextPhase(), totalDuration);
-        } else {
-            // For fixed duration phases
-            this.timer = this._schedulePhase(() => this._nextPhase(), phase.duration * 1000);
-        }
+        // The stage ends on the session clock; breaths are counted from the same clock.
+        this.timer = this._schedulePhase(() => this._nextPhase(), phaseDuration * 1000);
 
         // TRIGGER AUDIO - Use event-based chaining to prevent overlaps
         if (this.audioManager && phase.audio) {
@@ -940,27 +944,6 @@ export class BreathworkSessionManager {
     }
 
     /**
-     * Schedule intention audio clip
-     * @private
-     */
-    _scheduleIntention(intentions, delay, phase) {
-        this._schedulePhase(() => {
-            // Only play intention if still in same grounding phase (not during active breathing)
-            const currentPhase = this.activeSession?.phases[this.currentPhaseIndex];
-            if (this.activeSession
-                && currentPhase === phase
-                && currentPhase?.type === 'grounding') {
-                // Pick random intention
-                const intention = intentions[Math.floor(Math.random() * intentions.length)];
-                console.log(`[SessionManager] Playing intention: ${intention}`);
-                this.audioManager.playVoice(intention);
-            } else {
-                console.log('[SessionManager] Skipping intention (no longer in grounding phase)');
-            }
-        }, delay);
-    }
-
-    /**
      * Handle breath phase change from the visual indicator
      * Plays audio cues synced with the visual breathing guide
      * @param {string} newPhase - 'inhale', 'hold1', 'exhale', or 'hold2'
@@ -1055,72 +1038,6 @@ export class BreathworkSessionManager {
     }
 
     /**
-     * Start rhythmic audio cues
-     * @private
-     */
-    _startRhythmicAudio(pattern, cues, totalBreaths) {
-        clearInterval(this.audioTimer);
-        const { phaseToken } = this;
-        let breathCount = 0;
-        const [inhale, hold1, exhale, hold2] = pattern;
-        const cycleDuration = (inhale + hold1 + exhale + hold2) * 1000;
-
-        // Only play cues every N breaths as guidance (not every breath)
-        const cueInterval = 5; // Play cue every 5th breath
-
-        const playCycle = () => {
-            if (!this.activeSession || this.isPaused || phaseToken !== this.phaseToken) return;
-            if (breathCount >= totalBreaths) {
-                clearInterval(this.audioTimer);
-                return;
-            }
-
-            // Only play audio cue every N breaths for guidance
-            const shouldPlayCue = (breathCount % cueInterval === 0);
-
-            if (shouldPlayCue) {
-                // Inhale cue
-                if (cues.in) this.audioManager.playCue(cues.in);
-
-                // Exhale cue
-                if (cues.out) {
-                    this._schedulePhase(() => {
-                        if (!this.isPaused) this.audioManager.playCue(cues.out);
-                    }, (inhale + hold1) * 1000);
-                }
-            }
-
-            breathCount++;
-        };
-
-        // Start immediately
-        playCycle();
-        // Repeat
-        this.audioTimer = setInterval(playCycle, cycleDuration);
-    }
-
-    /**
-     * Start breath counter for active phases
-     * @private
-     */
-    _startBreathCounter(pattern, totalBreaths) {
-        clearInterval(this.breathTimer);
-        const { phaseToken } = this;
-
-        const breathCycle = pattern.reduce((a, b) => a + b, 0) * 1000; // ms
-        this.currentBreathCount = 0;
-
-        // Count a breath each cycle
-        this.breathTimer = setInterval(() => {
-            if (!this.activeSession || this.isPaused || phaseToken !== this.phaseToken) return;
-            this.currentBreathCount++;
-            if (this.currentBreathCount >= totalBreaths) {
-                clearInterval(this.breathTimer);
-            }
-        }, breathCycle);
-    }
-
-    /**
      * Start continuous progress updates
      * @private
      */
@@ -1133,12 +1050,16 @@ export class BreathworkSessionManager {
         const { phaseToken } = this;
         const elapsedBeforePhase = this.phaseDurationOffsets[this.currentPhaseIndex] || 0;
         const phaseLabel = this._getPhaseLabel(phase.type);
+        const breathCycle = phase.type === 'active' ? phase.pattern.reduce((a, b) => a + b, 0) : 0;
         const updateProgress = () => {
             if (!this.activeSession || this.isPaused || phaseToken !== this.phaseToken) return;
 
             const elapsed = (Date.now() - this.phaseStartTime) / 1000;
             const remaining = Math.max(0, phaseDuration - elapsed);
             const phaseProgress = Math.min(1, elapsed / phaseDuration);
+            // Completed breaths in an active round, from the one clock that also ends the stage.
+            this.currentBreathCount = breathCycle > 0
+                ? Math.min(phase.breaths, Math.floor(elapsed / breathCycle)) : 0;
 
             // Calculate session progress
             const elapsedSessionTime = elapsedBeforePhase + elapsed;
@@ -1168,6 +1089,7 @@ export class BreathworkSessionManager {
 
                 // Session progress
                 sessionProgress,
+                sessionRemaining: Math.max(0, this.totalSessionDuration - elapsedSessionTime),
 
                 // Content
                 prompt: phase.prompt,
@@ -1189,12 +1111,17 @@ export class BreathworkSessionManager {
             // Update breathing indicator's progress UI
             if (this.indicator && this.indicator.updateProgress) {
                 this.indicator.updateProgress({
+                    sessionName: progressData.sessionName,
                     phase: progressData.phase,
-                    round: progressData.round,
+                    phaseIndex: progressData.phaseIndex,
+                    phaseProgress: progressData.phaseProgress,
+                    round: phase.round || 0,
                     totalRounds: progressData.totalRounds,
                     breathCount: progressData.breathCount,
                     totalBreaths: progressData.totalBreaths,
+                    remainingTime: progressData.remainingTime,
                     sessionProgress: progressData.sessionProgress,
+                    sessionRemaining: progressData.sessionRemaining,
                     sessionColor: this.activeSession.color,
                 });
             }
@@ -1256,15 +1183,18 @@ export class BreathworkSessionManager {
 
         this.isPaused = true;
         this.pauseTime = Date.now();
-        this._clearPhaseTimers();
-        if (this.indicator?.pause) this.indicator.pause();
-        else this.indicator?.stop();
+        clearInterval(this.progressUpdateTimer);
+        this.progressUpdateTimer = null;
+        // Hold every pending piece of stage work at the time it still had to run.
+        for (const entry of this.phaseTimeouts) {
+            clearTimeout(entry.timer);
+            entry.timer = null;
+            entry.remaining = Math.max(0, entry.due - this.pauseTime);
+        }
+        this.indicator?.pause?.();
+        this.audioManager?.pauseAll();
 
         console.log('[BreathworkSessionManager] Session paused');
-
-        if (this.audioManager) {
-            this.audioManager.stopAll();
-        }
     }
 
     /**
@@ -1278,11 +1208,12 @@ export class BreathworkSessionManager {
         this.phaseStartTime += pauseDuration;
         this.sessionStartTime += pauseDuration;
 
-        if (this.indicator?.resume) this.indicator.resume();
-        else this.indicator?.start();
-
-        // Resume phase (simplified - restarts current phase)
-        this._runPhase();
+        // Continue from the same moment: re-arm the held work and pick the voice back up.
+        for (const entry of this.phaseTimeouts) entry.arm(entry.remaining);
+        this.indicator?.resume?.();
+        this.audioManager?.resumeAll();
+        const phase = this.activeSession.phases[this.currentPhaseIndex];
+        if (phase) this._startProgressUpdates(phase, this.currentPhaseDuration);
 
         console.log('[BreathworkSessionManager] Session resumed');
     }
