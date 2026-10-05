@@ -89,7 +89,7 @@ describe('mobile WebGL2 acceptance verdict', () => {
         expect(mobileWebgl2Failures(cleanResult())).toEqual([]);
     });
 
-    it.each(['wolfhour', 'crystal-cave'])('rejects a nonblank old %s classic scene even with active meshes and no console errors', (id) => {
+    it.each(['wolfhour', 'crystal-cave', 'aurora'])('rejects a nonblank old %s classic scene even with active meshes and no console errors', (id) => {
         const result = cleanResult(id);
         result.portrait.rendererKind = 'WebGLRenderer';
         result.portrait.nodeMaterials = 0;
