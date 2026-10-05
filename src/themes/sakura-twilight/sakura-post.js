@@ -22,7 +22,7 @@ const LUMA = vec3(0.2126, 0.7152, 0.0722);
 
 export class SakuraPost {
     constructor({
-        renderer, scene, camera, quality = 'High', light = null,
+        renderer, scene, camera, quality = 'High', light = null, prime = null,
     }) {
         this.renderer = renderer;
         this.scene = scene;
@@ -47,8 +47,13 @@ export class SakuraPost {
         let lit = sceneColor.rgb;
         if (light && this.tier.godrays > 0) {
             // GodraysNode reads the moon's shadow map while its graph is built, so the
-            // shadow rig must exist first: one direct render builds it.
-            if (!light.moon.shadow.map) renderer.render(scene, camera);
+            // shadow rig must exist first: one direct render builds it. `prime` lets the
+            // owner do that with a single object instead of compiling the whole garden a
+            // second time for the canvas.
+            if (!light.moon.shadow.map) {
+                if (prime) prime();
+                else renderer.render(scene, camera);
+            }
             this.godraysNode = godrays(sceneDepth, camera, light.moon);
             this.godraysNode.raymarchSteps.value = this.tier.godrays;
             this.godraysNode.density.value = 0.7;

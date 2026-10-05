@@ -10,10 +10,13 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, cameraPosition, clamp, color, dot, exp, float, length, max, mix, normalize, positionWorld, pow,
+    Fn, Loop, abs, cameraPosition, clamp, color, dot, exp, float, length, max, mix, normalize, positionWorld, pow,
     reflector, saturate, screenUV, smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { SAKURA_WATER_LEVEL, createSakuraBedTexture, sakuraBedUv } from './sakura-terrain.js';
+
+/** Things on this layer are drawn for the eye but left out of the lake's reflection. */
+export const SAKURA_UNMIRRORED_LAYER = 1;
 
 export class SakuraWater {
     constructor({ light, sky, tier }) {
@@ -28,22 +31,27 @@ export class SakuraWater {
     /** Lantern light laid along the water toward the eye, one streak per lamp. */
     streaks(point, eye) {
         const { light } = this;
-        let total = float(0);
-        for (let index = 0; index < light.lampCount; index += 1) {
-            const lamp = light.lampNodes.element(index);
-            const height = max(lamp.y.sub(SAKURA_WATER_LEVEL), 0.2);
-            // Where the lamp's mirror image is seen on the surface.
-            const foot = eye.xz.add(lamp.xz.sub(eye.xz).mul(eye.y.div(eye.y.add(height))));
-            const offset = point.sub(foot);
-            const axis = normalize(eye.xz.sub(lamp.xz));
-            const along = dot(offset, axis);
-            const across = length(offset.sub(axis.mul(along)));
-            const reach = length(eye.xz.sub(foot));
-            const width = reach.mul(0.006).add(0.16);
-            total = total.add(exp(across.mul(across).div(width.mul(width)).negate())
-                .mul(exp(abs(along).div(height.mul(1.4).add(1.6)).negate())).mul(lamp.w));
+        if (!light.lampCount) return vec3(0);
+        if (!this.streaksFn) {
+            this.streaksFn = Fn(([surface, from]) => {
+                const total = float(0).toVar();
+                Loop(light.lampCount, ({ i }) => {
+                    const lamp = light.lampNodes.element(i);
+                    const height = max(lamp.y.sub(SAKURA_WATER_LEVEL), 0.2);
+                    // Where the lamp's mirror image is seen on the surface.
+                    const foot = from.xz.add(lamp.xz.sub(from.xz).mul(from.y.div(from.y.add(height))));
+                    const offset = surface.sub(foot);
+                    const axis = normalize(from.xz.sub(lamp.xz));
+                    const along = dot(offset, axis);
+                    const across = length(offset.sub(axis.mul(along)));
+                    const width = length(from.xz.sub(foot)).mul(0.006).add(0.16);
+                    total.addAssign(exp(across.mul(across).div(width.mul(width)).negate())
+                        .mul(exp(abs(along).div(height.mul(1.4).add(1.6)).negate())).mul(lamp.w));
+                });
+                return light.uLampColor.mul(total).mul(light.uLampGain);
+            });
         }
-        return light.uLampColor.mul(total).mul(light.uLampGain);
+        return this.streaksFn(point, eye);
     }
 
     build() {
@@ -137,6 +145,16 @@ export class SakuraWater {
         this.mesh = mesh;
         this.group.add(mesh);
         return this;
+    }
+
+    /**
+     * The reflection is a second view of the garden. Its camera is made here, ahead of
+     * the first frame, and sees only layer 0: grass, petals, foxes and the small lights
+     * (which the lake never shows) are neither drawn nor compiled for it.
+     */
+    bindCamera(camera) {
+        if (!this.reflection) return;
+        this.reflection.reflector.getVirtualCamera(camera).layers.set(0);
     }
 
     getDiagnostics() {

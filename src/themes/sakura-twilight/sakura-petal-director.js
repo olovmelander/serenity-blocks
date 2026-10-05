@@ -18,8 +18,8 @@ const SHOWER_WINDOW = 1.6;
 export class SakuraPetalDirector {
     /**
      * `effects` are the garden's one-shot hooks, each optional:
-     *   ring(x, z, strength), star(strength), floatLantern(x, z, vx, vz, power),
-     *   skyLantern(x, y, z, delay)
+     *   ring(x, z, strength), flash(x, y, z, strength), star(strength),
+     *   floatLantern(x, z, vx, vz, power), skyLantern(x, y, z, delay)
      */
     constructor({
         stage, sim, tier, rng = Math.random, crownPoints = null, surface = () => 0, effects = {},
@@ -100,6 +100,7 @@ export class SakuraPetalDirector {
                     0.7 + 0.3 * strength,
                 );
             }
+            this.effects.flash?.(edge.x + side * 0.25, this.above(edge.x, edge.y, edge.z), edge.z, 0.55 + strength * 0.7);
             // The piece seems to fall through the card into the lake behind it.
             const drop = stage.lake(emitter.column, 24 + 10 * this.random(), this.foot);
             this.effects.ring?.(drop.x, drop.z, 0.45 + strength * 0.9);
@@ -143,6 +144,9 @@ export class SakuraPetalDirector {
             this.fields.push({
                 kind: 'jet', x: edge.x + side * 1.5, y: edge.y, z: edge.z, dx: side, dy: 0.12, dz: 0, radius: 5.2, power: 18 * strength,
             });
+        }
+        if (fresh) {
+            this.effects.flash?.(edge.x + side * 0.4, this.above(edge.x, edge.y, edge.z), edge.z, 0.9 + lines * 0.22);
         }
         if (fresh && side < 0) {
             // One ring for the whole clear, wide and bright, from the middle of the lake.

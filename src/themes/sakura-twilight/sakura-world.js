@@ -22,7 +22,9 @@ import { SakuraSky } from './sakura-sky.js';
 import { SakuraSpirits } from './sakura-spirits.js';
 import { SAKURA_STAGE_DEPTH, SakuraStage } from './sakura-stage.js';
 import { SakuraTerrain, sakuraLand, sakuraSurfaceHeight } from './sakura-terrain.js';
-import { SakuraWater } from './sakura-water.js';
+import { SAKURA_UNMIRRORED_LAYER, SakuraWater } from './sakura-water.js';
+
+const UNMIRRORED = /^Sakura(SpringGrass|Fireflies|Foxfire|PetalFlashes|MistBank|PetalsInTheAir)/;
 
 export class SakuraWorld {
     constructor({
@@ -98,6 +100,7 @@ export class SakuraWorld {
         });
         this.group.add(this.petals.group);
         this.petals.build();
+        this.excludeFromMirror();
         this.prepareCamera(this.camera.aspect);
         this.director = new SakuraPetalDirector({
             stage: this.stage,
@@ -108,12 +111,39 @@ export class SakuraWorld {
             surface: sakuraSurfaceHeight,
             effects: {
                 ring: (x, z, strength) => this.light?.ring(x, z, strength),
+                flash: (x, y, z, strength) => this.spirits?.flash(x, y, z, strength),
                 star: (strength) => this.sky?.shoot(strength),
                 floatLantern: (x, z, vx, vz, power) => this.floatLantern(x, z, vx, vz, power),
                 skyLantern: (x, y, z, delay) => this.spirits?.releaseSky(x, y, z, delay),
             },
         });
         return this;
+    }
+
+    /** Keep the near, small things the lake never shows out of its reflection pass. */
+    excludeFromMirror() {
+        const unmirror = (object) => object.layers.set(SAKURA_UNMIRRORED_LAYER);
+        this.group.traverse((object) => {
+            if (object.isMesh && UNMIRRORED.test(object.name)) unmirror(object);
+        });
+        this.foxes.group.traverse(unmirror);
+        this.camera.layers.enable(SAKURA_UNMIRRORED_LAYER);
+        this.water.bindCamera(this.camera);
+    }
+
+    /**
+     * Build the moon's shadow rig with one cheap direct render: only the ground is drawn,
+     * so the rest of the garden is not compiled a second time for the canvas.
+     */
+    primeShadows(renderer) {
+        const hidden = this.group.children.filter((child) => child !== this.terrain.group && !child.isLight
+            && child.visible);
+        hidden.forEach((child) => Object.assign(child, { visible: false }));
+        try {
+            renderer.render(this.scene, this.camera);
+        } finally {
+            hidden.forEach((child) => Object.assign(child, { visible: true }));
+        }
     }
 
     /** Set a lantern afloat at (x, z), or on the nearest open water beyond it. */
@@ -224,6 +254,7 @@ export class SakuraWorld {
         this.sky = null;
         this.terrain = null;
         this.light = null;
+        this.camera?.layers.disable(SAKURA_UNMIRRORED_LAYER);
         this.group.removeFromParent();
         this.group.clear();
     }
