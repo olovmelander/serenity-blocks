@@ -1,0 +1,19 @@
+{
+ "checks": {
+  "playing": true,
+  "hubPauses": true,
+  "guideActive": true,
+  "guideHoldsPause": true,
+  "resumeRefusedDuringGuide": true,
+  "resumedAfterGuide": true,
+  "preparePauses": true,
+  "sessionActive": true,
+  "sessionPauses": true,
+  "resultShown": true,
+  "resultHoldsPause": true,
+  "resumedAfterResult": true
+ },
+ "mode": "single",
+ "console": [],
+ "allTrue": true
+}

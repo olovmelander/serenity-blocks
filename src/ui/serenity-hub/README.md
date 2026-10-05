@@ -16,7 +16,7 @@
 ├── index.js             # Module exports
 ├── README.md            # This file
 │
-├── BreathingTab.js      # Breathing techniques (Phase 2 ⏳)
+├── BreathingTab.js      # The twelve breathing worlds (docs/BREATHING_OVERHAUL_2026-10.md)
 ├── MusicTab.js          # Music player (Phase 3 ⏳)
 └── ThemesTab.js         # Theme browser (Phase 4 ⏳)
 ```
@@ -27,7 +27,7 @@
 
 The Serenity Hub provides a **unified interface** for controlling all Serenity Mode features:
 
-- 🧘 **Breathing Techniques** - 7 meditation patterns
+- 🧘 **Breathing** - twelve worlds and four guided Hale sessions
 - 🎵 **Music Player** - Ambient track controls
 - 🎨 **Themes** - Visual theme browser
 

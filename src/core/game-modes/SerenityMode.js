@@ -128,9 +128,9 @@ export class SerenityMode extends BaseGameMode {
         // Setup interactive effects (click/tap to trigger effects)
         this._setupInteractiveEffects();
 
-        // Don't auto-show keyboard shortcuts - user can press '/' to view them if needed
-        // Don't auto-show breathing indicator - user must press Space to enable
-        // This keeps focus on the beautiful themes
+        // Don't auto-show keyboard shortcuts - user can press '/' to view them if needed.
+        // The breathing guide waits for Space unless the player asked for it to begin here.
+        if (this.deps.settingsManager.get().breathingGuideAutoStart) this._showBreathingIndicator();
         const serenityKeys = this._getSerenityKeyBindings();
         console.log(
             '[Serenity] Serenity mode active - Hub:',
@@ -191,12 +191,8 @@ export class SerenityMode extends BaseGameMode {
         // The global Hub survives mode changes, so end its journey and pending
         // preparation here before a delayed countdown or completion can reopen it.
         const sessionsTab = this.serenityHub?.sessionsTab;
-        if (sessionsTab) {
-            sessionsTab.stopSession();
-            sessionsTab.hidePrepScreen?.();
-        } else {
-            this.serenityHub?.sessionManager?.stopSession();
-        }
+        if (sessionsTab) sessionsTab.cancelForModeChange();
+        else this.serenityHub?.sessionManager?.stopSession();
 
         // Hide breathing indicator if shown
         this._hideBreathingIndicator();
@@ -795,8 +791,9 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _hideBreathingIndicator() {
-        if (window.breathingIndicator) {
-            window.breathingIndicator.stop();
+        const indicator = window.breathingIndicator;
+        if (indicator) {
+            indicator.stop();
             this.breathingIndicatorActive = false;
 
             // Update Serenity Hub icon state
@@ -806,6 +803,17 @@ export class SerenityMode extends BaseGameMode {
 
             console.log('[Serenity] Breathing indicator stopped');
         }
+    }
+
+    /**
+     * The guide was started or ended outside this mode's own controls (its End button, Escape,
+     * the Hub). Keep the mode's flag and the saved preference in step with what is on screen.
+     * @param {boolean} active
+     */
+    onBreathingGuideChange(active) {
+        if (this.breathingIndicatorActive === active) return;
+        this.breathingIndicatorActive = active;
+        this.deps.settingsManager.update({ breathingGuideEnabled: active });
     }
 
     /**
@@ -910,7 +918,7 @@ export class SerenityMode extends BaseGameMode {
             || target.closest('.serenity-notification')
             || target.closest('.serenity-shortcuts-overlay')
             || target.closest('#settings-modal')
-            || target.closest('.breathing-indicator')
+            || target.closest('.breath-guide')
         )) {
             return;
         }

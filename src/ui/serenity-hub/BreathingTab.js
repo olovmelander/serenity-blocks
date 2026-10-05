@@ -1,630 +1,207 @@
 /**
- * BreathingTab - Breathing techniques control panel
+ * BreathingTab - the library of breathing worlds.
  *
- * Provides visual interface for:
- * - 12 illustrated breathing worlds with clear rhythm counts
- * - Toggle breathing guide on/off
- * - Technique information display
- * - Settings (text prompts, auto-start)
+ * One featured world with what it does and how its breath is shaped, a Begin button that
+ * actually begins, and the twelve worlds as artwork to choose from. Catalogue data comes from
+ * breath-catalogue.js; the guide (window.breathingIndicator) owns what is playing.
  */
-
 import { csIcon } from '../components/cosmic-icons.js';
+import {
+    BREATH_WORLDS, breathPosterUrl, formatPattern, getBreathWorld,
+} from '../effects/breathing/breath-catalogue.js';
 
-const EXPERIENCE_DETAILS = {
-    'deep-relaxation': {
-        atmosphere: 'Northern light',
-        description: 'Silken aurora curtains gather over a quiet horizon, opening with each inhale.',
-    },
-    'box-breathing': {
-        atmosphere: 'Luminous symmetry',
-        description: 'Golden geometry and violet light trace a balanced rhythm through four equal phases.',
-    },
-    'calm-sleep': {
-        atmosphere: 'Silver stillness',
-        description: 'A silver moon floats above shimmering water, with a long, unhurried release.',
-    },
-    energizing: {
-        atmosphere: 'Radiant warmth',
-        description: 'A glowing sun unfurls its corona in amber, gold, and soft orange light.',
-    },
-    coherence: {
-        atmosphere: 'Rose radiance',
-        description: 'Rose light expands and returns in an even rhythm, surrounded by delicate luminous trails.',
-    },
-    triangle: {
-        atmosphere: 'Prismatic light',
-        description: 'A suspended crystal bends cyan, pink, and gold into a three-part rhythm.',
-    },
-    'wim-hof': {
-        atmosphere: 'Ember current',
-        description: 'Warm embers rise from a molten landscape, following the shortest rhythm in the collection.',
-    },
-    'ocean-breath': {
-        atmosphere: 'Tidal flow',
-        description: 'Layers of turquoise water swell and recede, carrying an uninterrupted inhale and exhale.',
-    },
-    'zen-garden': {
-        atmosphere: 'Quiet ripples',
-        description: 'Soft sand contours, smooth stones, and drifting petals frame a spacious, measured cycle.',
-    },
-    'cosmic-breath': {
-        atmosphere: 'Celestial drift',
-        description: 'Violet nebula ribbons and distant stars spiral around a glowing celestial centre.',
-    },
-    'forest-breath': {
-        atmosphere: 'Emerald sanctuary',
-        description: 'A layered forest opens into emerald light, with fireflies moving between the trees.',
-    },
-    'electric-storm': {
-        atmosphere: 'Blue atmosphere',
-        description: 'Electric-blue clouds, violet currents, and fine rain surround a shifting rhythm.',
-    },
-};
+const RHYTHM_LABELS = ['In', 'Hold', 'Out', 'Rest'];
+const SPOKEN_LABELS = ['Inhale', 'Hold', 'Exhale', 'Rest'];
 
 export class BreathingTab {
     constructor(hubInstance, breathingIndicator) {
         this.hub = hubInstance;
         this.breathingIndicator = breathingIndicator;
         this.serenityMode = hubInstance.serenityMode;
-
-        // Get techniques from EnhancedBreathingIndicator
-        this.techniques = this.getTechniques();
-
-        // Store event handler references for cleanup
-        this.toggleHandler = null;
-        this.gridClickHandler = null;
-        this.textToggleHandler = null;
-        this.autoStartToggleHandler = null;
-        this.interactionKeydownHandler = null;
-        this.sessionButtonHandler = null;
+        this.techniques = BREATH_WORLDS;
         this.container = null;
-
-        this.init();
-    }
-
-    init() {
+        this.abortController = new AbortController();
         this.render();
         this.attachEventListeners();
-        console.log('[BreathingTab] Initialized with', this.techniques.length, 'techniques');
     }
 
-    /**
-   * Get breathing techniques from the breathing indicator
-   */
-    getTechniques() {
-        if (!this.breathingIndicator || !this.breathingIndicator.techniques) {
-            console.warn('[BreathingTab] No breathing indicator techniques found');
-            return [];
-        }
-
-        // Convert techniques object to array with metadata
-        const techniques = Object.keys(this.breathingIndicator.techniques).map((id) => {
-            const tech = this.breathingIndicator.techniques[id];
-            const experience = EXPERIENCE_DETAILS[id] || {};
-            return {
-                id,
-                name: tech.name,
-                pattern: tech.pattern,
-                description: experience.description || tech.description,
-                atmosphere: experience.atmosphere || 'Living light',
-                color: tech.color,
-                secondaryColor: tech.secondaryColor || tech.color,
-                tertiaryColor: tech.tertiaryColor || tech.color,
-                // Create emoji based on technique type
-                emoji: this.getTechniqueEmoji(id),
-            };
-        });
-
-        return techniques;
-    }
-
-    /**
-   * Get a custom line-SVG icon for each technique (no emojis).
-   */
-    getTechniqueEmoji(id) {
-        const iconMap = {
-            'deep-relaxation': 'aurora-dreams',
-            'box-breathing': 'sacred-geometry',
-            'calm-sleep': 'moonlit-waters',
-            energizing: 'solar-flare',
-            coherence: 'heart-glow',
-            triangle: 'crystal-prism',
-            'wim-hof': 'volcanic-fire',
-            'ocean-breath': 'ocean-tide',
-            'zen-garden': 'zen-garden',
-            'cosmic-breath': 'cosmic-nebula',
-            'forest-breath': 'ancient-forest',
-            'electric-storm': 'electric-storm',
-        };
-        return csIcon(iconMap[id] || 'breath', 30);
-    }
-
-    /**
-   * Format breathing pattern for display
-   */
+    /** "Inhale 5s → Hold 2s → Exhale 7s → Rest 2s", leaving out skipped phases. */
     formatPattern(pattern) {
-        const [inhale, hold1, exhale, hold2] = pattern;
-        let formatted = `Inhale ${inhale}s`;
-
-        if (hold1 > 0) formatted += ` → Hold ${hold1}s`;
-        formatted += ` → Exhale ${exhale}s`;
-        if (hold2 > 0) formatted += ` → Hold ${hold2}s`;
-
-        return formatted;
+        return pattern.map((seconds, index) => (seconds > 0 ? `${SPOKEN_LABELS[index]} ${seconds}s` : ''))
+            .filter(Boolean).join(' → ');
     }
 
     renderRhythm(pattern) {
-        const labels = ['In', 'Hold', 'Out', 'Rest'];
-        return pattern.map((count, index) => (count > 0 ? `
-            <span class="breath-rhythm-step" data-phase="${index}">
-                <span class="breath-rhythm-label">${labels[index]}</span>
-                <span class="breath-rhythm-count">${count}<small>s</small></span>
-            </span>
-        ` : '')).join('');
+        return pattern.map((seconds, index) => (seconds > 0 ? `
+            <span class="breath-rhythm__step" data-phase="${index}" style="flex-grow:${seconds}">
+                <b>${RHYTHM_LABELS[index]}</b><em>${seconds}<small>s</small></em>
+            </span>` : '')).join('');
     }
 
-    applyPalette(node, technique) {
-        const rgb = (color) => `${color.r}, ${color.g}, ${color.b}`;
-        node.style.setProperty('--experience-rgb', rgb(technique.color));
-        node.style.setProperty('--experience-primary', `rgb(${rgb(technique.color)})`);
-        node.style.setProperty('--experience-secondary', `rgb(${rgb(technique.secondaryColor)})`);
-        node.style.setProperty('--experience-tertiary', `rgb(${rgb(technique.tertiaryColor)})`);
+    get settings() {
+        return this.serenityMode?.deps?.settingsManager?.get?.() || {};
     }
 
-    /**
-   * Render the breathing tab
-   */
     render() {
         const container = document.getElementById('tab-breathing');
-        if (!container) {
-            console.error('[BreathingTab] Container not found');
-            return;
-        }
+        if (!container) return;
         this.container = container;
-
-        // Clear loading message
-        container.innerHTML = '';
-
-        // Create main content
-        const content = document.createElement('div');
-        content.className = 'breathing-tab-content';
-
-        // Toggle switch section
-        const toggleSection = this.createToggleSection();
-        const sessionEntry = this.createHaleSessionsSection();
-        const sessionNotice = this.createGuidedSessionNotice();
-
-        // Techniques grid
-        const techniqueGrid = this.createTechniqueGrid();
-
-        // Info display
-        const infoDisplay = this.createInfoDisplay();
-
-        // Settings section
-        const settingsSection = this.createSettingsSection();
-
-        content.appendChild(toggleSection);
-        content.appendChild(sessionEntry);
-        content.appendChild(sessionNotice);
-        content.appendChild(techniqueGrid);
-        content.appendChild(infoDisplay);
-        content.appendChild(settingsSection);
-
-        container.appendChild(content);
-    }
-
-    /**
-   * Create toggle switch for breathing guide
-   */
-    createToggleSection() {
-        const section = document.createElement('div');
-        section.className = 'breathing-toggle-section breath-library-intro';
-
-        const isActive = this.serenityMode.breathingIndicatorActive;
-        const isGuided = this.breathingIndicator.isExternallyControlled;
-        const statusText = isActive ? 'Guide is on · Follow the light at your own pace'
-            : 'Choose a world, then turn on the guide to follow its light.';
-
-        section.innerHTML = `
-      <div class="breathing-toggle-header">
-        <div>
-          <span class="breath-library-eyebrow">Twelve living worlds</span>
-          <h3 class="section-title">Find your rhythm</h3>
-        </div>
-        <label class="toggle-switch">
-          <input type="checkbox" id="breathing-guide-toggle" aria-label="Show breathing guide"
-            ${isActive ? 'checked' : ''} ${isGuided ? 'disabled' : ''}>
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <p class="section-description">
-        ${statusText}
-      </p>
-    `;
-
-        return section;
-    }
-
-    createHaleSessionsSection() {
-        const section = document.createElement('div');
-        section.className = 'breath-hale-entry';
-        section.innerHTML = `
-            <div class="breath-hale-entry-copy">
-                <span class="breath-library-eyebrow">Guided breathing · three rounds</span>
-                <h3>Start a Hale session</h3>
-                <p>Base, Elixir, Rest, or Flow. Prepare, set an optional intention, and follow the guided journey.</p>
-            </div>
-            <button type="button" class="breath-open-sessions breath-hale-start">Choose a Hale session <span aria-hidden="true">→</span></button>
-        `;
-        return section;
-    }
-
-    createGuidedSessionNotice() {
-        const notice = document.createElement('div');
-        notice.className = 'breath-guided-session-notice';
-        notice.hidden = !this.breathingIndicator.isExternallyControlled;
-        notice.innerHTML = `
-            <div>
-                <span class="breath-library-eyebrow">Guided session in progress</span>
-                <p>Your session controls the rhythm. Return to Hale sessions to review or end it.</p>
-            </div>
-            <button type="button" class="breath-open-sessions">Open Hale sessions</button>
-        `;
-        return notice;
-    }
-
-    /**
-   * Create technique cards grid
-   */
-    createTechniqueGrid() {
-        const section = document.createElement('div');
-        section.className = 'technique-section';
-
-        const title = document.createElement('h3');
-        title.className = 'section-title';
-        title.textContent = 'Choose your atmosphere';
-
-        const grid = document.createElement('div');
-        grid.className = 'technique-grid';
-        grid.id = 'breathing-technique-grid';
-        grid.setAttribute('aria-label', 'Breathing worlds');
-
-        // Create card for each technique
-        this.techniques.forEach((technique) => {
-            const card = this.createTechniqueCard(technique);
-            grid.appendChild(card);
-        });
-
-        section.appendChild(title);
-        section.appendChild(grid);
-
-        return section;
-    }
-
-    /**
-   * Create individual technique card
-   */
-    createTechniqueCard(technique) {
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.disabled = Boolean(this.breathingIndicator.isExternallyControlled);
-        card.className = 'technique-card breath-experience-card';
-        card.dataset.techniqueId = technique.id;
-
-        // Check if this is the current technique
-        const isActive = this.breathingIndicator.currentTechnique === technique.id;
-        if (isActive) {
-            card.classList.add('active');
-        }
-        card.setAttribute('aria-pressed', String(isActive));
-        card.setAttribute('aria-label', `${technique.name}. ${this.formatPattern(technique.pattern)}.`);
-        this.applyPalette(card, technique);
-
-        card.innerHTML = `
-      <span class="breath-art" data-world="${technique.id}" aria-hidden="true">
-        <span class="breath-art-orb"></span>
-        <span class="breath-art-line"></span>
-        <span class="breath-art-particles"></span>
-      </span>
-      <span class="breath-card-selection" aria-hidden="true">${csIcon('check', 12)}<span>Selected</span></span>
-      <span class="technique-info">
-        <span class="technique-name">${technique.name}</span>
-        <span class="breath-card-atmosphere">${technique.atmosphere}</span>
-      </span>
-      <span class="breath-rhythm" aria-hidden="true">${this.renderRhythm(technique.pattern)}</span>
-    `;
-
-        return card;
-    }
-
-    /**
-   * Create info display section
-   */
-    createInfoDisplay() {
-        const section = document.createElement('div');
-        section.className = 'technique-info-display';
-        section.id = 'breathing-info-display';
-        section.setAttribute('aria-live', 'polite');
-
-        // Get current technique
-        const currentTech = this.techniques.find(
-            (t) => t.id === this.breathingIndicator.currentTechnique,
-        ) || this.techniques[0];
-
-        if (currentTech) this.renderInfoDisplay(section, currentTech);
-
-        return section;
-    }
-
-    /**
-   * Create settings section
-   */
-    createSettingsSection() {
-        const section = document.createElement('div');
-        section.className = 'breathing-settings-section';
-
-        const settings = this.serenityMode.deps.settingsManager.get();
-
-        section.innerHTML = `
-      <h3 class="section-title">Settings</h3>
-      <div class="setting-item">
-        <label class="setting-label">
-          <input type="checkbox" id="breathing-text-toggle" ${settings.breathingText !== false ? 'checked' : ''}>
-          <span>Show text prompts</span>
-        </label>
-        <p class="setting-description">Display "Breathe In", "Hold", "Breathe Out" text</p>
-      </div>
-      <div class="setting-item">
-        <label class="setting-label">
-          <input type="checkbox" id="breathing-auto-start" ${settings.breathingGuideAutoStart ? 'checked' : ''}>
-          <span>Auto-start on mode entry</span>
-        </label>
-        <p class="setting-description">Automatically start breathing guide when entering Serenity Mode</p>
-      </div>
-    `;
-
-        return section;
-    }
-
-    /**
-   * Attach event listeners
-   */
-    attachEventListeners() {
-        // Keep native button/checkbox activation from also toggling the global guide shortcut.
-        this.interactionKeydownHandler = (event) => {
-            if (event.key !== ' ' && event.key !== 'Enter') return;
-            const control = event.target.closest('button, input');
-            if (control && this.container.contains(control)) event.stopPropagation();
-        };
-        this.container?.addEventListener('keydown', this.interactionKeydownHandler);
-        this.sessionButtonHandler = () => this.hub.switchTab('sessions');
-        this.sessionButtons = [...(this.container?.querySelectorAll?.('.breath-open-sessions') || [])];
-        this.sessionButtons.forEach((button) => button.addEventListener('click', this.sessionButtonHandler));
-
-        // Store handler references for cleanup
-        this.toggleHandler = (e) => {
-            this.toggleBreathingGuide(e.target.checked);
-        };
-
-        this.gridClickHandler = (e) => {
-            const card = e.target.closest('.technique-card');
-            if (card && this.container.contains(card)) {
-                const { techniqueId } = card.dataset;
-                this.selectTechnique(techniqueId);
-            }
-        };
-
-        this.textToggleHandler = (e) => {
-            this.updateSetting('breathingText', e.target.checked);
-        };
-
-        this.autoStartToggleHandler = (e) => {
-            this.updateSetting('breathingGuideAutoStart', e.target.checked);
-        };
-
-        // Toggle breathing guide
-        const toggle = document.getElementById('breathing-guide-toggle');
-        if (toggle) {
-            toggle.addEventListener('change', this.toggleHandler);
-        }
-
-        // Technique card clicks
-        const grid = document.getElementById('breathing-technique-grid');
-        if (grid) {
-            grid.addEventListener('click', this.gridClickHandler);
-        }
-
-        // Text prompts toggle
-        const textToggle = document.getElementById('breathing-text-toggle');
-        if (textToggle) {
-            textToggle.addEventListener('change', this.textToggleHandler);
-        }
-
-        // Auto-start toggle
-        const autoStartToggle = document.getElementById('breathing-auto-start');
-        if (autoStartToggle) {
-            autoStartToggle.addEventListener('change', this.autoStartToggleHandler);
-        }
-    }
-
-    /**
-   * Toggle breathing guide on/off
-   */
-    toggleBreathingGuide(enabled) {
-        if (this.breathingIndicator.isExternallyControlled) return;
-        const modeHandler = enabled ? this.serenityMode._showBreathingIndicator
-            : this.serenityMode._hideBreathingIndicator;
-        if (typeof modeHandler === 'function') {
-            modeHandler.call(this.serenityMode);
-        } else if (enabled) {
-            this.breathingIndicator.start();
-        } else {
-            this.breathingIndicator.stop();
-        }
-
-        const active = Boolean(this.breathingIndicator.isActive);
-        this.serenityMode.breathingIndicatorActive = active;
+        const selected = this.breathingIndicator.currentTechnique;
+        const cards = this.techniques.map((world) => `
+            <button type="button" class="breath-world" data-technique-id="${world.id}"
+                style="--world-accent:${world.accent.join(', ')}"
+                aria-pressed="${world.id === selected}"
+                aria-label="${world.name}. ${this.formatPattern(world.pattern)}.">
+                <span class="breath-world__art" style="background-image:url('${breathPosterUrl(world.id)}')" aria-hidden="true"></span>
+                <span class="breath-world__check" aria-hidden="true">${csIcon('check', 12)}</span>
+                <span class="breath-world__name">${world.name}</span>
+                <span class="breath-world__meta">${world.intent} · ${formatPattern(world.pattern)}</span>
+            </button>`).join('');
+        container.innerHTML = `
+            <div class="breath-lib">
+                <section class="breath-lib__hero" aria-live="polite">
+                    <div class="breath-lib__hero-art" aria-hidden="true"></div>
+                    <div class="breath-lib__hero-body">
+                        <span class="breath-lib__eyebrow"></span>
+                        <h3 class="breath-lib__name"></h3>
+                        <p class="breath-lib__description"></p>
+                        <div class="breath-rhythm"></div>
+                        <div class="breath-lib__actions">
+                            <button type="button" class="breath-lib__begin" id="breathing-guide-toggle"></button>
+                            <span class="breath-lib__cycle"></span>
+                        </div>
+                    </div>
+                </section>
+                <section class="breath-lib__notice" hidden>
+                    <p>${csIcon('breath', 16)} A Hale session is running and owns the rhythm.</p>
+                    <button type="button" class="breath-open-sessions">Open Hale sessions</button>
+                </section>
+                <section>
+                    <h3 class="breath-lib__heading">Twelve worlds <small>Each one breathes at its own pace</small></h3>
+                    <div class="breath-lib__grid" id="breathing-technique-grid" aria-label="Breathing worlds">${cards}</div>
+                </section>
+                <section class="breath-lib__hale">
+                    <div>
+                        <span class="breath-lib__eyebrow">Guided · 16 to 27 minutes</span>
+                        <h3>Hale sessions</h3>
+                        <p>Full journeys with a voice: arrive, three rounds of breathing and stillness, then rest.</p>
+                    </div>
+                    <button type="button" class="breath-open-sessions breath-lib__hale-button">Explore Hale sessions <span aria-hidden="true">→</span></button>
+                </section>
+                <section class="breath-lib__settings">
+                    <label class="breath-lib__switch">
+                        <input type="checkbox" id="breathing-text-toggle" ${this.settings.breathingText !== false ? 'checked' : ''}>
+                        <span><b>Words and counts</b><small>Show “Breathe in”, the seconds, and the cue line</small></span>
+                    </label>
+                    <label class="breath-lib__switch">
+                        <input type="checkbox" id="breathing-auto-start" ${this.settings.breathingGuideAutoStart ? 'checked' : ''}>
+                        <span><b>Begin with Serenity Mode</b><small>Start breathing as soon as Serenity Mode opens</small></span>
+                    </label>
+                    <p class="breath-lib__keys">In a practice: <kbd>←</kbd> <kbd>→</kbd> change world · <kbd>Esc</kbd> ends it</p>
+                </section>
+            </div>`;
         this.refresh();
-        this.serenityMode.deps.settingsManager.update({ breathingGuideEnabled: active });
     }
 
-    /**
-   * Update toggle UI state
-   */
-    updateToggleUI(enabled) {
-        const description = this.container?.querySelector('.breathing-toggle-section .section-description');
-        if (description) {
-            if (enabled) {
-                description.textContent = 'Guide is on · Follow the light at your own pace';
-            } else {
-                description.textContent = 'Choose a world, then turn on the guide to follow its light.';
-            }
+    attachEventListeners() {
+        if (!this.container) return;
+        const { signal } = this.abortController;
+        // Native activation must not also toggle a mode's global guide shortcut.
+        this.container.addEventListener('keydown', (event) => {
+            if ((event.key === ' ' || event.key === 'Enter') && event.target.closest('button, input')) event.stopPropagation();
+        }, { signal });
+        this.container.addEventListener('click', (event) => {
+            const card = event.target.closest('.breath-world');
+            if (card) this.selectTechnique(card.dataset.techniqueId);
+            else if (event.target.closest('.breath-open-sessions')) this.hub.switchTab('sessions');
+            else if (event.target.closest('.breath-lib__begin')) this.toggleBreathingGuide(!this.breathingIndicator.isActive);
+        }, { signal });
+        this.container.addEventListener('change', (event) => {
+            if (event.target.id === 'breathing-text-toggle') this.updateSetting('breathingText', event.target.checked);
+            else if (event.target.id === 'breathing-auto-start') this.updateSetting('breathingGuideAutoStart', event.target.checked);
+        }, { signal });
+        // The guide can change on its own (arrow keys, a gamepad, its End button).
+        window.addEventListener('breathingTechniqueChange', () => this.refresh(), { signal });
+        window.addEventListener('breathingGuideChange', () => this.refresh(), { signal });
+    }
+
+    /** Start or stop a standalone practice. Starting closes the Hub: the world needs the screen. */
+    toggleBreathingGuide(enabled) {
+        const guide = this.breathingIndicator;
+        if (guide.isExternallyControlled) return;
+        const mode = this.serenityMode;
+        const handler = enabled ? mode?._showBreathingIndicator : mode?._hideBreathingIndicator;
+        if (typeof handler === 'function') {
+            handler.call(mode);
+        } else if (enabled) {
+            guide.setTechnique(this.settings.breathingTechnique || guide.currentTechnique);
+            guide.setShowText(this.settings.breathingText !== false);
+            guide.start();
+        } else {
+            guide.stop();
         }
+        const active = Boolean(guide.isActive);
+        if (mode) mode.breathingIndicatorActive = active;
+        mode?.deps?.settingsManager?.update({ breathingGuideEnabled: active });
+        this.refresh();
+        if (active) this.hub.hide();
+        else this.hub.releaseGameplay?.();
     }
 
-    /**
-   * Select a breathing technique
-   */
     selectTechnique(techniqueId) {
         if (this.breathingIndicator.isExternallyControlled) return;
-        if (!this.techniques.some((technique) => technique.id === techniqueId)) return;
-        // Update breathing indicator
-        if (this.breathingIndicator) {
-            this.breathingIndicator.setTechnique(techniqueId);
-        }
-
-        // Save to settings
-        this.serenityMode.deps.settingsManager.update({
-            breathingTechnique: techniqueId,
-        });
-
-        // Update UI
-        this.updateActiveCard(techniqueId);
-        this.updateInfoDisplay(techniqueId);
-
-        console.log('[BreathingTab] Selected technique:', techniqueId);
+        if (!this.techniques.some((world) => world.id === techniqueId)) return;
+        this.breathingIndicator.setTechnique(techniqueId);
+        this.serenityMode?.deps?.settingsManager?.update({ breathingTechnique: techniqueId });
+        this.refresh();
     }
 
-    /**
-   * Update active card styling
-   */
-    updateActiveCard(techniqueId) {
-        // Remove active class from all cards
-        const cards = this.container?.querySelectorAll('.technique-card') || [];
-        cards.forEach((card) => {
-            const isActive = card.dataset.techniqueId === techniqueId;
-            card.classList.toggle('active', isActive);
-            card.setAttribute('aria-pressed', String(isActive));
-        });
-    }
-
-    /**
-   * Update info display
-   */
-    updateInfoDisplay(techniqueId) {
-        const technique = this.techniques.find((t) => t.id === techniqueId);
-        if (!technique) return;
-
-        const infoDisplay = this.container?.querySelector('#breathing-info-display');
-        if (!infoDisplay) return;
-        this.renderInfoDisplay(infoDisplay, technique);
-    }
-
-    renderInfoDisplay(infoDisplay, technique) {
-        this.applyPalette(infoDisplay, technique);
-        const cycleSeconds = technique.pattern.reduce((total, count) => total + count, 0);
-        infoDisplay.innerHTML = `
-      <div class="info-header">
-        <span class="info-emoji" aria-hidden="true">${technique.emoji}</span>
-        <div>
-          <span class="breath-library-eyebrow">Your selected world</span>
-          <h4 class="info-title">${technique.name}</h4>
-        </div>
-        <span class="breath-cycle-duration">${cycleSeconds}s<span>per cycle</span></span>
-      </div>
-      <p class="info-description">${technique.description}</p>
-      <div class="breath-rhythm breath-rhythm-detail" aria-label="${this.formatPattern(technique.pattern)}">
-        ${this.renderRhythm(technique.pattern)}
-      </div>
-    `;
-    }
-
-    refresh() {
-        if (!this.breathingIndicator || !this.container) return;
-        this.updateSessionLock();
-        const techniqueId = this.breathingIndicator.currentTechnique;
-        this.updateActiveCard(techniqueId);
-        this.updateInfoDisplay(techniqueId);
-        const toggle = this.container.querySelector('#breathing-guide-toggle');
-        const enabled = this.breathingIndicator.isActive;
-        if (toggle) toggle.checked = enabled;
-        this.updateToggleUI(enabled);
-    }
-
-    updateSessionLock() {
-        const controlled = Boolean(this.breathingIndicator.isExternallyControlled);
-        const notice = this.container?.querySelector('.breath-guided-session-notice');
-        if (notice) notice.hidden = !controlled;
-        const toggle = this.container?.querySelector('#breathing-guide-toggle');
-        if (toggle) toggle.disabled = controlled;
-        this.container?.querySelectorAll('.technique-card').forEach((card) => { card.disabled = controlled; });
-    }
-
-    /**
-   * Update a setting
-   */
     updateSetting(key, value) {
-        this.serenityMode.deps.settingsManager.update({ [key]: value });
-
-        // Apply the setting immediately if breathing is active
-        if (key === 'breathingText' && this.breathingIndicator) {
-            this.breathingIndicator.setShowText(value);
-        }
-
-        console.log('[BreathingTab] Updated setting:', key, '=', value);
+        this.serenityMode?.deps?.settingsManager?.update({ [key]: value });
+        if (key === 'breathingText') this.breathingIndicator.setShowText(value);
     }
 
-    /**
-   * Cleanup
-   */
+    /** Bring every control in line with the guide's real state. */
+    refresh() {
+        if (!this.container || !this.breathingIndicator) return;
+        const guide = this.breathingIndicator;
+        const world = getBreathWorld(guide.currentTechnique);
+        const controlled = Boolean(guide.isExternallyControlled);
+        const hero = this.container.querySelector('.breath-lib__hero');
+        hero.style.setProperty('--world-accent', world.accent.join(', '));
+        hero.dataset.world = world.id;
+        hero.querySelector('.breath-lib__hero-art').style.backgroundImage = `url('${breathPosterUrl(world.id)}')`;
+        hero.querySelector('.breath-lib__eyebrow').textContent = `${world.intent} · ${world.summary}`;
+        hero.querySelector('.breath-lib__name').textContent = world.name;
+        hero.querySelector('.breath-lib__description').textContent = world.description;
+        const rhythm = hero.querySelector('.breath-rhythm');
+        if (rhythm.dataset.world !== world.id) {
+            rhythm.dataset.world = world.id;
+            rhythm.setAttribute('aria-label', this.formatPattern(world.pattern));
+            rhythm.innerHTML = this.renderRhythm(world.pattern);
+        }
+        const cycle = world.pattern.reduce((total, seconds) => total + seconds, 0);
+        hero.querySelector('.breath-lib__cycle').textContent = `${cycle} s per breath · about ${Number((60 / cycle).toFixed(1))} a minute`;
+        const begin = hero.querySelector('.breath-lib__begin');
+        const active = Boolean(guide.isActive) && !controlled;
+        begin.textContent = active ? 'Stop breathing' : `Begin ${world.name}`;
+        begin.classList.toggle('is-active', active);
+        begin.setAttribute('aria-pressed', String(active));
+        begin.disabled = controlled;
+        this.container.querySelector('.breath-lib__notice').hidden = !controlled;
+        this.container.querySelectorAll('.breath-world').forEach((card) => {
+            const pressed = card.dataset.techniqueId === world.id;
+            card.classList.toggle('active', pressed);
+            card.setAttribute('aria-pressed', String(pressed));
+            card.disabled = controlled;
+        });
+    }
+
     destroy() {
-        this.container?.removeEventListener('keydown', this.interactionKeydownHandler);
-        this.sessionButtons?.forEach((button) => button.removeEventListener('click', this.sessionButtonHandler));
-        this.sessionButtons = [];
-        // Remove event listeners explicitly
-        const toggle = document.getElementById('breathing-guide-toggle');
-        if (toggle && this.toggleHandler) {
-            toggle.removeEventListener('change', this.toggleHandler);
-        }
-
-        const grid = document.getElementById('breathing-technique-grid');
-        if (grid && this.gridClickHandler) {
-            grid.removeEventListener('click', this.gridClickHandler);
-        }
-
-        const textToggle = document.getElementById('breathing-text-toggle');
-        if (textToggle && this.textToggleHandler) {
-            textToggle.removeEventListener('change', this.textToggleHandler);
-        }
-
-        const autoStartToggle = document.getElementById('breathing-auto-start');
-        if (autoStartToggle && this.autoStartToggleHandler) {
-            autoStartToggle.removeEventListener('change', this.autoStartToggleHandler);
-        }
-
-        // Null out references
-        this.toggleHandler = null;
-        this.gridClickHandler = null;
-        this.textToggleHandler = null;
-        this.autoStartToggleHandler = null;
-        this.interactionKeydownHandler = null;
-        this.sessionButtonHandler = null;
+        this.abortController.abort();
         this.hub = null;
         this.breathingIndicator = null;
         this.serenityMode = null;
-        this.techniques = null;
         this.container = null;
-
-        console.log('✅ [BreathingTab] Destroyed - all listeners removed');
     }
 }

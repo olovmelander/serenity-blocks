@@ -39,8 +39,9 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [architectural-review-prompt.md](archive/2026-10-agent-prompts/architectural-review-prompt.md) | Superseded | Archived 2026-10-03. Historical input to an AI session — not instructions; its "known context" facts are outdated. |
 | [ASSET_PIPELINE_BLACKWELL.md](ASSET_PIPELINE_BLACKWELL.md) | Reference | Asset-pipeline context; harvest before execution. |
 | [blind-mode-plan.md](blind-mode-plan.md) | Reference | Feature plan; not part of current Movement A scope. |
-| [BREATHING_INDICATOR_GUIDE.md](BREATHING_INDICATOR_GUIDE.md) | Reference | Feature guide. |
-| [BREATHING_IMMERSIVE_OVERHAUL_2026-10.md](BREATHING_IMMERSIVE_OVERHAUL_2026-10.md) | Reference | Twelve breathing worlds and four Hale sessions; responsive visual design, retained WebGL2 renderer, session control/lifecycle repairs, and validation evidence. |
+| [BREATHING_INDICATOR_GUIDE.md](BREATHING_INDICATOR_GUIDE.md) | Superseded | Describes the original ring indicator. Replaced by BREATHING_OVERHAUL_2026-10.md. |
+| [BREATHING_IMMERSIVE_OVERHAUL_2026-10.md](BREATHING_IMMERSIVE_OVERHAUL_2026-10.md) | Superseded | The first two breathing passes (classic WebGL2 shader planes). Replaced by BREATHING_OVERHAUL_2026-10.md; kept for its lifecycle findings. |
+| [BREATHING_OVERHAUL_2026-10.md](BREATHING_OVERHAUL_2026-10.md) | Reference | From-scratch rebuild (2026-10-05): twelve full-screen breathing worlds as three r186 node scenes (WebGPU, WebGL2 backend, CSS fallback), a new guide, Breathing tab and Hale sessions flow; real session pause, a fixed journey of worlds per session, gameplay held for every breathing surface; the classic-WebGL breathing holdout retired. Evidence on both backends and in the real game; integrated-GPU and phone frame cost unmeasured. |
 | [cascade-bot-payload-planning-plan.md](cascade-bot-payload-planning-plan.md) | Reference | Bot/payload planning notes. |
 | [CHROMADELIC_HIGHWAY_ART_DIRECTION.md](CHROMADELIC_HIGHWAY_ART_DIRECTION.md) | Reference | Theme art direction. |
 | [CHROMADELIC_HIGHWAY_BASELINE_CAPTURE_PROTOCOL.md](CHROMADELIC_HIGHWAY_BASELINE_CAPTURE_PROTOCOL.md) | Reference | Theme validation context. |

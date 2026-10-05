@@ -3,6 +3,7 @@ import { SessionsTab } from '../../src/ui/serenity-hub/SessionsTab.js';
 import { ThemesTab, applyThemeCardFilter } from '../../src/ui/serenity-hub/ThemesTab.js';
 import { SerenityHub } from '../../src/ui/serenity-hub/SerenityHub.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
+import { looseNode } from './helpers/loose-dom.js';
 
 function createNode() {
     const node = new EventTarget();
@@ -34,10 +35,7 @@ function createNode() {
 
 function progress(overrides = {}) {
     return {
-        sessionId: 'BASE', sessionName: 'Hale Base', round: 1, totalRounds: 3,
-        remainingTime: 60, phaseLabel: 'Hold', phaseProgress: 0.1,
-        isActivePhase: true, breathCount: 3, totalBreaths: 30,
-        prompt: 'Breathe gently', subPrompt: 'Relax', ...overrides,
+        sessionId: 'BASE', sessionName: 'Hale Base', round: 1, totalRounds: 3, phase: 'active', ...overrides,
     };
 }
 
@@ -46,7 +44,11 @@ beforeEach(() => {
     vi.useFakeTimers();
     cleanup = [];
     vi.stubGlobal('window', {});
-    vi.stubGlobal('document', { hidden: false, body: { classList: { remove: vi.fn() } } });
+    vi.stubGlobal('document', {
+        hidden: false,
+        createElement: (tag) => looseNode(tag),
+        body: Object.assign(looseNode('body'), { classList: { remove: vi.fn() } }),
+    });
 });
 afterEach(() => {
     cleanup.forEach((fn) => fn());
@@ -56,100 +58,89 @@ afterEach(() => {
 });
 
 function sessionsHarness() {
-    const names = ['session-name', 'session-round', 'phase-timer', 'phase-label',
-        'progress-fill', 'breath-counter', 'breath-current', 'breath-total',
-        'phase-fill', 'guidance-main', 'guidance-sub'];
-    const nodes = new Map(names.map((name) => [name, createNode()]));
-    const hud = createNode();
-    hud.querySelector.mockImplementation((selector) => nodes.get(selector.slice(1)));
-    const overlay = createNode();
-    overlay.querySelector.mockReturnValue(hud);
-    const countdown = createNode();
-    const count = createNode();
-    const container = createNode();
-    container.querySelector.mockImplementation((selector) => ({
-        '.active-session-overlay': overlay,
-        '.session-countdown-overlay': countdown,
-        '.countdown-number': count,
-    }[selector] || null));
+    const container = looseNode();
+    const live = container.querySelector('.hale__live');
+    live.hidden = true;
+    const name = live.querySelector('.hale__live-name');
+    let writes = 0;
+    let label = '';
+    Object.defineProperty(name, 'textContent', {
+        get: () => label,
+        set: (value) => { label = String(value); writes += 1; },
+    });
     const manager = {
-        startSession: vi.fn(), stopSession: vi.fn(), destroy: vi.fn(),
+        startSession: vi.fn(), stopSession: vi.fn(), destroy: vi.fn(), activeSession: {},
     };
     const hub = { panel: { querySelector: () => container }, isOpen: true, currentTab: 'sessions' };
     const tab = new SessionsTab(hub, manager);
     hub.hide = () => { hub.isOpen = false; tab.setActive(false); };
     cleanup.push(() => tab.destroy());
-    return { tab, hub, manager, container, nodes, overlay, hud, countdown, count };
+    return {
+        tab, hub, manager, container, live, name, writes: () => writes,
+    };
 }
 
 describe('hidden session tab presentation', () => {
-    it('runs no hidden HUD queries/writes and shows exact latest progress when reopened', () => {
+    it('writes nothing while hidden and shows exactly the latest stage when reopened', () => {
         const h = sessionsHarness();
         h.tab.startSession('BASE');
         const report = h.manager.startSession.mock.calls[0][1];
-        h.container.querySelector.mockClear();
-        h.hud.querySelector.mockClear();
-        for (let index = 0; index < 100; index++) report(progress({ remainingTime: 100 - index }));
-        expect(h.container.querySelector).not.toHaveBeenCalled();
-        expect(h.hud.querySelector).not.toHaveBeenCalled();
-        expect([...h.nodes.values()].every((node) => node.labelWrites === 0 && node.styleWrites === 0)).toBe(true);
+        const query = vi.spyOn(h.container, 'querySelector');
+        for (let index = 0; index < 100; index++) report(progress({ round: 1 + (index % 3) }));
+        expect(query).not.toHaveBeenCalled();
+        expect(h.writes()).toBe(0);
+        expect(h.live.hidden).toBe(true);
         expect(h.manager.stopSession).not.toHaveBeenCalled();
         h.tab.setActive(true);
-        expect(h.nodes.get('phase-timer').textContent).toBe('0:01');
-        expect(h.nodes.get('breath-current').textContent).toBe('3');
-        expect(h.overlay.style.display).toBe('flex');
-        expect(h.nodes.get('phase-fill').style.transform).toBe('scaleX(0.1)');
+        expect(h.live.hidden).toBe(false);
+        expect(h.name.textContent).toBe('Hale Base · Round 1 of 3 · Breathe');
     });
 
-    it('caches visible HUD nodes and changes stable labels/styles only once', () => {
+    it('rewrites the visible strip only when what it says changes', () => {
         const h = sessionsHarness();
-        h.tab.updateHUD(progress());
         h.tab.setActive(true);
-        const queryCount = h.hud.querySelector.mock.calls.length;
-        const initialLabels = [...h.nodes.values()].reduce((sum, node) => sum + node.labelWrites, 0);
-        const initialStyles = [...h.nodes.values()].reduce((sum, node) => sum + node.styleWrites, 0);
-        for (let index = 0; index < 50; index++) h.tab.updateHUD(progress());
-        expect(h.hud.querySelector).toHaveBeenCalledTimes(queryCount);
-        expect([...h.nodes.values()].reduce((sum, node) => sum + node.labelWrites, 0)).toBe(initialLabels);
-        expect([...h.nodes.values()].reduce((sum, node) => sum + node.styleWrites, 0)).toBe(initialStyles);
-        h.tab.updateHUD(progress({ remainingTime: 59, phaseProgress: 0.2 }));
-        expect([...h.nodes.values()].reduce((sum, node) => sum + node.labelWrites, 0)).toBe(initialLabels + 1);
-        expect(h.nodes.get('phase-fill').style.width).toBe('100%');
+        h.tab.updateLive(progress());
+        expect(h.writes()).toBe(1);
+        for (let index = 0; index < 50; index++) h.tab.updateLive(progress());
+        expect(h.writes()).toBe(1);
+        h.tab.updateLive(progress({ phase: 'retention' }));
+        expect(h.writes()).toBe(2);
+        expect(h.name.textContent).toBe('Hale Base · Round 1 of 3 · Hold');
     });
 
     it('cancels countdown waits on destroy without late session startup or timer retention', async () => {
         const h = sessionsHarness();
         h.tab.pendingSessionId = 'BASE';
         const countdown = h.tab.startCountdown();
-        expect(vi.getTimerCount()).toBe(2);
+        expect(vi.getTimerCount()).toBeGreaterThan(0);
         h.tab.destroy();
         await countdown;
         expect(vi.getTimerCount()).toBe(0);
-        expect(h.countdown.style.display).toBe('none');
-        expect(h.countdown.classList.contains('visible')).toBe(false);
         await vi.advanceTimersByTimeAsync(6000);
         expect(h.manager.startSession).not.toHaveBeenCalled();
         h.tab.destroy();
     });
 
-    it.each(['stopSession', 'showPrepScreen', 'hidePrepScreen'])(
-        'hides a canceled countdown when %s interrupts it',
+    it.each(['stopSession', 'showPrepScreen', 'hidePrepScreen', 'cancelForModeChange'])(
+        'settles a countdown that %s interrupts, and never starts its session',
         async (action) => {
             const h = sessionsHarness();
+            h.hub.show = vi.fn();
+            h.hub.switchTab = vi.fn();
             h.tab.pendingSessionId = 'BASE';
             const countdown = h.tab.startCountdown();
             await vi.advanceTimersByTimeAsync(10);
-            expect(h.countdown.style.display).toBe('flex');
-            expect(h.countdown.classList.contains('visible')).toBe(true);
+            expect(h.tab.step).toBe('countdown');
 
             h.tab[action]('REST');
             await countdown;
-            expect(h.countdown.style.display).toBe('none');
-            expect(h.countdown.classList.contains('visible')).toBe(false);
-            expect(vi.getTimerCount()).toBe(0);
             await vi.advanceTimersByTimeAsync(6000);
             expect(h.manager.startSession).not.toHaveBeenCalled();
-            if (action === 'showPrepScreen') expect(h.tab.pendingSessionId).toBe('REST');
+            expect(vi.getTimerCount()).toBe(0);
+            if (action === 'showPrepScreen') {
+                expect(h.tab.pendingSessionId).toBe('REST');
+                expect(h.tab.step).toBe('prepare');
+            }
         },
     );
 });

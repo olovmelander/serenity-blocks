@@ -1288,8 +1288,9 @@ export class BaseTheme {
      * @returns {boolean} True if frame should be rendered
      */
     shouldRenderFrame() {
-        // Check global pause flag
-        if (window.isRenderingPaused) {
+        // Check global pause flag. `isThemeCovered` is set while an opaque full-screen surface
+        // (the breathing guide) hides the theme: drawing it then is GPU work nobody sees.
+        if (window.isRenderingPaused || window.isThemeCovered) {
             return false;
         }
 

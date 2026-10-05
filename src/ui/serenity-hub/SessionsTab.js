@@ -1,409 +1,360 @@
 /**
- * SessionsTab - Breathwork Journeys/Sessions selection
+ * Hale sessions: the catalogue in the Hub, and the full-screen flow around a session
+ * (prepare → countdown → the session itself in the breathing guide → complete).
  *
- * Enhanced with:
- * - Pre-session preparation screen with intention setting
- * - Immersive session HUD with progress tracking
- * - Circular progress ring with timer
- * - Breath counter for active phases
- * - Rich guidance display with sub-prompts
+ * The catalogue lives in the Hub's tab. Everything after "Begin" is its own full-screen
+ * surface, so preparing for twenty minutes of breathwork is never squeezed into a side panel.
+ * Timing, voice and stages belong to BreathworkSessionManager; this file only presents them.
  */
 import { csIcon } from '../components/cosmic-icons.js';
+import { breathPosterUrl } from '../effects/breathing/breath-catalogue.js';
+import { SESSION_WORLDS } from '../effects/breathwork-session-manager.js';
+
+/** What each session is for. Durations, rounds and holds are read from the manager. */
+export const HALE_SESSIONS = Object.freeze({
+    BASE: {
+        name: 'Hale Base',
+        promise: 'Come back to yourself',
+        summary: 'Rhythmic nasal breathing, quiet holds, and a grounded finish.',
+        about: 'Three rounds of steady breathing through the nose. Each round is a little quicker than the last and ends in a longer stillness, then the session lets you rest.',
+        intensity: 'Moderate',
+        style: 'Nasal breathing',
+    },
+    ELIXIR: {
+        name: 'Hale Elixir',
+        promise: 'Meet your inner spark',
+        summary: 'Connected mouth breathing that builds, then drops into deep stillness.',
+        about: 'The most active session. Three rounds of fast, connected breathing through the mouth, each followed by a hold on empty lungs and one strong recovery breath.',
+        intensity: 'High',
+        style: 'Mouth breathing',
+    },
+    REST: {
+        name: 'Hale Rest',
+        promise: 'Let the day soften',
+        summary: 'Gentle breaths with long exhales, for the end of the day.',
+        about: 'Slow breathing through the nose with an out-breath twice as long as the in-breath. The pauses are short and soft, and the closing rest is made for drifting off.',
+        intensity: 'Gentle',
+        style: 'Nasal breathing',
+    },
+    FLOW: {
+        name: 'Hale Flow',
+        promise: 'Find your own rhythm',
+        summary: 'Box breathing that widens round by round.',
+        about: 'In, hold, out, hold: four equal sides. The count grows from four to five to six across three rounds, with a quiet stretch after each.',
+        intensity: 'Moderate',
+        style: 'Box breathing',
+    },
+});
+
+const INTENTIONS = {
+    BASE: [
+        { id: 'calm', icon: 'wave', label: 'Find calm' },
+        { id: 'focus', icon: 'target', label: 'Sharpen focus' },
+        { id: 'ground', icon: 'tree', label: 'Ground myself' },
+        { id: 'breathe', icon: 'breath', label: 'Just breathe' },
+    ],
+    ELIXIR: [
+        { id: 'energy', icon: 'bolt', label: 'Ignite energy' },
+        { id: 'release', icon: 'flame', label: 'Release and let go' },
+        { id: 'transform', icon: 'butterfly', label: 'Transform' },
+        { id: 'power', icon: 'shield', label: 'Build power' },
+    ],
+    REST: [
+        { id: 'sleep', icon: 'moon', label: 'Prepare for sleep' },
+        { id: 'unwind', icon: 'leaf', label: 'Unwind' },
+        { id: 'restore', icon: 'flower', label: 'Restore' },
+        { id: 'peace', icon: 'cloud', label: 'Find peace' },
+    ],
+    FLOW: [
+        { id: 'balance', icon: 'balance', label: 'Find balance' },
+        { id: 'clarity', icon: 'gem', label: 'Gain clarity' },
+        { id: 'presence', icon: 'star', label: 'Be present' },
+        { id: 'rhythm', icon: 'note', label: 'Find rhythm' },
+    ],
+};
+const STAGE_NAMES = {
+    grounding: 'Arrive', active: 'Breathe', retention: 'Hold', recovery: 'Recover', integration: 'Rest',
+};
+const COUNTDOWN = [
+    ['3', 'Find a comfortable position'],
+    ['2', 'Soften your shoulders'],
+    ['1', 'Let one slow breath go'],
+    ['Begin', 'Follow the voice and the light'],
+];
+const STATS_KEY = 'serenity.haleSessions';
+
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[char]);
+
+function formatClock(seconds) {
+    const safe = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds)) : 0;
+    return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
+}
+
+function formatHold(seconds) {
+    if (!(seconds > 0)) return 'no holds';
+    return seconds >= 60 ? `${Number((seconds / 60).toFixed(1))} min` : `${seconds} sec`;
+}
+
+function readStats() {
+    try {
+        const stats = JSON.parse(window.localStorage.getItem(STATS_KEY) || 'null');
+        return stats && Number.isFinite(stats.count) ? stats : null;
+    } catch {
+        return null;
+    }
+}
+
+function recordSession(sessionId, seconds) {
+    try {
+        const stats = readStats() || { count: 0, seconds: 0 };
+        window.localStorage.setItem(STATS_KEY, JSON.stringify({
+            count: stats.count + 1,
+            seconds: stats.seconds + Math.max(0, Math.round(seconds)),
+            last: { id: sessionId, at: Date.now() },
+        }));
+    } catch { /* private browsing: the practice still happened */ }
+}
 
 export class SessionsTab {
     constructor(hub, sessionManager) {
         this.hub = hub;
         this.sessionManager = sessionManager;
         this.container = hub.panel.querySelector('#tab-sessions');
-        this.activeSessionData = null;
-        this.selectedIntention = null;
-        this.pendingSessionId = null;
         this.active = false;
         this.destroyed = false;
-        this.abortController = new AbortController();
-        this.pendingTimers = new Map();
-        this.countdownGeneration = 0;
-        this.hudNodes = null;
-        this.completedSession = null;
+        this.pendingSessionId = null;
+        this.selectedIntention = null;
+        this.voiceGuidance = true;
+        this.step = null;
         this.focusReturn = null;
-        this.journeySessionId = null;
-        this.journeyPhaseIndex = null;
-        this.journeyStages = [];
+        this.activeSessionData = null;
+        this.completedSession = null;
+        this.countdownGeneration = 0;
         this.sessionGeneration = 0;
-
-        // Intention options for each session type
-        this.INTENTIONS = {
-            BASE: [
-                {
-                    id: 'calm', icon: csIcon('wave'), label: 'Find Calm', desc: 'Release stress and anxiety',
-                },
-                {
-                    id: 'focus', icon: csIcon('target'), label: 'Sharpen Focus', desc: 'Clear mental fog',
-                },
-                {
-                    id: 'ground', icon: csIcon('tree'), label: 'Ground Myself', desc: 'Feel centered and stable',
-                },
-                {
-                    id: 'breathe', icon: csIcon('breath'), label: 'Just Breathe', desc: 'No goal, simply be',
-                },
-            ],
-            ELIXIR: [
-                {
-                    id: 'energy', icon: csIcon('bolt'), label: 'Ignite Energy', desc: 'Wake up body and mind',
-                },
-                {
-                    id: 'release', icon: csIcon('flame'), label: 'Release & Let Go', desc: 'Clear emotional blocks',
-                },
-                {
-                    id: 'transform', icon: csIcon('butterfly'), label: 'Transform', desc: 'Catalyze inner change',
-                },
-                {
-                    id: 'power', icon: csIcon('shield'), label: 'Build Power', desc: 'Strengthen willpower',
-                },
-            ],
-            REST: [
-                {
-                    id: 'sleep', icon: csIcon('moon'), label: 'Prepare for Sleep', desc: 'Transition to deep rest',
-                },
-                {
-                    id: 'unwind', icon: csIcon('leaf'), label: 'Unwind', desc: 'Release the day\'s tension',
-                },
-                {
-                    id: 'restore', icon: csIcon('flower'), label: 'Restore', desc: 'Replenish your energy',
-                },
-                {
-                    id: 'peace', icon: csIcon('cloud'), label: 'Find Peace', desc: 'Embrace stillness',
-                },
-            ],
-            FLOW: [
-                {
-                    id: 'balance', icon: csIcon('balance'), label: 'Find Balance', desc: 'Harmonize mind and body',
-                },
-                {
-                    id: 'clarity', icon: csIcon('gem'), label: 'Gain Clarity', desc: 'See with fresh perspective',
-                },
-                {
-                    id: 'presence', icon: csIcon('star'), label: 'Be Present', desc: 'Anchor in the now',
-                },
-                {
-                    id: 'rhythm', icon: csIcon('note'), label: 'Find Rhythm', desc: 'Sync with your flow',
-                },
-            ],
-        };
-
-        // The visual identity stays independent of manager timing and audio.
-        this.SESSION_INFO = {
-            BASE: {
-                name: 'Hale Base',
-                duration: '20 min',
-                intensity: 'Moderate',
-                mood: 'Come back to yourself',
-                landscape: 'Still water',
-                about: 'Settle into three rounds of rhythmic nasal breathing. Begin gently, explore the quiet between breaths, and finish with space to rest.',
-                summary: 'Rhythmic nasal breathing, quiet holds, and a grounded finish.',
-                breathingDesc: 'Nasal breathing · gradually quickening rhythm',
-                holdsDesc: 'Stillness between rounds · up to 2 minutes',
-                maxHold: '2 min',
-                breathingType: 'Nasal',
-            },
-            ELIXIR: {
-                name: 'Hale Elixir',
-                duration: '25 min',
-                intensity: 'High intensity',
-                mood: 'Meet your inner spark',
-                landscape: 'Warm light',
-                about: 'A more active journey through connected mouth breathing, pauses, and recovery breaths. Three rounds build in pace before a spacious integration.',
-                summary: 'Connected mouth breathing, brighter rhythm, and deep stillness.',
-                breathingDesc: 'Mouth breathing · active, connected rhythm',
-                holdsDesc: 'Stillness between rounds · up to 2 minutes',
-                maxHold: '2 min',
-                breathingType: 'Mouth',
-            },
-            REST: {
-                name: 'Hale Rest',
-                duration: '15 min',
-                intensity: 'Gentle',
-                mood: 'Let the day soften',
-                landscape: 'Moonlit quiet',
-                about: 'Give yourself time to unwind. Gentle nasal breathing and longer exhales lead into short pauses, soft recovery breaths, and a quiet closing rest.',
-                summary: 'Gentle breathing and longer exhales for a quieter evening.',
-                breathingDesc: 'Nasal breathing · soft, extended exhales',
-                holdsDesc: 'Short, gentle pauses between rounds',
-                maxHold: '30 sec',
-                breathingType: 'Nasal',
-            },
-            FLOW: {
-                name: 'Hale Flow',
-                duration: '18 min',
-                intensity: 'Moderate',
-                mood: 'Find your own rhythm',
-                landscape: 'Moving harmony',
-                about: 'Follow the four even sides of a breath: inhale, hold, exhale, pause. Each round lengthens the rhythm, then gives you space to return to natural breathing.',
-                summary: 'An even, four-part breath that opens into a spacious rhythm.',
-                breathingDesc: 'Box breathing · equal inhale, hold, exhale, pause',
-                holdsDesc: 'Even pauses, followed by a moment of stillness',
-                maxHold: '1 min',
-                breathingType: 'Box',
-            },
-        };
-
+        this.pendingTimers = new Map();
+        this.abortController = new AbortController();
         this.render();
+        this.renderFlow();
         this.setupEventListeners();
     }
 
-    getSessionIcon(sessionId, size = 26) {
-        const iconMap = {
-            BASE: 'hale-base',
-            ELIXIR: 'hale-elixir',
-            REST: 'hale-rest',
-            FLOW: 'hale-flow',
-        };
-        return csIcon(iconMap[sessionId] || 'breath', size);
-    }
+    // ── Session facts ───────────────────────────────────────────────────────
 
-    getIntensityClass(sessionId) {
-        const intensityMap = {
-            ELIXIR: 'high',
-            REST: 'gentle',
-        };
-        return intensityMap[sessionId] || 'moderate';
-    }
-
+    /** Everything the catalogue and the preparation screen say about a session. */
     getSessionDetails(sessionId) {
-        const info = this.SESSION_INFO[sessionId];
-        const session = this.sessionManager?.SESSIONS?.[sessionId];
+        const info = HALE_SESSIONS[sessionId];
         if (!info) return null;
-        if (!session?.phases?.length) return { ...info, rounds: 3 };
-        const duration = session.phases.reduce((total, phase) => total + (
-            phase.type === 'active'
-                ? phase.pattern.reduce((sum, seconds) => sum + seconds, 0) * phase.breaths
-                : phase.duration
-        ), 0);
-        const maxHold = Math.max(0, ...session.phases
-            .filter((phase) => phase.type === 'retention').map((phase) => phase.duration));
+        const phases = this.sessionManager?.SESSIONS?.[sessionId]?.phases || [];
+        const secondsOf = (phase) => {
+            const seconds = phase.type === 'active'
+                ? phase.pattern.reduce((sum, part) => sum + part, 0) * phase.breaths : phase.duration;
+            return Number.isFinite(seconds) ? seconds : 0;
+        };
+        const total = phases.reduce((sum, phase) => sum + secondsOf(phase), 0);
+        const holds = phases.filter((phase) => phase.type === 'retention').map(secondsOf);
+        const rounds = this.sessionManager?.SESSIONS?.[sessionId]?.totalRounds || 3;
+        const worlds = SESSION_WORLDS[sessionId] || SESSION_WORLDS.BASE;
         return {
             ...info,
-            duration: `${Math.ceil(duration / 60)} min`,
-            rounds: session.totalRounds,
-            maxHold: maxHold >= 60 ? `${maxHold / 60} min` : `${maxHold} sec`,
+            id: sessionId,
+            seconds: total,
+            duration: `${Math.max(1, Math.ceil(total / 60))} min`,
+            rounds,
+            maxHold: formatHold(Math.max(0, ...holds)),
+            breaths: phases.filter((phase) => phase.type === 'active').reduce((sum, phase) => sum + phase.breaths, 0),
+            poster: breathPosterUrl(Array.isArray(worlds.active) ? worlds.active[0] : worlds.active),
+            stages: phases.map((phase) => ({
+                type: phase.type, round: phase.round || 0, seconds: secondsOf(phase), breaths: phase.breaths || 0,
+            })),
         };
     }
 
-    renderSessionArt(sessionId, className = '') {
-        return `<div class="session-landscape ${sessionId.toLowerCase()} ${className}" aria-hidden="true">
-            <span class="landscape-halo"></span><span class="landscape-orbit orbit-one"></span>
-            <span class="landscape-orbit orbit-two"></span><span class="landscape-orbit orbit-three"></span>
-            <span class="landscape-core"></span><span class="landscape-horizon"></span>
-            <span class="landscape-spark spark-one"></span><span class="landscape-spark spark-two"></span>
-        </div>`;
-    }
+    // ── Catalogue (inside the Hub) ──────────────────────────────────────────
 
     render() {
         if (!this.container) return;
-
-        const cards = Object.keys(this.SESSION_INFO).map((sessionId, index) => {
+        const cards = Object.keys(HALE_SESSIONS).map((sessionId) => {
             const info = this.getSessionDetails(sessionId);
-            return `<article class="session-card" data-session="${sessionId}">
-                ${this.renderSessionArt(sessionId)}
-                <div class="session-card-topline">
-                    <span class="session-edition">0${index + 1} / ${info.landscape}</span>
-                    <span class="session-icon ${sessionId.toLowerCase()}-icon">${this.getSessionIcon(sessionId, 22)}</span>
+            return `<article class="hale-card" data-session="${sessionId}">
+                <div class="hale-card__art" style="background-image:url('${info.poster}')" aria-hidden="true"></div>
+                <div class="hale-card__body">
+                    <span class="hale-card__tag">${escapeHtml(info.intensity)} · ${escapeHtml(info.style)}</span>
+                    <h3>${escapeHtml(info.name)}</h3>
+                    <p class="hale-card__promise">${escapeHtml(info.promise)}</p>
+                    <p class="hale-card__summary">${escapeHtml(info.summary)}</p>
+                    <ul class="hale-card__facts">
+                        <li>${csIcon('clock', 13)} ${info.duration}</li>
+                        <li>${info.rounds} rounds</li>
+                        <li>Holds to ${info.maxHold}</li>
+                    </ul>
+                    <button type="button" class="hale-card__begin" data-session="${sessionId}">
+                        Begin ${escapeHtml(info.name)} <span aria-hidden="true">→</span>
+                    </button>
                 </div>
-                <div class="session-info">
-                    <p class="session-mood">${info.mood}</p>
-                    <h3>${info.name}</h3>
-                    <p class="session-summary">${info.summary}</p>
-                    <div class="session-meta">
-                        <span class="duration">${csIcon('clock', 13)} ${info.duration}</span>
-                        <span class="intensity ${this.getIntensityClass(sessionId)}">${info.intensity}</span>
-                        <span>${info.rounds} rounds</span>
-                    </div>
-                </div>
-                <button type="button" class="start-session-btn" data-session="${sessionId}">
-                    Start ${info.name} <span aria-hidden="true">→</span>
-                </button>
             </article>`;
         }).join('');
-
         this.container.innerHTML = `
-            <div class="sessions-introduction">
-                <span class="session-eyebrow">Hale sessions · guided breathwork</span>
-                <h2>Start your breathing journey.</h2>
-                <p>Choose Base, Elixir, Rest, or Flow. Prepare, choose an optional intention, then start your session.</p>
-            </div>
-            <div class="sessions-grid">${cards}</div>
-            <div class="sessions-footnote">${csIcon('breath', 15)} Your breath sets the pace. Keep it comfortable.</div>
-
-            <div class="session-prep-overlay" style="display: none;">
-                <div class="session-prep" role="dialog" aria-modal="true" aria-labelledby="prep-session-title">
-                    <button type="button" class="prep-close-btn" aria-label="Back to sessions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 6l12 12M6 18L18 6"/></svg></button>
-                    <div class="prep-story">
-                        <div class="prep-art"></div>
-                        <div class="prep-header">
-                            <span class="session-eyebrow">Your next quiet moment</span>
-                            <div class="prep-session-icon base"></div>
-                            <h2 id="prep-session-title" class="prep-session-name">Hale Base</h2>
-                            <p class="prep-mood"></p>
-                            <div class="prep-session-meta"><span class="prep-duration"></span><span class="prep-intensity"></span></div>
-                        </div>
-                        <div class="prep-description"><p class="prep-about"></p></div>
-                        <p class="prep-comfort-note">Breathe comfortably. Return to your natural rhythm whenever you need.</p>
-                        <div class="prep-actions">
-                            <button type="button" class="prep-begin-btn"><span class="begin-text">Start Hale Base</span><span aria-hidden="true">→</span></button>
-                        </div>
-                        <div class="prep-structure">
-                            <div class="structure-item"><span class="structure-icon">${csIcon('breath', 16)}</span><span class="structure-text structure-breathing"></span></div>
-                            <div class="structure-item"><span class="structure-icon">${csIcon('clock', 16)}</span><span class="structure-text structure-holds"></span></div>
-                        </div>
-                        <div class="prep-journey" aria-label="Session structure">
-                            <span><i>01</i> Settle in</span><span><i>02</i> Three rounds</span><span><i>03</i> Integrate</span>
-                        </div>
+            <div class="hale">
+                <header class="hale__intro">
+                    <span class="hale__eyebrow">Hale sessions · guided breathwork</span>
+                    <h2>A voice, a rhythm, and a world that follows your breath.</h2>
+                    <p>Every session arrives gently, breathes through three rounds with a stillness after each, and ends in rest.</p>
+                    <p class="hale__practice" hidden></p>
+                </header>
+                <section class="hale__live" hidden aria-live="polite">
+                    <div>
+                        <span class="hale__eyebrow">Session in progress</span>
+                        <p class="hale__live-name"></p>
                     </div>
-                    <div class="prep-choices">
-                        <div class="prep-intention-section">
-                            <span class="session-eyebrow">Make it yours</span>
-                            <h3 class="prep-section-title">How would you like to arrive?</h3>
-                            <p class="prep-section-desc">Intentions are optional. Start your session whenever you are ready.</p>
-                            <div class="intention-grid" role="group" aria-label="Choose your intention"></div>
-                        </div>
-                        <div class="prep-preview">
-                            <div class="preview-item"><span class="preview-value preview-rounds">3</span><span class="preview-label">Rounds</span></div>
-                            <div class="preview-item"><span class="preview-value breathing-type">Nasal</span><span class="preview-label">Breathing</span></div>
-                            <div class="preview-item"><span class="preview-value max-hold">2 min</span><span class="preview-label">Longest pause</span></div>
-                        </div>
+                    <button type="button" class="hale__return">Return to session</button>
+                    <button type="button" class="hale__end">End session</button>
+                </section>
+                <div class="hale__grid">${cards}</div>
+                <p class="hale__note">${csIcon('breath', 14)} Breath holds are strong practice. Sit or lie down, never practise in water or while driving, and stop if you feel dizzy.</p>
+            </div>`;
+        this.renderPractice();
+    }
+
+    renderPractice() {
+        const line = this.container?.querySelector('.hale__practice');
+        if (!line) return;
+        const stats = readStats();
+        line.hidden = !stats;
+        if (!stats) return;
+        const last = HALE_SESSIONS[stats.last?.id]?.name;
+        line.textContent = [
+            `${stats.count} ${stats.count === 1 ? 'session' : 'sessions'} completed`,
+            `${Math.max(1, Math.round(stats.seconds / 60))} min of practice`,
+            last ? `last: ${last}` : '',
+        ].filter(Boolean).join(' · ');
+    }
+
+    // ── The full-screen flow ────────────────────────────────────────────────
+
+    renderFlow() {
+        const flow = document.createElement('div');
+        flow.className = 'hale-flow serenity-hub';
+        flow.hidden = true;
+        flow.setAttribute('role', 'dialog');
+        flow.setAttribute('aria-modal', 'true');
+        flow.setAttribute('aria-labelledby', 'hale-flow-title');
+        flow.innerHTML = `
+            <div class="hale-flow__art" aria-hidden="true"></div>
+            <div class="hale-flow__panel hale-flow__panel--prepare" data-panel="prepare">
+                <div class="hale-flow__lead">
+                    <button type="button" class="hale-flow__back"><span aria-hidden="true">←</span> All sessions</button>
+                    <span class="hale__eyebrow hale-flow__facts"></span>
+                    <h2 id="hale-flow-title" class="hale-flow__name"></h2>
+                    <p class="hale-flow__promise"></p>
+                    <p class="hale-flow__about"></p>
+                    <div class="hale-flow__journey" aria-label="How the session unfolds">
+                        <div class="hale-flow__track"></div>
+                        <ol class="hale-flow__rounds"></ol>
                     </div>
                 </div>
-            </div>
-
-            <div class="session-countdown-overlay" style="display: none;">
-                <div class="countdown-art" aria-hidden="true"></div>
-                <div class="countdown-content" role="status" aria-live="polite" aria-atomic="true">
-                    <span class="session-eyebrow">A moment to arrive</span>
-                    <p class="countdown-intention"></p>
-                    <div class="countdown-number">3</div>
-                    <p class="countdown-message">Find a comfortable position</p>
-                    <span class="countdown-quiet">Nothing to achieve. Just be here.</span>
-                    <button type="button" class="countdown-cancel-btn">Back to preparation</button>
+                <div class="hale-flow__setup">
+                    <h3>Set an intention <small>optional</small></h3>
+                    <div class="hale-flow__intentions" role="group" aria-label="Choose an intention"></div>
+                    <label class="hale-flow__switch">
+                        <input type="checkbox" class="hale-flow__voice" checked>
+                        <span>Voice guidance</span>
+                    </label>
+                    <p class="hale-flow__safety">Sit or lie down somewhere you can let go. Breathe comfortably, and return to your natural breath whenever you need to.</p>
+                    <button type="button" class="hale-flow__begin">Begin session <span aria-hidden="true">→</span></button>
                 </div>
             </div>
-
-            <div class="active-session-overlay" style="display: none;">
-                <div class="session-hud">
-                    <div class="session-hud-header">
-                        <span class="session-eyebrow">Your breathing journey</span>
-                        <span class="session-name">Session</span>
-                        <span class="session-round">Round 1 of 3</span>
-                    </div>
-                    <div class="session-stage-trail" aria-label="Session stages"></div>
-                    <div class="session-phase-scene">
-                        <div class="session-progress-ring">
-                            <span class="session-ring-aura" aria-hidden="true"></span>
-                            <svg viewBox="0 0 100 100" aria-hidden="true">
-                                <circle class="progress-background" cx="50" cy="50" r="45" fill="none" stroke-width="1"/>
-                                <circle class="progress-fill" cx="50" cy="50" r="45" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="283"/>
-                            </svg>
-                            <div class="progress-center"><span class="phase-timer">0:00</span><span class="phase-label">Settle in</span><span class="phase-time-caption">remaining in this phase</span></div>
-                        </div>
-                        <div class="breath-counter"><span class="breath-current">0</span><span class="breath-separator">/</span><span class="breath-total">40</span><span class="breath-label">breaths</span></div>
-                    </div>
-                    <div class="session-guidance"><p class="guidance-main">Breathe</p><p class="guidance-sub">Follow the rhythm</p></div>
-                    <div class="session-overall-progress"><span>Journey progress</span><span class="session-percent">0%</span></div>
-                    <div class="phase-progress-bar" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="phase-fill"></div></div>
-                    <div class="session-hud-actions"><button type="button" class="session-immerse-btn">Return to the experience <span aria-hidden="true">↗</span></button><button type="button" class="stop-session-btn">End session</button></div>
-                </div>
+            <div class="hale-flow__panel hale-flow__panel--countdown" data-panel="countdown" role="status" aria-live="polite" aria-atomic="true">
+                <p class="hale-flow__intent"></p>
+                <div class="hale-flow__number">3</div>
+                <p class="hale-flow__message"></p>
+                <button type="button" class="hale-flow__cancel">Back to preparation</button>
             </div>
-
-            <div class="session-completion-overlay" style="display: none;">
-                <div class="session-completion" role="dialog" aria-modal="true" aria-labelledby="session-completion-title">
-                    <div class="completion-art" aria-hidden="true"></div>
-                    <span class="session-eyebrow">A moment, just for you</span>
-                    <h2 id="session-completion-title">Carry this feeling with you.</h2>
-                    <p class="completion-session-name"></p>
-                    <div class="completion-stats"><div><strong class="completion-duration"></strong><span>Time for yourself</span></div><div><strong class="completion-rounds"></strong><span>Rounds completed</span></div></div>
-                    <p class="completion-intention"></p>
-                    <p class="completion-reflection">Notice your breath. Let your next moment begin gently.</p>
-                    <button type="button" class="completion-close-btn">Back to your space <span aria-hidden="true">→</span></button>
+            <div class="hale-flow__panel hale-flow__panel--complete" data-panel="complete">
+                <span class="hale__eyebrow">Session complete</span>
+                <h2 class="hale-flow__done-name"></h2>
+                <dl class="hale-flow__stats"></dl>
+                <p class="hale-flow__closing"></p>
+                <div class="hale-flow__actions">
+                    <button type="button" class="hale-flow__finish">Done</button>
+                    <button type="button" class="hale-flow__again">Go again</button>
                 </div>
-            </div>
-        `;
+            </div>`;
+        document.body.appendChild(flow);
+        this.flow = flow;
+    }
+
+    get flowOpen() { return Boolean(this.flow && !this.flow.hidden); }
+
+    /**
+     * True from Begin until the result is dismissed. The guide stops a moment before the
+     * result appears; without this the game behind would resume in that gap.
+     */
+    get holdsScreen() { return this.flowOpen || this.sessionRunning === true; }
+
+    showStep(step) {
+        this.step = step;
+        const { flow } = this;
+        if (!flow) return;
+        flow.dataset.step = step || '';
+        flow.hidden = !step;
+        flow.querySelectorAll('[data-panel]').forEach((panel) => { panel.hidden = panel.dataset.panel !== step; });
+        if (step) this.scheduleUI(() => flow.classList.add('is-open'), 20);
+        else flow.classList.remove('is-open');
+    }
+
+    listen(target, type, handler, options = {}) {
+        target?.addEventListener(type, handler, { ...options, signal: this.abortController.signal });
     }
 
     setupEventListeners() {
         if (!this.container) return;
-
-        // Start buttons - now show prep screen
-        this.container.querySelectorAll('.start-session-btn').forEach((btn) => {
-            this.listen(btn, 'click', (e) => {
-                const sessionId = e.currentTarget.dataset.session;
-                this.showPrepScreen(sessionId);
-            });
+        this.listen(this.container, 'click', (event) => {
+            const begin = event.target.closest?.('.hale-card__begin');
+            if (begin) this.showPrepScreen(begin.dataset.session);
+            else if (event.target.closest?.('.hale__return')) this.hub.hide();
+            else if (event.target.closest?.('.hale__end')) this.stopSession();
         });
-
-        this.listen(this.container.querySelector('.intention-grid'), 'click', (event) => {
-            const card = event.target.closest?.('.intention-card');
-            if (card && this.pendingSessionId) this.selectIntention(card.dataset.intention, this.pendingSessionId);
+        // Native activation must not also reach a mode's global Space/Enter shortcuts.
+        const keepKeys = (event) => {
+            if ((event.key === ' ' || event.key === 'Enter') && event.target.closest?.('button, input')) event.stopPropagation();
+        };
+        this.listen(this.container, 'keydown', keepKeys);
+        this.listen(this.flow, 'keydown', (event) => {
+            keepKeys(event);
+            this.handleFlowKey(event);
         });
-        this.listen(this.container, 'keydown', (event) => this.handleOverlayKey(event));
-        this.listen(this.container.querySelector('.countdown-cancel-btn'), 'click', () => {
-            if (this.pendingSessionId) this.showPrepScreen(this.pendingSessionId);
+        this.listen(this.flow, 'click', (event) => {
+            const { target } = event;
+            const intention = target.closest?.('.hale-flow__intention');
+            if (intention) this.selectIntention(intention.dataset.intention, this.pendingSessionId);
+            else if (target.closest?.('.hale-flow__back')) this.hidePrepScreen();
+            else if (target.closest?.('.hale-flow__begin')) this.startCountdown();
+            else if (target.closest?.('.hale-flow__cancel')) this.showPrepScreen(this.pendingSessionId);
+            else if (target.closest?.('.hale-flow__finish')) this.closeCompletion();
+            else if (target.closest?.('.hale-flow__again')) this.showPrepScreen(this.completedSession?.sessionId);
         });
-        this.listen(this.container.querySelector('.session-immerse-btn'), 'click', () => this.hub.hide());
-        this.listen(this.container.querySelector('.completion-close-btn'), 'click', () => {
-            this.setStyle(this.container.querySelector('.session-completion-overlay'), 'display', 'none');
-            this.completedSession = null;
-            this.focusReturn?.focus?.();
+        this.listen(this.flow.querySelector('.hale-flow__voice'), 'change', (event) => {
+            this.voiceGuidance = event.target.checked;
+            this.sessionManager?.audioManager?.setEnabled(this.voiceGuidance);
         });
-
-        // Stop button
-        const stopBtn = this.container.querySelector('.stop-session-btn');
-        if (stopBtn) {
-            this.listen(stopBtn, 'click', () => {
-                this.stopSession();
-            });
-        }
-
-        // Prep screen close button
-        const closeBtn = this.container.querySelector('.prep-close-btn');
-        if (closeBtn) {
-            this.listen(closeBtn, 'click', () => {
-                this.hidePrepScreen();
-            });
-        }
-
-        // Begin button
-        const beginBtn = this.container.querySelector('.prep-begin-btn');
-        if (beginBtn) {
-            this.listen(beginBtn, 'click', () => {
-                this.startCountdown();
-            });
-        }
     }
 
-    handleOverlayKey(event) {
-        // Native activation must not also reach Serenity Mode's guide shortcut.
-        // Leave the default button/checkbox action intact.
-        if (event.key === ' ' || event.key === 'Enter') {
-            const control = event.target.closest?.('button, input');
-            if (control && this.container.contains(control)) event.stopPropagation();
-            return;
-        }
-        const overlay = ['.session-countdown-overlay', '.session-prep-overlay', '.session-completion-overlay']
-            .map((selector) => this.container?.querySelector(selector))
-            .find((element) => element?.style.display === 'flex');
-        if (!overlay) return;
+    handleFlowKey(event) {
+        if (!this.flowOpen) return;
         if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
-            if (overlay.classList.contains('session-countdown-overlay')) {
-                if (this.pendingSessionId) this.showPrepScreen(this.pendingSessionId);
-            } else if (overlay.classList.contains('session-prep-overlay')) {
-                this.hidePrepScreen();
-            } else overlay.querySelector('.completion-close-btn')?.click();
+            if (this.step === 'countdown') this.showPrepScreen(this.pendingSessionId);
+            else if (this.step === 'prepare') this.hidePrepScreen();
+            else this.closeCompletion();
         } else if (event.key === 'Tab') {
-            const buttons = [...overlay.querySelectorAll('button:not(:disabled)')];
-            const first = buttons[0];
-            const last = buttons[buttons.length - 1];
-            if (!first) return;
+            const panel = this.flow.querySelector(`[data-panel="${this.step}"]`);
+            const controls = [...(panel?.querySelectorAll('button:not(:disabled), input') || [])];
+            if (!controls.length) return;
+            const first = controls[0];
+            const last = controls[controls.length - 1];
             if (event.shiftKey && document.activeElement === first) {
                 event.preventDefault();
                 last.focus();
@@ -412,158 +363,6 @@ export class SessionsTab {
                 first.focus();
             }
         }
-    }
-
-    /**
-     * Show the preparation screen for a session
-     */
-    showPrepScreen(sessionId) {
-        if (this.destroyed) return;
-        this.cancelPendingUI();
-        const info = this.getSessionDetails(sessionId);
-        if (!info) return;
-        this.pendingSessionId = sessionId;
-        this.selectedIntention = null;
-        this.focusReturn = this.container.querySelector(`.start-session-btn[data-session="${sessionId}"]`);
-        this.setStyle(this.container.querySelector('.session-completion-overlay'), 'display', 'none');
-        this.completedSession = null;
-
-        const prepOverlay = this.container.querySelector('.session-prep-overlay');
-        const prep = this.container.querySelector('.session-prep');
-        if (!prepOverlay || !prep) return;
-
-        // Get session info
-        const sessionType = sessionId.toLowerCase();
-        prep.className = `session-prep session-${sessionType}`;
-        prepOverlay.dataset.session = sessionId;
-        prepOverlay.scrollTop = 0;
-        const art = prep.querySelector('.prep-art');
-        if (art) art.innerHTML = this.renderSessionArt(sessionId);
-        this.setLabel(prep.querySelector('.prep-mood'), info.mood);
-        this.setLabel(prep.querySelector('.preview-rounds'), info.rounds);
-
-        // Update session header
-        const sessionName = prep.querySelector('.prep-session-name');
-        const sessionIcon = prep.querySelector('.prep-session-icon');
-        const duration = prep.querySelector('.prep-duration');
-        const intensity = prep.querySelector('.prep-intensity');
-
-        if (sessionName) sessionName.textContent = info.name;
-        if (sessionIcon) {
-            sessionIcon.className = `prep-session-icon ${sessionType}`;
-            sessionIcon.innerHTML = this.getSessionIcon(sessionId, 24);
-        }
-        if (duration) duration.textContent = info.duration;
-        if (intensity) {
-            intensity.textContent = info.intensity;
-            intensity.className = `prep-intensity ${this.getIntensityClass(sessionId)}`;
-        }
-
-        // Update session description
-        const aboutText = prep.querySelector('.prep-about');
-        if (aboutText) aboutText.textContent = info.about;
-
-        // Update session structure
-        const breathingDesc = prep.querySelector('.structure-breathing');
-        const holdsDesc = prep.querySelector('.structure-holds');
-        if (breathingDesc) breathingDesc.textContent = info.breathingDesc;
-        if (holdsDesc) holdsDesc.textContent = info.holdsDesc;
-
-        // Update preview stats
-        const breathingType = prep.querySelector('.breathing-type');
-        const maxHold = prep.querySelector('.max-hold');
-        if (breathingType) {
-            breathingType.textContent = info.breathingType;
-        }
-        if (maxHold) maxHold.textContent = info.maxHold;
-
-        // Populate intentions
-        const intentionGrid = prep.querySelector('.intention-grid');
-        if (intentionGrid) {
-            const intentions = this.INTENTIONS[sessionId];
-            intentionGrid.innerHTML = intentions.map((intent) => `
-                <button type="button" class="intention-card" data-intention="${intent.id}" aria-pressed="false">
-                    <span class="intention-icon">${intent.icon}</span>
-                    <span class="intention-label">${intent.label}</span>
-                    <span class="intention-desc">${intent.desc}</span>
-                </button>
-            `).join('');
-
-            // Selection is delegated from the stable grid so repeated preparation
-            // visits do not retain handlers for detached intention cards.
-        }
-
-        // Reset begin button
-        const beginBtn = this.container.querySelector('.prep-begin-btn');
-        if (beginBtn) {
-            beginBtn.disabled = false;
-            beginBtn.querySelector('.begin-text').textContent = `Start ${info.name}`;
-            beginBtn.setAttribute('aria-label', `Start ${info.name}. Intention optional.`);
-        }
-
-        // Show prep screen with animation
-        prepOverlay.style.display = 'flex';
-        this.scheduleUI(() => {
-            prepOverlay.classList.add('visible');
-            this.focusDialog(prepOverlay, '.prep-close-btn');
-        }, 10);
-    }
-
-    /**
-     * Hide the preparation screen
-     */
-    hidePrepScreen() {
-        this.cancelPendingUI();
-        const prepOverlay = this.container.querySelector('.session-prep-overlay');
-        if (prepOverlay) {
-            prepOverlay.classList.remove('visible');
-            this.scheduleUI(() => {
-                prepOverlay.style.display = 'none';
-            }, 300);
-        }
-        this.pendingSessionId = null;
-        this.selectedIntention = null;
-        this.focusReturn?.focus?.();
-    }
-
-    /**
-     * Select an intention
-     */
-    selectIntention(intentionId, sessionId) {
-        const intentions = this.INTENTIONS[sessionId];
-        this.selectedIntention = intentions.find((i) => i.id === intentionId);
-
-        // Play intention sound
-        if (this.sessionManager && this.sessionManager.audioManager) {
-            const filename = `intentions/${sessionId.toLowerCase()}_${intentionId}.wav`;
-            this.sessionManager.audioManager.playVoice(filename);
-        }
-
-        // Update UI - highlight selected card
-        const intentionGrid = this.container.querySelector('.intention-grid');
-        if (intentionGrid) {
-            intentionGrid.querySelectorAll('.intention-card').forEach((card) => {
-                card.setAttribute('aria-pressed', String(card.dataset.intention === intentionId));
-                if (card.dataset.intention === intentionId) {
-                    card.classList.add('selected');
-                } else {
-                    card.classList.remove('selected');
-                }
-            });
-        }
-
-        // Enable begin button
-        const beginBtn = this.container.querySelector('.prep-begin-btn');
-        if (beginBtn && this.selectedIntention) {
-            beginBtn.disabled = false;
-            const sessionName = this.getSessionDetails(sessionId)?.name || 'your Hale session';
-            beginBtn.querySelector('.begin-text').textContent = `Start ${sessionName}`;
-            beginBtn.setAttribute('aria-label', `Start ${sessionName} with intention: ${this.selectedIntention.label}`);
-        }
-    }
-
-    listen(target, type, handler) {
-        target?.addEventListener(type, handler, { signal: this.abortController.signal });
     }
 
     scheduleUI(callback, delay) {
@@ -592,308 +391,232 @@ export class SessionsTab {
             resolve?.(false);
         });
         this.pendingTimers.clear();
-        const countdown = this.container?.querySelector('.session-countdown-overlay');
-        countdown?.classList.remove('visible');
-        this.setStyle(countdown, 'display', 'none');
     }
 
-    setActive(active) {
-        this.active = Boolean(active) && !this.destroyed;
-        if (this.active) {
-            const { overlay } = this.getHUDNodes();
-            if (overlay) overlay.style.display = this.activeSessionData ? 'flex' : 'none';
-            if (this.activeSessionData) this.updateHUD(this.activeSessionData);
+    /** Open the preparation screen for a session. */
+    showPrepScreen(sessionId) {
+        if (this.destroyed) return;
+        const info = this.getSessionDetails(sessionId);
+        if (!info) return;
+        this.cancelPendingUI();
+        this.pendingSessionId = sessionId;
+        this.selectedIntention = null;
+        this.completedSession = null;
+        this.focusReturn = this.container?.querySelector(`.hale-card__begin[data-session="${sessionId}"]`) || null;
+        const { flow } = this;
+        flow.dataset.session = sessionId;
+        flow.querySelector('.hale-flow__art').style.backgroundImage = `url('${info.poster}')`;
+        flow.querySelector('.hale-flow__facts').textContent = `${info.duration} · ${info.intensity} · ${info.style}`;
+        flow.querySelector('.hale-flow__name').textContent = info.name;
+        flow.querySelector('.hale-flow__promise').textContent = info.promise;
+        flow.querySelector('.hale-flow__about').textContent = info.about;
+        flow.querySelector('.hale-flow__track').innerHTML = info.stages.map((stage) => (
+            `<i data-type="${stage.type}" style="flex-grow:${Math.max(stage.seconds, 1)}" title="${STAGE_NAMES[stage.type]} · ${formatClock(stage.seconds)}"></i>`
+        )).join('');
+        const arrive = info.stages.find((stage) => stage.type === 'grounding');
+        const rest = info.stages.find((stage) => stage.type === 'integration');
+        const rounds = [];
+        for (let round = 1; round <= info.rounds; round++) {
+            const stages = info.stages.filter((stage) => stage.round === round);
+            const breathe = stages.find((stage) => stage.type === 'active');
+            const hold = stages.find((stage) => stage.type === 'retention');
+            rounds.push(`<li><b>Round ${round}</b> ${breathe ? `${breathe.breaths} breaths` : ''}${hold ? ` · hold ${formatClock(hold.seconds)}` : ''} · recover</li>`);
         }
+        flow.querySelector('.hale-flow__rounds').innerHTML = [
+            arrive ? `<li><b>Arrive</b> ${formatClock(arrive.seconds)} of slow breathing</li>` : '',
+            ...rounds,
+            rest ? `<li><b>Rest</b> ${formatClock(rest.seconds)} of natural breath</li>` : '',
+        ].join('');
+        flow.querySelector('.hale-flow__intentions').innerHTML = (INTENTIONS[sessionId] || []).map((intent) => `
+            <button type="button" class="hale-flow__intention" data-intention="${intent.id}" aria-pressed="false">
+                ${csIcon(intent.icon, 18)}<span>${escapeHtml(intent.label)}</span>
+            </button>`).join('');
+        flow.querySelector('.hale-flow__voice').checked = this.voiceGuidance;
+        const begin = flow.querySelector('.hale-flow__begin');
+        begin.disabled = false;
+        begin.setAttribute('aria-label', `Begin ${info.name}. Intention optional.`);
+        this.showStep('prepare');
+        // The flow is its own surface: the Hub steps aside but keeps holding gameplay.
+        this.hub.hide();
+        this.scheduleUI(() => begin.focus?.({ preventScroll: true }), 30);
     }
 
-    getHUDNodes() {
-        if (this.hudNodes) return this.hudNodes;
-        const overlay = this.container?.querySelector('.active-session-overlay');
-        const hud = overlay?.querySelector('.session-hud');
-        const selectors = ['session-name', 'session-round', 'phase-timer', 'phase-label',
-            'progress-fill', 'breath-counter', 'breath-current', 'breath-total',
-            'phase-fill', 'guidance-main', 'guidance-sub', 'session-stage-trail',
-            'session-percent', 'phase-progress-bar'];
-        this.hudNodes = { overlay, hud };
-        selectors.forEach((name) => { this.hudNodes[name] = hud?.querySelector(`.${name}`); });
-        const fill = this.hudNodes['phase-fill'];
-        if (fill) {
-            fill.style.width = '100%';
-            fill.style.transformOrigin = 'left center';
-            fill.style.transition = 'transform 0.2s ease';
-            fill.style.transform = 'scaleX(0)';
+    /** Leave the flow and return to the catalogue. */
+    hidePrepScreen() {
+        if (!this.flowOpen && !this.pendingSessionId) return;
+        this.cancelPendingUI();
+        this.showStep(null);
+        this.pendingSessionId = null;
+        this.selectedIntention = null;
+        this.hub.switchTab?.('sessions');
+        this.hub.show?.();
+        this.focusReturn?.focus?.({ preventScroll: true });
+    }
+
+    selectIntention(intentionId, sessionId) {
+        const intention = (INTENTIONS[sessionId] || []).find((item) => item.id === intentionId);
+        if (!intention) return;
+        // Choosing the same intention again clears it: it was always optional.
+        this.selectedIntention = this.selectedIntention?.id === intentionId ? null : intention;
+        if (this.selectedIntention && this.voiceGuidance) {
+            this.sessionManager?.audioManager?.playVoice(`intentions/${sessionId.toLowerCase()}_${intentionId}.wav`);
         }
-        return this.hudNodes;
+        this.flow.querySelectorAll('.hale-flow__intention').forEach((button) => {
+            const pressed = button.dataset.intention === this.selectedIntention?.id;
+            button.setAttribute('aria-pressed', String(pressed));
+            button.classList.toggle('is-selected', pressed);
+        });
+        const info = this.getSessionDetails(sessionId);
+        this.flow.querySelector('.hale-flow__begin').setAttribute('aria-label', this.selectedIntention
+            ? `Begin ${info.name} with intention: ${this.selectedIntention.label}` : `Begin ${info.name}. Intention optional.`);
     }
 
-    setLabel(node, value) {
-        const text = String(value);
-        if (node && node.textContent !== text) node.textContent = text;
-    }
-
-    setStyle(node, key, value) {
-        if (node && node.style[key] !== value) node.style[key] = value;
-    }
-
-    focusDialog(overlay, selector) {
-        // These overlays are anchored inside a scrollable Hub content area.
-        // Native focus scrolling would move that ancestor (and the entire overlay),
-        // exposing the catalogue below and clipping the dialog above its viewport.
-        const hubScroll = this.hub.panel.querySelector?.('.hub-tab-content');
-        if (hubScroll) hubScroll.scrollTop = 0;
-        if (overlay) overlay.scrollTop = 0;
-        overlay?.querySelector(selector)?.focus?.({ preventScroll: true });
-    }
-
-    /**
-     * Start the countdown before session
-     */
     async startCountdown() {
         this.cancelPendingUI();
         const generation = this.countdownGeneration;
         const sessionId = this.pendingSessionId;
         if (!sessionId || !this.getSessionDetails(sessionId)) return;
-        if (!this.selectedIntention) this.selectedIntention = { id: 'none', label: 'Present Moment' };
-        const prepOverlay = this.container.querySelector('.session-prep-overlay');
-        const countdownOverlay = this.container.querySelector('.session-countdown-overlay');
-        const countdownNumber = this.container.querySelector('.countdown-number');
-        const countdownIntention = this.container.querySelector('.countdown-intention');
-        const countdownMessage = this.container.querySelector('.countdown-message');
-
-        if (!countdownOverlay || !countdownNumber) return;
-
-        // Apply session theme
-        const sessionType = sessionId.toLowerCase();
-        countdownOverlay.className = `session-countdown-overlay ${sessionType}`;
-        countdownOverlay.dataset.session = sessionId;
-        const countdownArt = countdownOverlay.querySelector('.countdown-art');
-        if (countdownArt) countdownArt.innerHTML = this.renderSessionArt(sessionId);
-
-        // Set intention text
-        if (countdownIntention && this.selectedIntention) {
-            countdownIntention.textContent = `Your intention: ${this.selectedIntention.label}`;
-        }
-
-        // Hide prep, show countdown
-        if (prepOverlay) {
-            prepOverlay.classList.remove('visible');
-            prepOverlay.style.display = 'none';
-        }
-        countdownOverlay.style.display = 'flex';
-        this.scheduleUI(() => {
-            countdownOverlay.classList.add('visible');
-            this.focusDialog(countdownOverlay, '.countdown-cancel-btn');
-        }, 10);
-
-        // Countdown sequence
-        const messages = [
-            'Find a comfortable position',
-            'Soften your shoulders',
-            'Take a deep breath',
-            'Begin',
-        ];
-        const sequence = ['3', '2', '1', 'Breathe'];
-
-        for (let i = 0; i < sequence.length; i++) {
-            countdownNumber.textContent = sequence[i];
-            countdownNumber.className = 'countdown-number pulse';
-            if (countdownMessage) countdownMessage.textContent = messages[i];
-
-            // Countdown beats are intentionally sequential; cancellation resolves
-            // the pending wait so teardown cannot strand this async flow.
+        const { flow } = this;
+        flow.querySelector('.hale-flow__intent').textContent = this.selectedIntention
+            ? `Your intention: ${this.selectedIntention.label}` : 'Nothing to achieve. Just be here.';
+        this.showStep('countdown');
+        this.scheduleUI(() => flow.querySelector('.hale-flow__cancel').focus?.({ preventScroll: true }), 30);
+        const number = flow.querySelector('.hale-flow__number');
+        const message = flow.querySelector('.hale-flow__message');
+        for (let i = 0; i < COUNTDOWN.length; i++) {
+            [number.textContent, message.textContent] = COUNTDOWN[i];
+            number.classList.toggle('is-word', i === COUNTDOWN.length - 1);
+            // Beats are sequential on purpose; cancellation settles the pending wait.
             // eslint-disable-next-line no-await-in-loop
-            const elapsed = await this.waitForCountdown(i === 3 ? 800 : 1000);
+            const elapsed = await this.waitForCountdown(i === COUNTDOWN.length - 1 ? 900 : 1000);
             if (!elapsed || this.destroyed || generation !== this.countdownGeneration) return;
         }
-
-        // Hide countdown, start session
-        countdownOverlay.classList.remove('visible');
-        this.scheduleUI(() => {
-            countdownOverlay.style.display = 'none';
-            this.startSession(sessionId);
-        }, 300);
-    }
-
-    /**
-     * Format seconds into mm:ss display
-     */
-    formatTime(seconds) {
-        const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
-        const mins = Math.floor(safeSeconds / 60);
-        const secs = Math.floor(safeSeconds % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
-
-    /**
-     * Update the progress ring stroke-dashoffset
-     * Progress is 0-1
-     */
-    updateProgressRing(progress) {
-        if (!this.active || this.destroyed) return;
-        this.setStyle(this.getHUDNodes()['progress-fill'], 'strokeDashoffset', String(283 * (1 - progress)));
-    }
-
-    /** Cache the latest state even while the session runs outside the Hub. */
-    updateHUD(progress) {
-        if (!progress || this.destroyed) return;
-        this.activeSessionData = progress;
-        if (!this.active) return;
-        const nodes = this.getHUDNodes();
-        const { hud } = nodes;
-        if (!hud) return;
-        const className = `session-hud ${progress.sessionId?.toLowerCase() || ''}`;
-        if (hud.dataset.phase !== progress.phase) hud.dataset.phase = progress.phase || 'grounding';
-        if (nodes.overlay.dataset.session !== progress.sessionId) nodes.overlay.dataset.session = progress.sessionId;
-        if (hud.className !== className) hud.className = className;
-        this.setLabel(nodes['session-name'], progress.sessionName || 'Session');
-        this.setLabel(nodes['session-round'], `Round ${progress.round} of ${progress.totalRounds}`);
-        this.setStyle(nodes['session-round'], 'display', progress.round > 0 ? 'block' : 'none');
-        this.setLabel(nodes['phase-timer'], this.formatTime(progress.remainingTime));
-        this.setLabel(nodes['phase-label'], progress.phaseLabel || 'Breathe');
-        this.updateProgressRing(progress.phaseProgress);
-        const breathCounter = nodes['breath-counter'];
-        const activePhase = Boolean(progress.isActivePhase);
-        if (breathCounter?.classList.contains('visible') !== activePhase) {
-            breathCounter?.classList.toggle('visible', activePhase);
-        }
-        if (progress.isActivePhase) {
-            this.setLabel(nodes['breath-current'], progress.breathCount || 0);
-            this.setLabel(nodes['breath-total'], progress.totalBreaths || 0);
-        }
-        const sessionProgress = Math.max(0, Math.min(1, progress.sessionProgress ?? progress.phaseProgress));
-        this.setStyle(nodes['phase-fill'], 'transform', `scaleX(${sessionProgress})`);
-        this.setLabel(nodes['session-percent'], `${Math.round(sessionProgress * 100)}%`);
-        const progressBar = nodes['phase-progress-bar'];
-        const percentage = String(Math.round(sessionProgress * 100));
-        if (progressBar && progressBar.getAttribute('aria-valuenow') !== percentage) {
-            progressBar.setAttribute('aria-valuenow', percentage);
-        }
-        this.updateJourney(progress, nodes['session-stage-trail']);
-        this.setLabel(nodes['guidance-main'], progress.prompt || '');
-        this.setLabel(nodes['guidance-sub'], progress.subPrompt || '');
-        this.setStyle(nodes['guidance-sub'], 'display', progress.subPrompt ? 'block' : 'none');
-    }
-
-    updateJourney(progress, trail) {
-        const phases = this.sessionManager?.SESSIONS?.[progress.sessionId]?.phases;
-        if (!trail || !phases) return;
-        if (this.journeySessionId !== progress.sessionId) {
-            trail.innerHTML = phases.map((phase, index) => {
-                const name = phase.round > 0 ? `Round ${phase.round}: ${phase.type}` : phase.type;
-                return `<span class="session-stage" data-index="${index + 1}" title="${name}"><i></i></span>`;
-            }).join('');
-            this.journeySessionId = progress.sessionId;
-            this.journeyStages = [...trail.querySelectorAll('.session-stage')];
-            this.journeyPhaseIndex = null;
-        }
-        if (this.journeyPhaseIndex === progress.phaseIndex) return;
-        this.journeyPhaseIndex = progress.phaseIndex;
-        this.journeyStages.forEach((stage) => {
-            const index = Number(stage.dataset.index);
-            let state = 'upcoming';
-            if (index < progress.phaseIndex) state = 'complete';
-            else if (index === progress.phaseIndex) state = 'current';
-            if (stage.dataset.state !== state) {
-                stage.dataset.state = state;
-                if (state === 'current') stage.setAttribute('aria-current', 'step');
-                else stage.removeAttribute('aria-current');
-            }
-        });
+        this.startSession(sessionId);
     }
 
     startSession(sessionId) {
         if (this.destroyed || !this.getSessionDetails(sessionId)) return;
         this.completedSession = null;
-        this.journeySessionId = null;
+        this.sessionRunning = true;
         const generation = ++this.sessionGeneration;
-        // Show active session overlay in tab (for when they come back)
-        const overlay = this.container.querySelector('.active-session-overlay');
-        if (overlay) overlay.style.display = 'flex';
-
-        // Reset HUD to initial state
-        this.updateProgressRing(0);
-
+        this.sessionManager.audioManager?.setEnabled(this.voiceGuidance);
+        this.sessionManager.onEndRequested = () => this.stopSession();
         this.sessionManager.startSession(
             sessionId,
             (progress) => {
                 // Ignore reports from a session that was replaced or ended.
-                if (generation === this.sessionGeneration) this.updateHUD(progress);
+                if (generation === this.sessionGeneration) this.updateLive(progress);
             },
             (stats) => {
-                // On Complete
                 if (this.destroyed || generation !== this.sessionGeneration) return;
-                if (overlay) overlay.style.display = 'none';
                 this.activeSessionData = null;
+                this.updateLive(null);
                 this.hub.breathingTab?.refresh();
-
                 this.showCompletionMessage({ ...stats, sessionId });
             },
         );
-        // Acquire session ownership before closing the Hub so gameplay stays
-        // paused throughout the guided journey.
+        // The session now owns the screen: both the flow and the Hub step aside.
+        this.showStep(null);
         this.hub.hide();
     }
 
+    /** End the running session without a result (the player chose to stop). */
     stopSession() {
         this.sessionGeneration += 1;
+        this.sessionRunning = false;
         this.cancelPendingUI();
         this.sessionManager.stopSession();
-        this.hub.breathingTab?.refresh();
-        const overlay = this.container.querySelector('.active-session-overlay');
-        if (overlay) overlay.style.display = 'none';
         this.activeSessionData = null;
+        this.updateLive(null);
+        this.hub.breathingTab?.refresh();
+        this.hub.releaseGameplay?.();
     }
 
     /** Cancel every session surface without returning focus to the previous mode. */
     cancelForModeChange() {
         if (this.destroyed) return;
-        // Invalidate completion callbacks and settle countdown waits before stopping
-        // audio. Immediate hiding avoids the preparation close animation's timer.
-        this.stopSession();
-        ['.session-prep-overlay', '.session-countdown-overlay', '.active-session-overlay',
-            '.session-completion-overlay'].forEach((selector) => {
-            const overlay = this.container?.querySelector(selector);
-            overlay?.classList.remove('visible');
-            this.setStyle(overlay, 'display', 'none');
-        });
+        this.sessionGeneration += 1;
+        this.sessionRunning = false;
+        this.cancelPendingUI();
+        this.sessionManager.stopSession();
+        this.activeSessionData = null;
+        this.updateLive(null);
+        this.showStep(null);
         this.pendingSessionId = null;
         this.selectedIntention = null;
         this.completedSession = null;
         this.focusReturn = null;
     }
 
+    setActive(active) {
+        this.active = Boolean(active) && !this.destroyed;
+        if (this.active) {
+            this.renderPractice();
+            this.updateLive(this.activeSessionData);
+        }
+    }
+
+    /** Keep the catalogue's "session in progress" strip current while the Hub is open. */
+    updateLive(progress) {
+        if (this.destroyed) return;
+        this.activeSessionData = progress || null;
+        if (!this.active || !this.container) return;
+        const live = this.container.querySelector('.hale__live');
+        if (!live) return;
+        const running = Boolean(progress && this.sessionManager?.activeSession);
+        if (live.hidden === running) live.hidden = !running;
+        if (!running) return;
+        const round = progress.round > 0 ? ` · Round ${progress.round} of ${progress.totalRounds}` : '';
+        const text = `${progress.sessionName || 'Session'}${round} · ${STAGE_NAMES[progress.phase] || ''}`;
+        const name = live.querySelector('.hale__live-name');
+        if (name.textContent !== text) name.textContent = text;
+    }
+
+    showCompletionMessage(stats) {
+        if (this.destroyed || !this.flow) return;
+        const info = this.getSessionDetails(stats.sessionId) || {};
+        this.completedSession = stats;
+        recordSession(stats.sessionId, stats.totalDuration);
+        const { flow } = this;
+        flow.dataset.session = stats.sessionId || '';
+        if (info.poster) flow.querySelector('.hale-flow__art').style.backgroundImage = `url('${info.poster}')`;
+        flow.querySelector('.hale-flow__done-name').textContent = stats.sessionName || info.name || 'Hale session';
+        flow.querySelector('.hale-flow__stats').innerHTML = [
+            [formatClock(stats.totalDuration), 'Time for yourself'],
+            [stats.rounds || info.rounds || 3, 'Rounds'],
+            [info.breaths || 0, 'Guided breaths'],
+            [info.maxHold || '—', 'Longest hold'],
+        ].map(([value, label]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
+        flow.querySelector('.hale-flow__closing').textContent = this.selectedIntention
+            ? `You arrived with: ${this.selectedIntention.label}. Let your next moment begin gently.`
+            : 'Notice your breath. Let your next moment begin gently.';
+        this.showStep('complete');
+        this.scheduleUI(() => flow.querySelector('.hale-flow__finish').focus?.({ preventScroll: true }), 30);
+    }
+
+    closeCompletion() {
+        this.sessionRunning = false;
+        this.showStep(null);
+        this.completedSession = null;
+        this.pendingSessionId = null;
+        this.renderPractice();
+        this.hub.releaseGameplay?.();
+    }
+
     destroy() {
         if (this.destroyed) return;
         this.destroyed = true;
         this.active = false;
+        this.sessionRunning = false;
         this.sessionGeneration += 1;
         this.cancelPendingUI();
         this.abortController.abort();
+        if (this.sessionManager) this.sessionManager.onEndRequested = null;
+        this.flow?.remove();
+        this.flow = null;
         this.activeSessionData = null;
-        this.hudNodes = null;
         this.completedSession = null;
         this.focusReturn = null;
-        this.journeyStages = [];
         this.container = null;
-    }
-
-    showCompletionMessage(stats) {
-        if (this.destroyed || !this.container) return;
-        this.completedSession = stats;
-        const overlay = this.container.querySelector('.session-completion-overlay');
-        if (!overlay) return;
-        overlay.dataset.session = stats.sessionId;
-        overlay.scrollTop = 0;
-        const art = overlay.querySelector('.completion-art');
-        if (art) art.innerHTML = this.renderSessionArt(stats.sessionId || 'BASE');
-        this.setLabel(overlay.querySelector('.completion-session-name'), `${stats.sessionName} · journey complete`);
-        this.setLabel(overlay.querySelector('.completion-duration'), this.formatTime(stats.totalDuration));
-        this.setLabel(overlay.querySelector('.completion-rounds'), stats.rounds || 3);
-        this.setLabel(overlay.querySelector('.completion-intention'), this.selectedIntention?.id !== 'none'
-            && this.selectedIntention ? `You arrived with: ${this.selectedIntention.label}` : 'One breath at a time.');
-        this.setStyle(overlay, 'display', 'flex');
-        this.hub.switchTab?.('sessions');
-        this.hub.show?.();
-        this.focusDialog(overlay, '.completion-close-btn');
     }
 }
