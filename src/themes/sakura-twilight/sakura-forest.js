@@ -9,12 +9,13 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, color, cross, dFdx, dFdy, dot, fract, instancedBufferAttribute, mix, normalize,
+    attribute, cameraPosition, color, cross, dFdx, dFdy, dot, fract, mix, normalize,
     normalWorld, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { createSakuraVisibilityTest } from './sakura-composition.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+const INSTANCE_ATTRIBUTES = ['sakuraTree', 'sakuraCrown', 'sakuraBent', 'sakuraLamp'];
 
 /** Deterministic 0..1 hash for choosing which sprays a tier keeps. */
 function keepHash(index, salt) {
@@ -76,7 +77,7 @@ export class SakuraForest {
         const { light } = this;
         const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false }));
         material.name = 'SakuraCherryBark';
-        const tree = instancedBufferAttribute(this.treeAttribute);
+        const tree = attribute('sakuraTree', 'vec4'); // per tree: base xyz, height
         const paint = attribute('color', 'vec4'); // sway, limb phase, occlusion, moss
         const treePhase = fract(tree.x.mul(0.37).add(tree.z.mul(0.71)));
         material.positionNode = positionLocal.add(light.wind({
@@ -137,8 +138,11 @@ export class SakuraForest {
         byAsset.forEach((trees, name) => {
             const asset = this.assets.trees[name];
             const data = new Float32Array(trees.length * 4);
-            this.treeAttribute = new THREE.InstancedBufferAttribute(data, 4);
-            const mesh = new THREE.InstancedMesh(asset.bark, this.createBarkMaterial(), trees.length);
+            // Per-tree data rides on the geometry, so every specimen shares one bark
+            // material (and one set of pipelines) instead of owning a copy of it.
+            asset.bark.setAttribute('sakuraTree', new THREE.InstancedBufferAttribute(data, 4));
+            if (!this.barkMaterial) this.barkMaterial = this.createBarkMaterial();
+            const mesh = new THREE.InstancedMesh(asset.bark, this.barkMaterial, trees.length);
             mesh.name = `SakuraBark ${name}`;
             trees.forEach((tree, index) => {
                 dummy.position.set(tree.x, tree.y, tree.z);
@@ -163,18 +167,18 @@ export class SakuraForest {
             this.borrowed.push(asset.bark);
             this.stats.barkTriangles += (drawn / 3) * trees.length;
         });
-        this.treeAttribute = null;
     }
 
     // -- blossom ------------------------------------------------------------------------
-    createBlossomMaterial(kind, buffers) {
+    createBlossomMaterial() {
         const { light } = this;
         const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide }));
-        material.name = `SakuraBlossom ${kind}`;
-        const crown = instancedBufferAttribute(buffers.crown); // sky, sway, phase, hue
-        const bent = instancedBufferAttribute(buffers.bent); // bent normal xyz, tree tone
-        const tree = instancedBufferAttribute(buffers.tree); // base xyz, height
-        const lamp = instancedBufferAttribute(buffers.lamp); // lantern light gathered at build
+        material.name = 'SakuraBlossom';
+        // Per-spray data rides on each spray geometry as instanced attributes.
+        const crown = attribute('sakuraCrown', 'vec4'); // sky, sway, phase, hue
+        const bent = attribute('sakuraBent', 'vec4'); // bent normal xyz, tree tone
+        const tree = attribute('sakuraTree', 'vec4'); // base xyz, height
+        const lamp = attribute('sakuraLamp', 'float'); // lantern light gathered at build
         const paint = attribute('color', 'vec4'); // along the petal, flower id, shade, petal (1) or wood (0)
         const treePhase = fract(tree.x.mul(0.37).add(tree.z.mul(0.71)));
         const t = light.uTime;
@@ -274,15 +278,15 @@ export class SakuraForest {
             const geometry = this.assets.blossoms.meshes[key];
             if (!geometry) throw new Error(`[Sakura] Blossom mesh "${key}" is missing from the asset pack.`);
             const count = bucket.matrices.length / 16;
-            const buffers = {
-                crown: new THREE.InstancedBufferAttribute(new Float32Array(bucket.crown), 4),
-                bent: new THREE.InstancedBufferAttribute(new Float32Array(bucket.bent), 4),
-                tree: new THREE.InstancedBufferAttribute(new Float32Array(bucket.tree), 4),
-                lamp: new THREE.InstancedBufferAttribute(new Float32Array(bucket.lamp), 1),
-            };
-            // Variants of one spray kind differ only in geometry and instance data, but the
-            // instance buffers are baked into the node graph, so each draw owns a material.
-            const mesh = new THREE.InstancedMesh(geometry, this.createBlossomMaterial(bucket.kind, buffers), count);
+            // Spray kinds differ only in geometry and instance data: the data rides on the
+            // geometry, so all of them share one material and one set of pipelines.
+            geometry.setAttribute('sakuraCrown', new THREE.InstancedBufferAttribute(new Float32Array(bucket.crown), 4));
+            geometry.setAttribute('sakuraBent', new THREE.InstancedBufferAttribute(new Float32Array(bucket.bent), 4));
+            geometry.setAttribute('sakuraTree', new THREE.InstancedBufferAttribute(new Float32Array(bucket.tree), 4));
+            geometry.setAttribute('sakuraLamp', new THREE.InstancedBufferAttribute(new Float32Array(bucket.lamp), 1));
+            this.borrowed.push(geometry);
+            if (!this.blossomMaterial) this.blossomMaterial = this.createBlossomMaterial();
+            const mesh = new THREE.InstancedMesh(geometry, this.blossomMaterial, count);
             mesh.name = `SakuraBlossom ${key}`;
             mesh.instanceMatrix.array.set(bucket.matrices);
             mesh.instanceMatrix.needsUpdate = true;
@@ -321,8 +325,14 @@ export class SakuraForest {
         });
         this.owned.forEach((resource) => resource.dispose());
         this.owned.length = 0;
-        this.borrowed.forEach((geometry) => geometry.setDrawRange(0, Infinity));
+        // The geometries belong to the asset bundle: hand them back as they came.
+        this.borrowed.forEach((geometry) => {
+            geometry.setDrawRange(0, Infinity);
+            INSTANCE_ATTRIBUTES.forEach((name) => geometry.deleteAttribute(name));
+        });
         this.borrowed.length = 0;
+        this.barkMaterial = null;
+        this.blossomMaterial = null;
         this.group.removeFromParent();
         this.group.clear();
     }

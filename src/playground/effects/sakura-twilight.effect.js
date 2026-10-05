@@ -49,6 +49,17 @@ export function create({
             + 'border-radius:14px;background:#140f1fd9;pointer-events:none;z-index:3';
         document.body.appendChild(overlay);
     }
+    // ?icon=1 is the theme-icon framing: a long lens on the torii under the mountain, with
+    // the moon brought round beside it. Wide framings read dark and off-centre at 80 px.
+    const frameIcon = () => {
+        if (params.get('icon') !== '1' || !world) return;
+        camera.fov = 30;
+        camera.position.set(2, 3.5, 6);
+        camera.lookAt(-20.3, 10.8, -49.2);
+        camera.updateProjectionMatrix();
+        world.light.setMoon(-14.6, 15.8);
+        world.stage.refresh();
+    };
     const ready = loadSakuraAssets().then((loaded) => {
         if (disposed) {
             disposeSakuraAssets(loaded);
@@ -59,9 +70,10 @@ export function create({
             scene, camera, quality, rng, assets,
         }).build();
         post = new SakuraPost({
-            renderer, scene, camera, quality, light: world.light,
+            renderer, scene, camera, quality, light: world.light, prime: () => world.primeShadows(renderer),
         });
         post.setSize(window.innerWidth, window.innerHeight);
+        frameIcon();
     });
     const update = (time, dt) => {
         reactions.update(dt);
@@ -144,6 +156,7 @@ export function create({
         resize(width, height) {
             world?.prepareCamera(camera.aspect);
             post?.setSize(width, height);
+            frameIcon();
         },
         getDiagnostics() {
             return {

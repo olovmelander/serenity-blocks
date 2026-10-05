@@ -54,9 +54,12 @@ export function sakuraSurfaceHeight(x, z) {
     return Math.max(SAKURA_WATER_LEVEL, sakuraTerrainHeight(x, z));
 }
 
-/** z of the stepping-stone path that follows the shore below the knoll. */
+/** How far the stepping-stone path keeps back from the water. */
+export const SAKURA_PATH_SETBACK = 2.4;
+
+/** z of the stepping-stone path: it follows the near shore round the cove and both lobes. */
 export function sakuraPathZ(x) {
-    return 6.6 + 0.9 * Math.sin(x * 0.16 + 0.5) - 0.03 * x * x;
+    return sakuraShore(x) + SAKURA_PATH_SETBACK;
 }
 
 export function sakuraPathDistance(x, z) {
@@ -149,18 +152,22 @@ export class SakuraTerrain {
         const silt = mix(color(0x0d0b10), color(0x1e1a1d), fine.g);
         let albedo = mix(silt, mix(moss, grass, smoothstep(0.5, 1.5, world.y.add(patch.b.mul(0.5)))), shore);
         // Stepping stones worn into the knoll.
-        // The same curve as sakuraPathZ().
-        const pathZ = float(6.6).add(world.x.mul(0.16).add(0.5).sin().mul(0.9)).sub(world.x.mul(world.x).mul(0.03));
+        // The same curve as sakuraPathZ(): the shoreline, set back from the water.
+        const side = world.x.abs();
+        const pathZ = float(4.5 + SAKURA_PATH_SETBACK).sub(smoothstep(3.5, 10.5, side).mul(8))
+            .add(smoothstep(17, 30, side).mul(5))
+            .add(world.x.mul(0.37).add(1.1).sin().mul(0.7))
+            .add(world.x.mul(0.83).add(0.2).sin().mul(0.45));
         const stride = world.x.mul(0.62).add(patch.r.mul(0.9));
         const stone = smoothstep(0.3, 0.42, world.z.sub(pathZ).abs().mul(0.9).add(stride.fract().sub(0.5).abs().mul(0.62)))
-            .oneMinus().mul(smoothstep(0.45, 0.8, world.y)).mul(smoothstep(9.5, 11.5, world.x.abs()).oneMinus());
+            .oneMinus().mul(smoothstep(0.45, 0.8, world.y)).mul(smoothstep(12, 14, world.x.abs()).oneMinus());
         albedo = mix(albedo, mix(color(0x2b2a2f), color(0x4a484d), fine.a), stone);
         // A fall of petals: thick where the wind drops them, thin in the open.
         const drift = smoothstep(0.34, 0.74, broad.b.mul(0.55).add(patch.r.mul(0.6)));
         // The noise is a lattice: a turned second octave keeps its grid from showing.
         const turned = vec2(point.x.mul(0.8).sub(point.y.mul(0.6)), point.x.mul(0.6).add(point.y.mul(0.8)));
         const speck = smoothstep(0.6, 0.72, light.noise(point.mul(0.71)).a.mul(0.6).add(light.noise(turned.mul(1.63)).a.mul(0.5)));
-        const petals = speck.mul(drift.mul(0.85).add(0.12)).mul(shore).mul(light.uGlow.mul(0.4).add(1));
+        const petals = speck.mul(drift.mul(0.62).add(0.06)).mul(shore).mul(light.uGlow.mul(0.4).add(1));
         albedo = mix(albedo, mix(color(0xe9a9bd), color(0xfbe3ea), fine.a), saturate(petals));
 
         const moonFacing = saturate(dot(normal, light.uMoonDir).mul(0.75).add(0.25));

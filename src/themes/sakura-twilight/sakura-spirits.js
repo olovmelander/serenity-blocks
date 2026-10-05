@@ -19,6 +19,8 @@ import { SAKURA_WATER_LEVEL, sakuraLand, sakuraTerrainHeight } from './sakura-te
 const TAU = Math.PI * 2;
 const WATER_LIFE = 86;
 const SKY_LIFE = 46;
+const FLASH_SLOTS = 8;
+const FLASH_SECONDS = 0.62;
 
 /** Offset of a camera-facing sprite vertex around `centre` (TSL). */
 function billboard(centre, size) {
@@ -63,6 +65,7 @@ export class SakuraSpirits {
         this.buildFoxfire();
         this.buildWaterLanterns();
         this.buildSkyLanterns();
+        this.buildFlashes();
         return this;
     }
 
@@ -357,6 +360,59 @@ export class SakuraSpirits {
         return true;
     }
 
+    /** Soft bursts of light where the game throws petals out from behind the board. */
+    buildFlashes() {
+        const { light } = this;
+        const count = FLASH_SLOTS;
+        this.flashSlots = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4); // x, y, z, birth
+        this.flashLook = new THREE.InstancedBufferAttribute(new Float32Array(count * 2), 2); // strength, turn
+        this.flashSlots.setUsage(THREE.DynamicDrawUsage);
+        this.flashLook.setUsage(THREE.DynamicDrawUsage);
+        for (let i = 0; i < count; i += 1) this.flashSlots.setXYZW(i, 0, 0, 0, -1000);
+        const slot = instancedBufferAttribute(this.flashSlots);
+        const look = instancedBufferAttribute(this.flashLook);
+        const material = this.spriteMaterial('SakuraPetalFlash');
+        const life = float(FLASH_SECONDS);
+        const age = light.uTime.sub(slot.w);
+        const k = saturate(age.div(life));
+        // Alive only between its birth and the end of its short life.
+        const alive = max(age, 0).sign().mul(max(life.sub(age), 0).sign());
+        material.positionNode = billboard(slot.xyz, look.x.mul(pow(k, 0.45).mul(3.2).add(0.7)));
+        const st = uv().sub(0.5);
+        const reach = length(st).mul(2);
+        const bloom = exp(reach.mul(reach).mul(-4.5)).mul(saturate(float(1).sub(reach)));
+        // Four thin rays turn the bloom into a glint.
+        const turned = vec2(
+            st.x.mul(cos(look.y)).sub(st.y.mul(sin(look.y))),
+            st.x.mul(sin(look.y)).add(st.y.mul(cos(look.y))),
+        );
+        const rays = max(exp(turned.x.abs().mul(-70)), exp(turned.y.abs().mul(-70)))
+            .mul(saturate(float(1).sub(reach))).mul(k.oneMinus());
+        const fade = k.oneMinus().mul(k.oneMinus());
+        material.colorNode = mix(vec3(1.9, 1.35, 1.7), vec3(1.3, 0.36, 0.72), k)
+            .mul(bloom.mul(0.75).add(rays.mul(0.9))).mul(fade).mul(alive)
+            .mul(look.x);
+        const mesh = new THREE.InstancedMesh(this.quad, material, count);
+        mesh.name = 'SakuraPetalFlashes';
+        mesh.frustumCulled = false;
+        mesh.matrixAutoUpdate = false;
+        mesh.renderOrder = 28;
+        this.flashCursor = 0;
+        this.group.add(mesh);
+    }
+
+    /** A burst of light at a world point; `strength` scales its size and brightness. */
+    flash(x, y, z, strength = 1) {
+        if (!this.flashSlots || !(strength > 0)) return false;
+        const index = this.flashCursor % FLASH_SLOTS;
+        this.flashCursor += 1;
+        this.flashSlots.setXYZW(index, x, y, z, this.light.uTime.value);
+        this.flashLook.setXY(index, Math.min(1.8, strength), this.rng() * Math.PI);
+        this.flashSlots.needsUpdate = true;
+        this.flashLook.needsUpdate = true;
+        return true;
+    }
+
     /** Stand the foxfire beside the board card: its centre and half-extents in world space. */
     setRing(centre, right, up) {
         this.uRingCentre.value.copy(centre);
@@ -369,6 +425,11 @@ export class SakuraSpirits {
         this.uScatter.value = 0;
         this.waterCursor = 0;
         this.skyCursor = 0;
+        this.flashCursor = 0;
+        if (this.flashSlots) {
+            for (let i = 0; i < FLASH_SLOTS; i += 1) this.flashSlots.setW(i, -1000);
+            this.flashSlots.needsUpdate = true;
+        }
         if (this.skySlots) {
             for (let i = 0; i < this.skySlots.count; i += 1) this.skySlots.setW(i, -1000);
             this.skySlots.needsUpdate = true;

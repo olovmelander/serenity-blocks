@@ -452,9 +452,11 @@ def fuji(rings=58, sectors=168, seed=11, base_radius=2.4):
     positions = np.stack([radius * np.cos(grid_theta) * base_radius, height,
                           radius * np.sin(grid_theta) * base_radius], axis=2).reshape(-1, 3)
     # Snow lies above a ragged line and lingers in the gullies below it.
-    line = 0.3 + 0.045 * np.sin(grid_theta * 5.0 + 0.4) + 0.03 * np.sin(grid_theta * 11.0 + 2.2)
+    line = (0.3 + 0.04 * np.sin(grid_theta * 5.0 + 0.4) + 0.028 * np.sin(grid_theta * 11.0 + 2.2)
+            + 0.018 * np.sin(grid_theta * 23.0 + 1.0))
     snow = np.clip((line + 0.05 - grid_t) / 0.09, 0.0, 1.0)
-    streak = np.clip((gully - 0.3) * 2.6, 0.0, 1.0) * np.clip((0.66 - grid_t) / 0.3, 0.0, 1.0)
+    # Short tongues only: a long one reads as a drip from this far away.
+    streak = np.clip((gully - 0.46) * 2.4, 0.0, 1.0) * np.clip((0.5 - grid_t) / 0.2, 0.0, 1.0)
     snow = np.clip(np.maximum(snow, streak), 0.0, 1.0)
     shade = np.clip(1.0 - gully * 0.85 * slope, 0.0, 1.0)
     colours = np.stack([snow, shade, 1.0 - grid_t, np.ones_like(grid_t)], axis=2).reshape(-1, 4)

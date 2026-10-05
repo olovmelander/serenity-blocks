@@ -16,10 +16,10 @@ import { sakuraPathZ, sakuraTerrainHeight } from './sakura-terrain.js';
 
 const CLIPS = Object.freeze({ idle: 'Survey', walk: 'Walk', run: 'Run' });
 const SPEED = Object.freeze({ idle: 0, walk: 0.95, run: 3.3 });
-const PATH_HALF_SPAN = 8.6;
+const PATH_HALF_SPAN = 10.8;
 const FOX_PLAN = Object.freeze([
-    { x: -5.6, scale: 0.0096, lane: 0.4 },
-    { x: 6.2, scale: 0.0086, lane: -0.45 },
+    { x: -7.4, scale: 0.0096, lane: 0.35 },
+    { x: 8.6, scale: 0.0086, lane: -0.3 },
 ]);
 
 export class SakuraFoxes {

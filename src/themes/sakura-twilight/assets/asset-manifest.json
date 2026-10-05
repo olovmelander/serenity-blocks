@@ -51,7 +51,7 @@
     {
       "file": "sakura-fuji.glb",
       "bytes": 273212,
-      "sha256": "cacd65ff7054eabf37f52716390da3acc9d229922a80c15ea617607f5ddd91d5",
+      "sha256": "3104458696122f509df278f6a6add117e19767cf4e012ea306a0e9333a5e7211",
       "kind": "mountain",
       "triangles": 19320,
       "height": 1.0,
@@ -125,8 +125,8 @@
     },
     {
       "file": "sakura-impostors.png",
-      "bytes": 899433,
-      "sha256": "8ab6230855a80fd15a1718d10bf405f384999f8e2a93718c5e292a7ae8b3e180",
+      "bytes": 917684,
+      "sha256": "bace88fbe10b68d5d16deb263f86aa6eb38eaddd9d9fb20ef5b48431e64bdf92",
       "kind": "impostors",
       "atlasWidth": 1808,
       "atlasHeight": 320,

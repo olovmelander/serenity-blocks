@@ -11,8 +11,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
-    texture, uniform, uniformArray, vec2, vec3,
+    Fn, Loop, cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
+    texture, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 
 const TAU = Math.PI * 2;
@@ -98,6 +98,7 @@ export class SakuraLight {
         this.ringNodes = uniformArray(this.ringData, 'vec4');
         this.ringCursor = 0;
         this.noiseTexture = createNoiseTexture(rng);
+        this.buildShaderFunctions();
 
         this.moon = new THREE.DirectionalLight(0xffffff, 1);
         this.moon.name = 'SakuraLowMoon';
@@ -160,36 +161,88 @@ export class SakuraLight {
         return texture(this.noiseTexture, coordinate);
     }
 
+    /**
+     * The helpers every material shares. The lantern and ring arrays are walked by real
+     * shader loops: unrolled in JavaScript they paste ten copies of the lamp maths into
+     * every material, and the shader compiler then spends many seconds on the garden's
+     * first frame. They stay inline functions (no `setLayout`): in three r186 a function
+     * with a layout is generated once and reused, so the uniforms it captures are never
+     * declared in the next material that calls it.
+     */
+    buildShaderFunctions() {
+        this.skyFn = Fn(([direction]) => {
+            const overhead = saturate(direction.y);
+            const low = overhead.oneMinus();
+            const flat = normalize(vec2(direction.x, direction.z).add(vec2(0.0001, 0)));
+            const toward = dot(flat, this.uGlowDir).mul(0.5).add(0.5);
+            const vault = mix(this.uZenith, this.uVault, pow(low, 2.2));
+            const band = mix(this.uHorizon, this.uAfterglow, pow(toward, 2.4));
+            const ember = this.uEmber.mul(pow(low, 22).mul(pow(toward, 5)));
+            const moonward = saturate(dot(direction, this.uMoonDir));
+            const halo = this.uMoonColor.mul(pow(moonward, 9).mul(0.012).add(pow(moonward, 90).mul(0.06)));
+            return mix(vault, band, pow(low, 5.5)).add(ember).add(halo)
+                .mul(this.uSpirit.mul(0.18).add(1));
+        });
+
+        this.hazeFn = Fn(([colour, world, strength]) => {
+            const offset = world.sub(cameraPosition);
+            const range = length(offset);
+            const direction = offset.div(max(range, 0.001));
+            const height = max(world.y.sub(this.uWaterLevel), 0.5);
+            // The air thins with height (a ray to the summit crosses less of it than one
+            // along the water), and a shallow mist lies on the lake itself.
+            const thick = height.mul(0.02);
+            const column = thick.negate().exp().oneMinus().div(thick);
+            const low = exp(height.mul(-0.4));
+            const amount = exp(range.mul(this.uHaze.mul(column).add(this.uMist.mul(low))).negate()).oneMinus();
+            // The air takes the colour of the sky behind it, so distance melts into the horizon.
+            const air = this.skyFn(normalize(vec3(direction.x, max(direction.y, 0).mul(0.5).add(0.035), direction.z)));
+            return mix(colour, air, saturate(amount.mul(strength)));
+        });
+
+        this.ringsFn = Fn(([point]) => {
+            // x: band of light on each front, y: the wave under it, zw: outward push.
+            const sum = vec4(0).toVar();
+            Loop(SAKURA_RING_SLOTS, ({ i }) => {
+                const ring = this.ringNodes.element(i);
+                const offset = point.sub(ring.xy);
+                const radius = max(length(offset), 0.001);
+                const age = this.uTime.sub(ring.z);
+                const front = radius.sub(age.mul(SAKURA_RING_SPEED));
+                const packet = exp(front.mul(front).mul(-0.11)).mul(ring.w).mul(exp(age.mul(-0.55)))
+                    .mul(saturate(age.mul(8)));
+                const ripple = sin(front.mul(1.7)).mul(packet);
+                sum.addAssign(vec4(packet, ripple, offset.div(radius).mul(ripple)));
+            });
+            return sum;
+        });
+
+        if (!this.lampCount) return;
+        this.lampsFn = Fn(([world, normal, shaped]) => {
+            const total = float(0).toVar();
+            Loop(this.lampCount, ({ i }) => {
+                const lamp = this.lampNodes.element(i);
+                const offset = lamp.xyz.sub(world);
+                const distanceSq = dot(offset, offset);
+                const reach = float(1).div(distanceSq.mul(0.05).add(1));
+                const order = float(i);
+                const flicker = sin(this.uTime.mul(order.mul(0.83).add(6.1)).add(order.mul(2.1)))
+                    .mul(sin(this.uTime.mul(order.mul(0.37).add(2.3)).add(order))).mul(0.07).add(0.93);
+                const facing = saturate(dot(normal, offset.div(max(distanceSq, 0.0001).sqrt())).mul(0.6).add(0.4));
+                total.addAssign(reach.mul(reach).mul(lamp.w).mul(flicker).mul(mix(float(1), facing, shaped)));
+            });
+            return this.uLampColor.mul(total).mul(this.uLampGain);
+        });
+    }
+
     /** Sky radiance seen along a unit direction (no stars, no disc: the dome adds those). */
     sky(direction) {
-        const overhead = saturate(direction.y);
-        const low = overhead.oneMinus();
-        const flat = normalize(vec2(direction.x, direction.z).add(vec2(0.0001, 0)));
-        const toward = dot(flat, this.uGlowDir).mul(0.5).add(0.5);
-        const vault = mix(this.uZenith, this.uVault, pow(low, 2.2));
-        const band = mix(this.uHorizon, this.uAfterglow, pow(toward, 2.4));
-        const ember = this.uEmber.mul(pow(low, 22).mul(pow(toward, 5)));
-        const moonward = saturate(dot(direction, this.uMoonDir));
-        const halo = this.uMoonColor.mul(pow(moonward, 9).mul(0.012).add(pow(moonward, 90).mul(0.06)));
-        return mix(vault, band, pow(low, 5.5)).add(ember).add(halo)
-            .mul(this.uSpirit.mul(0.18).add(1));
+        return this.skyFn(direction);
     }
 
     /** Aerial perspective: distance and the mist over the water fade a colour into the air. */
     haze(colour, { world = positionWorld, strength = 1 } = {}) {
-        const offset = world.sub(cameraPosition);
-        const range = length(offset);
-        const direction = offset.div(max(range, 0.001));
-        const height = max(world.y.sub(this.uWaterLevel), 0.5);
-        // The air thins with height (a ray to the summit crosses less of it than one along
-        // the water), and a shallow mist lies on the lake itself.
-        const thick = height.mul(0.02);
-        const column = thick.negate().exp().oneMinus().div(thick);
-        const low = exp(height.mul(-0.4));
-        const amount = exp(range.mul(this.uHaze.mul(column).add(this.uMist.mul(low))).negate()).oneMinus();
-        // The air takes the colour of the sky behind it, so distance melts into the horizon.
-        const air = this.sky(normalize(vec3(direction.x, max(direction.y, 0).mul(0.5).add(0.035), direction.z)));
-        return mix(colour, air, saturate(amount.mul(strength)));
+        return this.hazeFn(colour, world, float(strength));
     }
 
     /** Hemisphere ambient: violet sky from above, a dim bounce from the ground. */
@@ -199,46 +252,18 @@ export class SakuraLight {
 
     /** Warm light from the lanterns reaching a point (optionally shaped by its normal). */
     lamps(world, normal = null) {
-        let total = vec3(0);
-        for (let index = 0; index < this.lampCount; index += 1) {
-            const lamp = this.lampNodes.element(index);
-            const offset = lamp.xyz.sub(world);
-            const distanceSq = dot(offset, offset);
-            const reach = float(1).div(distanceSq.mul(0.05).add(1));
-            const flicker = sin(this.uTime.mul(6.1 + index * 0.83).add(index * 2.1))
-                .mul(sin(this.uTime.mul(2.3 + index * 0.37).add(index))).mul(0.07).add(0.93);
-            let amount = reach.mul(reach).mul(lamp.w).mul(flicker);
-            if (normal) {
-                amount = amount.mul(saturate(dot(normal, offset.div(max(distanceSq, 0.0001).sqrt())).mul(0.6).add(0.4)));
-            }
-            total = total.add(amount);
-        }
-        return this.uLampColor.mul(total).mul(this.uLampGain);
+        if (!this.lampsFn) return vec3(0);
+        return this.lampsFn(world, normal || vec3(0, 1, 0), float(normal ? 1 : 0));
     }
 
     /**
-     * The rings a locked piece sends out: x is a band of light riding each expanding
-     * front, y the signed wave under it (for the water), zw the outward direction scaled
-     * by that wave.
+     * The rings a locked piece sends out: `band` is the light riding each expanding
+     * front, `wave` the signed wave under it (for the water), `push` the outward direction
+     * scaled by that wave.
      */
     rings(point) {
-        let band = float(0);
-        let wave = float(0);
-        let push = vec2(0);
-        for (let slot = 0; slot < SAKURA_RING_SLOTS; slot += 1) {
-            const ring = this.ringNodes.element(slot);
-            const offset = point.sub(ring.xy);
-            const radius = max(length(offset), 0.001);
-            const age = this.uTime.sub(ring.z);
-            const front = radius.sub(age.mul(SAKURA_RING_SPEED));
-            const packet = exp(front.mul(front).mul(-0.11)).mul(ring.w).mul(exp(age.mul(-0.55)))
-                .mul(saturate(age.mul(8)));
-            const ripple = sin(front.mul(1.7)).mul(packet);
-            band = band.add(packet);
-            wave = wave.add(ripple);
-            push = push.add(offset.div(radius).mul(ripple));
-        }
-        return { band, wave, push };
+        const sum = this.ringsFn(point);
+        return { band: sum.x, wave: sum.y, push: sum.zw };
     }
 
     /** Start a ring at world (x, z). Reuses the oldest slot; allocates nothing. */

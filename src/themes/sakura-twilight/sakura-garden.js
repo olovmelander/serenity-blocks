@@ -188,16 +188,25 @@ export class SakuraGarden {
 
     buildGrass() {
         const { light, rng } = this;
-        const eye = SAKURA_VIEWS.landscape.position;
+        // The portrait framing stands further back: the grass starts at its feet.
+        const eye = [0, 0, Math.max(SAKURA_VIEWS.landscape.position[2], SAKURA_VIEWS.portrait.position[2])];
         const tufts = [];
         for (let attempt = 0; tufts.length < this.tier.grass && attempt < this.tier.grass * 14; attempt += 1) {
             // Dense on the knoll in front of the camera, thinning toward the points.
             const depth = rng() ** 2.6;
-            const z = eye[2] - 3.2 - depth * 44;
+            const z = eye[2] - 2.6 - depth * 47;
             const x = (rng() * 2 - 1) * (5 + (eye[2] - z) * 0.95);
-            if (sakuraLand(x, z) > 0.5 && sakuraPathDistance(x, z) > 0.75) {
+            const land = sakuraLand(x, z);
+            if (land > 0.5 && sakuraPathDistance(x, z) > 1.1) {
+                // Grazed short along the shore, where the foxes walk; rank on the knoll.
+                const shore = 0.42 + 0.58 * THREE.MathUtils.smoothstep(land, 1.5, 7.5);
                 tufts.push({
-                    x, y: sakuraTerrainHeight(x, z) - 0.03, z, yaw: rng() * TAU, scale: 0.55 + rng() * 0.75 + depth * 0.8, phase: rng(),
+                    x,
+                    y: sakuraTerrainHeight(x, z) - 0.03,
+                    z,
+                    yaw: rng() * TAU,
+                    scale: (0.55 + rng() * 0.75 + depth * 0.8) * shore,
+                    phase: rng(),
                 });
             }
         }

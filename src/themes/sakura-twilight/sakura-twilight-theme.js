@@ -276,6 +276,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             camera: this.camera,
             quality: this.quality,
             light: this.world.light,
+            prime: () => this.world.primeShadows(this.renderer),
         });
         this.boardPoll = 0;
     }
