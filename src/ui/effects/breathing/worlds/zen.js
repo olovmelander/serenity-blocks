@@ -25,9 +25,10 @@
  * its leaves glowing crimson with the moon behind them; a few drift down past the lens. Thin cloud
  * shade wanders over the garden, the mist rolls slowly along the breeze, sand grains twinkle.
  */
+import { Vector4 } from 'three/webgpu';
 import {
     Break, Fn, If, Loop, clamp, dot, exp, float, length, max, min, mix, normalize, select, smoothstep, sqrt,
-    vec2, vec3,
+    uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
     backdropPoint, fadeOut, fbm, fbm3, gnoise, gnoise3, hash22, layer, starfield, turn,
@@ -285,28 +286,38 @@ function intoRockJS([x, y, z], rock) {
 const placed = (c, home, spread) => vec3(float(c[0]).add(spread.sub(1).mul(home)), c[1], c[2]);
 
 /**
- * Distance (m) from a ground point to an elliptical island's edge, and its unit gradient. The
- * first-order ellipse distance: exact for a circle, gently elliptical rings farther out.
+ * Distance (m) from a ground point to an elliptical island's edge, and its unit gradient, as
+ * vec3(d, grad). The first-order ellipse distance: exact for a circle, gently elliptical rings
+ * farther out. A real shader function (the rake, the ring, the mist and the stones all ask it);
+ * the island comes in as shape = (centre x, z, radii) and its turn as (cos, sin).
  */
-function islandField(x, z, island, spread) {
-    const [cx, cz] = island.c;
-    const [rx, rz] = island.r;
-    const c = Math.cos(island.yaw);
-    const s = Math.sin(island.yaw);
-    const dx = x.sub(spread.mul(cx)).toVar();
-    const dz = z.sub(cz).toVar();
-    const qx = dx.mul(c).sub(dz.mul(s)).toVar();
-    const qz = dx.mul(s).add(dz.mul(c)).toVar();
-    const k = vec2(qx.div(rx), qz.div(rz)).length().toVar();
-    const gx = qx.div(rx * rx).toVar();
-    const gz = qz.div(rz * rz).toVar();
+const islandFn = /* @__PURE__ */ Fn(([x, z, shape, turnCS, spread]) => {
+    const dx = x.sub(spread.mul(shape.x)).toVar();
+    const dz = z.sub(shape.y).toVar();
+    const qx = dx.mul(turnCS.x).sub(dz.mul(turnCS.y)).toVar();
+    const qz = dx.mul(turnCS.y).add(dz.mul(turnCS.x)).toVar();
+    const k = vec2(qx.div(shape.z), qz.div(shape.w)).length().toVar();
+    const gx = qx.div(shape.z.mul(shape.z)).toVar();
+    const gz = qz.div(shape.w.mul(shape.w)).toVar();
     const glen = vec2(gx, gz).length().max(1e-4).toVar();
     const ux = gx.div(glen).toVar();
     const uz = gz.div(glen).toVar();
-    return {
-        d: k.sub(1).mul(k).div(glen).toVar(),
-        grad: vec2(ux.mul(c).add(uz.mul(s)), uz.mul(c).sub(ux.mul(s))).toVar(),
-    };
+    const grad = vec2(ux.mul(turnCS.x).add(uz.mul(turnCS.y)), uz.mul(turnCS.x).sub(ux.mul(turnCS.y)));
+    return vec3(k.sub(1).mul(k).div(glen), grad);
+}).setLayout({
+    name: 'zen_island',
+    type: 'vec3',
+    inputs: [
+        { name: 'x', type: 'float' }, { name: 'z', type: 'float' }, { name: 'shape', type: 'vec4' },
+        { name: 'turnCS', type: 'vec2' }, { name: 'spread', type: 'float' },
+    ],
+});
+
+/** One island's { d, grad } at a ground point. */
+function islandField(x, z, island, spread) {
+    const shape = vec4(island.c[0], island.c[1], island.r[0], island.r[1]);
+    const field = islandFn(x, z, shape, vec2(Math.cos(island.yaw), Math.sin(island.yaw)), spread).toVar();
+    return { d: field.x, grad: field.yz };
 }
 
 /** Polynomial smooth union of two distance fields; its gradient is exactly the blend of theirs. */
@@ -369,10 +380,103 @@ const grit = /* @__PURE__ */ Fn(([at]) => gnoise3(at.mul(5.2).add(3.1)).sub(0.5)
     .add(at.y.mul(21).add(at.x.mul(3.7)).add(gnoise3(at.mul(2.2)).mul(5)).sin()
         .mul(0.004))).setLayout({ name: 'zen_grit', type: 'float', inputs: [{ name: 'at', type: 'vec3' }] });
 
+/** intoRock with the rock's turn read from shader data: (cos yaw, sin yaw, cos lean, sin lean). */
+function intoRockBy(v, turnCS) {
+    const x1 = v.x.mul(turnCS.x).sub(v.z.mul(turnCS.y)).toVar();
+    const z1 = v.x.mul(turnCS.y).add(v.z.mul(turnCS.x));
+    return vec3(x1.mul(turnCS.z).add(v.y.mul(turnCS.w)), v.y.mul(turnCS.z).sub(x1.mul(turnCS.w)), z1);
+}
+
+/**
+ * Low mist and night air between the eye and a point `t` along the ray, `height` above the sand:
+ * the mist lies MIST_H deep, rolls along the breeze, scatters moonlight (more toward the moon), and
+ * carries the breath ring's light and the lantern's warmth. A real shader function (the sand, the
+ * wall, the lantern and the stones all call it), so the view comes in packed: eyeR = (eye, |dir|),
+ * dirD = (dir, -dir.y), scene = (toMoon, drift, time, ring distance), lampF = (lamp, flame).
+ */
+const veilFn = /* @__PURE__ */ Fn(([colour, t, height, ringGlow, eyeR, dirD, scene, lampF, spread]) => {
+    const dt = float(MIST_H).sub(height).max(0).div(dirD.w)
+        .min(t)
+        .toVar();
+    const mid = eyeR.xyz.add(dirD.xyz.mul(t.sub(dt.mul(0.5)))).toVar();
+    // Wisps drawn out along the breeze (x), slowly rolling.
+    const dens = fbm3(vec3(mid.x.mul(0.22).add(scene.y), mid.z.mul(0.5), scene.z.mul(0.025)), 3);
+    const thick = smoothstep(0.38, 0.66, dens).mul(0.9).add(0.1);
+    const mist = float(1).sub(exp(dt.mul(eyeR.w).mul(thick).mul(-0.5)));
+    const forward = exp(scene.x.sub(1).mul(2.4)).toVar();
+    // The mist carries light: the breath ring glowing up into it, the lantern's warmth near it.
+    const gap = islandField(mid.x, mid.z, GROUPS[0].island, spread).d.sub(scene.w).toVar();
+    const toLamp = lampF.xyz.sub(mid).toVar();
+    const mistColor = MOONLIGHT.mul(forward.mul(0.15).add(0.075)).add(SKYLIGHT.mul(0.3))
+        .add(RING_LIGHT.mul(exp(gap.mul(gap).mul(-9))).mul(ringGlow.mul(0.15)))
+        .add(WARM.mul(lampF.w).mul(float(0.14).div(dot(toLamp, toLamp).mul(0.9).add(1))));
+    const c = mix(colour, mistColor, mist).toVar();
+    const air = float(1).sub(exp(t.mul(eyeR.w).mul(-0.02)));
+    return mix(c, HAZE.add(MOONLIGHT.mul(forward).mul(0.025)), air);
+}).setLayout({
+    name: 'zen_veil',
+    type: 'vec3',
+    inputs: [
+        { name: 'colour', type: 'vec3' }, { name: 't', type: 'float' }, { name: 'height', type: 'float' },
+        { name: 'ringGlow', type: 'float' }, { name: 'eyeR', type: 'vec4' }, { name: 'dirD', type: 'vec4' },
+        { name: 'scene', type: 'vec4' }, { name: 'lampF', type: 'vec4' }, { name: 'spread', type: 'float' },
+    ],
+});
+
+/** The hedge's domes: two interleaved sets [slot width, seed, rise], each read at offsets -1, 0, 1. */
+const DOMES = [[1.7, 4.7, 1.3], [2.6, 9.1, 1.15]].flatMap((set) => [-1, 0, 1].map((o) => [...set, o]));
+
+/**
+ * Everything the shader repeats (stones, bounds, hedge domes, lantern stones, maple segments and
+ * leaves), as shader data read in loops: each loop body compiles once instead of once per item. All
+ * of it lives in ONE uniform array (every array is a uniform buffer, and a stage may bind only 12):
+ * blocks of vec4 rows, `stride` rows per item; `row(block, i, k)` reads row k of item i.
+ */
+function createTables() {
+    const rows = [];
+    const block = (items, ...pack) => {
+        const offset = rows.length;
+        items.forEach((item, index) => pack.forEach((fn) => rows.push(new Vector4(...fn(item, index)))));
+        return { offset, stride: pack.length, count: items.length };
+    };
+    const rocks = block(
+        ROCKS,
+        (rock) => [...rock.c, rock.home],
+        (rock) => [rock.cy, rock.sy, rock.cl, rock.sl],
+        (rock) => [...rock.r, Math.min(...rock.r)],
+        (rock) => {
+            // The moonbeam in the rock's scaled frame, and its squared length.
+            const l = intoRockJS(MOON_DIR, rock).map((c, i) => c / rock.r[i]);
+            return [...l, l.reduce((sum, c) => sum + c * c, 0)];
+        },
+    );
+    const bounds = block(BOUNDS, (b) => [...b.centre, b.home], (b) => [b.radius * b.radius, 0, 0, 0]);
+    const domes = block(DOMES, (dome) => dome);
+    // A part's top half-width is stored negative when its sides sweep in on a curve (all are > 0).
+    const parts = block(LANTERN_PARTS, ([from, to, w0, w1, curved]) => [from, to, w0, curved ? -w1 : w1]);
+    const segments = block(
+        MAPLE.segments,
+        ([from, to]) => [...from, ...to],
+        ([from, to, w0, w1]) => [w0, w1, (to[0] - from[0]) ** 2 + (to[1] - from[1]) ** 2, 0],
+    );
+    const leaves = block(
+        MAPLE.leaves,
+        ([c, heading, size]) => [...c, heading, size],
+        ([, , , bright], index) => [bright, 0.6 + (index % 5) * 0.11, index * 1.7, 0],
+    );
+    const data = uniformArray(rows, 'vec4');
+    const row = (at, i, k = 0) => data.element(i.mul(at.stride).add(at.offset + k));
+    return {
+        rocks, bounds, domes, parts, segments, leaves, row,
+    };
+}
+
 export function createZenWorld({ u, quality }) {
     const { octaves } = quality;
     const marchSteps = Math.round(12 + 14 * quality.detail);
     const shadowSteps = quality.detail >= 0.6 ? 5 : 3;
+    const tables = createTables();
+    const { row } = tables;
     const backdrop = Fn(() => {
         const p = backdropPoint(u).toVar();
         const breath = u.breathSoft.toVar();
@@ -422,28 +526,13 @@ export function createZenWorld({ u, quality }) {
             z.mul(0.16).sub(u.time.mul(0.006)),
         ), 3)).mul(0.24));
 
-        /** Low mist and night air between the eye and a point `t` along the ray, `height` above the sand. */
-        const veil = (colour, t, height, ringGlow = 1) => {
-            const dt = float(MIST_H).sub(height).max(0).div(down)
-                .min(t)
-                .toVar();
-            const mid = eye.add(dir.mul(t.sub(dt.mul(0.5)))).toVar();
-            // Wisps drawn out along the breeze (x), slowly rolling.
-            const dens = fbm3(vec3(mid.x.mul(0.22).add(drift), mid.z.mul(0.5), u.time.mul(0.025)), 3);
-            const thick = smoothstep(0.38, 0.66, dens).mul(0.9).add(0.1);
-            const mist = float(1).sub(exp(dt.mul(reach).mul(thick).mul(-0.5)));
-            const forward = exp(toMoon.sub(1).mul(2.4)).toVar();
-            // The mist carries light: the breath ring glowing up into it, the lantern's warmth near it.
-            const isle = islandField(mid.x, mid.z, GROUPS[0].island, spread);
-            const gap = isle.d.sub(ringAt).toVar();
-            const toLamp = lamp.sub(mid).toVar();
-            const mistColor = MOONLIGHT.mul(forward.mul(0.15).add(0.075)).add(SKYLIGHT.mul(0.3))
-                .add(RING_LIGHT.mul(exp(gap.mul(gap).mul(-9))).mul(0.15 * ringGlow))
-                .add(WARM.mul(flame).mul(float(0.14).div(dot(toLamp, toLamp).mul(0.9).add(1))));
-            const c = mix(colour, mistColor, mist).toVar();
-            const air = float(1).sub(exp(t.mul(reach).mul(-0.02)));
-            return mix(c, HAZE.add(MOONLIGHT.mul(forward).mul(0.025)), air);
-        };
+        // The view, packed once for the mist (a shader function every surface calls).
+        const eyeR = vec4(eye, reach).toVar();
+        const dirD = vec4(dir, down).toVar();
+        const scene = vec4(toMoon, drift, u.time, ringAt).toVar();
+        const lampF = vec4(lamp, flame).toVar();
+        const view4 = [eyeR, dirD, scene, lampF, spread];
+        const veil = (colour, t, height, ringGlow = 1) => veilFn(colour, t, height, float(ringGlow), ...view4);
 
         /** The raked garden floor: sand, moss islands, shadows, the breath ring. */
         const garden = () => {
@@ -494,19 +583,21 @@ export function createZenWorld({ u, quality }) {
             const shade = float(1).toVar();
             const contact = float(1).toVar();
             const at = vec3(gx, 0, gz).toVar();
-            ROCKS.forEach((rock) => {
-                const o = intoRock(at.sub(placed(rock.c, rock.home, spread)), rock).div(vec3(...rock.r)).toVar();
-                const l = intoRockJS(MOON_DIR, rock).map((c, i) => c / rock.r[i]);
-                const ll = l.reduce((sum, c) => sum + c * c, 0);
-                const ol = dot(o, vec3(...l)).toVar();
-                const beam = ol.negate().div(ll).toVar();
-                const miss = sqrt(dot(o, o).sub(ol.mul(ol).div(ll)).max(0));
-                const soft = beam.mul(0.07).add(0.05).div(Math.min(...rock.r)).min(0.7)
+            Loop(tables.rocks.count, ({ i }) => {
+                const where = row(tables.rocks, i, 0).toVar();
+                const size = row(tables.rocks, i, 2).toVar();
+                const moonward = row(tables.rocks, i, 3).toVar();
+                const centre = vec3(where.x.add(spread.sub(1).mul(where.w)), where.y, where.z);
+                const o = intoRockBy(at.sub(centre), row(tables.rocks, i, 1).toVar()).div(size.xyz).toVar();
+                const ol = dot(o, moonward.xyz).toVar();
+                const beam = ol.negate().div(moonward.w).toVar();
+                const miss = sqrt(dot(o, o).sub(ol.mul(ol).div(moonward.w)).max(0));
+                const soft = beam.mul(0.07).add(0.05).div(size.w).min(0.7)
                     .toVar();
                 const blocked = fadeOut(float(0.97).sub(soft), float(0.97).add(soft), miss)
                     .mul(smoothstep(0, 0.2, beam));
                 shade.mulAssign(float(1).sub(blocked.mul(0.92)));
-                const foot = smoothstep(0.95, 1.0 + 0.35 / Math.min(...rock.r), o.length());
+                const foot = smoothstep(0.95, float(0.35).div(size.w).add(1), o.length());
                 contact.mulAssign(mix(float(0.35), float(1), foot));
             });
             shade.mulAssign(cloudShade(gx, gz));
@@ -652,17 +743,15 @@ export function createZenWorld({ u, quality }) {
             const top = float(0).toVar();
             const side = float(0).toVar();
             // Two interleaved sets of domes of different widths, so no rhythm repeats.
-            [[1.7, 4.7, 1.3], [2.6, 9.1, 1.15]].forEach(([slotW, seed, rise]) => {
-                const slot = hx.div(slotW).floor().toVar();
-                [-1, 0, 1].forEach((o) => {
-                    const cid = slot.add(o);
-                    const r = hash22(vec2(cid, seed)).toVar();
-                    const across = hx.sub(cid.add(r.x.mul(0.6).add(0.2)).mul(slotW))
-                        .div(r.y.mul(0.5).add(slotW * 0.42)).toVar();
-                    const dome = r.x.mul(0.5).add(rise).mul(sqrt(float(1).sub(across.mul(across)).max(0))).toVar();
-                    side.assign(select(dome.greaterThan(top), across, side));
-                    top.assign(max(top, dome));
-                });
+            Loop(tables.domes.count, ({ i }) => {
+                const set = row(tables.domes, i).toVar();
+                const cid = hx.div(set.x).floor().add(set.w).toVar();
+                const r = hash22(vec2(cid, set.y)).toVar();
+                const across = hx.sub(cid.add(r.x.mul(0.6).add(0.2)).mul(set.x))
+                    .div(r.y.mul(0.5).add(set.x.mul(0.42))).toVar();
+                const dome = r.x.mul(0.5).add(set.z).mul(sqrt(float(1).sub(across.mul(across)).max(0))).toVar();
+                side.assign(select(dome.greaterThan(top), across, side));
+                top.assign(max(top, dome));
             });
             // Leafy, not smooth: the outline frays into clumps and sprigs.
             const leafy = gnoise(vec2(hx.mul(3.4), hy.mul(3.4))).sub(0.5).mul(0.1)
@@ -723,12 +812,13 @@ export function createZenWorld({ u, quality }) {
         If(gz.greaterThan(LANTERN.z).and(lx.abs().lessThan(0.5)).and(ly.lessThan(1.7)), () => {
             const ax = lx.abs().toVar();
             const shape = float(1e3).toVar();
-            LANTERN_PARTS.forEach(([from, to, w0, w1, curved]) => {
-                const s = ly.sub(from).div(to - from).saturate();
-                const hw = curved
-                    ? float(w1).add(float(1).sub(s).mul(float(1).sub(s)).mul(w0 - w1))
-                    : mix(float(w0), float(w1), s);
-                shape.assign(min(shape, max(ax.sub(hw), max(float(from).sub(ly), ly.sub(to)))));
+            Loop(tables.parts.count, ({ i }) => {
+                const part = row(tables.parts, i).toVar();
+                const top = part.w.abs().toVar();
+                const s = ly.sub(part.x).div(part.y.sub(part.x)).saturate().toVar();
+                const swept = top.add(float(1).sub(s).mul(float(1).sub(s)).mul(part.z.sub(top)));
+                const hw = mix(mix(part.z, top, s), swept, select(part.w.lessThan(0), float(1), float(0)));
+                shape.assign(min(shape, max(ax.sub(hw), max(part.x.sub(ly), ly.sub(part.y)))));
             });
             const lp = pxm.mul(lt).div(LANTERN.scale).toVar();
             const cover = fadeOut(lp.negate(), lp, shape).toVar();
@@ -771,10 +861,11 @@ export function createZenWorld({ u, quality }) {
         const a = dot(dir, dir).toVar();
         const tStart = float(1e4).toVar();
         const tEnd = float(0).toVar();
-        BOUNDS.forEach((bound) => {
-            const oc = eye.sub(placed(bound.centre, bound.home, spread)).toVar();
+        Loop(tables.bounds.count, ({ i }) => {
+            const where = row(tables.bounds, i, 0).toVar();
+            const oc = eye.sub(vec3(where.x.add(spread.sub(1).mul(where.w)), where.y, where.z)).toVar();
             const b = dot(oc, dir).toVar();
-            const disc = b.mul(b).sub(a.mul(dot(oc, oc).sub(bound.radius * bound.radius))).toVar();
+            const disc = b.mul(b).sub(a.mul(dot(oc, oc).sub(row(tables.bounds, i, 1).x))).toVar();
             const s = sqrt(disc.max(0)).toVar();
             const near = b.negate().sub(s).div(a);
             const far = b.negate().add(s).div(a);
@@ -901,22 +992,26 @@ export function createZenWorld({ u, quality }) {
             const blur = float(0.011);
             const bark = float(0).toVar();
             const upper = float(0).toVar();
-            MAPLE.segments.forEach(([from, to, w0, w1]) => {
-                const ba = [to[0] - from[0], to[1] - from[1]];
-                const pa = mq.sub(vec2(...from)).toVar();
-                const h = dot(pa, vec2(...ba)).div(ba[0] * ba[0] + ba[1] * ba[1]).saturate();
-                const off = pa.sub(vec2(...ba).mul(h)).toVar();
-                const width = mix(float(w0), float(w1), h);
-                const m = fadeOut(width.sub(blur), width.add(blur), off.length());
+            Loop(tables.segments.count, ({ i }) => {
+                const seg = row(tables.segments, i, 0).toVar();
+                const wide = row(tables.segments, i, 1).toVar();
+                const ba = seg.zw.sub(seg.xy).toVar();
+                const pa = mq.sub(seg.xy).toVar();
+                const h = dot(pa, ba).div(wide.z).saturate().toVar();
+                const off = pa.sub(ba.mul(h)).toVar();
+                const width = mix(wide.x, wide.y, h).toVar();
+                const m = fadeOut(width.sub(blur), width.add(blur), off.length()).toVar();
                 upper.assign(max(upper, m.mul(smoothstep(0.0, 1.0, off.y.div(width)))));
                 bark.assign(max(bark, m));
             });
             const leaf = float(0).toVar();
             const vein = float(0).toVar();
             const depth = float(0).toVar();
-            MAPLE.leaves.forEach(([c, heading, size, bright], index) => {
-                const flutter = u.time.mul(0.6 + (index % 5) * 0.11).add(index * 1.7).sin().mul(0.08);
-                const local = turn(mq.sub(vec2(...c)), float(heading).add(flutter)).div(size).toVar();
+            Loop(tables.leaves.count, ({ i }) => {
+                const place = row(tables.leaves, i, 0).toVar();
+                const look = row(tables.leaves, i, 1).toVar();
+                const flutter = u.time.mul(look.y).add(look.z).sin().mul(0.08);
+                const local = turn(mq.sub(place.xy), place.z.add(flutter)).div(place.w).toVar();
                 const r = local.length().toVar();
                 // Five pointed lobes; the lower pair smaller. (|sin| keeps the atan seam at the stem.)
                 // (Nudged off the origin: atan(0, 0) is undefined in GLSL.)
@@ -925,10 +1020,10 @@ export function createZenWorld({ u, quality }) {
                 // A broad palm and five lobes that taper to points (lobe^0.6: wide at the base, sharp tip).
                 const outline = lobe.max(1e-4).pow(0.6).mul(0.56).add(0.44)
                     .mul(angle.cos().mul(0.24).add(0.76));
-                const soft = blur.div(size);
+                const soft = blur.div(place.w);
                 const m = fadeOut(outline.sub(soft), outline.add(soft), r).toVar();
                 // Later leaves lie over earlier ones.
-                depth.assign(mix(depth, float(bright), m));
+                depth.assign(mix(depth, look.x, m));
                 leaf.assign(max(leaf, m));
                 vein.assign(mix(vein, exp(lobe.sub(1).mul(r).mul(r).mul(60)).mul(0.25), m));
             });
