@@ -59,14 +59,23 @@ const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT },
 const problems = [];
 const size = `${WIDTH}x${HEIGHT}`;
 
-/** Freeze CSS animations at `ms` so a title card or a rising bar is caught mid-way, every run. */
+/**
+ * Freeze CSS animations at `ms` so a title card or a rising bar is caught mid-way, every run.
+ * Transitions are finished rather than frozen: opacity transitions run on the compositor, and one
+ * paused mid-flight from the page can still show its first frame in a software-rendered capture.
+ */
 async function freezeAnimations(ms) {
     await page.evaluate((at) => {
         document.getAnimations().forEach((animation) => {
+            if (animation.transitionProperty) {
+                animation.finish();
+                return;
+            }
             animation.pause();
             animation.currentTime = at;
         });
     }, ms);
+    await page.waitForTimeout(700);
 }
 
 async function shot(name, { freezeAt = null } = {}) {
@@ -244,11 +253,12 @@ try {
         await stage(10);
         await elapsed(6);
         await shot('rest-natural', { freezeAt: 1400 });
-        // The closing comes minutes into the rest, long after the rest's card has gone.
+        // The closing comes fourteen seconds before the end, long after the rest's card has gone.
         await page.evaluate(() => {
             window.breathingIndicator._hideChapter();
             window.serenityBlocks.serenityHub.sessionManager._closing();
         });
+        await elapsed(287);
         await page.waitForTimeout(1200);
         await shot('closing', { freezeAt: 3400 });
     }
@@ -298,6 +308,7 @@ try {
             const hub = window.serenityBlocks.serenityHub;
             hub.switchTab('sessions');
             hub.show();
+            document.querySelector('#serenity-hub-panel .hale__intro')?.scrollIntoView({ block: 'start' });
         });
         await page.waitForTimeout(1500);
         await shot('catalogue-after');

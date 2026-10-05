@@ -777,7 +777,9 @@ export class BreathingGuide {
         if (!this.isExternallyControlled) return;
         const round = data.round > 0 ? `Round ${data.round} of ${data.totalRounds}` : '';
         this._text(this.eyebrow, [data.sessionName, round].filter(Boolean).join(' · '));
-        this._text(this.journeyStage, SESSION_STAGE_LABELS[data.phase] || '');
+        // A timed pause (Hale Rest) is a pause, not a hold.
+        const stage = this.guidance?.mode === 'timed-hold' ? 'Pause' : SESSION_STAGE_LABELS[data.phase];
+        this._text(this.journeyStage, stage || '');
         let detail = '';
         if (data.phase === 'active' && data.totalBreaths > 0) {
             detail = `Breath ${Math.min(data.totalBreaths, (data.breathCount || 0) + 1)} of ${data.totalBreaths}`;

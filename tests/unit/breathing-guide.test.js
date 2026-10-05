@@ -472,6 +472,7 @@ describe('breathing guide under a session', () => {
         expect(text(guide.holdTime)).toBe('0:15');
         expect(text(guide.holdLabel)).toBe('Rest in the pause');
         expect(text(guide.journeyDetail)).toBe('0:15 left');
+        expect(text(guide.journeyStage)).toBe('Pause');
         frame(100);
         expect(text(guide.phaseWord)).toBe('Pause');
     });
