@@ -1,8 +1,8 @@
 /**
  * Astral Weave Theme - Tetromino Visual Configuration
  *
- * Prismatic cosmic crystal treatment tuned to stay readable against the more
- * luminous Astral Weave WebGPU background.
+ * Pearl-and-jewel glow pieces. The loom behind the board is thin light on a dark field and the
+ * post stack soft-clips what shows through the card, so the pieces keep their own colour.
  */
 
 export const ASTRAL_WEAVE_TETROMINOS = {

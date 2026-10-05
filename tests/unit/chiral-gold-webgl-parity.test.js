@@ -3,9 +3,7 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
-import AstralWeaveTheme from '../../src/themes/astral-weave/astral-weave-theme.js';
 import ChiralGoldTheme from '../../src/themes/chiral-gold/chiral-gold-theme.js';
-import { AstralWeaveBurstCompute } from '../../src/themes/astral-weave/astral-weave-compute.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 
 const mocks = vi.hoisted(() => ({ initialize: null, instances: [] }));
@@ -46,7 +44,7 @@ vi.mock('three/webgpu', async (importOriginal) => {
     };
 });
 
-const themeTypes = [['Astral Weave', AstralWeaveTheme], ['Chiral Gold', ChiralGoldTheme]];
+const themeTypes = [['Chiral Gold', ChiralGoldTheme]];
 const owners = [];
 function createTheme(Theme, quality = 'Low') {
     const theme = new Theme();
@@ -77,7 +75,7 @@ function assertNoClassicShaders(scene) {
     expect(materials.filter((material) => material.isShaderMaterial)).toEqual([]);
 }
 
-describe('Astral Weave and Chiral Gold WebGL2 art parity', () => {
+describe('Chiral Gold WebGL2 art parity', () => {
     beforeEach(() => {
         mocks.initialize = null;
         mocks.instances.length = 0;
@@ -103,7 +101,6 @@ describe('Astral Weave and Chiral Gold WebGL2 art parity', () => {
                 object.geometry?.dispose();
                 for (const material of [object.material].flat().filter(Boolean)) material.dispose();
             });
-            theme.cpuBurstSimulation?.dispose();
         }
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
@@ -176,18 +173,6 @@ describe('Astral Weave and Chiral Gold WebGL2 art parity', () => {
         expect(rebuild).not.toHaveBeenCalled();
     });
 
-    it('does not dispose the Astral GL backend again after loss-time retirement', async () => {
-        const theme = createTheme(AstralWeaveTheme);
-        await theme.initRenderer({ appendChild: vi.fn() });
-        const publishedRenderer = theme.renderer;
-        publishedRenderer.dispose = vi.fn();
-        theme._contextLostRendererDisposals.set(publishedRenderer, { releaseStarted: true });
-        theme.disposeRenderer.mockRestore();
-        theme.cleanupRuntime();
-        expect(publishedRenderer.dispose).not.toHaveBeenCalled();
-        expect(theme.renderer).toBeNull();
-    });
-
     it.each(themeTypes)('keeps the %s GL callback and restore monitor until restoration', async (_label, Theme) => {
         const theme = createTheme(Theme);
         await theme.initRenderer({ appendChild: vi.fn() });
@@ -211,8 +196,7 @@ describe('Astral Weave and Chiral Gold WebGL2 art parity', () => {
         vi.stubGlobal('navigator', { gpu: {}, userAgent: 'Linux' });
         const theme = createTheme(Theme, 'High');
         await theme.initRenderer({ appendChild: vi.fn() });
-        const recover = vi.spyOn(theme, Theme === AstralWeaveTheme ? 'handleDeviceLost' : 'handleDeviceLoss')
-            .mockResolvedValue();
+        const recover = vi.spyOn(theme, 'handleDeviceLoss').mockResolvedValue();
         const info = { api: 'WebGPU', reason: 'unknown' };
         theme.renderer.onDeviceLost(info);
         expect(recover.mock.calls[0][0]).toBe(info);
@@ -252,19 +236,6 @@ describe('Astral Weave and Chiral Gold WebGL2 art parity', () => {
         expect(theme.lifecycleState).toBe('running');
     });
 
-    it('does not report cancelled Astral initialization as an active renderer failure', async () => {
-        const theme = createTheme(AstralWeaveTheme);
-        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-        vi.spyOn(theme, 'ensureContainer').mockReturnValue({});
-        vi.spyOn(theme, 'initRenderer').mockImplementation(async () => {
-            theme.lifecycleGeneration += 1;
-            return false;
-        });
-        await theme.createScene(theme.lifecycleGeneration);
-        expect(error).not.toHaveBeenCalled();
-        theme.restorePointUvWarningFilter();
-    });
-
     it('keeps both Chiral helices in portrait and restores authored homes after rotation', async () => {
         const theme = createTheme(ChiralGoldTheme, 'High');
         await theme.initRenderer({ appendChild: vi.fn() });
@@ -296,41 +267,6 @@ describe('Astral Weave and Chiral Gold WebGL2 art parity', () => {
             expect(strand.userData.home.equals(homes[index])).toBe(true);
             expect(strand.scale.toArray()).toEqual([1, 1, 1]);
         });
-    });
-
-    it('runs Astral geometry and gameplay bursts with attributes instead of compute storage', async () => {
-        const theme = createTheme(AstralWeaveTheme);
-        await theme.initRenderer({ appendChild: vi.fn() });
-        await theme.loadRuntimeModules();
-        for (const key of ['glow', 'nebula', 'lensDirt', 'centerVeil']) theme.textures[key] = new THREE.Texture();
-        theme.createSceneGraph();
-        assertNoClassicShaders(theme.scene);
-        for (const particles of [theme.starfield, theme.flowParticles, theme.dustParticles]) {
-            expect(particles.isInstancedMesh).toBe(true);
-            expect(particles.geometry.getAttribute('uv').count).toBe(4);
-            expect(particles.geometry.getAttribute('aCenter').isInstancedBufferAttribute).toBe(true);
-            expect(particles.geometry.getAttribute('aCenter').count).toBe(particles.count);
-        }
-        expect(theme.nexusNodeData.length).toBeGreaterThan(0);
-        expect(theme.burstNodeData.meta.usesCompute).toBe(false);
-        expect(theme.cpuBurstSimulation.count).toBeLessThanOrEqual(128);
-        expect(theme.burstParticles.geometry.attributes.aBurstPosition.array)
-            .toBe(theme.cpuBurstSimulation.positionData);
-
-        theme.fxController.onPieceLock();
-        theme.fxController.onLineClear(4);
-        theme.fxController.onCombo(3);
-        theme.spawnPendingReactiveEffects();
-        expect(theme.cpuBurstSimulation.positionData
-            .some((value, index) => index % 4 === 3 && value === 1)).toBe(true);
-        const before = theme.cpuBurstSimulation.positionData.slice();
-        theme.updateCompute(1 / 60, theme.fxController.getSignals());
-        expect(theme.cpuBurstSimulation.positionData).not.toEqual(before);
-        expect(theme.cpuBurstSimulation.positionData.every(Number.isFinite)).toBe(true);
-        expect(theme.renderer.compute).not.toHaveBeenCalled();
-        for (let i = 0; i < 160; i++) theme.updateCompute(1 / 60, theme.fxController.getSignals());
-        expect(theme.cpuBurstSimulation.positionData
-            .every((value, index) => index % 4 !== 3 || value === 0)).toBe(true);
     });
 
     it('retains Chiral CPU dust, wisps and event bursts using node materials', async () => {
@@ -381,26 +317,5 @@ describe('Astral Weave and Chiral Gold WebGL2 art parity', () => {
         expect(theme.postProcessing.useMRT).toBe(false);
         expect(theme.renderer.toneMapping).toBe(THREE.NoToneMapping);
         theme.postProcessing.dispose();
-    });
-});
-
-describe('bounded Astral CPU burst lifecycle', () => {
-    it('reuses slots, matches the native decay law and hides expired particles', () => {
-        const pool = new AstralWeaveBurstCompute(4, () => 0.5);
-        pool.spawnBurst(9, { x: 7, y: 8, z: 9 }, { spread: 0, lifeMin: 0.4, lifeMax: 0.4 });
-        expect(pool.positionData).toHaveLength(16);
-        expect(pool.cursor).toBe(9);
-        expect(pool.computeNode).toBeNull();
-        const initialY = pool.positionData[1];
-        pool.updateCpu(1 / 60, { gravity: -11.5, drag: 0.985 });
-        expect(pool.positionData[1]).toBeGreaterThan(initialY);
-        expect(pool.miscData[1]).toBeCloseTo(0.4 - (1 / 60) * 1.05);
-        for (let i = 0; i < 30; i++) pool.updateCpu(1 / 60);
-        for (let i = 0; i < pool.count; i++) {
-            expect(pool.positionData[i * 4 + 3]).toBe(0);
-            expect(pool.positionData[i * 4 + 2]).toBe(-9999);
-            expect(pool.miscData[i * 4 + 1]).toBe(0);
-        }
-        pool.dispose();
     });
 });
