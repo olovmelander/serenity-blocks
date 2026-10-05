@@ -170,8 +170,10 @@ export function createForestWorld({ u, quality }) {
             const edgePx = u.px.mul(1.5).div(girth.mul(row.cell).div(row.d)).toVar();
             let mask = fadeOut(float(1).sub(edgePx).max(0), float(1).add(edgePx), o.abs())
                 .mul(softStep(groundLine, q.y, u));
-            // Some cells stand empty: a forest, not a fence. Nearer rows leave the clearing open.
-            mask = mask.mul(smoothstep(0.12, 0.2, rand));
+            // Some cells stand empty: a forest, not a fence (the far rows more so: no picket wall).
+            // Nearer rows leave the clearing open.
+            const empty = index < 2 ? 0.38 : 0.12;
+            mask = mask.mul(smoothstep(empty, empty + 0.08, rand));
             if (row.clear) mask = mask.mul(smoothstep(row.clear * 0.6, row.clear, q.x.sub(SUN[0]).abs()));
             if (row.edges) mask = mask.mul(smoothstep(0.42, 0.7, q.x.abs().div(u.ext.x)));
             // Far trunks dissolve into the sunlit haze before they reach the canopy.
@@ -199,7 +201,7 @@ export function createForestWorld({ u, quality }) {
             // A little of the haze wraps into each trunk; the rim is the sun itself.
             bark.addAssign(fogColor.mul(0.1).mul(roundness));
             // Far trunks keep only a whisper of rim: the haze between eats it.
-            const rimGain = 2.2 / (1 + row.d * 0.35);
+            const rimGain = 2.4 / (1 + row.d * 0.6);
             bark.addAssign(GOLD.mul(rim).mul(near.mul(rimGain).add(0.1)).mul(glow).mul(float(1).sub(moss.mul(0.6))));
             // The farther the row, the more of the air in front of it is lit by the sun's halo too.
             const fog = 1 - Math.exp(-row.d * 0.14);
@@ -211,6 +213,22 @@ export function createForestWorld({ u, quality }) {
                     .mul(0.8).add(0.2));
             col.addAssign(MIST.mul(pool).mul(0.18 / (index + 1)).mul(glow));
             if (index < 3) col.addAssign(SUNLIGHT.mul(shafts).mul(0.03 * (3 - index)));
+            // Undergrowth between the two nearest rows: low leafy mounds, rimmed where the sun is behind.
+            if (index === 3) {
+                const depth = 1.75;
+                const bq = layer(p, u, HERO_DEPTH / depth).toVar();
+                const baseLine = horizon.sub(ground.div(depth)).toVar();
+                const mounds = fbm(vec2(bq.x.mul(2.4), 7.1), 3).sub(0.4).mul(0.32).max(0)
+                    .add(0.012);
+                const leafy = gnoise(bq.mul(vec2(46, 34))).sub(0.5).mul(0.03);
+                const crest = baseLine.add(mounds).add(leafy).toVar();
+                const bush = softStep(0, crest.sub(bq.y), u).mul(smoothstep(baseLine.sub(0.05), baseLine.sub(0.01), bq.y));
+                const bdx = bq.x.sub(SUN[0]).toVar();
+                const bushRim = exp(crest.sub(bq.y).max(0).mul(-220)).mul(exp(bdx.mul(bdx).mul(-2.5)));
+                const leaves = gnoise(bq.mul(vec2(55, 48))).mul(0.6).add(0.6);
+                const bushColor = MOSS.mul(0.22).mul(leaves).add(GOLD.mul(bushRim).mul(0.35).mul(glow));
+                col.assign(mix(col, mix(bushColor, fogColor, 1 - Math.exp(-depth * 0.14)), bush));
+            }
         });
 
         // The canopy: hanging clumps of leaves. Deep in a clump the leaves overlap into shade; toward
@@ -231,7 +249,10 @@ export function createForestWorld({ u, quality }) {
             const cover = smoothstep(open.sub(0.07), open.add(0.12), density).toVar();
             // One leaf per small cell, larger where the foliage is dense; they flutter a little.
             const cells = 30 - nearness * 8;
-            const leafCell = voronoi(cq.mul(vec2(cells, cells * 1.35)).add(seed * 11), u.time.mul(0.35).add(seed));
+            // A little domain warp makes every leaf its own irregular shape instead of a round cell.
+            const lq = cq.mul(vec2(cells, cells * 1.35)).add(seed * 11).toVar();
+            const bent = vec2(gnoise(lq.mul(0.55)), gnoise(lq.mul(0.55).add(5.2))).sub(0.5).mul(0.7);
+            const leafCell = voronoi(lq.add(bent), u.time.mul(0.35).add(seed));
             const radius = cover.mul(0.95);
             const leafEdge = u.px.mul(cells * 1.6);
             const leafMask = fadeOut(radius.sub(leafEdge), radius.add(leafEdge), leafCell.x).mul(smoothstep(0.02, 0.1, cover));
