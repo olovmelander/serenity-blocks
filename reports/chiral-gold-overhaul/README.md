@@ -130,10 +130,13 @@ inspected; the actual artwork is visible on both orientations.
 The isolated and integrated visual matrix is complete. Focused regressions,
 typecheck, dependency boundaries, theme lifecycle, TypeScript ratchet,
 architecture fitness, structural performance/release gates and scoped sculpture/
-playground lint pass. The lint ceiling was lowered to 1,115. The final
-integrated-main production build passed in 21.88 seconds and its boot closure
-passed. The final integrated-main full suite passed all 536 files and 5,778
-tests in 141.71 seconds; the focused validation set passed 136 tests.
+playground lint pass. The lint ceiling was lowered to 1,103. Architecture fitness
+locks the reduced repository baselines at 290 ShaderMaterial hits across 41 files
+and 46 raw resize listeners. Dependency boundaries pass for 1,064 modules and
+3,382 dependencies. The final
+integrated-main production build passed in 21.83 seconds and its boot closure
+passed. The final integrated-main full suite passed all 542 files and 5,917
+tests in 115.41 seconds; the focused validation set passed 136 tests.
 
 Physical-device performance has not been measured, and no FPS improvement is
 claimed by these screenshots.

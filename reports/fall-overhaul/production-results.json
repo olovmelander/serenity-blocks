@@ -1,0 +1,690 @@
+[
+  {
+    "name": "production-desktop",
+    "errors": [],
+    "warnings": [],
+    "state": {
+      "activeThemeName": "fall",
+      "pendingThemeName": null,
+      "themesSuspended": false,
+      "themePublished": true,
+      "active": true,
+      "themePaused": false,
+      "quality": "High",
+      "time": 0.44999999999999996,
+      "backend": "WebGL2",
+      "themeCanvasCount": 1,
+      "legacyStaticCanvasCount": 1,
+      "world": {
+        "quality": "High",
+        "leaves": 700,
+        "motes": 230,
+        "rays": 8,
+        "burstLeaves": 32,
+        "burstSlots": 12
+      },
+      "effects": {
+        "gust": 0,
+        "warmth": 0,
+        "shafts": 0,
+        "glow": 0,
+        "vortex": 0,
+        "bursts": []
+      },
+      "mode": "single",
+      "modeRunning": true,
+      "modePaused": false,
+      "gameStateReady": true,
+      "currentPiece": "L",
+      "board": true,
+      "boardPixels": {
+        "width": 400,
+        "height": 800
+      },
+      "boardRect": {
+        "x": 573,
+        "y": 214.5,
+        "width": 300,
+        "height": 600
+      },
+      "bodyClass": "startup-intro-skipped phaser-hud-ready"
+    },
+    "eventStart": {
+      "time": 1.0835000000000004,
+      "frame": {
+        "gust": 0.8267015180291968,
+        "warmth": 0.7446439127167879,
+        "shafts": 0.7920418216350361,
+        "glow": 0.7746439127167879,
+        "vortex": 0.7673821252408755,
+        "bursts": [
+          {
+            "id": 0,
+            "active": true,
+            "age": 0,
+            "duration": 0.82,
+            "strength": 0.24,
+            "seed": 0.7158007544581618,
+            "side": -1,
+            "kind": "lock",
+            "originX": 0.3,
+            "progress": 0
+          },
+          {
+            "id": 1,
+            "active": true,
+            "age": 0,
+            "duration": 1.9,
+            "strength": 0.78,
+            "seed": 0.8741383744855967,
+            "side": -1,
+            "kind": "clear",
+            "originX": 0.3,
+            "progress": 0
+          },
+          {
+            "id": 2,
+            "active": true,
+            "age": 0,
+            "duration": 2.02,
+            "strength": 0.78,
+            "seed": 0.5723422496570645,
+            "side": 1,
+            "kind": "clear",
+            "originX": 0.3,
+            "progress": 0
+          },
+          {
+            "id": 3,
+            "active": true,
+            "age": 0,
+            "duration": 2.08,
+            "strength": 0.78,
+            "seed": 0.566585219478738,
+            "side": -1,
+            "kind": "clear",
+            "originX": 0.3,
+            "progress": 0
+          },
+          {
+            "id": 4,
+            "active": true,
+            "age": 0,
+            "duration": 2.2,
+            "strength": 0.78,
+            "seed": 0.02044753086419753,
+            "side": 1,
+            "kind": "clear",
+            "originX": 0.3,
+            "progress": 0
+          },
+          {
+            "id": 5,
+            "active": true,
+            "age": 0,
+            "duration": 2.65,
+            "strength": 0.8761570322598538,
+            "seed": 0.3938057270233196,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          },
+          {
+            "id": 6,
+            "active": true,
+            "age": 0,
+            "duration": 2.79,
+            "strength": 0.8761570322598538,
+            "seed": 0.9983882030178326,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          },
+          {
+            "id": 7,
+            "active": true,
+            "age": 0,
+            "duration": 2.85,
+            "strength": 0.8761570322598538,
+            "seed": 0.2199974279835391,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          },
+          {
+            "id": 8,
+            "active": true,
+            "age": 0,
+            "duration": 2.99,
+            "strength": 0.8761570322598538,
+            "seed": 0.4073988340192044,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          },
+          {
+            "id": 9,
+            "active": true,
+            "age": 0,
+            "duration": 3.05,
+            "strength": 0.8761570322598538,
+            "seed": 0.42787637174211246,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          },
+          {
+            "id": 10,
+            "active": true,
+            "age": 0,
+            "duration": 3.19,
+            "strength": 0.8761570322598538,
+            "seed": 0.8894547325102881,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          }
+        ]
+      }
+    },
+    "captureMode": "Software WebGL2, paused deterministic event age 0.7s in the actual production scene",
+    "eventFrame": {
+      "activeThemeName": "fall",
+      "pendingThemeName": null,
+      "themesSuspended": false,
+      "themePublished": true,
+      "active": true,
+      "themePaused": true,
+      "quality": "High",
+      "time": 1.783500000000001,
+      "backend": "WebGL2",
+      "themeCanvasCount": 1,
+      "legacyStaticCanvasCount": 1,
+      "world": {
+        "quality": "High",
+        "leaves": 700,
+        "motes": 230,
+        "rays": 8,
+        "burstLeaves": 32,
+        "burstSlots": 12
+      },
+      "effects": {
+        "gust": 0.2697360015171211,
+        "warmth": 0.4253473522836749,
+        "shafts": 0.379788377210419,
+        "glow": 0.29073245810028553,
+        "vortex": 0.40870142814253796,
+        "bursts": [
+          {
+            "id": 0,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 0.82,
+            "strength": 0.24,
+            "seed": 0.7158007544581618,
+            "side": -1,
+            "kind": "lock",
+            "originX": 0.3,
+            "progress": 0.853658536585366
+          },
+          {
+            "id": 1,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 1.9,
+            "strength": 0.78,
+            "seed": 0.8741383744855967,
+            "side": -1,
+            "kind": "clear",
+            "originX": 0.3,
+            "progress": 0.368421052631579
+          },
+          {
+            "id": 2,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.02,
+            "strength": 0.78,
+            "seed": 0.5723422496570645,
+            "side": 1,
+            "kind": "clear",
+            "originX": 0.3,
+            "progress": 0.34653465346534656
+          },
+          {
+            "id": 3,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.08,
+            "strength": 0.78,
+            "seed": 0.566585219478738,
+            "side": -1,
+            "kind": "clear",
+            "originX": 0.3,
+            "progress": 0.33653846153846156
+          },
+          {
+            "id": 4,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.2,
+            "strength": 0.78,
+            "seed": 0.02044753086419753,
+            "side": 1,
+            "kind": "clear",
+            "originX": 0.3,
+            "progress": 0.3181818181818182
+          },
+          {
+            "id": 5,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.65,
+            "strength": 0.8761570322598538,
+            "seed": 0.3938057270233196,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.26415094339622647
+          },
+          {
+            "id": 6,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.79,
+            "strength": 0.8761570322598538,
+            "seed": 0.9983882030178326,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.2508960573476703
+          },
+          {
+            "id": 7,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.85,
+            "strength": 0.8761570322598538,
+            "seed": 0.2199974279835391,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.2456140350877193
+          },
+          {
+            "id": 8,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.99,
+            "strength": 0.8761570322598538,
+            "seed": 0.4073988340192044,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.23411371237458195
+          },
+          {
+            "id": 9,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 3.05,
+            "strength": 0.8761570322598538,
+            "seed": 0.42787637174211246,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.2295081967213115
+          },
+          {
+            "id": 10,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 3.19,
+            "strength": 0.8761570322598538,
+            "seed": 0.8894547325102881,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.21943573667711602
+          }
+        ]
+      },
+      "mode": "single",
+      "modeRunning": true,
+      "modePaused": false,
+      "gameStateReady": true,
+      "currentPiece": "L",
+      "board": true,
+      "boardPixels": {
+        "width": 400,
+        "height": 800
+      },
+      "boardRect": {
+        "x": 573,
+        "y": 214.5,
+        "width": 300,
+        "height": 600
+      },
+      "bodyClass": "startup-intro-skipped phaser-hud-ready"
+    },
+    "pause": {
+      "paused": true,
+      "frameUnchanged": true
+    },
+    "resume": {
+      "timeUnchanged": true,
+      "resumed": true,
+      "active": true,
+      "paused": false,
+      "loopStarted": true
+    },
+    "switchAway": {
+      "activeThemeName": "forest",
+      "cleaned": true,
+      "rendererReleased": true,
+      "sceneReleased": true,
+      "worldReleased": true,
+      "canvasDetached": true,
+      "fallCanvases": 0,
+      "debugCleared": true
+    },
+    "switchBack": {
+      "freshInstance": true,
+      "active": true,
+      "paused": false,
+      "canvasCount": 1,
+      "loopStarted": true
+    },
+    "passed": true
+  },
+  {
+    "name": "production-phone",
+    "errors": [],
+    "warnings": [],
+    "state": {
+      "activeThemeName": "fall",
+      "pendingThemeName": null,
+      "themesSuspended": false,
+      "themePublished": true,
+      "active": true,
+      "themePaused": false,
+      "quality": "Low",
+      "time": 0.2,
+      "backend": "WebGL2",
+      "themeCanvasCount": 1,
+      "legacyStaticCanvasCount": 1,
+      "world": {
+        "quality": "Low",
+        "leaves": 240,
+        "motes": 90,
+        "rays": 5,
+        "burstLeaves": 18,
+        "burstSlots": 6
+      },
+      "effects": {
+        "gust": 0,
+        "warmth": 0,
+        "shafts": 0,
+        "glow": 0,
+        "vortex": 0,
+        "bursts": []
+      },
+      "mode": "single",
+      "modeRunning": true,
+      "modePaused": false,
+      "gameStateReady": true,
+      "currentPiece": "T",
+      "board": true,
+      "boardPixels": {
+        "width": 400,
+        "height": 800
+      },
+      "boardRect": {
+        "x": 49.5,
+        "y": 183,
+        "width": 297,
+        "height": 594
+      },
+      "bodyClass": "startup-intro-skipped phaser-hud-ready"
+    },
+    "eventStart": {
+      "time": 0.8666000000000007,
+      "frame": {
+        "gust": 0.8267015180291968,
+        "warmth": 0.7446439127167879,
+        "shafts": 0.7920418216350361,
+        "glow": 0.7746439127167879,
+        "vortex": 0.7673821252408755,
+        "bursts": [
+          {
+            "id": 0,
+            "active": true,
+            "age": 0,
+            "duration": 2.79,
+            "strength": 0.8761570322598538,
+            "seed": 0.43737997256515776,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          },
+          {
+            "id": 1,
+            "active": true,
+            "age": 0,
+            "duration": 2.85,
+            "strength": 0.8761570322598538,
+            "seed": 0.282445987654321,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          },
+          {
+            "id": 2,
+            "active": true,
+            "age": 0,
+            "duration": 2.99,
+            "strength": 0.8761570322598538,
+            "seed": 0.24145233196159122,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          },
+          {
+            "id": 3,
+            "active": true,
+            "age": 0,
+            "duration": 3.05,
+            "strength": 0.8761570322598538,
+            "seed": 0.9594607338820301,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          },
+          {
+            "id": 4,
+            "active": true,
+            "age": 0,
+            "duration": 3.19,
+            "strength": 0.8761570322598538,
+            "seed": 0.15560699588477367,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          },
+          {
+            "id": 5,
+            "active": true,
+            "age": 0,
+            "duration": 2.65,
+            "strength": 0.8761570322598538,
+            "seed": 0.9130444101508917,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0
+          }
+        ]
+      }
+    },
+    "captureMode": "Software WebGL2, paused deterministic event age 0.7s in the actual production scene",
+    "eventFrame": {
+      "activeThemeName": "fall",
+      "pendingThemeName": null,
+      "themesSuspended": false,
+      "themePublished": true,
+      "active": true,
+      "themePaused": true,
+      "quality": "Low",
+      "time": 1.5666000000000013,
+      "backend": "WebGL2",
+      "themeCanvasCount": 1,
+      "legacyStaticCanvasCount": 1,
+      "world": {
+        "quality": "Low",
+        "leaves": 240,
+        "motes": 90,
+        "rays": 5,
+        "burstLeaves": 18,
+        "burstSlots": 6
+      },
+      "effects": {
+        "gust": 0.2697360015171211,
+        "warmth": 0.4253473522836749,
+        "shafts": 0.379788377210419,
+        "glow": 0.29073245810028553,
+        "vortex": 0.40870142814253796,
+        "bursts": [
+          {
+            "id": 0,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.79,
+            "strength": 0.8761570322598538,
+            "seed": 0.43737997256515776,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.2508960573476703
+          },
+          {
+            "id": 1,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.85,
+            "strength": 0.8761570322598538,
+            "seed": 0.282445987654321,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.2456140350877193
+          },
+          {
+            "id": 2,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.99,
+            "strength": 0.8761570322598538,
+            "seed": 0.24145233196159122,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.23411371237458195
+          },
+          {
+            "id": 3,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 3.05,
+            "strength": 0.8761570322598538,
+            "seed": 0.9594607338820301,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.2295081967213115
+          },
+          {
+            "id": 4,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 3.19,
+            "strength": 0.8761570322598538,
+            "seed": 0.15560699588477367,
+            "side": 1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.21943573667711602
+          },
+          {
+            "id": 5,
+            "active": true,
+            "age": 0.7000000000000001,
+            "duration": 2.65,
+            "strength": 0.8761570322598538,
+            "seed": 0.9130444101508917,
+            "side": -1,
+            "kind": "combo",
+            "originX": 0.5,
+            "progress": 0.26415094339622647
+          }
+        ]
+      },
+      "mode": "single",
+      "modeRunning": true,
+      "modePaused": false,
+      "gameStateReady": true,
+      "currentPiece": "T",
+      "board": true,
+      "boardPixels": {
+        "width": 400,
+        "height": 800
+      },
+      "boardRect": {
+        "x": 49.5,
+        "y": 183,
+        "width": 297,
+        "height": 594
+      },
+      "bodyClass": "startup-intro-skipped phaser-hud-ready"
+    },
+    "pause": {
+      "paused": true,
+      "frameUnchanged": true
+    },
+    "resume": {
+      "timeUnchanged": true,
+      "resumed": true,
+      "active": true,
+      "paused": false,
+      "loopStarted": true
+    },
+    "switchAway": {
+      "activeThemeName": "forest",
+      "cleaned": true,
+      "rendererReleased": true,
+      "sceneReleased": true,
+      "worldReleased": true,
+      "canvasDetached": true,
+      "fallCanvases": 0,
+      "debugCleared": true
+    },
+    "switchBack": {
+      "freshInstance": true,
+      "active": true,
+      "paused": false,
+      "canvasCount": 1,
+      "loopStarted": true
+    },
+    "passed": true
+  }
+]

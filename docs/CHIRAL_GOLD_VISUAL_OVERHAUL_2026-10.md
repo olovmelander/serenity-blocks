@@ -204,7 +204,7 @@ expiry upload, transient effect caps, frame gating, stale activation and checked
 compute readiness. Additional regressions cover native compute failure recovery,
 renderer-bound compilation, paused frame timing and dissolve sparsity on both
 particle paths. The focused validation set passes 136 tests. The final
-integrated-main full suite passes all 536 test files and 5,778 tests in 141.71
+integrated-main full suite passes all 542 test files and 5,917 tests in 115.41
 seconds.
 
 | Final acceptance item | Status |
@@ -214,11 +214,12 @@ seconds.
 | Integrated desktop node WebGL2 idle / lock / clear / combo | Passed |
 | Integrated portrait node WebGL2 Low and landscape | Passed |
 | Integrated teardown ownership diagnostics | Passed: inactive, zero remaining theme canvases |
-| Final full suite | Passed: 536 files, 5,778 tests, 141.71 seconds |
+| Final full suite | Passed: 542 files, 5,917 tests, 115.41 seconds |
 | Typecheck | Passed on integrated main |
-| Production build and boot closure | Passed on integrated main in 21.88 seconds |
-| Scoped sculpture/playground lint and lint ratchet | Passed; error ceiling lowered to 1,115 |
-| Dependency boundaries, theme lifecycle, TypeScript ratchet, architecture fitness | Passed |
+| Production build and boot closure | Passed on integrated main in 21.83 seconds |
+| Scoped sculpture/playground lint and lint ratchet | Passed; error ceiling lowered to 1,103 |
+| Dependency boundaries, theme lifecycle, TypeScript ratchet | Passed; boundaries cover 1,064 modules and 3,382 dependencies |
+| Architecture fitness | Passed; lower baselines locked at 290 ShaderMaterial hits across 41 files and 46 raw resize listeners |
 | Structural performance and release gates | Passed |
 | Physical GPU and physical-phone acceptance | Not measured |
 
