@@ -162,6 +162,148 @@ describe('Chiral Gold event placement and retirement', () => {
         expect(burst.mock.calls.every(([, combo]) => combo === 0)).toBe(true);
     });
 
+    it('preserves an explicit zero combo after a Serenity interaction combo', () => {
+        const theme = createTheme();
+        const burst = vi.spyOn(theme, 'triggerBurst').mockImplementation(() => {});
+        theme.handleCombo({ comboCount: 6, source: 'serenity-interaction' });
+        theme.handleLineClear({ lineCount: 1, comboCount: 0, source: 'serenity-interaction' });
+        expect(theme.pendingComboCount).toBe(0);
+        expect(burst.mock.calls.every(([, combo]) => combo === 0)).toBe(true);
+    });
+
+    it.each(['High', 'Low', 'Minimal'])('scales sculpture reactions to %s and projects the visible clear band', (quality) => {
+        const theme = createTheme(quality);
+        theme.sculpture = { trigger: vi.fn(), dispose: vi.fn() };
+        const viewportOrigin = { x: 0.7, y: 0.35 };
+        const eventScale = theme.getChoreographyCaps().eventScale;
+        theme.handleCombo({ comboCount: 6, viewportOrigin });
+        expect(theme.sculpture.trigger.mock.calls[0][1]).toBeCloseTo(1.6 * eventScale);
+        const comboOrigin = theme.sculpture.trigger.mock.calls[0][2].clone().project(theme.camera);
+        expect(comboOrigin.x).toBeCloseTo(-0.2 + viewportOrigin.x * 0.4);
+        expect(comboOrigin.y).toBeCloseTo(0.36 - viewportOrigin.y * 0.72);
+        theme.time += 1;
+        theme.handleLineClear({ lineCount: 4, comboCount: 6, viewportOrigin, clearedRows: [3000, 3001] });
+        const [kind, strength, origin] = theme.sculpture.trigger.mock.calls[1];
+        expect(kind).toBe('tetris');
+        expect(strength).toBeCloseTo((0.75 + 4 * 0.2 + 6 * 0.045) * eventScale);
+        const projected = origin.clone().project(theme.camera);
+        expect(projected.x).toBeCloseTo(comboOrigin.x);
+        expect(projected.y).toBeCloseTo(comboOrigin.y);
+    });
+
+    it('anchors a fixed-board clear and its two dissolve edges at the cleared-row band center', () => {
+        const theme = createTheme();
+        theme.sculpture = { trigger: vi.fn(), dispose: vi.fn() };
+        const burst = vi.spyOn(theme, 'triggerBurst').mockImplementation(() => {});
+        theme.handleLineClear({ lineCount: 4, comboCount: 0, clearedRows: [16, 17, 18, 19] });
+        const clearOrigin = theme.sculpture.trigger.mock.calls[0][2].clone().project(theme.camera);
+        expect(clearOrigin.x).toBeCloseTo(0);
+        expect(clearOrigin.y).toBeCloseTo(0.36 - (17.5 / 19) * 0.72);
+        const dissolves = burst.mock.calls.filter(([, , options]) => options?.profile === 'dissolve');
+        expect(dissolves).toHaveLength(2);
+        expect(dissolves.map(([, , options]) => options.origin.clone().project(theme.camera).x))
+            .toEqual([expect.closeTo(-0.22), expect.closeTo(0.22)]);
+        for (const [, , options] of dissolves) {
+            expect(options.origin.clone().project(theme.camera).y).toBeCloseTo(clearOrigin.y);
+        }
+    });
+
+    it('routes a same-frame matching combo clear to a localized front while preserving standalone clears', () => {
+        const theme = createTheme();
+        theme.sculpture = { trigger: vi.fn(), dispose: vi.fn() };
+        const context = { source: 'odyssey', player: 1, levelId: 5 };
+        theme.handleCombo({ comboCount: 6, ...context });
+        theme.handleLineClear({ lineCount: 4, clearedRows: [17, 18, 19], ...context });
+        expect(theme.sculpture.trigger.mock.calls.map(([kind]) => kind)).toEqual(['combo', 'clear-front']);
+        expect(theme.pendingComboCount).toBe(0);
+        theme.sculpture.trigger.mockClear();
+        theme.handleLineClear({ lineCount: 4, comboCount: 6, ...context });
+        expect(theme.sculpture.trigger.mock.calls[0][0]).toBe('tetris');
+        theme.time += 1;
+        theme.handleCombo({ comboCount: 6, ...context });
+        theme.handleLineClear({ lineCount: 1, comboCount: 6, ...context, player: 2 });
+        expect(theme.sculpture.trigger.mock.calls.at(-1)[0]).toBe('clear');
+        theme.time += 1;
+        theme.handleLineClear({ lineCount: 4, comboCount: 6, ...context });
+        expect(theme.sculpture.trigger.mock.calls.at(-1)[0]).toBe('tetris');
+    });
+
+    it('preserves a same-frame Tetris celebration when its matching combo arrives after the clear', () => {
+        const theme = createTheme();
+        theme.sculpture = { trigger: vi.fn(), dispose: vi.fn() };
+        const context = { source: 'serenity-interaction' };
+        theme.handleLineClear({ lineCount: 4, comboCount: 6, ...context });
+        theme.handleCombo({ comboCount: 6, ...context });
+        expect(theme.sculpture.trigger.mock.calls.map(([kind]) => kind)).toEqual(['tetris']);
+        expect(theme.pendingComboCount).toBe(0);
+        theme.handleLineClear({ lineCount: 1, comboCount: 2, ...context });
+        theme.handleCombo({ comboCount: 2, ...context });
+        expect(theme.sculpture.trigger.mock.calls.map(([kind]) => kind)).toEqual(['tetris', 'clear', 'combo']);
+        theme.resetRuntimeReferences();
+        expect(theme.lastSculptureEvent).toBeNull();
+    });
+
+    it('fits both clear-band edges into the High CPU pools after a lock and three decorative bursts', () => {
+        const theme = createTheme();
+        theme.createCpuBurstPools(6, 900);
+        theme.handlePieceLock({ piece: { shape: [[1]], x: 3, y: 14 } });
+        theme.handleLineClear({ lineCount: 4, comboCount: 0, clearedRows: [16, 17, 18, 19] });
+        const dissolves = theme.burstPools.filter((pool) => pool.userData.cpuBurst.profile === 'dissolve');
+        expect(dissolves).toHaveLength(2);
+        const ndcX = dissolves.map((pool) => {
+            const state = pool.userData.cpuBurst;
+            const index = state.life.findIndex((life) => life > 0);
+            return new THREE.Vector3().fromArray(state.positions, index * 3).project(theme.camera).x;
+        });
+        expect(ndcX).toEqual([expect.closeTo(-0.22), expect.closeTo(0.22)]);
+    });
+
+    it('keeps a projected lock visible under saturation by reclaiming the oldest decorative CPU pool', () => {
+        const theme = createTheme('Low');
+        theme.createCpuBurstPools(3, 90);
+        const decorativeOrigin = new THREE.Vector3(-200, 0, 0);
+        theme.triggerBurst(1, 0, { profile: 'lock_burst', origin: decorativeOrigin });
+        theme.time = 1;
+        theme.triggerBurst(1, 0, { profile: 'peripheral', origin: decorativeOrigin });
+        theme.time = 2;
+        theme.triggerBurst(1, 0, { profile: 'hero_close', origin: decorativeOrigin });
+        const pools = [...theme.burstPools];
+        const geometries = pools.map((pool) => pool.geometry);
+        theme.time = 3;
+        const viewportOrigin = { x: 0.75, y: 0.4 };
+        theme.handlePieceLock({ viewportOrigin });
+        const replacement = pools[1].userData.cpuBurst;
+        expect(replacement.profile).toBe('lock_burst');
+        expect(replacement.startedAt).toBe(3);
+        expect(pools[0].userData.cpuBurst.startedAt).toBe(0);
+        expect(pools[2].userData.cpuBurst.profile).toBe('hero_close');
+        const expectedOrigin = theme.getOriginFromPiece(null, viewportOrigin);
+        for (let index = 0; index < replacement.life.length; index += 1) {
+            if (replacement.life[index] > 0) {
+                const origin = new THREE.Vector3().fromArray(replacement.positions, index * 3);
+                expect(origin.distanceTo(expectedOrigin)).toBeLessThan(0.001);
+            } else expect(replacement.positions[index * 3 + 2]).toBe(-9999);
+        }
+        expect(replacement.life.some((life) => life > 0)).toBe(true);
+        expect(theme.burstPools).toEqual(pools);
+        expect(theme.burstPools.map((pool) => pool.geometry)).toEqual(geometries);
+    });
+
+    it('reclaims the oldest lock when every CPU pool contains lock feedback and preserves busy hero accumulation', () => {
+        const theme = createTheme('Minimal');
+        theme.createCpuBurstPools(2, 90);
+        const origin = new THREE.Vector3(10, 20, 0);
+        theme.triggerBurst(0.5, 0, { profile: 'lock_burst', origin });
+        theme.time = 1;
+        theme.triggerBurst(0.5, 0, { profile: 'lock_burst', origin });
+        theme.time = 2;
+        theme.triggerBurst(0.5, 0, { profile: 'lock_burst', origin });
+        expect(theme.burstPools.map((pool) => pool.userData.cpuBurst.startedAt)).toEqual([2, 1]);
+        const positions = theme.burstPools.map((pool) => pool.userData.cpuBurst.positions.slice());
+        theme.triggerBurst(2, 6, { profile: 'hero_close', origin: new THREE.Vector3(-200, 50, 0) });
+        expect(theme.burstPools.map((pool) => pool.userData.cpuBurst.positions)).toEqual(positions);
+    });
+
     it('keeps CPU row dissolves sparse compared with an equally intense hero burst', () => {
         const theme = createTheme('Low');
         theme.createCpuBurstPools(2, 900);
@@ -193,7 +335,7 @@ describe('Chiral Gold event placement and retirement', () => {
                 clearedRows: [baseRow, baseRow + 1, baseRow + 2, baseRow + 3],
             });
             const dissolves = burst.mock.calls.filter(([, , options]) => options?.profile === 'dissolve');
-            expect(dissolves).toHaveLength(8);
+            expect(dissolves).toHaveLength(2);
             return dissolves.map(([intensity, , options]) => {
                 expect(intensity).toBeLessThanOrEqual(1.05);
                 expect(options.sizeMultiplier).toBeLessThanOrEqual(0.4);

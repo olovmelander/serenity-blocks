@@ -15,6 +15,21 @@ import {
 const TAU = Math.PI * 2;
 const LENS = { distance: 1520, fov: 64 };
 
+const REACTIONS = {
+    lock: {
+        life: 0.78, radius: 22, expansion: 100, arcs: 1, travel: 1.15, lift: 12, kick: 0.09,
+    },
+    clear: {
+        life: 1.45, radius: 48, expansion: 210, arcs: 2, travel: 0.7, lift: 65, kick: 0.16,
+    },
+    tetris: {
+        life: 2.1, radius: 62, expansion: 280, arcs: 3, travel: 0.92, lift: 150, kick: 0.32,
+    },
+    combo: {
+        life: 2.3, radius: 52, expansion: 300, arcs: 3, travel: 1.2, lift: 210, kick: 0.36,
+    },
+};
+
 export const CHIRAL_GOLD_SCULPTURE_TIERS = {
     Extreme: {
         segments: 280, ribbons: 3, filaments: 10, halos: 8,
@@ -135,9 +150,9 @@ function travellingPulse(t, uniforms) {
     let result = float(0);
     for (const channel of ['x', 'y', 'z', 'w']) {
         const offset = abs(t.sub(uniforms.waveOrigins[channel])).sub(uniforms.waveRadii[channel]);
-        result = result.add(exp(offset.mul(offset).mul(-350)).mul(uniforms.waveStrengths[channel]));
+        result = result.add(exp(offset.mul(offset).mul(-850)).mul(uniforms.waveStrengths[channel]));
     }
-    return result;
+    return clamp(result, 0, 1.1);
 }
 
 function createFoilMaterial(uniforms) {
@@ -166,7 +181,7 @@ function createFoilMaterial(uniforms) {
         .add(vec3(1.0, 0.95, 0.76).mul(glint.mul(4.4)))
         .add(vec3(0.95, 0.48, 0.075).mul(fresnel.mul(0.45)))
         .add(vec3(1.0, 0.78, 0.30).mul(sweep).mul(pulse.mul(0.9).add(0.1)))
-        .add(vec3(1.0, 0.90, 0.58).mul(eventFront).mul(1.7));
+        .add(vec3(1.0, 0.74, 0.29).mul(eventFront).mul(0.95));
     const color = base.add(hot).mul(energy.mul(0.16).add(1));
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, fog: false });
     material.name = 'ChiralGold / sculpted gold foil';
@@ -184,7 +199,7 @@ function createFilamentMaterial(uniforms) {
     const tip = smoothstep(0.0, 0.035, t).mul(float(1).sub(smoothstep(0.965, 1, t)));
     const color = mix(vec3(0.76, 0.30, 0.044), vec3(1.0, 0.83, 0.44), glint)
         .mul(glint.mul(2.1).add(0.65)).mul(pulse.mul(0.85).add(1))
-        .add(vec3(1.0, 0.94, 0.68).mul(eventFront).mul(3.2));
+        .add(vec3(1.0, 0.87, 0.47).mul(eventFront).mul(1.8));
     const material = new THREE.MeshBasicNodeMaterial({
         transparent: true,
         depthWrite: false,
@@ -221,6 +236,9 @@ function createAtmosphereMaterial(uniforms) {
 function createHaloMaterial() {
     const opacity = uniform(0);
     const heat = uniform(0);
+    const travel = uniform(0);
+    const arcs = uniform(1);
+    const hand = uniform(1);
     const material = new THREE.MeshBasicNodeMaterial({
         transparent: true,
         depthWrite: false,
@@ -229,11 +247,19 @@ function createHaloMaterial() {
         fog: false,
     });
     material.name = 'ChiralGold / reaction corona';
-    const color = mix(vec3(1.0, 0.43, 0.055), vec3(1.0, 0.92, 0.62), heat).mul(2.9);
+    // Broken strokes have an ivory leading glint and a copper tail. Opposite
+    // handedness makes paired hero reactions counter-rotate around the gold.
+    const angle = fract(uv().x.mul(arcs).sub(travel.mul(hand)));
+    const stroke = smoothstep(0.025, 0.15, angle).mul(float(1).sub(smoothstep(0.64, 0.9, angle)));
+    const head = exp(angle.sub(0.64).pow(2).mul(-800));
+    const color = mix(vec3(1.0, 0.32, 0.025), vec3(1.0, 0.69, 0.22), heat)
+        .mul(stroke.mul(1.4)).add(vec3(1.0, 0.94, 0.68).mul(head).mul(3.0));
     material.colorNode = color;
     material.opacityNode = opacity;
-    tagMaterial(material, color.mul(opacity), 'sculptureHalo');
-    return { material, opacity, heat };
+    tagMaterial(material, color.mul(material.opacityNode), 'sculptureHalo');
+    return {
+        material, opacity, heat, travel, arcs, hand,
+    };
 }
 
 /**
@@ -340,25 +366,35 @@ export function createChiralGoldSculpture({ scene, quality = 'High', random = Ma
     orbit.rotation.set(0.12, -0.12, -0.15);
     root.add(orbit);
 
-    const haloGeometry = new THREE.TorusGeometry(1, 0.006, 4, 96);
+    const haloGeometry = new THREE.TorusGeometry(1, 0.009, 4, 96);
     geometries.add(haloGeometry);
     const halos = Array.from({ length: tier.halos }, () => {
-        const { material, opacity, heat: haloHeat } = createHaloMaterial();
+        const {
+            material, opacity, heat: haloHeat, travel, arcs, hand,
+        } = createHaloMaterial();
         materials.add(material);
         const mesh = new THREE.Mesh(haloGeometry, material);
         mesh.visible = false;
         mesh.name = 'ChiralGold / pooled event corona';
+        mesh.userData.reactionOpacity = opacity;
         root.add(mesh);
         return {
             mesh,
             opacity,
             heat: haloHeat,
+            travel,
+            arcs,
+            hand,
             age: 10,
             life: 1.6,
             strength: 0,
             baseX: 0,
             baseY: 0,
             side: 1,
+            profile: REACTIONS.lock,
+            kind: 'lock',
+            delay: 0,
+            relativeY: 0,
             phase: random() * TAU,
         };
     });
@@ -382,6 +418,12 @@ export function createChiralGoldSculpture({ scene, quality = 'High', random = Ma
             entry.group.userData.baseX = entry.side * sideX;
             entry.group.userData.baseY = entry.side * 34;
         }
+        for (const halo of halos) {
+            if (!halo.mesh.visible) continue;
+            const { group } = sideGroups[halo.side < 0 ? 0 : 1];
+            halo.baseX = group.position.x;
+            halo.baseY = group.position.y + halo.relativeY * group.scale.y;
+        }
         const orbitHalfHeight = Math.tan((LENS.fov * Math.PI) / 360) * (cameraDistance + 1050);
         orbit.scale.set(viewportHalfWidth * (portrait ? 1.30 : 0.84), orbitHalfHeight * 0.80, 460);
     };
@@ -390,10 +432,15 @@ export function createChiralGoldSculpture({ scene, quality = 'High', random = Ma
         if (disposed) return;
         const force = Math.min(2.4, Math.max(0.15, Number.isFinite(strength) ? strength : 1));
         const heroEvent = kind === 'combo' || kind === 'tetris' || kind === 'levelUp';
-        kick = Math.min(2, kick + force * (heroEvent ? 0.65 : 0.19));
-        heat = Math.min(1, heat + force * 0.18);
+        const profile = REACTIONS[kind] || (heroEvent ? REACTIONS.tetris : REACTIONS.clear);
+        if (kind !== 'clear-front') {
+            kick = Math.min(1.25, kick + force * profile.kick);
+            heat = Math.min(1, heat + force * 0.12);
+        }
         if (kind === 'beat') return;
-        const origin = Number.isFinite(position?.y) ? saturate((position.y + 1035) / 2070) : 0.5;
+        const verticalScale = sideGroups[0].group.scale.y;
+        const origin = Number.isFinite(position?.y)
+            ? saturate(position.y / Math.max(0.01, verticalScale) / 2070 + 0.5) : 0.5;
         const wave = waves[nextWaveIndex];
         wave.age = 0;
         wave.strength = force * (heroEvent ? 0.83 : 0.48);
@@ -401,25 +448,31 @@ export function createChiralGoldSculpture({ scene, quality = 'High', random = Ma
         uniforms.waveRadii.value.setComponent(nextWaveIndex, 0);
         uniforms.waveStrengths.value.setComponent(nextWaveIndex, wave.strength);
         nextWaveIndex = (nextWaveIndex + 1) % waves.length;
+        if (kind === 'clear-front') return;
         const count = heroEvent ? 2 : 1;
         for (let i = 0; i < count; i += 1) {
             const halo = halos[nextHaloIndex];
             nextHaloIndex = (nextHaloIndex + 1) % halos.length;
             let side;
             if (count === 2) side = i ? 1 : -1;
-            else {
-                lastSide *= -1;
-                side = lastSide;
-            }
+            else if (Number.isFinite(position?.x) && Math.abs(position.x) > 1) side = Math.sign(position.x);
+            else { lastSide *= -1; side = lastSide; }
             halo.age = 0;
-            halo.life = heroEvent ? 2.15 : 1.55;
-            halo.strength = force * (heroEvent ? 1.15 : 0.58);
+            halo.profile = profile;
+            halo.kind = kind;
+            halo.delay = kind === 'combo' ? i * 0.12 : 0;
+            halo.life = profile.life;
+            halo.strength = force * (heroEvent ? 0.95 : 0.72);
             halo.side = side;
-            halo.baseX = Number.isFinite(position?.x) && Math.abs(position.x) > viewportHalfWidth * 0.34
-                ? position.x : sideGroups[side < 0 ? 0 : 1].group.position.x;
+            const { group } = sideGroups[side < 0 ? 0 : 1];
+            halo.baseX = group.position.x;
             halo.baseY = Number.isFinite(position?.y) ? THREE.MathUtils.clamp(position.y, -700, 700)
                 : Math.sin(time * 0.57 + i * 2.1) * 360;
+            halo.relativeY = (halo.baseY - group.position.y) / Math.max(0.01, group.scale.y);
             halo.heat.value = heroEvent ? 0.82 : 0.32;
+            halo.arcs.value = profile.arcs;
+            halo.hand.value = side;
+            halo.travel.value = 0;
             halo.mesh.visible = true;
             halo.mesh.rotation.set(side * 0.55, side * 0.48, time * 0.08 + i * 0.7 + halo.phase * 0.08);
             halo.mesh.position.set(halo.baseX, halo.baseY, -110);
@@ -457,18 +510,20 @@ export function createChiralGoldSculpture({ scene, quality = 'High', random = Ma
         for (const halo of halos) {
             if (!halo.mesh.visible) continue;
             halo.age += dt;
-            const progress = halo.age / halo.life;
+            const progress = Math.max(0, halo.age - halo.delay) / halo.life;
             if (progress >= 1) {
                 halo.mesh.visible = false;
                 halo.opacity.value = 0;
                 continue;
             }
-            const radius = (40 + progress * 250) * Math.sqrt(halo.strength);
-            halo.mesh.scale.set(radius * (portrait ? 0.42 : 1), radius * 1.38, radius);
-            halo.mesh.position.x = halo.baseX + halo.side * progress * (portrait ? 14 : 75);
-            halo.mesh.position.y = halo.baseY + progress * 95;
-            halo.mesh.rotation.z += dt * halo.side * 0.21;
-            halo.opacity.value = Math.sin(Math.PI * progress) ** 1.25 * (1 - progress) * 0.58;
+            const growth = 1 - (1 - progress) ** 2;
+            const radius = (halo.profile.radius + growth * halo.profile.expansion) * Math.sqrt(halo.strength);
+            halo.mesh.scale.set(radius * (portrait ? 0.36 : 1), radius * 1.18, radius);
+            halo.mesh.position.x = halo.baseX + halo.side * growth * (portrait ? 12 : 50);
+            halo.mesh.position.y = halo.baseY + progress * halo.profile.lift;
+            halo.travel.value = progress * halo.profile.travel;
+            halo.opacity.value = Math.min(1, progress * 18) * (1 - progress) ** 1.8
+                * (halo.kind === 'lock' ? 0.56 : 0.7);
         }
     };
 
@@ -483,6 +538,7 @@ export function createChiralGoldSculpture({ scene, quality = 'High', random = Ma
             heat = 0;
             nextHaloIndex = 0;
             nextWaveIndex = 0;
+            lastSide = 1;
             uniforms.pulse.value = 0;
             uniforms.heat.value = 0;
             uniforms.waveStrengths.value.set(0, 0, 0, 0);
@@ -503,6 +559,14 @@ export function createChiralGoldSculpture({ scene, quality = 'High', random = Ma
                 activeHalos: halos.filter((halo) => halo.mesh.visible).length,
                 travelFrontPoolSize: waves.length,
                 activeTravelFronts: waves.filter((wave) => wave.age <= 2).length,
+                reactions: halos.filter((halo) => halo.mesh.visible).map((halo) => ({
+                    kind: halo.kind,
+                    age: halo.age,
+                    life: halo.life,
+                    delay: halo.delay,
+                    side: halo.side,
+                    opacity: halo.opacity.value,
+                })),
                 disposed,
             };
         },
