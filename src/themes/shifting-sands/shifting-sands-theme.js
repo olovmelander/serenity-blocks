@@ -450,6 +450,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
         // Once the board is gone the last rects stay, so the eased strength fades them out.
         if (rects) ls.applied = rects;
         ls.live = Boolean(rects);
+        // The worm breaches anywhere in the erg that the boards and the HUD leave in view.
+        this.world?.setKeepOutRects(rects ? [...rects.cards, rects.hud] : []);
     }
 
     /** The mode manager may appear after the first build (boot prewarm); subscribe once it does. */
@@ -598,7 +600,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             quality: this.quality,
             pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
             terrain: this.world?.terrain?.stats ?? null,
-            worm: this.world?.director?.state?.breach ? 'breaching' : 'below',
+            worm: this.world?.director?.state?.slots?.some((slot) => slot.show) ? 'breaching' : 'below',
             reducedMotion: this.reducedMotion,
         };
     }
