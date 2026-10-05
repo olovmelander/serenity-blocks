@@ -424,6 +424,10 @@ export function createFormations({ field, shared, detail = 1 }) {
         material,
         heightAt: built.heightAt,
         list: built.list,
+        /** Footprints for the worm director: r = the apron on the sand, solid = the standing rock. */
+        obstacles: built.list.map((f) => ({
+            x: f.x, z: f.z, r: f.radius * f.profile(0) * 1.05, solid: f.radius, h: f.height,
+        })),
         dispose() {
             built.geometry.dispose();
             material.dispose();

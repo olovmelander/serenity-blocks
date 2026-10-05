@@ -18,7 +18,7 @@ import {
 import { DuneField, createTerrain, GROUND_PULSE_SLOTS } from './shifting-sands-terrain.js';
 import { createSky } from './shifting-sands-sky.js';
 import { createFormations } from './shifting-sands-rocks.js';
-import { WormDirector, createWorm } from './shifting-sands-worm.js';
+import { WORM_SLOTS, WormDirector, createWorm } from './shifting-sands-worm.js';
 import {
     BLOW_SLOTS, FX_TIERS, createSpiceBlows, createSpiceMotes, createSpindrift, createWormSand,
 } from './shifting-sands-fx.js';
@@ -80,6 +80,8 @@ export class ShiftingSandsWorld {
         this.pointer = { x: 0, y: 0 };
         this.reducedMotion = false;
         this.parts = null;
+        this.keepOut = []; // screen-x spans (fractions) covered by the gameplay boards and the HUD
+        this.viewHalfAz = 0;
         this._tmpV = new THREE.Vector3();
         this._sunScreen = { x: 0.25, y: 0.3, visible: 1 };
         this._groundScratch = {
@@ -155,7 +157,12 @@ export class ShiftingSandsWorld {
         // ── Shai-Hulud ──
         this.worm = createWorm(s, this.tier.worm || {});
         this.group.add(this.worm.mesh);
-        this.director = new WormDirector((x, z) => this.field.sample(x, z, this._groundScratch).h);
+        // Captures replay the reference sequence of sites; in play every session draws its own.
+        this.director = new WormDirector((x, z) => this.field.sample(x, z, this._groundScratch).h, {
+            obstacles: this.rocks.obstacles,
+            capture: this.capture,
+            salt: this.capture ? 0 : Math.floor(Math.random() * 0xffffffff),
+        });
         this.flash = 0;
         this.rumble = 0;
 
@@ -183,6 +190,10 @@ export class ShiftingSandsWorld {
         }
         ground = Math.max(ground, this.field.height(0, 0));
         this.restPosition.set(0, ground + REST_RIG.clearance, 0);
+        this.director.eye = this.restPosition;
+        // Draw the first site now, while the build is the frame that stutters: the picker runs
+        // cold here, warm on every later cycle.
+        this.director.idleBreach(0);
 
         this.scene.add(this.group);
         return this;
@@ -253,7 +264,6 @@ export class ShiftingSandsWorld {
         this.director?.reset();
         this.flash = 0;
         this.rumble = 0;
-        this.lastBreachEnd = -Infinity;
     }
 
     /** Reduced motion: the rig holds still (no breathing, no tremor); events stay. */
@@ -261,10 +271,12 @@ export class ShiftingSandsWorld {
         this.reducedMotion = reduced === true;
     }
 
-    /** Game over / new game: the dusk returns to golden hour and the worm forgets the summons. */
+    /**
+     * Game over / new game: the dusk returns to golden hour. A worm that has been called still
+     * runs its course — forgetting it here would cut it out of the air in a single frame.
+     */
     resetSession() {
         this.duskTarget = 0;
-        this.director?.reset();
     }
 
     // ── Events (pure state writes; nothing is created at event time) ─────────────
@@ -289,10 +301,13 @@ export class ShiftingSandsWorld {
         this.flash = Math.max(this.flash, 0.25 + n * 0.12);
         this.shared.uSunFlare.value = Math.max(this.shared.uSunFlare.value, 0.15 + n * 0.08);
         if (n >= 4) {
-            // A Tetris calls the worm: one great blow where it will break the surface.
+            // A Tetris calls the worm: one great blow where it will break the surface. If the
+            // last one it called is still above the sand, the spice answers instead.
             if (this.director.summon(this.time)) {
                 const em = this.director.summonedEmergence();
-                this.spawnSpiceBlowAt(em.x, em.z, this.time + 0.9, 1.5);
+                this.spawnSpiceBlowAt(em.x, em.z, this.director.summoned.t0 - 0.7, 1.5);
+            } else {
+                for (let i = 0; i < BLOW_SLOTS; i++) this.spawnSpiceBlow(this.time + i * 0.22, 1.3);
             }
             this.spiceGlow = Math.max(this.spiceGlow, 1.2);
         } else {
@@ -341,21 +356,22 @@ export class ShiftingSandsWorld {
         s.uTime.value = this.time;
         this.dusk += (this.duskTarget - this.dusk) * approach(0.6, dt);
         this.applyDusk(this.dusk);
-        // ── Worm ──
+        // ── Worms: each slot writes its body, its sand and its marks on the erg ──
         const ws = this.director.update(this.time);
-        this.worm.apply(ws);
+        this.worm.apply(ws.slots);
+        this.wormSand.apply(ws.slots);
         const tu = this.terrain.uniforms;
-        if (ws.sign) {
-            tu.uSign.value.set(ws.sign.x, ws.sign.z, 0, ws.sign.strength);
-            tu.uSignDir.value.set(ws.sign.dx, ws.sign.dz);
-        } else {
-            tu.uSign.value.w = 0;
+        for (let i = 0; i < WORM_SLOTS; i++) {
+            const st = ws.slots[i];
+            tu.uSigns.array[i].set(st.sign.x, st.sign.z, st.sign.wake, st.sign.strength);
+            tu.uSignDirs.array[i].set(st.sign.dx, st.sign.dz, 0, 0);
+            tu.uPulses.array[GROUND_PULSE_SLOTS + i].set(st.ring.x, st.ring.z, st.ring.t0, st.ring.strength);
+            for (let j = 0; j < 2; j++) {
+                const well = st.wells[j];
+                tu.uWells.array[i * 2 + j].set(well.x, well.z, well.radius, well.width);
+                tu.uWellH.array[i * 2 + j].set(well.rim, well.bulge, well.crater, well.scar);
+            }
         }
-        const m = tu.uMounds.array;
-        for (let i = 0; i < 2; i++) m[i].set(ws.mounds[i].x, ws.mounds[i].z, ws.mounds[i].r, ws.mounds[i].h);
-        // Pools draw only while live (the worm's grains outlive the breach by their lifetime).
-        this.wormSand.setActive(ws.breach !== null || this.time - (this.lastBreachEnd ?? -Infinity) < 7);
-        if (ws.breach) this.lastBreachEnd = this.time;
         const blowArr = this.blows.uBlows.array;
         let blowLive = false;
         for (let i = 0; i < blowArr.length; i++) {
@@ -395,10 +411,31 @@ export class ShiftingSandsWorld {
         return this._sunScreen;
     }
 
-    /** Pixel-sized content follows the drawing buffer. */
+    /** Pixel-sized content follows the drawing buffer; the worm's range follows the lens. */
     setViewport(bufferHeight, camera) {
         const fov = (camera?.fov ?? REST_RIG.fov) * DEG;
         this.shared.uPxScale.value = Math.max(1, bufferHeight) / (2 * Math.tan(fov / 2));
+        this.viewHalfAz = Math.atan(Math.tan(fov / 2) * (camera?.aspect ?? 16 / 9)) / DEG;
+        this.syncWormView();
+    }
+
+    /**
+     * The gameplay boards and the HUD (screen fractions, as the post's calm zones read them):
+     * the worm keeps clear of what they cover.
+     */
+    setKeepOutRects(rects) {
+        this.keepOut = (rects || []).filter(Boolean).map((r) => [r.x0, r.x1]);
+        this.syncWormView();
+    }
+
+    syncWormView() {
+        if (!this.director || !(this.viewHalfAz > 0)) return;
+        const edge = Math.tan(this.viewHalfAz * DEG);
+        const azOf = (x) => Math.atan((x * 2 - 1) * edge) / DEG;
+        this.director.setView({
+            halfAz: this.viewHalfAz,
+            bands: this.keepOut.map(([x0, x1]) => [azOf(x0), azOf(x1)]),
+        });
     }
 
     dispose() {

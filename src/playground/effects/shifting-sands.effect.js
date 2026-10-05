@@ -18,7 +18,18 @@
  *   noPost=1                 raw scene (no bloom/grade)
  *   rays=<n>&bloom=0|1       override the tier's shaft taps / bloom
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
- *   icon=1                   the theme-icon framing (a tight lens on the suns and the breach)
+ *   icon=1                   the theme-icon framing (a tight lens on the suns and a breach held
+ *                            in front of them; iconYaw / iconPitch / iconFov)
+ *
+ * The worm (it breaches anywhere in the erg; these hold it still for a look):
+ *   breach=1                 ?t= counts from the idle worm breaking the sand (negative: its sign)
+ *   cycle=<n>                ...of idle cycle n (default 0): each cycle draws its own site
+ *   wormAz / wormDist / wormHeading / wormLeap / wormR
+ *                            hold the idle breach at a site: azimuth and travel direction in
+ *                            degrees (+ right of forward), distance, 0 hoop → 1 long leap, radius
+ *   follow=1                 aim a tight lens at the live worm (followFov, default 15;
+ *                            followSlot=1 for the summoned one; followFoot=up|down for one foot;
+ *                            followLift=<units> raises the camera to look down into the wells)
  */
 import * as THREE from 'three/webgpu';
 import { ShiftingSandsWorld } from '../../themes/shifting-sands/shifting-sands-world.js';
@@ -74,6 +85,16 @@ export function create({
         fov: camera.fov, near: camera.near, far: camera.far,
     };
     const world = new ShiftingSandsWorld({ scene, quality, capture: true }).build();
+    const iconPose = params.get('icon') === '1';
+    const pinKeys = ['wormAz', 'wormDist', 'wormHeading', 'wormLeap', 'wormR'];
+    if (pinKeys.some((key) => params.has(key)) || iconPose) {
+        // The icon's breach: in front of the suns, crossing them.
+        const pin = iconPose ? { az: -27, dist: 1350, heading: -118 } : {};
+        pinKeys.forEach((key) => {
+            if (params.has(key)) pin[key === 'wormR' ? 'R' : key.slice(4).toLowerCase()] = num(params, key);
+        });
+        world.director.setPinned(pin);
+    }
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
     if (params.has('dusk')) {
@@ -98,11 +119,27 @@ export function create({
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
-    const iconPose = params.get('icon') === '1';
+    const follow = params.get('follow') === '1';
+    const followTarget = new THREE.Vector3();
     const placeCamera = (cam, s) => {
         world.updateCamera(cam, s);
+        if (follow) {
+            // A tight lens on the live worm (or one of its feet). The director is closed-form,
+            // so asking it for this frame's worm early changes nothing.
+            const { slots } = world.director.update(s.time);
+            const want = params.has('followSlot') ? slots[num(params, 'followSlot')] : null;
+            const br = (want || slots.find((slot) => slot.breach) || slots[0]).breach;
+            if (!br) return;
+            const foot = { up: br.up, down: br.down }[params.get('followFoot')];
+            if (foot) followTarget.set(foot.x, foot.y + br.R * 0.6, foot.z);
+            else followTarget.set(br.ox, br.oy + (br.b - br.k) * 0.42, br.oz);
+            cam.position.y += num(params, 'followLift');
+            cam.lookAt(followTarget);
+            cam.updateMatrixWorld();
+            return;
+        }
         if (!iconPose) return;
-        // A tight lens on the twin suns and the arch of the idle breach.
+        // A tight lens on the twin suns and the arch of the breach held in front of them.
         const pitch = THREE.MathUtils.degToRad(num(params, 'iconPitch', 1.5));
         cam.rotation.set(pitch, THREE.MathUtils.degToRad(num(params, 'iconYaw', 27)), 0);
         cam.updateMatrixWorld();
@@ -125,11 +162,20 @@ export function create({
         camera.updateProjectionMatrix();
         renderer.getDrawingBufferSize(size);
         world.setViewport(size.y, camera);
+        if (follow) {
+            // The world keeps the game's lens (the worm's range is what the player would see);
+            // only pixel-sized content follows the tight one.
+            camera.fov = num(params, 'followFov', 15);
+            camera.updateProjectionMatrix();
+            const halfFov = THREE.MathUtils.degToRad(camera.fov) / 2;
+            world.shared.uPxScale.value = Math.max(1, size.y) / (2 * Math.tan(halfFov));
+        }
         post?.setSize(window.innerWidth, window.innerHeight, size.x, size.y);
         if (overlay) {
             const rects = readLayoutRects();
             const list = rects ? [...rects.cards, rects.hud].filter(Boolean) : [];
             post?.setCalmRects(list, rects ? 1 : 0);
+            world.setKeepOutRects(list);
         }
     };
     syncViewport();
@@ -143,7 +189,12 @@ export function create({
             time, sunUV: sun, sunVis: sun.visible, horizonY: sun.horizonY, flash: world.flash ?? 0,
         });
     };
-    const seekTo = (time) => {
+    // breach=1: the clock starts when the idle worm of the chosen cycle breaks the sand.
+    const clockOrigin = () => (params.get('breach') === '1'
+        ? world.director.idleBreach(Math.max(0, Math.round(num(params, 'cycle', 0)))).t0
+        : 0);
+    const seekTo = (playgroundTime) => {
+        const time = Math.max(0, playgroundTime + clockOrigin());
         world.seek(Math.max(0, time - (eventName ? eventAge : 0)));
         if (eventName) {
             fireEvent();
@@ -163,10 +214,11 @@ export function create({
 
     return {
         cameraRadius: 1,
-        camera(time, cam) {
-            placeCamera(cam, sim(time, 0));
+        camera(playgroundTime, cam) {
+            placeCamera(cam, sim(Math.max(0, playgroundTime + clockOrigin()), 0));
         },
-        update(time, dt) {
+        update(playgroundTime, dt) {
+            const time = Math.max(0, playgroundTime + clockOrigin());
             placeCamera(camera, sim(time, dt));
             world.update(sim(time, dt), camera);
             pushPost(time);
@@ -180,6 +232,18 @@ export function create({
         },
         resize() {
             syncViewport();
+        },
+        /** window.__PLAYGROUND__.diagnostics(): where and when the worms are (for timed captures). */
+        getDiagnostics() {
+            const describe = (br) => (br ? {
+                az: br.az, dist: br.dist, t0: br.t0, tDown: br.tDown, duration: br.duration, R: br.R,
+            } : null);
+            const cycle = Math.max(0, Math.round(num(params, 'cycle', 0)));
+            return {
+                terrain: world.terrain?.stats ?? null,
+                idle: describe(world.director.idleBreach(cycle)),
+                live: world.director.state.slots.map((slot) => describe(slot.breach)),
+            };
         },
         dispose() {
             overlay?.remove();
