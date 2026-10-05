@@ -1,5 +1,11 @@
 # Breathing and Hale sessions — rebuilt (October 2026)
 
+> **Worlds and tiers superseded 2026-10-05** by
+> [BREATHING_WORLDS_MASTERPIECE_2026-10.md](BREATHING_WORLDS_MASTERPIECE_2026-10.md): the twelve
+> worlds were rebuilt again on a stage with a breathing camera, light shafts and a grade, and the
+> Low tier now runs a light post pipeline. The guide, the Breathing tab and the Hale sessions
+> below are unchanged.
+
 A from-scratch rebuild of everything breathing: the twelve worlds, the guide that sits over
 them, the Breathing tab, and the Hale sessions menu and flow. It replaces the two earlier passes
 recorded in [BREATHING_IMMERSIVE_OVERHAUL_2026-10.md](BREATHING_IMMERSIVE_OVERHAUL_2026-10.md).
