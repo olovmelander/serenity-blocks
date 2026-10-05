@@ -231,6 +231,9 @@ describe('Serenity Hub owns close navigation', () => {
             }),
         });
 
+        // The Hub also follows the breathing guide through a window event.
+        vi.stubGlobal('window', { addEventListener: vi.fn() });
+
         const hub = Object.create(SerenityHub.prototype);
         hub.abortController = new AbortController();
         hub.isOpen = true;

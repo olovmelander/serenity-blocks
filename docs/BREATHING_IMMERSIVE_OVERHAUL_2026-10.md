@@ -1,5 +1,9 @@
 # Immersive breathing and Hale sessions — October 2026
 
+> **Superseded 2026-10-05** by [BREATHING_OVERHAUL_2026-10.md](BREATHING_OVERHAUL_2026-10.md). The renderer, worlds, guide
+> and menus described here were rebuilt; the files this document names no longer exist. Kept for its
+> behaviour findings (phase boundaries, ownership, cancellation), which the rebuild preserves.
+
 ## Delivered experience
 
 All twelve breathing worlds now have distinct foreground forms and particle movement, as well as their own atmospheres. The follow-up removes the shared circular aperture, circular phase track and reused wireframes that made the first overhaul feel like color variants. A neutral linear phase track, readable instructions, countdown and phase steps explain the rhythm without imposing a common silhouette.

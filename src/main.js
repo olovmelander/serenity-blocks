@@ -133,7 +133,7 @@ import { warmWebGpuDevice, warmWebGpuDeviceMs } from './rendering/webgpu-device-
 import { CustomCursor } from './ui/components/custom-cursor.js';
 import { formatGpuRemediationHtml } from './ui/desktop-gpu-remediation.js';
 import { installCosmicSelects, uninstallCosmicSelects } from './ui/components/cosmic-select.js';
-import { initEnhancedBreathingIndicator } from './ui/effects/enhanced-breathing-indicator.js';
+import { initBreathingGuide } from './ui/effects/breathing/breathing-guide.js';
 
 const RIPPLE_BORDER_ALPHA = 0.8;
 const RIPPLE_SHADOW_ALPHA = 0.6;
@@ -747,7 +747,7 @@ class SerenityBlocks {
 
     initializeDeferredUiSystems() {
         if (typeof window !== 'undefined' && !window.breathingIndicator) {
-            window.breathingIndicator = initEnhancedBreathingIndicator();
+            window.breathingIndicator = initBreathingGuide();
         }
 
         this.mountCustomCursor();
@@ -4439,7 +4439,7 @@ class SerenityBlocks {
      */
     resumeGame() {
         // Settings and guided breathwork retain pause ownership through every resume route.
-        if (this.serenityHub?.sessionManager?.activeSession || this.modalManager.isVisible('settings')) {
+        if (this.serenityHub?.holdsGameplay?.() || this.modalManager.isVisible('settings')) {
             console.log('[Main] Settings or guided session active, keeping gameplay paused');
             return;
         }

@@ -210,7 +210,27 @@ export class BreathworkAudioManager {
             if (onComplete) onComplete();
         };
         this.voiceAudio.onended = () => finish();
+        this.finishVoice = finish;
         this.voiceAudio.play().catch(finish);
+    }
+
+    /** Hold the voice where it is. Its completion callback stays armed for resumeAll(). */
+    pauseAll() {
+        if (this.destroyed) return;
+        this.voiceHeld = this.isVoicePlaying;
+        this.voiceAudio.pause();
+        this.cueGeneration += 1;
+        this.cueAudio.pause();
+        this.cueAudio.currentTime = 0;
+    }
+
+    /** Continue a held voice. If playback cannot restart, settle it so its chain moves on. */
+    resumeAll() {
+        if (this.destroyed || !this.voiceHeld) return;
+        this.voiceHeld = false;
+        if (!this.isVoicePlaying) return;
+        const finish = this.finishVoice;
+        Promise.resolve(this.voiceAudio.play()).catch((error) => finish?.(error));
     }
 
     /**
@@ -277,6 +297,8 @@ export class BreathworkAudioManager {
         }
         this.isVoicePending = false;
         this.isVoicePlaying = false;
+        this.voiceHeld = false;
+        this.finishVoice = null;
         this.currentVoicePath = null;
         if (this.voiceAudio) {
             this.voiceAudio.onended = null;

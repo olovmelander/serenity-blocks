@@ -217,7 +217,7 @@ describe('BreathworkSessionManager phase work ownership', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('replacement of the same session/phase cancels old filler, intention and voice-chain delays', async () => {
+    it('replacement of the same session/phase cancels old filler and voice-chain delays', async () => {
         const { manager } = createSessionManager();
         const phase = manager.SESSIONS.TEST.phases[0];
         phase.audio = { fillers: ['old-filler.wav'], intentions: ['old-intention.wav'] };
@@ -226,7 +226,6 @@ describe('BreathworkSessionManager phase work ownership', () => {
         const chain = vi.spyOn(manager.audioManager, 'playVoiceWithCallback').mockImplementation(() => {});
         manager.startSession('TEST', vi.fn(), vi.fn());
         manager._scheduleFillersAudio(phase.audio.fillers, 100, phase);
-        manager._scheduleIntention(phase.audio.intentions, 100, phase);
         manager._playVoiceChain([{ delay: 100 }, 'old-chain.wav'], phase);
         manager.startSession('TEST', vi.fn(), vi.fn());
         await vi.advanceTimersByTimeAsync(200);
@@ -251,18 +250,48 @@ describe('BreathworkSessionManager phase work ownership', () => {
         manager.destroy();
     });
 
-    it('pause clears cue/progress ownership and resume creates one fresh phase owner', async () => {
+    it('pause holds every timer and the voice, and resume re-arms each of them once', async () => {
         const { manager } = createSessionManager();
         manager.startSession('TEST', vi.fn(), vi.fn());
-        const cue = vi.spyOn(manager.audioManager, 'playCue').mockImplementation(() => {});
-        manager._startRhythmicAudio([1, 0, 1, 0], { in: 'in.wav', out: 'out.wav' }, 5);
-        expect(cue).toHaveBeenCalledWith('in.wav');
+        const voice = manager.audioManager.voiceAudio;
+        const finished = vi.fn();
+        manager.audioManager.playVoiceWithCallback('guide.wav', finished);
+        const later = vi.fn();
+        manager._schedulePhase(later, 5000);
+        expect(vi.getTimerCount()).toBe(3); // stage end, progress, the scheduled work
+        await vi.advanceTimersByTimeAsync(2000);
         manager.pauseSession();
         expect(vi.getTimerCount()).toBe(0);
-        await vi.advanceTimersByTimeAsync(2000);
-        expect(cue).toHaveBeenCalledTimes(1);
+        expect(manager.audioManager.isVoicePlaying).toBe(true);
+        await vi.advanceTimersByTimeAsync(20000);
+        expect(later).not.toHaveBeenCalled();
         manager.resumeSession();
-        expect(vi.getTimerCount()).toBe(2);
+        expect(vi.getTimerCount()).toBe(3);
+        expect(voice.play).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(2900);
+        expect(later).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(200);
+        expect(later).toHaveBeenCalledOnce();
+        // The held voice still completes its chain exactly once.
+        voice.onended();
+        expect(finished).toHaveBeenCalledOnce();
+        manager.destroy();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('a voice that cannot restart after a pause settles its chain instead of stalling it', async () => {
+        const manager = new BreathworkAudioManager();
+        const finished = vi.fn();
+        manager.playVoiceWithCallback('guide.wav', finished);
+        await flushMicrotasks();
+        manager.pauseAll();
+        manager.voiceAudio.play.mockRejectedValueOnce(new Error('blocked'));
+        manager.resumeAll();
+        await flushMicrotasks();
+        expect(finished).toHaveBeenCalledOnce();
+        expect(manager.isVoicePlaying).toBe(false);
+        manager.resumeAll();
+        expect(manager.voiceAudio.play).toHaveBeenCalledTimes(2);
         manager.destroy();
     });
 

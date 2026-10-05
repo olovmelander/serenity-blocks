@@ -1,0 +1,340 @@
+/* The breathing guide: a full-screen world, and a quiet layer of words over it.
+   One variable, --breath (0 empty .. 1 full), drives every CSS motion here. */
+.breath-guide {
+    --breath: 0;
+    --breath-accent: 110, 240, 190;
+    --breath-ink: 240, 246, 255;
+    position: fixed;
+    inset: 0;
+    z-index: 600;
+    overflow: hidden;
+    isolation: isolate;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    color: rgb(var(--breath-ink));
+    background:
+        radial-gradient(ellipse at 50% 38%, rgba(var(--breath-accent), 0.13), transparent 62%),
+        #04070f;
+    opacity: 0;
+    transition: opacity 0.9s ease;
+    -webkit-font-smoothing: antialiased;
+}
+.breath-guide[hidden] { display: none; }
+.breath-guide.is-open { opacity: 1; }
+.breath-guide.is-leaving { opacity: 0; transition-duration: 0.4s; }
+
+.breath-guide__stage,
+.breath-guide__fallback,
+.breath-guide__scrim { position: absolute; inset: 0; pointer-events: none; }
+.breath-guide__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 0;
+    transition: opacity 0.42s ease;
+}
+/* The world arrives slowly and leaves quickly: a blink between worlds, a dawn on entry. */
+.breath-guide.is-live .breath-guide__canvas { opacity: 1; transition-duration: 1.3s; }
+
+/* CSS guide: shown while the world loads, between worlds, and wherever no GPU is available. */
+.breath-guide__fallback { z-index: -1; }
+.breath-guide__orb {
+    position: absolute;
+    left: 50%;
+    top: 40%;
+    width: min(46vh, 62vw);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(calc(0.5 + var(--breath) * 0.5));
+    background: radial-gradient(circle,
+        rgba(var(--breath-accent), calc(0.34 + var(--breath) * 0.3)) 0%,
+        rgba(var(--breath-accent), 0.13) 42%,
+        transparent 70%);
+    will-change: transform;
+}
+.breath-guide__orb--ring {
+    background: none;
+    border: 1px solid rgba(var(--breath-accent), 0.38);
+    transform: translate(-50%, -50%) scale(calc(0.62 + var(--breath) * 0.42));
+}
+.breath-guide__scrim {
+    z-index: 1;
+    background:
+        linear-gradient(180deg, rgba(3, 6, 14, 0.62) 0%, rgba(3, 6, 14, 0) 24%),
+        linear-gradient(0deg, rgba(3, 6, 14, 0.86) 0%, rgba(3, 6, 14, 0.5) 22%, rgba(3, 6, 14, 0) 50%);
+}
+
+.breath-guide__header,
+.breath-guide__cue,
+.breath-guide__cycle,
+.breath-guide__journey,
+.breath-guide__controls,
+.breath-guide__confirm,
+.breath-guide__paused { position: absolute; z-index: 2; }
+
+.breath-guide__header {
+    top: max(4.5vh, 22px);
+    left: 50%;
+    width: min(86vw, 640px);
+    transform: translateX(-50%);
+    text-align: center;
+    pointer-events: none;
+}
+.breath-guide__eyebrow {
+    margin: 0 0 8px;
+    color: rgb(var(--breath-accent));
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
+}
+.breath-guide__title {
+    margin: 0;
+    font-size: clamp(20px, 2.6vw, 30px);
+    font-weight: 300;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75);
+}
+.breath-guide__note {
+    margin: 9px auto 0;
+    max-width: 520px;
+    color: rgba(var(--breath-ink), 0.74);
+    font-size: clamp(12px, 1.15vw, 14px);
+    line-height: 1.6;
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8);
+}
+
+.breath-guide__cue {
+    left: 50%;
+    bottom: clamp(104px, 17vh, 168px);
+    width: min(90vw, 560px);
+    transform: translateX(-50%);
+    text-align: center;
+    pointer-events: none;
+}
+.breath-guide__phase {
+    font-size: clamp(30px, 4.6vw, 52px);
+    font-weight: 200;
+    letter-spacing: 0.02em;
+    line-height: 1.1;
+    text-shadow: 0 2px 26px rgba(0, 0, 0, 0.8);
+}
+.breath-guide__count {
+    min-height: 1.3em;
+    margin-top: 4px;
+    color: rgb(var(--breath-accent));
+    font-size: clamp(20px, 2.4vw, 28px);
+    font-weight: 300;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 14px rgba(0, 0, 0, 0.8);
+}
+.breath-guide__hint {
+    margin-top: 2px;
+    color: rgba(var(--breath-ink), 0.66);
+    font-size: clamp(12px, 1.1vw, 14px);
+    letter-spacing: 0.03em;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
+}
+.breath-guide.is-wordless .breath-guide__cue { display: none; }
+
+/* The whole breath at a glance: each phase as long as it lasts, filling as it passes. */
+.breath-guide__cycle {
+    left: 50%;
+    bottom: clamp(52px, 8.5vh, 84px);
+    display: flex;
+    gap: 5px;
+    width: min(82vw, 440px);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+.breath-guide__segment {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 30px;
+    padding-top: 10px;
+    color: rgba(var(--breath-ink), 0.5);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-align: center;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transition: color 0.4s ease;
+}
+.breath-guide__segment[hidden] { display: none; }
+.breath-guide__segment::before,
+.breath-guide__segment i {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    border-radius: 3px;
+}
+.breath-guide__segment::before { background: rgba(var(--breath-ink), 0.2); }
+.breath-guide__segment i {
+    background: rgb(var(--breath-accent));
+    transform: scaleX(0);
+    transform-origin: left center;
+    box-shadow: 0 0 10px rgba(var(--breath-accent), 0.55);
+}
+.breath-guide__segment b { font-weight: 600; }
+.breath-guide__segment em { margin-left: 5px; font-style: normal; font-variant-numeric: tabular-nums; opacity: 0.75; }
+.breath-guide__segment[data-active="true"] { color: rgb(var(--breath-ink)); }
+
+/* A session's journey sits where the standalone guide leaves the bottom edge free. */
+.breath-guide__journey {
+    left: 50%;
+    bottom: max(2.2vh, 14px);
+    width: min(90vw, 720px);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+.breath-guide__journey[hidden] { display: none; }
+.breath-guide__journey-status {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
+}
+.breath-guide__journey-stage {
+    color: rgb(var(--breath-accent));
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+.breath-guide__journey-detail { color: rgba(var(--breath-ink), 0.88); font-variant-numeric: tabular-nums; }
+.breath-guide__journey-remaining { margin-left: auto; color: rgba(var(--breath-ink), 0.6); }
+.breath-guide__journey-track { display: flex; gap: 3px; }
+.breath-guide__journey-mark {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 4px;
+    height: 3px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: rgba(var(--breath-ink), 0.16);
+}
+.breath-guide__journey-mark[data-type="retention"] { background: rgba(var(--breath-ink), 0.09); }
+.breath-guide__journey-mark b {
+    position: absolute;
+    inset: 0;
+    background: rgb(var(--breath-accent));
+    transform: scaleX(0);
+    transform-origin: left center;
+}
+.breath-guide__journey-mark[data-state="done"] b { transform: scaleX(1); opacity: 0.55; }
+.breath-guide.is-session .breath-guide__cue { bottom: clamp(128px, 21vh, 196px); }
+.breath-guide.is-session .breath-guide__cycle { bottom: clamp(76px, 12.5vh, 112px); }
+
+.breath-guide__controls {
+    top: max(3vh, 16px);
+    right: max(1.6vw, 14px);
+    display: flex;
+    gap: 8px;
+}
+.breath-guide__button {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid rgba(var(--breath-ink), 0.2);
+    border-radius: 999px;
+    background: rgba(6, 11, 22, 0.5);
+    color: rgba(var(--breath-ink), 0.86);
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.breath-guide__button:hover,
+.breath-guide__button:focus-visible {
+    border-color: rgba(var(--breath-accent), 0.75);
+    background: rgba(var(--breath-accent), 0.16);
+    color: rgb(var(--breath-ink));
+}
+.breath-guide__button:focus-visible { outline: 2px solid rgb(var(--breath-accent)); outline-offset: 3px; }
+.breath-guide__button--previous,
+.breath-guide__button--next { padding: 0; font-size: 20px; line-height: 1; }
+.breath-guide__button--pause { display: none; }
+.breath-guide.is-session .breath-guide__button--pause { display: inline-block; }
+.breath-guide.is-session .breath-guide__button--previous,
+.breath-guide.is-session .breath-guide__button--next { display: none; }
+
+.breath-guide__confirm {
+    top: 50%;
+    left: 50%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    width: min(88vw, 340px);
+    padding: 22px;
+    transform: translate(-50%, -50%);
+    border: 1px solid rgba(var(--breath-ink), 0.16);
+    border-radius: 18px;
+    background: rgba(6, 11, 22, 0.9);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+.breath-guide__confirm[hidden] { display: none; }
+.breath-guide__confirm p { flex: 1 0 100%; margin: 0 0 6px; font-size: 17px; font-weight: 300; }
+.breath-guide__button--keep-going {
+    border-color: rgba(var(--breath-accent), 0.6);
+    background: rgba(var(--breath-accent), 0.2);
+}
+.breath-guide__paused {
+    top: 40%;
+    left: 50%;
+    padding: 9px 20px;
+    transform: translate(-50%, -50%);
+    border: 1px solid rgba(var(--breath-ink), 0.22);
+    border-radius: 999px;
+    background: rgba(6, 11, 22, 0.66);
+    font-size: 12px;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+}
+.breath-guide__paused[hidden] { display: none; }
+.breath-guide.is-paused .breath-guide__canvas,
+.breath-guide.is-paused .breath-guide__cue,
+.breath-guide.is-paused .breath-guide__cycle { opacity: 0.45; }
+
+@media (max-width: 600px) {
+    .breath-guide__header { top: max(5vh, 54px); }
+    .breath-guide__eyebrow { font-size: 10px; letter-spacing: 0.18em; }
+    .breath-guide__controls { top: max(1.4vh, 10px); right: 10px; gap: 6px; }
+    .breath-guide__button { min-width: 38px; min-height: 38px; padding: 0 12px; }
+    .breath-guide__segment { font-size: 9px; letter-spacing: 0.1em; }
+    .breath-guide__journey-remaining { display: none; }
+    /* The Hub's lotus and the settings button sit in the bottom-right corner: stay clear of them. */
+    .breath-guide__cycle,
+    .breath-guide__journey { left: 20px; width: calc(100vw - 108px); transform: none; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+    .breath-guide__header { top: 10px; }
+    .breath-guide__eyebrow { margin-bottom: 3px; }
+    .breath-guide__title { font-size: 17px; }
+    .breath-guide__note { display: none; }
+    .breath-guide__cue { bottom: 74px; }
+    .breath-guide__phase { font-size: 26px; }
+    .breath-guide__count { display: inline-block; min-height: 0; margin: 0 0 0 10px; font-size: 18px; }
+    .breath-guide__phase { display: inline-block; }
+    .breath-guide__hint { display: none; }
+    .breath-guide__cycle { bottom: 34px; }
+    .breath-guide.is-session .breath-guide__cue { bottom: 96px; }
+    .breath-guide.is-session .breath-guide__cycle { bottom: 58px; }
+    .breath-guide__journey { bottom: 8px; }
+    .breath-guide__journey-status { margin-bottom: 5px; }
+    .breath-guide__orb { top: 44%; width: 54vh; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .breath-guide,
+    .breath-guide * { transition: none !important; }
+}

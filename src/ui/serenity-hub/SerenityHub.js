@@ -195,11 +195,36 @@ export class SerenityHub {
         this.show();
     }
 
-    /** Release guided breathwork when the application leaves or activates a mode. */
+    /** Release every breathing surface when the application leaves or activates a mode. */
     cancelGuidedSession() {
         if (this.sessionsTab) this.sessionsTab.cancelForModeChange();
         else this.sessionManager?.stopSession();
+        // A standalone practice belongs to the mode it was started in.
+        const guide = window.breathingIndicator;
+        if (guide?.isActive && !guide.isExternallyControlled) guide.stop();
         this.hide({ resumeGameplay: false });
+    }
+
+    /**
+     * True while breathing owns the screen: a Hale session, its preparation or result, or a
+     * standalone practice. Falling-block gameplay stays paused for as long as this holds.
+     */
+    holdsGameplay() {
+        return Boolean(this.sessionManager?.activeSession || this.sessionsTab?.holdsScreen
+            || window.breathingIndicator?.isActive);
+    }
+
+    /** Resume gameplay once nothing breathing-related is on screen any more. */
+    releaseGameplay() {
+        if (!this.isOpen && !this.holdsGameplay()) this.onResumeCallback?.();
+    }
+
+    /** The guide started or stopped (possibly by its own End control or the Escape key). */
+    onBreathingGuideChange(detail = {}) {
+        const active = Boolean(detail.active);
+        if (this.haleSessionsEntry) this.haleSessionsEntry.hidden = active || this.isOpen;
+        if (!detail.session) this.serenityMode?.onBreathingGuideChange?.(active);
+        if (!active) this.releaseGameplay();
     }
 
     /**
@@ -479,6 +504,11 @@ export class SerenityHub {
             const visible = this.isOpen && !document.hidden;
             this.themesTab?.setActive(visible && this.currentTab === 'themes');
             this.sessionsTab?.setActive(visible && this.currentTab === 'sessions');
+        }, { signal });
+        window.addEventListener('breathingGuideChange', (event) => this.onBreathingGuideChange(event.detail), { signal });
+        // The guide can change world on its own (arrow keys, a gamepad): remember the choice.
+        window.addEventListener('breathingTechniqueChange', (event) => {
+            this.serenityMode?.deps?.settingsManager?.update?.({ breathingTechnique: event.detail?.id });
         }, { signal });
 
         // Panel mouse enter/leave handlers
@@ -816,7 +846,7 @@ export class SerenityHub {
 
         this.isOpen = false;
         if (this.haleSessionsEntry) {
-            this.haleSessionsEntry.hidden = false;
+            this.haleSessionsEntry.hidden = Boolean(window.breathingIndicator?.isActive);
             this.haleSessionsEntry.setAttribute('aria-expanded', 'false');
         }
         this.musicTab?.setActive(false);
@@ -844,10 +874,10 @@ export class SerenityHub {
             this.settingsBtn.style.pointerEvents = '';
         }
 
-        // Resume game if callback is set (for single player, local MP, infinity mode)
-        // A guided journey keeps falling-block gameplay paused after the Hub
-        // closes. Completion returns to the Hub; its final close resumes play.
-        if (resumeGameplay && this.onResumeCallback && !this.sessionManager?.activeSession) {
+        // Resume game if callback is set (for single player, local MP, infinity mode).
+        // Breathing keeps falling-block gameplay paused after the Hub closes; the guide or
+        // the session flow releases it when it leaves the screen.
+        if (resumeGameplay && this.onResumeCallback && !this.holdsGameplay()) {
             this.onResumeCallback();
         }
 

@@ -1441,7 +1441,7 @@ async function hideCaptureUiPage() {
     const hiddenIds = [
         'serenity-hub-icon',
         'settings-btn-global',
-        'enhanced-breathing-indicator',
+        'breathing-guide',
         'single-player-container',
         'multiplayer-container',
         'stats-panel',

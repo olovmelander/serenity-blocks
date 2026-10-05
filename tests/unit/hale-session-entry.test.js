@@ -34,7 +34,7 @@ beforeEach(() => {
         body, createElement: element, getElementById: (id) => nodes.get(id) || null,
         addEventListener: vi.fn(),
     });
-    vi.stubGlobal('window', { dispatchEvent: vi.fn() });
+    vi.stubGlobal('window', { dispatchEvent: vi.fn(), addEventListener: vi.fn() });
     vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -114,6 +114,47 @@ describe('discoverable Hale session entry', () => {
         expect(stop).toHaveBeenCalledOnce();
         expect(event.defaultPrevented).toBe(true);
         hub.tabAbortControllers.forEach((controller) => controller.abort());
+    });
+
+    it('keeps gameplay paused for every breathing surface and releases it when the last one leaves', () => {
+        const hub = hubHarness();
+        expect(hub.holdsGameplay()).toBe(false);
+        window.breathingIndicator = { isActive: true };
+        expect(hub.holdsGameplay()).toBe(true);
+        hub.releaseGameplay();
+        expect(hub.onResumeCallback).not.toHaveBeenCalled();
+        window.breathingIndicator.isActive = false;
+        hub.sessionsTab = { holdsScreen: true };
+        expect(hub.holdsGameplay()).toBe(true);
+        hub.sessionsTab.holdsScreen = false;
+        hub.sessionManager = { activeSession: {} };
+        expect(hub.holdsGameplay()).toBe(true);
+        hub.sessionManager.activeSession = null;
+        hub.isOpen = true;
+        hub.releaseGameplay();
+        expect(hub.onResumeCallback).not.toHaveBeenCalled();
+        hub.isOpen = false;
+        hub.releaseGameplay();
+        expect(hub.onResumeCallback).toHaveBeenCalledOnce();
+    });
+
+    it('follows the guide: hides the entry while it runs, tells the mode, and resumes play when it ends', () => {
+        const hub = hubHarness();
+        hub.createHaleSessionsEntry();
+        hub.serenityMode.onBreathingGuideChange = vi.fn();
+        window.breathingIndicator = { isActive: true };
+        hub.onBreathingGuideChange({ active: true, session: false });
+        expect(hub.haleSessionsEntry.hidden).toBe(true);
+        expect(hub.serenityMode.onBreathingGuideChange).toHaveBeenLastCalledWith(true);
+        expect(hub.onResumeCallback).not.toHaveBeenCalled();
+        window.breathingIndicator.isActive = false;
+        hub.onBreathingGuideChange({ active: false, session: false });
+        expect(hub.haleSessionsEntry.hidden).toBe(false);
+        expect(hub.onResumeCallback).toHaveBeenCalledOnce();
+        // A session's guide is not the mode's standalone practice.
+        hub.serenityMode.onBreathingGuideChange.mockClear();
+        hub.onBreathingGuideChange({ active: true, session: true });
+        expect(hub.serenityMode.onBreathingGuideChange).not.toHaveBeenCalled();
     });
 
     it('removes the labelled entry and its navigation listener when the Hub is destroyed', () => {
