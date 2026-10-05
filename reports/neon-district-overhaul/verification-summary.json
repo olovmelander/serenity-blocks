@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "9d89ddf3ca08eb27446e4b53ad5215030ac255a1",
+  "verifiedDate": "2026-10-05",
+  "softwareRendering": true,
+  "offscreenWebGPU": true,
+  "rawCaptureFilesCommitted": false,
+  "unitTests": {
+    "status": "pass",
+    "files": 528,
+    "tests": 5647,
+    "workers": 2
+  },
+  "checks": {
+    "productionBuild": "pass",
+    "bootClosure": "pass",
+    "typecheck": "pass",
+    "dependencyBoundaries": "pass",
+    "lintRatchet": "pass"
+  },
+  "lint": {
+    "errors": 1137,
+    "warnings": 985,
+    "fatal": 0,
+    "previousCeiling": 1170
+  },
+  "captureProfiles": [
+    {
+      "id": "desktop",
+      "quality": "High",
+      "width": 1280,
+      "height": 720,
+      "backend": "webgpu",
+      "status": "pass",
+      "phases": [
+        "ambient",
+        "piece-lock",
+        "tetris",
+        "combo"
+      ],
+      "graphicsFailures": 0,
+      "nonFiniteSampledValues": 0
+    },
+    {
+      "id": "desktop",
+      "quality": "High",
+      "width": 1280,
+      "height": 720,
+      "backend": "webgl2",
+      "status": "pass",
+      "phases": [
+        "ambient",
+        "piece-lock",
+        "tetris",
+        "combo"
+      ],
+      "graphicsFailures": 0,
+      "nonFiniteSampledValues": 0
+    },
+    {
+      "id": "mobile",
+      "quality": "Low",
+      "width": 390,
+      "height": 844,
+      "backend": "webgpu",
+      "status": "pass",
+      "phases": [
+        "ambient",
+        "piece-lock",
+        "tetris",
+        "combo"
+      ],
+      "graphicsFailures": 0,
+      "nonFiniteSampledValues": 0
+    },
+    {
+      "id": "mobile",
+      "quality": "Low",
+      "width": 390,
+      "height": 844,
+      "backend": "webgl2",
+      "status": "pass",
+      "phases": [
+        "ambient",
+        "piece-lock",
+        "tetris",
+        "combo"
+      ],
+      "graphicsFailures": 0,
+      "nonFiniteSampledValues": 0
+    },
+    {
+      "id": "mobile-landscape",
+      "quality": "Low",
+      "width": 844,
+      "height": 390,
+      "backend": "webgpu",
+      "status": "pass",
+      "phases": [
+        "ambient",
+        "piece-lock",
+        "tetris",
+        "combo"
+      ],
+      "graphicsFailures": 0,
+      "nonFiniteSampledValues": 0
+    },
+    {
+      "id": "mobile-landscape",
+      "quality": "Low",
+      "width": 844,
+      "height": 390,
+      "backend": "webgl2",
+      "status": "pass",
+      "phases": [
+        "ambient",
+        "piece-lock",
+        "tetris",
+        "combo"
+      ],
+      "graphicsFailures": 0,
+      "nonFiniteSampledValues": 0
+    }
+  ],
+  "notTested": [
+    "physical-device performance",
+    "native WebGPU canvas presentation",
+    "full game boot"
+  ],
+  "reproduce": "node scripts/neon-district-visual-validation.mjs --lane both --offscreen --out reports/neon-district-overhaul/final"
+}

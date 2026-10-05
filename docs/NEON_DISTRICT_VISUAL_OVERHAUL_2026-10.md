@@ -67,8 +67,10 @@ node scripts/neon-district-visual-validation.mjs --lane both --offscreen \
 ```
 
 Playwright can be supplied through `PLAYWRIGHT_MODULE` and
-`PLAYWRIGHT_EXECUTABLE_PATH`. Final screenshots and machine-readable evidence
-live in `reports/neon-district-overhaul/final/`. Isolated studies live in
+`PLAYWRIGHT_EXECUTABLE_PATH`. The completed matrix passed all six profiles and
+24 captures with zero graphics failures or non-finite sampled values. Recorded
+results are in `reports/neon-district-overhaul/verification-summary.json`; the
+command above regenerates the raw screenshots and detailed reports. Isolated studies live in
 `src/playground/effects/neon-district-*.effect.js`.
 
 These software-browser rendering checks verify production shaders and reflections.
