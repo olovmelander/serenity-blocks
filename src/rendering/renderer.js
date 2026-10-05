@@ -1230,43 +1230,6 @@ export class WebGLRenderer {
             this.particleSystems.push(new ParticleSystem(this.gl, 60, crystalConfig));
 
             this.start();
-        } else if (themeName === 'lunara') {
-            const orbitCenters = [
-                { x: window.innerWidth * 0.35, y: window.innerHeight * 0.25 },
-                { x: window.innerWidth * 0.55, y: window.innerHeight * 0.2 },
-            ];
-
-            const orbitingDust = {
-                behavior: 'spiraling-debris',
-                lifetime: Infinity,
-                minSize: 1.4,
-                maxSize: 3.6,
-                minAlpha: 0.25,
-                maxAlpha: 0.8,
-                radiusXRange: [60, 180],
-                radiusYRange: [30, 120],
-                speedRange: [0.004, 0.012],
-                clockwiseProbability: 0.6,
-                centerPoints: orbitCenters,
-                zIndex: -0.25,
-                color: [0.86, 0.78, 1.0], // Lavender glow
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 70, orbitingDust));
-
-            const driftingMist = {
-                behavior: 'horizontal-drift',
-                speed: 0.35,
-                minSize: 1.3,
-                maxSize: 3.2,
-                minAlpha: 0.18,
-                maxAlpha: 0.45,
-                lifetime: Infinity,
-                zIndex: -0.35,
-                color: [0.78, 0.7, 1.0], // Soft purple mist
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 140, driftingMist));
-
-            this.start();
         } else if (themeName === 'forest') {
             // Magical spores floating slowly
             const sporeConfig = {
@@ -1434,76 +1397,6 @@ export class WebGLRenderer {
                 color: [0.75, 0.75, 0.75],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 60, wispConfig));
-
-            this.start();
-        } else if (themeName === 'lunara') {
-            // Slow-falling sparkling snowflakes
-            const snowConfig = {
-                behavior: 'petal',
-                speed: 0.4,
-                minSize: 2.0,
-                maxSize: 5.0,
-                minAlpha: 0.6,
-                maxAlpha: 1.0,
-                lifetime: 2000,
-                zIndex: -0.5,
-                color: [0.95, 0.95, 1.0], // Soft white with purple tint
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 120, snowConfig));
-
-            // Glowing mist particles
-            const mistConfig = {
-                behavior: 'horizontal-drift',
-                speed: 0.6,
-                minSize: 4.0,
-                maxSize: 10.0,
-                minAlpha: 0.1,
-                maxAlpha: 0.3,
-                lifetime: Infinity,
-                zIndex: -0.3,
-                color: [0.8, 0.7, 1.0], // Purple-tinted mist
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 80, mistConfig));
-
-            // Purple-pink ambient cosmic dust
-            const cosmicDustConfig = {
-                behavior: 'ambient',
-                speed: 0.1,
-                minSize: 1.0,
-                maxSize: 2.5,
-                minAlpha: 0.2,
-                maxAlpha: 0.5,
-                lifetime: Infinity,
-                zIndex: -0.6,
-                color: [0.9, 0.75, 0.95], // Light purple-pink
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 150, cosmicDustConfig));
-
-            // Magical floating orbs (firefly behavior for gentle glow)
-            const orbConfig = {
-                behavior: 'firefly',
-                minSize: 4.0,
-                maxSize: 8.0,
-                maxAlpha: 0.7,
-                lifetime: Infinity,
-                zIndex: -0.4,
-                color: [0.85, 0.65, 1.0], // Purple glow
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 30, orbConfig));
-
-            // Twinkling star-like particles
-            const sparkleConfig = {
-                behavior: 'ambient',
-                speed: 0.05,
-                minSize: 1.5,
-                maxSize: 3.0,
-                minAlpha: 0.3,
-                maxAlpha: 0.8,
-                lifetime: Infinity,
-                zIndex: -0.2,
-                color: [1.0, 0.9, 1.0], // Bright white-pink
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 60, sparkleConfig));
 
             this.start();
         } else if (this.texturedQuads.length > 0 || this.particleSystems.length > 0) {

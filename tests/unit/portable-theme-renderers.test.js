@@ -3,11 +3,9 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import OceanTheme from '../../src/themes/ocean/ocean-theme.js';
-import LunaraTheme from '../../src/themes/lunara/lunara-theme.js';
 import LuminousTidesTheme from '../../src/themes/luminous-tides/luminous-tides-theme.js';
 import MoonlitForestTheme from '../../src/themes/moonlit-forest/moonlit-forest-theme.js';
 import { OceanPost } from '../../src/themes/ocean/ocean-post.js';
-import { LunaraPost } from '../../src/themes/lunara/lunara-post.js';
 
 const state = vi.hoisted(() => ({ instances: [], initialize: null }));
 vi.mock('../../src/themes/ocean/ocean-asset-loader.js', () => ({
@@ -76,7 +74,7 @@ afterEach(() => {
 });
 
 const themes = [
-    ['Ocean', OceanTheme], ['Lunara', LunaraTheme],
+    ['Ocean', OceanTheme],
 ];
 
 describe('portable theme renderer selection', () => {
@@ -116,10 +114,6 @@ describe('portable theme renderer selection', () => {
         expect(theme.disposeRenderer).not.toHaveBeenCalled();
         expect(theme.isWebGPU).toBe(false);
         expect(theme.usesNodeMaterials).toBe(true);
-        if (Theme === LunaraTheme) {
-            expect(theme.capabilities.useCompute).toBe(false);
-            expect(theme.capabilities.useMRT).toBe(false);
-        }
         expect(theme.currentQuality || theme.activeQualityLevel || theme.currentQualityName).toBe('High');
     });
 
@@ -146,9 +140,9 @@ describe('portable theme renderer selection', () => {
 });
 
 describe('portable bloom pipelines', () => {
-    it.each([['Ocean', OceanPost], ['Lunara', LunaraPost]])('keeps %s node post on WebGL2 while rejecting MRT', (_name, Post) => {
+    it('keeps Ocean node post on WebGL2 while rejecting MRT', () => {
         const renderer = { isWebGPURenderer: true, backend: { isWebGLBackend: true } };
-        const post = new Post(renderer, new THREE.Scene(), new THREE.PerspectiveCamera(), { useMRT: true });
+        const post = new OceanPost(renderer, new THREE.Scene(), new THREE.PerspectiveCamera(), { useMRT: true });
         expect(post.useMRT).toBe(false);
         expect(post.postProcessing?.isRenderPipeline).toBe(true);
         expect(post.bloomNode).toBeTruthy();
