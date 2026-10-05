@@ -18,7 +18,7 @@
  *   beam = (travel direction x, y, core width, halo width)
  */
 import {
-    Fn, cos, dot, exp, float, length, max, mix, normalize, sin, smoothstep, vec2, vec3, vec4,
+    Fn, Loop, cos, dot, exp, float, length, max, mix, normalize, sin, smoothstep, vec2, vec3, vec4,
 } from 'three/tsl';
 import { fadeOut } from '../stage/breath-tsl.js';
 
@@ -46,6 +46,13 @@ const SAMPLE_SUM = SAMPLE_COLORS.reduce((sum, c) => sum.map((v, i) => v + c[i]),
 /** Scales the fan so that all bands together (the white core) have unit luminance. */
 const WHITE_NORM = 1 / (0.2126 * SAMPLE_SUM[0] + 0.7152 * SAMPLE_SUM[1] + 0.0722 * SAMPLE_SUM[2]);
 
+/** spectrumRGB as a node, for a wavelength the shader picks at run time. */
+const spectrum = (t) => vec3(
+    float(1).sub(smoothstep(0.24, 0.42, t)).add(smoothstep(0.8, 1.0, t).mul(0.5)),
+    smoothstep(0.12, 0.3, t).mul(fadeOut(0.56, 0.74, t)).mul(0.92),
+    smoothstep(0.46, 0.62, t).mul(float(1).sub(smoothstep(0.9, 1.05, t).mul(0.35))),
+);
+
 /**
  * The dispersed fan at `q` (hero units, relative to where the light leaves the crystal).
  * Returns linear RGB in units of the white core's brightness at the crystal.
@@ -64,12 +71,11 @@ export const prismFan = /* @__PURE__ */ Fn(([q, fan, look]) => {
     const width = look.x.add(r.mul(max(pitch.mul(0.62), look.y))).toVar();
     const inv = float(1).div(width).toVar();
     const sum = vec3(0).toVar();
-    SAMPLE_COLORS.forEach((color, k) => {
+    // One loop over the wavelengths: the body is emitted once, the colour comes from the index.
+    Loop(FAN_SAMPLES, ({ i }) => {
         const off = q.y.mul(ray.x).sub(q.x.mul(ray.y)).mul(inv);
-        sum.addAssign(vec3(...color).mul(exp(off.mul(off).mul(-0.5))));
-        if (k < FAN_SAMPLES - 1) {
-            ray.assign(vec2(ray.x.mul(cs).add(ray.y.mul(sn)), ray.y.mul(cs).sub(ray.x.mul(sn))));
-        }
+        sum.addAssign(spectrum(float(i).div(FAN_SAMPLES - 1)).mul(exp(off.mul(off).mul(-0.5))));
+        ray.assign(vec2(ray.x.mul(cs).add(ray.y.mul(sn)), ray.y.mul(cs).sub(ray.x.mul(sn))));
     });
     // Light only travels forward, and the fan reaches as far as the breath sends it.
     const along = dot(q, fan.xy);

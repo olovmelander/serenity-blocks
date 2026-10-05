@@ -19,7 +19,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, dot, exp, float, floor, fract, length, min, mix, sin, smoothstep, sqrt, uniform, vec2, vec3, vec4,
+    Fn, Loop, dot, exp, float, floor, fract, length, min, mix, sin, smoothstep, sqrt, uniform, uniformArray, vec2, vec3,
+    vec4,
 } from 'three/tsl';
 import {
     backdropPoint, fadeOut, fbm, fbm3, gnoise, hash21, hash22, layer, ridged,
@@ -97,12 +98,13 @@ const SHARDS = [
 
 /**
  * One quartz point as a painted silhouette: a hexagonal prism seen from the side (three faces)
- * closing to a point. `local` is (along the axis, across) in the crystal's own units.
- * Returns its coverage, where across it a pixel is (-1..1, for the three faces), how far up
- * (0 root … 1 tip), and the distance to the nearest face line (outline or face boundary).
+ * closing to a point. `local` is (along the axis, across) in the crystal's own units; `root` is
+ * where along the axis it starts to show. Returns (coverage, where across it a pixel is: -1..1 for
+ * the three faces, how far up: 0 root … 1 tip, distance to the nearest face line). A real shader
+ * function, emitted once and called by every point the grotto paints.
  */
-function quartzPoint(local, height, width, soft, root = -0.5) {
-    const along = local.x;
+const quartzShape = /* @__PURE__ */ Fn(([local, height, width, soft, root]) => {
+    const along = local.x.toVar();
     // Quartz closes in a short pyramid: about as long as the prism is wide.
     const tip = width.mul(1.15);
     const y = local.y.abs();
@@ -110,38 +112,72 @@ function quartzPoint(local, height, width, soft, root = -0.5) {
     const inside = min(width.sub(y), height.sub(along).mul(width).div(tip).sub(y)).toVar();
     const half = width.mul(height.sub(along).div(tip).clamp(0, 1)).max(1e-4).toVar();
     const across = local.y.div(half).toVar();
-    const cover = smoothstep(float(soft).negate(), float(soft), inside)
-        .mul(smoothstep(float(root).sub(0.1), float(root), along));
+    const cover = smoothstep(soft.negate(), soft, inside).mul(smoothstep(root.sub(0.1), root, along));
     const ridge = across.abs().sub(0.36).abs().mul(half);
-    return {
-        cover, across, rise: along.div(height).clamp(0, 1), lines: ridge.min(inside.abs()),
-    };
-}
+    return vec4(cover, across, along.div(height).clamp(0, 1), ridge.min(inside.abs()));
+}).setLayout({
+    name: 'prism_quartz_shape',
+    type: 'vec4',
+    inputs: [
+        { name: 'local', type: 'vec2' }, { name: 'height', type: 'float' }, { name: 'width', type: 'float' },
+        { name: 'soft', type: 'float' }, { name: 'root', type: 'float' },
+    ],
+});
 
 /**
- * Light a painted quartz point. Its three faces see different things: the face toward the beam
- * catches white light and carries a specular streak, the far face takes the fan's colour, and the
- * face toward us shows the dark grotto through the glass. Dark at the root, clearer toward the
- * tip, and the termination catches the light.
+ * Light a painted quartz point (`shape` from quartzShape). Its three faces see different things:
+ * the face toward the beam catches white light and carries a specular streak, the far face takes
+ * the fan's colour, and the face toward us shows the dark grotto through the glass. Dark at the
+ * root, clearer toward the tip, and the termination catches the light.
  */
-function shadeQuartz(point, beamSide, fanLight, glow, soft) {
-    const face = point.across.mul(beamSide).toVar();
+const quartzShade = /* @__PURE__ */ Fn(([shape, beamSide, fanLight, glow, soft]) => {
+    const face = shape.y.mul(beamSide).toVar();
     const toBeam = smoothstep(0.3, 0.42, face);
     const toFan = smoothstep(0.3, 0.42, face.negate());
     const front = float(1).sub(toBeam).sub(toFan);
-    const rise = point.rise.toVar();
+    const rise = shape.z.toVar();
     const lit = WHITE.mul(toBeam.mul(0.07).add(front.mul(0.012)).add(0.008)).mul(glow)
         .add(fanLight.mul(toFan.mul(0.75).add(front.mul(0.22)).add(toBeam.mul(0.08))));
     const body = GLASS.mul(rise.mul(rise).mul(1.4).add(0.35)).add(lit.mul(rise.mul(0.8).add(0.25)));
     const streak = exp(face.sub(0.72).pow2().mul(-70)).mul(rise.mul(0.6).add(0.3));
     const tipGlint = smoothstep(0.8, 0.97, rise);
-    const edge = exp(point.lines.div(soft.mul(1.4)).pow2().negate());
+    const edge = exp(shape.w.div(soft.mul(1.4)).pow2().negate());
     return body
         .add(WHITE.mul(streak.mul(0.05).add(tipGlint.mul(0.04))).mul(glow))
         .add(fanLight.mul(tipGlint.mul(0.6).add(streak.mul(0.3))))
         .add(ICE.mul(edge).mul(0.05).mul(glow))
         .add(fanLight.mul(edge).mul(0.5));
-}
+}).setLayout({
+    name: 'prism_quartz_shade',
+    type: 'vec3',
+    inputs: [
+        { name: 'shape', type: 'vec4' }, { name: 'beamSide', type: 'float' }, { name: 'fanLight', type: 'vec3' },
+        { name: 'glow', type: 'float' }, { name: 'soft', type: 'float' },
+    ],
+});
+
+/**
+ * Dust glinting in the light: one mote in a few cells of `gq` (a layer's coordinates times the
+ * cell count), each wandering slowly in its cell and twinkling over many seconds. Pure: emitted
+ * once, called for the air's two dust layers and the rock's crystal flecks.
+ */
+const glintField = /* @__PURE__ */ Fn(([gq, seed, cells, px, time]) => {
+    const cell = floor(gq).toVar();
+    const h = hash22(cell.add(seed)).toVar();
+    const wander = vec2(sin(time.mul(0.21).add(h.x.mul(40))), sin(time.mul(0.17).add(h.y.mul(50)))).mul(0.12);
+    const at = h.mul(0.5).add(0.25).add(wander);
+    const d = length(fract(gq).sub(at)).div(px.mul(cells)).toVar();
+    const pick = smoothstep(0.88, 0.92, hash21(cell.add(seed.add(3))));
+    const twinkle = sin(time.mul(h.x.mul(0.6).add(0.4)).add(h.y.mul(30))).mul(0.4).add(0.6);
+    return exp(d.mul(d).mul(-0.45)).mul(pick).mul(twinkle);
+}).setLayout({
+    name: 'prism_glints',
+    type: 'float',
+    inputs: [
+        { name: 'gq', type: 'vec2' }, { name: 'seed', type: 'float' }, { name: 'cells', type: 'float' },
+        { name: 'px', type: 'float' }, { name: 'time', type: 'float' },
+    ],
+});
 
 /**
  * One cell of a band of quartz points (a row on the floor, a fringe on the vault). Points grow
@@ -169,8 +205,8 @@ function quartzCell(wx, wy, cell, spec, soft) {
     const rel = vec2(wx.sub(c.add(0.5).add(r1.sub(0.5).mul(0.3))), wy.add(0.15)).toVar();
     const axis = vec2(tilt.sin(), tilt.cos()).toVar();
     const local = vec2(dot(rel, axis), rel.x.mul(axis.y).sub(rel.y.mul(axis.x)));
-    const point = quartzPoint(local, tall, width, soft);
-    return { point, mask: point.cover.mul(present) };
+    const shape = quartzShape(local, tall, width, soft, float(-0.5)).toVar();
+    return { shape, mask: shape.x.mul(present) };
 }
 
 /** A small deterministic generator, so a druse keeps its shape whatever else changes. */
@@ -206,27 +242,50 @@ function drusePoints({
 }
 
 /**
- * Paint one druse. `rel` is the pixel relative to its root in world units at its depth, with y
- * pointing the way the points grow. Returns nothing: it composites into `col`.
+ * Every point of a set of druses as two rows of records, in drawing order (druse by druse, longest
+ * point first): (sin, cos of its lean, length, half-width) and (offset along the root line, the
+ * druse's x as a fraction of the half-width, its depth, its haze). The shader walks them in one
+ * loop, so a point's code is emitted once however many points the grotto has.
  */
-function paintDruse(col, rel, spec, soft, shadeFor) {
-    drusePoints(spec).forEach(({
-        angle, reach: size, width, offset,
-    }) => {
-        const axisX = Math.sin(angle);
-        const axisY = Math.cos(angle);
-        const from = rel.sub(vec2(offset, -size * 0.08)).toVar();
-        const local = vec2(from.x.mul(axisX).add(from.y.mul(axisY)), from.x.mul(axisY).sub(from.y.mul(axisX)));
-        const point = quartzPoint(local, float(size), float(width), soft, 0);
-        // Each point grows out of the floor (or the vault): nothing of it shows past its root line.
-        col.assign(mix(col, shadeFor(point), point.cover.mul(smoothstep(soft.negate(), soft, rel.y))));
+function druseData(specs) {
+    const lean = [];
+    const place = [];
+    specs.forEach((spec) => {
+        const fog = spec.d ? 1 - Math.exp(-spec.d * 0.36) : 0;
+        drusePoints(spec).forEach(({
+            angle, reach, width, offset,
+        }) => {
+            lean.push(new THREE.Vector4(Math.sin(angle), Math.cos(angle), reach, width));
+            place.push(new THREE.Vector4(offset, spec.x, spec.d ?? 1, fog));
+        });
     });
+    return { count: lean.length, lean: uniformArray(lean, 'vec4'), place: uniformArray(place, 'vec4') };
 }
+
+/**
+ * The local frame of one druse point: `rel` is the pixel relative to the druse's root (y the way
+ * its points grow), `lean` the point's record, `offset` where along the root line it stands. The
+ * point's foot sits a little below the root line, so it grows out of the rock.
+ */
+const druseLocal = (rel, lean, offset) => {
+    const from = rel.sub(vec2(offset, lean.z.mul(-0.08))).toVar();
+    return vec2(from.x.mul(lean.x).add(from.y.mul(lean.y)), from.x.mul(lean.y).sub(from.y.mul(lean.x)));
+};
 
 export function createCrystalWorld({ u, quality }) {
     const { octaves } = quality;
     // Phones (Low) and the lightest tier take fewer octaves where the eye cannot tell.
     const light2 = quality.detail < 0.6;
+    // Every painted crystal point is data, walked by a loop in the shader (one copy of its code).
+    const floorDruses = druseData([...DRUSES].sort((a, b) => b.d - a.d));
+    const vaultDruses = druseData(VAULT_DRUSES);
+    const nearPoints = uniformArray(NEAR_POINTS.map(([side, x, lean, size]) => new THREE.Vector4(
+        side * x,
+        Math.sin(-lean),
+        Math.cos(-lean),
+        size,
+    )), 'vec4');
+    const nearWidths = uniformArray(NEAR_POINTS.map((point) => point[4]), 'float');
     // The composition follows the screen's shape: set in update() from the extents.
     const beamDir = uniform(new THREE.Vector2(Math.cos(BEAM_ANGLE[0]), Math.sin(BEAM_ANGLE[0])));
     const fanDir = uniform(new THREE.Vector2(Math.cos(BEAM_ANGLE[0] - BEND[0]), Math.sin(BEAM_ANGLE[0] - BEND[0])));
@@ -354,23 +413,24 @@ export function createCrystalWorld({ u, quality }) {
             const side = fract(wx).lessThan(0.5).select(float(-1), float(1));
             const soft = u.px.mul(1.3).mul(row.d).div(row.cell).toVar();
             const fog = 1 - Math.exp(-row.d * 0.36);
-            [id.add(side), id].forEach((cell) => {
-                const { point, mask } = quartzCell(wx, wy, cell, row, soft);
-                col.assign(mix(col, mix(shadeQuartz(point, beamSide, fanLight, glow, soft), fogColor, fog), mask));
+            Loop(2, ({ i }) => {
+                const cell = id.add(side.mul(float(1).sub(float(i))));
+                const { shape, mask } = quartzCell(wx, wy, cell, row, soft);
+                col.assign(mix(col, mix(quartzShade(shape, beamSide, fanLight, glow, soft), fogColor, fog), mask));
             });
         }
         // Druses on the floor, far to near, each fading into the haze by its depth.
-        [...DRUSES].sort((a, b) => b.d - a.d).forEach((spec) => {
-            const dq = layer(p, u, 1 / spec.d).toVar();
-            const root = vec2(u.ext.x.mul(spec.x), horizon.sub(ground.div(spec.d)));
-            const rel = dq.sub(root).mul(spec.d).toVar();
-            const soft = u.px.mul(1.3).mul(spec.d).toVar();
-            const fog = 1 - Math.exp(-spec.d * 0.36);
-            paintDruse(col, rel, spec, soft, (point) => mix(
-                shadeQuartz(point, beamSide, fanLight, glow, soft),
-                fogColor,
-                fog,
-            ));
+        Loop(floorDruses.count, ({ i }) => {
+            const lean = floorDruses.lean.element(i).toVar();
+            const place = floorDruses.place.element(i).toVar();
+            const dq = layer(p, u, float(1).div(place.z));
+            const root = vec2(u.ext.x.mul(place.y), horizon.sub(ground.div(place.z)));
+            const rel = dq.sub(root).mul(place.z).toVar();
+            const soft = u.px.mul(1.3).mul(place.z).toVar();
+            const shape = quartzShape(druseLocal(rel, lean, place.x), lean.z, lean.w, soft, float(0)).toVar();
+            const shade = mix(quartzShade(shape, beamSide, fanLight, glow, soft), fogColor, place.w);
+            // Each point grows out of the floor: nothing of it shows below its root line.
+            col.assign(mix(col, shade, shape.x.mul(smoothstep(soft.negate(), soft, rel.y))));
         });
 
         // Mist drifting between the crystals, lit by whatever light passes through it.
@@ -402,17 +462,7 @@ export function createCrystalWorld({ u, quality }) {
         col.addAssign(ICE.mul(exp(dot(q, q).mul(-14))).mul(0.15).mul(glow));
 
         // Dust motes glinting wherever the light passes.
-        const glints = (k, cells, seed) => {
-            const gq = layer(p, u, k).mul(cells).toVar();
-            const cell = floor(gq).toVar();
-            const h = hash22(cell.add(seed)).toVar();
-            const wander = vec2(sin(time.mul(0.21).add(h.x.mul(40))), sin(time.mul(0.17).add(h.y.mul(50)))).mul(0.12);
-            const at = h.mul(0.5).add(0.25).add(wander);
-            const d = length(fract(gq).sub(at)).div(u.px.mul(cells)).toVar();
-            const pick = smoothstep(0.88, 0.92, hash21(cell.add(seed + 3)));
-            const twinkle = sin(time.mul(h.x.mul(0.6).add(0.4)).add(h.y.mul(30))).mul(0.4).add(0.6);
-            return exp(d.mul(d).mul(-0.45)).mul(pick).mul(twinkle);
-        };
+        const glints = (k, cells, seed) => glintField(layer(p, u, k).mul(cells), float(seed), float(cells), u.px, time);
         const sparkle = glints(1.15, 24, 1.3).add(glints(0.85, 38, 7.1).mul(0.7));
         col.addAssign(fanLight.mul(1.6).add(WHITE.mul(rays.x.mul(1.2).add(rays.y.mul(0.4)))).mul(sparkle).mul(open));
 
@@ -434,13 +484,17 @@ export function createCrystalWorld({ u, quality }) {
         const rock = smoothstep(-0.005, 0.005, intoRock).mul(float(1).sub(cleft)).toVar();
 
         // Druses hanging from the rock (drawn first: the rock hides their roots).
-        VAULT_DRUSES.forEach((spec) => {
-            const x0 = u.ext.x.mul(spec.x);
+        const vaultSoft = u.px.mul(1.3).div(ROCK_K).toVar();
+        const vaultFan = fanLight.mul(0.6).toVar();
+        Loop(vaultDruses.count, ({ i }) => {
+            const lean = vaultDruses.lean.element(i).toVar();
+            const place = vaultDruses.place.element(i).toVar();
+            const x0 = u.ext.x.mul(place.y).toVar();
             const rel = vec2(kq.x.sub(x0), top.sub(lipAt(x0)).add(0.03).sub(kq.y)).mul(1 / ROCK_K).toVar();
-            const soft = u.px.mul(1.3).div(ROCK_K).toVar();
-            paintDruse(col, rel, spec, soft, (point) => shadeQuartz(point, beamSide, fanLight.mul(0.6), glow, soft)
-                .mul(0.75)
-                .add(ICE.mul(point.rise.pow2()).mul(nearCrystal.mul(0.3).add(0.02)).mul(glow)));
+            const shape = quartzShape(druseLocal(rel, lean, place.x), lean.z, lean.w, vaultSoft, float(0)).toVar();
+            const shade = quartzShade(shape, beamSide, vaultFan, glow, vaultSoft).mul(0.75)
+                .add(ICE.mul(shape.z.pow2()).mul(nearCrystal.mul(0.3).add(0.02)).mul(glow));
+            col.assign(mix(col, shade, shape.x.mul(smoothstep(vaultSoft.negate(), vaultSoft, rel.y))));
         });
 
         // Rock: near black, grained; its lip and the cleft's walls lit by the light that reaches them.
@@ -457,14 +511,14 @@ export function createCrystalWorld({ u, quality }) {
 
         // Out-of-focus crystals close to the lens frame the bottom corners.
         const nq = layer(p, u, 2.2).toVar();
-        NEAR_POINTS.forEach(([side, x, lean, size, width]) => {
-            const base = vec2(u.ext.x.mul(side * x), bottom.sub(0.12));
-            const rel = nq.sub(base).toVar();
-            const axis = vec2(Math.sin(-lean), Math.cos(-lean));
-            const local = vec2(rel.x.mul(axis.x).add(rel.y.mul(axis.y)), rel.x.mul(axis.y).sub(rel.y.mul(axis.x)));
-            const point = quartzPoint(local, float(size), float(width), 0.018);
-            const shade = shadeQuartz(point, beamSide, fanLight.mul(0.35), glow, float(0.02)).mul(0.6);
-            col.assign(mix(col, shade, point.cover.mul(0.97)));
+        const nearFan = fanLight.mul(0.35).toVar();
+        Loop(NEAR_POINTS.length, ({ i }) => {
+            const point = nearPoints.element(i).toVar();
+            const rel = nq.sub(vec2(u.ext.x.mul(point.x), bottom.sub(0.12))).toVar();
+            const local = vec2(rel.x.mul(point.y).add(rel.y.mul(point.z)), rel.x.mul(point.z).sub(rel.y.mul(point.y)));
+            const shape = quartzShape(local, point.w, nearWidths.element(i), float(0.018), float(-0.5)).toVar();
+            const shade = quartzShade(shape, beamSide, nearFan, glow, float(0.02)).mul(0.6);
+            col.assign(mix(col, shade, shape.x.mul(0.97)));
         });
 
         // The whole grotto breathes a little brighter on the in-breath.
@@ -472,7 +526,7 @@ export function createCrystalWorld({ u, quality }) {
     })();
 
     // The crystal and its splinters share one solid; the splinters take a lighter trace.
-    const solid = createQuartzSolid(undefined, 'prism_quartz');
+    const solid = createQuartzSolid();
     const crystalMaterial = createQuartzMaterial({
         u, solid, light, bounces: quality.detail >= 0.7 ? 3 : 2, dispersion: true, glow: 1, phantoms: true, exit: 0.3,
     });

@@ -20,9 +20,9 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, cameraPosition, clamp, dot, exp, float, length, max, min, modelWorldMatrix,
+    Fn, Loop, cameraPosition, clamp, dot, exp, float, length, max, min, modelWorldMatrix,
     modelWorldMatrixInverse, normalLocal, normalize, positionLocal, positionWorld, reflect, sin, smoothstep,
-    sqrt, step, vec3, vec4,
+    sqrt, step, uniformArray, vec3, vec4,
 } from 'three/tsl';
 import { prismEnvironment, prismFan } from './crystal-light.js';
 
@@ -38,6 +38,8 @@ const HEART_SHARP = 500;
 const HEART_LENGTH = 3.2;
 /** Sharpness of the beam's path through the stone. */
 const BEAM_SHARP = 900;
+/** How far inside the termination the growth phantoms lie (object units). */
+const PHANTOM_INSETS = [0.05, 0.11];
 
 /**
  * Half-spaces of a double-terminated quartz point.
@@ -144,95 +146,147 @@ function schlick(cosine, f0 = F0) {
     return float(f0).add(float(1 - f0).mul(m2.mul(m2).mul(m)));
 }
 
-/** Where a ray inside the solid leaves it: outward normal of the exit face (xyz) and distance (w). */
-function createExit(planes, name) {
-    return Fn(([origin, dir]) => {
+/**
+ * The shader's view of the solid: its half-spaces as (normal, c) records in a uniform array, so
+ * that every test against them is one loop (its body emitted once) however many faces there are.
+ * These helpers run inside the material's Fn; they read the array directly.
+ */
+function createPlaneHelpers(planes) {
+    const data = uniformArray(planes.map(({ n, c }) => new THREE.Vector4(n[0], n[1], n[2], c)), 'vec4');
+    const tops = planes.filter(({ n }) => n[1] > 0.3);
+    const topData = uniformArray(tops.map(({ n, c }) => new THREE.Vector4(n[0], n[1], n[2], c)), 'vec4');
+
+    /** Where a ray inside the solid leaves it: outward normal of the exit face (xyz), distance (w). */
+    const exit = (origin, dir) => {
         const best = vec4(0, 1, 0, 1e4).toVar();
-        planes.forEach(({ n, c }) => {
-            const normal = vec3(...n);
-            const rate = dot(normal, dir);
-            const room = float(c).sub(dot(normal, origin)).max(0);
-            const distance = room.div(rate.max(1e-5));
+        Loop(planes.length, ({ i }) => {
+            const plane = data.element(i).toVar();
+            const rate = dot(plane.xyz, dir).toVar();
+            const room = plane.w.sub(dot(plane.xyz, origin)).max(0);
+            const distance = room.div(rate.max(1e-5)).toVar();
             const closer = rate.greaterThan(1e-5).and(distance.lessThan(best.w));
-            best.assign(closer.select(vec4(normal, distance), best));
+            best.assign(closer.select(vec4(plane.xyz, distance), best));
         });
         return best;
-    }).setLayout({
-        name, type: 'vec4', inputs: [{ name: 'origin', type: 'vec3' }, { name: 'dir', type: 'vec3' }],
-    });
-}
+    };
 
-/**
- * In-face distance from a surface point to the face's nearest edge: for every other plane, how far
- * the point is from the line where that plane cuts this face.
- */
-function createEdge(planes, name) {
-    return Fn(([point, normal]) => {
+    /**
+     * In-face distance from a surface point to the face's nearest edge: for every other plane, how
+     * far the point is from the line where that plane cuts this face.
+     */
+    const edge = (point, normal) => {
         const nearest = float(1e3).toVar();
-        planes.forEach(({ n, c }) => {
-            const other = vec3(...n);
-            const cosine = dot(normal, other);
-            const room = float(c).sub(dot(other, point)).max(0);
+        Loop(planes.length, ({ i }) => {
+            const plane = data.element(i).toVar();
+            const cosine = dot(normal, plane.xyz).toVar();
+            const room = plane.w.sub(dot(plane.xyz, point)).max(0);
             const distance = room.div(sqrt(max(float(1).sub(cosine.mul(cosine)), 1e-6)));
             nearest.assign(min(nearest, cosine.lessThan(0.995).select(distance, float(1e3))));
         });
         return nearest;
-    }).setLayout({
-        name, type: 'float', inputs: [{ name: 'point', type: 'vec3' }, { name: 'normal', type: 'vec3' }],
-    });
-}
+    };
 
-/**
- * Phantoms: earlier terminations the crystal grew over, left inside it as faint veils. Each is the
- * termination pyramid moved inward by an inset, and a ray meets it as a thin sheet. Exact, no
- * marching: for each face of the inset pyramid, where the run crosses that face's plane, and
- * whether the crossing lies on the pyramid (no other face is further out there). Returns the
- * sheets' summed opacity along the run (a sheet seen edge-on is thicker).
- */
-function createPhantoms(planes, insets, name) {
-    const tops = planes.filter(({ n }) => n[1] > 0.3);
-    return Fn(([origin, dir, reach]) => {
+    /**
+     * Phantoms: earlier terminations the crystal grew over, left inside it as faint veils. Each is
+     * the termination pyramid moved inward by an inset, and a ray meets it as a thin sheet. Exact,
+     * no marching: for each face of the inset pyramid, where the run crosses that face's plane, and
+     * whether the crossing lies on the pyramid (no other face is further out there). Returns the
+     * sheets' summed opacity along the run (a sheet seen edge-on is thicker).
+     */
+    const phantoms = (origin, dir, reach) => {
         const veil = float(0).toVar();
-        // Along the run, face k's offset from its plane is a_k + b_k t.
-        const a = tops.map(({ n, c }) => dot(vec3(...n), origin).sub(c).toVar());
-        const b = tops.map(({ n }) => {
-            const rate = dot(vec3(...n), dir);
-            return rate.abs().lessThan(1e-4).select(float(1e-4), rate).toVar();
-        });
-        insets.forEach((inset) => {
-            tops.forEach((_, j) => {
-                const t = float(-inset).sub(a[j]).div(b[j]).toVar();
-                let outer = float(-1e3);
-                tops.forEach((__, k) => {
-                    if (k !== j) outer = max(outer, a[k].add(b[k].mul(t)));
+        PHANTOM_INSETS.forEach((inset) => {
+            Loop({
+                start: 0, end: tops.length, type: 'int', condition: '<', name: 'j',
+            }, ({ j }) => {
+                const face = topData.element(j).toVar();
+                const rate = dot(face.xyz, dir).toVar();
+                const safe = rate.abs().lessThan(1e-4).select(float(1e-4), rate).toVar();
+                const t = float(-inset).sub(dot(face.xyz, origin).sub(face.w)).div(safe).toVar();
+                // Is this face the outermost of the inset pyramid where the run crosses it?
+                const outer = float(-1e3).toVar();
+                Loop({
+                    start: 0, end: tops.length, type: 'int', condition: '<', name: 'k',
+                }, ({ k }) => {
+                    const other = topData.element(k).toVar();
+                    const offset = dot(other.xyz, origin).sub(other.w).add(dot(other.xyz, dir).mul(t));
+                    outer.assign(max(outer, k.equal(j).select(float(-1e3), offset)));
                 });
                 const onSheet = step(0, t).mul(step(t, reach)).mul(step(outer, -inset + 1e-3));
-                veil.addAssign(onSheet.div(b[j].abs().max(0.12)));
+                veil.addAssign(onSheet.div(safe.abs().max(0.12)));
             });
         });
         return veil;
-    }).setLayout({
-        name,
-        type: 'float',
-        inputs: [{ name: 'origin', type: 'vec3' }, { name: 'dir', type: 'vec3' }, { name: 'reach', type: 'float' }],
-    });
+    };
+
+    return { exit, edge, phantoms };
 }
 
 /**
- * The solid: its mesh and the two shader helpers that know its planes.
+ * The solid: its mesh and the shader helpers that know its planes (exit, edge, phantoms).
  * @param {object} [shape] see quartzPlanes
- * @param {string} name unique shader-function prefix for this solid
  */
-export function createQuartzSolid(shape, name) {
+export function createQuartzSolid(shape) {
     const planes = quartzPlanes(shape);
     return {
         planes,
         geometry: buildSolidGeometry(planes),
-        exit: createExit(planes, `${name}_exit`),
-        edge: createEdge(planes, `${name}_edge`),
-        phantoms: createPhantoms(planes, [0.05, 0.11], `${name}_phantoms`),
+        ...createPlaneHelpers(planes),
     };
 }
+
+const CORE_COLOR = vec3(0.55, 0.92, 1.0);
+const BODY_COLOR = vec3(0.22, 0.5, 0.78);
+
+/**
+ * The light gathered along one straight run through the stone (from `start`, unit `run`, for
+ * `reach`): the thread on the axis, the heart, a faint body glow and the beam's own path (`beam`,
+ * its direction through the crystal's centre). Each is the line integral of a Gaussian, solved in
+ * closed form from the run's closest approach. `gains` = (thread and body, heart, beam).
+ */
+const quartzInner = /* @__PURE__ */ Fn(([start, run, reach, beam, gains]) => {
+    // The thread on the axis: a line integral of a Gaussian is a Gaussian of the miss.
+    const lateral = dot(run.xz, run.xz).add(1e-4).toVar();
+    const nearest = clamp(dot(start.xz, run.xz).negate().div(lateral), 0, reach);
+    const closest = start.add(run.mul(nearest)).toVar();
+    const miss = dot(closest.xz, closest.xz);
+    const chord = min(sqrt(float(Math.PI / CORE_SHARP).div(lateral)), reach);
+    const middle = exp(closest.y.mul(closest.y).mul(-4.5));
+    const filament = exp(miss.mul(-CORE_SHARP)).mul(chord).mul(middle).mul(30);
+    // The heart: a spindle of light at the centre, along the axis, multiplied by the facets.
+    // In a space where the spindle is a sphere, the run's integral is a Gaussian of its miss.
+    const squash = vec3(1, 1 / HEART_LENGTH, 1);
+    const s0 = start.mul(squash).toVar();
+    const r0 = run.mul(squash).toVar();
+    const rr = dot(r0, r0).max(1e-4).toVar();
+    const passing = clamp(dot(s0, r0).negate().div(rr), 0, reach);
+    const nearHeart = s0.add(r0.mul(passing)).toVar();
+    const heart = exp(dot(nearHeart, nearHeart).mul(-HEART_SHARP)).div(rr.sqrt())
+        .mul(Math.sqrt(Math.PI / HEART_SHARP) * 11);
+    // A faint body of light filling the stone.
+    const half = start.add(run.mul(reach.mul(0.5))).toVar();
+    const body = exp(dot(half, half).mul(-22)).mul(reach).mul(0.15).toVar();
+    // The beam crossing the stone: closest approach of this run to the beam's line.
+    const b = dot(run, beam).toVar();
+    const d = dot(run, start);
+    const e = dot(beam, start);
+    const parallel = max(float(1).sub(b.mul(b)), 1e-4).toVar();
+    const s = clamp(b.mul(e).sub(d).div(parallel), 0, reach);
+    const at = start.add(run.mul(s)).toVar();
+    const off = at.sub(beam.mul(dot(at, beam))).toVar();
+    const crossing = min(sqrt(float(Math.PI / BEAM_SHARP).div(parallel)), reach);
+    const ray = exp(dot(off, off).mul(-BEAM_SHARP)).mul(crossing).mul(4);
+    return CORE_COLOR.mul(filament.add(body).mul(gains.x).add(heart.mul(gains.y)))
+        .add(vec3(1, 0.98, 0.95).mul(ray).mul(gains.z))
+        .add(BODY_COLOR.mul(body).mul(0.06));
+}).setLayout({
+    name: 'prism_quartz_inner',
+    type: 'vec3',
+    inputs: [
+        { name: 'start', type: 'vec3' }, { name: 'run', type: 'vec3' }, { name: 'reach', type: 'float' },
+        { name: 'beam', type: 'vec3' }, { name: 'gains', type: 'vec3' },
+    ],
+});
 
 /**
  * The traced quartz material.
@@ -308,54 +362,23 @@ export function createQuartzMaterial({
             .toVar();
         const beamGain = skyV.x.mul(0.9).toVar();
         const beamLocal = toLocal(vec3(beamV.x, beamV.y, 0)).toVar();
-        const coreColor = vec3(0.55, 0.92, 1.0);
-        const bodyColor = vec3(0.22, 0.5, 0.78);
-        const inner = (start, run, reach) => {
-            // The filament on the axis: a line integral of a Gaussian is a Gaussian of the miss.
-            const lateral = dot(run.xz, run.xz).add(1e-4);
-            const nearest = clamp(dot(start.xz, run.xz).negate().div(lateral), 0, reach);
-            const closest = start.add(run.mul(nearest));
-            const miss = dot(closest.xz, closest.xz);
-            const chord = min(sqrt(float(Math.PI / CORE_SHARP).div(lateral)), reach);
-            const middle = exp(closest.y.mul(closest.y).mul(-4.5));
-            const filament = exp(miss.mul(-CORE_SHARP)).mul(chord).mul(middle).mul(30);
-            // The heart: a spindle of light at the centre, along the axis, multiplied by the facets.
-            // In a space where the spindle is a sphere, the run's integral is a Gaussian of its miss.
-            const squash = vec3(1, 1 / HEART_LENGTH, 1);
-            const s0 = start.mul(squash);
-            const r0 = run.mul(squash);
-            const rr = dot(r0, r0).max(1e-4);
-            const passing = clamp(dot(s0, r0).negate().div(rr), 0, reach);
-            const nearHeart = s0.add(r0.mul(passing));
-            const heart = exp(dot(nearHeart, nearHeart).mul(-HEART_SHARP)).div(rr.sqrt())
-                .mul(Math.sqrt(Math.PI / HEART_SHARP) * 11);
-            // A faint body of light filling the stone.
-            const half = start.add(run.mul(reach.mul(0.5)));
-            const body = exp(dot(half, half).mul(-22)).mul(reach).mul(0.15);
-            // The beam crossing the stone: closest approach of this run to the beam's line.
-            const b = dot(run, beamLocal);
-            const d = dot(run, start);
-            const e = dot(beamLocal, start);
-            const parallel = max(float(1).sub(b.mul(b)), 1e-4);
-            const s = clamp(b.mul(e).sub(d).div(parallel), 0, reach);
-            const at = start.add(run.mul(s));
-            const off = at.sub(beamLocal.mul(dot(at, beamLocal)));
-            const crossing = min(sqrt(float(Math.PI / BEAM_SHARP).div(parallel)), reach);
-            const ray = exp(dot(off, off).mul(-BEAM_SHARP)).mul(crossing).mul(4);
-            return coreColor.mul(filament.add(body).mul(coreGain).add(heart.mul(heartGain)))
-                .add(vec3(1, 0.98, 0.95).mul(ray).mul(beamGain))
-                .add(bodyColor.mul(body).mul(0.06));
-        };
+        const gains = vec3(coreGain, heartGain, beamGain).toVar();
 
         const radiance = vec3(0).toVar();
         const through = vec3(1).toVar();
         const point = origin.toVar();
         const heading = inside.toVar();
-        for (let bounce = 0; bounce < bounces; bounce++) {
+        /**
+         * One run through the stone to the face it reaches: the inner light gathered on the way,
+         * the light that leaves through that face, and the reflection that carries on inside. The
+         * first run splits the colours and crosses the phantoms; later runs share one copy of the
+         * code inside a loop.
+         */
+        const segment = (first) => {
             const hit = solid.exit(point, heading).toVar();
             const reach = hit.w.min(4).toVar();
-            radiance.addAssign(through.mul(inner(point, heading, reach)));
-            if (bounce === 0 && phantoms) {
+            radiance.addAssign(through.mul(quartzInner(point, heading, reach, beamLocal, gains)));
+            if (first && phantoms) {
                 // The veils scatter a little of the inner light: milky, cool, never opaque.
                 const veil = solid.phantoms(point, heading, reach).mul(0.02).min(0.12);
                 radiance.addAssign(through.mul(vec3(0.6, 0.78, 0.92)).mul(veil).mul(heartGain.mul(0.35).add(0.12)));
@@ -374,7 +397,7 @@ export function createQuartzMaterial({
                 const dir = normalize(heading.mul(index).sub(wall.mul(cosOut.mul(index).sub(cosT))));
                 return { dir, reflects };
             };
-            if (bounce === 0 && dispersion) {
+            if (first && dispersion) {
                 const red = leave(IOR_RGB[0]);
                 const green = leave(IOR_RGB[1]);
                 const blue = leave(IOR_RGB[2]);
@@ -391,9 +414,11 @@ export function createQuartzMaterial({
             // Quartz is nearly clear: a faint cool absorption over each run.
             through.mulAssign(exp(vec3(0.5, 0.22, 0.12).mul(reach).negate()));
             heading.assign(reflect(heading, wall));
-        }
+        };
+        segment(true);
+        if (bounces > 1) Loop(bounces - 1, () => segment(false));
         // What still bounces inside spreads into a soft light of the stone's own colour.
-        radiance.addAssign(through.mul(bodyColor.mul(coreGain.mul(0.12).add(0.02)).add(env(heading).mul(0.4))));
+        radiance.addAssign(through.mul(BODY_COLOR.mul(coreGain.mul(0.12).add(0.02)).add(env(heading).mul(0.4))));
 
         // Edges of a cut stone catch the light: a line about two pixels wide at any distance.
         const distance = length(positionWorld.sub(cameraPosition));
