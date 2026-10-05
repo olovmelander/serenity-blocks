@@ -1,230 +1,211 @@
-# Chiral Gold — visual overhaul, October 2026
+# Chiral Gold — the two towers and the black water
 
-Status: implemented and freshly verified on native WebGPU and node WebGL2,
-including the production theme's gameplay event path and portrait/landscape Low
-composition. This is an implementation record, not an independent architecture
-roadmap. ADR-0007, ADR-0018, ADR-0019 and ADR-0020 remain the governing rendering
-and validation contracts.
+Implemented 2026-10-05 on `feature/chiral-gold-masterpiece`, with Three.js 0.186.1. A
+from-scratch rebuild: it replaces the earlier theme in full (the 4,000-line theme class and its
+WebGL twin, the sculpture, the compute particle systems, the GLSL shaders, the post stack, the
+validation script and the tests) and supersedes the two earlier October records of that theme.
+Chiral Gold keeps its identity — a dark hall, two mirror-image forms of gold either side of the
+board, a great arc over it, gold dust in the air — and everything else is new. This document
+records the shipped design and what was verified. It is a reference, not a backlog.
 
-## Art direction
+## The picture
 
-Chiral Gold now frames the playfield with two oppositely handed sculptures made
-of intertwined, bevelled gold ribbons. Broad reflective faces, narrow ivory
-glints and fine flowing filaments make their volume readable. Amber atmospheric
-pools sit behind each sculpture, a faint distant gold orbit connects the upper
-frame, and the center remains an obsidian void for the board.
+A dark hall whose floor is still black water. Two towers of braided gold stand in it, one either
+side of the board: three broad ribbons wound one way round a glowing core, inside loops of fine
+wire wound the other way, with beads of gold sliding along the wires. The left tower is the
+mirror image of the right, and they turn in opposite senses. Behind them a great open ring of
+gold arches over the board, half sunk. Everything stands again in the water.
 
-The centerpiece is procedural geometry and TSL material code. It does not need
-downloaded images, textures, Blender assets or an environment-map fetch. Its
-metallic appearance is an authored analytic reflection model in unlit node
-materials, rather than a physical metal material dependent on scene lighting.
-The same reflection, sheen and event fronts therefore survive on both supported
-renderer backends.
+![The hall at rest, in the game](chiral-gold-captures/desktop-ingame.webp)
 
-Camera movement is restrained to keep both sculptures in frame: slow orbit,
-breathing, pointer parallax and event nudges remain, with substantially smaller
-excursions than the former wandering camera. Portrait layout compresses the
-sculptures into slender edge columns. Low and Minimal retain the ribbon
-silhouette instead of losing the centerpiece when post-processing or compute
-is disabled.
+The gameplay card covers the middle of the frame, so the picture is built round it: the towers
+stand in the margins the card leaves (they move and narrow as the layout changes), the ring
+arches over it from behind, and the water below carries what the board drops into it.
 
-## Runtime ownership
+## The one idea
 
-| Module | Responsibility |
-| --- | --- |
-| `src/themes/chiral-gold/chiral-gold-theme.js` | Renderer selection, quality, scene lifecycle, audio channels, gameplay event routing, particles, resize and warmup |
-| `src/themes/chiral-gold/chiral-gold-sculpture.js` | Baked chiral ribbons and filaments, amber atmosphere, distant orbit, four traveling front channels and pooled reaction coronas |
-| `src/themes/chiral-gold/chiral-gold-particles.js` | Instanced sprite geometry for node particles and the canonical CPU position attribute accessor |
-| `src/themes/chiral-gold/chiral-gold-materials.js` | Sized dust, wisps, strands and velocity-shaped spark materials using TSL |
-| `src/themes/chiral-gold/chiral-gold-compute.js` | Native compute compilation, ready-state dispatch, renderer/generation ownership and retirement |
-| `src/themes/chiral-gold/chiral-gold-post.js` | RenderPipeline, bloom, warm filmic grade, restrained chromatic offset, grain and dither |
-| `src/playground/effects/chiral-gold.effect.js` | Isolated production sculpture and post with deterministic seeking and optional board placement guide |
-
-The sculpture interface is `createChiralGoldSculpture({ scene, quality, random })`.
-Its controller owns `resize(width, height, cameraDistance = 1520)`,
-`update(time, delta, { pulse, energy, beat })`,
-`trigger(kind, strength, position)`, `resetReactions()`, `diagnostics()` and
-idempotent `dispose()`. Geometry is baked at creation. Per-frame movement uses
-time-based group transforms and a fixed collection of uniforms; normals are not
-rebuilt every frame. All sculpture materials and geometries are disposed once,
-including shared foil, filament and halo geometry.
-
-The existing theme's dust, wisps, particle strands and burst choreography remain
-as secondary layers. Persistent volumetric beams are disabled in the quality
-presets so the paired ribbon structure remains the dominant silhouette.
+The board is an anvil standing between two towers of gold, and everything struck on it becomes
+gold that the towers take up. The towers are the two hands of one form, and so is everything
+that happens to them: what turns one way on the left turns the other way on the right.
 
 ## Event language
 
-| Trigger | Result |
+| Event | Response |
 | --- | --- |
-| Piece lock | A localized spark reaction at the projected locking position, one restrained peripheral corona and an ivory pulse front launched at the lock's height on the ribbons |
-| Line clear | Stronger ribbon travel and a gold corona, layered with the existing clear bursts and shockwave choreography |
-| Four-line clear | A `tetris` sculpture reaction with opposing coronas and a stronger traveling front |
-| Combo | A paired gold response on both sculptures, warmer highlights, stronger travel and the existing bounded staged burst/strand choreography |
-| Audio beat and energy | Gentle continuous shimmer, foil lift and atmospheric breathing through shared uniforms |
+| Piece lock | Sparks leave the board at the height the piece landed and fly to the towers, most to the nearer one, corkscrewing in with that tower's hand. Where they land a star opens and a pulse runs up and down the ribbons (the ribbons swell as it passes and the beads it crosses flash). A ring spreads on the water from under the piece's own column, in the piece's colour, bending the mirror as it goes. |
+| Hard drop | The same, harder: more sparks, a stronger pulse, a splash from the water and a dip of the camera. |
+| Line clear | Each cleared row leaves the board as a blade of light at its own height and sweeps up to strike both towers. Where a blade lands: a star, a pulse, and a spiral of gold leaf torn loose and carried round the tower in that tower's hand. The towers spin up and hold a glow, a front of light crosses the water, and a pair of comets leaves the ring's two feet to cross at its crown. |
+| Combo | The hall takes heat. The towers' cores come up to white, the gold glows from within, everything turns faster, and the great ring opens band by band (at chains of two, four and six) into an armillary sphere. The chain's count is struck in gold beside the board ("×3"), stamped larger at each step. When the chain ends the heat drains from the top down and the count falls as leaf. |
+| Four lines / perfect clear | A hush: every light in the hall drops for a sixth of a second. Then the ring ignites from its crown, the water is gilded outward from the board, and two sets of spiral arms of gold leaf, one of each hand, climb around the board through one another. Then it rains gold. |
+| T-spin | Both towers turn once on the spot. |
+| Level up | The next alloy is poured up the towers: fine gold, rose gold, white gold, green gold, red gold, and round again. |
+| Music | Bass moves the water and the cores, treble the dust, a beat the ring's rim. Reduced motion switches it off, with the camera kicks and the hush. |
 
-Traveling fronts are distinct from overall brightness. Each front expands away
-from its initiating ribbon height in both directions, fades over two seconds,
-and is reused through a four-entry round-robin pool. Foil fronts are amber/ivory;
-the same pulse catches the hairline filaments more brightly. The ambient sheen
-continues to circulate even when there are no gameplay events.
+The board's rows are a gauge the towers carry: its floor lands just above the water, its top row
+near the top of the frame. (On screen the board's lower rows sit below the waterline, where a
+tower is only its own reflection, so a row is mapped to a height rather than projected.)
 
-Reaction coronas expand, drift outward and fade with time. A normal reaction uses
-one slot with a 1.55-second lifetime; a hero reaction uses two slots with a
-2.15-second lifetime. Same-frame event storms reuse slots without allocating new
-geometry or materials. Event positions inside the central board region are
-redirected to a peripheral sculpture for its corona; lock spark positions retain
-their gameplay projection.
+Combo here is the true consecutive-clear combo (one `ComboTracker` per player in
+`ChiralGoldDirector`); the bus's `COMBO` event is cascade depth (ADR-0011). A chain's end is
+learnt when the next piece locks, as the tracker defines it. With several boards on screen each
+lock lands under its own board, and the hall takes the heat of the longest chain any board holds.
 
-Cleared-row dissolve emission now escapes from two edge columns as sparse,
-short-lived gold flecks. The same reduced density, size and lifetime apply to
-native compute and CPU fallback. This preserves the row-clear connection while
-keeping the middle readable instead of accumulating bright white strips.
+![Lock, clear, a held chain and the four-line strike](chiral-gold-captures/desktop-events.webp)
 
-## Quality and bounded effects
+## How it is built
 
-The sculpture budgets below are counts across both sides. Ribbon segment count
-is per ribbon. Fine filament geometry uses a reduced segment count with a floor
-of 80. Four traveling front channels are present at every quality tier.
-
-| Quality | Foil ribbons | Ribbon segments | Fine filaments | Corona pool |
-| --- | ---: | ---: | ---: | ---: |
-| Extreme | 6 | 280 | 20 | 8 |
-| Ultra | 6 | 240 | 16 | 8 |
-| High | 6 | 192 | 12 | 6 |
-| Medium | 6 | 152 | 8 | 4 |
-| Low | 4 | 112 | 6 | 4 |
-| Minimal | 4 | 80 | 4 | 2 |
-
-The retained particle systems have separate budgets. GPU burst capacity and the
-CPU fallback pool are alternative burst paths. Native compute must be ready
-before it is dispatched; WebGL2 and failed/unavailable native burst compute use
-the CPU pool.
-
-| Quality | Dust | Wisps | GPU burst capacity | CPU burst pool × particles | Persistent particle strands |
-| --- | ---: | ---: | ---: | --- | --- |
-| Extreme | 14,000 | 1,000 | 24,000 | 10 × 1,400 | 6 × 4,200 |
-| Ultra | 10,000 | 700 | 18,000 | 8 × 1,100 | 4 × 3,200 |
-| High | 6,000 | 500 | 12,000 | 6 × 900 | 3 × 2,600 |
-| Medium | 3,800 | 300 | 8,000 | 10 × 700 | 2 × 1,800 |
-| Low | 1,800 | 150 | 0 | 6 × 900 | 0 |
-| Minimal | 900 | 0 | 0 | 3 × 400 | 0 |
-
-Temporary particle strand segments are capped at eight, and transient shockwaves
-at twelve. Displaced effects release their geometry and materials. CPU burst
-pools are hidden when empty, upload their final expiry frame, and retain the
-same arrays when another burst reuses them. These are ownership and workload
-bounds, not measured frame-rate improvements.
-
-## Renderer parity and corrections
-
-Both native WebGPU and the WebGL2 backend of `WebGPURenderer` use node materials
-and the TSL scene. Material/post selection keys on renderer kind; backend checks
-are used for compute and MRT capabilities. Native WebGPU can use explicit
-emissive MRT bloom with the shared emissive material blending helper. WebGL2
-uses full-scene bloom at the configured threshold. Low and Minimal render the
-same artwork directly without the post stack.
-
-Sized dust, wisps, strand particles and burst sparks now use instanced sprite
-quads. Native WebGPU point primitives
-are one pixel, so a point-only implementation cannot reproduce the sized bokeh
-and streaks of the WebGL path. Particle positions live in `aParticlePosition`,
-separate from the immutable sprite quad's `position` attribute. CPU wisp,
-persistent strand, temporary strand and burst updates all use the canonical
-attribute accessor; moving particles cannot accidentally deform the quad.
-Storage-backed material access uses `instanceIndex` for this geometry.
-
-Particle materials have radial alpha masks and warm, controlled highlights.
-Velocity stretching has bounded extent and a stable direction for stationary
-sparks. The post grade preserves more amber/copper color in highlights, uses a
-much lower black-floor cutoff, and applies the vignette to the combined scene
-and bloom. Chromatic offsets sample the scene texture directly, avoiding the
-extra intermediate pass caused by applying the addon to an already graded
-expression. Grain and dither use pixel coordinates. Renderer tone mapping is
-disabled while the post stack owns the filmic grade.
-
-Scene composition leaves burst objects at unit scale, preserving the projected
-piece-lock origin through viewport changes. Pending combo state is consumed
-even when a clear carries its own explicit combo count.
-
-The frame loop schedules its next frame before checking `document.hidden`, the
-global rendering pause flag and `shouldRenderFrame()`. Hidden and globally
-paused frames reset the timer and skip compute, reaction advancement and
-rendering. Paced frames skip the work while retaining elapsed time for the next
-rendered frame. The theme uses `THREE.Timer`; delta remains clamped. Async compute
-initialization checks actual pipeline readiness and the
-owning renderer/generation. Retired systems cannot be revived by stale compile
-completion, and obsolete scene initialization cannot reveal a retired canvas.
-If native dust, burst or wisp compilation fails, only that layer is rebuilt on
-the CPU; successful native systems remain available.
-
-Warmup temporarily reveals hidden pooled drawables, renders through the actual
-shipping post/target configuration, waits for submitted GPU work within its
-bounded fence, then restores visibility. This includes the event corona and
-burst pipelines. A bare target-less `compileAsync(scene, camera)` would skip
-hidden pools and can warm the wrong MRT configuration, so it is not used here.
-
-## Validation record
-
-Fresh capture evidence is recorded alongside per-state diagnostics and an
-aggregate `*-validation.json` report for each run:
-
-| Capture set | Result |
+| File | Role |
 | --- | --- |
-| `playground-webgpu-desktop-high-*` | Native WebGPU, 1440 × 900, `t=8`; zero console errors or warnings |
-| `playground-webgl2-desktop-high-*` | Node WebGL2, 1440 × 900, `t=8`; zero console errors or warnings |
-| `theme-webgpu-desktop-high-*` | Production theme idle / lock / clear / combo; zero errors or warnings, MRT enabled and all three compute systems ready |
-| `theme-webgl2-desktop-high-*` | Production theme idle / lock / clear / combo; zero errors and four ANGLE performance warnings |
-| `theme-webgl2-phone-low-*` | Production theme portrait idle / lock / clear / combo and landscape; zero errors and four ANGLE performance warnings |
+| `chiral-gold-core.js` | Three-free constants and maths shared by the choreography, the shaders and the tests: the stage, the towers' curves, slot counts and timings, the alloys, heat for a chain. |
+| `chiral-gold-tsl.js` | Hashes, the baked noise texture, the baked studio, the shared uniforms, the additive material and the instanced quad and strip. |
+| `chiral-gold-helix.js` | The towers: ribbon and wire geometry, the gold, the beads, the core. |
+| `chiral-gold-ring.js` | The great ring: three nested torcs, their comets and their tumble. |
+| `chiral-gold-water.js` | The water: the planar mirror, the swell, rings, the clear's front, the gilding. |
+| `chiral-gold-atmosphere.js` | The dark the hall ends in, the shafts of lit air over the towers, the dust. |
+| `chiral-gold-fx.js` | Sparks, leaf, blades, flares, the four-line braid, the tally. |
+| `chiral-gold-world.js` | Owns the uniforms, the parts, the camera rig and the choreography. Shared with the playground effect, so what is iterated there ships. |
+| `chiral-gold-director.js` | Renderer-free: stages bus events per player and resolves one lock and one clear per frame. |
+| `chiral-gold-composition.js` | Three-free: reads the live card, board and HUD rects, maps board columns and rows onto the screen, and places the towers in the room the cards leave. |
+| `chiral-gold-post.js` | One scene pass, bloom, and one output pass. |
+| `chiral-gold-quality.js` | The content tiers. |
+| `chiral-gold-theme.js` | Lifecycle, renderer selection, settings, layout watch, audio levels, GPU-loss recovery, capture flags. |
 
-All five aggregate validation records pass. The three integrated runs retire
-with `active: false` and zero canvases remaining in the theme container. Native
-idle/clear/combo, WebGL2 idle/clear and phone idle/combo/landscape screenshots were
-visually inspected after the final dissolve refinement. The ANGLE warnings say
-the software driver exhausted reserved `outsideRenderPass queueSerial` capacity
-and ended a render pass; they are recorded as performance diagnostics, not
-hidden or counted as shader/validation failures.
+Techniques worth knowing before changing it:
 
-The native adapter is a software Google SwiftShader adapter, and the WebGL2
-captures also use software rendering. The isolated playground holds `t=8` with
-zero simulation delta. The theme harness advances fixed 1/60-second steps,
-draws the final scene once, and drains submitted native GPU work before readback.
-These captures demonstrate rendering correctness and bounded scene ownership.
-They do not establish hardware FPS, latency, battery cost or physical-phone
-performance.
+- **The gold is a real metal.** `MeshStandardNodeMaterial`, metalness 1, with the alloy as its
+  reflectance. Polished metal shows nothing but its surroundings, so the hall is lit the way a
+  goldsmith's bench is photographed: an HDR environment baked on the CPU (a key soft box, a fill,
+  two tall strip lights, an overhead, two rims, a warm bounce from the water, a line on the far
+  horizon, a faint glow from the room behind the lens and 34 pin lights), prefiltered once by the
+  renderer. There are no scene lights and no shadows. The dark between the lights is what reads
+  as metal; the studio turns slowly so the gold is never quite still.
+- **One node renderer on both backends.** `WebGPURenderer` on WebGPU, its WebGL2 backend
+  otherwise (or `?forceWebGL`). There is no `ShaderMaterial`, so `chiral-gold` is off the
+  dual-state allowlist. Nothing uses compute.
+- **The left tower is built as the mirror of the right**, vertex for vertex (x negated, winding
+  reversed), and turns the other way, so both braids climb. A ribbon's section is a lens: a broad
+  face whose normal is crowned more than its shape, so a highlight glides across it.
+- **The mirror.** On Medium and up a planar `reflector()` renders the hall from the mirrored
+  camera at reduced resolution with a mip chain; the water reads it through its own slope. The
+  towers, the ring and the backdrop are on layer 0; everything else (water, dust, leaf, sparks,
+  blades, flares, the braid, shafts, the tally) is on layer 1, which the mirror's camera does not
+  render. Low and Minimal follow the mirrored ray analytically to the plane the towers stand in
+  and to the plane of the ring instead.
+- **Closed form first.** A spark, a flake, a mote, a bead, a comet and a ring on the water are
+  each a function of the clock and of what was written when they were launched. Nothing is
+  created at event time: events write numbers into ring-buffered uniform slots and preallocated
+  pools, often dated a moment ahead (a tower's pulse is dated for when its sparks arrive, a leaf
+  burst for when its blade lands). `seek(t)` plus a fixed-step replay reproduces any frame, and a
+  test holds the same state at 30 and 240 frames a second.
+- **Gold leaf is a mirror too.** Every flake is a tumbling quad whose brightness is how squarely
+  it returns one of the studio's lights to the eye, so it flashes when it happens to face one and
+  is nearly dark otherwise.
+- **Every pool is always drawn** with dormant slots collapsed to zero size, so the first frame
+  compiles every pipeline and the theme needs no warm-up roots. `usesMrtScenePass()` is false.
+- **HDR, single output.** The scene is scene-linear; a max-channel knee selects what blooms (no
+  MRT), and one output pass does the lens fringe, the calm zones on the card and HUD, bloom, star
+  glints (the bloom dragged along both axes), rays from behind the board during the strike, a
+  hue-preserving filmic curve that lets only the hottest cores roll to ivory, grade, vignette,
+  grain and dither. An iris closes as the hall heats so its blacks and its colour survive.
+- **No MaterialX noise.** One tileable texture is baked on the CPU; shared `Fn` helpers carry
+  `setLayout`.
+- **Nothing is downloaded.** The studio, the noise, every shape and the tally's glyphs (drawn
+  with the page's 2D canvas in an italic serif) are generated at build time. No model is loaded,
+  and Blender was not needed: the forms are parametric curves.
 
-An earlier session included a before-image check of the previous shipping
-WebGL2 artwork. That image has not been regenerated in this fresh evidence set;
-it is not linked or counted as current acceptance.
+One shader lesson from this build is in the repo's TSL skill gotcha table: a glyph atlas indexed
+with `fract()` jumps in UV at every cell boundary, the automatic mip selection picks the coarsest
+level there and rules a line down each boundary; sample a fixed level.
 
-Focused tests cover all six sculpture tiers, finite geometry, desktop/portrait/
-landscape projection, bounded reuse and decay, deterministic reset, exact-once
-disposal, particle/quad array separation, projected lock placement, final CPU
-expiry upload, transient effect caps, frame gating, stale activation and checked
-compute readiness. Additional regressions cover native compute failure recovery,
-renderer-bound compilation, paused frame timing and dissolve sparsity on both
-particle paths. The focused validation set passes 136 tests. The final
-integrated-main full suite passes all 542 test files and 5,917 tests in 115.41
-seconds.
+## Tiers
 
-| Final acceptance item | Status |
-| --- | --- |
-| Isolated desktop WebGPU / WebGL2 | Passed |
-| Integrated desktop native WebGPU idle / lock / clear / combo | Passed |
-| Integrated desktop node WebGL2 idle / lock / clear / combo | Passed |
-| Integrated portrait node WebGL2 Low and landscape | Passed |
-| Integrated teardown ownership diagnostics | Passed: inactive, zero remaining theme canvases |
-| Final full suite | Passed: 542 files, 5,917 tests, 115.41 seconds |
-| Typecheck | Passed on integrated main |
-| Production build and boot closure | Passed on integrated main in 21.83 seconds |
-| Scoped sculpture/playground lint and lint ratchet | Passed; error ceiling lowered to 1,103 |
-| Dependency boundaries, theme lifecycle, TypeScript ratchet | Passed; boundaries cover 1,064 modules and 3,382 dependencies |
-| Architecture fitness | Passed; lower baselines locked at 290 ShaderMaterial hits across 41 files and 46 raw resize listeners |
-| Structural performance and release gates | Passed |
-| Physical GPU and physical-phone acceptance | Not measured |
+| Tier | Ribbon steps | Wires / beads per tower | Mirror | Shafts | Dust | Leaf pool | Sparks | Braid | Bloom, stars, rays | Scene MSAA |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Minimal | 120 | none | analytic | off | 500 | 360 | 96 | none | off | off |
+| Low | 160 | 3 / none | analytic | off | 900 | 800 | 160 | 1,500 | off | off |
+| Medium | 220 | 4 / 20 | 0.4 scale, 1 tap | on | 1,800 | 1,700 | 320 | 3,500 | on | off |
+| High | 300 | 6 / 36 | 0.5 scale, 3 taps | on | 3,200 | 2,800 | 512 | 6,000 | on | 4× |
+| Ultra | 380 | 7 / 48 | 0.65 scale, 3 taps | on | 4,800 | 4,000 | 768 | 9,000 | on | 4× |
+| Extreme | 460 | 8 / 60 | 0.8 scale, 3 taps | on | 6,500 | 5,400 | 1,024 | 13,000 | on | 4× |
 
-Reproduction commands and the software-browser adapter flags are recorded in
-`reports/chiral-gold-overhaul/README.md`. The isolated board overlay is only a
-placement guide. The theme capture harness mounts the production theme and
-canonical event bus, but it does not run a full gameplay session or verify a
-real gameplay board/HUD.
+Low and Minimal bake the studio at half size. How many particles one event throws scales with
+the tier as well (0.35× at Minimal to 1.5× at Extreme).
+
+## Verification
+
+- Unit tests: 102 new tests in four files (core, studio, composition and tiers 21; director 18;
+  world and effects 42; theme 21). The five test files of the earlier theme were retired with it,
+  `mobile-theme-canonical-quality.test.js` no longer lists Chiral Gold, the dual-state allowlist
+  lost its entry and the mobile WebGL2 validation table lost its preset row. Whole suite: 557
+  files, 6,419 tests. Every Chiral Gold test passes, and so does every shared test this change
+  touched. The build machine was at 100% CPU from other sessions throughout: in the full run
+  fourteen tests in files this change does not touch failed on their wall clocks (5 s test
+  timeouts and one 300 ms bake budget). Run again in smaller batches a different handful failed
+  each time, four files at the last count (the Odyssey forest sculptor, the Cosmic Expanse
+  environment, the Odyssey world bake loader, the Stellar Drift reaction storm), and the same
+  files fail the same way on the untouched `main` checkout under the same load. They need a
+  quiet machine to be called green.
+- Gates: lint ratchet (964 errors against a baseline of 1,070; the baseline was left as it is),
+  typecheck, production build with the boot-closure guard, dependency boundaries, theme
+  lifecycle audit, IP-string gate, Pages artifact check and release gates all pass. The palette
+  gate fails on `main` and here for the same unrelated reason (Stillwater); Chiral Gold scores
+  2/7 on it.
+- Playground captures on WebGPU (RTX 3070 Laptop) at High: rest, lock, hard drop, clears of one
+  to three lines, chains held at three, five, seven and twelve, a chain ending, the four-line
+  hush, ignition, braid and rain, a T-spin, a level-up. Rest at Minimal and Low; a clear at
+  Medium; the strike at Extreme; High on the forced WebGL2 backend; a 430 x 852 portrait frame
+  through a clear at High, and at rest at Low on WebGL2. No console errors or warnings in any of
+  them.
+- In the real game (Electron, dev server, single player): the theme starts on WebGPU, stands its
+  towers by the live card, aims its events at the live board, takes real hard drops and
+  bus-injected clears, chains, a four-line strike and a level-up, survives live quality changes
+  (High to Medium to Ultra) and lets go of its canvas when another theme takes over. No console
+  errors or warnings. Observed frame rate of the whole game at 1600 x 852, with the machine
+  busy: 74 and 119 fps at High in two runs on the RTX 3070; on the integrated AMD GPU, 56 fps at
+  High, 64 at Medium and 122 at Low (Low renders at 0.85 scale).
+
+Not verified: GPU cost per tier through the theme perf lane (the figures above are observed
+frame rates on a loaded machine, not ADR-0016 measurements, and the two High readings differ by
+half); the earlier theme's frame rate, for comparison; physical phones; local multiplayer,
+Infinity and the meditation mode in a capture (their routing is unit-tested only); reduced
+motion and the music's levels in a capture (unit-tested only); the tally's typeface on machines
+without Georgia or another of its named serifs (it falls back to the system serif); sessions of
+several hours.
+
+At the merge, the same day: the figures above are for the branch at its own base. Merged onto
+`main` as it stood after four more theme rebuilds had landed, the candidate gave 567 files and
+7,382 tests. Ten files failed on their wall clocks under the same load, none of them Chiral
+Gold's or a shared test this change touched; run again with generous time limits eight passed,
+and the two left are bake-time budgets that measure the machine (the Odyssey forest sculptor's
+300 ms and the cloud field's 1,500 ms). Lint on the candidate was 899 errors against a baseline
+of 1,033, the same count as `main` without this change. The typecheck, the build with its
+boot-closure guard, the shipping checks and one more run in the real game were repeated on the
+candidate and passed.
+
+## Reproduce
+
+Run `npm run dev:playground`, then:
+
+`/playground.html?effect=chiral-gold&t=44&quality=High&board=1`
+
+Add `event=lock|drop|clear|quad|tspin|perfect|levelUp|break` with `eventAge=<s>`, and
+`combo=<n>`, `level=<n>`, `lines=<n>`, `row=<r>`, `u=<0..1>`, `color=<hex>`. `demo=1` (without
+`t`) plays a looping script. `parts=` draws only the named parts (`sky`, `water`, `towers`,
+`ring`, `shafts`, `motes`, `leaf`, `sparks`, `blades`, `flares`, `braid`, `tally`);
+`falseColor=1` bands the pre-tone-map peak; `noPost=1` shows the raw scene; `forceWebGL=1` uses
+the WebGL2 backend. In the game: `?chiralGoldTime=`, `?chiralGoldFixedDt=`,
+`?chiralGoldParts=`, `?chiralGoldFalseColor=1`.
+
+The theme icon is the left tower at rest through the playground's icon lens, which draws the
+braid alone (no wires, beads, blades or tally):
+`/playground.html?effect=chiral-gold&t=63&quality=Ultra&icon=1` in a square window, cropped to
+90% of the frame around its centre, given a colour lift (contrast 1.22, saturation 1.12,
+brightness 1.02) and baked as a 512 px circle on a transparent ground. The same file is kept at
+`public/assets/themes/chiral-gold-theme-icon.png`. The unreferenced SVG of the earlier icon was
+removed.
+
+## Captured previews
+
+![The four-line strike: the braid climbing, and the rain after it](chiral-gold-captures/desktop-strike.webp)
+
+![Portrait: a chain of four on a phone-shaped frame, and the Low tier on WebGL2](chiral-gold-captures/portrait.webp)

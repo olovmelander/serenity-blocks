@@ -22,7 +22,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 // Phase 7 batch order (plan §7.2) — delete a name here when its GLSL twin is
 // retired. NEVER add a name: that is a new dual-maintenance burden.
 const DUAL_STATE_ALLOWLIST = [
-    'chiral-gold',
     'cosmic-noir', 'fluid-dreams', 'lunara',
     'ocean',
     'stellar-velocity', 'winter', 'wolfhour',
