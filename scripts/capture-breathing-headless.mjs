@@ -22,12 +22,14 @@
  *   --width/--height   viewport for `single` (default 1280x720)
  *   --quality=TIER     tier for `single` (default High)
  *   --backend=webgl2   run `single` on the WebGL2 backend
+ *   --shaders          also report the largest WGSL modules compiled (size, not time: a proxy for
+ *                      compile cost, which grows faster than the shader on some drivers)
  *
  * Playwright is not a project dependency: the script uses a local copy when there is one and the
  * global install otherwise (cloud images ship it with Chromium under PLAYWRIGHT_BROWSERS_PATH).
  */
 /* eslint-disable import/no-extraneous-dependencies, import/no-unresolved, no-await-in-loop, no-console */
-/* global GPUTexture */
+/* global GPUTexture, GPUDevice */
 import { execSync } from 'child_process';
 import { mkdir, writeFile } from 'fs/promises';
 import { createRequire } from 'module';
@@ -242,6 +244,17 @@ async function run(chromium, name, job) {
                 return original.call(this, descriptor);
             };
         });
+        if (args.shaders) {
+            await page.addInitScript(() => {
+                if (typeof GPUDevice === 'undefined') return;
+                window.__SHADER_SIZES__ = [];
+                const create = GPUDevice.prototype.createShaderModule;
+                GPUDevice.prototype.createShaderModule = function createShaderModule(descriptor) {
+                    window.__SHADER_SIZES__.push({ label: descriptor?.label || '', bytes: descriptor?.code?.length || 0 });
+                    return create.call(this, descriptor);
+                };
+            });
+        }
         page.on('console', (message) => {
             const level = message.type();
             if ((level === 'error' || level === 'warning') && !NOISE.test(message.text())) problems.push(`${level}: ${message.text().slice(0, 600)}`);
@@ -265,6 +278,16 @@ async function run(chromium, name, job) {
             );
             images.push(...result.map((data, index) => ({ data, tile: group.tiles[index] })));
             report.diagnostics = await page.evaluate(() => window.__PLAYGROUND__.diagnostics?.() ?? null);
+            if (args.shaders) {
+                report.shaders = await page.evaluate(() => {
+                    const list = window.__SHADER_SIZES__ || [];
+                    return {
+                        modules: list.length,
+                        totalBytes: list.reduce((sum, entry) => sum + entry.bytes, 0),
+                        largest: [...list].sort((a, b) => b.bytes - a.bytes).slice(0, 4),
+                    };
+                });
+            }
         }
         const bytes = (dataUrl) => Buffer.from(dataUrl.split(',')[1], 'base64');
         report.files = [];
