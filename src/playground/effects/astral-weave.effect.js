@@ -1,155 +1,258 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
+/**
+ * Astral Weave — the full world + post stack, mounted in isolation.
+ *
+ * Mounts the SAME AstralWeaveWorld and AstralWeavePost the theme ships, with the theme's camera
+ * rig, so composition and grade are judged exactly as they will look in game.
+ *
+ * URL params:
+ *   quality=High|Ultra|...   content tier (default High)
+ *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); the loom
+ *                            seats itself on its rects and the post's calm zones read them
+ *   statsHud=0               with board=1: board only, no HUD mock
+ *   stack=<n>                lay n rows of weft before the event (a stack n rows high)
+ *   combo=<n>                hold a combo of n (the rosette's petals and its temperature)
+ *   level=<n>                rest on level n's figure
+ *   event=lock|drop|clear|tetris|tspin|perfect|levelUp   fire a gameplay event...
+ *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>)
+ *   demo=1                   live only: play a looping gameplay script
+ *   parts=sky,rosette,...    draw only these parts
+ *   falseColor=1             post debug view: band the pre-tone-map max channel
+ *   noPost=1                 raw scene (no bloom/grade)
+ *   bloom=0|1                override the tier's bloom
+ *   px=-1..1&py=-1..1        hold a pointer-parallax offset
+ */
 import * as THREE from 'three/webgpu';
-import {
-    AstralWeaveWorld, buildAstralRibbonCurve, buildAstralSilkGeometry, getAstralWeaveLayout,
-} from '../../themes/astral-weave/astral-weave-world.js';
-import {
-    createAstralRibbonNodeMaterial, createAstralNexusCoreNodeMaterial, createAstralNexusShellNodeMaterial,
-} from '../../themes/astral-weave/astral-weave-materials.js';
-import { AstralWeaveFXController } from '../../themes/astral-weave/astral-weave-fx-controller.js';
-import { AstralWeavePost, getAstralWeavePostProfile } from '../../themes/astral-weave/astral-weave-post.js';
+import { AstralWeaveWorld } from '../../themes/astral-weave/astral-weave-world.js';
+import { AstralWeavePost, POST_LOOK } from '../../themes/astral-weave/astral-weave-post.js';
+import { REST_RIG, readLayoutRects } from '../../themes/astral-weave/astral-weave-composition.js';
 
 export const meta = {
     id: 'astral-weave',
-    title: 'Astral Weave — the celestial silk loom',
-    description: 'Pearlescent woven arcs, a living nebula and cascading stitch, clear and crown reactions.',
+    title: 'Astral Weave (full world)',
+    description: 'The Loom of Heaven: a string-art weave on a great hoop, shuttles, wefts and the crown star.',
 };
+
+function num(params, key, fallback = 0) {
+    const v = Number.parseFloat(params.get(key));
+    return Number.isFinite(v) ? v : fallback;
+}
+
+const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
+
+/** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
+function mountBoardOverlay(withHud) {
+    const root = document.createElement('div');
+    root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
+    const card = document.createElement('div');
+    card.className = 'player-card';
+    card.dataset.player = 'solo';
+    card.style.cssText = [
+        'position:absolute', 'left:50%', 'top:50%',
+        `width:calc(${BOARD_PX} * 1.19)`,
+        `height:calc(2 * ${BOARD_PX} + 158px)`,
+        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
+        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
+    ].join(';');
+    const board = document.createElement('div');
+    board.id = 'single-player-game-canvas';
+    board.style.cssText = [
+        'position:absolute', 'left:50%', 'bottom:24px', `width:calc(${BOARD_PX})`, `height:calc(2 * ${BOARD_PX})`,
+        'transform:translateX(-50%)', 'border:1px solid rgba(255,255,255,0.08)',
+    ].join(';');
+    // A canvas child, so the real selector (`… canvas`, or the id itself) finds a rect either way.
+    card.append(board);
+    root.append(card);
+    if (withHud) {
+        const hud = document.createElement('div');
+        hud.className = 'single-player-stats-bar';
+        hud.style.cssText = [
+            'position:absolute', 'top:25%', 'height:50%',
+            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
+            'width:140px',
+            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
+        ].join(';');
+        root.append(hud);
+    }
+    document.body.appendChild(root);
+    return root;
+}
+
+/** A looping script of locks and clears for the live demo (seconds into the loop). */
+const DEMO_LOOP = 26;
+const DEMO_SCRIPT = [
+    [0.6, 'lock', { rows: [19], u: 0.2 }], [1.5, 'lock', { rows: [19, 18], u: 0.75 }],
+    [2.4, 'lock', { rows: [18, 17], u: 0.4, hardDrop: true }], [3.3, 'lock', { rows: [19], u: 0.55 }],
+    [3.3, 'clear', { rows: [19], combo: 1 }], [4.3, 'lock', { rows: [19, 18], u: 0.3 }],
+    [4.3, 'clear', { rows: [19], combo: 2 }], [5.4, 'lock', { rows: [19, 18, 17], u: 0.8, hardDrop: true }],
+    [5.4, 'clear', { rows: [19, 18], combo: 3 }], [6.6, 'lock', { rows: [19], u: 0.1 }],
+    [6.6, 'clear', { rows: [19], combo: 4 }], [7.8, 'lock', { rows: [19, 18], u: 0.6 }],
+    [7.8, 'clear', { rows: [19], combo: 5 }], [9.2, 'lock', { rows: [19], u: 0.5 }],
+    [10.2, 'lock', { rows: [19, 18], u: 0.15 }], [11.1, 'lock', { rows: [18, 17], u: 0.85 }],
+    [12.0, 'lock', { rows: [17, 16], u: 0.35 }], [12.9, 'lock', { rows: [16, 15], u: 0.6, hardDrop: true }],
+    [13.8, 'lock', { rows: [19, 18, 17, 16], u: 0.95, hardDrop: true }],
+    [13.8, 'clear', { rows: [19, 18, 17, 16], lines: 4, combo: 1 }],
+    [19.5, 'lock', { rows: [19], u: 0.45 }], [20.4, 'lock', { rows: [19, 18], u: 0.7 }],
+    [21.3, 'lock', { rows: [18], u: 0.25, hardDrop: true }], [21.3, 'clear', { rows: [19], tspin: true, combo: 1 }],
+    [23.0, 'lock', { rows: [19], u: 0.5 }],
+];
 
 export function create({
     scene, camera, renderer, params,
 }) {
-    const saved = {
-        fov: camera.fov, far: camera.far, tone: renderer.toneMapping, exposure: renderer.toneMappingExposure,
-    };
     const quality = params.get('quality') || 'High';
-    const count = {
-        Minimal: 4, Low: 6, Medium: 8, High: 10, Ultra: 12, Extreme: 14,
-    }[quality] || 10;
-    const root = new THREE.Group();
-    scene.add(root);
-    const origin = new THREE.Vector3(4, 21, -24);
-    const world = new AstralWeaveWorld(scene, root, origin).build();
-    const materials = [];
-    const palette = [
-        [0x65e9ef, 0x8464ef, 0xe083bd], [0x8373f3, 0xe083bd, 0x83eff2],
-        [0x439acf, 0x79ece3, 0xe8b8ed], [0xc27fe8, 0x6f96f0, 0xe083bd],
-    ];
-    for (let i = 0; i < count; i += 1) {
-        const colors = palette[Math.floor(i / 2) % palette.length].map((hex) => new THREE.Color(hex));
-        const data = createAstralRibbonNodeMaterial({
-            colorA: colors[0], colorB: colors[1], colorC: colors[2], flowSpeed: 0.42 + i * 0.035, pulseOffset: i * 0.63,
-        });
-        const geometry = buildAstralSilkGeometry(
-            buildAstralRibbonCurve(i, count, origin),
-            192,
-            1.5 + (i % 3) * 0.7,
-            i * 0.7,
-        );
-        const mesh = new THREE.Mesh(geometry, data.material);
-        mesh.frustumCulled = false;
-        root.add(mesh);
-        materials.push(data);
-    }
-    const nexus = new THREE.Group();
-    nexus.position.copy(origin);
-    root.add(nexus);
-    const core = createAstralNexusCoreNodeMaterial({
-        colorA: new THREE.Color(0x65e9ef),
-        colorB: new THREE.Color(0xba8ced),
-        colorC: new THREE.Color(0xffd293),
-    });
-    const shell = createAstralNexusShellNodeMaterial({
-        colorA: new THREE.Color(0x79ece3), colorB: new THREE.Color(0xe8b8ed), opacity: 0.22, additive: true,
-    });
-    nexus.add(new THREE.Mesh(new THREE.IcosahedronGeometry(1.75, 3), core.material));
-    nexus.add(new THREE.Mesh(new THREE.TorusKnotGeometry(2.95, 0.1, 128, 12, 2, 3), shell.material));
-    materials.push(core, shell);
-    camera.fov = 48; camera.far = 500;
-    camera.position.set(0, 5.6, 34);
-    camera.lookAt(0, 3.8, -8);
-    camera.updateProjectionMatrix();
-    const fx = new AstralWeaveFXController();
-    const profile = getAstralWeavePostProfile(quality);
-    const post = profile.enabled ? new AstralWeavePost(renderer, scene, camera, {
-        ...profile, useMRT: renderer.backend?.isWebGPUBackend === true,
-    }) : null;
-    renderer.toneMapping = post ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.03;
-    let overlay;
-    if (params.get('board') === '1') {
-        overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;left:50%;top:54%;transform:translate(-50%,-50%);'
-            + 'width:min(28vw,260px);height:min(68vh,520px);border:1px solid #a6d9ef40;'
-            + 'border-radius:14px;background:#061020dc;pointer-events:none;z-index:3';
-        document.body.appendChild(overlay);
-    }
-    const resize = (width, height) => {
-        const layout = getAstralWeaveLayout(width / height);
-        root.scale.x = layout.span;
-        nexus.scale.set(layout.nexusScale / layout.span, layout.nexusScale, layout.nexusScale);
-        world.resize(width / height);
-        post?.setSize(width, height);
+    const saved = {
+        fov: camera.fov, near: camera.near, far: camera.far,
     };
-    resize(window.innerWidth, window.innerHeight);
-    const update = (time) => {
-        const signals = fx.getSignals();
-        world.update(time, signals, camera);
-        materials.forEach(({ uniforms }) => {
-            const values = {
-                uTime: time,
-                uEnergy: Math.min(2, signals.linePulse + signals.comboEnergy + signals.pieceLockPulse),
-                uLinePulse: signals.linePulse,
-                uComboEnergy: signals.comboEnergy,
-                uLineWaveProgress: signals.lineWaveProgress,
-                uWeaveCharge: signals.weaveCharge,
-                uCrownPulse: signals.crownPulse,
-                uEventHue: signals.eventHue,
-            };
-            Object.entries(values).forEach(([key, value]) => {
-                if (uniforms[key] && Number.isFinite(value)) uniforms[key].value = value;
+    const world = new AstralWeaveWorld({
+        scene, quality, capture: true, renderer,
+    }).build();
+    world.prepareCompute();
+    const partsParam = params.get('parts');
+    if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
+
+    camera.fov = REST_RIG.fov;
+    camera.near = REST_RIG.near;
+    camera.far = REST_RIG.far;
+
+    const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
+    if (params.has('bloom')) look.bloom = params.get('bloom') === '1';
+    const post = params.get('noPost') === '1' ? null : new AstralWeavePost(renderer, scene, camera, {
+        look,
+        falseColor: params.get('falseColor') === '1',
+    });
+    const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
+
+    const pointer = { x: num(params, 'px'), y: num(params, 'py') };
+    const size = new THREE.Vector2(1, 1);
+    const syncViewport = () => {
+        const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+        camera.aspect = aspect;
+        camera.fov = REST_RIG.fov;
+        camera.updateProjectionMatrix();
+        renderer.getDrawingBufferSize(size);
+        world.setViewport(size.x, size.y, aspect);
+        post?.setSize(window.innerWidth, window.innerHeight, size.x, size.y);
+        const rects = overlay ? readLayoutRects() : null;
+        world.setLayout(rects, aspect);
+        post?.setCalmRects(rects ? [...rects.cards, rects.hud].filter(Boolean) : [], rects ? 1 : 0);
+    };
+    syncViewport();
+
+    const sim = (time, delta) => ({
+        time, delta, pointerX: pointer.x, pointerY: pointer.y,
+    });
+    const pushPost = () => {
+        post?.update({ heart: world.getHeartScreen(), flash: world.flash, kick: world.kick });
+    };
+    const stepTo = (from, to, dt) => {
+        const steps = Math.max(1, Math.round((to - from) / dt));
+        const h = (to - from) / steps;
+        for (let i = 1; i <= steps; i++) world.update(sim(from + i * h, h));
+    };
+
+    const eventName = params.get('event');
+    const eventAge = num(params, 'eventAge', 0.5);
+    const stack = Math.max(0, Math.min(20, Math.round(num(params, 'stack', 0))));
+    const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
+    const level = Math.max(1, Math.round(num(params, 'level', 1)));
+    const fireEvent = () => {
+        const row = Math.round(num(params, 'row', 19 - stack));
+        const u = num(params, 'u', 0.3);
+        const lines = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
+        const bottom = (n) => Array.from({ length: n }, (_, i) => 19 - i);
+        if (eventName === 'lock') world.lock({ rows: [row, row - 1], u });
+        else if (eventName === 'drop') world.lock({ rows: [row, row - 1], u, hardDrop: true });
+        else if (eventName === 'clear') world.clear({ rows: bottom(lines), lines, combo: Math.max(1, holdCombo) });
+        else if (eventName === 'tetris') world.clear({ rows: bottom(4), lines: 4, combo: Math.max(1, holdCombo) });
+        else if (eventName === 'tspin') {
+            world.clear({
+                rows: bottom(2), lines: 2, tspin: true, combo: Math.max(1, holdCombo),
             });
-        });
-        nexus.rotation.y = time * 0.08;
-        nexus.children[1].rotation.set(0.86, time * 0.08, 0.42);
-        post?.updateDynamic({
-            time,
-            bloomStrength: profile.bloomStrength * (1 + signals.linePulse * 0.1),
-            lensingStrength: 0,
-        });
+        } else if (eventName === 'perfect') {
+            world.clear({
+                rows: bottom(4), lines: 4, perfect: true, combo: Math.max(1, holdCombo),
+            });
+        } else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
-    let lastSeek = null;
+
+    const seekTo = (time) => {
+        const lead = (eventName ? eventAge : 0) + 14;
+        const start = Math.max(0, time - lead);
+        world.seek(start);
+        if (level > 1) world.levelUp(level);
+        for (let i = 0; i < stack; i++) world.lock({ rows: [19 - i], u: 0.15 + ((i * 0.37) % 0.7) });
+        if (holdCombo > 0) world.setCombo(holdCombo);
+        world.update(sim(start, 0));
+        const eventTime = eventName ? time - eventAge : time;
+        if (eventTime > start) stepTo(start, eventTime, 0.1);
+        if (eventName) {
+            fireEvent();
+            stepTo(eventTime, time, 1 / 120);
+        }
+        world.updateCamera(camera, sim(time, 0));
+        world.update(sim(time, 0));
+        pushPost();
+    };
+
+    const demo = params.get('demo') === '1';
+    let demoCursor = 0;
+    let demoLoop = -1;
+    const runDemo = (time) => {
+        const loop = Math.floor(time / DEMO_LOOP);
+        if (loop !== demoLoop) {
+            demoLoop = loop;
+            demoCursor = 0;
+            world.resetSession();
+        }
+        const local = time - loop * DEMO_LOOP;
+        while (demoCursor < DEMO_SCRIPT.length && DEMO_SCRIPT[demoCursor][0] <= local) {
+            const [, verb, detail] = DEMO_SCRIPT[demoCursor];
+            if (verb === 'lock') world.lock(detail);
+            else world.clear(detail);
+            demoCursor += 1;
+        }
+        // A chain that is not continued breaks on the next lock that clears nothing.
+        if (local > 9 && local < 13.8 && world.combo > 0) world.setCombo(0);
+        if (local > 23 && world.combo > 0) world.setCombo(0);
+    };
+
     return {
         cameraRadius: 1,
-        camera() {},
-        seek(time) {
-            if (lastSeek === time) return;
-            fx.reset();
-            const age = Math.max(0, Number(params.get('eventAge') || 0.35));
-            const event = params.get('event');
-            if (event === 'lock') fx.onPieceLock();
-            if (event === 'clear' || event === 'tetris') fx.onLineClear(event === 'tetris' ? 4 : 1);
-            if (event === 'combo') fx.onCombo(Number(params.get('combo') || 5));
-            fx.step(age);
-            update(time);
-            lastSeek = time;
+        camera(time, cam) {
+            world.updateCamera(cam, sim(time, 0));
         },
-        update(time, delta) { if (!params.has('t')) { fx.step(Math.min(0.05, delta)); update(time); } },
-        render() { if (post) post.render(); else renderer.render(scene, camera); },
-        resize,
+        update(time, dt) {
+            if (demo) runDemo(time);
+            world.updateCamera(camera, sim(time, dt));
+            world.update(sim(time, dt));
+            pushPost();
+        },
+        seek(time) {
+            seekTo(time);
+        },
+        render() {
+            if (post) post.render();
+            else renderer.render(scene, camera);
+        },
+        resize() {
+            syncViewport();
+        },
         getDiagnostics() {
             return {
                 quality,
-                ribbons: count,
                 backend: renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2',
-                signals: fx.getSignals(),
+                ...world.getState(),
             };
         },
         dispose() {
-            overlay?.remove(); post?.dispose(); world.dispose();
-            root.traverse((object) => { object.geometry?.dispose(); object.material?.dispose(); });
-            root.removeFromParent();
-            camera.fov = saved.fov; camera.far = saved.far; camera.updateProjectionMatrix();
-            renderer.toneMapping = saved.tone; renderer.toneMappingExposure = saved.exposure;
+            overlay?.remove();
+            post?.dispose();
+            world.dispose();
+            camera.fov = saved.fov;
+            camera.near = saved.near;
+            camera.far = saved.far;
+            camera.updateProjectionMatrix();
         },
     };
 }
