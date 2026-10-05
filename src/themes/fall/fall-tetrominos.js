@@ -9,13 +9,13 @@ export const FALL_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#ffb300', // Golden harvest amber - like wheat fields at sunset
-        O: '#ff6f00', // Deep pumpkin orange - rich autumn squash
-        T: '#ff5722', // Fiery maple red-orange - blazing fall foliage
-        S: '#f4511e', // Crimson maple leaf - deep autumn red
-        Z: '#ffa726', // Warm golden yellow - candlelight glow
-        J: '#fb8c00', // Burnt sienna orange - autumn oak bark
-        L: '#ff9100', // Brilliant amber - glowing ember core
+        I: '#f6cf72', // Sunlit birch gold
+        O: '#ef9e42', // Harvest amber
+        T: '#bc77ac', // Plum twilight
+        S: '#8fb89c', // Woodland sage
+        Z: '#df7052', // Copper maple
+        J: '#7faaca', // Blue mist between the trees
+        L: '#edb68b', // Peach light through the canopy
         GARBAGE: '#3e2723', // Dark walnut bark - forest floor shadow
     },
 
@@ -23,7 +23,7 @@ export const FALL_TETROMINOS = {
 
     effects: {
         glowRadius: 14,
-        glowIntensity: 0.75,
+        glowIntensity: 0.62,
         glowColor: 'auto',
 
         outline: true,
@@ -33,12 +33,12 @@ export const FALL_TETROMINOS = {
         // Gentle pulsing like fireflies and embers
         pulse: true,
         pulseSpeed: 0.028, // Slow, organic breathing
-        pulseAmplitude: 0.22, // Gentle variation
+        pulseAmplitude: 0.12, // Gentle variation
 
         // Subtle shimmer like heat haze from embers
         shimmer: true,
         shimmerSpeed: 0.045,
-        shimmerIntensity: 0.18,
+        shimmerIntensity: 0.11,
 
         // Soft trails for falling motion
         trails: false, // Keep it clean, falling leaves don't trail
