@@ -71,10 +71,9 @@ beside the decoder files in `public/assets/vendor/draco/`.
 
 ## 2. CC0 / Public-Domain assets (attribution not required, credited as good practice)
 
-- **Poly Haven** (CC0) — texture/HDRI detail maps used luminance-only in several themes:
+- **Poly Haven** (CC0) — texture detail maps used luminance-only in several themes:
   Sky Children V2 (`leafy_grass`, `dirt`, `gray_rocks`, `cliff_side`, `rock_05`), Winter
-  (`snow_01`, `snow_02`), Lunara (`qwantani_moonrise_puresky` HDRI, `moon_dusted_01`,
-  `aerial_rocks_02`, `cliff_side`, `dry_riverbed_rock`). Source: https://polyhaven.com
+  (`snow_01`, `snow_02`). Source: https://polyhaven.com
 - **Quaternius** (CC0, via Poly Pizza / Poly Pizza bundles) — Odyssey Chapter 3 stylized
   nature kit (trees, pines, twisted trees, bushes, ferns, clover, rocks, pebble, bird,
   pigeon), Ocean seagrass/rocks, and the Animated Fish Bundle

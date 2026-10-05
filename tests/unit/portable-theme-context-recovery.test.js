@@ -2,7 +2,6 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import OceanTheme from '../../src/themes/ocean/ocean-theme.js';
-import LunaraTheme from '../../src/themes/lunara/lunara-theme.js';
 import { gpuResilience } from '../../src/utils/gpu-context-resilience.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 
@@ -92,7 +91,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-const themes = [['Ocean', OceanTheme], ['Lunara', LunaraTheme]];
+const themes = [['Ocean', OceanTheme]];
 describe.each(themes)('%s portable context recovery', (_name, Theme) => {
     it.each([false, true])('registers the backend and detaches before disposal (native=%s)', async (native) => {
         const canvasMonitor = vi.spyOn(gpuResilience, 'monitorWebGL');

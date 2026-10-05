@@ -66,21 +66,29 @@ describe('all-theme matrix teardown regressions', () => {
         expect(theme.cleanupComplete).toBe(true);
     });
 
-    it('releases Lunara camera and light references on repeated stop', () => {
+    it('releases Lunara camera, world and renderer references on repeated stop', () => {
         installThemeDom('lunara');
         const theme = new LunaraTheme();
+        const world = { dispose: vi.fn() };
+        const canvas = makeOwnedNode();
+        const renderer = { domElement: canvas.node };
+        vi.spyOn(theme, 'disposeRenderer').mockImplementation(() => {});
         theme.camera = {};
-        theme.directionalPrimary = {};
-        theme.directionalCompanion = {};
+        theme.world = world;
+        theme.renderer = renderer;
         theme.isActive = true;
         theme.lifecycleState = 'running';
 
         theme.stop();
         theme.stop();
 
+        expect(world.dispose).toHaveBeenCalledTimes(1);
+        expect(theme.disposeRenderer).toHaveBeenCalledTimes(1);
+        expect(theme.disposeRenderer).toHaveBeenCalledWith(renderer, { nullInstance: false });
+        expect(canvas.parentNode.removeChild).toHaveBeenCalledWith(canvas.node);
         expect(theme.camera).toBeNull();
-        expect(theme.directionalPrimary).toBeNull();
-        expect(theme.directionalCompanion).toBeNull();
+        expect(theme.world).toBeNull();
+        expect(theme.renderer).toBeNull();
         expect(theme.lifecycleState).toBe('stopped');
     });
 

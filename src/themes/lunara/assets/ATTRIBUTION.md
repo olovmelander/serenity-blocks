@@ -1,33 +1,25 @@
-# Lunara Visual Asset Attribution
+# Lunara — asset attribution
 
-## Bundled CC0 Assets
+Lunara ships one image it did not make: the moon map every moon in the fleet shares. Everything
+else in the valley is generated in code when the theme starts — the noise field, the terrain's
+heights, the ranges' skylines, every crystal spire and lantern flower, the sky, the aurora, the
+water and the gameplay effects. The theme loads no model, no environment map and no other
+texture.
 
-The following assets are from Poly Haven and are used under the Poly Haven CC0 license:
+## The moon map (CC BY 4.0 — attribution required)
 
-- `public/hdri/qwantani_moonrise_puresky_1k.hdr`
-  - Source: https://polyhaven.com/a/qwantani_moonrise_puresky
-  - Usage: moonlit image-based lighting reference for Lunara materials.
-- `public/textures/lunara/moon_dusted_01_*_1k.jpg`
-  - Source: https://polyhaven.com/a/moon_dusted_01
-  - Usage: subtle luminance, normal, and roughness detail for the valley floor.
-- `public/textures/lunara/aerial_rocks_02_*_1k.jpg`
-  - Source: https://polyhaven.com/a/aerial_rocks_02
-  - Usage: normal and roughness detail for procedural rock silhouettes.
-- `public/textures/lunara/cliff_side_*_1k.jpg`
-  - Source: https://polyhaven.com/a/cliff_side
-  - Usage: luminance breakup for distant and near mountain ridges.
-- `public/textures/lunara/dry_riverbed_rock_*_1k.jpg`
-  - Source: https://polyhaven.com/a/dry_riverbed_rock
-  - Usage: reserved stream-bank detail candidate for future refinement.
+| File | Author | Licence | Source |
+| --- | --- | --- | --- |
+| `public/textures/2k_moon.jpg` | **Solar System Scope** ("Textures by Solar System Scope") | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | https://www.solarsystemscope.com/textures/ |
 
-Poly Haven license: https://polyhaven.com/license
+The file is shared with other themes and is credited in the top-level `CREDITS.md`, which is the
+authoritative entry. Lunara reads it as `./textures/2k_moon.jpg` (`MOON_MAP_URL` in
+`lunara-world.js`).
 
-## Researched, Not Bundled
+**Modifications (CC BY requires stating changes):** the file itself is unchanged. At run time
+both moons sample it for luminance only, tint it with the level's palette, and read its slope
+for the relief along the terminator; the great moon's veins of light are drawn over it in the
+shader.
 
-The following Sketchfab CC-BY candidates informed the authored procedural silhouettes but are not redistributed in this repository:
-
-- Crystal cluster candidate: `e920cf6b57d642a3a03c76c847031f1f`
-- Cave Bulbs candidate: `86ccf3718bd643eab111e0646e56837d`
-- Deep Bulbs candidate: `4082a956b68e4509bc8e9e1c08ed99f0`
-
-If any Sketchfab GLB is committed later, add the exact title, author, source URL, license URL, modification notes, and export pipeline notes here. Exclude NC and ND licenses.
+The map loads off the frame. Until it arrives, or if it fails to load, the moons stand as smooth
+lit spheres.
