@@ -20,32 +20,38 @@ The camera adjusts its field of view and distance for portrait screens.
 
 ## Event language
 
-- Piece locks send a brief glint through a crystal formation and release motes.
-- Line clears create a traveling mineral resonance, curved light ribbons and
-  expanding rings on open water.
-- Combos intensify the same language with a bounded response. Events interleave
-  both walls and keep ribbons outside the central board corridor.
+- Piece locks release larger jewel sparks, a fractured corona and a colored
+  water ring near a foreground formation. The response follows the locked
+  piece's color and side, preferring Infinity's viewport origin when supplied.
+- Line clears create a traveling mineral resonance, coronas, sparks and colored
+  rings on open water. Four-line clears add delayed wall ribbons and aftershocks.
+- Combos answer from both walls with a staged cascade of ribbons, coronas,
+  shards and rings. Each burst has a distinct jewel hue. Airborne bursts and
+  ribbons frame the central board corridor.
 
 Event objects, geometries and materials are allocated at startup. Bursts reuse
-fixed particle, arc and ripple slots. Energy and resonance decay in seconds;
+fixed particle, arc, ripple, corona and delayed-reaction slots. Hidden event
+drawables warm through the shipped render path during startup. Energy and
+resonance decay in seconds;
 successive waves coalesce without restarting a traveling wave. Pause, visibility,
 live effect settings, quality changes, renderer recovery and cleanup follow the
 shared theme lifecycle.
 
 ## Quality budgets
 
-| Tier | Crystal clusters | Dust | Event particles | Arcs / rings | Reflection scale | Bloom scale | DPR cap |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Extreme | 52 | 1600 | 220 | 7 / 7 | 0.40 | 0.60 | 1.50 |
-| Ultra | 42 | 1200 | 180 | 6 / 6 | 0.35 | 0.55 | 1.35 |
-| High | 32 | 900 | 140 | 5 / 5 | 0.30 | 0.45 | 1.25 |
-| Medium | 22 | 550 | 100 | 4 / 4 | 0.22 | 0.30 | 1.00 |
-| Low | 14 | 260 | 64 | 3 / 3 | — | — | 0.90 |
-| Minimal | 10 | 120 | 36 | 2 / 2 | — | — | 0.75 |
+| Tier | Crystal clusters | Dust | Event particles | Arcs / rings | Coronas | Reflection scale | Bloom scale | DPR cap |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Extreme | 52 | 1600 | 220 | 7 / 7 | 8 | 0.40 | 0.60 | 1.50 |
+| Ultra | 42 | 1200 | 180 | 6 / 6 | 7 | 0.35 | 0.55 | 1.35 |
+| High | 32 | 900 | 140 | 5 / 5 | 6 | 0.30 | 0.45 | 1.25 |
+| Medium | 22 | 550 | 100 | 4 / 4 | 5 | 0.22 | 0.30 | 1.00 |
+| Low | 14 | 260 | 64 | 3 / 3 | 4 | — | — | 0.90 |
+| Minimal | 10 | 120 | 36 | 2 / 2 | 3 | — | — | 0.75 |
 
 The application's render scale also applies to the DPR cap. These are allocation
 budgets, not measurements of physical-device frame rate. Medium phone reflections
 are visibly softer at the reduced mirror resolution; Low omits the mirror pass.
+Delayed reaction capacity is twice the arc budget and never grows during play.
 
 ## Reproducible preview
 
@@ -94,3 +100,45 @@ Native WebGPU hardware and physical-phone performance acceptance remain open.
 The fresh captures exercise the modern renderer's WebGL2 backend; native WebGPU
 was not freshly validated in this run. An earlier environment lost native GPU
 devices on this theme and unrelated control scenes.
+
+## Prismatic event refinement acceptance
+
+The stronger event response was validated as an increment on current main
+(`e3a15c8`). Fresh software WebGL2 production captures cover High desktop and
+Low/Medium portrait at the same viewport and render scales listed above.
+Actual theme event listeners received colored left/right piece locks, an
+Infinity viewport-origin override, and combo response levels 1, 3 and 8. The
+level-1 payload is a response probe; gameplay's cascade emission rules are
+unchanged. Event captures use deterministic 60 Hz simulation and requested
+ages of 0.15, 0.35 and 0.8 seconds, quantized to one simulation step.
+
+All three surfaces passed a 750-event flood inspected at six simulated ages,
+rotation where applicable, two pause/resume cycles, two stop/restart cycles and
+repeated cleanup. Geometry, material, slot-array, shader-program and reported
+renderer-memory budgets stayed fixed through the flood. Active particles,
+ribbons, rings, coronas and pending echoes stayed within their allocated slots.
+Application console warnings, JavaScript/runtime errors, GL errors and
+non-finite geometry counts were zero. Each run recorded four SwiftShader driver
+performance hints about its reserved `outsideRenderPass queueSerial`; the exact
+messages are retained in the metadata.
+
+The full suite passed (543 files / 5,941 tests), along with production build,
+boot closure, typecheck, lint ratchet (1,103 warnings), dependency boundaries
+(1,064 modules / 3,384 dependencies), architecture fitness, theme lifecycle,
+TS ratchet, performance budgets and release gates. IP string and Pages artifact
+checks passed against the temporary shipping artifact. Desktop and phone images
+were reviewed for visible local
+feedback, distinct jewel hues, preserved facets and a calm central corridor.
+Medium retains its deliberately soft mirror budget.
+
+Evidence: [colored lock](crystal-cave-overhaul/prismatic-effects/lock.webp),
+[prismatic combo](crystal-cave-overhaul/prismatic-effects/combo.webp),
+[Low portrait](crystal-cave-overhaul/prismatic-effects/low-portrait.webp),
+[Medium portrait](crystal-cave-overhaul/prismatic-effects/medium-portrait.webp),
+and [increment metadata](crystal-cave-overhaul/prismatic-effects/validation.json).
+
+One bounded native probe reached an actual WebGPU backend on Google SwiftShader,
+then lost the device with reason `destroyed` and produced black captures.
+The logs contained device-loss and `popErrorScope` errors, without a WGSL
+parse/type diagnostic. Native WebGPU acceptance remains unavailable; this probe
+does not establish the cause. Physical-device performance remains unverified.
