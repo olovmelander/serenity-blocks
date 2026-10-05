@@ -18,6 +18,8 @@
  *   --posters          write public/assets/breathing/<id>.webp, the stills the Hub's cards show
  *   --worlds=a,b       limit to these technique ids
  *   --breath=0..1      lung fill for `single` (default 0.75)
+ *   --phase=0..3       breath phase for `single` (0 in, 1 hold full, 2 out, 3 hold empty; default
+ *                      0, or 1 at full lungs) and --progress=0..1 through it (default 0.8)
  *   --t=SECONDS        scene time (default 12)
  *   --width/--height   viewport for `single` (default 1280x720)
  *   --quality=TIER     tier for `single` (default High)
@@ -215,7 +217,11 @@ function jobs() {
             height: Number(args.height || 720),
             query: `&quality=${args.quality || 'High'}${args.focus ? `&focus=${args.focus}` : ''}`,
             type: 'image/png',
-            tiles: WORLDS.map(([id, name]) => tile(id, name, breath, breath >= 1 ? 1 : 0, 0.8)),
+            tiles: WORLDS.map(([id, name]) => {
+                let phase = breath >= 1 ? 1 : 0;
+                if (args.phase !== undefined) phase = Number(args.phase);
+                return tile(id, name, breath, phase, Number(args.progress ?? 0.8));
+            }),
         },
     };
 }
