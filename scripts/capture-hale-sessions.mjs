@@ -12,7 +12,7 @@
  *
  * Usage (a Vite dev server must be running):
  *   node scripts/capture-hale-sessions.mjs                      desktop, 1440×900
- *   node scripts/capture-hale-sessions.mjs --width=390 --height=844 --shots=phone
+ *   node scripts/capture-hale-sessions.mjs --width=390 --height=844 --shots=phone   (a touch device)
  *
  *   --baseUrl=URL      dev server (default http://127.0.0.1:5173)
  *   --out=DIR          where screenshots go (default artifacts/hale-sessions)
@@ -55,7 +55,10 @@ const NOISE = /vite\]|GL Driver Message|WebGPU Context Provider|ReadPixels|Autom
 const { chromium } = await loadPlaywright();
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ headless: true, args: LAUNCH });
-const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1 });
+// The phone pass is a touch device: coarse pointer, so the guide says "tap" and picks the Low tier.
+const page = await browser.newPage({
+    viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1, isMobile: PHONE, hasTouch: PHONE,
+});
 const problems = [];
 const size = `${WIDTH}x${HEIGHT}`;
 
@@ -66,6 +69,13 @@ const size = `${WIDTH}x${HEIGHT}`;
  */
 async function freezeAnimations(ms) {
     await page.evaluate((at) => {
+        // A software screenshot can take seconds: keep a title card's timer from closing it mid-shot.
+        const guide = window.breathingIndicator;
+        if (guide?._chapterTimer != null) {
+            clearTimeout(guide._chapterTimer);
+            guide.timers.delete(guide._chapterTimer);
+            guide._chapterTimer = null;
+        }
         document.getAnimations().forEach((animation) => {
             if (animation.transitionProperty) {
                 animation.finish();
@@ -131,6 +141,7 @@ async function tick() {
  */
 async function stage(index) {
     await holdStill();
+    await page.evaluate(() => window.breathingIndicator._hideChapter());
     const world = await page.evaluate((i) => {
         const manager = window.serenityBlocks.serenityHub.sessionManager;
         return manager._worldFor(manager.activeSession.phases[i]);
