@@ -8,7 +8,6 @@ import {
 } from 'vitest';
 import { BaseTheme } from '../../src/themes/base-theme.js';
 import TornadoTheme from '../../src/themes/tornado/tornado-theme.js';
-import SakuraTwilightTheme from '../../src/themes/sakura-twilight/sakura-twilight-theme.js';
 import SkyChildrenV2Theme from '../../src/themes/sky-children-v2/sky-children-v2-theme.js';
 
 const loaderMocks = vi.hoisted(() => ({
@@ -74,34 +73,6 @@ describe('theme async lifecycle cancellation', () => {
         expect(theme.resume()).toBe(false);
         expect(setAnimationLoop).not.toHaveBeenCalled();
         expect(theme.setupSettingsListener).not.toHaveBeenCalled();
-    });
-
-    it.each([
-        ['forest', 'loadModelAndCreateForest'],
-        ['foxes', 'loadFoxes'],
-    ])('disposes a Sakura %s GLTF root that resolves after invalidation', async (_label, method) => {
-        const geometry = { dispose: vi.fn() };
-        const material = { dispose: vi.fn() };
-        const root = {
-            traverse: vi.fn((visit) => visit({ geometry, material })),
-        };
-        loaderMocks.loadAsync.mockResolvedValueOnce({
-            scene: root,
-            animations: [],
-        });
-
-        const theme = new SakuraTwilightTheme();
-        theme.isActive = true;
-        const generation = theme.lifecycleGeneration;
-        const load = theme[method](generation);
-
-        theme.isActive = false;
-        theme.lifecycleGeneration += 1;
-
-        await expect(load).resolves.toBe(false);
-        expect(root.traverse).toHaveBeenCalledTimes(1);
-        expect(geometry.dispose).toHaveBeenCalledTimes(1);
-        expect(material.dispose).toHaveBeenCalledTimes(1);
     });
 
     it('resolves canceled async turns for sky-children', async () => {

@@ -1,0 +1,328 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender authoring",
+  "license": "MIT-project-local",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "sakura-blossoms.glb",
+      "bytes": 61072,
+      "sha256": "41a24f3e96263166b6587dc97225172e534f399b8af33449544c72b4d1fe4d64",
+      "kind": "blossoms",
+      "meshes": {
+        "blossom_spray_0": {
+          "flowers": 15,
+          "triangles": 330
+        },
+        "blossom_spray_1": {
+          "flowers": 13,
+          "triangles": 290
+        },
+        "blossom_strand_0": {
+          "flowers": 12,
+          "triangles": 276
+        },
+        "blossom_strand_1": {
+          "flowers": 12,
+          "triangles": 276
+        },
+        "blossom_clump_0": {
+          "flowers": 10,
+          "triangles": 100
+        },
+        "blossom_clump_1": {
+          "flowers": 10,
+          "triangles": 100
+        },
+        "petal": {
+          "flowers": 0,
+          "triangles": 4
+        },
+        "petal_far": {
+          "flowers": 0,
+          "triangles": 2
+        },
+        "flower": {
+          "flowers": 1,
+          "triangles": 20
+        }
+      }
+    },
+    {
+      "file": "sakura-fuji.glb",
+      "bytes": 273212,
+      "sha256": "cacd65ff7054eabf37f52716390da3acc9d229922a80c15ea617607f5ddd91d5",
+      "kind": "mountain",
+      "triangles": 19320,
+      "height": 1.0,
+      "baseRadius": 2.5635532902016442
+    },
+    {
+      "file": "sakura-grove-a.glb",
+      "bytes": 121968,
+      "sha256": "4a8d80415c72a377d6ee4da9cfecf12d837b62cfc3ce2c6fa1ea80577e85f529",
+      "kind": "tree",
+      "species": "sakura",
+      "role": "grove",
+      "habit": "spreading",
+      "sites": 355,
+      "barkTriangles": 5006
+    },
+    {
+      "file": "sakura-grove-b.glb",
+      "bytes": 137924,
+      "sha256": "8d13a7cb774556031f4422ae884b21f79dde28684a4c8b126e00ef57af99737d",
+      "kind": "tree",
+      "species": "sakura",
+      "role": "grove",
+      "habit": "spreading",
+      "sites": 433,
+      "barkTriangles": 5642
+    },
+    {
+      "file": "sakura-grove-c.glb",
+      "bytes": 131156,
+      "sha256": "ad9db833f6ee74f5e1bacf2ed385394e7d730207d1e9df29e4002333e66f919d",
+      "kind": "tree",
+      "species": "sakura",
+      "role": "grove",
+      "habit": "spreading",
+      "sites": 337,
+      "barkTriangles": 5446
+    },
+    {
+      "file": "sakura-grove-weeping.glb",
+      "bytes": 167232,
+      "sha256": "18c47be4c87d9e0f8a0de0094f789ace15c33b747db8777085bffeb5b84392ee",
+      "kind": "tree",
+      "species": "sakura",
+      "role": "grove",
+      "habit": "weeping",
+      "sites": 151,
+      "barkTriangles": 6980
+    },
+    {
+      "file": "sakura-hero-spreading.glb",
+      "bytes": 803276,
+      "sha256": "b2e40b6ebcf436d1f3822492d48a3d468407f8a3420a00e6245973e4ffdb2dac",
+      "kind": "tree",
+      "species": "sakura",
+      "role": "hero",
+      "habit": "spreading",
+      "sites": 1451,
+      "barkTriangles": 31632
+    },
+    {
+      "file": "sakura-hero-weeping.glb",
+      "bytes": 690320,
+      "sha256": "5dce225ec77f1183118da14d9975a72d8c66d0fb5558436fc284b52e00811905",
+      "kind": "tree",
+      "species": "sakura",
+      "role": "hero",
+      "habit": "weeping",
+      "sites": 1941,
+      "barkTriangles": 27652
+    },
+    {
+      "file": "sakura-impostors.png",
+      "bytes": 899433,
+      "sha256": "8ab6230855a80fd15a1718d10bf405f384999f8e2a93718c5e292a7ae8b3e180",
+      "kind": "impostors",
+      "atlasWidth": 1808,
+      "atlasHeight": 320,
+      "tiles": [
+        {
+          "asset": "sakura-grove-a",
+          "habit": "spreading",
+          "x": 0,
+          "pixels": 464,
+          "width": 14.326479543429178,
+          "height": 9.88033071960633,
+          "trunk": 0.00266627864849369,
+          "coverage": 0.4042766702586207
+        },
+        {
+          "asset": "sakura-grove-b",
+          "habit": "spreading",
+          "x": 464,
+          "pixels": 432,
+          "width": 17.273380157074634,
+          "height": 12.795096412647878,
+          "trunk": -0.10408517458003604,
+          "coverage": 0.31625434027777777
+        },
+        {
+          "asset": "sakura-grove-c",
+          "habit": "spreading",
+          "x": 896,
+          "pixels": 512,
+          "width": 13.352538440158947,
+          "height": 8.345336525099341,
+          "trunk": 0.02889882260419796,
+          "coverage": 0.456842041015625
+        },
+        {
+          "asset": "sakura-grove-weeping",
+          "habit": "weeping",
+          "x": 1408,
+          "pixels": 400,
+          "width": 7.9854193825964,
+          "height": 6.38833550607712,
+          "trunk": -0.048978127681951394,
+          "coverage": 0.4381484375
+        }
+      ]
+    },
+    {
+      "file": "sakura-props.glb",
+      "bytes": 253396,
+      "sha256": "bad781001c87eb4842568fce48af5ef7656cbfb2be52a7a927312e3ccdcd84b5",
+      "kind": "props",
+      "meshes": {
+        "stone_lantern": {
+          "triangles": 568,
+          "boundsMin": [
+            -0.533,
+            0.0,
+            -0.616
+          ],
+          "boundsMax": [
+            0.533,
+            2.15,
+            0.616
+          ]
+        },
+        "snow_lantern": {
+          "triangles": 412,
+          "boundsMin": [
+            -0.68,
+            -0.11,
+            -0.663
+          ],
+          "boundsMax": [
+            0.68,
+            1.12,
+            0.663
+          ]
+        },
+        "paper_lantern": {
+          "triangles": 316,
+          "boundsMin": [
+            -0.235,
+            -1.1,
+            -0.235
+          ],
+          "boundsMax": [
+            0.235,
+            0.0,
+            0.235
+          ]
+        },
+        "torii": {
+          "triangles": 368,
+          "boundsMin": [
+            -3.218,
+            -1.404,
+            -0.235
+          ],
+          "boundsMax": [
+            3.218,
+            5.148,
+            0.235
+          ]
+        },
+        "bridge": {
+          "triangles": 1572,
+          "boundsMin": [
+            -4.719,
+            -2.2,
+            -1.17
+          ],
+          "boundsMax": [
+            4.719,
+            2.515,
+            1.17
+          ]
+        },
+        "pagoda": {
+          "triangles": 884,
+          "boundsMin": [
+            -3.476,
+            0.0,
+            -3.476
+          ],
+          "boundsMax": [
+            3.476,
+            14.99,
+            3.476
+          ]
+        },
+        "rock_a": {
+          "triangles": 320,
+          "boundsMin": [
+            -1.01,
+            -0.062,
+            -1.002
+          ],
+          "boundsMax": [
+            0.945,
+            0.679,
+            0.947
+          ]
+        },
+        "rock_b": {
+          "triangles": 320,
+          "boundsMin": [
+            -0.904,
+            -0.08,
+            -0.814
+          ],
+          "boundsMax": [
+            0.841,
+            0.786,
+            0.763
+          ]
+        },
+        "rock_c": {
+          "triangles": 320,
+          "boundsMin": [
+            -1.275,
+            -0.045,
+            -0.828
+          ],
+          "boundsMax": [
+            1.272,
+            0.5,
+            0.834
+          ]
+        },
+        "water_lantern": {
+          "triangles": 84,
+          "boundsMin": [
+            -0.22,
+            0.0,
+            -0.22
+          ],
+          "boundsMax": [
+            0.22,
+            0.379,
+            0.22
+          ]
+        },
+        "sky_lantern": {
+          "triangles": 90,
+          "boundsMin": [
+            -0.3,
+            0.0,
+            -0.285
+          ],
+          "boundsMax": [
+            0.3,
+            0.78,
+            0.285
+          ]
+        }
+      }
+    }
+  ]
+}
