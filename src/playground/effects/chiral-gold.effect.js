@@ -71,7 +71,12 @@ export function create({
     };
     const trigger = () => {
         if (!eventName) return;
-        world.trigger(eventName, number('strength', eventName === 'combo' ? 1.9 : 1));
+        const position = new THREE.Vector3(number('lockX', 0), number('lockY', -420), 0);
+        world.trigger(
+            eventName,
+            number('strength', eventName === 'combo' ? 1.9 : 1),
+            eventName === 'lock' || params.has('lockY') ? position : null,
+        );
     };
     return {
         cameraRadius: 1520,
@@ -100,6 +105,7 @@ export function create({
             if (post) post.render();
             else renderer.render(scene, camera);
         },
+        getDiagnostics: () => world.diagnostics(),
         resize,
         dispose() {
             overlay?.remove();
