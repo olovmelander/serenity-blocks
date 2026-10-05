@@ -1,26 +1,27 @@
-# Neon District rendering evidence
+# Neon District rendering verification
 
-`final/report.json` records the six production-theme capture profiles. Each profile
-includes ambient, piece-lock, four-line clear and combo frames, backend identity,
-effect-pool budgets, finite geometry/transform checks and graphics console output.
+[verification-summary.json](verification-summary.json) records the completed checks
+for the overhaul source. All six software-browser profiles passed all four phases:
+ambient, piece-lock, four-line clear and combo.
 
-| Profile | Native WebGPU | Forced WebGL2 |
-| --- | --- | --- |
-| High desktop, 1280×720 | [Ambient](final/webgpu-desktop-ambient.png) · [Combo](final/webgpu-desktop-combo.png) | [Ambient](final/webgl2-desktop-ambient.png) · [Combo](final/webgl2-desktop-combo.png) |
-| Low portrait, 390×844 | [Ambient](final/webgpu-mobile-ambient.png) · [Combo](final/webgpu-mobile-combo.png) | [Ambient](final/webgl2-mobile-ambient.png) · [Combo](final/webgl2-mobile-combo.png) |
-| Low landscape, 844×390 | [Ambient](final/webgpu-mobile-landscape-ambient.png) · [Combo](final/webgpu-mobile-landscape-combo.png) | [Ambient](final/webgl2-mobile-landscape-ambient.png) · [Combo](final/webgl2-mobile-landscape-combo.png) |
+| Profile | Quality | Native WebGPU | Forced WebGL2 |
+| --- | --- | --- | --- |
+| Desktop, 1280×720 | High | Pass | Pass |
+| Portrait, 390×844 | Low | Pass | Pass |
+| Landscape, 844×390 | Low | Pass | Pass |
 
-To reproduce, install Playwright or provide `PLAYWRIGHT_MODULE` and
-`PLAYWRIGHT_EXECUTABLE_PATH`, then run from the repository root:
+The captures were visually inspected, with no graphics failures or non-finite
+sampled geometry/transform values. High effects remain within six pooled slots
+and 384 data particles; Low uses three slots and 64 particles.
+
+To generate raw screenshots and detailed console/geometry reports, install
+Playwright or provide `PLAYWRIGHT_MODULE` and `PLAYWRIGHT_EXECUTABLE_PATH`, then run:
 
 ```sh
 node scripts/neon-district-visual-validation.mjs --lane both --offscreen \
   --out reports/neon-district-overhaul/final
 ```
 
-These bounded software-browser captures exercise the isolated shipping theme and
-canonical gameplay events. Native WebGPU uses target/readback because software
-canvas presentation is unavailable in this environment. They do not measure
-physical-device frame rates or verify full game boot.
-
-Intermediate local studies and Vite caches are excluded from this evidence set.
+Raw capture files are generated locally. Native WebGPU uses target/readback in
+the software renderer. Physical-device frame rates, native canvas presentation
+and full game boot were not measured.
