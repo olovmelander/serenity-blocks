@@ -259,6 +259,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.burstUniforms = null;
         this.burstPools = [];
         this.burstPoolIndex = 0;
+        this.burstCpuSequence = 0;
         this.burstCpuConfig = null;
 
         this.wispCompute = null;
@@ -273,6 +274,8 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
+        this.pendingComboContext = null;
+        this.lastSculptureEvent = null;
 
         this.reactiveEnvelope = {
             pulse: 0,
@@ -435,6 +438,45 @@ export default class ChiralGoldTheme extends BaseTheme {
         const ndcX = -0.20 + (centerX / 9.0) * 0.40;
         const ndcY = 0.36 - (centerY / 19.0) * 0.72;
         return this.projectNdcToPlane(ndcX, ndcY, 0.0);
+    }
+
+    getClearBandNdcY(detail = {}) {
+        const viewport = readLockViewportOrigin(detail);
+        if (viewport) return 0.36 - viewport.y * 0.72;
+        const rows = Array.isArray(detail.clearedRows)
+            ? detail.clearedRows.filter((row) => Number.isFinite(row) && row >= 0)
+            : [];
+        if (!rows.length) return 0;
+        const totalRows = Math.max(20, Math.max(...rows) + 1);
+        const rowCenter = rows.reduce((sum, row) => sum + row, 0) / rows.length;
+        return 0.36 - (rowCenter / (totalRows - 1)) * 0.72;
+    }
+
+    getOriginFromClear(detail = {}) {
+        const viewport = readLockViewportOrigin(detail);
+        const ndcX = viewport ? -0.20 + viewport.x * 0.40 : 0;
+        return this.projectNdcToPlane(ndcX, this.getClearBandNdcY(detail), 0);
+    }
+
+    matchesSculptureEvent(detail, comboCount, kind) {
+        const previous = this.lastSculptureEvent;
+        return previous?.kind === kind
+            && previous.time === this.time
+            && previous.comboCount === comboCount
+            && previous.source === detail.source
+            && previous.player === detail.player
+            && previous.levelId === detail.levelId;
+    }
+
+    rememberSculptureEvent(detail, comboCount, kind) {
+        this.lastSculptureEvent = {
+            kind,
+            comboCount,
+            time: this.time,
+            source: detail.source,
+            player: detail.player,
+            levelId: detail.levelId,
+        };
     }
 
     updateCompositionLayout() {
@@ -1341,6 +1383,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.burstUniforms = null;
         this.burstPools = [];
         this.burstPoolIndex = 0;
+        this.burstCpuSequence = 0;
         this.burstCpuConfig = null;
 
         const configuredCount = Number.isFinite(this.qualityPreset.burstSparkCount)
@@ -1456,6 +1499,9 @@ export default class ChiralGoldTheme extends BaseTheme {
                     velocity,
                     maxLife,
                     active: false,
+                    profile: null,
+                    startedAt: -Infinity,
+                    sequence: -1,
                 },
             };
 
@@ -3067,8 +3113,22 @@ export default class ChiralGoldTheme extends BaseTheme {
         const { eventScale } = caps;
 
         if (comboCount > 0) {
-            this.sculpture?.trigger('combo', Math.min(2.2, 0.7 + comboCount * 0.15));
-            this.pendingComboCount = comboCount;
+            const followsTetris = this.matchesSculptureEvent(detail, comboCount, 'tetris');
+            if (!followsTetris) {
+                const viewport = readLockViewportOrigin(detail);
+                this.sculpture?.trigger(
+                    'combo',
+                    Math.min(2.2, 0.7 + comboCount * 0.15) * eventScale,
+                    viewport ? this.getOriginFromPiece(null, viewport) : null,
+                );
+                this.rememberSculptureEvent(detail, comboCount, 'combo');
+            }
+            this.pendingComboCount = followsTetris ? 0 : comboCount;
+            this.pendingComboContext = followsTetris ? null : {
+                source: detail.source,
+                player: detail.player,
+                levelId: detail.levelId,
+            };
             this.pushReactiveEnvelope({
                 pulse: Math.min(0.05 + comboCount * 0.05, 0.5) * eventScale,
                 bloom: Math.min(0.04 + comboCount * 0.05, 0.55) * eventScale,
@@ -3096,20 +3156,32 @@ export default class ChiralGoldTheme extends BaseTheme {
     handleLineClear(eventPayload) {
         const detail = eventPayload?.detail || eventPayload || {};
         const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
-        let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
+        const explicitComboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel;
+        let comboCount = explicitComboCount ?? 0;
         const caps = this.getChoreographyCaps();
         const { eventScale } = caps;
 
         this.cameraLookNudgeY = -16.0 * eventScale;
         this.cameraZoomNudgeZ = -38.0 * eventScale;
-        if (!comboCount && this.pendingComboCount > 0) {
+        const pendingContext = this.pendingComboContext;
+        const sameComboContext = pendingContext
+            && pendingContext.source === detail.source
+            && pendingContext.player === detail.player
+            && pendingContext.levelId === detail.levelId;
+        if (explicitComboCount === undefined && this.pendingComboCount > 0 && sameComboContext) {
             comboCount = this.pendingComboCount;
         }
         this.pendingComboCount = 0;
+        this.pendingComboContext = null;
+        const clearOrigin = this.getOriginFromClear(detail);
+        const followsCombo = comboCount > 0 && this.matchesSculptureEvent(detail, comboCount, 'combo');
+        const reactionKind = lineCount >= 4 ? 'tetris' : 'clear';
         this.sculpture?.trigger(
-            lineCount >= 4 ? 'tetris' : 'clear',
-            Math.min(2.1, 0.75 + lineCount * 0.2 + comboCount * 0.045),
+            followsCombo ? 'clear-front' : reactionKind,
+            Math.min(2.1, 0.75 + lineCount * 0.2 + comboCount * 0.045) * eventScale,
+            clearOrigin,
         );
+        this.rememberSculptureEvent(detail, comboCount, followsCombo ? 'clear-front' : reactionKind);
 
         const comboMultiplier = Math.min(1 + comboCount * 0.25, 2.5);
 
@@ -3276,38 +3348,32 @@ export default class ChiralGoldTheme extends BaseTheme {
                 }, i * 110);
             }
         }
-        // Spawn grid-line dissolve particles for the cleared rows
+        // One symmetric pair leaves the cleared-row band, preserving CPU pool capacity.
         const clearedRows = detail.clearedRows || [];
-        if (Array.isArray(clearedRows) && clearedRows.length > 0) {
-            const totalRows = Math.max(20, Math.max(...clearedRows) + 1);
+        if (Array.isArray(clearedRows) && clearedRows.some((row) => Number.isFinite(row) && row >= 0)) {
             // Infinity supplies the ON-SCREEN clear origin; prefer it (the cleared rows are an
             // adjacent band, so collapsing them to that Y is on-screen-accurate) — the absolute
             // clearedRows would otherwise map against the whole tall grid and mis-place.
-            const viewport = readLockViewportOrigin(detail);
-            clearedRows.forEach((y) => {
-                for (let colIdx = 0; colIdx < 2; colIdx++) {
-                    const ndcX = -0.22 + colIdx * 0.44;
-                    const ndcY = viewport
-                        ? 0.36 - viewport.y * 0.72
-                        : 0.36 - (y / (totalRows - 1)) * 0.72;
-                    const origin3D = this.projectNdcToPlane(ndcX, ndcY, 0.0);
-                    if (origin3D) {
-                        const burstIntensity = Math.min(
-                            0.65 + comboCount * 0.025 + this.reactiveEnvelope.spark * 0.1,
-                            1.05,
-                        ) * (0.65 + eventScale * 0.35);
+            const ndcY = this.getClearBandNdcY(detail);
+            for (let colIdx = 0; colIdx < 2; colIdx++) {
+                const ndcX = -0.22 + colIdx * 0.44;
+                const origin3D = this.projectNdcToPlane(ndcX, ndcY, 0.0);
+                if (origin3D) {
+                    const burstIntensity = Math.min(
+                        0.65 + comboCount * 0.025 + this.reactiveEnvelope.spark * 0.1,
+                        1.05,
+                    ) * (0.65 + eventScale * 0.35);
 
-                        this.triggerBurst(burstIntensity, comboCount, {
-                            profile: 'dissolve',
-                            origin: origin3D,
-                            sizeMultiplier: 0.35,
-                            velocityMultiplier: 1.0,
-                            sparkBoost: 0.06,
-                            lifeMultiplier: 0.4,
-                        });
-                    }
+                    this.triggerBurst(burstIntensity, comboCount, {
+                        profile: 'dissolve',
+                        origin: origin3D,
+                        sizeMultiplier: 0.35,
+                        velocityMultiplier: 1.0,
+                        sparkBoost: 0.06,
+                        lifeMultiplier: 0.4,
+                    });
                 }
-            });
+            }
         }
 
         if (caps.allowFormation) {
@@ -3414,10 +3480,32 @@ export default class ChiralGoldTheme extends BaseTheme {
                 break;
             }
         }
-        // If no idle pool is found, skip this burst so old particles accumulate.
+        // Locks must remain visible under sustained play. Reclaim the oldest decoration
+        // first, then the oldest lock if every pool already contains lock feedback.
+        if (!pool && profile === 'lock_burst') {
+            pool = this.burstPools.reduce((oldest, candidate) => {
+                const candidateState = candidate.userData.cpuBurst;
+                if (!oldest) return candidate;
+                const oldestState = oldest.userData.cpuBurst;
+                const candidateIsLock = candidateState.profile === 'lock_burst';
+                const oldestIsLock = oldestState.profile === 'lock_burst';
+                if (candidateIsLock !== oldestIsLock) return candidateIsLock ? oldest : candidate;
+                return candidateState.sequence < oldestState.sequence ? candidate : oldest;
+            }, null);
+            if (pool) {
+                pool.userData.cpuBurst.life.fill(0);
+                pool.userData.cpuBurst.positions.fill(-9999);
+                this.burstPoolIndex = (this.burstPools.indexOf(pool) + 1) % this.burstPools.length;
+            }
+        }
+        // Preserve accumulating hero bursts when all pools are busy.
         if (!pool) return;
 
         const state = pool.userData.cpuBurst;
+        state.profile = profile;
+        state.startedAt = this.time;
+        state.sequence = this.burstCpuSequence;
+        this.burstCpuSequence += 1;
 
         const batchMin = Math.max(120, Math.floor(state.life.length * 0.08));
         const batchMax = Math.max(batchMin, Math.floor(state.life.length * 0.26));
@@ -3846,6 +3934,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.burstUniforms = null;
         this.burstPools = [];
         this.burstCpuConfig = null;
+        this.burstCpuSequence = 0;
 
         this.wispPoints = null;
         this.wispUniforms = null;
@@ -3858,6 +3947,8 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.backgroundEnvelope = null;
 
         this.pendingComboCount = 0;
+        this.pendingComboContext = null;
+        this.lastSculptureEvent = null;
         this.comboFlashIntensity = 0;
         this.dustEventBoost = 0;
         this.beatPulse = 0;
