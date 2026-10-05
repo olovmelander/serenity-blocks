@@ -172,6 +172,16 @@ motion and the music's levels in a capture (unit-tested only); the tally's typef
 without Georgia or another of its named serifs (it falls back to the system serif); sessions of
 several hours.
 
+At the merge, the same day: the figures above are for the branch at its own base. Merged onto
+`main` as it stood after four more theme rebuilds had landed, the candidate gave 567 files and
+7,382 tests. Ten files failed on their wall clocks under the same load, none of them Chiral
+Gold's or a shared test this change touched; run again with generous time limits eight passed,
+and the two left are bake-time budgets that measure the machine (the Odyssey forest sculptor's
+300 ms and the cloud field's 1,500 ms). Lint on the candidate was 899 errors against a baseline
+of 1,033, the same count as `main` without this change. The typecheck, the build with its
+boot-closure guard, the shipping checks and one more run in the real game were repeated on the
+candidate and passed.
+
 ## Reproduce
 
 Run `npm run dev:playground`, then:
