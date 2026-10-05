@@ -82,4 +82,5 @@ payloads, frame-rate-independent timing, fixed resource budgets, reduced motion,
 scan bounds, asynchronous prewarm cancellation/resume and idempotent disposal.
 The full Vitest suite passed **528 files and 5,647 tests** with two workers.
 Production build, boot-closure verification, TypeScript and dependency boundaries
-pass. The lint error ceiling is reduced to reflect the removed legacy code.
+pass. Legacy cleanup reduced the measured lint errors from 1,170 to 1,137.
+The repository's existing shrink-only lint ceiling is preserved.
