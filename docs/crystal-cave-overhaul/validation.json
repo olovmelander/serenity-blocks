@@ -1,0 +1,252 @@
+{
+  "capturedAt": "2026-10-05",
+  "browser": "Chromium 153.0.8010.0",
+  "backend": "Three.js WebGPURenderer with forced WebGL2 backend",
+  "deviceScaleFactor": 1,
+  "captureMethod": "Production theme canvas copied to CSS-sized PNG after an explicit render with its animation loop frozen; loop resumed immediately afterward. Icon is a fixed-time playground viewport screenshot.",
+  "softwareEmulation": true,
+  "scope": "Isolated production theme within the real background shell; game UI excluded.",
+  "matrices": [
+    {
+      "quality": "High",
+      "viewport": {
+        "width": 1280,
+        "height": 720,
+        "dpr": 1
+      },
+      "effectivePixelRatio": 1,
+      "canonicalRenderScale": 1,
+      "canvas": {
+        "width": 1280,
+        "height": 720,
+        "connected": true
+      },
+      "resources": {
+        "uniqueGeometries": 22,
+        "uniqueMaterials": 20
+      },
+      "eventBurstCount": 750,
+      "reactionSlots": {
+        "shards": 35,
+        "motes": 105,
+        "arcs": 5,
+        "ripples": 5
+      },
+      "checks": {
+        "consoleErrors": 0,
+        "consoleWarnings": 0,
+        "requestFailures": 0,
+        "httpFailures": 0,
+        "nonFinite": 0,
+        "glErrors": 0,
+        "runtimeFailures": 0,
+        "geometryAndMaterialsBounded": true,
+        "pauseHeartbeatStable": true,
+        "pauseResumeCycles": 2,
+        "stopRestartCycles": 2,
+        "cleanupRepeated": 2,
+        "cleanupCanvasCount": 0,
+        "staticContainerPreserved": true,
+        "cleanupGeometryCount": 0,
+        "cleanupMaterialCount": 0
+      },
+      "phaseNames": [
+        "idle",
+        "lock",
+        "tetris",
+        "combo",
+        "burst",
+        "paused-0",
+        "paused-still-0",
+        "resumed-0",
+        "paused-1",
+        "paused-still-1",
+        "resumed-1",
+        "stopped-0",
+        "restarted-0",
+        "stopped-1",
+        "restarted-1",
+        "cleanup"
+      ]
+    },
+    {
+      "quality": "Low",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "dpr": 1
+      },
+      "effectivePixelRatio": 0.45,
+      "canonicalRenderScale": 0.5,
+      "canvas": {
+        "width": 175,
+        "height": 379,
+        "connected": true
+      },
+      "resources": {
+        "uniqueGeometries": 20,
+        "uniqueMaterials": 16
+      },
+      "eventBurstCount": 750,
+      "reactionSlots": {
+        "shards": 16,
+        "motes": 48,
+        "arcs": 3,
+        "ripples": 3
+      },
+      "checks": {
+        "consoleErrors": 0,
+        "consoleWarnings": 0,
+        "requestFailures": 0,
+        "httpFailures": 0,
+        "nonFinite": 0,
+        "glErrors": 0,
+        "runtimeFailures": 0,
+        "geometryAndMaterialsBounded": true,
+        "pauseHeartbeatStable": true,
+        "pauseResumeCycles": 2,
+        "stopRestartCycles": 2,
+        "cleanupRepeated": 2,
+        "cleanupCanvasCount": 0,
+        "staticContainerPreserved": true,
+        "cleanupGeometryCount": 0,
+        "cleanupMaterialCount": 0
+      },
+      "phaseNames": [
+        "idle",
+        "lock",
+        "tetris",
+        "combo",
+        "burst",
+        "paused-0",
+        "paused-still-0",
+        "resumed-0",
+        "paused-1",
+        "paused-still-1",
+        "resumed-1",
+        "landscape",
+        "portrait-again",
+        "stopped-0",
+        "restarted-0",
+        "stopped-1",
+        "restarted-1",
+        "cleanup"
+      ],
+      "rotation": {
+        "portrait": {
+          "width": 175,
+          "height": 379,
+          "connected": true
+        },
+        "landscape": {
+          "width": 379,
+          "height": 175,
+          "connected": true
+        },
+        "portraitAgain": {
+          "width": 175,
+          "height": 379,
+          "connected": true
+        }
+      }
+    },
+    {
+      "quality": "Medium",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "dpr": 1
+      },
+      "effectivePixelRatio": 0.75,
+      "canonicalRenderScale": 0.75,
+      "canvas": {
+        "width": 292,
+        "height": 633,
+        "connected": true
+      },
+      "resources": {
+        "uniqueGeometries": 21,
+        "uniqueMaterials": 18
+      },
+      "eventBurstCount": 750,
+      "reactionSlots": {
+        "shards": 25,
+        "motes": 75,
+        "arcs": 4,
+        "ripples": 4
+      },
+      "checks": {
+        "consoleErrors": 0,
+        "consoleWarnings": 0,
+        "requestFailures": 0,
+        "httpFailures": 0,
+        "nonFinite": 0,
+        "glErrors": 0,
+        "runtimeFailures": 0,
+        "geometryAndMaterialsBounded": true,
+        "pauseHeartbeatStable": true,
+        "pauseResumeCycles": 2,
+        "stopRestartCycles": 2,
+        "cleanupRepeated": 2,
+        "cleanupCanvasCount": 0,
+        "staticContainerPreserved": true,
+        "cleanupGeometryCount": 0,
+        "cleanupMaterialCount": 0
+      },
+      "phaseNames": [
+        "idle",
+        "lock",
+        "tetris",
+        "combo",
+        "burst",
+        "paused-0",
+        "paused-still-0",
+        "resumed-0",
+        "paused-1",
+        "paused-still-1",
+        "resumed-1",
+        "landscape",
+        "portrait-again",
+        "stopped-0",
+        "restarted-0",
+        "stopped-1",
+        "restarted-1",
+        "cleanup"
+      ],
+      "rotation": {
+        "portrait": {
+          "width": 292,
+          "height": 633,
+          "connected": true
+        },
+        "landscape": {
+          "width": 633,
+          "height": 292,
+          "connected": true
+        },
+        "portraitAgain": {
+          "width": 292,
+          "height": 633,
+          "connected": true
+        }
+      }
+    }
+  ],
+  "evidence": [
+    "idle.webp",
+    "combo.webp",
+    "low-portrait.webp",
+    "medium-portrait.webp",
+    "medium-landscape.webp"
+  ],
+  "icon": "public/assets/themes/crystal-cave-theme-icon.png",
+  "nativeWebGPU": {
+    "freshlyValidated": false,
+    "note": "This recovery validation run establishes modern WebGL2 parity and lifecycle behavior. Native WebGPU and physical-device performance remain unverified."
+  },
+  "limits": [
+    "Software Chromium and emulated viewports do not establish physical-device performance.",
+    "Captures are not FPS measurements.",
+    "Low disables mirror and bloom intentionally. Medium preserves reflection/post at reduced resolution; its reflection is visibly coarse in portrait."
+  ]
+}

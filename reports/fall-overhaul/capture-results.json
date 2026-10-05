@@ -1,0 +1,112 @@
+[
+  {
+    "name": "webgl-desktop",
+    "state": {
+      "ready": true,
+      "error": null,
+      "backend": "WebGL2",
+      "diagnostics": {
+        "quality": "High",
+        "leaves": 700,
+        "motes": 230,
+        "rays": 8,
+        "burstLeaves": 32,
+        "burstSlots": 12,
+        "disabled": false,
+        "useMRT": false,
+        "activeBursts": 0
+      }
+    },
+    "errors": [],
+    "warnings": [],
+    "browser": "153.0.8010.12"
+  },
+  {
+    "name": "combo",
+    "state": {
+      "ready": true,
+      "error": null,
+      "backend": "WebGL2",
+      "diagnostics": {
+        "quality": "High",
+        "leaves": 700,
+        "motes": 230,
+        "rays": 8,
+        "burstLeaves": 32,
+        "burstSlots": 12,
+        "disabled": false,
+        "useMRT": false,
+        "activeBursts": 6
+      }
+    },
+    "errors": [],
+    "warnings": [],
+    "browser": "153.0.8010.12"
+  },
+  {
+    "name": "phone",
+    "state": {
+      "ready": true,
+      "error": null,
+      "backend": "WebGL2",
+      "diagnostics": {
+        "quality": "Low",
+        "leaves": 240,
+        "motes": 90,
+        "rays": 5,
+        "burstLeaves": 18,
+        "burstSlots": 6,
+        "disabled": true,
+        "useMRT": false,
+        "activeBursts": 0
+      }
+    },
+    "errors": [],
+    "warnings": [],
+    "browser": "153.0.8010.12"
+  },
+  {
+    "name": "minimal",
+    "state": {
+      "ready": true,
+      "error": null,
+      "backend": "WebGL2",
+      "diagnostics": {
+        "quality": "Minimal",
+        "leaves": 160,
+        "motes": 60,
+        "rays": 4,
+        "burstLeaves": 14,
+        "burstSlots": 4,
+        "disabled": true,
+        "useMRT": false,
+        "activeBursts": 0
+      }
+    },
+    "errors": [],
+    "warnings": [],
+    "browser": "153.0.8010.12"
+  },
+  {
+    "name": "board",
+    "state": {
+      "ready": true,
+      "error": null,
+      "backend": "WebGL2",
+      "diagnostics": {
+        "quality": "High",
+        "leaves": 700,
+        "motes": 230,
+        "rays": 8,
+        "burstLeaves": 32,
+        "burstSlots": 12,
+        "disabled": false,
+        "useMRT": false,
+        "activeBursts": 0
+      }
+    },
+    "errors": [],
+    "warnings": [],
+    "browser": "153.0.8010.12"
+  }
+]
