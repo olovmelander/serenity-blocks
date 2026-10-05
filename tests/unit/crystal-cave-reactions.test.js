@@ -1,379 +1,495 @@
-import * as THREE from 'three/webgpu';
-import { uniform } from 'three/tsl';
+import { describe, expect, it } from 'vitest';
 import {
-    afterEach, describe, expect, it, vi,
-} from 'vitest';
-import { CrystalCaveReactions } from '../../src/themes/crystal-cave/crystal-cave-reactions.js';
-import { QUALITY_PRESETS } from '../../src/themes/crystal-cave/crystal-cave-quality.js';
+    CRYSTAL_CAVE_FAMILY_COUNT, CRYSTAL_CAVE_MAX_CUES, CRYSTAL_CAVE_PIECE_FAMILY, CRYSTAL_CAVE_WAVE_SECONDS,
+    CRYSTAL_CAVE_WAVE_SPEED, CrystalCaveReactions,
+} from '../../src/themes/crystal-cave/crystal-cave-reactions.js';
 
-const instances = [];
-
-function create(quality = { eventParticles: 64, maxArcs: 3, maxRipples: 3 }) {
-    const scene = new THREE.Scene();
-    const uniforms = {
-        time: uniform(0),
-        energy: uniform(0),
-        resonance: uniform(0),
-        waveRadius: uniform(-100),
-        waveIntensity: uniform(0),
-        waveOrigin: uniform(new THREE.Vector3(0, -7, -8)),
+function seeded(seed = 1) {
+    let state = seed >>> 0;
+    return () => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        return state / 4294967296;
     };
-    const reactions = new CrystalCaveReactions({
-        scene,
-        quality,
-        uniforms,
-        anchors: [
-            { position: new THREE.Vector3(-12, 2, -8), color: 0x8bece1 },
-            { position: new THREE.Vector3(-20, 10, -15), color: 0xa98cfa },
-            { position: new THREE.Vector3(12, 4, -10), color: 0xf1b46e },
-            { position: new THREE.Vector3(18, 12, -17), color: 0x86dff6 },
-        ],
-    });
-    instances.push(reactions);
-    return { reactions, scene, uniforms };
 }
 
-function advance(reactions, seconds, hz) {
-    let elapsed = 0;
-    while (elapsed < seconds - 1e-12) {
-        const delta = Math.min(1 / hz, seconds - elapsed);
-        reactions.update(delta);
-        elapsed += delta;
+const cuesOf = (director) => director.cues.slice(0, director.cueCount).map((cue) => ({ ...cue, tint: [...cue.tint] }));
+const types = (director) => cuesOf(director).map((cue) => cue.type);
+const piece = (type, x = 4, y = 20, color) => ({
+    type, x, y, shape: [[1, 1, 1], [0, 1, 0]], color,
+});
+
+function run(director, seconds, hz = 60) {
+    const steps = Math.round(seconds * hz);
+    for (let index = 0; index < steps; index += 1) {
+        director.update(1 / hz);
+        director.clearCues();
     }
 }
 
-afterEach(() => {
-    for (const instance of instances) instance.dispose();
-    instances.length = 0;
-    vi.restoreAllMocks();
+describe('Crystal Cave reactions — the director at rest', () => {
+    it('starts as an idle cave: every family at its resting level and nothing queued', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        const frame = director.getFrame();
+        expect([...frame.familyLevel]).toEqual(new Array(CRYSTAL_CAVE_FAMILY_COUNT).fill(1));
+        expect(frame).toMatchObject({
+            energy: 0, resonance: 0, flash: 0, worms: 0, shaft: 0, dim: 0, lattice: 0, combo: 0, streak: 0,
+        });
+        expect(frame.wave).toEqual({
+            active: false, radius: -100, strength: 0, far: false,
+        });
+        expect(director.cueCount).toBe(0);
+    });
+
+    it('returns the same frame object every update so a render loop never allocates', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        const frame = director.getFrame();
+        director.onPieceLock({ piece: piece('T') });
+        expect(director.update(0.016)).toBe(frame);
+        expect(director.getFrame().familyLevel).toBe(frame.familyLevel);
+    });
+
+    it.each([NaN, Infinity, -1, 0, undefined, '0.1'])('ignores a malformed step of %s', (dt) => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onLineClear(2);
+        const before = director.energy;
+        director.update(dt);
+        expect(director.time).toBe(0);
+        expect(director.energy).toBe(before);
+        expect(director.getFrame().energy).toBe(before);
+    });
 });
 
-describe('Crystal Cave fixed-capacity resonance', () => {
-    it('keeps hundreds of overlapping events within the same render resources', () => {
-        const { reactions, uniforms, scene } = create();
-        const geometries = [...reactions.geometries];
-        const materials = [...reactions.materials];
-        const objects = [...reactions.group.children];
-        for (let index = 0; index < 250; index++) {
-            reactions.pieceLock();
-            reactions.lineClear(4);
-            reactions.combo(60);
-            reactions.update(1 / 144);
-        }
-        expect([...reactions.geometries]).toEqual(geometries);
-        expect([...reactions.materials]).toEqual(materials);
-        expect(reactions.group.children).toEqual(objects);
-        expect(scene.children).toHaveLength(1);
-        expect(reactions.debug.activeShards + reactions.debug.activeMotes).toBeLessThanOrEqual(64);
-        expect(reactions.debug.activeArcs).toBeLessThanOrEqual(3);
-        expect(reactions.debug.activeRipples).toBeLessThanOrEqual(3);
-        expect(reactions.debug.activeCoronas).toBeLessThanOrEqual(4);
-        expect(reactions.debug.queuedReactions).toBeLessThanOrEqual(6);
-        for (const key of ['energy', 'resonance', 'waveIntensity']) {
-            expect(uniforms[key].value).toBeGreaterThanOrEqual(0);
-            expect(uniforms[key].value).toBeLessThanOrEqual(1);
-        }
-        expect(reactions.pendingWave).toBeLessThanOrEqual(1);
-    });
-
-    it('decays and travels identically at 30 and 144 Hz', () => {
-        const slow = create();
-        const fast = create();
-        for (const { reactions } of [slow, fast]) {
-            reactions.lineClear(4);
-            reactions.combo(8);
-        }
-        advance(slow.reactions, 3.1, 30);
-        advance(fast.reactions, 3.1, 144);
-        for (const key of ['time', 'energy', 'resonance', 'waveRadius', 'waveIntensity']) {
-            expect(slow.uniforms[key].value).toBeCloseTo(fast.uniforms[key].value, 10);
-        }
-        for (let index = 0; index < slow.reactions.motes.length; index++) {
-            const a = slow.reactions.motes[index];
-            const b = fast.reactions.motes[index];
-            expect(a.active).toBe(b.active);
-            if (a.active) expect(a.position.distanceTo(b.position)).toBeLessThan(1e-10);
-        }
-        slow.reactions.update(20);
-        fast.reactions.update(20);
-        expect(slow.uniforms.waveRadius.value).toBe(-100);
-        expect(fast.uniforms.waveRadius.value).toBe(-100);
-        expect(slow.uniforms.waveIntensity.value).toBe(0);
-        expect(slow.reactions.debug.activeMotes).toBe(0);
-    });
-
-    it('lets one wave finish and coalesces overlapping clear/combo successors', () => {
-        const { reactions, uniforms } = create();
-        reactions.lineClear(1);
-        reactions.update(0.6);
-        const radius = uniforms.waveRadius.value;
-        const origin = uniforms.waveOrigin.value.clone();
-        reactions.lineClear(4);
-        reactions.combo(30);
-        reactions.lineClear(1);
-        expect(uniforms.waveRadius.value).toBe(radius);
-        expect(uniforms.waveOrigin.value).toEqual(origin);
-        expect(reactions.pendingWave).toBeGreaterThan(0.85);
-        reactions.update(2.0);
-        expect(uniforms.waveRadius.value).toBeCloseTo(4, 10);
-        expect(uniforms.waveIntensity.value).toBeGreaterThan(0.85);
-        expect(reactions.pendingWave).toBe(0);
-        reactions.update(2.5);
-        expect(uniforms.waveRadius.value).toBe(-100);
-        expect(uniforms.waveIntensity.value).toBe(0);
-    });
-
-    it('makes locks visible with local shards, coronas and ripples without a global wave', () => {
-        const { reactions, uniforms } = create();
-        for (let index = 0; index < 50; index++) reactions.pieceLock();
-        expect(uniforms.energy.value).toBe(0.18);
-        expect(uniforms.resonance.value).toBe(0.1);
-        expect(uniforms.waveRadius.value).toBe(-100);
-        expect(uniforms.waveIntensity.value).toBe(0);
-        expect(reactions.debug.activeArcs).toBe(0);
-        expect(reactions.debug.activeShards).toBeGreaterThan(0);
-        expect(reactions.debug.activeMotes).toBeGreaterThan(4);
-        expect(reactions.debug.activeCoronas).toBeGreaterThan(0);
-        expect(reactions.ripples.every((slot) => slot.growth <= 2.7)).toBe(true);
-    });
-
-    it('answers a first tetris on both walls and places echoes on open water', () => {
-        const { reactions } = create();
-        reactions.lineClear(4);
-        const particles = [...reactions.shards, ...reactions.motes].filter((slot) => slot.active);
-        expect(particles.some((slot) => slot.origin.x < 0)).toBe(true);
-        expect(particles.some((slot) => slot.origin.x > 0)).toBe(true);
-        for (const ripple of reactions.ripples) {
-            if (!ripple.active) continue;
-            expect(Math.abs(ripple.mesh.position.x)).toBeGreaterThanOrEqual(5.8);
-            expect(Math.abs(ripple.mesh.position.x)).toBeLessThanOrEqual(7.8);
-            expect(ripple.mesh.position.y).toBe(-6.95);
-        }
-    });
-
-    it('responds to combo one on both walls and scales higher combos through staggered launches', () => {
-        const results = [1, 3, 8].map((level) => {
-            const result = create(QUALITY_PRESETS.High);
-            expect(result.reactions.combo(level)).toBe(true);
-            result.level = level;
-            result.initialEnergy = result.uniforms.energy.value;
-            result.initialResonance = result.uniforms.resonance.value;
-            result.queued = result.reactions.debug.queuedReactions;
-            return result;
+describe('Crystal Cave reactions — a lock', () => {
+    it('maps every tetromino to the mineral family of its colour', () => {
+        expect(CRYSTAL_CAVE_PIECE_FAMILY).toEqual({
+            I: 4, O: 1, T: 0, S: 3, Z: 2, J: 4, L: 0,
         });
-        const single = results[0].reactions;
-        expect(single.debug.activeArcs).toBe(2);
-        expect(single.debug.activeCoronas).toBe(2);
-        expect(single.motes.some((slot) => slot.active && slot.origin.x < 0)).toBe(true);
-        expect(single.motes.some((slot) => slot.active && slot.origin.x > 0)).toBe(true);
-        expect(results[0].queued).toBe(0);
-        expect(results[1].queued).toBeGreaterThan(results[0].queued);
-        expect(results[2].queued).toBeGreaterThan(results[1].queued);
-        expect(results[1].initialEnergy).toBeGreaterThan(results[0].initialEnergy);
-        expect(results[2].initialResonance).toBeGreaterThan(results[1].initialResonance);
-        for (const result of results) result.reactions.update(0.8);
-        expect(results[2].reactions.debug.activeArcs).toBeGreaterThan(single.debug.activeArcs);
-        expect(results[2].reactions.debug.activeCoronas).toBeGreaterThan(single.debug.activeCoronas);
-        expect(results[2].reactions.debug.queuedReactions).toBe(0);
+        for (const [type, family] of Object.entries(CRYSTAL_CAVE_PIECE_FAMILY)) {
+            const director = new CrystalCaveReactions({ rng: seeded() });
+            director.onPieceLock({ piece: piece(type.toLowerCase()) });
+            expect(cuesOf(director)[0].family).toBe(family);
+            expect(director.getFrame().familyLevel[family]).toBe(1);
+            director.update(0.001);
+            const levels = [...director.getFrame().familyLevel];
+            expect(levels[family]).toBeGreaterThan(1.3);
+            levels.forEach((level, index) => { if (index !== family) expect(level).toBe(1); });
+        }
     });
 
-    it('ages every cascade by its exact launch time across a long frame', () => {
-        const oneFrame = create(QUALITY_PRESETS.High);
-        const slow = create(QUALITY_PRESETS.High);
-        const fast = create(QUALITY_PRESETS.High);
-        for (const { reactions } of [oneFrame, slow, fast]) reactions.combo(8);
-        oneFrame.reactions.update(0.8);
-        advance(slow.reactions, 0.8, 30);
-        advance(fast.reactions, 0.8, 144);
-        for (const comparison of [slow, fast]) {
-            for (const key of ['energy', 'resonance', 'waveRadius', 'waveIntensity']) {
-                expect(comparison.uniforms[key].value).toBeCloseTo(oneFrame.uniforms[key].value, 10);
+    it('places the cue beside the piece: side from its column, height from its row', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onPieceLock({ piece: piece('T', 0, 22) });
+        director.onPieceLock({ piece: piece('T', 7, 6) });
+        const [left, right] = cuesOf(director);
+        expect(left.type).toBe('lock');
+        expect(left.side).toBe(-1);
+        expect(left.column).toBeLessThan(0.3);
+        expect(left.row).toBeLessThan(0.15);
+        expect(right.side).toBe(1);
+        expect(right.column).toBeGreaterThan(0.7);
+        expect(right.row).toBeGreaterThan(0.8);
+    });
+
+    it('prefers the on-screen origin Infinity mode supplies over the absolute board row', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onPieceLock({ piece: piece('T', 1, 400), viewportOrigin: { x: 0.9, y: 0.25 } });
+        const [cue] = cuesOf(director);
+        expect(cue.side).toBe(1);
+        expect(cue.column).toBeCloseTo(0.9);
+        expect(cue.row).toBeCloseTo(0.75);
+    });
+
+    it('carries the piece colour only when it is a real colour', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onPieceLock({ piece: piece('S', 2, 20, '#ff8000') });
+        director.onPieceLock({ piece: piece('S', 2, 20, 0x00ff00) });
+        director.onPieceLock({ piece: piece('S', 2, 20, 'red') });
+        director.onPieceLock({ piece: piece('S', 2, 20, -4) });
+        director.onPieceLock({ piece: piece('S', 2, 20, { r: 1 }) });
+        const cues = cuesOf(director);
+        expect(cues[0].tinted).toBe(true);
+        expect(cues[0].tint).toEqual([1, 128 / 255, 0]);
+        expect(cues[1].tint).toEqual([0, 1, 0]);
+        expect(cues.slice(2).every((cue) => cue.tinted === false)).toBe(true);
+    });
+
+    it('answers a long hard drop harder than a soft landing, once', () => {
+        const soft = new CrystalCaveReactions({ rng: seeded() });
+        soft.onPieceLock({ piece: piece('I') });
+        const hard = new CrystalCaveReactions({ rng: seeded() });
+        hard.onHardDrop({ distance: 18 });
+        hard.onPieceLock({ piece: piece('I') });
+        hard.onPieceLock({ piece: piece('I') });
+        const [dropped, next] = cuesOf(hard);
+        expect(dropped.drop).toBeCloseTo(0.9);
+        expect(dropped.strength).toBeGreaterThan(cuesOf(soft)[0].strength + 0.3);
+        expect(next.drop).toBe(0);
+        expect(hard.getFrame().worms).toBe(0);
+        hard.update(0.001);
+        expect(hard.getFrame().worms).toBeGreaterThan(0.3);
+    });
+
+    it('reads a drop distance from start and end rows and survives a payload without either', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onHardDrop({ startY: 2, endY: 12 });
+        expect(director.pendingDrop).toBeCloseTo(0.5);
+        director.onHardDrop({});
+        expect(director.pendingDrop).toBe(0);
+        director.onHardDrop(null);
+        expect(director.pendingDrop).toBe(0);
+    });
+
+    it.each([undefined, null, {}, { piece: null }, { piece: { x: NaN } }, { detail: {} }, 7, 'lock'])(
+        'answers a lock with no usable piece (%j) from alternating sides',
+        (payload) => {
+            const director = new CrystalCaveReactions({ rng: seeded() });
+            expect(director.onPieceLock(payload)).toBe(true);
+            expect(director.onPieceLock(payload)).toBe(true);
+            const [first, second] = cuesOf(director);
+            expect(first.side).toBe(-1);
+            expect(second.side).toBe(1);
+            expect(Number.isFinite(first.row) && Number.isFinite(first.column)).toBe(true);
+        },
+    );
+
+    it('is a local event: no wave, no growth, no hum', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onPieceLock({ piece: piece('T') });
+        director.update(0.016);
+        expect(types(director)).toEqual(['lock']);
+        const frame = director.getFrame();
+        expect(frame.wave.active).toBe(false);
+        expect(frame.resonance).toBe(0);
+        expect(frame.energy).toBeLessThan(0.15);
+    });
+});
+
+describe('Crystal Cave reactions — line clears', () => {
+    it.each([1, 2, 3, 4])('answers %i line(s) with a fan, a wave and that many new crystals', (lines) => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        expect(director.onLineClear({ lineCount: lines, clearedRows: [20] })).toBe(true);
+        const cues = cuesOf(director);
+        expect(cues.find((cue) => cue.type === 'clear')).toMatchObject({ lines });
+        expect(cues.find((cue) => cue.type === 'grow').count).toBe(lines);
+        expect(cues.filter((cue) => cue.type === 'wave')).toHaveLength(1);
+        expect(cues.some((cue) => cue.type === 'shower')).toBe(lines === 4);
+        const frame = director.update(0.001);
+        expect(frame.wave.active).toBe(true);
+        expect([...frame.familyLevel].every((level) => level > 1.2)).toBe(true);
+        expect(frame.shaft > 0).toBe(lines >= 3);
+    });
+
+    it('grows stronger with the number of lines', () => {
+        const energy = [1, 2, 3, 4].map((lines) => {
+            const director = new CrystalCaveReactions({ rng: seeded() });
+            director.onLineClear(lines);
+            return [director.energy, cuesOf(director).find((cue) => cue.type === 'clear').strength];
+        });
+        for (let index = 1; index < energy.length; index += 1) {
+            expect(energy[index][0]).toBeGreaterThan(energy[index - 1][0]);
+            expect(energy[index][1]).toBeGreaterThan(energy[index - 1][1]);
+        }
+    });
+
+    it('fires the fan at the height of the cleared rows', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onLineClear({ lineCount: 2, clearedRows: [22, 23] });
+        director.onLineClear({ lineCount: 1, clearedRows: [6] });
+        const [low, high] = cuesOf(director).filter((cue) => cue.type === 'clear');
+        expect(low.row).toBeLessThan(0.1);
+        expect(high.row).toBeGreaterThan(0.85);
+    });
+
+    it('keeps a sensible height when Infinity mode reports rows far beyond a board', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onLineClear({ lineCount: 1, clearedRows: [412], viewportOrigin: { x: 0.5, y: 0.4 } });
+        expect(cuesOf(director).find((cue) => cue.type === 'clear').row).toBeCloseTo(0.6);
+    });
+
+    it('sends a second wave after four lines, once the first is under way', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onLineClear(4);
+        director.clearCues();
+        const seen = [];
+        for (let index = 0; index < 60; index += 1) {
+            director.update(1 / 60);
+            seen.push(...types(director));
+            director.clearCues();
+        }
+        expect(seen.filter((type) => type === 'wave')).toHaveLength(1);
+        expect(director.getFrame().wave.strength).toBeGreaterThan(0.6);
+    });
+
+    it.each([0, -3, '', '  ', NaN, Infinity, true, [], {}, null])('ignores a clear of %j lines', (lines) => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        expect(director.onLineClear(lines)).toBe(false);
+        expect(director.cueCount).toBe(0);
+        expect(director.energy).toBe(0);
+    });
+
+    it('reads the count from canonical fields, aliases and a detail envelope, capped at four', () => {
+        for (const payload of [{ lineCount: 3 }, { lines: '3' }, { linesCleared: 3 }, { count: 3.9 }, { detail: { lines: 3 } }]) {
+            const director = new CrystalCaveReactions({ rng: seeded() });
+            director.onLineClear(payload);
+            expect(cuesOf(director).find((cue) => cue.type === 'clear').lines).toBe(3);
+        }
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onLineClear({ lineCount: 9000 });
+        expect(cuesOf(director).find((cue) => cue.type === 'clear').lines).toBe(4);
+    });
+});
+
+describe('Crystal Cave reactions — the wave', () => {
+    it('travels at the published speed and fades out by the published time', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onLineClear(2);
+        director.update(0.5);
+        expect(director.getFrame().wave.radius).toBeCloseTo(0.5 * CRYSTAL_CAVE_WAVE_SPEED);
+        const early = director.getFrame().wave.strength;
+        run(director, CRYSTAL_CAVE_WAVE_SECONDS * 0.6);
+        expect(director.getFrame().wave.strength).toBeLessThan(early);
+        run(director, CRYSTAL_CAVE_WAVE_SECONDS * 0.5);
+        expect(director.getFrame().wave).toMatchObject({ active: false, radius: -100, strength: 0 });
+    });
+
+    it('keeps one wave in flight and one in hand, however many clears arrive', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        for (let index = 0; index < 40; index += 1) director.onLineClear(1 + (index % 4));
+        expect(cuesOf(director).filter((cue) => cue.type === 'wave')).toHaveLength(1);
+        director.clearCues();
+        let started = 0;
+        for (let index = 0; index < 600; index += 1) {
+            director.update(1 / 60);
+            started += types(director).filter((type) => type === 'wave').length;
+            director.clearCues();
+        }
+        expect(started).toBe(1);
+        expect(director.getFrame().wave.active).toBe(false);
+    });
+
+    it('starts from the far end of the hall for a level up', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onLevelUp();
+        expect(cuesOf(director).find((cue) => cue.type === 'wave').count).toBe(1);
+        expect(cuesOf(director).some((cue) => cue.type === 'heart')).toBe(true);
+        expect(director.update(0.001).wave.far).toBe(true);
+    });
+
+    it('answers a perfect clear from the board at once and from the heart a moment later', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onPerfectClear();
+        expect(cuesOf(director).filter((cue) => cue.type === 'wave').map((cue) => cue.count)).toEqual([0]);
+        expect(director.update(0.001).wave.far).toBe(false);
+        director.clearCues();
+        const later = [];
+        for (let index = 0; index < 90; index += 1) {
+            director.update(1 / 60);
+            later.push(...cuesOf(director).filter((cue) => cue.type === 'wave').map((cue) => cue.count));
+            director.clearCues();
+        }
+        expect(later).toEqual([1]);
+        expect(director.getFrame().wave.far).toBe(true);
+    });
+});
+
+describe('Crystal Cave reactions — chains', () => {
+    function chain(director, length) {
+        for (let step = 1; step <= length; step += 1) {
+            director.onPieceLock({ piece: piece('T') });
+            director.onLineClear(1);
+            if (step >= 2) director.onCombo(step);
+            run(director, 0.6);
+        }
+    }
+
+    it('raises the hum and the lattice as a chain grows', () => {
+        const levels = [2, 4, 8].map((length) => {
+            const director = new CrystalCaveReactions({ rng: seeded() });
+            chain(director, length);
+            return director.getFrame();
+        });
+        expect(levels[0].resonance).toBeGreaterThan(0.2);
+        expect(levels[1].resonance).toBeGreaterThan(levels[0].resonance);
+        expect(levels[2].resonance).toBeGreaterThan(levels[1].resonance);
+        expect(levels[2].lattice).toBeLessThanOrEqual(1);
+        expect(levels.map((frame) => frame.combo)).toEqual([2, 4, 8]);
+    });
+
+    it('counts consecutive clearing locks as a chain even without a combo event', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        for (let step = 0; step < 3; step += 1) {
+            director.onPieceLock({ piece: piece('L') });
+            director.onLineClear(1);
+            run(director, 0.5);
+        }
+        expect(director.getFrame().streak).toBe(3);
+        expect(director.getFrame().resonance).toBeGreaterThan(0.2);
+        expect(director.getFrame().combo).toBe(3);
+    });
+
+    it('lets the lattice go the moment a lock clears nothing', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        chain(director, 5);
+        director.onPieceLock({ piece: piece('O') });
+        expect(types(director)).toEqual(['lock']);
+        director.clearCues();
+        director.onPieceLock({ piece: piece('O') });
+        const cues = cuesOf(director);
+        expect(cues[0].type).toBe('release');
+        expect(cues[0].count).toBe(5);
+        expect(director.getFrame().streak).toBe(5);
+        director.update(0.016);
+        expect(director.getFrame()).toMatchObject({ combo: 0, streak: 0 });
+        const fading = director.getFrame().resonance;
+        run(director, 2);
+        expect(director.getFrame().resonance).toBeLessThan(fading * 0.4);
+    });
+
+    it('lets the lattice go by itself when the chain is simply not fed', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        chain(director, 4);
+        let released = 0;
+        for (let index = 0; index < 60 * 6; index += 1) {
+            director.update(1 / 60);
+            released += types(director).filter((type) => type === 'release').length;
+            director.clearCues();
+        }
+        expect(released).toBe(1);
+        expect(director.getFrame().combo).toBe(0);
+        expect(director.getFrame().resonance).toBeLessThan(0.1);
+    });
+
+    it.each([0, 1, -2, NaN, true, {}, [], null, undefined, ''])('stays quiet for a combo of %j', (count) => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        expect(director.onCombo(count)).toBe(false);
+        expect(director.cueCount).toBe(0);
+        expect(director.getFrame().resonance).toBe(0);
+    });
+
+    it('holds the hum through a back-to-back', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onBackToBack();
+        run(director, 0.5);
+        expect(director.getFrame().resonance).toBeGreaterThan(0.3);
+        expect(director.getFrame().combo).toBe(2);
+    });
+});
+
+describe('Crystal Cave reactions — flourishes and the end of a game', () => {
+    it('spins a pinwheel beside the piece on a t-spin', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onTSpin({ piece: piece('T', 8, 10) });
+        const [cue] = cuesOf(director);
+        expect(cue).toMatchObject({ type: 'spin', side: 1, family: 0 });
+        expect(director.energy).toBeGreaterThan(0.5);
+    });
+
+    it('answers a perfect clear with everything the cave has', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onPerfectClear();
+        expect(types(director).sort()).toEqual(['grow', 'heart', 'shower', 'wave']);
+        const frame = director.update(0.001);
+        expect(frame.energy).toBeGreaterThan(0.99);
+        expect(frame.worms).toBeGreaterThan(0.99);
+        expect(frame.shaft).toBeGreaterThan(0.99);
+    });
+
+    it('dims the cave and withdraws what grew when the game ends, then recovers', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onLineClear(4);
+        director.onCombo(6);
+        director.onGameOver();
+        expect(types(director)).toEqual(['wither']);
+        const frame = director.update(0.016);
+        expect(frame.dim).toBeGreaterThan(0.9);
+        expect([...frame.familyLevel].every((level) => level < 0.75)).toBe(true);
+        expect(frame.wave.active).toBe(false);
+        expect(frame.combo).toBe(0);
+        run(director, 30);
+        expect([...director.getFrame().familyLevel].every((level) => level > 0.99 && level <= 1.01)).toBe(true);
+    });
+});
+
+describe('Crystal Cave reactions — bounds, determinism and lifecycle', () => {
+    it('never queues more cues than the fixed list holds and keeps every envelope bounded', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        for (let burst = 0; burst < 20; burst += 1) {
+            for (let index = 0; index < 30; index += 1) {
+                director.onHardDrop({ distance: index });
+                director.onPieceLock({ piece: piece('IOTSZJL'[index % 7], index % 10, 4 + (index % 20)) });
+                director.onLineClear(1 + (index % 4));
+                director.onCombo(index);
+                director.onTSpin({});
+                director.onBackToBack();
+                director.onPerfectClear();
+                director.onLevelUp();
             }
-            for (const collection of ['motes', 'shards', 'arcs', 'ripples', 'coronas']) {
-                const slots = comparison.reactions[collection];
-                for (let index = 0; index < slots.length; index++) {
-                    const expected = oneFrame.reactions[collection][index];
-                    const actual = slots[index];
-                    expect(actual.active).toBe(expected.active);
-                    expect(actual.age).toBeCloseTo(expected.age, 10);
-                    if (actual.active && actual.position) {
-                        expect(actual.position.distanceTo(expected.position)).toBeLessThan(1e-10);
-                    }
-                    if (actual.opacity) expect(actual.opacity.value).toBeCloseTo(expected.opacity.value, 10);
-                    if (actual.progress) expect(actual.progress.value).toBeCloseTo(expected.progress.value, 10);
-                }
+            expect(director.cueCount).toBeLessThanOrEqual(CRYSTAL_CAVE_MAX_CUES);
+            const frame = director.update(1 / 30);
+            director.clearCues();
+            for (const key of ['energy', 'resonance', 'flash', 'worms', 'shaft', 'dim', 'lattice']) {
+                expect(frame[key]).toBeGreaterThanOrEqual(0);
+                expect(frame[key]).toBeLessThanOrEqual(1);
             }
-        }
-        const later = oneFrame.reactions.coronas.filter((slot) => slot.active)
-            .sort((a, b) => a.age - b.age)[0];
-        expect(later.age).toBeGreaterThan(0.2);
-        expect(later.age).toBeLessThan(0.3);
-    });
-
-    it('gives each combo burst a different jewel palette shared by its corona, ripple and ribbon', () => {
-        const { reactions } = create(QUALITY_PRESETS.High);
-        reactions.combo(8);
-        reactions.update(0.8);
-        const colors = reactions.coronas.filter((slot) => slot.active).map((slot) => slot.tint.value.getHex());
-        expect(new Set(colors).size).toBeGreaterThanOrEqual(4);
-        const matched = reactions.coronas.filter((slot) => slot.active && slot.age < 0.3)[0];
-        const ripple = reactions.ripples.find((slot) => slot.active && Math.abs(slot.age - matched.age) < 1e-9);
-        const arc = reactions.arcs.find((slot) => slot.active && Math.abs(slot.age - matched.age) < 1e-9);
-        expect(ripple.tint.value).toEqual(matched.tint.value);
-        expect(arc.tint.value).toEqual(matched.tint.value);
-        expect(arc.accent.value).toEqual(matched.accent.value);
-        reactions.reset();
-        reactions.combo(8);
-        reactions.update(0.8);
-        expect(reactions.coronas.filter((slot) => slot.active).map((slot) => slot.tint.value.getHex())).toEqual(colors);
-    });
-
-    it('prefers Infinity viewport origin and uses occupied piece centroid for wall placement', () => {
-        const { reactions } = create();
-        reactions.pieceLock({ piece: { x: 8, y: 900, shape: [[1, 1]] }, viewportOrigin: { x: 0.1, y: 0.9 } });
-        expect(reactions.coronas.find((slot) => slot.active).mesh.position.x).toBeLessThan(0);
-        reactions.reset();
-        reactions.pieceLock({ piece: { x: 3, shape: [[0, 0, 1, 1]] } });
-        expect(reactions.coronas.find((slot) => slot.active).mesh.position.x).toBeGreaterThan(0);
-        reactions.reset();
-        reactions.pieceLock({ viewportOrigin: { x: NaN, y: 0.3 }, piece: { x: -2 } });
-        expect(reactions.coronas.find((slot) => slot.active).mesh.position.x).toBeLessThan(0);
-    });
-
-    it('uses validated piece colors in the local corona while rejecting malformed color values', () => {
-        const { reactions } = create();
-        const warning = vi.spyOn(console, 'warn');
-        reactions.pieceLock({ piece: { x: 2, color: '#ff3fba' } });
-        const expected = new THREE.Color('#ff3fba');
-        expect(reactions.coronas.find((slot) => slot.active).tint.value).toEqual(expected);
-        reactions.reset();
-        reactions.pieceLock({ piece: { x: 2, color: 'not-a-color' } });
-        expect(warning).not.toHaveBeenCalled();
-        expect(reactions.coronas.find((slot) => slot.active).tint.value.toArray().every(Number.isFinite)).toBe(true);
-    });
-
-    it.each(Object.entries(QUALITY_PRESETS))('keeps visible jewel feedback in the %s tier', (_, preset) => {
-        const { reactions } = create(preset);
-        reactions.pieceLock();
-        reactions.update(0.15);
-        expect(reactions.debug.activeShards).toBeGreaterThan(0);
-        expect(reactions.debug.activeMotes).toBeGreaterThan(4);
-        expect(reactions.coronas.some((slot) => slot.opacity.value > 0.4)).toBe(true);
-        reactions.combo(1);
-        reactions.update(0.35);
-        expect(reactions.arcs.some((slot) => slot.opacity.value > 0.2)).toBe(true);
-        expect(reactions.debug.activeCoronas).toBeGreaterThan(0);
-        for (const arc of reactions.arcs) {
-            if (!arc.active) continue;
-            // The full emissive ribbon, including its broad edges, stays outboard.
-            const { array } = arc.positions;
-            for (let index = 0; index < array.length; index += 3) {
-                expect(Math.abs(array[index])).toBeGreaterThanOrEqual(6 - 1e-6);
+            for (const level of frame.familyLevel) {
+                expect(level).toBeGreaterThan(0);
+                expect(level).toBeLessThanOrEqual(3.8);
             }
+            expect(frame.wave.strength).toBeLessThanOrEqual(1);
         }
-        for (const corona of reactions.coronas) {
-            if (!corona.active) continue;
-            const innerEdge = Math.abs(corona.mesh.position.x) - corona.mesh.scale.x;
-            expect(innerEdge).toBeGreaterThan(5);
-        }
+        expect(director.cues).toHaveLength(CRYSTAL_CAVE_MAX_CUES);
     });
 
-    it('cancels every delayed launch on reset and disposal without new resources', () => {
-        const { reactions } = create();
-        reactions.combo(8);
-        expect(reactions.debug.queuedReactions).toBeGreaterThan(0);
-        const geometryCount = reactions.debug.geometries;
-        const materialCount = reactions.debug.materials;
-        reactions.reset();
-        reactions.update(1.2);
-        expect(reactions.debug.queuedReactions).toBe(0);
-        expect(reactions.debug.activeCoronas + reactions.debug.activeArcs + reactions.debug.activeMotes).toBe(0);
-        expect(reactions.debug.geometries).toBe(geometryCount);
-        expect(reactions.debug.materials).toBe(materialCount);
-        reactions.combo(8);
-        reactions.dispose();
-        reactions.update(3);
-        expect(reactions.debug.queuedReactions).toBe(0);
-        expect(reactions.debug.activeCoronas).toBe(0);
+    it('settles to the same envelopes at 30 Hz and 144 Hz', () => {
+        const at = (hz) => {
+            const director = new CrystalCaveReactions({ rng: seeded() });
+            director.onHardDrop({ distance: 12 });
+            director.onPieceLock({ piece: piece('S') });
+            director.onLineClear(3);
+            director.onCombo(4);
+            run(director, 1.5, hz);
+            const frame = director.getFrame();
+            return [frame.energy, frame.flash, frame.worms, frame.shaft, ...frame.familyLevel, frame.wave.radius];
+        };
+        const slow = at(30);
+        const fast = at(144);
+        slow.forEach((value, index) => expect(value).toBeCloseTo(fast[index], 1));
     });
 
-    it('keeps finite fragment and filament positions outside the board corridor', () => {
-        const { reactions } = create();
-        reactions.combo(20);
-        reactions.lineClear(4);
-        reactions.update(1.4);
-        for (const slot of [...reactions.shards, ...reactions.motes]) {
-            if (!slot.active) continue;
-            expect(slot.position.toArray().every(Number.isFinite)).toBe(true);
-            expect(Math.abs(slot.position.x)).toBeGreaterThanOrEqual(6);
-        }
-        for (const arc of reactions.arcs) {
-            if (!arc.active) continue;
-            const coordinates = arc.positions.array;
-            const sign = Math.sign(coordinates[0]);
-            for (let index = 0; index < coordinates.length; index += 3) {
-                expect(Number.isFinite(coordinates[index])).toBe(true);
-                expect(Number.isFinite(coordinates[index + 1])).toBe(true);
-                expect(Number.isFinite(coordinates[index + 2])).toBe(true);
-                expect(Math.sign(coordinates[index])).toBe(sign);
-                expect(Math.abs(coordinates[index])).toBeGreaterThan(5);
-            }
-        }
-        for (const mesh of [reactions.shardMesh, reactions.moteMesh]) {
-            expect(mesh.instanceMatrix.array.every(Number.isFinite)).toBe(true);
-            expect(mesh.material.isMeshBasicNodeMaterial).toBe(true);
-        }
+    it('replays identically after reset', () => {
+        const director = new CrystalCaveReactions({ rng: seeded(9) });
+        const play = () => {
+            director.onPieceLock({ piece: piece('Z', 2) });
+            director.onLineClear(2);
+            director.onCombo(3);
+            const cues = cuesOf(director);
+            run(director, 0.8);
+            return JSON.stringify([cues, director.getFrame()]);
+        };
+        const first = play();
+        director.reset();
+        expect(director.getFrame().energy).toBe(0);
+        expect(play()).toBe(first);
     });
 
-    it('rejects malformed counts/times and supports empty effect budgets', () => {
-        const { reactions, uniforms } = create({ eventParticles: 0, maxArcs: 0, maxRipples: 0 });
-        for (const value of [null, undefined, '', false, true, NaN, Infinity, -1, {}, []]) {
-            expect(reactions.lineClear(value)).toBe(value === undefined);
-            expect(reactions.combo(value)).toBe(false);
+    it('goes quiet once disposed', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onLineClear(4);
+        director.dispose();
+        expect(director.cueCount).toBe(0);
+        for (const [method, argument] of [['onPieceLock', {}], ['onLineClear', 4], ['onCombo', 5], ['onTSpin', {}],
+            ['onBackToBack'], ['onPerfectClear'], ['onLevelUp'], ['onGameOver'], ['onHardDrop', { distance: 9 }]]) {
+            expect(director[method](argument)).toBe(false);
         }
-        reactions.reset();
-        reactions.combo(5);
-        const before = uniforms.energy.value;
-        for (const invalid of [NaN, Infinity, -1, 0]) reactions.update(invalid);
-        expect(uniforms.energy.value).toBe(before);
-        expect(reactions.debug.particles).toBe(0);
-        expect(reactions.debug.materials).toBe(0);
-        reactions.update(10);
-        expect(uniforms.waveIntensity.value).toBe(0);
+        expect(director.cueCount).toBe(0);
+        const time = director.time;
+        director.update(1);
+        expect(director.time).toBe(time);
     });
 
-    it('reset clears reactions and reproduces the same authored event sequence', () => {
-        const { reactions, uniforms } = create();
-        reactions.combo(8);
-        reactions.update(0.8);
-        const positions = reactions.motes.map((slot) => slot.position.toArray());
-        reactions.reset();
-        expect(uniforms.energy.value).toBe(0);
-        expect(uniforms.resonance.value).toBe(0);
-        expect(uniforms.waveIntensity.value).toBe(0);
-        expect(reactions.debug.activeArcs + reactions.debug.activeMotes + reactions.debug.activeRipples).toBe(0);
-        reactions.combo(8);
-        reactions.update(0.8);
-        expect(reactions.motes.map((slot) => slot.position.toArray())).toEqual(positions);
-    });
-
-    it('disposes every owned GPU resource once and leaves its parent intact', () => {
-        const { reactions, scene, uniforms } = create();
-        const sentinel = new THREE.Object3D();
-        scene.add(sentinel);
-        reactions.combo(8);
-        const resources = [...reactions.geometries, ...reactions.materials, ...reactions.group.children];
-        const spies = resources.map((resource) => vi.spyOn(resource, 'dispose'));
-        reactions.dispose();
-        reactions.dispose();
-        for (const spy of spies) expect(spy).toHaveBeenCalledTimes(1);
-        expect(scene.children).toEqual([sentinel]);
-        expect(reactions.group.children).toHaveLength(0);
-        expect(reactions.debug.materials + reactions.debug.geometries).toBe(0);
-        expect(reactions.pieceLock()).toBe(false);
-        expect(reactions.lineClear(4)).toBe(false);
-        expect(reactions.combo(5)).toBe(false);
-        reactions.update(0.5);
-        expect(uniforms.energy.value).toBe(0);
+    it('survives a random source that returns nonsense', () => {
+        const director = new CrystalCaveReactions({ rng: () => NaN });
+        expect(director.random()).toBe(0.5);
+        expect(new CrystalCaveReactions({ rng: 'not a function' }).random()).toBeGreaterThanOrEqual(0);
     });
 });
