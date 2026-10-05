@@ -1,6 +1,7 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
+import { BREATHING_GUIDANCE } from '../../src/ui/effects/breathing-guidance.js';
 
 let Indicator;
 let indicator;
@@ -216,6 +217,52 @@ describe('breathing indicator cadence', () => {
             expect(pattern.every((duration) => Number.isFinite(duration) && duration >= 0)).toBe(true);
             expect(pattern.some((duration) => duration > 0)).toBe(true);
         });
+    });
+});
+
+describe('breathing world guidance', () => {
+    function followSelectedWorld(technique) {
+        const cycleStart = now;
+        indicator.setTechnique(technique, false);
+        const [inhale, hold] = indicator.pattern;
+        animateAt(cycleStart + inhale * 500);
+        expect(indicator.indicator.dataset.technique).toBe(technique);
+        expect(indicator.currentPhase).toBe('inhale');
+        expect(indicator.textPrompt.textContent).toBe('Breathe in');
+        expect(indicator.phaseDetail.textContent).toBe(BREATHING_GUIDANCE[technique][0]);
+        animateAt(cycleStart + (inhale + hold) * 1000 + 250);
+        expect(indicator.currentPhase).toBe('exhale');
+        expect(indicator.textPrompt.textContent).toBe('Breathe out');
+        expect(indicator.phaseDetail.textContent).toBe(BREATHING_GUIDANCE[technique][1]);
+        expect(frames.size).toBe(1);
+    }
+
+    it('follows each selected world through its actual inhale and exhale timing', () => {
+        activate();
+        const techniques = Object.keys(indicator.techniques);
+        expect(Object.keys(BREATHING_GUIDANCE)).toEqual(techniques);
+        expect(new Set(Object.values(BREATHING_GUIDANCE).map(([inhale]) => inhale)).size).toBe(12);
+        expect(new Set(Object.values(BREATHING_GUIDANCE).map(([, exhale]) => exhale)).size).toBe(12);
+        techniques.forEach((technique) => {
+            followSelectedWorld(technique);
+            expect(indicator.threeRenderer.setTechnique).toHaveBeenLastCalledWith(technique, indicator.technique);
+            expect(indicator.threeRenderer.updateIntensity.mock.lastCall[1]).toBe('exhale');
+        });
+    });
+
+    it('keeps selected world cues and cadence usable when the graphics renderer fails', async () => {
+        const failed = renderer();
+        failed.init.mockImplementation(() => { throw new Error('GL context unavailable'); });
+        createRenderer.mockImplementationOnce(function FailedRenderer() { return failed; });
+        indicator.start();
+        await vi.dynamicImportSettled();
+        expect(indicator.threeRenderer).toBeNull();
+        expect(indicator.indicator.classList.contains('breathing-renderer-ready')).toBe(false);
+        Object.keys(indicator.techniques).forEach(followSelectedWorld);
+        expect(indicator.isActive).toBe(true);
+        expect(failed.dispose).toHaveBeenCalledOnce();
+        expect(createRenderer).toHaveBeenCalledOnce();
+        expect(indicator.indicator.classList.contains('breathing-renderer-ready')).toBe(false);
     });
 });
 

@@ -1,7 +1,7 @@
 /**
  * Breath-led atmospheric scenes, rendered by the intentional WebGL2 breathing
  * holdout (ADR-0008). One fullscreen draw and one shader program serve every
- * technique: switching a practice only updates uniforms and its 3D motif.
+ * technique: switching a practice updates its environment and foreground uniforms.
  *
  * The scene has no textures, framebuffers, raymarching or flashing light sources.
  * Procedural movement freezes with uMotion = 0; the breathing guide remains live.
@@ -9,85 +9,61 @@
 export const BREATHING_VISUAL_PROFILES = Object.freeze({
     'deep-relaxation': {
         mode: 0,
-        motif: 'orbits',
-        particleCount: 280,
         colors: [0x56dbf7, 0x9868f5, 0x75f3b1],
         name: 'Aurora Dreams',
     },
     'box-breathing': {
         mode: 1,
-        motif: 'geometry',
-        particleCount: 200,
         colors: [0xbb91ff, 0xf2c88a, 0x6bceec],
         name: 'Sacred Geometry',
     },
     'calm-sleep': {
         mode: 2,
-        motif: 'orbits',
-        particleCount: 180,
         colors: [0x8cbdf1, 0xf6edce, 0x728aca],
         name: 'Moonlit Waters',
     },
     energizing: {
         mode: 3,
-        motif: 'solar',
-        particleCount: 240,
         colors: [0xffb448, 0xffe5a1, 0xed6b41],
         name: 'Solar Flare',
     },
     coherence: {
         mode: 4,
-        motif: 'heart',
-        particleCount: 220,
         colors: [0xfa92b5, 0xffd4d3, 0xc95293],
         name: 'Heart Glow',
     },
     triangle: {
         mode: 5,
-        motif: 'crystal',
-        particleCount: 220,
         colors: [0x85f0ec, 0xefafea, 0xe9e2a2],
         name: 'Crystal Prism',
     },
     'wim-hof': {
         mode: 6,
-        motif: 'solar',
-        particleCount: 240,
         colors: [0xf37d48, 0xffd494, 0xcf4a46],
         name: 'Volcanic Fire',
     },
     'ocean-breath': {
         mode: 7,
-        motif: 'orbits',
-        particleCount: 260,
         colors: [0x35c0d9, 0xa1efeb, 0x247bba],
         name: 'Ocean Tide',
     },
     'zen-garden': {
         mode: 8,
-        motif: 'geometry',
-        particleCount: 160,
         colors: [0xb3c7a1, 0xe3d5b3, 0x87a692],
         name: 'Zen Garden',
     },
     'cosmic-breath': {
         mode: 9,
-        motif: 'orbits',
-        particleCount: 320,
         colors: [0xaf75ed, 0xeb8ac5, 0x64b3f3],
         name: 'Cosmic Nebula',
     },
     'forest-breath': {
         mode: 10,
-        motif: 'orbits',
-        particleCount: 220,
         colors: [0x60bb91, 0xc9b280, 0xc1e6aa],
         name: 'Ancient Forest',
     },
     'electric-storm': {
         mode: 11,
-        motif: 'geometry',
-        particleCount: 240,
         colors: [0x86b9ff, 0xc3a2f5, 0xdde7ff],
         name: 'Electric Storm',
     },
@@ -205,34 +181,31 @@ vec3 sacred(vec2 p, float t, float breath) {
     vec3 col = midnight(p, 0.022);
     float mist = cloud(p * 2.2 + vec2(t * 0.012, -t * 0.018));
     col += mix(uColorA, uColorC, mist) * pow(mist, 3.0) * 0.22;
-    vec2 q = rotate(t * 0.025) * p;
-    float radius = length(q);
-    float angle = atan(q.y, q.x);
-    float size = 0.61 + breath * 0.035;
-    float polygon = cos(PI / 3.0) / cos(mod(angle + PI / 3.0, TAU / 3.0) - PI / 3.0);
-    float triangle = radius - size * polygon;
-    float innerTriangle = length(rotate(PI) * q) - size * cos(PI / 3.0)
-        / cos(mod(atan(-q.y, -q.x) + PI / 3.0, TAU / 3.0) - PI / 3.0);
-    float lines = stroke(triangle, 0.0025) + stroke(innerTriangle, 0.0025);
-    float halo = exp(-abs(triangle) * 48.0) + exp(-abs(innerTriangle) * 48.0);
-    float petals = 0.0;
-    for (int i = 0; i < 6; i++) {
-        float a = float(i) * TAU / 6.0;
-        vec2 c = vec2(cos(a), sin(a)) * size * 0.48;
-        petals += stroke(length(q - c) - size * 0.48, 0.0018);
+    // Orthogonal architecture supports the box practice's traced four edges.
+    // Circular flower-of-life rings used to compete with every foreground form.
+    float corners = smoothstep(0.34, 0.70, min(abs(p.x), abs(p.y)));
+    for (int i = 0; i < 3; i++) {
+        float layer = float(i);
+        float side = 0.79 + layer * 0.14 + breath * 0.016;
+        float distance = max(abs(p.x), abs(p.y)) - side;
+        col += mix(uColorB, uColorC, layer * 0.35)
+            * (stroke(distance, 0.0018) * 0.041 + exp(-abs(distance) * 42.0) * 0.010)
+            * (0.34 + corners * 0.66);
     }
-    col += uColorB * (lines * 0.40 + halo * 0.042 + petals * 0.12);
-    col += uColorC * exp(-abs(radius - size * 1.18) * 85.0) * 0.14;
     col += uColorA * stars(p + vec2(2.3), 15.0) * 0.50;
     return col;
 }
 
 vec3 moonlit(vec2 p, float t, float breath) {
     vec3 col = midnight(p, 0.024);
-    vec2 moon = vec2(0.48, 0.53);
-    float moonDistance = length((p - moon) * vec2(1.0, 1.02));
-    col += uColorB * (exp(-moonDistance * moonDistance * 15.0) * 0.13
-        + (1.0 - smoothstep(0.069, 0.073, moonDistance)) * 0.74);
+    // The foreground crescent owns the moon; this pass supplies its atmosphere.
+    // Focal artwork uses the same minimum-dimension space as the foreground.
+    // Environment p retains its wider sky/water framing on tall viewports.
+    vec2 resolution = max(uResolution, vec2(1.0));
+    vec2 heroP = (vUv - 0.5) * 2.0 * resolution / min(resolution.x, resolution.y);
+    vec2 moon = vec2(-0.35, 0.37 + breath * 0.025);
+    float moonDistance = length((heroP - moon) * vec2(1.0, 1.02));
+    col += uColorB * exp(-moonDistance * moonDistance * 9.0) * 0.11;
     float clouds = cloud(p * vec2(2.0, 4.0) + vec2(t * 0.012, 4.0));
     col += uColorC * clouds * 0.035;
     col += vec3(0.4, 0.5, 0.7) * stars(p, 20.0) * smoothstep(-0.24, -0.05, p.y) * 0.45;
@@ -240,7 +213,7 @@ vec3 moonlit(vec2 p, float t, float breath) {
     float depth = max(-p.y - 0.19, 0.0);
     float wave = sin(depth * 48.0 + t * 0.32 + sin(p.x * 8.0 + t * 0.17) * 1.7);
     float broken = pow(max(0.0, wave), 6.0);
-    float reflection = exp(-pow((p.x - moon.x) / (0.07 + depth * 0.38), 2.0));
+    float reflection = exp(-pow((heroP.x - moon.x) / (0.07 + depth * 0.38), 2.0));
     vec3 sea = vec3(0.004, 0.014, 0.029) + uColorA * 0.035;
     sea += uColorB * reflection * (0.08 + broken * 0.32) * exp(-depth * 0.62);
     sea += uColorA * exp(-abs(wave) * 10.0) * 0.016 * (0.75 + breath * 0.25);
@@ -250,10 +223,12 @@ vec3 moonlit(vec2 p, float t, float breath) {
 }
 
 vec3 solar(vec2 p, float t, float breath) {
-    vec2 q = p - vec2(-0.43, 0.16);
+    // Corona and foreground rays share one sun, rather than overlapping suns.
+    vec2 resolution = max(uResolution, vec2(1.0));
+    vec2 q = (vUv - 0.5) * 2.0 * resolution / min(resolution.x, resolution.y);
     float radius = length(q);
     float angle = atan(q.y, q.x);
-    float coronaRadius = 0.35 + breath * 0.045;
+    float coronaRadius = 0.40 + breath * 0.055;
     vec3 col = vec3(0.020, 0.006, 0.004) + uColorC * 0.02;
     float broad = exp(-radius * radius * 2.9);
     col += uColorC * broad * 0.15;
@@ -354,10 +329,7 @@ vec3 zen(vec2 p, float t, float breath) {
     float contour = exp(-abs(rake) * 7.0);
     col += uColorB * (0.065 + grain * 0.023 + contour * 0.048);
     col += uColorA * softGlow(p, vec2(-0.42, 0.34), vec2(1.0, 0.8), 2.1) * 0.11;
-    vec2 stone = (p - vec2(0.51, -0.35)) * vec2(1.0, 1.6);
-    float pebble = 1.0 - smoothstep(0.113, 0.126, length(stone));
-    col = mix(col, vec3(0.025, 0.038, 0.033) + uColorC * 0.04, pebble);
-    col += uColorB * exp(-abs(length(stone) - 0.12) * 64.0) * 0.075;
+    // The foreground stone is the sole focal pebble; sand remains a quiet bed.
     // Petals float at the perimeter; no large shape crosses the instructions.
     vec2 petals = p * vec2(4.0, 3.0) + vec2(t * 0.018, -t * 0.009);
     vec2 cell = floor(petals);

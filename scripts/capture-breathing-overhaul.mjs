@@ -6,6 +6,7 @@
  * node scripts/capture-breathing-overhaul.mjs --out /tmp/breathing-captures
  * Optional: --profile desktop|portrait|landscape --technique deep-relaxation --sessions 0
  * --uiOnly recaptures library/session UI after copy/layout changes without repeating worlds.
+ * --identity --artworkOnly --sessions 0 captures paired inhale/exhale artwork on desktop/phone.
  * Software-browser frame timings establish compatibility/work bounds, not device FPS.
  */
 /* eslint-disable no-await-in-loop, import/no-extraneous-dependencies */
@@ -28,13 +29,16 @@ const profiles = [
     { id: 'desktop', width: 1440, height: 900, quality: 'High', mobile: false },
     { id: 'portrait', width: 390, height: 844, quality: 'Low', mobile: true },
     { id: 'landscape', width: 844, height: 390, quality: 'Low', mobile: true },
-].filter((entry) => !args.profile || args.profile === entry.id);
+].filter((entry) => args.profile ? args.profile === entry.id : !args.identity || entry.id !== 'landscape');
 const files = [
     'index.html',
+    'src/main.js',
     'src/core/game-modes/SerenityMode.js',
     'src/ui/serenity-hub/SerenityHub.js',
     'src/ui/effects/threejs-breathing-renderer.js',
     'src/ui/effects/breathing-atmosphere.js',
+    'src/ui/effects/breathing-forms.js',
+    'src/ui/effects/breathing-guidance.js',
     'src/ui/effects/enhanced-breathing-indicator.js',
     'src/ui/effects/breathwork-session-manager.js',
     'src/ui/serenity-hub/SessionsTab.js',
@@ -88,8 +92,7 @@ async function boot() {
     const { BreathingTab } = await import('/src/ui/serenity-hub/BreathingTab.js');
     const indicator = new EnhancedBreathingIndicator(document.body);
     const manager = new BreathworkSessionManager(indicator);
-    manager.audioManager?.destroy();
-    manager.audioManager = null;
+    manager.audioManager?.setEnabled(false);
     const panel = document.querySelector('#serenity-hub-panel');
     const backdrop = document.querySelector('#capture-hub-backdrop');
     const hub = {
@@ -152,6 +155,10 @@ function inspect() {
         canvas: canvas && { width: canvas.width, height: canvas.height },
         camera: renderer?.camera && { aspect: renderer.camera.aspect, position: renderer.camera.position.toArray() },
         quality: renderer?.qualityName || renderer?.currentQuality || null,
+        reducedMotion: renderer?.reducedMotion,
+        breath: renderer?.uniforms?.uBreath?.value,
+        motion: renderer?.uniforms?.uMotion?.value,
+        rendererReady: capture.indicator.indicator.classList.contains('breathing-renderer-ready'),
         resources: renderer?.renderer && { ...renderer.renderer.info.memory, programs: renderer.renderer.info.programs?.length },
         work: renderer?.renderer && { ...renderer.renderer.info.render },
         running: renderer?.isRunning,
@@ -189,12 +196,22 @@ async function captureFrame(page, result, tag) {
     await page.waitForTimeout(160);
     await settleAnimations(page);
     const state = await page.evaluate(inspect);
-    await page.screenshot({ path: path.join(OUT, name), scale: 'css', timeout: 30_000 });
+    const artworkOnly = Boolean(args.artworkOnly && !tag.includes('fallback') && !tag.includes('reduced-motion'));
+    if (artworkOnly) {
+        const hideGuide = await page.addStyleTag({ content: `.breathing-visual-container > :not(canvas),
+            .breathing-phase-steps, .breathing-session-phase, .breathing-technique-name,
+            .breathing-technique-desc, .breathing-technique-selector { visibility: hidden !important; }` });
+        try {
+            await page.locator('.breathing-scene-canvas').screenshot({ path: path.join(OUT, name), scale: 'css', timeout: 30_000 });
+        } finally {
+            await hideGuide.evaluate((element) => element.remove());
+        }
+    } else await page.screenshot({ path: path.join(OUT, name), scale: 'css', timeout: 30_000 });
     if (state.clippedControls.length) result.failures.push(`${tag}: controls overflow horizontally: ${JSON.stringify(state.clippedControls)}`);
     if (state.work?.calls > 16) result.failures.push(`${tag}: draw call bound exceeded (${state.work.calls} > 16).`);
     if (state.resources?.geometries > 40) result.failures.push(`${tag}: geometry bound exceeded (${state.resources.geometries} > 40).`);
     if (state.resources?.textures > 8) result.failures.push(`${tag}: texture bound exceeded (${state.resources.textures} > 8).`);
-    result.frames.push({ file: name, state });
+    result.frames.push({ file: name, artworkOnly, state });
     if (tag.endsWith('-completion')) {
         const content = state.overlays.find((entry) => entry.className === 'hub-tab-content');
         const completion = state.overlays.find((entry) => entry.className === 'session-completion-overlay');
@@ -270,10 +287,14 @@ async function runProfile(browser, baseUrl, profile) {
                 const { indicator } = window.__BREATHING_CAPTURE__;
                 indicator.setTechnique(name, false);
             }, technique);
-            await page.evaluate(freeze, { phase: 'inhale', progress: 0.76, time: 12 });
+            await page.evaluate(freeze, { phase: 'inhale', progress: args.identity ? 0.9 : 0.76, time: 12 });
             await captureFrame(page, result, `${technique}-inhale`);
-            if (args.phases === 'all') {
-                for (const phase of ['hold1', 'exhale', 'hold2']) {
+            if (args.identity) {
+                await page.evaluate(freeze, { phase: 'exhale', progress: 0.9, time: 12 });
+                await captureFrame(page, result, `${technique}-exhale`);
+            }
+            if (args.phases === 'all' || (args.identity && technique === 'box-breathing')) {
+                for (const phase of args.identity ? ['hold1', 'hold2'] : ['hold1', 'exhale', 'hold2']) {
                     const exists = await page.evaluate((name) => {
                         const indicator = window.__BREATHING_CAPTURE__.indicator;
                         return indicator.pattern[['inhale', 'hold1', 'exhale', 'hold2'].indexOf(name)] > 0;
@@ -332,6 +353,23 @@ async function runProfile(browser, baseUrl, profile) {
                 result.failures.push(`Resize did not update canvas aspect: ${JSON.stringify(resized)}`);
             }
         }
+        }
+        if (args.identity && profile.id === 'desktop') {
+            await page.setViewportSize({ width: 2560, height: 600 });
+            await page.waitForFunction(() => {
+                const renderer = window.__BREATHING_CAPTURE__.indicator.threeRenderer;
+                return Math.abs(renderer.camera.aspect - renderer.container.clientWidth / renderer.container.clientHeight) < 0.01;
+            });
+            for (const technique of ['calm-sleep', 'energizing']) {
+                await page.evaluate((name) => window.__BREATHING_CAPTURE__.indicator.setTechnique(name, false), technique);
+                await page.evaluate(freeze, { phase: 'inhale', progress: 0.9, time: 12 });
+                await captureFrame(page, result, `alignment-${technique}-ultrawide`);
+            }
+            await page.setViewportSize({ width: profile.width, height: profile.height });
+            await page.waitForFunction(() => {
+                const renderer = window.__BREATHING_CAPTURE__.indicator.threeRenderer;
+                return Math.abs(renderer.camera.aspect - renderer.container.clientWidth / renderer.container.clientHeight) < 0.01;
+            });
         }
         if (args.sessions !== '0') {
             await page.evaluate(() => {
@@ -397,6 +435,49 @@ async function runProfile(browser, baseUrl, profile) {
                 await captureFrame(page, result, `${sessionId.toLowerCase()}-completion`);
             }
         }
+        if (args.identity) {
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            await page.waitForFunction(() => window.__BREATHING_CAPTURE__.indicator.threeRenderer.reducedMotion);
+            await page.evaluate(() => window.__BREATHING_CAPTURE__.indicator.setTechnique('forest-breath', false));
+            await page.evaluate(freeze, { phase: 'inhale', progress: 0.9, time: 12 });
+            await captureFrame(page, result, 'reduced-motion-inhale');
+            const inhale = await page.evaluate(inspect);
+            await page.evaluate(freeze, { phase: 'exhale', progress: 0.9, time: 12 });
+            await captureFrame(page, result, 'reduced-motion-exhale');
+            const exhale = await page.evaluate(inspect);
+            result.reducedMotion = { inhale: { motion: inhale.motion, breath: inhale.breath },
+                exhale: { motion: exhale.motion, breath: exhale.breath } };
+            if (inhale.motion !== 0 || exhale.motion !== 0 || !(inhale.breath > exhale.breath)) {
+                result.failures.push('Reduced motion did not preserve essential breath deformation while disabling ambient motion.');
+            }
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+            result.fallback = await page.evaluate(() => {
+                const renderer = window.__BREATHING_CAPTURE__.indicator.threeRenderer;
+                renderer.stop();
+                const extension = renderer.renderer.getContext().getExtension('WEBGL_lose_context');
+                extension?.loseContext();
+                return { contextLossSupported: Boolean(extension) };
+            });
+            if (!result.fallback.contextLossSupported) result.failures.push('Context-loss extension unavailable for fallback validation.');
+            else {
+                await page.waitForFunction(() => window.__BREATHING_CAPTURE__.indicator.threeRenderer.contextLost);
+                for (const technique of ['deep-relaxation', 'box-breathing', 'triangle']) {
+                    await page.evaluate((name) => {
+                        const { indicator } = window.__BREATHING_CAPTURE__;
+                        indicator.setTechnique(name, false);
+                        indicator.currentPhase = 'inhale';
+                        indicator.phaseStartTime = performance.now() - indicator.pattern[0] * 900;
+                        if (indicator.animationFrame) cancelAnimationFrame(indicator.animationFrame);
+                        indicator._animate();
+                        if (indicator.animationFrame) cancelAnimationFrame(indicator.animationFrame);
+                        indicator.animationFrame = null;
+                    }, technique);
+                    await captureFrame(page, result, `fallback-${technique}`);
+                }
+                result.fallback.state = await page.evaluate(inspect);
+                if (result.fallback.state.rendererReady) result.failures.push('Context loss failed to reveal CSS breathing guidance.');
+            }
+        }
         result.teardown = await page.evaluate(() => {
             const { manager, tab, indicator, breathingTab } = window.__BREATHING_CAPTURE__;
             manager.destroy(); tab.destroy();
@@ -424,10 +505,35 @@ async function runProfile(browser, baseUrl, profile) {
     return result;
 }
 
-async function runGameSmoke(browser, baseUrl) {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+async function runGameSmoke(browser, baseUrl, modeId = 'serenity') {
+    const portrait = Boolean(args.haleEntry && modeId === 'serenity');
+    const viewport = portrait ? { width: 390, height: 844 } : { width: 1280, height: 800 };
+    const context = await browser.newContext({ viewport, deviceScaleFactor: 1, isMobile: portrait, hasTouch: portrait });
     const page = await context.newPage();
-    const result = { id: 'game-smoke', console: [], screenshots: [], failures: [] };
+    const result = { id: args.haleEntry ? `hale-entry-${modeId}` : 'game-smoke', modeId, viewport,
+        console: [], screenshots: [], failures: [] };
+    const photograph = async (tag) => {
+        await settleAnimations(page);
+        const file = `${result.id}-${tag}.png`;
+        await page.screenshot({ path: path.join(OUT, file), scale: 'css' });
+        result.screenshots.push(file);
+    };
+    const guidanceBounds = () => {
+        const visibleRect = (selector) => {
+            const element = document.querySelector(selector);
+            if (!element) return null;
+            const rect = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            if (!rect.width || !rect.height || element.hidden || style.visibility === 'hidden'
+                || style.display === 'none' || Number(style.opacity) === 0) return null;
+            return { selector, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+        };
+        const entry = visibleRect('#hale-sessions-btn');
+        const guidance = ['.breathing-phase-steps', '.session-progress-container'].map(visibleRect).filter(Boolean);
+        const overlaps = guidance.filter((rect) => entry && Math.min(entry.right, rect.right) - Math.max(entry.left, rect.left) > 2
+            && Math.min(entry.bottom, rect.bottom) - Math.max(entry.top, rect.top) > 2);
+        return { entry, guidance, overlaps };
+    };
     page.on('console', (message) => {
         if (message.type() === 'error' || message.type() === 'warning') result.console.push({ type: message.type(), text: message.text() });
     });
@@ -454,9 +560,28 @@ async function runGameSmoke(browser, baseUrl) {
             return { hasModeControls, afterStart, afterStop: window.breathingIndicator.isActive };
         });
         if (!result.globalHub.afterStart || result.globalHub.afterStop) throw new Error('Global Hub could not toggle breathing outside Serenity.');
-        await page.locator('#serenity-card-btn').click({ timeout: 30_000 });
-        await page.waitForFunction(() => window.serenityBlocks.gameModeManager.getCurrentModeId() === 'serenity'
-            && window.serenityBlocks.gameModeManager.getCurrentMode()?.isRunning, null, { timeout: 60_000 });
+        await page.locator(modeId === 'single' ? '#single-player-card-btn' : '#serenity-card-btn').click({ timeout: 30_000 });
+        await page.waitForFunction((id) => window.serenityBlocks.gameModeManager.getCurrentModeId() === id
+            && window.serenityBlocks.gameModeManager.getCurrentMode()?.isRunning, modeId, { timeout: 60_000 });
+        if (args.haleEntry) {
+            const entry = page.locator('#hale-sessions-btn');
+            if (!await entry.isVisible()) throw new Error('Visible Hale sessions entry is missing after mode start.');
+            result.haleEntry = { label: await entry.innerText() };
+            await entry.click();
+            await page.waitForFunction(() => window.serenityBlocks.serenityHub.isOpen
+                && window.serenityBlocks.serenityHub.currentTab === 'sessions');
+            await settleAnimations(page);
+            result.haleEntry.cardAction = await page.locator('#tab-sessions .start-session-btn[data-session="BASE"]').innerText();
+            result.haleEntry.selectedTabBounds = await page.locator('#serenity-hub-panel .hub-tab[data-tab="sessions"]').boundingBox();
+            const tabBounds = result.haleEntry.selectedTabBounds;
+            if (!tabBounds || tabBounds.x < -2 || tabBounds.x + tabBounds.width > viewport.width + 2) {
+                throw new Error(`Active Hale tab is outside the horizontal viewport: ${JSON.stringify(tabBounds)}`);
+            }
+            result.haleEntry.pausedWhileHubOpen = await page.evaluate(() => window.serenityBlocks.gameModeManager.getCurrentMode().isPaused);
+            if (modeId === 'single' && !result.haleEntry.pausedWhileHubOpen) throw new Error('Hale catalogue failed to pause active single-player gameplay.');
+            await photograph('catalogue');
+            await page.locator('#serenity-hub-panel .hub-close-btn').click();
+        }
         await page.locator('#serenity-hub-icon').click({ timeout: 30_000 });
         await page.locator('#serenity-hub-panel .hub-tab[data-tab="breathing"]').click();
         await page.waitForFunction(() => window.serenityBlocks.serenityHub?.breathingTab, null, { timeout: 30_000 });
@@ -468,24 +593,40 @@ async function runGameSmoke(browser, baseUrl) {
             canvasCount: document.querySelectorAll('.breathing-scene-canvas').length }));
         await page.locator('#serenity-hub-panel .hub-close-btn').click();
         await page.waitForTimeout(500);
-        await settleAnimations(page);
-        await page.screenshot({ path: path.join(OUT, 'game-smoke-breathing.png'), scale: 'css' });
-        result.screenshots.push('game-smoke-breathing.png');
+        result.standaloneGuidanceBounds = await page.evaluate(guidanceBounds);
+        if (result.standaloneGuidanceBounds.overlaps.length) throw new Error('Hale entry overlaps standalone breathing guidance.');
+        await photograph('breathing');
         await page.locator('#serenity-hub-icon').click();
-        await page.locator('#serenity-hub-panel .hub-tab[data-tab="sessions"]').click();
+        if (args.haleEntry) {
+            await page.locator('#serenity-hub-panel .hub-tab[data-tab="breathing"]').click();
+            await page.locator('#tab-breathing .breath-hale-start').click();
+            result.haleEntry.libraryRoute = await page.evaluate(() => window.serenityBlocks.serenityHub.currentTab);
+            if (result.haleEntry.libraryRoute !== 'sessions') throw new Error('Breathing library Hale entry did not open the sessions catalogue.');
+        } else await page.locator('#serenity-hub-panel .hub-tab[data-tab="sessions"]').click();
         await page.waitForFunction(() => window.serenityBlocks.serenityHub?.sessionsTab, null, { timeout: 30_000 });
         await page.locator('#tab-sessions .start-session-btn[data-session="BASE"]').click();
         await page.waitForTimeout(250);
-        await settleAnimations(page);
-        await page.screenshot({ path: path.join(OUT, 'game-smoke-preparation.png'), scale: 'css' });
-        result.screenshots.push('game-smoke-preparation.png');
+        result.preparation = { beginEnabled: await page.locator('#tab-sessions .prep-begin-btn').isEnabled(),
+            label: await page.locator('#tab-sessions .prep-begin-btn').innerText() };
+        if (!result.preparation.beginEnabled) throw new Error('Hale preparation requires an intention before starting.');
+        await photograph('preparation');
+        result.preparation.beginBounds = await page.locator('#tab-sessions .prep-begin-btn').boundingBox();
+        const begin = result.preparation.beginBounds;
+        if (!begin || begin.y < -2 || begin.y + begin.height > viewport.height + 2) {
+            throw new Error(`Hale preparation start action is outside its initial viewport: ${JSON.stringify(begin)}`);
+        }
         // Audio is intentionally muted here. This smoke verifies the production
         // integration path and its callbacks, not voice recordings or a long session.
         await page.evaluate(() => {
             const manager = window.serenityBlocks.serenityHub.sessionManager;
             manager.audioManager?.setEnabled(false);
         });
-        await page.locator('#tab-sessions .prep-skip-btn').click();
+        await page.locator('#tab-sessions .prep-begin-btn').click();
+        if (args.haleEntry) {
+            await page.waitForFunction(() => getComputedStyle(document.querySelector('.session-countdown-overlay')).display !== 'none');
+            result.countdown = await page.locator('.session-countdown-overlay').innerText();
+            await photograph('countdown');
+        }
         await page.waitForFunction(() => window.serenityBlocks.serenityHub.sessionManager.activeSession?.id === 'hale-base', null, { timeout: 20_000 });
         result.session = await page.evaluate(() => {
             const hub = window.serenityBlocks.serenityHub;
@@ -494,9 +635,21 @@ async function runGameSmoke(browser, baseUrl) {
                 hasHUDState: Boolean(hub.sessionsTab.activeSessionData), hubHidden: !hub.isOpen };
         });
         await page.waitForTimeout(350);
-        await settleAnimations(page);
-        await page.screenshot({ path: path.join(OUT, 'game-smoke-guided.png'), scale: 'css' });
-        result.screenshots.push('game-smoke-guided.png');
+        result.guidedGuidanceBounds = await page.evaluate(guidanceBounds);
+        if (result.guidedGuidanceBounds.overlaps.length) throw new Error('Hale entry overlaps guided breathing guidance.');
+        if (modeId === 'single') {
+            result.pauseOwnership = await page.evaluate(() => {
+                const app = window.serenityBlocks;
+                const mode = app.gameModeManager.getCurrentMode();
+                const before = mode.isPaused;
+                app.togglePause();
+                const afterToggle = mode.isPaused;
+                app.resumeGame();
+                return { before, afterToggle, afterDirectResume: mode.isPaused };
+            });
+            if (Object.values(result.pauseOwnership).some((paused) => !paused)) throw new Error('Guided session lost single-player pause ownership.');
+        }
+        await photograph('guided');
         await page.evaluate(() => {
             const manager = window.serenityBlocks.serenityHub.sessionManager;
             manager._clearPhaseTimers();
@@ -505,9 +658,7 @@ async function runGameSmoke(browser, baseUrl) {
         });
         await page.waitForFunction(() => window.serenityBlocks.serenityHub.isOpen
             && getComputedStyle(document.querySelector('.session-completion-overlay')).display !== 'none', null, { timeout: 15_000 });
-        await settleAnimations(page);
-        await page.screenshot({ path: path.join(OUT, 'game-smoke-completion.png'), scale: 'css' });
-        result.screenshots.push('game-smoke-completion.png');
+        await photograph('completion');
         result.completion = await page.evaluate(() => ({ activeSession: Boolean(window.serenityBlocks.serenityHub.sessionManager.activeSession),
             indicatorActive: window.breathingIndicator.isActive,
             completionSession: window.serenityBlocks.serenityHub.sessionsTab.completedSession?.sessionId,
@@ -535,9 +686,55 @@ async function runGameSmoke(browser, baseUrl) {
         if (!result.completionScroll.reachable) result.failures.push('Landscape completion action is outside its native scroller.');
         await page.locator('#tab-sessions .completion-close-btn').click();
         result.completionScroll.clicked = true;
+        if (modeId === 'single') {
+            result.pauseOwnership.afterCompletionWhileHubOpen = await page.evaluate(() => window.serenityBlocks.gameModeManager.getCurrentMode().isPaused);
+            await page.locator('#serenity-hub-panel .hub-close-btn').click();
+            result.pauseOwnership.afterFinalHubClose = await page.evaluate(() => window.serenityBlocks.gameModeManager.getCurrentMode().isPaused);
+            if (!result.pauseOwnership.afterCompletionWhileHubOpen || result.pauseOwnership.afterFinalHubClose) {
+                throw new Error('Single-player pause ownership did not release only after final Hub close.');
+            }
+            if (args.haleEntry) {
+                // Cancel both pending entry UI and an already running session through
+                // the actual application's Return to Menu lifecycle.
+                const beginAgain = async () => {
+                    await page.locator('#hale-sessions-btn').click();
+                    await page.locator('#tab-sessions .start-session-btn[data-session="BASE"]').click();
+                    await page.locator('#tab-sessions .prep-begin-btn').click();
+                };
+                const cancelState = () => {
+                    const app = window.serenityBlocks;
+                    const hub = app.serenityHub;
+                    return { activeSession: Boolean(hub.sessionManager.activeSession),
+                        indicatorActive: window.breathingIndicator.isActive,
+                        pendingUI: hub.sessionsTab.pendingTimers.size,
+                        phaseTimeouts: hub.sessionManager.phaseTimeouts.size,
+                        audioPlaying: hub.sessionManager.audioManager.isVoicePlaying,
+                        audioPending: hub.sessionManager.audioManager.isVoicePending,
+                        audioPreloads: hub.sessionManager.audioManager.preloadLoads.size,
+                        hubOpen: hub.isOpen,
+                        completionVisible: getComputedStyle(document.querySelector('.session-completion-overlay')).display !== 'none' };
+                };
+                result.modeExit = {};
+                await page.setViewportSize(viewport);
+                await beginAgain();
+                await page.evaluate(() => window.serenityBlocks._returnToMainMenu());
+                await page.waitForTimeout(4500);
+                result.modeExit.pendingCountdown = await page.evaluate(cancelState);
+                await page.locator('#single-player-card-btn').click();
+                await page.waitForFunction(() => window.serenityBlocks.gameModeManager.getCurrentMode()?.isRunning);
+                await beginAgain();
+                await page.waitForFunction(() => Boolean(window.serenityBlocks.serenityHub.sessionManager.activeSession));
+                await page.evaluate(() => window.serenityBlocks._returnToMainMenu());
+                await page.waitForTimeout(350);
+                result.modeExit.activeSession = await page.evaluate(cancelState);
+                for (const [stage, state] of Object.entries(result.modeExit)) {
+                    if (Object.values(state).some(Boolean)) throw new Error(`Mode exit left stale ${stage} work: ${JSON.stringify(state)}`);
+                }
+            }
+        }
     } catch (error) {
         result.failures.push(error.stack || String(error));
-        await page.screenshot({ path: path.join(OUT, 'game-smoke-failure.png'), scale: 'css' }).catch(() => {});
+        await page.screenshot({ path: path.join(OUT, `${result.id}-failure.png`), scale: 'css' }).catch(() => {});
     } finally {
         await context.close();
     }
@@ -545,8 +742,83 @@ async function runGameSmoke(browser, baseUrl) {
         && /breath|session|Shader Error|compilation error/i.test(entry.text));
     result.failures.push(...result.breathingConsoleErrors.map((entry) => entry.text));
     result.status = result.failures.length ? 'fail' : 'pass';
-    await writeFile(path.join(OUT, 'game-smoke.json'), JSON.stringify(result, null, 2));
-    console.log(`game-smoke: ${result.status}; ${result.screenshots.length} screenshots; ${result.failures.length} failures.`);
+    await writeFile(path.join(OUT, `${result.id}.json`), JSON.stringify(result, null, 2));
+    console.log(`${result.id}: ${result.status}; ${result.screenshots.length} screenshots; ${result.failures.length} failures.`);
+    return result;
+}
+
+async function runModeExitSmoke(browser, baseUrl) {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    const result = { id: 'mode-exit-single', console: [], failures: [] };
+    page.on('console', (message) => {
+        if (message.type() === 'warning' || message.type() === 'error') result.console.push({ type: message.type(), text: message.text() });
+    });
+    page.on('pageerror', (error) => result.failures.push(error.stack || error.message));
+    try {
+        await page.addInitScript(() => localStorage.setItem('serenityBlocksSettings', JSON.stringify({
+            backgroundMode: 'Specific', backgroundTheme: 'forest', effectQuality: 'Minimal',
+            graphicsQuality: 'Minimal', enableBloom: false, enableShadows: false,
+            musicVolume: 0, sfxVolume: 0, customCursorEnabled: false,
+            breathingGuideEnabled: false, breathingGuideAutoStart: false,
+        })));
+        await page.goto(`${baseUrl}/?skipIntro=1&forceWebGL=1`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.serenityBlocks?.isInitialized && window.breathingIndicator, null, { timeout: 90_000 });
+        await page.evaluate(() => window.serenityBlocks.initializeGlobalSerenityHub());
+        const enterMode = async () => {
+            await page.locator('#single-player-card-btn').click();
+            await page.waitForFunction(() => window.serenityBlocks.gameModeManager.getCurrentMode()?.isRunning, null, { timeout: 60_000 });
+        };
+        const begin = async () => {
+            await page.locator('#hale-sessions-btn').click();
+            await page.locator('#tab-sessions .start-session-btn[data-session="BASE"]').click();
+            await page.evaluate(() => window.serenityBlocks.serenityHub.sessionManager.audioManager.setEnabled(false));
+            await page.locator('#tab-sessions .prep-begin-btn').click();
+        };
+        const readState = () => {
+            const hub = window.serenityBlocks.serenityHub;
+            const audio = hub.sessionManager.audioManager;
+            return { activeSession: Boolean(hub.sessionManager.activeSession),
+                indicatorActive: window.breathingIndicator.isActive,
+                pendingUI: hub.sessionsTab.pendingTimers.size, phaseTimeouts: hub.sessionManager.phaseTimeouts.size,
+                audioPlaying: audio.isVoicePlaying, audioPending: audio.isVoicePending,
+                audioPreloads: audio.preloadLoads.size, activeAudioLoads: audio.activePreloadCount,
+                hubOpen: hub.isOpen,
+                completionVisible: getComputedStyle(document.querySelector('.session-completion-overlay')).display !== 'none' };
+        };
+        await enterMode();
+        await begin();
+        await page.evaluate(() => window.serenityBlocks._returnToMainMenu());
+        await page.waitForTimeout(4500);
+        result.pendingCountdown = await page.evaluate(readState);
+        if (Object.values(result.pendingCountdown).some(Boolean)) throw new Error(`Pending countdown survived mode exit: ${JSON.stringify(result.pendingCountdown)}`);
+        await enterMode();
+        await begin();
+        await page.waitForFunction(() => Boolean(window.serenityBlocks.serenityHub.sessionManager.activeSession));
+        result.pauseOwnership = await page.evaluate(() => {
+            const app = window.serenityBlocks;
+            const mode = app.gameModeManager.getCurrentMode();
+            const before = mode.isPaused;
+            app.togglePause();
+            const afterToggle = mode.isPaused;
+            app.resumeGame();
+            return { before, afterToggle, afterDirectResume: mode.isPaused };
+        });
+        if (Object.values(result.pauseOwnership).some((paused) => !paused)) throw new Error('Active session failed to retain gameplay pause.');
+        await page.evaluate(() => window.serenityBlocks._returnToMainMenu());
+        await page.waitForTimeout(350);
+        result.activeSession = await page.evaluate(readState);
+        if (Object.values(result.activeSession).some(Boolean)) throw new Error(`Active session survived mode exit: ${JSON.stringify(result.activeSession)}`);
+    } catch (error) {
+        result.failures.push(error.stack || String(error));
+        await page.screenshot({ path: path.join(OUT, 'mode-exit-single-failure.png') }).catch(() => {});
+    } finally {
+        await context.close();
+    }
+    result.failures.push(...result.console.filter((entry) => entry.type === 'error').map((entry) => entry.text));
+    result.status = result.failures.length ? 'fail' : 'pass';
+    await writeFile(path.join(OUT, 'mode-exit-single.json'), JSON.stringify(result, null, 2));
+    console.log(`mode-exit-single: ${result.status}; ${result.failures.length} failures.`);
     return result;
 }
 
@@ -570,12 +842,23 @@ try {
             '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-gpu-sandbox'] });
     report.browserVersion = browser.version();
     for (const profile of profiles) report.results.push(await runProfile(browser, baseUrl, profile));
-    if (args.gameSmoke) report.results.push(await runGameSmoke(browser, baseUrl));
+    if (args.gameSmoke) {
+        for (const modeId of args.gameMode ? [args.gameMode] : args.haleEntry ? ['serenity', 'single'] : ['serenity']) {
+            report.results.push(await runGameSmoke(browser, baseUrl, modeId));
+        }
+    }
+    if (args.cancelCases) report.results.push(await runModeExitSmoke(browser, baseUrl));
 } finally {
     await browser?.close();
     await server.close();
-    report.sourceStable = JSON.stringify(report.sourceSHA256) === JSON.stringify(await fingerprint());
-    report.status = report.sourceStable && report.results.length && report.results.every((entry) => entry.status === 'pass') ? 'pass' : 'fail';
+    report.sourceSHA256After = await fingerprint();
+    report.sourceStable = JSON.stringify(report.sourceSHA256) === JSON.stringify(report.sourceSHA256After);
+    const renderingFiles = ['src/ui/effects/threejs-breathing-renderer.js', 'src/ui/effects/breathing-atmosphere.js',
+        'src/ui/effects/breathing-forms.js', 'src/ui/effects/breathing-guidance.js',
+        'src/ui/effects/enhanced-breathing-indicator.js', 'public/styles/breathing-immersive.css'];
+    report.renderingSourceStable = renderingFiles.every((file) => report.sourceSHA256[file] === report.sourceSHA256After[file]);
+    const sourceStable = args.identity ? report.renderingSourceStable : report.sourceStable;
+    report.status = sourceStable && report.results.length && report.results.every((entry) => entry.status === 'pass') ? 'pass' : 'fail';
     await writeFile(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
 }
 if (report.status !== 'pass') process.exitCode = 1;

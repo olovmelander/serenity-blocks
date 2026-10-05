@@ -19,6 +19,7 @@ const instances = [];
 afterEach(() => {
     instances.splice(0).forEach((tab) => tab.destroy());
     vi.restoreAllMocks();
+    vi.useRealTimers();
 });
 
 function harness() {
@@ -67,6 +68,48 @@ describe('guided breathwork presentation contracts', () => {
         expect(tab.getSessionDetails('BASE')).toMatchObject({ duration: '15 min', rounds: 3, maxHold: '2 min' });
         expect(container.innerHTML).toContain('15 min');
         expect(tab.getSessionDetails('UNKNOWN')).toBeNull();
+    });
+
+    it('clearly names all four start actions and keeps intentions optional', () => {
+        const { container } = harness();
+        ['Hale Base', 'Hale Elixir', 'Hale Rest', 'Hale Flow'].forEach((name) => {
+            expect(container.innerHTML).toContain(`Start ${name}`);
+        });
+        expect(container.innerHTML).toContain('Intentions are optional');
+        expect(container.innerHTML).toContain('class="prep-begin-btn"');
+        expect(container.innerHTML).not.toContain('class="prep-begin-btn" disabled');
+        expect(container.innerHTML).not.toContain('prep-skip-btn');
+        // Starting is available before optional choices, including the stacked phone layout.
+        expect(container.innerHTML.indexOf('class="prep-begin-btn"'))
+            .toBeLessThan(container.innerHTML.indexOf('class="prep-choices"'));
+    });
+
+    it('starts the prepared Hale journey without requiring an intention first', async () => {
+        vi.useFakeTimers();
+        const { tab, container, manager } = harness();
+        const countdown = node();
+        const number = node();
+        const query = container.querySelector;
+        container.querySelector = (selector) => ({
+            '.session-countdown-overlay': countdown,
+            '.countdown-number': number,
+        }[selector] || query(selector));
+        tab.pendingSessionId = 'BASE';
+        tab.selectedIntention = null;
+        const sequence = tab.startCountdown();
+        expect(tab.selectedIntention).toMatchObject({ id: 'none' });
+        await vi.advanceTimersByTimeAsync(5000);
+        await sequence;
+        expect(manager.startSession).toHaveBeenCalledWith('BASE', expect.any(Function), expect.any(Function));
+        expect(countdown.style.display).toBe('none');
+    });
+
+    it('acquires the guided session before hiding the Hub to retain gameplay pause', () => {
+        const { tab, hub, manager } = harness();
+        manager.startSession.mockImplementation(() => { manager.activeSession = { name: 'Hale Base' }; });
+        hub.hide.mockImplementation(() => { expect(manager.activeSession).toBeTruthy(); });
+        tab.startSession('BASE');
+        expect(manager.startSession.mock.invocationCallOrder[0]).toBeLessThan(hub.hide.mock.invocationCallOrder[0]);
     });
 
     it('opens the selected practice when the click originates on a nested arrow', () => {
@@ -137,6 +180,70 @@ describe('guided breathwork presentation contracts', () => {
         tab.destroy();
         complete({ sessionName: 'Hale Base', totalDuration: 855, rounds: 3, completed: true });
         expect(hub.show).not.toHaveBeenCalled();
+    });
+
+    it('clears active and pending session surfaces without late results or focus after a mode change', async () => {
+        vi.useFakeTimers();
+        const { tab, hub, container, manager, completion, completionNodes } = harness();
+        const prep = node();
+        const countdown = node();
+        const query = container.querySelector;
+        container.querySelector = (selector) => ({
+            '.session-prep-overlay': prep,
+            '.session-countdown-overlay': countdown,
+        }[selector] || query(selector));
+        tab.startSession('BASE');
+        const complete = manager.startSession.mock.calls[0][2];
+        const returnFocus = node();
+        tab.pendingSessionId = 'BASE';
+        tab.selectedIntention = { id: 'calm', label: 'Find Calm' };
+        tab.completedSession = { sessionId: 'BASE' };
+        tab.focusReturn = returnFocus;
+        [prep, countdown, completion].forEach((overlay) => { overlay.style.display = 'flex'; });
+        const delayedFocus = vi.fn();
+        tab.scheduleUI(delayedFocus, 10);
+        const pendingWait = tab.waitForCountdown(1000);
+
+        tab.cancelForModeChange();
+
+        await expect(pendingWait).resolves.toBe(false);
+        await vi.runAllTimersAsync();
+        complete({ sessionName: 'Hale Base', totalDuration: 855, rounds: 3, completed: true });
+        ['.session-prep-overlay', '.session-countdown-overlay', '.active-session-overlay',
+            '.session-completion-overlay'].forEach((selector) => {
+            expect(container.querySelector(selector).style.display).toBe('none');
+        });
+        expect(manager.stopSession).toHaveBeenCalledOnce();
+        expect(tab.pendingTimers.size).toBe(0);
+        expect(tab.pendingSessionId).toBeNull();
+        expect(tab.selectedIntention).toBeNull();
+        expect(tab.completedSession).toBeNull();
+        expect(tab.focusReturn).toBeNull();
+        expect(delayedFocus).not.toHaveBeenCalled();
+        expect(returnFocus.focus).not.toHaveBeenCalled();
+        expect(completionNodes['.completion-close-btn'].focus).not.toHaveBeenCalled();
+        expect(hub.show).not.toHaveBeenCalled();
+    });
+
+    it('settles an in-flight countdown during a mode change without starting the previous practice', async () => {
+        vi.useFakeTimers();
+        const { tab, container, manager } = harness();
+        const countdown = node();
+        const number = node();
+        const query = container.querySelector;
+        container.querySelector = (selector) => ({
+            '.session-countdown-overlay': countdown,
+            '.countdown-number': number,
+        }[selector] || query(selector));
+        tab.pendingSessionId = 'BASE';
+        const sequence = tab.startCountdown();
+        tab.cancelForModeChange();
+        await sequence;
+        await vi.runAllTimersAsync();
+        expect(manager.startSession).not.toHaveBeenCalled();
+        expect(manager.stopSession).toHaveBeenCalledOnce();
+        expect(countdown.style.display).toBe('none');
+        expect(tab.pendingTimers.size).toBe(0);
     });
 
     it.each([' ', 'Enter'])('keeps native %j activation from also reaching the global guide shortcut', (key) => {

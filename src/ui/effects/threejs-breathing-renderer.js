@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import {
     BREATHING_VISUAL_PROFILES, FULLSCREEN_VERTEX_SHADER, ATMOSPHERE_FRAGMENT_SHADER,
 } from './breathing-atmosphere.js';
+import { BREATHING_FORM_FRAGMENT } from './breathing-forms.js';
 
 const QUALITY_PRESETS = {
     Extreme: { particleCount: 1000, pixelRatio: 1.75, frameInterval: 0 },
@@ -19,55 +20,74 @@ const SESSION_PHASES = {
     grounding: 1, active: 2, retention: 3, recovery: 4, integration: 5,
 };
 
-const APERTURE_FRAGMENT = `
-    uniform float uTime, uBreath, uMotion, uReveal, uPhaseProgress, uSession;
-    uniform vec2 uResolution;
-    uniform vec3 uColorA, uColorB, uColorC;
-    varying vec2 vUv;
-    void main() {
-        vec2 p = (vUv - 0.5) * 2.0;
-        p.x *= uResolution.x / uResolution.y;
-        float r = length(p);
-        float a = atan(p.y, p.x);
-        float t = uTime * uMotion;
-        float radius = mix(0.23, 0.43, uBreath);
-        float ripple = sin(a * 7.0 + t * 0.24) * sin(a * 3.0 - t * 0.17);
-        float rim = abs(r - radius - ripple * 0.008);
-        float fine = exp(-rim * 290.0);
-        float halo = exp(-rim * 29.0) * 0.25;
-        float inner = exp(-abs(r - radius * 0.87) * 160.0) * 0.18;
-        float outer = exp(-abs(r - radius * 1.16) * 140.0) * 0.13;
-        float thread = sin(a * 18.0 - t * 0.35) * 0.5 + 0.5;
-        vec3 c = mix(uColorA, uColorB, sin(a * 2.0 + t * 0.1) * 0.5 + 0.5);
-        c = mix(c, uColorC, pow(thread, 8.0) * 0.35);
-        float light = fine * 0.8 + halo + inner + outer;
-        float phaseAngle = mod(a + 1.5707963 + 6.2831853, 6.2831853) / 6.2831853;
-        float track = exp(-abs(r - 0.49) * 220.0);
-        light += track * (phaseAngle < uPhaseProgress ? 0.32 : 0.035);
-        float heart = exp(-r * r * 26.0) * 0.015;
-        gl_FragColor = vec4(c * (1.0 + fine * 0.6), clamp(light + heart, 0.0, 0.95) * uReveal);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-    }
-`;
-const PARTICLE_VERTEX = `
+const PARTICLE_VERTEX = /* glsl */ `
     attribute float aSeed, aSize;
-    uniform float uTime, uBreath, uMotion, uPixelRatio, uSession;
+    uniform float uTime, uBreath, uMotion, uPixelRatio, uMode;
     varying float vAlpha, vSeed;
+    const float TAU = 6.2831853;
     void main() {
         float t = uTime * uMotion;
+        float b = uBreath;
+        float seed = aSeed;
+        float angle = seed * TAU;
         vec3 p = position;
-        float angle = t * (0.009 + aSeed * 0.012);
-        mat2 rotation = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
-        p.xz = rotation * p.xz;
-        p.x += sin(t * 0.1 + aSeed * 40.0) * 0.08;
-        p.y += sin(t * 0.08 + aSeed * 25.0) * 0.14;
-        p.xy *= 0.9 + uBreath * 0.12;
+        // Each world carries its own motion language; all paths freeze under
+        // reduced motion while essential inhale/exhale deformation stays live.
+        if (uMode < 0.5) {
+            p.x = sin(seed * 29.0 + t * 0.12) * (1.5 + b * 0.5);
+            p.y = mod(position.y + t * 0.12 + 5.0, 10.0) - 5.0;
+            p.y += b * 0.45;
+        } else if (uMode < 1.5) {
+            float edge = floor(seed * 4.0);
+            float along = fract(seed * 4.0 + t * 0.025) * 2.0 - 1.0;
+            float r = 1.4 + b * 0.6 + fract(seed * 37.0) * 0.3;
+            if (edge < 0.5) p.xy = vec2(along, 1.0) * r;
+            else if (edge < 1.5) p.xy = vec2(1.0, -along) * r;
+            else if (edge < 2.5) p.xy = vec2(-along, -1.0) * r;
+            else p.xy = vec2(-1.0, along) * r;
+        } else if (uMode < 2.5) {
+            p.x += sin(t * 0.08 + seed * 30.0) * 0.2;
+            p.y = -1.2 - fract(seed * 17.0) * 1.7 + sin(p.x * 2.0 + t * 0.1) * b * 0.12;
+        } else if (uMode < 3.5) {
+            float r = 1.5 + fract(seed * 41.0 + t * 0.02) * 3.0 + b * 0.6;
+            p.xy = vec2(cos(angle), sin(angle)) * r;
+        } else if (uMode < 4.5) {
+            float r = 1.3 + fract(seed * 23.0) * 1.7;
+            float petal = 0.75 + sin(angle * 5.0 + t * 0.03) * 0.2;
+            p.xy = vec2(cos(angle), sin(angle)) * r * petal * (0.8 + b * 0.35);
+        } else if (uMode < 5.5) {
+            float side = floor(seed * 3.0);
+            float along = fract(seed * 3.0 + t * 0.015);
+            vec2 a = vec2(sin(side * TAU / 3.0), cos(side * TAU / 3.0));
+            vec2 c = vec2(sin((side + 1.0) * TAU / 3.0), cos((side + 1.0) * TAU / 3.0));
+            p.xy = mix(a, c, along) * (1.9 + b * 0.55 + fract(seed * 31.0) * 0.35);
+        } else if (uMode < 6.5) {
+            p.y = mod(position.y + t * 0.42 + 5.0, 10.0) - 5.0;
+            p.x = sin(seed * 25.0 + p.y * 0.8 + t * 0.16) * (0.2 + (p.y + 5.0) * 0.08) * (0.7 + b * 0.6);
+        } else if (uMode < 7.5) {
+            p.x = mod(position.x + t * 0.15 + 5.0, 10.0) - 5.0;
+            p.y = -0.9 - fract(seed * 31.0) * 1.5 + sin(p.x * 1.8 + t * 0.15 + seed * 8.0) * (0.1 + b * 0.28);
+        } else if (uMode < 8.5) {
+            p.x = position.x * 0.85;
+            p.y = -1.6 - fract(seed * 13.0) * 1.0 + sin(p.x * 2.0) * 0.1;
+            p.z = -1.0;
+        } else if (uMode < 9.5) {
+            float r = 1.3 + fract(seed * 31.0) * 3.0;
+            float arm = r * 1.25 + floor(seed * 3.0) * TAU / 3.0 + t * 0.04;
+            p.xy = vec2(cos(arm), sin(arm)) * r * (0.85 + b * 0.25);
+            p.z = -r * 0.35;
+        } else if (uMode < 10.5) {
+            p.x = sign(position.x) * (1.2 + fract(seed * 29.0) * 1.4) + sin(t * 0.1 + seed * 40.0) * b * 0.18;
+            p.y = sin(seed * 35.0) * 2.7 + sin(t * 0.16 + seed * 26.0) * 0.08;
+        } else {
+            p.y = position.y;
+            p.x = sign(position.x) * (1.3 + fract(seed * 11.0) * 1.0) + sin(p.y * 3.0 + seed * 9.0 + t * 0.2) * (0.1 + b * 0.18);
+        }
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mv;
         gl_PointSize = clamp(aSize * uPixelRatio * (5.0 / -mv.z), 1.0, 10.0);
-        vAlpha = (0.28 + 0.22 * sin(t * 0.45 + aSeed * 90.0)) * (0.65 + uBreath * 0.35);
-        vSeed = aSeed;
+        vAlpha = (0.19 + 0.14 * sin(t * 0.35 + seed * 90.0)) * (0.65 + b * 0.35);
+        vSeed = seed;
     }
 `;
 const PARTICLE_FRAGMENT = `
@@ -152,6 +172,7 @@ export class ThreeJSBreathingRenderer {
             uMotion: { value: this.reducedMotion ? 0 : 1 },
             uReveal: { value: 0 },
             uPhaseProgress: { value: 0 },
+            uPhase: { value: 0 },
             uSession: { value: 0 },
             uPixelRatio: { value: 1 },
             uResolution: { value: new THREE.Vector2(1, 1) },
@@ -177,7 +198,7 @@ export class ThreeJSBreathingRenderer {
             transparent: true,
             depthWrite: false,
             depthTest: false,
-            premultipliedAlpha: fragmentShader === ATMOSPHERE_FRAGMENT_SHADER,
+            premultipliedAlpha: true,
         });
         const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
         mesh.frustumCulled = false;
@@ -188,7 +209,7 @@ export class ThreeJSBreathingRenderer {
 
     _buildRetainedScene() {
         this.sceneObjects.atmosphere = this._makePlane(ATMOSPHERE_FRAGMENT_SHADER, 0);
-        this.sceneObjects.aperture = this._makePlane(APERTURE_FRAGMENT, 2);
+        this.sceneObjects.form = this._makePlane(BREATHING_FORM_FRAGMENT, 2);
         const count = QUALITY_PRESETS.Extreme.particleCount;
         const positions = new Float32Array(count * 3);
         const seeds = new Float32Array(count);
@@ -221,57 +242,6 @@ export class ThreeJSBreathingRenderer {
         this.sceneObjects.particles = new THREE.Points(geometry, material);
         this.sceneObjects.particles.renderOrder = 1;
         this.scene.add(this.sceneObjects.particles);
-        this.sceneObjects.motifs = new THREE.Group();
-        this.sceneObjects.motifs.renderOrder = 1;
-        this.scene.add(this.sceneObjects.motifs);
-        this._buildMotifs();
-    }
-
-    _buildMotifs() {
-        const group = this.sceneObjects.motifs;
-        this.motifs = {};
-        const lineMaterial = () => new THREE.LineBasicMaterial({
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.2,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-        const orbits = new THREE.Group();
-        for (let j = 0; j < 3; j++) {
-            const points = [];
-            for (let i = 0; i <= 160; i++) {
-                const a = (i / 160) * Math.PI * 2;
-                points.push(new THREE.Vector3(Math.cos(a) * 1.38, Math.sin(a) * 1.38, 0));
-            }
-            const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMaterial());
-            line.rotation.set(0.72 + j * 0.6, j * 0.85, j * 0.3);
-            orbits.add(line);
-        }
-        this.motifs.orbits = orbits;
-        const crystal = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.OctahedronGeometry(1.28)), lineMaterial());
-        crystal.rotation.z = Math.PI / 6;
-        this.motifs.crystal = crystal;
-        const geometry = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.3)), lineMaterial());
-        this.motifs.geometry = geometry;
-        const heartPoints = [];
-        for (let i = 0; i <= 160; i++) {
-            const a = (i / 160) * Math.PI * 2;
-            heartPoints.push(new THREE.Vector3(
-                Math.sin(a) ** 3 * 1.15,
-                (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) * 0.07,
-                0,
-            ));
-        }
-        this.motifs.heart = new THREE.Line(new THREE.BufferGeometry().setFromPoints(heartPoints), lineMaterial());
-        const solarPoints = [];
-        for (let i = 0; i <= 320; i++) {
-            const a = (i / 320) * Math.PI * 2;
-            const r = 1.32 + Math.sin(a * 12) * 0.09;
-            solarPoints.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, 0));
-        }
-        this.motifs.solar = new THREE.Line(new THREE.BufferGeometry().setFromPoints(solarPoints), lineMaterial());
-        Object.values(this.motifs).forEach((motif) => group.add(motif));
     }
 
     setTechnique(name, params = {}) {
@@ -280,13 +250,12 @@ export class ThreeJSBreathingRenderer {
         if (!this.uniforms) return;
         const profile = BREATHING_VISUAL_PROFILES[this.currentTechnique];
         this.uniforms.uMode.value = profile.mode;
-        const defaults = [{ r: 80, g: 200, b: 255 }, { r: 180, g: 100, b: 255 }, { r: 100, g: 255, b: 180 }];
         ['color', 'secondaryColor', 'tertiaryColor'].forEach((key, index) => {
-            const c = this.techniqueParams[key] || defaults[index];
-            this.targetColors[index].setRGB(c.r / 255, c.g / 255, c.b / 255, THREE.SRGBColorSpace);
+            const c = this.techniqueParams[key];
+            if (c) this.targetColors[index].setRGB(c.r / 255, c.g / 255, c.b / 255, THREE.SRGBColorSpace);
+            else this.targetColors[index].setHex(profile.colors[index], THREE.SRGBColorSpace);
         });
         if (!this.isRunning) ['uColorA', 'uColorB', 'uColorC'].forEach((key, i) => this.uniforms[key].value.copy(this.targetColors[i]));
-        Object.entries(this.motifs).forEach(([key, motif]) => { motif.visible = key === (profile.motif || 'orbits'); });
         this.reveal = Math.min(this.reveal, 0.35);
     }
 
@@ -296,6 +265,7 @@ export class ThreeJSBreathingRenderer {
     updateIntensity(intensity, phase, progress = 0) {
         this.intensity = Number.isFinite(intensity) ? THREE.MathUtils.clamp(intensity, 0, 1) : 0.3;
         this.phase = phase;
+        if (this.uniforms) this.uniforms.uPhase.value = Math.max(0, ['inhale', 'hold1', 'exhale', 'hold2'].indexOf(phase));
         this.phaseProgress = THREE.MathUtils.clamp(progress, 0, 1);
     }
 
@@ -354,20 +324,6 @@ export class ThreeJSBreathingRenderer {
         this.uniforms.uPhaseProgress.value = this.phaseProgress;
         const blend = 1 - Math.exp(-delta * 4);
         ['uColorA', 'uColorB', 'uColorC'].forEach((key, i) => this.uniforms[key].value.lerp(this.targetColors[i], blend));
-        const motifScale = 0.8 + this.intensity * 0.24;
-        this.sceneObjects.motifs.scale.setScalar(motifScale);
-        const motion = this.reducedMotion ? 0 : time;
-        Object.entries(this.motifs).forEach(([key, motif]) => {
-            if (!motif.visible) return;
-            if (key !== 'heart') motif.rotation.y = motion * 0.025;
-            motif.rotation.z = key === 'heart' ? 0 : motion * 0.012;
-            motif.traverse((object) => {
-                if (object.material) {
-                    object.material.color.copy(this.uniforms.uColorC.value);
-                    object.material.opacity = (0.12 + this.intensity * 0.12) * this.reveal;
-                }
-            });
-        });
     }
 
     resize(
@@ -413,6 +369,5 @@ export class ThreeJSBreathingRenderer {
         this.scene = null;
         this.camera = null;
         this.uniforms = null;
-        this.motifs = null;
     }
 }

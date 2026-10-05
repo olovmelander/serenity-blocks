@@ -2483,8 +2483,8 @@ class SerenityBlocks {
         // Subscribe to mode events
         this.gameModeManager.on('modeActivated', ({ modeId }) => {
             console.log(`[Main] Mode activated: ${modeId}`);
+            this.serenityHub?.cancelGuidedSession();
         });
-
         this.gameModeManager.on('modeStarted', ({ modeId }) => {
             console.log(`[Main] Mode started: ${modeId}`);
             this.syncPerformanceMonitorSampling();
@@ -2492,9 +2492,9 @@ class SerenityBlocks {
 
         this.gameModeManager.on('modeStopped', ({ modeId }) => {
             console.log(`[Main] Mode stopped: ${modeId}`);
+            this.serenityHub?.cancelGuidedSession();
             this.syncPerformanceMonitorSampling();
         });
-
         // Setup start button click handler (for old button-based UI)
         const startGameBtn = document.getElementById('start-game-btn');
         if (startGameBtn) {
@@ -4438,9 +4438,9 @@ class SerenityBlocks {
      * Resume the game
      */
     resumeGame() {
-        // Check if settings modal is still open - don't resume if it is
-        if (this.modalManager.isVisible('settings')) {
-            console.log('[Main] Settings still open, not resuming yet');
+        // Settings and guided breathwork retain pause ownership through every resume route.
+        if (this.serenityHub?.sessionManager?.activeSession || this.modalManager.isVisible('settings')) {
+            console.log('[Main] Settings or guided session active, keeping gameplay paused');
             return;
         }
 
