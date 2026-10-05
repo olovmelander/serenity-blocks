@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
 import {
-    afterEach, beforeEach, describe, expect, it, vi,
+    afterEach, beforeAll, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { parseCrystalCaveCavern } from '../../src/themes/crystal-cave/crystal-cave-assets.js';
 import CrystalCaveTheme, {
     QUALITY_PRESETS,
     readCrystalCaveEventCount,
@@ -36,42 +39,56 @@ vi.mock('three/webgpu', async (importOriginal) => {
 let themes;
 let container;
 let rafs;
+let cavern;
 
 function deferred() {
     let resolve;
-    const promise = new Promise((done) => { resolve = done; });
-    return { promise, resolve };
+    let reject;
+    const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
+}
+
+function stubAssets() {
+    return { stub: true, geometry: { dispose: vi.fn() } };
 }
 
 function createTheme() {
     const theme = new CrystalCaveTheme();
     themes.push(theme);
     vi.spyOn(theme, 'setupGpuResilience').mockImplementation(() => {});
+    theme.loadAssets = vi.fn(async () => stubAssets());
     return theme;
 }
 
+const REACTIONS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTSpin', 'onBackToBack', 'onPerfectClear',
+    'onLevelUp', 'onGameOver'];
+
 function stubSceneBuild(theme) {
     vi.spyOn(theme, 'buildScene').mockImplementation(() => {
+        const frame = { energy: 0.2, resonance: 0.3 };
         theme.scene = { clear: vi.fn() };
-        theme.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 220);
-        theme.atmosphere = {
-            group: { name: 'crystal-cave-atmosphere' },
-            uniforms: { time: { value: 0 }, energy: { value: 0.2 }, resonance: { value: 0.3 } },
+        theme.camera = new THREE.PerspectiveCamera(55, 1, 0.2, 320);
+        theme.world = {
+            group: { name: 'Crystal Cave' },
             update: vi.fn(),
             prepareCamera: vi.fn(),
+            setBoard: vi.fn(),
+            getDiagnostics: vi.fn(() => ({ crystals: 3 })),
             dispose: vi.fn(),
         };
         theme.reactions = {
-            pieceLock: vi.fn(),
-            lineClear: vi.fn(),
-            combo: vi.fn(),
+            ...Object.fromEntries(REACTIONS.map((name) => [name, vi.fn()])),
             update: vi.fn(),
-            reset: vi.fn(),
+            getFrame: vi.fn(() => frame),
             dispose: vi.fn(),
         };
         theme.post = {
             useMRT: false,
-            update: vi.fn(), render: vi.fn(), setSize: vi.fn(), dispose: vi.fn(),
+            update: vi.fn(),
+            render: vi.fn(),
+            setSize: vi.fn(),
+            dispose: vi.fn(),
+            getDiagnostics: vi.fn(() => ({ disabled: false })),
         };
     });
 }
@@ -79,12 +96,17 @@ function stubSceneBuild(theme) {
 function buildStubScene(theme) {
     stubSceneBuild(theme);
     theme.buildScene();
-    return {
-        atmosphere: theme.atmosphere,
-        reactions: theme.reactions,
-        post: theme.post,
-    };
+    return { world: theme.world, reactions: theme.reactions, post: theme.post };
 }
+
+function windowListener(name) {
+    return window.addEventListener.mock.calls.findLast(([event]) => event === name)?.[1];
+}
+
+beforeAll(async () => {
+    const bytes = readFileSync(new URL('../../src/themes/crystal-cave/assets/cavern.glb', import.meta.url));
+    cavern = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
+});
 
 beforeEach(() => {
     themes = [];
@@ -117,7 +139,7 @@ beforeEach(() => {
         hidden: false,
         getElementById: (id) => (id === 'crystal-cave-theme' ? container : null),
         querySelector: () => null,
-        querySelectorAll: () => [container],
+        querySelectorAll: () => [],
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
     });
@@ -163,51 +185,76 @@ describe('Crystal Cave gameplay event normalization', () => {
         theme.setupEventListeners();
         theme.setupEventListeners();
         eventBus.emit(EVENTS.PIECE_LOCK, { detail: { piece: { x: 2 } } });
-        eventBus.emit(EVENTS.LINE_CLEAR, { detail: { lines: '4' } });
+        eventBus.emit(EVENTS.LINE_CLEAR, { detail: { lines: '4', clearedRows: [20, 21, 22, 23] } });
         eventBus.emit(EVENTS.COMBO, { detail: { combo: 8 } });
-        expect(reactions.pieceLock).toHaveBeenCalledExactlyOnceWith({ piece: { x: 2 } });
-        expect(reactions.lineClear).toHaveBeenCalledOnce();
-        expect(reactions.lineClear.mock.calls[0][0]).toBe(4);
-        expect(reactions.combo).toHaveBeenCalledOnce();
-        expect(reactions.combo.mock.calls[0][0]).toBe(8);
+        expect(reactions.onPieceLock).toHaveBeenCalledExactlyOnceWith({ piece: { x: 2 } });
+        expect(reactions.onLineClear).toHaveBeenCalledExactlyOnceWith(4, { lines: '4', clearedRows: [20, 21, 22, 23] });
+        expect(reactions.onCombo).toHaveBeenCalledExactlyOnceWith(8);
         theme.stop();
         theme.stop();
         eventBus.emit(EVENTS.PIECE_LOCK, {});
         eventBus.emit(EVENTS.LINE_CLEAR, { count: 4 });
         eventBus.emit(EVENTS.COMBO, { comboCount: 8 });
-        expect(reactions.pieceLock).toHaveBeenCalledOnce();
-        expect(reactions.lineClear).toHaveBeenCalledOnce();
-        expect(reactions.combo).toHaveBeenCalledOnce();
+        expect(reactions.onPieceLock).toHaveBeenCalledOnce();
+        expect(reactions.onLineClear).toHaveBeenCalledOnce();
+        expect(reactions.onCombo).toHaveBeenCalledOnce();
         expect(theme.eventUnsubscribers).toHaveLength(0);
         expect(window.removeEventListener).toHaveBeenCalledWith('settingsChanged', expect.any(Function), undefined);
     });
 
-    it.each(['inactive', 'paused', 'disabled', 'cleaned'])('suppresses all %s scenery effects', (state) => {
+    it('routes drops, flourishes and the end of a game to the director', () => {
         const theme = createTheme();
-        theme.isActive = state !== 'inactive';
-        theme.isPaused = state === 'paused';
-        theme.cleanupComplete = state === 'cleaned';
-        if (state === 'disabled') window.settings.backgroundComboEffects = false;
+        theme.isActive = true;
         const { reactions } = buildStubScene(theme);
-        theme.onPieceLock({});
-        theme.onLineClear(4);
-        theme.onCombo(8);
-        expect(reactions.pieceLock).not.toHaveBeenCalled();
-        expect(reactions.lineClear).not.toHaveBeenCalled();
-        expect(reactions.combo).not.toHaveBeenCalled();
+        theme.setupEventListeners();
+        eventBus.emit(EVENTS.HARD_DROP, { piece: { x: 1 }, distance: 12 });
+        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.B2B, { active: true });
+        eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
+        expect(reactions.onHardDrop).toHaveBeenCalledExactlyOnceWith({ piece: { x: 1 }, distance: 12 });
+        expect(reactions.onTSpin).toHaveBeenCalledExactlyOnceWith({ lineCount: 2 });
+        expect(reactions.onBackToBack).toHaveBeenCalledOnce();
+        expect(reactions.onPerfectClear).toHaveBeenCalledOnce();
+        expect(reactions.onLevelUp).toHaveBeenCalledOnce();
+        windowListener('gameOver')();
+        expect(reactions.onGameOver).toHaveBeenCalledOnce();
     });
 
-    it('suppresses lock ripples without disabling clear or combo effects', () => {
+    it.each(['inactive', 'paused', 'disabled', 'cleaned', 'hidden', 'rendering paused'])(
+        'suppresses all %s scenery effects',
+        (state) => {
+            const theme = createTheme();
+            theme.isActive = state !== 'inactive';
+            theme.isPaused = state === 'paused';
+            theme.cleanupComplete = state === 'cleaned';
+            if (state === 'disabled') window.settings.backgroundComboEffects = false;
+            if (state === 'hidden') document.hidden = true;
+            if (state === 'rendering paused') window.isRenderingPaused = true;
+            const { reactions } = buildStubScene(theme);
+            theme.onHardDrop({ distance: 9 });
+            theme.onPieceLock({});
+            theme.onLineClear(4);
+            theme.onCombo(8);
+            theme.onFlourish('onTSpin', {});
+            theme.onFlourish('onPerfectClear');
+            for (const name of REACTIONS) expect(reactions[name]).not.toHaveBeenCalled();
+        },
+    );
+
+    it('suppresses lock light without disabling clear or combo effects', () => {
         const theme = createTheme();
         theme.isActive = true;
         window.settings.pieceLockRipple = false;
         const { reactions } = buildStubScene(theme);
+        theme.onHardDrop({ distance: 9 });
         theme.onPieceLock();
         theme.onLineClear({ count: 4 });
         theme.onCombo({ count: 8 });
-        expect(reactions.pieceLock).not.toHaveBeenCalled();
-        expect(reactions.lineClear.mock.calls[0][0]).toBe(4);
-        expect(reactions.combo.mock.calls[0][0]).toBe(8);
+        expect(reactions.onHardDrop).not.toHaveBeenCalled();
+        expect(reactions.onPieceLock).not.toHaveBeenCalled();
+        expect(reactions.onLineClear.mock.calls[0][0]).toBe(4);
+        expect(reactions.onCombo.mock.calls[0][0]).toBe(8);
     });
 
     it('ignores nonpositive clears, keeps the unknown-payload default and bounds large counts', () => {
@@ -217,10 +264,10 @@ describe('Crystal Cave gameplay event normalization', () => {
         theme.onLineClear(0);
         theme.onLineClear({ detail: { lineCount: -2 } });
         theme.onLineClear({ lines: '0' });
-        expect(reactions.lineClear).not.toHaveBeenCalled();
+        expect(reactions.onLineClear).not.toHaveBeenCalled();
         theme.onLineClear({});
         theme.onLineClear({ lineCount: 10000 });
-        expect(reactions.lineClear.mock.calls.map(([count]) => count)).toEqual([1, 4]);
+        expect(reactions.onLineClear.mock.calls.map(([count]) => count)).toEqual([1, 4]);
     });
 
     it('keeps absent, zero and malformed combos quiet while bounding the largest combo', () => {
@@ -230,10 +277,23 @@ describe('Crystal Cave gameplay event normalization', () => {
         for (const payload of [undefined, {}, 0, -4, { combo: '0' }, { combo: Infinity }, { count: true }]) {
             theme.onCombo(payload);
         }
-        expect(reactions.combo).not.toHaveBeenCalled();
+        expect(reactions.onCombo).not.toHaveBeenCalled();
         theme.onCombo({ detail: { comboCount: '8.9' } });
         theme.onCombo({ count: 1e12 });
-        expect(reactions.combo.mock.calls.map(([count]) => count)).toEqual([8, 32]);
+        expect(reactions.onCombo.mock.calls.map(([count]) => count)).toEqual([8, 32]);
+    });
+
+    it('survives events that arrive before the scene exists', () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        expect(() => {
+            theme.onHardDrop({});
+            theme.onPieceLock({});
+            theme.onLineClear(2);
+            theme.onCombo(3);
+            theme.onFlourish('onLevelUp');
+            theme.onFlourish('notAMethod');
+        }).not.toThrow();
     });
 });
 
@@ -261,17 +321,17 @@ describe('Crystal Cave quality and responsive scene routing', () => {
 
     it.each([[1440, 900], [390, 844]])('prepares hero composition and post size at viewport %sx%s', (width, height) => {
         const theme = createTheme();
-        const { atmosphere, post } = buildStubScene(theme);
+        const { world, post } = buildStubScene(theme);
         theme.renderer = new THREE.WebGPURenderer({ forceWebGL: true });
         theme.resize(width, height);
         const aspect = width / height;
         expect(theme.camera.aspect).toBeCloseTo(aspect);
-        expect(atmosphere.prepareCamera).toHaveBeenCalledOnce();
-        expect(atmosphere.prepareCamera.mock.calls[0][0]).toBeCloseTo(aspect);
+        expect(world.prepareCamera).toHaveBeenCalledOnce();
+        expect(world.prepareCamera.mock.calls[0][0]).toBeCloseTo(aspect);
         expect(post.setSize).toHaveBeenCalledExactlyOnceWith(width, height);
         expect(theme.renderer.setSize).toHaveBeenCalledExactlyOnceWith(width, height);
         theme.resize(width, height);
-        expect(atmosphere.prepareCamera).toHaveBeenCalledOnce();
+        expect(world.prepareCamera).toHaveBeenCalledOnce();
         expect(theme.renderer.setSize).toHaveBeenCalledOnce();
     });
 
@@ -293,14 +353,14 @@ describe('Crystal Cave quality and responsive scene routing', () => {
         theme.isActive = true;
         theme.isPaused = true;
         theme.renderer = new THREE.WebGPURenderer({ forceWebGL: true });
-        const { atmosphere, post } = buildStubScene(theme);
+        const { world, post } = buildStubScene(theme);
         const start = vi.spyOn(theme, 'start').mockResolvedValue();
         theme.handleSettingsChanged({ type: 'effectQuality', value: 'low' });
         await Promise.resolve();
         expect(theme.pendingQuality).toBe('Low');
         expect(theme.rebuildPending).toBe(true);
         expect(start).not.toHaveBeenCalled();
-        expect(atmosphere.update).not.toHaveBeenCalled();
+        expect(world.update).not.toHaveBeenCalled();
         expect(post.render).not.toHaveBeenCalled();
     });
 });
@@ -309,39 +369,99 @@ describe('Crystal Cave renderer and runtime ownership', () => {
     it.each([
         ['native WebGPU', false, 'High'],
         ['node WebGL2', true, 'Low'],
-    ])('builds the real artwork and bounded event pools on %s without GPU rendering', async (_label, forceWebGL, quality) => {
+    ])('builds the real cave and its bounded event pools on %s without GPU rendering', async (_label, forceWebGL, quality) => {
         window.location.search = forceWebGL ? '?forceWebGL=1' : '';
         window.settings.effectQuality = quality;
         const theme = createTheme();
         theme.isActive = true;
+        theme.loadAssets = vi.fn(async () => parseCrystalCaveCavern(cavern));
         // This construction probe uses a renderer mock rather than executing GPU work.
-        vi.spyOn(theme, 'renderFrame').mockImplementation(() => {});
+        const frame = vi.spyOn(theme, 'renderFrame').mockImplementation(() => {});
         await theme.createScene();
-        expect(theme.scene.getObjectByName('Crystal cathedral')).toBe(theme.atmosphere.group);
-        expect(theme.scene.getObjectByName('crystal-cave-bounded-reactions')).toBe(theme.reactions.group);
-        expect(theme.getWarmupRoots()).toEqual([theme.atmosphere.group, theme.reactions.group]);
+        expect(theme.loadAssets).toHaveBeenCalledOnce();
+        expect(theme.scene.getObjectByName('Crystal Cave')).toBe(theme.world.group);
+        expect(theme.getWarmupRoots()).toEqual([theme.world.group]);
         expect(theme.post.disabled).toBe(quality === 'Low');
         expect(theme.usesMrtScenePass()).toBe(false);
-        expect(theme.atmosphere.dust.count).toBe(QUALITY_PRESETS[quality].dustCount);
-        expect(theme.atmosphere.lights.children.some((light) => light.isHemisphereLight)).toBe(true);
+        // One frame through the shipped path builds every pipeline before the first lock.
+        expect(frame).toHaveBeenCalledOnce();
         theme.scene.traverse((object) => {
             for (const material of (Array.isArray(object.material) ? object.material : [object.material])) {
                 if (material) expect(material.isNodeMaterial).toBe(true);
             }
         });
-        const geometryCount = theme.reactions.geometries.size;
-        const materialCount = theme.reactions.materials.size;
-        const eventObjects = [...theme.reactions.group.children];
+        const diagnostics = theme.getDiagnostics();
+        expect(diagnostics).toMatchObject({ quality, backend: forceWebGL ? 'WebGL2' : 'WebGPU' });
+        expect(diagnostics.world.pools.sparks).toBe(QUALITY_PRESETS[quality].sparks);
+        expect(diagnostics.world.crystals).toBeGreaterThan(500);
+        const drawables = [];
+        theme.scene.traverse((object) => { if (object.isMesh) drawables.push(object); });
+        theme.onPieceLock({
+            piece: {
+                type: 'T', x: 2, y: 20, shape: [[1, 1, 1], [0, 1, 0]],
+            },
+        });
         theme.onLineClear({ lines: 4 });
         theme.onCombo({ comboCount: 8 });
-        theme.update(0.05);
-        expect(theme.atmosphere.uniforms.energy.value).toBeGreaterThan(0);
-        expect(theme.atmosphere.uniforms.resonance.value).toBeGreaterThan(0);
-        expect(theme.post.getDiagnostics().exposure).toBeGreaterThanOrEqual(0.95);
-        expect(theme.reactions.group.children).toEqual(eventObjects);
-        expect(theme.reactions.geometries.size).toBe(geometryCount);
-        expect(theme.reactions.materials.size).toBe(materialCount);
+        for (let step = 0; step < 30; step += 1) theme.update(0.03);
+        const uniforms = theme.world.light.uniforms;
+        expect(uniforms.energy.value).toBeGreaterThan(0);
+        expect(uniforms.resonance.value).toBeGreaterThan(0);
+        expect(theme.getDiagnostics().world.activeSparks).toBeGreaterThan(0);
+        expect(theme.getDiagnostics().world.grown).toBe(4);
+        expect(theme.post.getDiagnostics().exposure).toBeGreaterThanOrEqual(1.06);
+        const after = [];
+        theme.scene.traverse((object) => { if (object.isMesh) after.push(object); });
+        expect(after).toEqual(drawables);
         expect(theme.renderer.render).not.toHaveBeenCalled();
+    });
+
+    it('keeps nothing when the cavern arrives after the theme was stopped', async () => {
+        const pending = deferred();
+        const theme = createTheme();
+        theme.isActive = true;
+        theme.lifecycleGeneration = 3;
+        theme.loadAssets = vi.fn(() => pending.promise);
+        const build = vi.spyOn(theme, 'buildScene');
+        const starting = theme.createScene(3);
+        await vi.waitFor(() => expect(theme.loadAssets).toHaveBeenCalledOnce());
+        expect(theme.loadAssets.mock.calls[0][0]()).toBe(true);
+        theme.stop();
+        expect(theme.loadAssets.mock.calls[0][0]()).toBe(false);
+        const late = stubAssets();
+        pending.resolve(late);
+        await starting;
+        expect(late.geometry.dispose).toHaveBeenCalledOnce();
+        expect(build).not.toHaveBeenCalled();
+        expect(theme.assets).toBeNull();
+        expect(theme.renderer).toBeNull();
+        expect(container.children).toHaveLength(0);
+        expect(rafs).toHaveLength(0);
+    });
+
+    it('fails the start cleanly when the cavern cannot be loaded', async () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        theme.loadAssets = vi.fn(async () => { throw new Error('cavern missing'); });
+        const build = vi.spyOn(theme, 'buildScene');
+        await expect(theme.createScene()).rejects.toThrow('cavern missing');
+        expect(build).not.toHaveBeenCalled();
+        expect(theme.renderer).toBeNull();
+        expect(container.children).toHaveLength(0);
+        expect(rendererState.candidates[0].dispose).toHaveBeenCalledOnce();
+    });
+
+    it('releases the cavern with the rest of the runtime, once', async () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        stubSceneBuild(theme);
+        await theme.createScene();
+        const { assets } = theme;
+        expect(assets.stub).toBe(true);
+        theme.stop();
+        theme.stop();
+        expect(assets.geometry.dispose).toHaveBeenCalledOnce();
+        expect(theme.assets).toBeNull();
     });
 
     it('retires renderer initialization finishing after stop without publishing a canvas', async () => {
@@ -376,7 +496,7 @@ describe('Crystal Cave renderer and runtime ownership', () => {
         expect(theme.isWebGPU).toBe(false);
         expect(container.children).toHaveLength(1);
         expect(rendererState.candidates[0].dispose).toHaveBeenCalledOnce();
-        expect(theme.getWarmupRoots()).toEqual([theme.atmosphere.group]);
+        expect(theme.getWarmupRoots()).toEqual([theme.world.group]);
     });
 
     it('honors a bare forceWebGL URL flag without attempting a native device', async () => {
@@ -395,7 +515,7 @@ describe('Crystal Cave renderer and runtime ownership', () => {
         stubSceneBuild(theme);
         await theme.createScene();
         const {
-            renderer, atmosphere, reactions, post, timer,
+            renderer, world, reactions, post, timer,
         } = theme;
         const pending = deferred();
         renderer.dispose.mockReturnValue(pending.promise);
@@ -403,7 +523,7 @@ describe('Crystal Cave renderer and runtime ownership', () => {
         theme.stop();
         theme.stop();
         expect(renderer.dispose).toHaveBeenCalledOnce();
-        expect(atmosphere.dispose).toHaveBeenCalledOnce();
+        expect(world.dispose).toHaveBeenCalledOnce();
         expect(reactions.dispose).toHaveBeenCalledOnce();
         expect(post.dispose).toHaveBeenCalledOnce();
         expect(timerDispose).toHaveBeenCalledOnce();
@@ -439,85 +559,43 @@ describe('Crystal Cave renderer and runtime ownership', () => {
     });
 });
 
-describe('Crystal Cave dormant event pool warmup', () => {
-    function createDormantPool(theme) {
-        const group = new THREE.Group();
-        group.visible = false;
-        const geometry = new THREE.PlaneGeometry(1, 1);
-        const material = new THREE.MeshBasicNodeMaterial({ transparent: true, opacity: 0, depthWrite: false });
-        const ring = new THREE.Mesh(geometry, material);
-        const shards = new THREE.InstancedMesh(geometry, material, 1);
-        shards.count = 0;
-        ring.visible = false;
-        shards.visible = false;
-        group.add(ring, shards);
-        theme.reactions.group = group;
-        theme.atmosphere.group.visible = false;
-        return {
-            group,
-            ring,
-            shards,
-            dispose: () => {
-                shards.dispose();
-                geometry.dispose();
-                material.dispose();
-            },
-        };
-    }
-
-    function expectParked(pool) {
-        expect(pool.group.visible).toBe(false);
-        expect(pool.ring.visible).toBe(false);
-        expect(pool.shards.visible).toBe(false);
-        expect(pool.ring.frustumCulled).toBe(true);
-        expect(pool.shards.frustumCulled).toBe(true);
-        expect(pool.shards.count).toBe(0);
-    }
-
-    it('reveals only dormant event draws through the shipped post render and restores them', () => {
+describe('Crystal Cave first frame', () => {
+    it('draws one frame through the shipped post path before the loop starts, without advancing time', async () => {
         const theme = createTheme();
-        const { atmosphere, reactions, post } = buildStubScene(theme);
-        theme.renderer = new THREE.WebGPURenderer({ forceWebGL: true });
-        const pool = createDormantPool(theme);
-        const updateMatrices = vi.spyOn(pool.group, 'updateMatrixWorld');
-        post.render.mockImplementation(() => {
-            expect(pool.group.visible).toBe(true);
-            expect(pool.ring.visible).toBe(true);
-            expect(pool.shards.visible).toBe(true);
-            expect(pool.ring.frustumCulled).toBe(false);
-            expect(pool.shards.frustumCulled).toBe(false);
-            expect(pool.shards.count).toBe(1);
-            expect(atmosphere.group.visible).toBe(false);
-        });
-        try {
-            expect(theme.warmEventPools()).toBe(2);
-            expect(post.render).toHaveBeenCalledOnce();
-            expect(theme.renderer.render).not.toHaveBeenCalled();
-            expect(updateMatrices).toHaveBeenCalledWith(true);
-            expectParked(pool);
-            expect(reactions.pieceLock).not.toHaveBeenCalled();
-            expect(reactions.combo).not.toHaveBeenCalled();
-            expect(reactions.update).not.toHaveBeenCalled();
-            expect(theme.time).toBe(0);
-            expect(atmosphere.uniforms.energy.value).toBe(0.2);
-            expect(atmosphere.uniforms.resonance.value).toBe(0.3);
-        } finally {
-            pool.dispose();
-        }
+        theme.isActive = true;
+        stubSceneBuild(theme);
+        await theme.createScene();
+        expect(theme.post.render).toHaveBeenCalledOnce();
+        expect(theme.renderer.render).not.toHaveBeenCalled();
+        expect(theme.time).toBe(0);
+        expect(theme.reactions.update).toHaveBeenCalledExactlyOnceWith(0);
+        for (const name of REACTIONS) expect(theme.reactions[name]).not.toHaveBeenCalled();
+        expect(rafs).toHaveLength(1);
     });
 
-    it('restores dormant event state when the shipped warm render fails', () => {
+    it('does not start a loop for a theme that was paused while it loaded', async () => {
         const theme = createTheme();
-        const { post } = buildStubScene(theme);
-        theme.renderer = new THREE.WebGPURenderer({ forceWebGL: true });
-        const pool = createDormantPool(theme);
-        post.render.mockImplementation(() => { throw new Error('warm render failed'); });
-        try {
-            expect(() => theme.warmEventPools()).toThrow('warm render failed');
-            expectParked(pool);
-        } finally {
-            pool.dispose();
-        }
+        theme.isActive = true;
+        theme.isPaused = true;
+        stubSceneBuild(theme);
+        await theme.createScene();
+        expect(rafs).toHaveLength(0);
+        expect(theme.animationLoopStarted).toBe(false);
+    });
+
+    it('exposes itself for validation only when asked and withdraws on stop', async () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        stubSceneBuild(theme);
+        await theme.createScene();
+        expect(window.__CRYSTAL_CAVE__).toBeUndefined();
+        theme.stop();
+        window.location.search = '?forceWebGL=1&themeValidation=1';
+        theme.isActive = true;
+        await theme.createScene();
+        expect(window.__CRYSTAL_CAVE__).toBe(theme);
+        theme.stop();
+        expect(window.__CRYSTAL_CAVE__).toBeUndefined();
     });
 });
 
@@ -525,7 +603,7 @@ describe('Crystal Cave animation cadence', () => {
     it('keeps scheduling skipped frames and freezes hidden simulation before clamping resumed time', () => {
         const theme = createTheme();
         theme.isActive = true;
-        const { reactions, atmosphere, post } = buildStubScene(theme);
+        const { reactions, world, post } = buildStubScene(theme);
         const timer = {
             reset: vi.fn(), update: vi.fn(), getDelta: () => 0.4, dispose: vi.fn(),
         };
@@ -548,19 +626,42 @@ describe('Crystal Cave animation cadence', () => {
         rafs[2](1200);
         expect(rafs).toHaveLength(4);
         expect(theme.time).toBe(0.05);
-        expect(reactions.update).toHaveBeenCalledExactlyOnceWith(0.05, 0.05);
-        expect(atmosphere.update.mock.calls[0].slice(0, 2)).toEqual([0.05, 0.05]);
+        expect(reactions.update).toHaveBeenCalledExactlyOnceWith(0.05);
+        expect(world.update).toHaveBeenCalledExactlyOnceWith(0.05, 0.05, reactions, theme.smoothedPointer);
         expect(post.update).toHaveBeenCalledExactlyOnceWith({ energy: 0.2, resonance: 0.3 });
         expect(post.render).toHaveBeenCalledOnce();
     });
 
     it('keeps malformed frame deltas finite and nonnegative', () => {
         const theme = createTheme();
-        const { reactions } = buildStubScene(theme);
+        const { reactions, world } = buildStubScene(theme);
         for (const delta of [NaN, Infinity, -1, undefined, 10]) theme.update(delta);
         expect(theme.time).toBe(0.05);
         expect(reactions.update.mock.calls.map(([delta]) => delta)).toEqual([0, 0, 0, 0, 0.05]);
-        expect(reactions.update.mock.calls.every(([delta, time]) => Number.isFinite(delta) && Number.isFinite(time))).toBe(true);
+        expect(world.update.mock.calls.every(([time, delta]) => Number.isFinite(delta) && Number.isFinite(time))).toBe(true);
+    });
+
+    it('follows the board card a few times a second, not every frame', () => {
+        const theme = createTheme();
+        const { world } = buildStubScene(theme);
+        for (let frame = 0; frame < 60; frame += 1) theme.update(1 / 60);
+        expect(world.setBoard.mock.calls.length).toBeGreaterThanOrEqual(2);
+        expect(world.setBoard.mock.calls.length).toBeLessThanOrEqual(3);
+        expect(world.setBoard).toHaveBeenCalledWith(null);
+    });
+
+    it('eases the pointer toward its target instead of snapping', () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        buildStubScene(theme);
+        theme.setupEventListeners();
+        windowListener('pointermove')({ clientX: 1440, clientY: 0, pointerType: 'mouse' });
+        expect(theme.pointer).toEqual({ x: 1, y: -1 });
+        theme.update(0.016);
+        expect(theme.smoothedPointer.x).toBeGreaterThan(0);
+        expect(theme.smoothedPointer.x).toBeLessThan(0.2);
+        windowListener('pointermove')({ clientX: 0, clientY: 900, pointerType: 'touch' });
+        expect(theme.pointer).toEqual({ x: 1, y: -1 });
     });
 
     it('resumes a single loop after pause even when the manager also restarts rendering', async () => {
