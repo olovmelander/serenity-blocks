@@ -5,6 +5,7 @@ import {
     STELLAR_DRIFT_COMET_CONTACT,
     STELLAR_DRIFT_REACTION_LIMITS,
     StellarDriftReactions,
+    stellarDriftEventEnvelope,
 } from '../../src/themes/stellar-drift/stellar-drift-reactions.js';
 
 const CHANNELS = ['rim', 'aurora', 'dust', 'stars', 'glow', 'impact'];
@@ -42,6 +43,8 @@ function expectBounded(reactions) {
         expect(slot.age).toBeLessThan(slot.duration);
         expect(slot.progress).toBeGreaterThanOrEqual(0);
         expect(slot.progress).toBeLessThan(1);
+        expect(slot.energy).toBeGreaterThanOrEqual(0);
+        expect(slot.energy).toBeLessThanOrEqual(slot.strength);
         expect(slot.angle).toBeGreaterThanOrEqual(0);
         expect(slot.angle).toBeLessThan(Math.PI * 2);
         expect([1, -1]).toContain(slot.direction);
@@ -69,6 +72,30 @@ function expectSameFrame(actual, expected) {
 afterEach(() => vi.useRealTimers());
 
 describe('Stellar Drift orbital reaction director', () => {
+    it('gives local event energy a short rise, visible hold and soft release', () => {
+        expect(stellarDriftEventEnvelope(0)).toBe(0);
+        expect(stellarDriftEventEnvelope(0.085)).toBe(1);
+        expect(stellarDriftEventEnvelope(0.4)).toBe(1);
+        expect(stellarDriftEventEnvelope(0.85)).toBeLessThan(0.2);
+        expect(stellarDriftEventEnvelope(1)).toBe(0);
+        for (const phase of [-1, 0, 0.05, 0.3, 0.8, 1, 2, NaN, Infinity]) {
+            expect(stellarDriftEventEnvelope(phase)).toBeGreaterThanOrEqual(0);
+            expect(stellarDriftEventEnvelope(phase)).toBeLessThanOrEqual(1);
+        }
+    });
+
+    it('preserves earned combo arcs when rapid piece locks fill a small pool', () => {
+        const reactions = create('Minimal');
+        reactions.onCombo(8);
+        reactions.update(0.16);
+        reactions.onPieceLock();
+        const comboSeeds = reactions.frame.arcs.filter((arc) => arc.kind === 'combo').map((arc) => arc.seed);
+        expect(comboSeeds).toHaveLength(2);
+        for (let index = 0; index < 40; index++) reactions.onPieceLock();
+        expect(reactions.frame.arcs.filter((arc) => arc.kind === 'combo').map((arc) => arc.seed)).toEqual(comboSeeds);
+        expectBounded(reactions);
+    });
+
     it.each(Object.entries(STELLAR_DRIFT_REACTION_LIMITS))('bounds %s tier feedback', (quality, limits) => {
         const reactions = create(quality);
         reactions.onPieceLock();

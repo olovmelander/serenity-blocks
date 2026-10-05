@@ -6,8 +6,8 @@ import { StellarDriftPost } from '../../themes/stellar-drift/stellar-drift-post.
 
 export const meta = {
     id: 'stellar-drift',
-    title: 'Stellar Drift — a quiet orbital voyage',
-    description: 'A banded gas giant, fine ice rings, nebula depth and graceful orbital reactions.',
+    title: 'Stellar Drift — a deep orbital voyage',
+    description: 'Sculpted planets, ice rings, layered cosmic dust and curving orbital celebrations.',
 };
 
 export function create({
@@ -38,6 +38,18 @@ export function create({
         renderer, scene, camera, quality,
     });
     post.setSize(window.innerWidth, window.innerHeight);
+    const pointerMove = (event) => {
+        if (event.pointerType !== 'touch') {
+            atmosphere.setPointer(
+                (event.clientX / window.innerWidth) * 2 - 1,
+                1 - (event.clientY / window.innerHeight) * 2,
+            );
+        }
+    };
+    const pointerLeave = () => atmosphere.setPointer(0, 0);
+    window.addEventListener('pointermove', pointerMove, { passive: true });
+    document.addEventListener('pointerleave', pointerLeave);
+    window.addEventListener('blur', pointerLeave);
     let overlay;
     if (params.get('board') === '1') {
         overlay = document.createElement('div');
@@ -108,6 +120,9 @@ export function create({
             };
         },
         dispose() {
+            window.removeEventListener('pointermove', pointerMove);
+            document.removeEventListener('pointerleave', pointerLeave);
+            window.removeEventListener('blur', pointerLeave);
             overlay?.remove();
             post.dispose();
             reactions.dispose();
