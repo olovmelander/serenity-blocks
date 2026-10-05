@@ -105,6 +105,10 @@ third-party or CC assets:
 - Ocean: `rare-shark-v2.glb`/`rare-shark.glb`, `rare-mantaray-self.glb`,
   `rare-whale-self.glb`, `reef-seahorse-triposr*.glb`, and the TripoSR coral library
   under `src/themes/ocean/assets/corals/triposr/`.
+- Fall: every file under `src/themes/fall/assets/` (the maple, oak and birch trees,
+  the shared leaf geometry and the distant-forest sprite sheet). These are authored
+  procedurally in Blender by `scripts/blender/fall_grove_assets.py` with no generative
+  model and no third-party source; see `src/themes/fall/assets/ATTRIBUTION.md`.
 
 ---
 
