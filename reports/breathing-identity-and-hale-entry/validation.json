@@ -1,0 +1,1669 @@
+{
+  "schemaVersion": 1,
+  "status": "pass",
+  "scope": {
+    "techniques": 12,
+    "isolatedRenderingCaptures": 64,
+    "pairedPhases": [
+      "inhale",
+      "exhale"
+    ],
+    "boxPhases": [
+      "inhale",
+      "hold1",
+      "exhale",
+      "hold2"
+    ],
+    "phoneNativeEntryCaptures": 6,
+    "singleNativePauseCaptures": 6,
+    "modeExitCases": [
+      "pending-countdown",
+      "active-session"
+    ],
+    "sourceStableFinal": true,
+    "renderingSourceStable": true
+  },
+  "limits": [
+    "Software-rendered Chrome153 checks shader compatibility, visible composition and resource bounds; physical-phone and hardware GPU frame rate remain unmeasured.",
+    "Artwork comparisons temporarily hide the shared HTML cadence guide and retain actual shipping shader output, deterministic scene time12s and90percent phase progress.",
+    "Native entry and cancellation checks run the actual Vite development application. Production build validation is recorded separately.",
+    "Session audio is muted through audioManager.setEnabled(false); no voice recording or auditory quality claim is made.",
+    "Desktop single pause/completion evidence predates the final scoped nav and mode-exit fix; latest cancellation cases validate that fix. Main pause guard and renderer source hashes are identical."
+  ],
+  "visualIdentities": [
+    {
+      "technique": "deep-relaxation",
+      "name": "Aurora Dreams",
+      "form": "rising ribbons"
+    },
+    {
+      "technique": "box-breathing",
+      "name": "Sacred Geometry",
+      "form": "four-sided square"
+    },
+    {
+      "technique": "calm-sleep",
+      "name": "Moonlit Waters",
+      "form": "crescent and water"
+    },
+    {
+      "technique": "energizing",
+      "name": "Solar Flare",
+      "form": "solar rays"
+    },
+    {
+      "technique": "coherence",
+      "name": "Heart Glow",
+      "form": "petal heartbeat"
+    },
+    {
+      "technique": "triangle",
+      "name": "Crystal Prism",
+      "form": "prism triangle"
+    },
+    {
+      "technique": "wim-hof",
+      "name": "Volcanic Fire",
+      "form": "vertical flame"
+    },
+    {
+      "technique": "ocean-breath",
+      "name": "Ocean Tide",
+      "form": "opposed wave crests"
+    },
+    {
+      "technique": "zen-garden",
+      "name": "Zen Garden",
+      "form": "brush stroke and stone"
+    },
+    {
+      "technique": "cosmic-breath",
+      "name": "Cosmic Nebula",
+      "form": "unfurling spiral"
+    },
+    {
+      "technique": "forest-breath",
+      "name": "Ancient Forest",
+      "form": "canopy and branches"
+    },
+    {
+      "technique": "electric-storm",
+      "name": "Electric Storm",
+      "form": "branched currents"
+    }
+  ],
+  "renderingMatrix": {
+    "status": "pass",
+    "sourceSHA256": {
+      "index.html": "614b3baa5a1c30044d456fa9e12db67448bf368431b27c1b3356b49bd0b3a35c",
+      "src/main.js": "12de114e6ca83bc3f7bc12e37708b36ed3121b486337df07ea4ec1430cb41d4e",
+      "src/core/game-modes/SerenityMode.js": "98e667cec6b17c370dd8ce716f0190d5f0b0ceebc7b8cc855280a60703bc6409",
+      "src/ui/serenity-hub/SerenityHub.js": "68d20f00354189f0c776f7a705993fe74d513528f755dd263d37f7b5c9e77b79",
+      "src/ui/effects/threejs-breathing-renderer.js": "1a46e72027124c7e403a7c3b687c3d720fc55eed5fdb72247c72baeeeaad6e08",
+      "src/ui/effects/breathing-atmosphere.js": "5281fc6d367777249e2fc9fc0e383e5e7db0aa7c3463330b95de8538c73bd7da",
+      "src/ui/effects/breathing-forms.js": "052dbee23e11bc26359e8520b760b2e871223a1ef720a97e34b3be8550b4bc4b",
+      "src/ui/effects/breathing-guidance.js": "cbf050d7d0a77a6627799e44408e1e9d71ed680f9e7a00b023718eed7192c030",
+      "src/ui/effects/enhanced-breathing-indicator.js": "42a2dc8d4709975cc87c619d1a65975edeb0b5e037719e60b046618bb1bba87e",
+      "src/ui/effects/breathwork-session-manager.js": "eefa7d7ee2c88ca0bdf2a35dd09d6daaac6bfdbd32e1d157a0802ad6f542a324",
+      "src/ui/serenity-hub/SessionsTab.js": "bc924ec375624b620836048045dc9ab78468f181cf41ef1617b865675a903d62",
+      "src/ui/serenity-hub/BreathingTab.js": "6a8272dd5a04f05d41bade8ae7151e68bf7f47546ba199dc3c650f77f5123b1c",
+      "public/styles/main.css": "b9e4afd13b0a116d15552ca7ed88d0d8ffc668191fbfe0588de91b113486d780",
+      "public/styles/serenity-hub.css": "2f0c962b56372076f39f1ec39267641d6c2c8961bf60e3e164c2ecdefd4290b0",
+      "public/styles/serenity-hub-aaa.css": "aa7bb2d19ff3eb562d459dc63606f5759916ee2f3f40609bd1652ea26b8ddf3a",
+      "public/styles/breathing-immersive.css": "f3d0c0775c5dd5acfd82ae50bac2e27a03e21082e97a069196bd31b67578111e",
+      "public/styles/breathwork-sessions.css": "df8462eaec28080b3aa070ba890e153fad711a10f3900048f1f83a6a4ab7a010",
+      "public/styles/breathing-library.css": "b8bc80548f1fefd0875e28ae170380e6bdd46e43bdacd3ff99704fc942b3cc67"
+    },
+    "sourceSHA256After": {
+      "index.html": "614b3baa5a1c30044d456fa9e12db67448bf368431b27c1b3356b49bd0b3a35c",
+      "src/main.js": "12de114e6ca83bc3f7bc12e37708b36ed3121b486337df07ea4ec1430cb41d4e",
+      "src/core/game-modes/SerenityMode.js": "98e667cec6b17c370dd8ce716f0190d5f0b0ceebc7b8cc855280a60703bc6409",
+      "src/ui/serenity-hub/SerenityHub.js": "68d20f00354189f0c776f7a705993fe74d513528f755dd263d37f7b5c9e77b79",
+      "src/ui/effects/threejs-breathing-renderer.js": "1a46e72027124c7e403a7c3b687c3d720fc55eed5fdb72247c72baeeeaad6e08",
+      "src/ui/effects/breathing-atmosphere.js": "5281fc6d367777249e2fc9fc0e383e5e7db0aa7c3463330b95de8538c73bd7da",
+      "src/ui/effects/breathing-forms.js": "052dbee23e11bc26359e8520b760b2e871223a1ef720a97e34b3be8550b4bc4b",
+      "src/ui/effects/breathing-guidance.js": "cbf050d7d0a77a6627799e44408e1e9d71ed680f9e7a00b023718eed7192c030",
+      "src/ui/effects/enhanced-breathing-indicator.js": "42a2dc8d4709975cc87c619d1a65975edeb0b5e037719e60b046618bb1bba87e",
+      "src/ui/effects/breathwork-session-manager.js": "eefa7d7ee2c88ca0bdf2a35dd09d6daaac6bfdbd32e1d157a0802ad6f542a324",
+      "src/ui/serenity-hub/SessionsTab.js": "bc924ec375624b620836048045dc9ab78468f181cf41ef1617b865675a903d62",
+      "src/ui/serenity-hub/BreathingTab.js": "6a8272dd5a04f05d41bade8ae7151e68bf7f47546ba199dc3c650f77f5123b1c",
+      "public/styles/main.css": "b9e4afd13b0a116d15552ca7ed88d0d8ffc668191fbfe0588de91b113486d780",
+      "public/styles/serenity-hub.css": "2f0c962b56372076f39f1ec39267641d6c2c8961bf60e3e164c2ecdefd4290b0",
+      "public/styles/serenity-hub-aaa.css": "aa7bb2d19ff3eb562d459dc63606f5759916ee2f3f40609bd1652ea26b8ddf3a",
+      "public/styles/breathing-immersive.css": "f3d0c0775c5dd5acfd82ae50bac2e27a03e21082e97a069196bd31b67578111e",
+      "public/styles/breathwork-sessions.css": "df8462eaec28080b3aa070ba890e153fad711a10f3900048f1f83a6a4ab7a010",
+      "public/styles/breathing-library.css": "b8bc80548f1fefd0875e28ae170380e6bdd46e43bdacd3ff99704fc942b3cc67"
+    },
+    "renderingSourceStable": true,
+    "profiles": [
+      {
+        "profile": {
+          "id": "desktop",
+          "width": 1440,
+          "height": 900,
+          "quality": "High",
+          "mobile": false
+        },
+        "status": "pass",
+        "captureCount": 33,
+        "captures": [
+          {
+            "file": "desktop-deep-relaxation-inhale.png",
+            "technique": "deep-relaxation",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-deep-relaxation-exhale.png",
+            "technique": "deep-relaxation",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-box-breathing-inhale.png",
+            "technique": "box-breathing",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-box-breathing-exhale.png",
+            "technique": "box-breathing",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-box-breathing-hold1.png",
+            "technique": "box-breathing",
+            "phase": "hold1",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-box-breathing-hold2.png",
+            "technique": "box-breathing",
+            "phase": "hold2",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-calm-sleep-inhale.png",
+            "technique": "calm-sleep",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-calm-sleep-exhale.png",
+            "technique": "calm-sleep",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-energizing-inhale.png",
+            "technique": "energizing",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-energizing-exhale.png",
+            "technique": "energizing",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-coherence-inhale.png",
+            "technique": "coherence",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-coherence-exhale.png",
+            "technique": "coherence",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-triangle-inhale.png",
+            "technique": "triangle",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-triangle-exhale.png",
+            "technique": "triangle",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-wim-hof-inhale.png",
+            "technique": "wim-hof",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-wim-hof-exhale.png",
+            "technique": "wim-hof",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-ocean-breath-inhale.png",
+            "technique": "ocean-breath",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-ocean-breath-exhale.png",
+            "technique": "ocean-breath",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-zen-garden-inhale.png",
+            "technique": "zen-garden",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-zen-garden-exhale.png",
+            "technique": "zen-garden",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-cosmic-breath-inhale.png",
+            "technique": "cosmic-breath",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-cosmic-breath-exhale.png",
+            "technique": "cosmic-breath",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-forest-breath-inhale.png",
+            "technique": "forest-breath",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-forest-breath-exhale.png",
+            "technique": "forest-breath",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-electric-storm-inhale.png",
+            "technique": "electric-storm",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-electric-storm-exhale.png",
+            "technique": "electric-storm",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-alignment-calm-sleep-ultrawide.png",
+            "technique": "calm-sleep",
+            "phase": "inhale",
+            "viewport": {
+              "width": 2560,
+              "height": 600,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-alignment-energizing-ultrawide.png",
+            "technique": "energizing",
+            "phase": "inhale",
+            "viewport": {
+              "width": 2560,
+              "height": 600,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "desktop-reduced-motion-inhale.png",
+            "technique": "forest-breath",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": false
+          },
+          {
+            "file": "desktop-reduced-motion-exhale.png",
+            "technique": "forest-breath",
+            "phase": "exhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": false
+          },
+          {
+            "file": "desktop-fallback-deep-relaxation.png",
+            "technique": "deep-relaxation",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": false
+          },
+          {
+            "file": "desktop-fallback-box-breathing.png",
+            "technique": "box-breathing",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": false
+          },
+          {
+            "file": "desktop-fallback-triangle.png",
+            "technique": "triangle",
+            "phase": "inhale",
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "artworkOnly": false
+          }
+        ],
+        "console": [
+          {
+            "type": "warning",
+            "text": "THREE.WARNING: Multiple instances of Three.js being imported."
+          },
+          {
+            "type": "warning",
+            "text": "THREE.WebGLRenderer: WEBGL_lose_context extension not supported."
+          }
+        ],
+        "failures": [],
+        "maxDrawCalls": 3,
+        "maxParticlePoints": 650,
+        "resourceSwitchCheck": {
+          "switches": 26,
+          "before": {
+            "geometries": 3,
+            "textures": 0,
+            "programs": 3
+          },
+          "after": {
+            "geometries": 3,
+            "textures": 0,
+            "programs": 3
+          }
+        },
+        "boundedSubmissionSample": {
+          "count": 24,
+          "maxCalls": 3
+        },
+        "nativeResizeObserver": [
+          {
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "canvas": {
+              "width": 390,
+              "height": 591
+            },
+            "container": {
+              "width": 390,
+              "height": 590.796875,
+              "clientWidth": 390,
+              "clientHeight": 591
+            },
+            "camera": {
+              "aspect": 0.6598984771573604,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            }
+          },
+          {
+            "viewport": {
+              "width": 844,
+              "height": 390,
+              "dpr": 1
+            },
+            "canvas": {
+              "width": 726,
+              "height": 367
+            },
+            "container": {
+              "width": 725.828125,
+              "height": 366.59375,
+              "clientWidth": 726,
+              "clientHeight": 367
+            },
+            "camera": {
+              "aspect": 1.978201634877384,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            }
+          },
+          {
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "dpr": 1
+            },
+            "canvas": {
+              "width": 1020,
+              "height": 738
+            },
+            "container": {
+              "width": 1020,
+              "height": 738,
+              "clientWidth": 1020,
+              "clientHeight": 738
+            },
+            "camera": {
+              "aspect": 1.3821138211382114,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            }
+          }
+        ],
+        "reducedMotion": {
+          "inhale": {
+            "motion": 0,
+            "breath": 0.9994399999999999
+          },
+          "exhale": {
+            "motion": 0,
+            "breath": 0.30056000000000005
+          }
+        },
+        "contextLossFallback": {
+          "supported": true,
+          "rendererReady": false,
+          "contextLost": true,
+          "captures": [
+            "desktop-fallback-deep-relaxation.png",
+            "desktop-fallback-box-breathing.png",
+            "desktop-fallback-triangle.png"
+          ]
+        },
+        "teardown": {
+          "active": false,
+          "rendererRunning": false,
+          "raf": null,
+          "pendingUI": 0,
+          "phaseTimeouts": 0,
+          "canvasCount": 0
+        }
+      },
+      {
+        "profile": {
+          "id": "portrait",
+          "width": 390,
+          "height": 844,
+          "quality": "Low",
+          "mobile": true
+        },
+        "status": "pass",
+        "captureCount": 31,
+        "captures": [
+          {
+            "file": "portrait-deep-relaxation-inhale.png",
+            "technique": "deep-relaxation",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-deep-relaxation-exhale.png",
+            "technique": "deep-relaxation",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-box-breathing-inhale.png",
+            "technique": "box-breathing",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-box-breathing-exhale.png",
+            "technique": "box-breathing",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-box-breathing-hold1.png",
+            "technique": "box-breathing",
+            "phase": "hold1",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-box-breathing-hold2.png",
+            "technique": "box-breathing",
+            "phase": "hold2",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-calm-sleep-inhale.png",
+            "technique": "calm-sleep",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-calm-sleep-exhale.png",
+            "technique": "calm-sleep",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-energizing-inhale.png",
+            "technique": "energizing",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-energizing-exhale.png",
+            "technique": "energizing",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-coherence-inhale.png",
+            "technique": "coherence",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-coherence-exhale.png",
+            "technique": "coherence",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-triangle-inhale.png",
+            "technique": "triangle",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-triangle-exhale.png",
+            "technique": "triangle",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-wim-hof-inhale.png",
+            "technique": "wim-hof",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-wim-hof-exhale.png",
+            "technique": "wim-hof",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-ocean-breath-inhale.png",
+            "technique": "ocean-breath",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-ocean-breath-exhale.png",
+            "technique": "ocean-breath",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-zen-garden-inhale.png",
+            "technique": "zen-garden",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-zen-garden-exhale.png",
+            "technique": "zen-garden",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-cosmic-breath-inhale.png",
+            "technique": "cosmic-breath",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-cosmic-breath-exhale.png",
+            "technique": "cosmic-breath",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-forest-breath-inhale.png",
+            "technique": "forest-breath",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-forest-breath-exhale.png",
+            "technique": "forest-breath",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-electric-storm-inhale.png",
+            "technique": "electric-storm",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-electric-storm-exhale.png",
+            "technique": "electric-storm",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": true
+          },
+          {
+            "file": "portrait-reduced-motion-inhale.png",
+            "technique": "forest-breath",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": false
+          },
+          {
+            "file": "portrait-reduced-motion-exhale.png",
+            "technique": "forest-breath",
+            "phase": "exhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": false
+          },
+          {
+            "file": "portrait-fallback-deep-relaxation.png",
+            "technique": "deep-relaxation",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": false
+          },
+          {
+            "file": "portrait-fallback-box-breathing.png",
+            "technique": "box-breathing",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": false
+          },
+          {
+            "file": "portrait-fallback-triangle.png",
+            "technique": "triangle",
+            "phase": "inhale",
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "artworkOnly": false
+          }
+        ],
+        "console": [
+          {
+            "type": "warning",
+            "text": "THREE.WebGLRenderer: WEBGL_lose_context extension not supported."
+          }
+        ],
+        "failures": [],
+        "maxDrawCalls": 3,
+        "maxParticlePoints": 220,
+        "resourceSwitchCheck": {
+          "switches": 26,
+          "before": {
+            "geometries": 3,
+            "textures": 0,
+            "programs": 3
+          },
+          "after": {
+            "geometries": 3,
+            "textures": 0,
+            "programs": 3
+          }
+        },
+        "boundedSubmissionSample": {
+          "count": 24,
+          "maxCalls": 3
+        },
+        "nativeResizeObserver": [
+          {
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "canvas": {
+              "width": 390,
+              "height": 591
+            },
+            "container": {
+              "width": 390,
+              "height": 590.796875,
+              "clientWidth": 390,
+              "clientHeight": 591
+            },
+            "camera": {
+              "aspect": 0.6598984771573604,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            }
+          },
+          {
+            "viewport": {
+              "width": 844,
+              "height": 390,
+              "dpr": 1
+            },
+            "canvas": {
+              "width": 726,
+              "height": 367
+            },
+            "container": {
+              "width": 725.828125,
+              "height": 366.59375,
+              "clientWidth": 726,
+              "clientHeight": 367
+            },
+            "camera": {
+              "aspect": 1.978201634877384,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            }
+          },
+          {
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "dpr": 1
+            },
+            "canvas": {
+              "width": 390,
+              "height": 591
+            },
+            "container": {
+              "width": 390,
+              "height": 590.796875,
+              "clientWidth": 390,
+              "clientHeight": 591
+            },
+            "camera": {
+              "aspect": 0.6598984771573604,
+              "position": [
+                0,
+                0,
+                6
+              ]
+            }
+          }
+        ],
+        "reducedMotion": {
+          "inhale": {
+            "motion": 0,
+            "breath": 0.9994399999999999
+          },
+          "exhale": {
+            "motion": 0,
+            "breath": 0.30056000000000005
+          }
+        },
+        "contextLossFallback": {
+          "supported": true,
+          "rendererReady": false,
+          "contextLost": true,
+          "captures": [
+            "portrait-fallback-deep-relaxation.png",
+            "portrait-fallback-box-breathing.png",
+            "portrait-fallback-triangle.png"
+          ]
+        },
+        "teardown": {
+          "active": false,
+          "rendererRunning": false,
+          "raf": null,
+          "pendingUI": 0,
+          "phaseTimeouts": 0,
+          "canvasCount": 0
+        }
+      }
+    ]
+  },
+  "finalNativePhoneEntry": {
+    "status": "pass",
+    "sourceSHA256": {
+      "index.html": "614b3baa5a1c30044d456fa9e12db67448bf368431b27c1b3356b49bd0b3a35c",
+      "src/main.js": "12de114e6ca83bc3f7bc12e37708b36ed3121b486337df07ea4ec1430cb41d4e",
+      "src/core/game-modes/SerenityMode.js": "98e667cec6b17c370dd8ce716f0190d5f0b0ceebc7b8cc855280a60703bc6409",
+      "src/ui/serenity-hub/SerenityHub.js": "d9c48d4faf7190c028de7ae4a9211c86a3aa90a70dc0417b640b59fae1c21c15",
+      "src/ui/effects/threejs-breathing-renderer.js": "1a46e72027124c7e403a7c3b687c3d720fc55eed5fdb72247c72baeeeaad6e08",
+      "src/ui/effects/breathing-atmosphere.js": "5281fc6d367777249e2fc9fc0e383e5e7db0aa7c3463330b95de8538c73bd7da",
+      "src/ui/effects/breathing-forms.js": "052dbee23e11bc26359e8520b760b2e871223a1ef720a97e34b3be8550b4bc4b",
+      "src/ui/effects/breathing-guidance.js": "cbf050d7d0a77a6627799e44408e1e9d71ed680f9e7a00b023718eed7192c030",
+      "src/ui/effects/enhanced-breathing-indicator.js": "42a2dc8d4709975cc87c619d1a65975edeb0b5e037719e60b046618bb1bba87e",
+      "src/ui/effects/breathwork-session-manager.js": "eefa7d7ee2c88ca0bdf2a35dd09d6daaac6bfdbd32e1d157a0802ad6f542a324",
+      "src/ui/serenity-hub/SessionsTab.js": "bc924ec375624b620836048045dc9ab78468f181cf41ef1617b865675a903d62",
+      "src/ui/serenity-hub/BreathingTab.js": "6a8272dd5a04f05d41bade8ae7151e68bf7f47546ba199dc3c650f77f5123b1c",
+      "public/styles/main.css": "b9e4afd13b0a116d15552ca7ed88d0d8ffc668191fbfe0588de91b113486d780",
+      "public/styles/serenity-hub.css": "2f0c962b56372076f39f1ec39267641d6c2c8961bf60e3e164c2ecdefd4290b0",
+      "public/styles/serenity-hub-aaa.css": "aa7bb2d19ff3eb562d459dc63606f5759916ee2f3f40609bd1652ea26b8ddf3a",
+      "public/styles/breathing-immersive.css": "f3d0c0775c5dd5acfd82ae50bac2e27a03e21082e97a069196bd31b67578111e",
+      "public/styles/breathwork-sessions.css": "16248a37f078e352d40c7c50dfdd236b182b5a88cd43497d9a3c87ca020277a7",
+      "public/styles/breathing-library.css": "b8bc80548f1fefd0875e28ae170380e6bdd46e43bdacd3ff99704fc942b3cc67"
+    },
+    "sourceStable": true,
+    "result": {
+      "id": "hale-entry-serenity",
+      "modeId": "serenity",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "console": [],
+      "screenshots": [
+        "hale-entry-serenity-catalogue.png",
+        "hale-entry-serenity-breathing.png",
+        "hale-entry-serenity-preparation.png",
+        "hale-entry-serenity-countdown.png",
+        "hale-entry-serenity-guided.png",
+        "hale-entry-serenity-completion.png"
+      ],
+      "failures": [],
+      "globalHub": {
+        "hasModeControls": false,
+        "afterStart": true,
+        "afterStop": false
+      },
+      "haleEntry": {
+        "label": "Hale sessions\nGuided breathwork",
+        "cardAction": "Start Hale Base\n\u2192",
+        "selectedTabBounds": {
+          "x": 288.2265625,
+          "y": 155.640625,
+          "width": 78,
+          "height": 43
+        },
+        "pausedWhileHubOpen": false,
+        "libraryRoute": "sessions"
+      },
+      "breathing": {
+        "mode": "serenity",
+        "active": true,
+        "technique": "deep-relaxation",
+        "canvasCount": 1
+      },
+      "standaloneGuidanceBounds": {
+        "entry": {
+          "selector": "#hale-sessions-btn",
+          "left": 176.703125,
+          "right": 313,
+          "top": 591.453125,
+          "bottom": 641.453125
+        },
+        "guidance": [
+          {
+            "selector": ".breathing-phase-steps",
+            "left": 89.734375,
+            "right": 300.265625,
+            "top": 731.734375,
+            "bottom": 742.734375
+          }
+        ],
+        "overlaps": []
+      },
+      "preparation": {
+        "beginEnabled": true,
+        "label": "Start Hale Base\n\u2192",
+        "beginBounds": {
+          "x": 26.8046875,
+          "y": 631.640625,
+          "width": 336.390625,
+          "height": 46
+        }
+      },
+      "countdown": "A MOMENT TO ARRIVE\n\nYour intention: Present Moment\n\n3\n\nFind a comfortable position\n\nNothing to achieve. Just be here.\nBack to preparation",
+      "session": {
+        "session": "BASE",
+        "externallyControlled": true,
+        "phase": "grounding",
+        "hasHUDState": true,
+        "hubHidden": true
+      },
+      "guidedGuidanceBounds": {
+        "entry": {
+          "selector": "#hale-sessions-btn",
+          "left": 176.703125,
+          "right": 313,
+          "top": 591.453125,
+          "bottom": 641.453125
+        },
+        "guidance": [
+          {
+            "selector": ".breathing-phase-steps",
+            "left": 89.734375,
+            "right": 300.265625,
+            "top": 714.84375,
+            "bottom": 725.84375
+          },
+          {
+            "selector": ".session-progress-container",
+            "left": 105,
+            "right": 285,
+            "top": 802,
+            "bottom": 829
+          }
+        ],
+        "overlaps": []
+      },
+      "completion": {
+        "activeSession": false,
+        "indicatorActive": false,
+        "completionSession": "BASE",
+        "currentTab": "sessions"
+      },
+      "completionScroll": {
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "scrollTop": 378,
+        "scrollHeight": 563,
+        "clientHeight": 185,
+        "dialog": {
+          "top": 180.40625,
+          "bottom": 365.59375
+        },
+        "button": {
+          "top": 279.5,
+          "bottom": 325.5
+        },
+        "reachable": true,
+        "clicked": true
+      },
+      "breathingConsoleErrors": [],
+      "status": "pass"
+    }
+  },
+  "singlePauseAndCompletion": {
+    "status": "pass",
+    "sourceSHA256": {
+      "index.html": "614b3baa5a1c30044d456fa9e12db67448bf368431b27c1b3356b49bd0b3a35c",
+      "src/main.js": "12de114e6ca83bc3f7bc12e37708b36ed3121b486337df07ea4ec1430cb41d4e",
+      "src/core/game-modes/SerenityMode.js": "98e667cec6b17c370dd8ce716f0190d5f0b0ceebc7b8cc855280a60703bc6409",
+      "src/ui/serenity-hub/SerenityHub.js": "dba8933e7bc1f69a6adb03dea14454386250837f7e3876a99b7fa593718c3f80",
+      "src/ui/effects/threejs-breathing-renderer.js": "1a46e72027124c7e403a7c3b687c3d720fc55eed5fdb72247c72baeeeaad6e08",
+      "src/ui/effects/breathing-atmosphere.js": "5281fc6d367777249e2fc9fc0e383e5e7db0aa7c3463330b95de8538c73bd7da",
+      "src/ui/effects/breathing-forms.js": "052dbee23e11bc26359e8520b760b2e871223a1ef720a97e34b3be8550b4bc4b",
+      "src/ui/effects/breathing-guidance.js": "cbf050d7d0a77a6627799e44408e1e9d71ed680f9e7a00b023718eed7192c030",
+      "src/ui/effects/enhanced-breathing-indicator.js": "42a2dc8d4709975cc87c619d1a65975edeb0b5e037719e60b046618bb1bba87e",
+      "src/ui/effects/breathwork-session-manager.js": "eefa7d7ee2c88ca0bdf2a35dd09d6daaac6bfdbd32e1d157a0802ad6f542a324",
+      "src/ui/serenity-hub/SessionsTab.js": "bc924ec375624b620836048045dc9ab78468f181cf41ef1617b865675a903d62",
+      "src/ui/serenity-hub/BreathingTab.js": "6a8272dd5a04f05d41bade8ae7151e68bf7f47546ba199dc3c650f77f5123b1c",
+      "public/styles/main.css": "b9e4afd13b0a116d15552ca7ed88d0d8ffc668191fbfe0588de91b113486d780",
+      "public/styles/serenity-hub.css": "2f0c962b56372076f39f1ec39267641d6c2c8961bf60e3e164c2ecdefd4290b0",
+      "public/styles/serenity-hub-aaa.css": "aa7bb2d19ff3eb562d459dc63606f5759916ee2f3f40609bd1652ea26b8ddf3a",
+      "public/styles/breathing-immersive.css": "f3d0c0775c5dd5acfd82ae50bac2e27a03e21082e97a069196bd31b67578111e",
+      "public/styles/breathwork-sessions.css": "df8462eaec28080b3aa070ba890e153fad711a10f3900048f1f83a6a4ab7a010",
+      "public/styles/breathing-library.css": "b8bc80548f1fefd0875e28ae170380e6bdd46e43bdacd3ff99704fc942b3cc67"
+    },
+    "scope": "Native single-player start/pause/completion before final navigation and mode-boundary cleanup.",
+    "result": {
+      "id": "hale-entry-single",
+      "modeId": "single",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "globalHub": {
+        "hasModeControls": false,
+        "afterStart": true,
+        "afterStop": false
+      },
+      "haleEntry": {
+        "label": "Hale sessions\nGuided breathwork",
+        "cardAction": "Start Hale Base\n\u2192",
+        "selectedTabBounds": {
+          "x": 846.0999755859375,
+          "y": 177.70001220703125,
+          "width": 198,
+          "height": 34.19999694824219
+        },
+        "pausedWhileHubOpen": true,
+        "libraryRoute": "sessions"
+      },
+      "preparation": {
+        "beginEnabled": true,
+        "label": "Start Hale Base\n\u2192",
+        "beginBounds": {
+          "x": 280,
+          "y": 674,
+          "width": 346,
+          "height": 46
+        }
+      },
+      "session": {
+        "session": "BASE",
+        "externallyControlled": true,
+        "phase": "grounding",
+        "hasHUDState": true,
+        "hubHidden": true
+      },
+      "pauseOwnership": {
+        "before": true,
+        "afterToggle": true,
+        "afterDirectResume": true,
+        "afterCompletionWhileHubOpen": true,
+        "afterFinalHubClose": false
+      },
+      "completion": {
+        "activeSession": false,
+        "indicatorActive": false,
+        "completionSession": "BASE",
+        "currentTab": "sessions"
+      },
+      "completionScroll": {
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "scrollTop": 378,
+        "scrollHeight": 563,
+        "clientHeight": 185,
+        "dialog": {
+          "top": 180.40625,
+          "bottom": 365.59375
+        },
+        "button": {
+          "top": 279.5,
+          "bottom": 325.5
+        },
+        "reachable": true,
+        "clicked": true
+      },
+      "console": [
+        {
+          "type": "warning",
+          "text": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."
+        },
+        {
+          "type": "warning",
+          "text": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."
+        }
+      ]
+    }
+  },
+  "finalModeExit": {
+    "status": "pass",
+    "sourceSHA256": {
+      "index.html": "614b3baa5a1c30044d456fa9e12db67448bf368431b27c1b3356b49bd0b3a35c",
+      "src/main.js": "12de114e6ca83bc3f7bc12e37708b36ed3121b486337df07ea4ec1430cb41d4e",
+      "src/core/game-modes/SerenityMode.js": "98e667cec6b17c370dd8ce716f0190d5f0b0ceebc7b8cc855280a60703bc6409",
+      "src/ui/serenity-hub/SerenityHub.js": "d9c48d4faf7190c028de7ae4a9211c86a3aa90a70dc0417b640b59fae1c21c15",
+      "src/ui/effects/threejs-breathing-renderer.js": "1a46e72027124c7e403a7c3b687c3d720fc55eed5fdb72247c72baeeeaad6e08",
+      "src/ui/effects/breathing-atmosphere.js": "5281fc6d367777249e2fc9fc0e383e5e7db0aa7c3463330b95de8538c73bd7da",
+      "src/ui/effects/breathing-forms.js": "052dbee23e11bc26359e8520b760b2e871223a1ef720a97e34b3be8550b4bc4b",
+      "src/ui/effects/breathing-guidance.js": "cbf050d7d0a77a6627799e44408e1e9d71ed680f9e7a00b023718eed7192c030",
+      "src/ui/effects/enhanced-breathing-indicator.js": "42a2dc8d4709975cc87c619d1a65975edeb0b5e037719e60b046618bb1bba87e",
+      "src/ui/effects/breathwork-session-manager.js": "eefa7d7ee2c88ca0bdf2a35dd09d6daaac6bfdbd32e1d157a0802ad6f542a324",
+      "src/ui/serenity-hub/SessionsTab.js": "bc924ec375624b620836048045dc9ab78468f181cf41ef1617b865675a903d62",
+      "src/ui/serenity-hub/BreathingTab.js": "6a8272dd5a04f05d41bade8ae7151e68bf7f47546ba199dc3c650f77f5123b1c",
+      "public/styles/main.css": "b9e4afd13b0a116d15552ca7ed88d0d8ffc668191fbfe0588de91b113486d780",
+      "public/styles/serenity-hub.css": "2f0c962b56372076f39f1ec39267641d6c2c8961bf60e3e164c2ecdefd4290b0",
+      "public/styles/serenity-hub-aaa.css": "aa7bb2d19ff3eb562d459dc63606f5759916ee2f3f40609bd1652ea26b8ddf3a",
+      "public/styles/breathing-immersive.css": "f3d0c0775c5dd5acfd82ae50bac2e27a03e21082e97a069196bd31b67578111e",
+      "public/styles/breathwork-sessions.css": "16248a37f078e352d40c7c50dfdd236b182b5a88cd43497d9a3c87ca020277a7",
+      "public/styles/breathing-library.css": "b8bc80548f1fefd0875e28ae170380e6bdd46e43bdacd3ff99704fc942b3cc67"
+    },
+    "sourceStable": true,
+    "result": {
+      "id": "mode-exit-single",
+      "console": [
+        {
+          "type": "warning",
+          "text": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."
+        },
+        {
+          "type": "warning",
+          "text": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."
+        }
+      ],
+      "failures": [],
+      "pendingCountdown": {
+        "activeSession": false,
+        "indicatorActive": false,
+        "pendingUI": 0,
+        "phaseTimeouts": 0,
+        "audioPlaying": false,
+        "audioPending": false,
+        "audioPreloads": 0,
+        "activeAudioLoads": 0,
+        "hubOpen": false,
+        "completionVisible": false
+      },
+      "pauseOwnership": {
+        "before": true,
+        "afterToggle": true,
+        "afterDirectResume": true
+      },
+      "activeSession": {
+        "activeSession": false,
+        "indicatorActive": false,
+        "pendingUI": 0,
+        "phaseTimeouts": 0,
+        "audioPlaying": false,
+        "audioPending": false,
+        "audioPreloads": 0,
+        "activeAudioLoads": 0,
+        "hubOpen": false,
+        "completionVisible": false
+      },
+      "status": "pass"
+    }
+  },
+  "postMatrixUIChanges": [
+    {
+      "path": "src/ui/serenity-hub/SerenityHub.js",
+      "matrixSHA256": "68d20f00354189f0c776f7a705993fe74d513528f755dd263d37f7b5c9e77b79",
+      "finalSHA256": "d9c48d4faf7190c028de7ae4a9211c86a3aa90a70dc0417b640b59fae1c21c15",
+      "reason": "Scoped Hale navigation visibility and Hub closure without gameplay resume at mode boundaries; rendering artwork is unchanged."
+    },
+    {
+      "path": "public/styles/breathwork-sessions.css",
+      "matrixSHA256": "df8462eaec28080b3aa070ba890e153fad711a10f3900048f1f83a6a4ab7a010",
+      "finalSHA256": "16248a37f078e352d40c7c50dfdd236b182b5a88cd43497d9a3c87ca020277a7",
+      "reason": "Scoped Hale navigation visibility and Hub closure without gameplay resume at mode boundaries; rendering artwork is unchanged."
+    }
+  ],
+  "renderingFilesUnchanged": [
+    "src/ui/effects/threejs-breathing-renderer.js",
+    "src/ui/effects/breathing-atmosphere.js",
+    "src/ui/effects/breathing-forms.js",
+    "src/ui/effects/breathing-guidance.js",
+    "src/ui/effects/enhanced-breathing-indicator.js",
+    "public/styles/breathing-immersive.css"
+  ],
+  "supersededIntegrationFindings": [
+    {
+      "finding": "Return to Menu cancelled guided work but left the generic Hub open over the menu.",
+      "resolution": "Production cancelGuidedSession now closes the Hub with resumeGameplay:false; final mode-exit cases assert Hub closed with no harness workaround."
+    },
+    {
+      "finding": "The active Hale tab was horizontally clipped on the phone.",
+      "resolution": "The scoped nav now has native horizontal overflow and compact phone labels; final native tab bounds are inside390px."
+    }
+  ],
+  "selectedArtifacts": [
+    {
+      "file": "desktop-color.jpg",
+      "sourceRun": "rendering-matrix",
+      "sourceCaptures": [
+        "desktop-deep-relaxation-inhale.png",
+        "desktop-box-breathing-inhale.png",
+        "desktop-calm-sleep-inhale.png",
+        "desktop-energizing-inhale.png",
+        "desktop-coherence-inhale.png",
+        "desktop-triangle-inhale.png",
+        "desktop-wim-hof-inhale.png",
+        "desktop-ocean-breath-inhale.png",
+        "desktop-zen-garden-inhale.png",
+        "desktop-cosmic-breath-inhale.png",
+        "desktop-forest-breath-inhale.png",
+        "desktop-electric-storm-inhale.png"
+      ],
+      "SHA256": "5338d4f819c5122c47c547bb1579c97474e1befc67a53a99da9ce773436b581f",
+      "bytes": 93503
+    },
+    {
+      "file": "desktop-grayscale.jpg",
+      "sourceRun": "rendering-matrix",
+      "sourceCaptures": [
+        "desktop-deep-relaxation-inhale.png",
+        "desktop-box-breathing-inhale.png",
+        "desktop-calm-sleep-inhale.png",
+        "desktop-energizing-inhale.png",
+        "desktop-coherence-inhale.png",
+        "desktop-triangle-inhale.png",
+        "desktop-wim-hof-inhale.png",
+        "desktop-ocean-breath-inhale.png",
+        "desktop-zen-garden-inhale.png",
+        "desktop-cosmic-breath-inhale.png",
+        "desktop-forest-breath-inhale.png",
+        "desktop-electric-storm-inhale.png"
+      ],
+      "SHA256": "bb1723f0758a445ee750ffa41171d50a33536cf81634aa38998c442e6cb41f32",
+      "bytes": 83716
+    },
+    {
+      "file": "portrait-identities.jpg",
+      "sourceRun": "rendering-matrix",
+      "sourceCaptures": [
+        "portrait-deep-relaxation-inhale.png",
+        "portrait-box-breathing-inhale.png",
+        "portrait-calm-sleep-inhale.png",
+        "portrait-energizing-inhale.png",
+        "portrait-coherence-inhale.png",
+        "portrait-triangle-inhale.png",
+        "portrait-wim-hof-inhale.png",
+        "portrait-ocean-breath-inhale.png",
+        "portrait-zen-garden-inhale.png",
+        "portrait-cosmic-breath-inhale.png",
+        "portrait-forest-breath-inhale.png",
+        "portrait-electric-storm-inhale.png"
+      ],
+      "SHA256": "342f5cfbd1db05dca2a72b87458cb728ae2d7045b5b1b7c3763b9b137bb97685",
+      "bytes": 92042
+    },
+    {
+      "file": "phase-pairs.jpg",
+      "sourceRun": "rendering-matrix",
+      "sourceCaptures": [
+        "desktop-deep-relaxation-inhale.png",
+        "desktop-deep-relaxation-exhale.png",
+        "desktop-box-breathing-inhale.png",
+        "desktop-box-breathing-exhale.png",
+        "desktop-calm-sleep-inhale.png",
+        "desktop-calm-sleep-exhale.png",
+        "desktop-energizing-inhale.png",
+        "desktop-energizing-exhale.png",
+        "desktop-coherence-inhale.png",
+        "desktop-coherence-exhale.png",
+        "desktop-triangle-inhale.png",
+        "desktop-triangle-exhale.png",
+        "desktop-wim-hof-inhale.png",
+        "desktop-wim-hof-exhale.png",
+        "desktop-ocean-breath-inhale.png",
+        "desktop-ocean-breath-exhale.png",
+        "desktop-zen-garden-inhale.png",
+        "desktop-zen-garden-exhale.png",
+        "desktop-cosmic-breath-inhale.png",
+        "desktop-cosmic-breath-exhale.png",
+        "desktop-forest-breath-inhale.png",
+        "desktop-forest-breath-exhale.png",
+        "desktop-electric-storm-inhale.png",
+        "desktop-electric-storm-exhale.png"
+      ],
+      "SHA256": "5ee976be2c34c386735814472ccc25c2b87863a25408ae2210ad653a5691c3d4",
+      "bytes": 144353
+    },
+    {
+      "file": "hale-phone-entry.jpg",
+      "sourceRun": "final-phone-entry",
+      "sourceCaptures": [
+        "hale-entry-serenity-breathing.png",
+        "hale-entry-serenity-catalogue.png"
+      ],
+      "SHA256": "3e1c4fd58795aeb7461b53a873a5cd06323669f35137ff2b426c8c2f69c8d21f",
+      "bytes": 88316
+    },
+    {
+      "file": "hale-phone-preparation.jpg",
+      "sourceRun": "final-phone-entry",
+      "sourceCaptures": [
+        "hale-entry-serenity-preparation.png"
+      ],
+      "SHA256": "18784fcfc86f56ed32f8a911721b1d407a67a9a484b485981252c9856a1541cd",
+      "bytes": 41152
+    },
+    {
+      "file": "hale-phone-countdown-guide.jpg",
+      "sourceRun": "final-phone-entry",
+      "sourceCaptures": [
+        "hale-entry-serenity-countdown.png",
+        "hale-entry-serenity-guided.png"
+      ],
+      "SHA256": "0c5c1c63d5aa60b12d3d18276b198ea137a39ee2d7c2d318d89610c50382fbcb",
+      "bytes": 59465
+    },
+    {
+      "file": "single-paused-guide.jpg",
+      "sourceRun": "single-pause-baseline",
+      "sourceCaptures": [
+        "hale-entry-single-guided.png"
+      ],
+      "SHA256": "15feca0f83e8ddf73352ab0b52f2b87a9829f7c2d0e6e5404e170708edea033a",
+      "bytes": 58152
+    }
+  ],
+  "reproduction": {
+    "environment": {
+      "PLAYWRIGHT_MODULE": "/absolute/path/to/playwright/index.mjs",
+      "PLAYWRIGHT_EXECUTABLE_PATH": "/absolute/path/to/chrome-headless-shell"
+    },
+    "rendering": "node scripts/capture-breathing-overhaul.mjs --identity --artworkOnly --sessions 0 --out /tmp/breathing-identity",
+    "phoneAndModeExit": "node scripts/capture-breathing-overhaul.mjs --profile none --gameSmoke --haleEntry --gameMode serenity --cancelCases --out /tmp/hale-entry",
+    "singlePauseAndCompletion": "node scripts/capture-breathing-overhaul.mjs --profile none --gameSmoke --haleEntry --gameMode single --out /tmp/hale-single",
+    "harnessSHA256": "5674b017f7c867c7f60591dd6beb9c3672e2e1e4f954636777b2eea08e3f7101"
+  },
+  "repositoryChecks": {
+    "fullSuite": {
+      "status": "pass",
+      "tests": 5938,
+      "files": 543,
+      "scope": "Before final scoped navigation and mode-exit refinements"
+    },
+    "finalTargetedSuite": {
+      "status": "pass",
+      "tests": 135,
+      "files": 9
+    },
+    "productionBuild": "pass",
+    "typecheck": "pass",
+    "typescriptRatchet": "pass",
+    "lintRatchet": "pass",
+    "architectureRatchet": "pass",
+    "themeLifecycle": "pass",
+    "importBoundaries": "pass",
+    "performanceBudgets": "pass",
+    "releaseGates": "pass",
+    "ipStringGate": "pass",
+    "pagesArtifact": {
+      "status": "pass",
+      "scope": "Fresh isolated production output using the existing Vite pruning hook"
+    }
+  }
+}

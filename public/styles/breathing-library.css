@@ -558,3 +558,23 @@
         transform: none;
     }
 }
+
+/* Guided Hale journeys are available before starting a standalone guide. */
+#serenity-hub-panel .breath-hale-entry {
+    display:flex; align-items:center; justify-content:space-between; gap:22px; padding:20px;
+    border:1px solid rgba(125,211,252,.28); border-radius:16px;
+    background:radial-gradient(ellipse at 0% 0%,rgba(94,234,212,.10),transparent 70%),rgba(12,26,42,.82);
+    font-family:'Inter','Segoe UI',sans-serif;
+}
+#serenity-hub-panel .breath-hale-entry h3 { font:400 21px/1.25 'Inter','Segoe UI',sans-serif; letter-spacing:-.35px; color:#e9f4ff; margin:7px 0; }
+#serenity-hub-panel .breath-hale-entry p { font-size:11px; line-height:1.7; color:#aebfd5; max-width:460px; margin:0; }
+#serenity-hub-panel .breath-hale-entry .breath-hale-start {
+    display:flex; align-items:center; justify-content:space-between; gap:20px; min-height:44px;
+    padding:12px 15px; background:linear-gradient(130deg,#a6e4ff,#8bead7); color:#0d2334;
+    border:1px solid rgba(184,244,240,.6); border-radius:10px; font-size:11px; font-weight:600; white-space:nowrap;
+}
+#serenity-hub-panel .breath-hale-start:hover { box-shadow:0 5px 20px rgba(125,211,252,.12); }
+@media (max-width:600px) {
+    #serenity-hub-panel .breath-hale-entry { flex-direction:column; align-items:stretch; gap:15px; padding:17px; }
+    #serenity-hub-panel .breath-hale-entry .breath-hale-start { width:100%; }
+}

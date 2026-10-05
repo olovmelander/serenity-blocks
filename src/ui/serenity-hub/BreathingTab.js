@@ -191,6 +191,7 @@ export class BreathingTab {
 
         // Toggle switch section
         const toggleSection = this.createToggleSection();
+        const sessionEntry = this.createHaleSessionsSection();
         const sessionNotice = this.createGuidedSessionNotice();
 
         // Techniques grid
@@ -203,6 +204,7 @@ export class BreathingTab {
         const settingsSection = this.createSettingsSection();
 
         content.appendChild(toggleSection);
+        content.appendChild(sessionEntry);
         content.appendChild(sessionNotice);
         content.appendChild(techniqueGrid);
         content.appendChild(infoDisplay);
@@ -243,6 +245,20 @@ export class BreathingTab {
         return section;
     }
 
+    createHaleSessionsSection() {
+        const section = document.createElement('div');
+        section.className = 'breath-hale-entry';
+        section.innerHTML = `
+            <div class="breath-hale-entry-copy">
+                <span class="breath-library-eyebrow">Guided breathing · three rounds</span>
+                <h3>Start a Hale session</h3>
+                <p>Base, Elixir, Rest, or Flow. Prepare, set an optional intention, and follow the guided journey.</p>
+            </div>
+            <button type="button" class="breath-open-sessions breath-hale-start">Choose a Hale session <span aria-hidden="true">→</span></button>
+        `;
+        return section;
+    }
+
     createGuidedSessionNotice() {
         const notice = document.createElement('div');
         notice.className = 'breath-guided-session-notice';
@@ -250,9 +266,9 @@ export class BreathingTab {
         notice.innerHTML = `
             <div>
                 <span class="breath-library-eyebrow">Guided session in progress</span>
-                <p>Your session controls the rhythm. Return to Sessions to review or end it.</p>
+                <p>Your session controls the rhythm. Return to Hale sessions to review or end it.</p>
             </div>
-            <button type="button" class="breath-open-sessions">Open Sessions</button>
+            <button type="button" class="breath-open-sessions">Open Hale sessions</button>
         `;
         return notice;
     }
@@ -382,7 +398,8 @@ export class BreathingTab {
         };
         this.container?.addEventListener('keydown', this.interactionKeydownHandler);
         this.sessionButtonHandler = () => this.hub.switchTab('sessions');
-        this.container?.querySelector('.breath-open-sessions')?.addEventListener('click', this.sessionButtonHandler);
+        this.sessionButtons = [...(this.container?.querySelectorAll?.('.breath-open-sessions') || [])];
+        this.sessionButtons.forEach((button) => button.addEventListener('click', this.sessionButtonHandler));
 
         // Store handler references for cleanup
         this.toggleHandler = (e) => {
@@ -572,8 +589,8 @@ export class BreathingTab {
    */
     destroy() {
         this.container?.removeEventListener('keydown', this.interactionKeydownHandler);
-        this.container?.querySelector('.breath-open-sessions')
-            ?.removeEventListener('click', this.sessionButtonHandler);
+        this.sessionButtons?.forEach((button) => button.removeEventListener('click', this.sessionButtonHandler));
+        this.sessionButtons = [];
         // Remove event listeners explicitly
         const toggle = document.getElementById('breathing-guide-toggle');
         if (toggle && this.toggleHandler) {
