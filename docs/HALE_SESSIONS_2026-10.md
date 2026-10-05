@@ -126,11 +126,15 @@ carry 0.45, the recovery 0.35, the arrival 0.25, the breathing rounds 0.
   where the behaviour changed on purpose (Flow's carry stage, the stage data, the practice strip, the
   Hub's two-press End, the end question holding the session).
 - **The real game**, driven by `scripts/capture-hale-sessions.mjs` in headless Chromium on
-  SwiftShader at 1440 × 900 and 390 × 844: catalogue, preparation, countdown, arrival, a round card,
-  an open hold before and after its suggestion, the recovery, the natural rest and its closing, the
-  result with a new best, Rest's pause, Flow's carry stage. See the report for the files.
-- **Gates:** typecheck, dependency boundaries, architecture fitness, the lint ratchet, the full unit
-  suite and the production build (see the commit).
+  SwiftShader at 1440 × 900 and 390 × 844 (touch): catalogue, preparation, countdown, arrival, a
+  round card, an open hold before and after its suggestion, the recovery, the natural rest and its
+  closing, the result with a new best, Rest's pause, Flow's carry stage, the catalogue afterwards.
+  No console errors; the captures also caught a real bug (a session started straight after another
+  inherited its intention), fixed and tested. See the report for the files.
+- **Gates:** the full unit suite (579 files, 7,647 tests), typecheck, the TS ratchet, dependency
+  boundaries, architecture fitness, the theme lifecycle audit, the lint ratchet (no new errors; none
+  in the session code), the perf-budget and release gates, the production build with its boot
+  closure, the IP-string and Pages-artifact checks. The shipped voice folder is 29 MB.
 
 Not verified: how the bells and tones *sound* (headless Chromium has no audio output; the tests pin
 the node graph, levels and gating, not the timbre), vibration and the wake lock on a physical phone,
