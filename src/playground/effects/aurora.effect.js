@@ -11,6 +11,10 @@ export const meta = {
 const STEP = 1 / 60;
 /** Seconds between the clears of a replayed streak. */
 const STREAK_SPACING = 0.9;
+/** The theme-icon lens: vertical field of view and yaw in degrees, horizon as a frame fraction. */
+const ICON_LENS = {
+    fov: 48, yaw: 7, horizon: 0.29, reach: 60,
+};
 
 /**
  * URL parameters (all optional):
@@ -20,6 +24,8 @@ const STREAK_SPACING = 0.9;
  *   lines=1  combo=5  column=4.5  drop=0  color=%236cf5ff
  *   board=1                 draw a stand-in board and aim events above it
  *   reduce=1                reduced-motion behaviour
+ *   icon=1                  the theme-icon framing: a tighter lens turned to the fold of the
+ *                           leading arc (iconFov, iconYaw, iconHorizon override it)
  */
 export function create({
     scene, camera, renderer, params,
@@ -40,9 +46,29 @@ export function create({
             + 'border-radius:12px;background:#0b1020ee;pointer-events:none;z-index:3';
         document.body.appendChild(board);
     }
+    const number = (key, fallback) => {
+        const value = Number(params.get(key) ?? fallback);
+        return Number.isFinite(value) ? value : fallback;
+    };
+    const iconPose = params.get('icon') === '1';
+    const aimIcon = () => {
+        camera.fov = number('iconFov', ICON_LENS.fov);
+        camera.updateProjectionMatrix();
+        const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
+        const pitch = Math.atan((1 - 2 * number('iconHorizon', ICON_LENS.horizon)) * Math.tan(halfFov));
+        const yaw = THREE.MathUtils.degToRad(number('iconYaw', ICON_LENS.yaw));
+        const { rest, rig } = world;
+        rig.setFocus(
+            rest.x + Math.sin(yaw) * Math.cos(pitch) * ICON_LENS.reach,
+            rest.y + Math.sin(pitch) * ICON_LENS.reach,
+            rest.z - Math.cos(yaw) * Math.cos(pitch) * ICON_LENS.reach,
+        );
+        rig.apply(0, rest);
+    };
     const syncViewport = () => {
         renderer.getDrawingBufferSize(size);
         world.prepareCamera(window.innerWidth / window.innerHeight);
+        if (iconPose) aimIcon();
         world.setViewport(size.x, size.y);
         post.setSize(window.innerWidth, window.innerHeight);
         if (board) {
@@ -52,10 +78,6 @@ export function create({
     };
     syncViewport();
 
-    const number = (key, fallback) => {
-        const value = Number(params.get(key) ?? fallback);
-        return Number.isFinite(value) ? value : fallback;
-    };
     const piece = () => ({
         x: number('column', 4.5) - 1.5,
         y: 18,
