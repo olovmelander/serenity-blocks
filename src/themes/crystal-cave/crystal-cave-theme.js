@@ -14,6 +14,7 @@ import { CrystalCaveAtmosphere } from './crystal-cave-atmosphere.js';
 import { CrystalCaveReactions } from './crystal-cave-reactions.js';
 import { CrystalCavePost } from './crystal-cave-post.js';
 import { QUALITY_PRESETS } from './crystal-cave-quality.js';
+import { revealHiddenDrawables } from '../shared/warm-hidden-drawables.js';
 
 export { QUALITY_PRESETS } from './crystal-cave-quality.js';
 
@@ -137,6 +138,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             this.setupEventListeners();
             this.time = 0;
             this.update(0);
+            this.warmEventPools();
             this.timer = new THREE.Timer();
             this.timer.connect(document);
             this.timer.reset();
@@ -261,10 +263,10 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.clearTrackedResources();
     }
 
-    onPieceLock() {
+    onPieceLock(payload) {
         if (!this.effectsAllowed()
             || (typeof window !== 'undefined' && window.settings?.pieceLockRipple === false)) return;
-        this.reactions?.pieceLock();
+        this.reactions?.pieceLock(eventDetail(payload));
     }
 
     onLineClear(payload) {
@@ -353,6 +355,20 @@ export default class CrystalCaveTheme extends BaseTheme {
         if (!this.renderer || !this.scene || !this.camera) return;
         if (this.post) this.post.render();
         else this.renderer.render(this.scene, this.camera);
+    }
+
+    warmEventPools() {
+        if (!this.renderer || !this.scene || !this.camera || !this.reactions?.group) return 0;
+        const reveal = revealHiddenDrawables(this.reactions.group, { camera: this.camera });
+        try {
+            this.reactions.group.updateMatrixWorld(true);
+            // Use the shipped post/direct render so target and material context match
+            // gameplay. The loading-surface session owns async pipeline completion.
+            this.renderFrame();
+            return reveal.revealed;
+        } finally {
+            reveal.restore();
+        }
     }
 
     startAnimation() {

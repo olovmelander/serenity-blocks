@@ -165,7 +165,7 @@ describe('Crystal Cave gameplay event normalization', () => {
         eventBus.emit(EVENTS.PIECE_LOCK, { detail: { piece: { x: 2 } } });
         eventBus.emit(EVENTS.LINE_CLEAR, { detail: { lines: '4' } });
         eventBus.emit(EVENTS.COMBO, { detail: { combo: 8 } });
-        expect(reactions.pieceLock).toHaveBeenCalledOnce();
+        expect(reactions.pieceLock).toHaveBeenCalledExactlyOnceWith({ piece: { x: 2 } });
         expect(reactions.lineClear).toHaveBeenCalledOnce();
         expect(reactions.lineClear.mock.calls[0][0]).toBe(4);
         expect(reactions.combo).toHaveBeenCalledOnce();
@@ -314,6 +314,8 @@ describe('Crystal Cave renderer and runtime ownership', () => {
         window.settings.effectQuality = quality;
         const theme = createTheme();
         theme.isActive = true;
+        // This construction probe uses a renderer mock rather than executing GPU work.
+        vi.spyOn(theme, 'renderFrame').mockImplementation(() => {});
         await theme.createScene();
         expect(theme.scene.getObjectByName('Crystal cathedral')).toBe(theme.atmosphere.group);
         expect(theme.scene.getObjectByName('crystal-cave-bounded-reactions')).toBe(theme.reactions.group);
@@ -434,6 +436,88 @@ describe('Crystal Cave renderer and runtime ownership', () => {
         theme.post = null;
         theme.renderFrame();
         expect(theme.renderer.render).toHaveBeenCalledExactlyOnceWith(theme.scene, theme.camera);
+    });
+});
+
+describe('Crystal Cave dormant event pool warmup', () => {
+    function createDormantPool(theme) {
+        const group = new THREE.Group();
+        group.visible = false;
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        const material = new THREE.MeshBasicNodeMaterial({ transparent: true, opacity: 0, depthWrite: false });
+        const ring = new THREE.Mesh(geometry, material);
+        const shards = new THREE.InstancedMesh(geometry, material, 1);
+        shards.count = 0;
+        ring.visible = false;
+        shards.visible = false;
+        group.add(ring, shards);
+        theme.reactions.group = group;
+        theme.atmosphere.group.visible = false;
+        return {
+            group,
+            ring,
+            shards,
+            dispose: () => {
+                shards.dispose();
+                geometry.dispose();
+                material.dispose();
+            },
+        };
+    }
+
+    function expectParked(pool) {
+        expect(pool.group.visible).toBe(false);
+        expect(pool.ring.visible).toBe(false);
+        expect(pool.shards.visible).toBe(false);
+        expect(pool.ring.frustumCulled).toBe(true);
+        expect(pool.shards.frustumCulled).toBe(true);
+        expect(pool.shards.count).toBe(0);
+    }
+
+    it('reveals only dormant event draws through the shipped post render and restores them', () => {
+        const theme = createTheme();
+        const { atmosphere, reactions, post } = buildStubScene(theme);
+        theme.renderer = new THREE.WebGPURenderer({ forceWebGL: true });
+        const pool = createDormantPool(theme);
+        const updateMatrices = vi.spyOn(pool.group, 'updateMatrixWorld');
+        post.render.mockImplementation(() => {
+            expect(pool.group.visible).toBe(true);
+            expect(pool.ring.visible).toBe(true);
+            expect(pool.shards.visible).toBe(true);
+            expect(pool.ring.frustumCulled).toBe(false);
+            expect(pool.shards.frustumCulled).toBe(false);
+            expect(pool.shards.count).toBe(1);
+            expect(atmosphere.group.visible).toBe(false);
+        });
+        try {
+            expect(theme.warmEventPools()).toBe(2);
+            expect(post.render).toHaveBeenCalledOnce();
+            expect(theme.renderer.render).not.toHaveBeenCalled();
+            expect(updateMatrices).toHaveBeenCalledWith(true);
+            expectParked(pool);
+            expect(reactions.pieceLock).not.toHaveBeenCalled();
+            expect(reactions.combo).not.toHaveBeenCalled();
+            expect(reactions.update).not.toHaveBeenCalled();
+            expect(theme.time).toBe(0);
+            expect(atmosphere.uniforms.energy.value).toBe(0.2);
+            expect(atmosphere.uniforms.resonance.value).toBe(0.3);
+        } finally {
+            pool.dispose();
+        }
+    });
+
+    it('restores dormant event state when the shipped warm render fails', () => {
+        const theme = createTheme();
+        const { post } = buildStubScene(theme);
+        theme.renderer = new THREE.WebGPURenderer({ forceWebGL: true });
+        const pool = createDormantPool(theme);
+        post.render.mockImplementation(() => { throw new Error('warm render failed'); });
+        try {
+            expect(() => theme.warmEventPools()).toThrow('warm render failed');
+            expectParked(pool);
+        } finally {
+            pool.dispose();
+        }
     });
 });
 
