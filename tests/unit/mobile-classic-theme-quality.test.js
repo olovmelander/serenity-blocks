@@ -42,7 +42,10 @@ describe('mobile quality for classic renderer themes', () => {
         const theme = new AuroraTheme();
         const preset = theme.qualityPresets[theme.getGraphicsQuality()];
 
-        expect(preset).toMatchObject({ starCount: 500, curtainLayers: 2, auroraSparks: 800 });
+        // Aurora renders through the node pipeline now; the legacy label must still
+        // land on its cheapest tier: no mirror pass, no post chain, the smallest march.
+        expect(preset).toBe(theme.qualityPresets.Minimal);
+        expect(preset).toMatchObject({ arcCount: 2, mirrorScale: 0, enablePost: false });
         expect(preset.starCount).toBeLessThan(theme.qualityPresets.High.starCount);
     });
 
