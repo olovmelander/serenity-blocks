@@ -14,10 +14,15 @@
  * slowly erupts and drifts off), a hedgerow curtain, coronal streamers combed into fine rays that
  * narrow as they climb, glints of solar wind streaming out on a nearer layer, and a soft glow over
  * deep space. A small planet crosses the disc every few minutes, a black dot for scale.
+ *
+ * Everything that repeats (sunspots, prominences, coronal loops and their segments, flare ribbons,
+ * the cells of the granulation) is one shader loop over constant data rather than JS-unrolled
+ * copies: the fragment shader stays small, so its pipeline compiles quickly on every driver.
  */
+import { Vector4 } from 'three/webgpu';
 import {
-    Fn, If, cos, dot, exp, float, floor, fract, length, log, min, mix, select, sin, smoothstep, sqrt, step, vec2,
-    vec3,
+    Fn, If, Loop, cos, dot, exp, float, floor, fract, length, log, min, mix, select, sin, smoothstep, sqrt, step,
+    uniformArray, vec2, vec3,
 } from 'three/tsl';
 import {
     backdropPoint, fadeOut, fbm, gnoise, gnoise3, hash21, hash33, layer, starfield, turn,
@@ -120,13 +125,17 @@ const ARCADES = SPOT_GROUPS.map((group) => {
         reach: Math.max(...loops.map((loop) => Math.hypot(...loop.e) + Math.hypot(...loop.lift))) + 0.03,
     };
 });
+/** Every coronal loop, carrying its group's middle and reach for the cheap "is it near" test. */
+const ARCS = ARCADES.flatMap((arcade) => arcade.loops.map((loop) => ({
+    ...loop, hub: [...arcade.middle, arcade.reach],
+})));
 /** Solar wind: angular cells around the star (an integer, so the atan seam is a cell wall), parallax depth. */
 const WIND = { cells: 96, k: 1.35 };
 
 /**
  * Prominence loops anchored at the limb: angle (degrees, 0 = right, 90 = up), half-span and
- * height (star radii), lean (degrees), tube width (star radii), seed, brightness. `core` loops stay on the
- * lightest tier. The diagonals fit both landscape and portrait; the side and bottom ones fill
+ * height (star radii), lean (degrees), tube width (star radii), seed, brightness. `core` loops stay
+ * on the lightest tier. The diagonals fit both landscape and portrait; the side and bottom ones fill
  * whichever room the screen has.
  */
 const LOOPS = [
@@ -155,16 +164,92 @@ const LOOPS = [
  * Upper left, where both landscape and portrait leave it room to climb.
  */
 const ERUPTION = {
-    angle: 126, span: 0.12, height: 0.2, lean: 10, width: 0.042, seed: 3.3, gain: 1.0, period: 46, offset: 0.35,
+    angle: 126,
+    span: 0.12,
+    height: 0.2,
+    lean: 10,
+    width: 0.042,
+    seed: 3.3,
+    gain: 1.0,
+    erupts: true,
+    // One rise and fade takes this long (seconds), starting this far into the cycle.
+    period: 46,
+    offset: 0.35,
 };
 /** A quiescent hedgerow prominence: a curtain of fine vertical threads along the limb. */
 const HEDGEROW = { angle: 160, span: 0.2, height: 0.12 };
+
+/**
+ * A prominence's fixed frame at the limb, packed for the shader: its base (sunk so both feet stand
+ * just inside the limb) and outward direction; the inverse of its leaning frame (pixel offset to
+ * position along the span and up the loop); size and seed; brightness, the reach of its tube in
+ * loop units (the expensive part runs only inside it) and whether it erupts.
+ */
+function archFrame(loop) {
+    const phi = loop.angle * DEG;
+    const o = [Math.cos(phi), Math.sin(phi)];
+    const t = [-o[1], o[0]];
+    const lean = loop.lean * DEG;
+    const up = [o[0] * Math.cos(lean) + t[0] * Math.sin(lean), o[1] * Math.cos(lean) + t[1] * Math.sin(lean)];
+    const det = t[0] * up[1] - t[1] * up[0];
+    const sink = (loop.span * loop.span) / 2 + 0.02;
+    return {
+        base: [o[0] * (1 - sink), o[1] * (1 - sink), o[0], o[1]],
+        frame: [up[1] / (det * loop.span), -up[0] / (det * loop.span), -t[1] / det, t[0] / det],
+        size: [loop.span, loop.height, loop.width, loop.seed],
+        look: [loop.gain, (5 * loop.width) / Math.min(loop.span, loop.height * 0.5), loop.erupts ? 1 : 0, 0],
+    };
+}
+
+/**
+ * All the constant data the shader loops read, in ONE uniform array (each array is a uniform
+ * buffer, and a stage may bind only a few): blocks of vec4 rows, one block per feature, `stride`
+ * rows per item. `row(block, i, k)` reads row k of item i.
+ */
+function createTables(arches) {
+    const rows = [];
+    const block = (items, ...pack) => {
+        const offset = rows.length;
+        items.forEach((item) => pack.forEach((fn) => rows.push(new Vector4(...fn(item)))));
+        return { offset, stride: pack.length, count: items.length };
+    };
+    const spots = block(
+        SPOTS,
+        (spot) => [...spot.c, spot.radius],
+        (spot) => [...spot.east, spot.seed],
+        (spot) => [...spot.north, 0],
+    );
+    const ribbons = block(
+        ARCADES,
+        (a) => [...a.middle, 0],
+        (a) => [...a.side, 0],
+        (a) => [...a.axis, 0],
+        (a) => [...a.centre, 0],
+    );
+    const arcs = block(
+        ARCS,
+        (arc) => arc.hub,
+        (arc) => [...arc.m, 0],
+        (arc) => [...arc.e, 0],
+        (arc) => [...arc.lift, 0],
+    );
+    const prominence = block(arches.map(archFrame), (a) => a.base, (a) => a.frame, (a) => a.size, (a) => a.look);
+    const data = uniformArray(rows, 'vec4');
+    return {
+        spots, ribbons, arcs, prominence, row: (at, i, k) => data.element(i.mul(at.stride).add(at.offset + k)),
+    };
+}
 
 /** x² of a noise that may dip a hair below zero, without pow(). */
 const square = (x) => {
     const c = x.max(0).toVar();
     return c.mul(c);
 };
+
+/** A loop over -1, 0, 1 with its own index name (nested loops must not share one). */
+const neighbours = (name, body) => Loop({
+    start: -1, end: 2, type: 'int', condition: '<', name,
+}, (index) => body(float(index[name])));
 
 /**
  * 3D cellular noise: (F1, F2, cell id). F2 - F1 is ~0 on a cell wall: the dark lanes between
@@ -176,48 +261,43 @@ const voronoi3 = /* @__PURE__ */ Fn(([p, t]) => {
     const f1 = float(8).toVar();
     const f2 = float(8).toVar();
     const id = float(0).toVar();
-    for (let k = -1; k <= 1; k++) {
-        for (let j = -1; j <= 1; j++) {
-            for (let i = -1; i <= 1; i++) {
-                const seed = hash33(n.add(vec3(i, j, k))).toVar();
-                const offset = sin(seed.mul(TAU).add(t)).mul(0.36).add(0.5);
-                const r = vec3(i, j, k).add(offset).sub(f);
-                const d = dot(r, r).toVar();
-                const closer = d.lessThan(f1);
-                f2.assign(select(closer, f1, min(f2, d)));
-                id.assign(select(closer, seed.z, id));
-                f1.assign(min(f1, d));
-            }
-        }
-    }
+    neighbours('cz', (k) => neighbours('cy', (j) => neighbours('cx', (i) => {
+        const cell = vec3(i, j, k).toVar();
+        const seed = hash33(n.add(cell)).toVar();
+        const offset = sin(seed.mul(TAU).add(t)).mul(0.36).add(0.5);
+        const r = cell.add(offset).sub(f);
+        const d = dot(r, r).toVar();
+        const closer = d.lessThan(f1);
+        f2.assign(select(closer, f1, min(f2, d)));
+        id.assign(select(closer, seed.z, id));
+        f1.assign(min(f1, d));
+    })));
     return vec3(sqrt(f1), sqrt(f2), id);
 }).setLayout({
     name: 'solar_voronoi3', type: 'vec3', inputs: [{ name: 'p', type: 'vec3' }, { name: 't', type: 'float' }],
 });
 
 /** The photosphere's colour by heat 0..1: deep red at the limb, through orange, to pale gold. */
-function sunTint(heat) {
-    const t = heat.toVar();
+const sunTint = /* @__PURE__ */ Fn(([t]) => {
     const red = mix(vec3(0.3, 0.02, 0.003), vec3(0.8, 0.12, 0.012), smoothstep(0.0, 0.36, t));
     const orange = mix(red, vec3(1.0, 0.33, 0.045), smoothstep(0.3, 0.62, t));
     const gold = mix(orange, vec3(1.0, 0.52, 0.14), smoothstep(0.56, 0.86, t));
     return mix(gold, vec3(1.0, 0.7, 0.32), smoothstep(0.84, 1.1, t));
-}
+}).setLayout({ name: 'solar_sunTint', type: 'vec3', inputs: [{ name: 't', type: 'float' }] });
 
 /** Prominence plasma by density 0..1: thin crimson veils, H-alpha red, dense orange, gold cores. */
-function plasmaTint(density) {
-    const t = density.toVar();
+const plasmaTint = /* @__PURE__ */ Fn(([t]) => {
     const veil = mix(vec3(0.55, 0.045, 0.055), vec3(1.0, 0.2, 0.08), smoothstep(0.0, 0.4, t));
     const dense = mix(veil, vec3(1.0, 0.48, 0.13), smoothstep(0.35, 0.75, t));
     return mix(dense, vec3(1.0, 0.78, 0.45), smoothstep(0.72, 1.1, t));
-}
+}).setLayout({ name: 'solar_plasmaTint', type: 'vec3', inputs: [{ name: 't', type: 'float' }] });
 
 /** The corona by height above the limb (star radii): gold-white low, amber, then ember red. */
-function coronaTint(height) {
+const coronaTint = /* @__PURE__ */ Fn(([height]) => {
     const low = mix(vec3(1.0, 0.68, 0.36), vec3(1.0, 0.36, 0.08), smoothstep(0.0, 0.4, height));
     const mid = mix(low, vec3(0.62, 0.1, 0.04), smoothstep(0.35, 1.5, height));
     return mix(mid, vec3(0.25, 0.03, 0.05), smoothstep(1.3, 3.0, height));
-}
+}).setLayout({ name: 'solar_coronaTint', type: 'vec3', inputs: [{ name: 'height', type: 'float' }] });
 
 /** A view-space point on the unit ball, in the star's turning frame. */
 function toBody(n, spin) {
@@ -231,16 +311,15 @@ function toBody(n, spin) {
     return vec3(m.x.mul(c).sub(m.z.mul(s)), m.y, m.x.mul(s).add(m.z.mul(c)));
 }
 
-/** A constant direction in the star's frame, seen from the viewer: Ry(spin), then the tilt. */
-function bodyToView(v, c, s) {
-    const x = c.mul(v[0]).add(s.mul(v[2]));
-    const z = c.mul(v[2]).sub(s.mul(v[0]));
-    return vec3(
-        x.mul(T[0][0]).add(T[0][1] * v[1]).add(z.mul(T[0][2])),
-        x.mul(T[1][0]).add(T[1][1] * v[1]).add(z.mul(T[1][2])),
-        x.mul(T[2][0]).add(T[2][1] * v[1]).add(z.mul(T[2][2])),
-    );
-}
+/** A direction in the star's frame, seen from the viewer: Ry(spin) (as its cosine and sine), then the tilt. */
+const bodyToView = /* @__PURE__ */ Fn(([v, c, s]) => {
+    const turned = vec3(c.mul(v.x).add(s.mul(v.z)), v.y, c.mul(v.z).sub(s.mul(v.x)));
+    return vec3(dot(vec3(...T[0]), turned), dot(vec3(...T[1]), turned), dot(vec3(...T[2]), turned));
+}).setLayout({
+    name: 'solar_bodyToView',
+    type: 'vec3',
+    inputs: [{ name: 'v', type: 'vec3' }, { name: 'c', type: 'float' }, { name: 's', type: 'float' }],
+});
 
 /** Distance from p to the segment a..b (2D). */
 function segmentDistance(p, a, b) {
@@ -255,108 +334,105 @@ function segmentDistance(p, a, b) {
  * with the star, so near the centre of the disc they are seen from above as short bright threads
  * and near the limb in profile as full arches. Parts behind the star are hidden. Returns light.
  */
-function coronalLoops(q, spin, pixel, steps) {
+function coronalLoops(q, spin, pixel, steps, { arcs, row }) {
     const c = cos(spin).toVar();
     const s = sin(spin).toVar();
     const light = float(0).toVar();
-    ARCADES.forEach((arcade) => {
-        // The whole group behind the star: skip it (the same branch for every pixel); and only
-        // pixels near the group pay for its loops.
-        const hub = bodyToView(arcade.middle, c, s).toVar();
-        If(hub.z.greaterThan(-0.35).and(length(q.sub(hub.xy)).lessThan(arcade.reach)), () => {
-            arcade.loops.forEach((loop) => {
-                const m = bodyToView(loop.m, c, s).toVar();
-                const e = bodyToView(loop.e, c, s).toVar();
-                const lift = bodyToView(loop.lift, c, s).toVar();
-                const thread = float(0).toVar();
-                let previous = m.add(e);
-                for (let k = 1; k <= steps; k++) {
-                    const t = (Math.PI * k) / steps;
-                    const point = m.add(e.mul(Math.cos(t))).add(lift.mul(Math.sin(t))).toVar();
-                    const middle = previous.add(point).mul(0.5);
-                    // Hidden where it is behind the star and inside its outline; dim at the feet.
-                    const shown = step(0.0, middle.z).max(step(1.0, length(middle.xy)));
-                    const feet = Math.sin((Math.PI * (k - 0.5)) / steps) * 0.7 + 0.3;
-                    const gap = segmentDistance(q, previous.xy, point.xy).div(pixel.mul(1.3));
-                    thread.assign(thread.max(exp(gap.mul(gap).negate()).mul(shown).mul(feet)));
-                    previous = point;
-                }
-                light.addAssign(thread.mul(0.42));
+    Loop({
+        start: 0, end: arcs.count, type: 'int', condition: '<', name: 'arc',
+    }, ({ arc }) => {
+        // A group behind the star is skipped (the same branch for every pixel), and only pixels
+        // near a group pay for its loops.
+        const hub = row(arcs, arc, 0).toVar();
+        const centre = bodyToView(hub.xyz, c, s).toVar();
+        If(centre.z.greaterThan(-0.35).and(length(q.sub(centre.xy)).lessThan(hub.w)), () => {
+            const m = bodyToView(row(arcs, arc, 1).xyz, c, s).toVar();
+            const e = bodyToView(row(arcs, arc, 2).xyz, c, s).toVar();
+            const lift = bodyToView(row(arcs, arc, 3).xyz, c, s).toVar();
+            const thread = float(0).toVar();
+            const previous = m.add(e).toVar();
+            Loop({
+                start: 1, end: steps + 1, type: 'int', condition: '<', name: 'seg',
+            }, ({ seg }) => {
+                const k = float(seg).toVar();
+                const t = k.mul(Math.PI / steps);
+                const point = m.add(e.mul(cos(t))).add(lift.mul(sin(t))).toVar();
+                const middle = previous.add(point).mul(0.5);
+                // Hidden where it is behind the star and inside its outline; dim at the feet.
+                const shown = step(0.0, middle.z).max(step(1.0, length(middle.xy)));
+                const feet = sin(k.sub(0.5).mul(Math.PI / steps)).mul(0.7).add(0.3);
+                const gap = segmentDistance(q, previous.xy, point.xy).div(pixel.mul(1.3));
+                thread.assign(thread.max(exp(gap.mul(gap).negate()).mul(shown).mul(feet)));
+                previous.assign(point);
             });
+            light.addAssign(thread.mul(0.42));
         });
     });
     return light;
 }
 
 /**
- * One prominence: a loop of plasma rising from two footpoints just behind the limb. The loop is
- * an ellipse in a leaning frame at the limb; the pixel's distance to it gives the tube, the angle
- * around it (0 at the apex, ±π/2 at the feet) the position along it. Inside the tube threads twist
- * around the axis, wisps fray off them and knots of dense plasma drain down the legs; the tube
- * swells and thins along its length. The expensive part runs only near the loop. Adds HDR light
- * to `out`.
+ * The prominences: loops of plasma rising from two footpoints just behind the limb, one shader
+ * loop over their frames. Each loop is an ellipse in a leaning frame at the limb; the pixel's
+ * distance to it gives the tube, the angle around it (0 at the apex, ±π/2 at the feet) the position
+ * along it. Inside the tube threads twist around the axis, wisps fray off them and knots of dense
+ * plasma drain down the legs; the tube swells and thins along its length. The expensive part runs
+ * only near each loop. The erupting one lifts, lets go of its feet and fades. Adds HDR light to `out`.
  */
-function prominence(w, loop, {
-    rise, glow, time, out, lift = null,
+function prominences(w, { prominence, row }, {
+    rise, glow, time, out,
 }) {
-    const phi = loop.angle * DEG;
-    const o = [Math.cos(phi), Math.sin(phi)];
-    const t = [-o[1], o[0]];
-    const lean = loop.lean * DEG;
-    const up = [o[0] * Math.cos(lean) + t[0] * Math.sin(lean), o[1] * Math.cos(lean) + t[1] * Math.sin(lean)];
-    const det = t[0] * up[1] - t[1] * up[0];
-    // Sink the base so both feet stand just inside the limb.
-    const sink = (loop.span * loop.span) / 2 + 0.02;
-    const breathe = sin(time.mul(0.17).add(loop.seed * 3)).mul(0.06).add(1);
-    let height = rise.mul(loop.height).mul(breathe);
-    let base = vec2(o[0] * (1 - sink), o[1] * (1 - sink));
-    if (lift) {
-        height = height.mul(lift.mul(3.2).add(1));
-        base = base.add(vec2(o[0], o[1]).mul(lift.mul(0.25)));
-    }
-    const h = height.toVar();
-    const rel = w.sub(base).toVar();
-    const along = rel.x.mul(up[1]).sub(rel.y.mul(up[0])).div(det * loop.span).toVar();
-    const lifted = rel.y.mul(t[0]).sub(rel.x.mul(t[1])).div(det).div(h)
-        .toVar();
-    const rho = sqrt(along.mul(along).add(lifted.mul(lifted))).toVar();
-    const bound = (5 * loop.width) / Math.min(loop.span, loop.height * 0.5);
-    // (Away from the ellipse's centre, deep in the disc, where the angle around it is undefined.)
-    If(rho.sub(1).abs().lessThan(bound).and(lifted.greaterThan(-0.6))
-        .and(rho.greaterThan(0.25)), () => {
-        const gx = along.div(loop.span);
-        const gy = lifted.div(h);
-        const gradient = sqrt(gx.mul(gx).add(gy.mul(gy))).div(rho.max(1e-3)).max(1e-3);
-        const across = rho.sub(1).div(gradient).div(loop.width).toVar();
-        // 0 at the apex, ±π/2 at the feet; the seam (straight down) lies deep inside the disc.
-        const arc = along.atan(lifted).toVar();
-        const legs = fadeOut(1.7, 2.0, arc.abs());
-        // The tube swells and thins along its length, so no two loops share a profile.
-        const swell = gnoise(vec2(arc.mul(2.2).add(loop.seed), time.mul(0.05).add(loop.seed)));
-        const fray = across.div(swell.mul(0.7).add(0.65)).toVar();
-        // Threads twist around the loop's axis; fine wisps fray off them; knots of dense plasma
-        // drain from the apex down both legs.
-        const twist = fray.add(sin(arc.mul(4).add(time.mul(0.25)).add(loop.seed)).mul(0.35));
-        const threads = gnoise(vec2(twist.mul(2.6), arc.mul(1.6).sub(time.mul(0.05)).add(loop.seed * 3.1)));
-        const wisps = gnoise(vec2(fray.mul(6).add(loop.seed), arc.mul(9).sub(time.mul(0.12))));
-        const fromApex = sqrt(arc.mul(arc).add(0.03));
-        const knots = gnoise(vec2(fromApex.mul(4).sub(time.mul(0.4)).add(loop.seed), fray.mul(0.5).add(loop.seed)));
-        const body = exp(fray.mul(fray).mul(-0.6));
-        const halo = exp(across.mul(across).mul(-0.12));
-        // One leg often outshines the other.
-        const favour = sin(arc.add(loop.seed * 2.3)).mul(0.3).add(0.8);
-        const density = body.mul(square(threads).mul(1.5).add(wisps.mul(0.35)).add(0.18))
-            .mul(knots.mul(0.9).add(0.45))
-            .mul(favour)
-            .toVar();
-        let light = plasmaTint(density.mul(0.9)).mul(density.mul(1.8).add(halo.mul(0.2))).mul(legs).mul(glow)
-            .mul(loop.gain);
-        if (lift) {
+    const cycle = fract(time.div(ERUPTION.period).add(ERUPTION.offset)).toVar();
+    Loop({
+        start: 0, end: prominence.count, type: 'int', condition: '<', name: 'arch',
+    }, ({ arch }) => {
+        const base = row(prominence, arch, 0).toVar();
+        const frame = row(prominence, arch, 1).toVar();
+        const size = row(prominence, arch, 2).toVar();
+        const look = row(prominence, arch, 3).toVar();
+        const seed = size.w;
+        const lift = cycle.mul(cycle).mul(look.z).toVar();
+        const breathe = sin(time.mul(0.17).add(seed.mul(3))).mul(0.06).add(1);
+        const h = rise.mul(size.y).mul(breathe).mul(lift.mul(3.2).add(1)).toVar();
+        const rel = w.sub(base.xy.add(base.zw.mul(lift.mul(0.25)))).toVar();
+        const along = rel.x.mul(frame.x).add(rel.y.mul(frame.y)).toVar();
+        const lifted = rel.x.mul(frame.z).add(rel.y.mul(frame.w)).div(h).toVar();
+        const rho = sqrt(along.mul(along).add(lifted.mul(lifted))).toVar();
+        // (Away from the ellipse's centre, deep in the disc, where the angle around it is undefined.)
+        If(rho.sub(1).abs().lessThan(look.y).and(lifted.greaterThan(-0.6))
+            .and(rho.greaterThan(0.25)), () => {
+            const gx = along.div(size.x);
+            const gy = lifted.div(h);
+            const gradient = sqrt(gx.mul(gx).add(gy.mul(gy))).div(rho.max(1e-3)).max(1e-3);
+            const across = rho.sub(1).div(gradient).div(size.z).toVar();
+            // 0 at the apex, ±π/2 at the feet; the seam (straight down) lies deep inside the disc.
+            const arc = along.atan(lifted).toVar();
+            const legs = fadeOut(1.7, 2.0, arc.abs());
+            // The tube swells and thins along its length, so no two loops share a profile.
+            const swell = gnoise(vec2(arc.mul(2.2).add(seed), time.mul(0.05).add(seed)));
+            const fray = across.div(swell.mul(0.7).add(0.65)).toVar();
+            // Threads twist around the loop's axis; fine wisps fray off them; knots of dense plasma
+            // drain from the apex down both legs.
+            const twist = fray.add(sin(arc.mul(4).add(time.mul(0.25)).add(seed)).mul(0.35));
+            const threads = gnoise(vec2(twist.mul(2.6), arc.mul(1.6).sub(time.mul(0.05)).add(seed.mul(3.1))));
+            const wisps = gnoise(vec2(fray.mul(6).add(seed), arc.mul(9).sub(time.mul(0.12))));
+            const fromApex = sqrt(arc.mul(arc).add(0.03));
+            const knots = gnoise(vec2(fromApex.mul(4).sub(time.mul(0.4)).add(seed), fray.mul(0.5).add(seed)));
+            const body = exp(fray.mul(fray).mul(-0.6));
+            const halo = exp(across.mul(across).mul(-0.12));
+            // One leg often outshines the other.
+            const favour = sin(arc.add(seed.mul(2.3))).mul(0.3).add(0.8);
+            const density = body.mul(square(threads).mul(1.5).add(wisps.mul(0.35)).add(0.18))
+                .mul(knots.mul(0.9).add(0.45))
+                .mul(favour)
+                .toVar();
             // Lifting off: the feet let go first, then the whole arch fades into the corona.
             const feet = fadeOut(mix(float(1.95), float(0.8), smoothstep(0.2, 0.7, lift)), float(2.1), arc.abs());
-            light = light.mul(feet).mul(smoothstep(0.0, 0.12, lift)).mul(fadeOut(0.45, 0.95, lift));
-        }
-        out.addAssign(light);
+            const leaving = feet.mul(smoothstep(0.0, 0.12, lift)).mul(fadeOut(0.45, 0.95, lift));
+            out.addAssign(plasmaTint(density.mul(0.9)).mul(density.mul(1.8).add(halo.mul(0.2))).mul(legs).mul(glow)
+                .mul(look.x)
+                .mul(mix(float(1), leaving, look.z)));
+        });
     });
 }
 
@@ -386,12 +462,56 @@ function hedgerow(w, {
     });
 }
 
+/**
+ * Sunspots around a point on the star (`body`, in the star's frame): the nearest spot by its own
+ * size, and where around that spot the point lies. One loop over the spot table.
+ */
+function nearestSpot(body, { spots, row }) {
+    const nearest = float(9).toVar();
+    const aroundX = float(1).toVar();
+    const aroundY = float(0).toVar();
+    const seed = float(0).toVar();
+    Loop(spots.count, ({ i }) => {
+        const centre = row(spots, i, 0).toVar();
+        const east = row(spots, i, 1).toVar();
+        const offset = body.sub(centre.xyz).toVar();
+        const distance = length(offset).div(centre.w).toVar();
+        const closer = distance.lessThan(nearest);
+        aroundX.assign(select(closer, dot(offset, east.xyz), aroundX));
+        aroundY.assign(select(closer, dot(offset, row(spots, i, 2).xyz), aroundY));
+        seed.assign(select(closer, east.w, seed));
+        nearest.assign(min(nearest, distance));
+    });
+    return {
+        nearest, around: vec2(aroundX, aroundY), seed,
+    };
+}
+
+/**
+ * Flare ribbons: twin bright ribbons along each group's polarity line, between its leading and
+ * following spots. One loop over the groups; returns their strength at `body`.
+ */
+function flareRibbons(body, { ribbons, row }) {
+    const flare = float(0).toVar();
+    Loop(ribbons.count, ({ i }) => {
+        const offset = body.sub(row(ribbons, i, 0).xyz).toVar();
+        const across = dot(offset, row(ribbons, i, 1).xyz).toVar();
+        const along = dot(offset, row(ribbons, i, 2).xyz).abs().sub(across.mul(across).mul(6)).sub(0.03)
+            .div(0.009);
+        // Only on the group's own face of the star (not at its antipode).
+        const near = smoothstep(0.988, 0.994, dot(body, row(ribbons, i, 3).xyz));
+        flare.addAssign(exp(along.mul(along).negate()).mul(fadeOut(0.04, 0.085, across.abs())).mul(near));
+    });
+    return flare;
+}
+
 export function createSolarWorld({ u, quality }) {
     const { detail } = quality;
     // The lightest tier draws with no post pipeline, so no grade: the world warms itself instead.
     const bare = !(quality.bloom > 0);
-    const loops = detail >= 0.5 ? LOOPS : LOOPS.filter((loop) => loop.core);
+    const arches = detail >= 0.5 ? [...LOOPS, ERUPTION] : LOOPS.filter((loop) => loop.core);
     const loopSteps = detail >= 0.7 ? 7 : 5;
+    const tables = createTables(arches);
     const backdrop = Fn(() => {
         const p = backdropPoint(u).toVar();
         const breath = u.breathSoft.toVar();
@@ -490,11 +610,7 @@ export function createSolarWorld({ u, quality }) {
             const flare = {
                 rise, glow, time: u.time, out: plasma,
             };
-            loops.forEach((loop) => prominence(w, loop, flare));
-            if (detail >= 0.5) {
-                const cycle = fract(u.time.div(ERUPTION.period).add(ERUPTION.offset)).toVar();
-                prominence(w, ERUPTION, { ...flare, lift: cycle.mul(cycle) });
-            }
+            prominences(w, tables, flare);
             hedgerow(w, flare);
         });
         col.addAssign(plasma);
@@ -506,21 +622,8 @@ export function createSolarWorld({ u, quality }) {
             const spin = u.time.mul(TAU / ROTATION_PERIOD).toVar();
             const body = toBody(vec3(q.x, q.y, mu), spin).toVar();
 
-            // Sunspots: the nearest spot, and where around it this point lies.
-            const nearest = float(9).toVar();
-            const aroundX = float(1).toVar();
-            const aroundY = float(0).toVar();
-            const spotSeed = float(0).toVar();
-            SPOTS.forEach((spot) => {
-                const offset = body.sub(vec3(...spot.c)).toVar();
-                const distance = length(offset).div(spot.radius).toVar();
-                const closer = distance.lessThan(nearest);
-                aroundX.assign(select(closer, dot(offset, vec3(...spot.east)), aroundX));
-                aroundY.assign(select(closer, dot(offset, vec3(...spot.north)), aroundY));
-                spotSeed.assign(select(closer, float(spot.seed), spotSeed));
-                nearest.assign(min(nearest, distance));
-            });
-            const around = vec2(aroundX, aroundY);
+            // Sunspots: dark umbra, filamentary penumbra.
+            const { nearest, around, seed: spotSeed } = nearestSpot(body, tables);
             const angle = around.div(length(around).max(1e-6)).toVar();
             // An irregular outline from a few harmonics of the angle around the spot (integer multiples,
             // so the atan seam never shows).
@@ -543,7 +646,7 @@ export function createSolarWorld({ u, quality }) {
             const cells = voronoi3(body.mul(GRANULES).add(meso.mul(2.4)).add(ragged.mul(0.9)), u.time.mul(0.3)).toVar();
             const walls = smoothstep(0.0, 0.5, cells.y.sub(cells.x));
             const dome = float(1.25).sub(cells.x.mul(0.9));
-            const granule = walls.mul(dome).mul(cells.z.mul(0.5).add(0.75));
+            const granule = walls.mul(dome).mul(cells.z.mul(0.5).add(0.75)).toVar();
             const sharp = smoothstep(1.5, 4.0, mu.max(0.02).div(pixel.mul(GRANULES))).mul(meso.mul(0.8).add(0.6));
             const grain = granule.sub(0.62).mul(0.26).mul(sharp)
                 .add(meso.sub(0.5).mul(0.5))
@@ -560,23 +663,13 @@ export function createSolarWorld({ u, quality }) {
                 .mul(limb.mul(limb.sqrt()).mul(3))
                 .toVar();
 
-            // Flare ribbons: on the in-breath, twin bright ribbons light up along each group's polarity
-            // line, between its leading and following spots, and fade as the breath leaves.
-            const flare = float(0).toVar();
-            ARCADES.forEach((arcade) => {
-                const offset = body.sub(vec3(...arcade.middle)).toVar();
-                const across = dot(offset, vec3(...arcade.side)).toVar();
-                const along = dot(offset, vec3(...arcade.axis)).abs().sub(across.mul(across).mul(6)).sub(0.03)
-                    .div(0.009);
-                // Only on the group's own face of the star (not at its antipode).
-                const near = smoothstep(0.988, 0.994, dot(body, vec3(...arcade.centre)));
-                flare.addAssign(exp(along.mul(along).negate()).mul(fadeOut(0.04, 0.085, across.abs())).mul(near));
-            });
-            flare.mulAssign(ragged.mul(1.2).add(0.4).mul(smoothstep(0.3, 1.0, breath)));
+            // Flare ribbons light up on the in-breath and fade as the breath leaves.
+            const flare = flareRibbons(body, tables).mul(ragged.mul(1.2).add(0.4)).mul(smoothstep(0.3, 1.0, breath))
+                .toVar();
 
             // Strong limb darkening (linear in mu) with the colour shift that goes with it: a
             // white-gold core cooling through orange to a deep red edge.
-            const darkening = mu.mul(0.96).add(0.04);
+            const darkening = mu.mul(0.96).add(0.04).toVar();
             const core = mu.mul(mu).mul(0.4).add(0.95);
             const heat = mu.sqrt().mul(0.7).add(0.28).add(grain.mul(0.5))
                 .add(breath.mul(0.07))
@@ -597,7 +690,7 @@ export function createSolarWorld({ u, quality }) {
         col.addAssign(plasma.mul(disc).mul(smoothstep(0.97, 1.0, r)).mul(0.3));
         // Coronal loops arch over the spot groups, in front of the disc and above the limb.
         If(r.lessThan(1.15), () => {
-            const arcs = coronalLoops(q, u.time.mul(TAU / ROTATION_PERIOD), pixel, loopSteps);
+            const arcs = coronalLoops(q, u.time.mul(TAU / ROTATION_PERIOD), pixel, loopSteps, tables);
             col.addAssign(LOOP_LIGHT.mul(arcs).mul(glow));
         });
 
