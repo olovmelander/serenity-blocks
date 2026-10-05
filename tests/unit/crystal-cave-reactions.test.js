@@ -4,6 +4,7 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import { CrystalCaveReactions } from '../../src/themes/crystal-cave/crystal-cave-reactions.js';
+import { QUALITY_PRESETS } from '../../src/themes/crystal-cave/crystal-cave-quality.js';
 
 const instances = [];
 
@@ -66,6 +67,8 @@ describe('Crystal Cave fixed-capacity resonance', () => {
         expect(reactions.debug.activeShards + reactions.debug.activeMotes).toBeLessThanOrEqual(64);
         expect(reactions.debug.activeArcs).toBeLessThanOrEqual(3);
         expect(reactions.debug.activeRipples).toBeLessThanOrEqual(3);
+        expect(reactions.debug.activeCoronas).toBeLessThanOrEqual(4);
+        expect(reactions.debug.queuedReactions).toBeLessThanOrEqual(6);
         for (const key of ['energy', 'resonance', 'waveIntensity']) {
             expect(uniforms[key].value).toBeGreaterThanOrEqual(0);
             expect(uniforms[key].value).toBeLessThanOrEqual(1);
@@ -120,16 +123,18 @@ describe('Crystal Cave fixed-capacity resonance', () => {
         expect(uniforms.waveIntensity.value).toBe(0);
     });
 
-    it('keeps piece locks subtle and never starts a global wave', () => {
+    it('makes locks visible with local shards, coronas and ripples without a global wave', () => {
         const { reactions, uniforms } = create();
         for (let index = 0; index < 50; index++) reactions.pieceLock();
-        expect(uniforms.energy.value).toBe(0.05);
-        expect(uniforms.resonance.value).toBe(0.035);
+        expect(uniforms.energy.value).toBe(0.18);
+        expect(uniforms.resonance.value).toBe(0.1);
         expect(uniforms.waveRadius.value).toBe(-100);
         expect(uniforms.waveIntensity.value).toBe(0);
         expect(reactions.debug.activeArcs).toBe(0);
-        expect(reactions.debug.activeShards).toBe(0);
-        expect(reactions.ripples.every((slot) => slot.growth <= 1.3)).toBe(true);
+        expect(reactions.debug.activeShards).toBeGreaterThan(0);
+        expect(reactions.debug.activeMotes).toBeGreaterThan(4);
+        expect(reactions.debug.activeCoronas).toBeGreaterThan(0);
+        expect(reactions.ripples.every((slot) => slot.growth <= 2.7)).toBe(true);
     });
 
     it('answers a first tetris on both walls and places echoes on open water', () => {
@@ -144,6 +149,152 @@ describe('Crystal Cave fixed-capacity resonance', () => {
             expect(Math.abs(ripple.mesh.position.x)).toBeLessThanOrEqual(7.8);
             expect(ripple.mesh.position.y).toBe(-6.95);
         }
+    });
+
+    it('responds to combo one on both walls and scales higher combos through staggered launches', () => {
+        const results = [1, 3, 8].map((level) => {
+            const result = create(QUALITY_PRESETS.High);
+            expect(result.reactions.combo(level)).toBe(true);
+            result.level = level;
+            result.initialEnergy = result.uniforms.energy.value;
+            result.initialResonance = result.uniforms.resonance.value;
+            result.queued = result.reactions.debug.queuedReactions;
+            return result;
+        });
+        const single = results[0].reactions;
+        expect(single.debug.activeArcs).toBe(2);
+        expect(single.debug.activeCoronas).toBe(2);
+        expect(single.motes.some((slot) => slot.active && slot.origin.x < 0)).toBe(true);
+        expect(single.motes.some((slot) => slot.active && slot.origin.x > 0)).toBe(true);
+        expect(results[0].queued).toBe(0);
+        expect(results[1].queued).toBeGreaterThan(results[0].queued);
+        expect(results[2].queued).toBeGreaterThan(results[1].queued);
+        expect(results[1].initialEnergy).toBeGreaterThan(results[0].initialEnergy);
+        expect(results[2].initialResonance).toBeGreaterThan(results[1].initialResonance);
+        for (const result of results) result.reactions.update(0.8);
+        expect(results[2].reactions.debug.activeArcs).toBeGreaterThan(single.debug.activeArcs);
+        expect(results[2].reactions.debug.activeCoronas).toBeGreaterThan(single.debug.activeCoronas);
+        expect(results[2].reactions.debug.queuedReactions).toBe(0);
+    });
+
+    it('ages every cascade by its exact launch time across a long frame', () => {
+        const oneFrame = create(QUALITY_PRESETS.High);
+        const slow = create(QUALITY_PRESETS.High);
+        const fast = create(QUALITY_PRESETS.High);
+        for (const { reactions } of [oneFrame, slow, fast]) reactions.combo(8);
+        oneFrame.reactions.update(0.8);
+        advance(slow.reactions, 0.8, 30);
+        advance(fast.reactions, 0.8, 144);
+        for (const comparison of [slow, fast]) {
+            for (const key of ['energy', 'resonance', 'waveRadius', 'waveIntensity']) {
+                expect(comparison.uniforms[key].value).toBeCloseTo(oneFrame.uniforms[key].value, 10);
+            }
+            for (const collection of ['motes', 'shards', 'arcs', 'ripples', 'coronas']) {
+                const slots = comparison.reactions[collection];
+                for (let index = 0; index < slots.length; index++) {
+                    const expected = oneFrame.reactions[collection][index];
+                    const actual = slots[index];
+                    expect(actual.active).toBe(expected.active);
+                    expect(actual.age).toBeCloseTo(expected.age, 10);
+                    if (actual.active && actual.position) {
+                        expect(actual.position.distanceTo(expected.position)).toBeLessThan(1e-10);
+                    }
+                    if (actual.opacity) expect(actual.opacity.value).toBeCloseTo(expected.opacity.value, 10);
+                    if (actual.progress) expect(actual.progress.value).toBeCloseTo(expected.progress.value, 10);
+                }
+            }
+        }
+        const later = oneFrame.reactions.coronas.filter((slot) => slot.active)
+            .sort((a, b) => a.age - b.age)[0];
+        expect(later.age).toBeGreaterThan(0.2);
+        expect(later.age).toBeLessThan(0.3);
+    });
+
+    it('gives each combo burst a different jewel palette shared by its corona, ripple and ribbon', () => {
+        const { reactions } = create(QUALITY_PRESETS.High);
+        reactions.combo(8);
+        reactions.update(0.8);
+        const colors = reactions.coronas.filter((slot) => slot.active).map((slot) => slot.tint.value.getHex());
+        expect(new Set(colors).size).toBeGreaterThanOrEqual(4);
+        const matched = reactions.coronas.filter((slot) => slot.active && slot.age < 0.3)[0];
+        const ripple = reactions.ripples.find((slot) => slot.active && Math.abs(slot.age - matched.age) < 1e-9);
+        const arc = reactions.arcs.find((slot) => slot.active && Math.abs(slot.age - matched.age) < 1e-9);
+        expect(ripple.tint.value).toEqual(matched.tint.value);
+        expect(arc.tint.value).toEqual(matched.tint.value);
+        expect(arc.accent.value).toEqual(matched.accent.value);
+        reactions.reset();
+        reactions.combo(8);
+        reactions.update(0.8);
+        expect(reactions.coronas.filter((slot) => slot.active).map((slot) => slot.tint.value.getHex())).toEqual(colors);
+    });
+
+    it('prefers Infinity viewport origin and uses occupied piece centroid for wall placement', () => {
+        const { reactions } = create();
+        reactions.pieceLock({ piece: { x: 8, y: 900, shape: [[1, 1]] }, viewportOrigin: { x: 0.1, y: 0.9 } });
+        expect(reactions.coronas.find((slot) => slot.active).mesh.position.x).toBeLessThan(0);
+        reactions.reset();
+        reactions.pieceLock({ piece: { x: 3, shape: [[0, 0, 1, 1]] } });
+        expect(reactions.coronas.find((slot) => slot.active).mesh.position.x).toBeGreaterThan(0);
+        reactions.reset();
+        reactions.pieceLock({ viewportOrigin: { x: NaN, y: 0.3 }, piece: { x: -2 } });
+        expect(reactions.coronas.find((slot) => slot.active).mesh.position.x).toBeLessThan(0);
+    });
+
+    it('uses validated piece colors in the local corona while rejecting malformed color values', () => {
+        const { reactions } = create();
+        const warning = vi.spyOn(console, 'warn');
+        reactions.pieceLock({ piece: { x: 2, color: '#ff3fba' } });
+        const expected = new THREE.Color('#ff3fba');
+        expect(reactions.coronas.find((slot) => slot.active).tint.value).toEqual(expected);
+        reactions.reset();
+        reactions.pieceLock({ piece: { x: 2, color: 'not-a-color' } });
+        expect(warning).not.toHaveBeenCalled();
+        expect(reactions.coronas.find((slot) => slot.active).tint.value.toArray().every(Number.isFinite)).toBe(true);
+    });
+
+    it.each(Object.entries(QUALITY_PRESETS))('keeps visible jewel feedback in the %s tier', (_, preset) => {
+        const { reactions } = create(preset);
+        reactions.pieceLock();
+        reactions.update(0.15);
+        expect(reactions.debug.activeShards).toBeGreaterThan(0);
+        expect(reactions.debug.activeMotes).toBeGreaterThan(4);
+        expect(reactions.coronas.some((slot) => slot.opacity.value > 0.4)).toBe(true);
+        reactions.combo(1);
+        reactions.update(0.35);
+        expect(reactions.arcs.some((slot) => slot.opacity.value > 0.2)).toBe(true);
+        expect(reactions.debug.activeCoronas).toBeGreaterThan(0);
+        for (const arc of reactions.arcs) {
+            if (!arc.active) continue;
+            // The full emissive ribbon, including its broad edges, stays outboard.
+            const { array } = arc.positions;
+            for (let index = 0; index < array.length; index += 3) {
+                expect(Math.abs(array[index])).toBeGreaterThanOrEqual(6 - 1e-6);
+            }
+        }
+        for (const corona of reactions.coronas) {
+            if (!corona.active) continue;
+            const innerEdge = Math.abs(corona.mesh.position.x) - corona.mesh.scale.x;
+            expect(innerEdge).toBeGreaterThan(5);
+        }
+    });
+
+    it('cancels every delayed launch on reset and disposal without new resources', () => {
+        const { reactions } = create();
+        reactions.combo(8);
+        expect(reactions.debug.queuedReactions).toBeGreaterThan(0);
+        const geometryCount = reactions.debug.geometries;
+        const materialCount = reactions.debug.materials;
+        reactions.reset();
+        reactions.update(1.2);
+        expect(reactions.debug.queuedReactions).toBe(0);
+        expect(reactions.debug.activeCoronas + reactions.debug.activeArcs + reactions.debug.activeMotes).toBe(0);
+        expect(reactions.debug.geometries).toBe(geometryCount);
+        expect(reactions.debug.materials).toBe(materialCount);
+        reactions.combo(8);
+        reactions.dispose();
+        reactions.update(3);
+        expect(reactions.debug.queuedReactions).toBe(0);
+        expect(reactions.debug.activeCoronas).toBe(0);
     });
 
     it('keeps finite fragment and filament positions outside the board corridor', () => {

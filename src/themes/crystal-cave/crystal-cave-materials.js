@@ -58,6 +58,9 @@ export function createCrystalCaveMaterials({ scene, uniforms: u, quality }) {
     const view = normalize(cameraPosition.sub(positionWorld));
     const rim = pow(float(1).sub(abs(dot(normalWorld, view))).clamp(), 3);
     const grain = texture(noise, positionWorld.xz.mul(0.025)).r;
+    // Shared, bounded event envelopes work on the direct phone scene as well as
+    // the reflected/post-processed scene. Zero preserves the idle artwork.
+    const eventStrength = u.energy.mul(0.75).add(u.resonance.mul(0.45)).clamp();
 
     const crystal = new THREE.MeshPhysicalNodeMaterial({
         vertexColors: true,
@@ -74,14 +77,26 @@ export function createCrystalCaveMaterials({ scene, uniforms: u, quality }) {
     const striae = sin(positionGeometry.y.mul(29).add(positionGeometry.x.mul(8))).mul(0.008).add(0.992);
     crystal.colorNode = vec3(0.52, 0.61, 0.72).mul(striae);
     const core = smoothstep(0.05, 0.9, positionGeometry.y).mul(0.25).add(0.09);
-    const breath = sin(u.time.mul(0.65).add(positionWorld.x.mul(0.17)).add(positionWorld.z.mul(0.09))).mul(0.04).add(0.96);
+    const breath = sin(u.time.mul(0.65).add(positionWorld.x.mul(0.17)).add(positionWorld.z.mul(0.09)))
+        .mul(0.04).add(0.96);
     const innerVein = pow(sin(positionGeometry.y.mul(18).add(positionGeometry.x.mul(13))).abs(), 26).mul(0.08);
     const tint = instanceColor.mul(vertexColor().rgb);
-    crystal.emissiveNode = tint.mul(core.add(rim.mul(0.8)).add(innerVein)
-        .add(u.energy.mul(0.25)).add(u.resonance.mul(0.2))
-        .add(wave.mul(1.4))).mul(breath);
+    const tintLuma = dot(tint, vec3(0.2126, 0.7152, 0.0722));
+    const jewelTint = mix(vec3(tintLuma), tint, 1.22).max(0);
+    const litFacet = dot(normalWorld, normalize(vec3(0.34, 0.76, 0.55)))
+        .max(0).pow2();
+    const excitedFacet = core.mul(0.65).add(litFacet.mul(0.5))
+        .add(innerVein.mul(1.5)).add(0.24)
+        .mul(eventStrength);
+    crystal.emissiveNode = tint.mul(core.add(rim.mul(0.8)).add(innerVein)).mul(breath)
+        .add(jewelTint.mul(excitedFacet.add(wave.mul(1.4))).mul(breath));
     // Facet sheen hints at internal refraction without the cost of transparent sorting.
     crystal.emissiveNode = crystal.emissiveNode.add(mix(color(0x7655bc), color(0x62dbe5), rim).mul(rim).mul(0.065));
+    const prismPhase = sin(normalWorld.x.mul(4).add(normalWorld.z.mul(3)).add(u.time.mul(0.7)))
+        .mul(0.5).add(0.5);
+    const prismTint = mix(color(0x4bedcf), color(0xca57f2), prismPhase);
+    crystal.emissiveNode = crystal.emissiveNode.add(prismTint
+        .mul(rim.mul(0.11).add(innerVein.mul(0.45))).mul(eventStrength));
 
     const rock = new THREE.MeshStandardNodeMaterial({ roughness: 0.92, metalness: 0.07, flatShading: true });
     rock.name = 'Crystal Cave — weathered mineral strata';
@@ -89,7 +104,8 @@ export function createCrystalCaveMaterials({ scene, uniforms: u, quality }) {
     rock.colorNode = mix(color(0x111126), color(0x3b354c), grain.mul(0.8).add(strata.mul(0.2)));
     const veins = pow(sin(positionWorld.y.mul(0.45).add(positionWorld.x.mul(0.25)).add(grain.mul(7))).abs(), 38);
     const sideTint = mix(color(0x7650bf), color(0x137d8f), smoothstep(-20, 20, positionWorld.x));
-    rock.emissiveNode = sideTint.mul(veins.mul(0.012).add(wave.mul(0.18)));
+    rock.emissiveNode = sideTint.mul(veins.mul(float(0.012).add(eventStrength.mul(0.24)))
+        .add(wave.mul(0.32)));
 
     const backdrop = new THREE.MeshBasicNodeMaterial({ depthWrite: false, fog: false });
     backdrop.name = 'Crystal Cave — distant grotto light';
@@ -103,7 +119,7 @@ export function createCrystalCaveMaterials({ scene, uniforms: u, quality }) {
     water.name = 'Crystal Cave — mineral mirror pool';
     const caveFlow = sin(positionWorld.x.mul(0.27).add(u.time.mul(0.32)))
         .add(sin(positionWorld.z.mul(0.19).sub(u.time.mul(0.21))));
-    const caveRippleAmplitude = float(0.0013).add(u.energy.mul(0.0007));
+    const caveRippleAmplitude = float(0.0013).add(u.energy.mul(0.0007)).add(u.resonance.mul(0.0004));
     const caveWaterBody = vec3(0.008, 0.017, 0.035);
     const caveWaterTint = mix(
         vec3(0.08, 0.23, 0.25),
@@ -128,6 +144,15 @@ export function createCrystalCaveMaterials({ scene, uniforms: u, quality }) {
         water.colorNode = caveWaterBody.add(caveWaterTint.mul(caveSheen));
     }
     water.colorNode = water.colorNode.add(caveWaterTint.mul(0.012));
+    // Mineral light travels along the banks; the center of the playfield stays
+    // quiet. This sheen also gives the non-reflective phone pool an event cue.
+    const bankMask = smoothstep(4.8, 15, abs(positionWorld.x));
+    const surfaceRadius = length(positionWorld.xz.sub(u.waveOrigin.xz));
+    const surfaceWave = exp(abs(surfaceRadius.sub(u.waveRadius)).mul(-0.65)).mul(u.waveIntensity);
+    const caustic = sin(positionWorld.x.mul(0.4).add(positionWorld.z.mul(0.2))
+        .add(caveFlow.mul(0.4))).pow2().pow2();
+    water.colorNode = water.colorNode.add(caveWaterTint.mul(bankMask)
+        .mul(caustic.mul(eventStrength).mul(0.3).add(surfaceWave.mul(0.5))));
 
     const mist = new THREE.MeshBasicNodeMaterial({
         transparent: true, depthWrite: false, side: THREE.DoubleSide,
@@ -156,7 +181,7 @@ export function createCrystalCaveMaterials({ scene, uniforms: u, quality }) {
 
     const vein = new THREE.MeshBasicNodeMaterial({ vertexColors: true });
     vein.name = 'Crystal Cave — mineral seams';
-    vein.colorNode = vec3(1).mul(float(0.42).add(u.energy.mul(0.25)));
+    vein.colorNode = vec3(1).mul(float(0.42).add(eventStrength.mul(1.1)).add(wave.mul(0.25)));
     const materials = {
         crystal, rock, water, backdrop, mist, shaft, vein,
     };

@@ -6,7 +6,7 @@ import { CrystalCaveReactions } from '../../themes/crystal-cave/crystal-cave-rea
 export const meta = {
     id: 'crystal-cave',
     title: 'Crystal Cave — the resonant grotto',
-    description: 'Opaline crystals, subterranean mirror water, mineral haze and prismatic resonance.',
+    description: 'Jewel lock impacts, cascading prismatic ribbons, mineral resonance and colored pool echoes.',
 };
 
 export function create({
@@ -69,7 +69,14 @@ export function create({
         update(time, dt) { if (!params.has('t')) update(time, Math.min(0.05, Math.max(0, dt))); },
         render() { post.render(); },
         resize(width, height) { atmosphere.prepareCamera(width / height); post.setSize(width, height); },
-        getDiagnostics() { return { quality, crystalCount: atmosphere.art.crystalCount, ...post.getDiagnostics() }; },
+        getDiagnostics() {
+            return {
+                quality,
+                crystalCount: atmosphere.art.crystalCount,
+                reactions: reactions.debug,
+                ...post.getDiagnostics(),
+            };
+        },
         dispose() {
             reactions.dispose(); post.dispose(); atmosphere.dispose(); board?.remove();
             renderer.toneMapping = saved.tone; renderer.toneMappingExposure = saved.exposure;

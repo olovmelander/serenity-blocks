@@ -1,15 +1,18 @@
 /**
- * Crystal resonance lives in the scenery, outside the quiet board corridor.
- * All GPU resources are created once; events rewrite fixed particle, ribbon and
- * water-ring pools. The owner supplies simulation seconds and owns rendering.
+ * Crystal resonance frames the quiet central board corridor.
+ * All GPU resources are created once; events rewrite fixed particle, ribbon,
+ * corona and water-ring pools. The owner supplies simulation seconds and rendering.
  */
 import * as THREE from 'three/webgpu';
 import {
     abs,
+    atan,
     attribute,
+    billboarding,
     cameraProjectionMatrix,
     cameraViewMatrix,
     length,
+    mix,
     modelWorldMatrix,
     normalLocal,
     positionGeometry,
@@ -20,6 +23,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
+import { readLockViewportOrigin } from '../../events/lock-origin.js';
 
 const TAU = Math.PI * 2;
 const POOL_Y = -6.95;
@@ -69,6 +73,9 @@ function makeParticleSlot(index) {
         size: 0,
         phase: 0,
         spin: 0,
+        style: 'clear',
+        drag: 0.85,
+        gravity: 0,
         origin: new THREE.Vector3(),
         velocity: new THREE.Vector3(),
         position: new THREE.Vector3(),
@@ -92,6 +99,8 @@ export class CrystalCaveReactions {
         this.maxParticles = capacity(quality.eventParticles, 140, 220);
         this.maxArcs = capacity(quality.maxArcs, 4, 7);
         this.maxRipples = capacity(quality.maxRipples, 4, 7);
+        this.maxCoronas = this.maxRipples === 0 ? 0 : Math.min(8, this.maxRipples + 1);
+        this.maxQueuedReactions = this.maxArcs * 2;
         this.shardCapacity = Math.floor(this.maxParticles * 0.25);
         this.moteCapacity = this.maxParticles - this.shardCapacity;
         this.anchors = anchors.map((anchor) => {
@@ -119,7 +128,12 @@ export class CrystalCaveReactions {
             if (leftAnchors[index]) this.anchors.push(leftAnchors[index]);
             if (rightAnchors[index]) this.anchors.push(rightAnchors[index]);
         }
-        this.palette = [0x74f0e5, 0xa99afa, 0xf0b771, 0xeb91cd].map((hex) => new THREE.Color(hex));
+        const nearAnchors = this.anchors.filter((anchor) => anchor.position.z > -35
+            && Math.abs(anchor.position.x) >= 9);
+        this.eventAnchors = nearAnchors.length ? nearAnchors : this.anchors;
+        this.palette = [0x25f4d9, 0xab4dff, 0xffbb35, 0xff3fba, 0x3878ff]
+            .map((hex) => new THREE.Color(hex));
+        this.lockTint = new THREE.Color();
         this.group = new THREE.Group();
         this.group.name = 'crystal-cave-bounded-reactions';
         this.group.renderOrder = 5;
@@ -132,9 +146,20 @@ export class CrystalCaveReactions {
         this.motes = [];
         this.arcs = [];
         this.ripples = [];
+        this.coronas = [];
+        this.pendingReactions = Array.from({ length: this.maxQueuedReactions }, () => ({
+            active: false,
+            at: 0,
+            anchor: null,
+            partner: null,
+            strength: 0,
+            particles: 0,
+            style: 'combo',
+        }));
         this.createParticlePools();
         this.createRipplePool();
         this.createArcPool();
+        this.createCoronaPool();
         this.reset();
     }
 
@@ -146,7 +171,7 @@ export class CrystalCaveReactions {
             const tint = dynamicAttribute(geometry, 'fxTint', 3, this.shardCapacity);
             const material = glowMaterial();
             material.colorNode = attribute('fxTint', 'vec3')
-                .mul(abs(normalLocal.x).mul(0.75).add(abs(normalLocal.z).mul(0.35)).add(1.35));
+                .mul(abs(normalLocal.x).mul(0.65).add(abs(normalLocal.z).mul(0.3)).add(1.7));
             material.opacityNode = attribute('fxAlpha', 'float');
             this.shardMesh = new THREE.InstancedMesh(geometry, material, this.shardCapacity);
             this.shardMesh.name = 'crystal-cave-prismatic-shards';
@@ -172,7 +197,7 @@ export class CrystalCaveReactions {
             const quad = vec3(positionGeometry.xy.mul(attribute('fxSize', 'float')), 0);
             material.vertexNode = cameraProjectionMatrix.mul(vec4(center.xyz.add(quad), 1));
             const local = uv().sub(0.5);
-            const core = smoothstep(0.035, 0.21, length(local)).oneMinus().pow(2);
+            const core = smoothstep(0.045, 0.24, length(local)).oneMinus().pow(2);
             const horizontal = smoothstep(0.008, 0.045, abs(local.y)).oneMinus()
                 .mul(smoothstep(0.06, 0.45, abs(local.x)).oneMinus());
             const vertical = smoothstep(0.008, 0.045, abs(local.x)).oneMinus()
@@ -195,20 +220,70 @@ export class CrystalCaveReactions {
         const geometry = new THREE.PlaneGeometry(2, 2);
         this.geometries.add(geometry);
         const radius = length(uv().mul(2).sub(1));
-        const ring = smoothstep(0.022, 0.063, abs(radius.sub(0.82))).oneMinus();
-        const echo = smoothstep(0.014, 0.045, abs(radius.sub(0.63))).oneMinus().mul(0.28);
+        const ring = smoothstep(0.035, 0.085, abs(radius.sub(0.82))).oneMinus();
+        const echo = smoothstep(0.025, 0.06, abs(radius.sub(0.63))).oneMinus().mul(0.52);
         for (let index = 0; index < this.maxRipples; index++) {
             const opacity = uniform(0);
             const tint = uniform(new THREE.Color());
+            const accent = uniform(new THREE.Color());
             const material = glowMaterial();
-            material.colorNode = tint.mul(1.8);
+            const waterHue = sin(uv().x.mul(10).add(uv().y.mul(7)))
+                .mul(0.5).add(0.5);
+            material.colorNode = mix(tint, accent, waterHue).mul(2.0);
             material.opacityNode = ring.add(echo).mul(opacity);
             const mesh = new THREE.Mesh(geometry, material);
             mesh.name = `crystal-cave-water-echo-${index}`;
             mesh.rotation.x = -Math.PI / 2;
             mesh.visible = false;
             this.ripples.push({
-                mesh, opacity, tint, active: false, age: 0, duration: 1, strength: 0, growth: 1,
+                mesh, opacity, tint, accent, active: false, age: 0, duration: 1, strength: 0, growth: 1,
+            });
+            this.materials.add(material);
+            this.group.add(mesh);
+        }
+    }
+
+    createCoronaPool() {
+        if (this.maxCoronas === 0) return;
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        this.geometries.add(geometry);
+        const local = uv().mul(2).sub(1);
+        const radius = length(local);
+        const angle = atan(local.y, local.x);
+        for (let index = 0; index < this.maxCoronas; index++) {
+            const opacity = uniform(0);
+            const progress = uniform(0);
+            const tint = uniform(new THREE.Color());
+            const accent = uniform(new THREE.Color());
+            const material = glowMaterial();
+            material.vertexNode = billboarding({ vertical: true });
+            const rimRadius = progress.mul(0.18).add(0.49);
+            const band = smoothstep(0.026, 0.105, abs(radius.sub(rimRadius))).oneMinus();
+            const glints = sin(angle.mul(9).sub(progress.mul(14))).mul(0.5).add(0.5).pow(4);
+            const rays = sin(angle.mul(6).add(progress.mul(6))).abs().pow(18)
+                .mul(smoothstep(0.2, 0.39, radius))
+                .mul(smoothstep(0.49, 0.94, radius).oneMinus());
+            const inner = abs(radius.sub(0.28)).mul(-22).exp().mul(progress.oneMinus());
+            const hue = sin(angle.mul(2).sub(progress.mul(8))).mul(0.5).add(0.5);
+            material.colorNode = mix(tint, accent, hue).mul(glints.mul(1.5).add(1.6));
+            material.opacityNode = band.mul(glints.mul(0.35).add(0.65))
+                .add(rays.mul(0.54)).add(inner.mul(0.16)).mul(opacity);
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.name = `crystal-cave-prismatic-corona-${index}`;
+            mesh.frustumCulled = false;
+            mesh.visible = false;
+            this.coronas.push({
+                mesh,
+                opacity,
+                progress,
+                tint,
+                accent,
+                active: false,
+                age: 0,
+                duration: 1,
+                strength: 0,
+                growth: 1,
+                style: 'lock',
             });
             this.materials.add(material);
             this.group.add(mesh);
@@ -234,17 +309,36 @@ export class CrystalCaveReactions {
             geometry.setIndex(indices);
             const opacity = uniform(0);
             const tint = uniform(new THREE.Color());
+            const accent = uniform(new THREE.Color());
+            const progress = uniform(0);
             const material = glowMaterial();
-            const filament = smoothstep(0.07, 0.49, abs(uv().y.sub(0.5))).oneMinus();
-            const chimes = sin(uv().x.mul(24).sub(this.uniforms.time.mul(7))).mul(0.5).add(0.5).pow(10);
-            material.colorNode = tint.mul(chimes.mul(3.0).add(1.0));
-            material.opacityNode = filament.mul(opacity).mul(uv().x.mul(Math.PI).sin().mul(0.7).add(0.3));
+            const across = abs(uv().y.sub(0.5));
+            const aura = smoothstep(0.12, 0.49, across).oneMinus().pow(2);
+            const spine = smoothstep(0.012, 0.09, across).oneMinus();
+            const braidCenter = sin(uv().x.mul(22).sub(progress.mul(12))).mul(0.17).add(0.5);
+            const braid = smoothstep(0.02, 0.065, abs(uv().y.sub(braidCenter))).oneMinus();
+            const knot = sin(uv().x.mul(25).sub(progress.mul(22))).mul(0.5).add(0.5).pow(10);
+            const hue = sin(uv().x.mul(9).sub(progress.mul(7)).add(uv().y.mul(4)))
+                .mul(0.5).add(0.5);
+            material.colorNode = mix(tint, accent, hue).mul(knot.mul(1.7).add(1.5));
+            material.opacityNode = aura.mul(0.23).add(spine.mul(0.46)).add(braid.mul(0.48))
+                .mul(opacity)
+                .mul(uv().x.mul(Math.PI).sin().mul(0.65).add(0.35));
             const mesh = new THREE.Mesh(geometry, material);
             mesh.name = `crystal-cave-resonance-filament-${index}`;
             mesh.frustumCulled = false;
             mesh.visible = false;
             this.arcs.push({
-                mesh, positions, opacity, tint, active: false, age: 0, duration: 1, strength: 0,
+                mesh,
+                positions,
+                opacity,
+                tint,
+                accent,
+                progress,
+                active: false,
+                age: 0,
+                duration: 1,
+                strength: 0,
             });
             this.geometries.add(geometry);
             this.materials.add(material);
@@ -277,15 +371,43 @@ export class CrystalCaveReactions {
         return slots[selected];
     }
 
-    nextAnchor() {
-        const anchor = this.anchors[this.anchorCursor % this.anchors.length];
+    nextAnchor(side = 0) {
+        for (let offset = 0; offset < this.eventAnchors.length; offset++) {
+            const index = (this.anchorCursor + offset) % this.eventAnchors.length;
+            const anchor = this.eventAnchors[index];
+            if (side === 0 || Math.sign(anchor.position.x) === side) {
+                this.anchorCursor += offset + 1;
+                return anchor;
+            }
+        }
+        const anchor = this.eventAnchors[this.anchorCursor % this.eventAnchors.length];
         this.anchorCursor += 1;
         return anchor;
+    }
+
+    partnerFor(anchor) {
+        let partner = null;
+        let nearest = Infinity;
+        for (const candidate of this.eventAnchors) {
+            if (candidate === anchor || Math.sign(candidate.position.x) !== Math.sign(anchor.position.x)) continue;
+            const distance = candidate.position.distanceToSquared(anchor.position);
+            if (distance < nearest) {
+                nearest = distance;
+                partner = candidate;
+            }
+        }
+        return partner;
     }
 
     excite(energy, resonance) {
         this.uniforms.energy.value = Math.max(this.uniforms.energy.value, clamp(energy, 0, 1));
         this.uniforms.resonance.value = Math.max(this.uniforms.resonance.value, clamp(resonance, 0, 1));
+    }
+
+    setBurstColors(tint, accent, anchor, override = null) {
+        tint.copy(override ?? anchor.tint);
+        if (!override) tint.lerp(this.palette[this.burstSerial % this.palette.length], 0.56);
+        accent.copy(this.palette[(this.burstSerial + 2) % this.palette.length]).lerp(anchor.tint, 0.16);
     }
 
     startWave(strength, anchor) {
@@ -301,30 +423,36 @@ export class CrystalCaveReactions {
         this.uniforms.waveIntensity.value = this.waveStrength;
     }
 
-    emitParticles(anchor, number, strength, large) {
+    emitParticles(anchor, number, strength, large, style = 'clear', tintOverride = null) {
         for (let index = 0; index < Math.min(number, this.maxParticles); index++) {
             const shard = large && index % 4 === 0;
             const slot = this.acquire(shard ? this.shards : this.motes, shard ? 'shardCursor' : 'moteCursor');
             if (!slot) continue;
             const angle = this.random() * TAU;
-            const drift = 0.3 + this.random() * (large ? 2.6 : 0.7);
+            const lock = style === 'lock';
+            const drift = (lock ? 1.8 : 1.1) + this.random() * (large ? 3.4 : 1.2);
             slot.active = true;
             slot.age = 0;
-            slot.duration = shard ? 2.4 + this.random() * 1.2 : 1.3 + this.random() * 1.9;
+            slot.duration = lock ? 0.65 + this.random() * 0.5 : 1.4 + this.random() * 1.3;
             slot.strength = strength;
             slot.phase = this.random() * TAU;
             slot.spin = (this.random() - 0.5) * 2.4;
-            slot.size = 0.12 + this.random() * (large ? 0.29 : 0.09);
+            slot.size = (shard ? 0.23 : 0.28) + this.random() * (lock ? 0.24 : 0.37);
+            slot.style = style;
+            slot.drag = lock ? 2.2 : 1.0;
+            slot.gravity = lock ? 0.35 : 0.65;
             slot.origin.copy(anchor.position);
             slot.origin.x += Math.cos(angle) * 0.45;
             slot.origin.y += (this.random() - 0.5) * 0.8;
+            slot.origin.y -= 0.35;
+            slot.origin.z += 1.3 + this.random() * 0.35;
             slot.velocity.set(
-                Math.cos(angle) * drift,
-                0.9 + this.random() * (large ? 2.4 : 0.7),
+                Math.sign(anchor.position.x) * (0.8 + Math.abs(Math.cos(angle)) * drift),
+                (lock ? 0.5 : 1.5) + this.random() * (large ? 3.7 : 1.2),
                 Math.sin(angle) * drift * 0.5,
             );
-            slot.tint.copy(this.palette[(index + this.anchorCursor) % this.palette.length]);
-            slot.tint.lerp(anchor.tint, 0.32);
+            slot.tint.copy(this.palette[(index + this.burstSerial) % this.palette.length]);
+            slot.tint.lerp(tintOverride ?? anchor.tint, 0.24);
         }
     }
 
@@ -333,13 +461,34 @@ export class CrystalCaveReactions {
         if (!slot) return;
         slot.active = true;
         slot.age = 0;
-        slot.duration = tiny ? 1.2 : 3.2;
+        slot.duration = tiny ? 1.25 : 2.7;
         slot.strength = strength;
-        slot.growth = tiny ? 1.3 : 6.0;
-        slot.tint.value.copy(anchor.tint).lerp(this.palette[0], 0.35);
+        slot.growth = tiny ? 2.7 : 7.4;
+        this.setBurstColors(slot.tint.value, slot.accent.value, anchor);
         const waterX = Math.sign(anchor.position.x) * clamp(Math.abs(anchor.position.x) * 0.35, 5.8, 7.8);
         slot.mesh.position.set(waterX, POOL_Y, Math.min(-5, anchor.position.z));
         slot.mesh.visible = true;
+    }
+
+    emitCorona(anchor, strength, style = 'combo', tintOverride = null) {
+        const slot = this.acquire(this.coronas, 'coronaCursor');
+        if (!slot) return;
+        const lock = style === 'lock';
+        slot.active = true;
+        slot.age = 0;
+        slot.duration = lock ? 0.85 : 1.65;
+        slot.strength = strength;
+        slot.growth = lock ? 1.75 : 2.6;
+        slot.style = style;
+        this.setBurstColors(slot.tint.value, slot.accent.value, anchor, tintOverride);
+        const side = Math.sign(anchor.position.x);
+        slot.mesh.position.set(
+            side * Math.max(8.5, Math.abs(anchor.position.x) + 0.45),
+            anchor.position.y - 0.35,
+            anchor.position.z + 1.6,
+        );
+        slot.mesh.visible = true;
+        slot.progress.value = 0;
     }
 
     emitArc(first, second, strength) {
@@ -347,9 +496,10 @@ export class CrystalCaveReactions {
         if (!slot) return;
         slot.active = true;
         slot.age = 0;
-        slot.duration = 2.8;
+        slot.duration = 2.2 + strength * 0.5;
         slot.strength = strength;
-        slot.tint.value.copy(first.tint).lerp(second.tint, 0.5);
+        this.setBurstColors(slot.tint.value, slot.accent.value, first);
+        slot.progress.value = 0;
         slot.mesh.visible = true;
         const start = first.position;
         const end = second.position;
@@ -359,7 +509,7 @@ export class CrystalCaveReactions {
         const side = Math.sign(start.x);
         const bulgeX = side * (1.6 + Math.abs(dx) * 0.12);
         const bulgeY = 1.3 + start.distanceTo(end) * 0.09;
-        const width = 0.028 + strength * 0.035;
+        const width = 0.13 + strength * 0.31;
         for (let step = 0; step <= ARC_SEGMENTS; step++) {
             const fraction = step / ARC_SEGMENTS;
             const arch = Math.sin(fraction * Math.PI);
@@ -368,21 +518,51 @@ export class CrystalCaveReactions {
             const tangentLength = Math.hypot(tangentX, tangentY) || 1;
             const normalX = (-tangentY / tangentLength) * width;
             const normalY = (tangentX / tangentLength) * width;
-            const x = start.x + dx * fraction + arch * bulgeX;
+            const x = side * Math.max(6 + width, Math.abs(start.x + dx * fraction + arch * bulgeX));
             const y = start.y + dy * fraction + arch * bulgeY;
-            const z = start.z + dz * fraction - arch * 1.2;
+            const z = start.z + dz * fraction - arch * 1.2 + 1.1;
             slot.positions.setXYZ(step * 2, x - normalX, y - normalY, z);
             slot.positions.setXYZ(step * 2 + 1, x + normalX, y + normalY, z);
         }
         slot.positions.needsUpdate = true;
     }
 
-    pieceLock() {
+    pieceLock(detail = {}) {
         if (this.disposed) return false;
-        const anchor = this.nextAnchor();
-        this.excite(0.05, 0.035);
-        this.emitParticles(anchor, 4, 0.38, false);
-        this.emitRipple(anchor, 0.08, true);
+        const payload = detail?.detail ?? detail;
+        const viewport = readLockViewportOrigin(payload);
+        let normalizedX = viewport?.x;
+        if (normalizedX === undefined && Number.isFinite(payload?.piece?.x)) {
+            let cells = 0;
+            let columns = 0;
+            const { shape } = payload.piece;
+            if (Array.isArray(shape)) {
+                for (const row of shape.slice(0, 8)) {
+                    if (!Array.isArray(row)) continue;
+                    for (let column = 0; column < Math.min(8, row.length); column++) {
+                        if (!row[column]) continue;
+                        cells += 1;
+                        columns += column;
+                    }
+                }
+            }
+            normalizedX = clamp((payload.piece.x + (cells ? columns / cells : 0) + 0.5) / 10, 0, 1);
+        }
+        let side = 0;
+        if (normalizedX !== undefined) side = normalizedX < 0.5 ? -1 : 1;
+        const anchor = this.nextAnchor(side);
+        this.burstSerial += 1;
+        const pieceColor = payload?.piece?.color;
+        let tint = null;
+        if ((Number.isInteger(pieceColor) && pieceColor >= 0 && pieceColor <= 0xffffff)
+            || (typeof pieceColor === 'string' && /^#[\da-f]{6}$/i.test(pieceColor))) {
+            this.lockTint.set(pieceColor);
+            tint = this.lockTint;
+        }
+        this.excite(0.18, 0.1);
+        this.emitParticles(anchor, Math.min(20, this.maxParticles), 0.94, true, 'lock', tint);
+        this.emitCorona(anchor, 0.85, 'lock', tint);
+        this.emitRipple(anchor, 0.3, true);
         this.refreshParticles();
         return true;
     }
@@ -391,15 +571,21 @@ export class CrystalCaveReactions {
         const lines = count(value, 4);
         if (this.disposed || lines === 0) return false;
         const anchor = this.nextAnchor();
-        const strength = 0.24 + lines * 0.15;
+        this.burstSerial += 1;
+        const strength = 0.36 + lines * 0.14;
         this.excite(0.16 + lines * 0.14, 0.12 + lines * 0.16);
         this.startWave(strength, anchor);
-        this.emitParticles(anchor, 9 + lines * 8, 0.46 + lines * 0.1, lines >= 3);
-        this.emitRipple(anchor, strength * 0.65);
+        this.emitParticles(anchor, 14 + lines * 10, 0.58 + lines * 0.09, true);
+        this.emitCorona(anchor, strength, 'clear');
+        this.emitRipple(anchor, strength * 0.85);
         if (lines === 4) {
             const echoAnchor = this.nextAnchor();
-            this.emitParticles(echoAnchor, 24, 0.64, true);
-            this.emitRipple(echoAnchor, 0.4);
+            this.burstSerial += 1;
+            this.emitParticles(echoAnchor, 28, 0.82, true);
+            this.emitCorona(echoAnchor, 0.85, 'clear');
+            this.emitRipple(echoAnchor, 0.68);
+            this.scheduleReaction(anchor, this.partnerFor(anchor), 0.78, 16, 0.18, 'clear');
+            this.scheduleReaction(echoAnchor, this.partnerFor(echoAnchor), 0.78, 16, 0.3, 'clear');
         }
         this.refreshParticles();
         return true;
@@ -407,31 +593,61 @@ export class CrystalCaveReactions {
 
     combo(value) {
         const combos = count(value, 60);
-        if (this.disposed || combos < 2) return false;
-        const growth = 1 - Math.exp(-(combos - 1) * 0.18);
-        const strength = 0.35 + growth * 0.55;
-        this.excite(0.22 + growth * 0.62, 0.3 + growth * 0.65);
+        if (this.disposed || combos < 1) return false;
+        const growth = 1 - Math.exp(-combos * 0.18);
+        const strength = 0.5 + growth * 0.48;
+        this.excite(0.32 + growth * 0.58, 0.38 + growth * 0.62);
         const first = this.nextAnchor();
         this.startWave(strength, first);
-        const connectionCount = Math.min(this.maxArcs, 1 + Math.floor(growth * 4));
+        const connectionCount = Math.max(2, Math.min(this.maxArcs, 2 + Math.floor(growth * 5)));
         for (let index = 0; index < connectionCount; index++) {
             const anchor = this.nextAnchor();
-            let second = null;
-            // Connections remain on the outer walls instead of drawing bright
-            // filaments across the board. No per-event filtered arrays needed.
-            for (let offset = 1; offset < this.anchors.length; offset++) {
-                const candidate = this.anchors[(this.anchorCursor - 1 + offset) % this.anchors.length];
-                if (Math.sign(candidate.position.x) === Math.sign(anchor.position.x)) {
-                    second = candidate;
-                    break;
-                }
-            }
-            if (second) this.emitArc(anchor, second, strength);
-            this.emitParticles(anchor, 13 + Math.floor(growth * 12), strength, true);
-            if (index < 2) this.emitRipple(anchor, strength * 0.55);
+            const partner = this.partnerFor(anchor);
+            this.scheduleReaction(
+                anchor,
+                partner,
+                strength,
+                18 + Math.floor(growth * 13),
+                index < 2 ? 0 : (index - 1) * 0.12,
+                'combo',
+            );
+        }
+        if (combos >= 3) {
+            this.scheduleReaction(
+                first,
+                this.partnerFor(first),
+                strength * 0.86,
+                16 + Math.floor(growth * 12),
+                0.42 + growth * 0.14,
+                'combo',
+            );
         }
         this.refreshParticles();
         return true;
+    }
+
+    scheduleReaction(anchor, partner, strength, particles, delay, style) {
+        if (delay <= 0 || this.pendingReactions.length === 0) {
+            this.fireReaction(anchor, partner, strength, particles, style);
+            return;
+        }
+        const slot = this.pendingReactions[this.pendingCursor % this.pendingReactions.length];
+        this.pendingCursor += 1;
+        slot.active = true;
+        slot.at = this.time + delay;
+        slot.anchor = anchor;
+        slot.partner = partner;
+        slot.strength = strength;
+        slot.particles = particles;
+        slot.style = style;
+    }
+
+    fireReaction(anchor, partner, strength, particles, style) {
+        this.burstSerial += 1;
+        if (partner) this.emitArc(anchor, partner, strength);
+        this.emitParticles(anchor, particles, strength, true, style);
+        this.emitCorona(anchor, strength, style);
+        this.emitRipple(anchor, strength * 0.82);
     }
 
     refreshParticles() {
@@ -451,11 +667,12 @@ export class CrystalCaveReactions {
                 }
                 const { age } = slot;
                 const progress = age / slot.duration;
-                const drift = 1 - Math.exp(-age * 0.85);
-                slot.position.copy(slot.origin).addScaledVector(slot.velocity, drift / 0.85);
+                const drift = 1 - Math.exp(-age * slot.drag);
+                slot.position.copy(slot.origin).addScaledVector(slot.velocity, drift / slot.drag);
+                slot.position.y -= slot.gravity * age * age * 0.5;
                 slot.position.y += Math.sin(age * 2 + slot.phase) * Math.min(age, 0.6) * 0.24;
                 // The board corridor is always quiet even as fragments drift.
-                slot.position.x = Math.sign(slot.origin.x) * Math.max(6, Math.abs(slot.position.x));
+                slot.position.x = Math.sign(slot.origin.x) * Math.max(6.5, Math.abs(slot.position.x));
                 const fade = (1 - progress) ** 1.45;
                 if (shard) {
                     this.tmpObject.position.copy(slot.position);
@@ -463,7 +680,7 @@ export class CrystalCaveReactions {
                     this.tmpObject.scale.setScalar(slot.size * (0.65 + fade * 0.35));
                     this.tmpObject.updateMatrix();
                     this.shardMesh.setMatrixAt(index, this.tmpObject.matrix);
-                    this.shardAlpha.setX(index, fade * slot.strength * 0.74);
+                    this.shardAlpha.setX(index, fade * slot.strength * 0.85);
                     this.shardTint.setXYZ(index, slot.tint.r, slot.tint.g, slot.tint.b);
                 } else {
                     this.motePosition.setXYZ(index, slot.position.x, slot.position.y, slot.position.z);
@@ -488,8 +705,28 @@ export class CrystalCaveReactions {
 
     update(dt, time) {
         if (this.disposed || !Number.isFinite(dt) || dt <= 0) return;
-        this.time += dt;
+        const target = this.time + dt;
+        // Advance exactly to each launch, then age its visible reaction by the
+        // remaining frame time. A long frame and 144 Hz therefore agree.
+        for (let launchIndex = 0; launchIndex < this.pendingReactions.length; launchIndex++) {
+            let launch = null;
+            for (const candidate of this.pendingReactions) {
+                if (candidate.active && candidate.at <= target && (!launch || candidate.at < launch.at)) {
+                    launch = candidate;
+                }
+            }
+            if (!launch) break;
+            this.advance(Math.max(0, launch.at - this.time));
+            launch.active = false;
+            this.fireReaction(launch.anchor, launch.partner, launch.strength, launch.particles, launch.style);
+        }
+        this.advance(Math.max(0, target - this.time));
         this.uniforms.time.value = Number.isFinite(time) ? time : this.time;
+        this.refreshParticles();
+    }
+
+    advance(dt) {
+        this.time += dt;
         this.uniforms.energy.value *= Math.exp(-ENERGY_DECAY * dt);
         this.uniforms.resonance.value *= Math.exp(-RESONANCE_DECAY * dt);
         if (this.waveActive) {
@@ -508,7 +745,7 @@ export class CrystalCaveReactions {
             const tail = 1 - THREE.MathUtils.smoothstep(this.waveAge / WAVE_DURATION, 0.55, 1);
             this.uniforms.waveIntensity.value = this.waveActive ? this.waveStrength * tail : 0;
         }
-        for (const slots of [this.shards, this.motes, this.arcs, this.ripples]) {
+        for (const slots of [this.shards, this.motes, this.arcs, this.ripples, this.coronas]) {
             for (const slot of slots) {
                 if (!slot.active) continue;
                 slot.age += dt;
@@ -522,18 +759,27 @@ export class CrystalCaveReactions {
         for (const slot of this.ripples) {
             if (!slot.active) continue;
             const progress = slot.age / slot.duration;
-            const radius = 0.24 + progress * slot.growth;
+            const radius = 0.55 + progress * slot.growth;
             slot.mesh.scale.set(radius, radius, 1);
-            slot.opacity.value = Math.sin(Math.min(progress * 3, 1) * Math.PI * 0.5)
+            slot.opacity.value = Math.sin(Math.min(progress * 6, 1) * Math.PI * 0.5)
                 * (1 - progress) ** 1.8 * slot.strength;
         }
         for (const slot of this.arcs) {
             if (!slot.active) continue;
             const progress = slot.age / slot.duration;
+            slot.progress.value = progress;
             slot.opacity.value = Math.sin(Math.min(progress * 5, 1) * Math.PI * 0.5)
-                * (1 - progress) ** 1.3 * slot.strength * 0.7;
+                * (1 - progress) ** 1.2 * slot.strength * 0.95;
         }
-        this.refreshParticles();
+        for (const slot of this.coronas) {
+            if (!slot.active) continue;
+            const progress = slot.age / slot.duration;
+            slot.progress.value = progress;
+            const size = 0.72 + (1 - Math.exp(-progress * 3.5)) * slot.growth;
+            slot.mesh.scale.set(size, size, 1);
+            slot.opacity.value = Math.sin(Math.min(progress * 9, 1) * Math.PI * 0.5)
+                * (1 - progress) ** 1.2 * slot.strength;
+        }
     }
 
     reset() {
@@ -545,6 +791,9 @@ export class CrystalCaveReactions {
         this.moteCursor = 0;
         this.arcCursor = 0;
         this.rippleCursor = 0;
+        this.coronaCursor = 0;
+        this.pendingCursor = 0;
+        this.burstSerial = 0;
         this.waveActive = false;
         this.waveAge = 0;
         this.waveStrength = 0;
@@ -554,7 +803,8 @@ export class CrystalCaveReactions {
         this.uniforms.resonance.value = 0;
         this.uniforms.waveRadius.value = -100;
         this.uniforms.waveIntensity.value = 0;
-        for (const slots of [this.shards, this.motes, this.arcs, this.ripples]) {
+        for (const slot of this.pendingReactions) slot.active = false;
+        for (const slots of [this.shards, this.motes, this.arcs, this.ripples, this.coronas]) {
             for (const slot of slots) {
                 slot.active = false;
                 slot.age = 0;
@@ -570,12 +820,15 @@ export class CrystalCaveReactions {
             particles: this.maxParticles,
             arcs: this.maxArcs,
             ripples: this.maxRipples,
+            coronas: this.maxCoronas,
             geometries: this.geometries.size,
             materials: this.materials.size,
             activeShards: this.shards.filter((slot) => slot.active).length,
             activeMotes: this.motes.filter((slot) => slot.active).length,
             activeArcs: this.arcs.filter((slot) => slot.active).length,
             activeRipples: this.ripples.filter((slot) => slot.active).length,
+            activeCoronas: this.coronas.filter((slot) => slot.active).length,
+            queuedReactions: this.pendingReactions.filter((slot) => slot.active).length,
             pendingWave: this.pendingWave,
             disposed: Boolean(this.disposed),
         };

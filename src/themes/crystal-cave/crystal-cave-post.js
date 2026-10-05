@@ -50,6 +50,7 @@ export class CrystalCavePost {
         this.size = { width: 0, height: 0 };
         this.uExposure = uniform(EXPOSURE);
         this.uAspect = uniform(16 / 9);
+        this.uReaction = uniform(0);
 
         // The same crystal light, rock and water scene renders directly on phone tiers.
         // No scene targets, bloom targets or fullscreen pipeline are allocated there.
@@ -77,7 +78,11 @@ export class CrystalCavePost {
             toned.mulAssign(mix(vec3(1), vec3(0.985, 1.025, 1.04), highlight.mul(0.16)));
             const gradedLuma = dot(toned, vec3(0.2126, 0.7152, 0.0722));
             // Keep dark rock neutral while restoring jewel chroma after the ACES shoulder.
-            const saturation = mix(float(1), float(1.065), smoothstep(0.035, 0.22, gradedLuma));
+            const saturation = mix(
+                float(1),
+                this.uReaction.mul(0.055).add(1.065),
+                smoothstep(0.035, 0.22, gradedLuma),
+            );
             toned.assign(mix(vec3(gradedLuma), toned, saturation));
 
             const radial = length(screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1)).mul(2));
@@ -97,11 +102,13 @@ export class CrystalCavePost {
 
     update(frame = {}) {
         if (this.disposed) return;
-        const reaction = Math.max(bounded(frame.energy), bounded(frame.resonance) * 0.8);
+        const response = frame ?? {};
+        const reaction = Math.sqrt(Math.max(bounded(response.energy), bounded(response.resonance) * 0.8));
         // Crystal surfaces, ripples and traveling glints carry the event. This bounded
         // response retains facet color and never turns gameplay into a screen flash.
-        this.uExposure.value = EXPOSURE + reaction * 0.012;
-        if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + reaction * 0.075;
+        this.uReaction.value = reaction;
+        this.uExposure.value = EXPOSURE;
+        if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + reaction * 0.11;
     }
 
     render() {
@@ -138,6 +145,7 @@ export class CrystalCavePost {
             useMRT: this.useMRT,
             resolutionScale: this.resolutionScale,
             exposure: this.uExposure.value,
+            reaction: this.uReaction.value,
             bloomStrength: this.bloomNode?.strength.value ?? 0,
             bloomThreshold: BLOOM_THRESHOLD,
         };
