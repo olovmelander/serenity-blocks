@@ -4,14 +4,13 @@
  *
  * The top row holds the match bar and, at its right, the controls tray that every
  * mode shares (keystone-overlays.css). Below it, one station per player: a name plate,
- * the board with its incoming-garbage meter on the left, the next queue beside the
- * board (or above it when width is short), and one line of stats under the board.
+ * the next queue in a row over the well's open top, the well (the board with its
+ * incoming-garbage meter on the left), and one line of stats under the board.
  * Every number lives in one place: the deciding number on the plate, the rest under
  * the board, the match (goal, round, clock, team totals) in the bar.
  *
  * Sizes come from the layout module as variables on the stage (--lv-block, --lv-unit,
- * --board-width, ...) and data-queue / data-rows, so the CSS and the board sizing
- * never disagree. This file supersedes the local board-card rules in main.css and
+ * --board-width, ...) and data-rows, so the CSS and the board sizing never disagree. This file supersedes the local board-card rules in main.css and
  * multiplayer-ui.css (scoped by #multiplayer-container, so it wins without !important
  * except over their own !important grid rules).
  * ================================================================================ */
@@ -43,18 +42,22 @@
 }
 
 /* ---- Station ----------------------------------------------------------------------- */
-/* The queue beside the board: the plate over all three columns, the stats under the
-   board. The board wrapper dissolves so the meter and the board are grid items. */
+/* The plate over both columns, the queue over the board, the well (garbage channel +
+   board), the stats under the board. */
 #multiplayer-container .player-card[data-player] {
     --lv-u: var(--lv-unit, 1);
+    /* The well's walls: the seat's hue, a touch lifted; danger and knock-out recolour it. */
+    --lv-wall: color-mix(in srgb, var(--player-primary, #b8a4ff) 82%, #fff6e9);
+    --lv-wall-glow: color-mix(in srgb, var(--player-primary, #b8a4ff) 34%, transparent);
     position: relative;
     display: grid;
-    grid-template-columns: var(--lv-trash, 8px) var(--board-width) var(--lv-queue-col, 80px);
+    grid-template-columns: var(--lv-trash, 8px) var(--board-width);
     grid-template-areas:
-        "plate plate plate"
-        "trash board queue"
-        ". meta .";
-    column-gap: var(--lv-gutter, 6px);
+        "plate plate"
+        ". queue"
+        "well well"
+        ". meta";
+    column-gap: 0;
     row-gap: 0;
     align-items: start;
     align-content: start;
@@ -73,28 +76,25 @@
     transition: opacity var(--sb-dur-3) ease;
 }
 
-/* The queue above the board (width is short). */
-#multiplayer-container[data-queue='top'] .player-card[data-player] {
-    grid-template-columns: var(--lv-trash, 8px) var(--board-width);
-    grid-template-areas:
-        "plate plate"
-        "queue queue"
-        "trash board"
-        ". meta";
-}
-
-/* Last Standing: the queue above, the minimap beside the board. */
+/* Last Standing: the minimap beside the board. */
 #multiplayer-container .player-card[data-player].infinity-lms {
-    grid-template-columns: var(--lv-trash, 8px) var(--board-width) 55px;
+    grid-template-columns: var(--lv-trash, 8px) var(--board-width) 63px;
     grid-template-areas:
         "plate plate plate"
-        "queue queue queue"
-        "trash board map"
+        ". queue ."
+        "well well map"
         ". meta .";
 }
 
+/* ---- The well: an open-top frame round the garbage channel and the board ---------- */
 #multiplayer-container .player-card .player-board-wrapper {
-    display: contents;
+    grid-area: well;
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    width: auto;
+    margin: 0;
 }
 
 /* ---- Name plate -------------------------------------------------------------------- */
@@ -267,21 +267,78 @@
 }
 
 /* ---- Board -------------------------------------------------------------------------- */
-/* The board's frame is a ring outside it, so the canvas keeps exactly the board size. */
+/* Glass that thickens downward from the open top, with a faint guide per column. The
+   walls are the well's (below), so the canvas keeps exactly the board size. */
 #multiplayer-container .player-card .player-board-section {
-    grid-area: board;
     position: relative;
+    flex: none;
     width: var(--board-width);
     height: var(--board-height);
     margin: 0;
     overflow: hidden;
     border: 0;
-    border-radius: calc(10px * var(--lv-u));
-    background: rgba(9, 8, 24, 0.72);
+    border-radius: 0 0 calc(10px * var(--lv-u)) 0;
+    background:
+        repeating-linear-gradient(90deg,
+            transparent 0 calc(var(--lv-block, 30px) - 1px),
+            rgba(var(--sb-cream-rgb), 0.045) calc(var(--lv-block, 30px) - 1px) var(--lv-block, 30px)),
+        linear-gradient(180deg, rgba(9, 8, 24, 0.3) 0%, rgba(9, 8, 24, 0.84) 16%, rgba(9, 8, 24, 0.9) 100%);
+    box-shadow: none;
+}
+
+/* Near the top: a coral haze from the open top (keystone-versus danger state). */
+#multiplayer-container .player-card .player-board-section::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 3;
+    height: 34%;
+    background: linear-gradient(180deg, rgba(var(--sb-danger-rgb), 0.3), transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--sb-dur-3) ease;
+}
+
+#multiplayer-container .player-card.lv-danger .player-board-section::before {
+    opacity: 1;
+}
+
+/* The walls: left, right and floor round channel and board, fading out toward the top. */
+#multiplayer-container .player-card .lv-well {
+    position: absolute;
+    inset: 0 -3px -3px;
+    z-index: 4;
+    border: 3px solid var(--lv-wall);
+    border-top: 0;
+    border-radius: 0 0 calc(13px * var(--lv-u)) calc(13px * var(--lv-u));
     box-shadow:
-        0 0 0 2px color-mix(in srgb, var(--player-primary, #b8a4ff) 80%, transparent),
-        0 0 calc(22px * var(--lv-u)) color-mix(in srgb, var(--player-primary, #b8a4ff) 28%, transparent),
-        0 18px 40px rgba(0, 0, 0, 0.4);
+        0 10px 28px -8px var(--lv-wall-glow),
+        inset 0 -1px 0 rgba(var(--sb-cream-rgb), 0.12);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 24%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 24%);
+    pointer-events: none;
+    transition: border-color var(--sb-dur-3) ease, box-shadow var(--sb-dur-3) ease;
+}
+
+/* Danger: the stack is near the top — the walls turn coral and breathe. */
+#multiplayer-container .player-card.lv-danger {
+    --lv-wall: var(--sb-danger);
+    --lv-wall-glow: rgba(var(--sb-danger-rgb), 0.55);
+}
+
+#multiplayer-container .player-card.lv-danger .lv-well {
+    animation: lv-danger 1.1s var(--sb-ease-breathe) infinite alternate;
+}
+
+@keyframes lv-danger {
+    from { box-shadow: 0 10px 28px -8px var(--lv-wall-glow), inset 0 -1px 0 rgba(var(--sb-cream-rgb), 0.12); }
+    to { box-shadow: 0 10px 40px -2px var(--lv-wall-glow), inset 0 -1px 0 rgba(var(--sb-cream-rgb), 0.12); }
+}
+
+/* Out until the round ends: the walls go quiet. */
+#multiplayer-container .player-card.lv-out {
+    --lv-wall: rgba(var(--sb-cream-rgb), 0.22);
+    --lv-wall-glow: transparent;
 }
 
 #multiplayer-container .player-card .phaser-board-container {
@@ -292,43 +349,56 @@
 }
 
 #multiplayer-container .player-card .board-border-overlay {
-    border: 0;
-    border-radius: inherit;
-    box-shadow: inset 0 0 0 1px rgba(var(--sb-cream-rgb), 0.06);
+    display: none;
 }
 
-/* Incoming garbage: a meter the height of the board that fills from the bottom. */
+/* Incoming garbage: a channel inside the well, against the board, filling from the
+   floor; it glows once a heavy attack waits (8+ rows). */
 #multiplayer-container .player-card .garbage-indicator {
-    grid-area: trash;
     position: relative;
+    flex: none;
     width: var(--lv-trash, 8px);
     height: var(--board-height);
     overflow: hidden;
-    border: 1px solid var(--sb-line);
-    border-radius: 999px;
-    background: rgba(var(--sb-cream-rgb), 0.05);
+    border: 0;
+    border-radius: 0 0 0 calc(10px * var(--lv-u));
+    background: linear-gradient(180deg, rgba(5, 4, 14, 0.25) 0%, rgba(5, 4, 14, 0.85) 16%);
+    box-shadow: inset -1px 0 0 rgba(var(--sb-cream-rgb), 0.1);
 }
 
 #multiplayer-container .player-card .garbage-indicator .garbage-fill {
-    border-radius: inherit;
-    background: linear-gradient(to top, var(--sb-danger) 0%, var(--sb-coral) 45%, var(--sb-gold) 100%);
+    border-radius: 0;
+    background: linear-gradient(to top, var(--sb-danger) 0%, var(--sb-coral) 55%, var(--sb-gold) 100%);
+    box-shadow: 0 0 12px rgba(var(--sb-danger-rgb), 0.5);
+}
+
+#multiplayer-container .player-card .garbage-indicator.is-heavy .garbage-fill {
+    animation: lv-heavy 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes lv-heavy {
+    from { filter: brightness(1); }
+    to { filter: brightness(1.45); }
 }
 
 #multiplayer-container .player-card .garbage-indicator .garbage-glow {
     display: none;
 }
 
-/* ---- Next queue ---------------------------------------------------------------------- */
+/* ---- Next queue: a row over the well's open top --------------------------------------- */
+/* The next piece in a tile lit with the seat's hue, the two after it smaller and
+   quieter; the tiles stand in line on the well's mouth. Tiles are wide, as pieces are. */
 #multiplayer-container .player-card .player-next-section {
     grid-area: queue;
-    align-self: stretch;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    justify-content: flex-start;
-    gap: calc(7px * var(--lv-u));
-    width: var(--lv-queue-col, 80px);
-    margin: 0;
+    justify-content: center;
+    gap: var(--next-piece-gap, 8px);
+    width: auto;
+    height: var(--lv-next-h, 60px);
+    /* VERSUS_CHROME.queueGap: the air between the queue and the well. */
+    margin: 0 0 8px;
 }
 
 #multiplayer-container .player-card .next-label {
@@ -341,9 +411,10 @@
 
 #multiplayer-container .player-card .player-next-pieces {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--next-piece-gap, 6px);
+    flex-direction: row;
+    align-items: flex-end;
+    align-self: stretch;
+    gap: var(--next-piece-gap, 8px);
     width: auto;
     margin: 0;
     padding: 0;
@@ -354,8 +425,8 @@
 }
 
 #multiplayer-container .player-card .player-next-piece {
-    width: var(--next-piece-size, 60px);
-    height: var(--next-piece-size, 60px);
+    width: var(--lv-later-w, 80px);
+    height: var(--lv-later-h, 48px);
     border: 1px solid var(--sb-line);
     border-radius: calc(9px * var(--lv-u));
     background: rgba(12, 10, 30, 0.82);
@@ -364,9 +435,12 @@
 }
 
 #multiplayer-container .player-card .player-next-piece.primary {
-    width: var(--next-piece-highlight-size, 70px);
-    height: var(--next-piece-highlight-size, 70px);
+    width: var(--lv-next-w, 100px);
+    height: var(--lv-next-h, 60px);
     border-color: color-mix(in srgb, var(--player-primary, #b8a4ff) 70%, transparent);
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--player-primary, #b8a4ff) 12%, transparent), transparent 70%),
+        rgba(12, 10, 30, 0.86);
     box-shadow: 0 0 14px color-mix(in srgb, var(--player-primary, #b8a4ff) 24%, transparent);
     opacity: 1;
 }
@@ -379,33 +453,10 @@
     opacity: 0.6;
 }
 
-/* Above the board: one row in a tray, no label (the row reads as a queue). */
-#multiplayer-container[data-queue='top'] .player-card .player-next-section,
-#multiplayer-container .player-card.infinity-lms .player-next-section {
-    align-self: start;
-    flex-direction: row;
-    justify-content: center;
-    width: auto;
-    margin-bottom: 8px;
-}
-
-#multiplayer-container[data-queue='top'] .player-card .next-label,
-#multiplayer-container .player-card.infinity-lms .next-label {
-    display: none;
-}
-
-#multiplayer-container[data-queue='top'] .player-card .player-next-pieces,
-#multiplayer-container .player-card.infinity-lms .player-next-pieces {
-    flex-direction: row;
-    padding: var(--next-piece-gap, 6px);
-    border: 1px solid var(--sb-line);
-    border-radius: calc(12px * var(--lv-u));
-    background: rgba(12, 10, 30, 0.6);
-}
-
 /* Last Standing's minimap beside the board. */
 #multiplayer-container .player-card.infinity-lms .infinity-minimap {
     grid-area: map;
+    justify-self: end;
     width: 55px !important;
     height: var(--board-height) !important;
     margin: 0 !important;
@@ -616,6 +667,157 @@
     font: 600 calc(12px * var(--lv-u)) / 1.3 var(--sb-font-text);
 }
 
+/* ---- The match, told: frags, attacks, rounds ----------------------------------------- */
+/* A frag lands: the plate's number pops gold and a "+1" rises beside it. */
+#multiplayer-container .lv-plate.is-bumped .lv-plate__value {
+    color: var(--sb-gold);
+    animation: lv-bump 700ms var(--sb-ease-lock);
+}
+
+@keyframes lv-bump {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.38); }
+    100% { transform: scale(1); }
+}
+
+#multiplayer-container .lv-plate__bump {
+    position: absolute;
+    top: 50%;
+    right: calc(52px * var(--lv-u));
+    color: var(--sb-gold);
+    font: 700 calc(12px * var(--lv-u)) / 1 var(--sb-font-display);
+    pointer-events: none;
+    animation: lv-bump-rise 1s ease-out forwards;
+}
+
+@keyframes lv-bump-rise {
+    from { opacity: 0; transform: translateY(-20%); }
+    20% { opacity: 1; }
+    to { opacity: 0; transform: translateY(-120%); }
+}
+
+/* An attack: a streak from the attacker's board into the target's garbage channel. */
+#multiplayer-container .lv-attack {
+    position: absolute;
+    z-index: 30;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+#multiplayer-container .lv-attack__trail {
+    position: absolute;
+    top: -1.5px;
+    left: 0;
+    width: var(--attack-len, 100px);
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--attack-color, var(--sb-coral)));
+    box-shadow: 0 0 10px var(--attack-color, var(--sb-coral));
+    transform-origin: 0 50%;
+}
+
+#multiplayer-container .lv-attack__orb {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff 0 28%, var(--attack-color, var(--sb-coral)) 62%);
+    box-shadow: 0 0 16px 5px color-mix(in srgb, var(--attack-color, #ffac88) 70%, transparent);
+    transform: translate(-50%, -50%);
+}
+
+/* The hit: the channel flashes and the rows it takes count in beside it. */
+#multiplayer-container .player-card .garbage-indicator.is-hit {
+    animation: lv-hit 500ms ease-out;
+}
+
+@keyframes lv-hit {
+    from { box-shadow: inset 0 0 0 999px rgba(var(--sb-danger-rgb), 0.55), 0 0 18px rgba(var(--sb-danger-rgb), 0.7); }
+    to { box-shadow: inset -1px 0 0 rgba(var(--sb-cream-rgb), 0.1); }
+}
+
+#multiplayer-container .lv-hit {
+    position: absolute;
+    bottom: 16%;
+    left: calc(var(--lv-trash, 8px) + 6px);
+    z-index: 6;
+    color: color-mix(in srgb, var(--attack-color, #ffac88) 55%, #fff6e9);
+    font: 800 calc(18px * var(--lv-u)) / 1 var(--sb-font-display);
+    text-shadow: 0 0 12px var(--attack-color, var(--sb-coral)), 0 2px 6px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+    animation: lv-hit-rise 1.1s var(--sb-ease-lock) forwards;
+}
+
+@keyframes lv-hit-rise {
+    from { opacity: 0; transform: translateY(10px) scale(0.8); }
+    18% { opacity: 1; transform: translateY(0) scale(1.1); }
+    to { opacity: 0; transform: translateY(-26px) scale(1); }
+}
+
+/* The round's result, for a moment, as the next one starts. */
+#multiplayer-container .lv-round {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    z-index: 20;
+    display: grid;
+    justify-items: center;
+    gap: 7px;
+    min-width: 240px;
+    padding: 16px 30px 18px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.95) 0%, rgba(12, 10, 30, 0.97) 100%);
+    box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.5),
+        0 0 0 1px color-mix(in srgb, var(--round-color, #ffac88) 30%, transparent),
+        inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+    pointer-events: none;
+    transition: opacity 260ms ease, transform 420ms var(--sb-ease-lock);
+}
+
+#multiplayer-container .lv-round.is-shown {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+#multiplayer-container .lv-round::before {
+    content: '';
+    width: 34px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--round-color, var(--sb-keystone));
+}
+
+#multiplayer-container .lv-round__kicker {
+    color: var(--sb-text-muted);
+    font: 600 10px / 1 var(--sb-font-display);
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+}
+
+#multiplayer-container .lv-round__title {
+    color: color-mix(in srgb, var(--round-color, #fff6e9) 45%, #fff6e9);
+    font: 700 24px / 1.1 var(--sb-font-display);
+    white-space: nowrap;
+}
+
+#multiplayer-container .lv-round__note {
+    color: var(--sb-text-muted);
+    font: 600 12px / 1.2 var(--sb-font-text);
+}
+
+/* Knocked out by whom, in their colour. */
+#multiplayer-container .lv-ko__cause {
+    color: color-mix(in srgb, var(--by-color, #fff6e9) 60%, #fff6e9);
+    font: 700 calc(13px * var(--lv-u)) / 1.2 var(--sb-font-text);
+}
+
 /* ---- Controls card (each human board, first seconds of a match) ---------------------- */
 #multiplayer-container .lv-coach {
     position: absolute;
@@ -638,47 +840,6 @@
 
 #multiplayer-container .lv-coach.is-leaving {
     opacity: 0;
-}
-
-/* Beside the board, the card waits in the queue's free foot, off the board. */
-#multiplayer-container .player-next-section .lv-coach {
-    position: static;
-    gap: calc(9px * var(--lv-u));
-    width: 100%;
-    margin-top: auto;
-    padding: calc(10px * var(--lv-u)) calc(8px * var(--lv-u));
-    transform: none;
-    animation-name: lv-coach-rise;
-}
-
-#multiplayer-container .player-next-section .lv-coach__row {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    gap: calc(5px * var(--lv-u));
-}
-
-#multiplayer-container .player-next-section .lv-coach__keys {
-    flex-wrap: wrap;
-    justify-content: center;
-}
-
-#multiplayer-container .player-next-section .lv-coach kbd {
-    min-width: calc(20px * var(--lv-u));
-    height: calc(20px * var(--lv-u));
-    padding: 0 calc(4px * var(--lv-u));
-    font-size: max(10px, calc(10.5px * var(--lv-u)));
-}
-
-@keyframes lv-coach-rise {
-    from {
-        opacity: 0;
-        transform: translateY(8px);
-    }
-
-    to {
-        opacity: 1;
-        transform: none;
-    }
 }
 
 @keyframes lv-coach-in {
@@ -726,7 +887,7 @@
     font: 700 calc(11px * var(--lv-u)) / 1 var(--sb-font-text);
 }
 
-/* ---- Hot potato: the holder's plate glows, a chip on its foot counts down ------------ */
+/* ---- Hot potato: the holder's plate glows, a chip on its top edge counts down -------- */
 #multiplayer-container .player-card.hot-potato-holder {
     border: 0;
     box-shadow: none;
@@ -737,13 +898,14 @@
     box-shadow: 0 0 0 1px rgba(var(--sb-coral-rgb), 0.35), 0 0 24px rgba(var(--sb-coral-rgb), 0.24);
 }
 
+/* Over the deciding number's corner, clear of the queue under the plate. */
 #multiplayer-container .player-card.hot-potato-holder::after {
     content: 'Hot potato  ' attr(data-potato-time);
-    top: calc(var(--lv-plate-h, 48px) - 10px);
-    right: auto;
-    left: 50%;
+    top: -11px;
+    right: calc(12px * var(--lv-u));
+    left: auto;
     z-index: 7;
-    padding: 4px 9px;
+    padding: 3px 8px;
     border: 1px solid rgba(var(--sb-coral-rgb), 0.7);
     border-radius: 7px;
     background: #2b1308;
@@ -751,16 +913,22 @@
     font: 700 10px / 1 var(--sb-font-display);
     letter-spacing: 0.06em;
     text-transform: none;
-    transform: translateX(-50%);
+    transform: none;
     white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #multiplayer-container .lv-coach {
+    #multiplayer-container .lv-plate.is-bumped .lv-plate__value,
+    #multiplayer-container .lv-hit,
+    #multiplayer-container .player-card .garbage-indicator.is-hit,
+    #multiplayer-container .lv-coach,
+    #multiplayer-container .player-card.lv-danger .lv-well,
+    #multiplayer-container .player-card .garbage-indicator.is-heavy .garbage-fill {
         animation: none;
     }
 
     #multiplayer-container .lv-ko,
+    #multiplayer-container .lv-round,
     #multiplayer-container .lv-plate__goal-fill {
         transition: none;
     }

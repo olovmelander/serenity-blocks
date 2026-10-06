@@ -97,6 +97,9 @@ export async function createLocalMultiplayerBoards(mode) {
             phaserGame.scene.add(sceneKey, boardScene, true);
             console.log(`[LocalMultiplayer] Player ${i} scene created: `, boardScene.scene?.key);
 
+            // The versus look: solid slate garbage, a coloured ghost (versus-board-style.js).
+            boardScene.setVersusStyle?.(true);
+
             // Store references
             mode.boardScenes.push(boardScene);
 

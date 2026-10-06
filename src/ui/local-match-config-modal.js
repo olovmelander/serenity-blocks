@@ -20,12 +20,8 @@ import { enhanceSelect, enhanceSegmented } from './components/cosmic-select.js';
 import {
     closeLayer, focusSoon, mpIcon, openLayer,
 } from './components/mp-sheet.js';
+import { BOT_SKILL_TIERS, seatSetupControls } from './local-seat-controls.js';
 
-/** Bot skill names, 1–10 (the versus plates name a bot's skill with them too). */
-export const BOT_SKILL_TIERS = [
-    'Rookie', 'Novice', 'Learner', 'Steady', 'Skilled',
-    'Sharp', 'Expert', 'Master', 'Ace', 'Machine',
-];
 const DEFAULT_BOT_SKILL = 5;
 const LAST_SETUP_KEY = 'serenity.localMatch.lastSetup';
 
@@ -532,7 +528,10 @@ export class LocalMatchConfigModal {
             card.innerHTML = `
                 <div class="lmc-slot__head">
                     <span class="lmc-slot__badge" aria-hidden="true">P${i}</span>
-                    <span class="lmc-slot__name" id="lmc-seat-${i}-name">Player ${i}</span>
+                    <span class="lmc-slot__who">
+                        <span class="lmc-slot__name" id="lmc-seat-${i}-name">Player ${i}</span>
+                        <span class="lmc-slot__controls" id="lmc-seat-${i}-controls"></span>
+                    </span>
                     <span class="lmc-slot__kind-icon" aria-hidden="true"></span>
                 </div>
                 <select class="lmc-slot__kind" name="${kindName}" aria-label="Player ${i} plays as">
@@ -554,6 +553,7 @@ export class LocalMatchConfigModal {
             `;
             card.setAttribute('role', 'group');
             card.setAttribute('aria-labelledby', `lmc-seat-${i}-name`);
+            card.setAttribute('aria-describedby', `lmc-seat-${i}-controls`);
 
             grid.appendChild(card);
 
@@ -562,11 +562,15 @@ export class LocalMatchConfigModal {
             const skillSelect = card.querySelector(`[name="${skillName}"]`);
             const handicapSelect = card.querySelector(`[name="${handicapName}"]`);
             const nameEl = card.querySelector('.lmc-slot__name');
+            const controlsEl = card.querySelector('.lmc-slot__controls');
             const kindIcon = card.querySelector('.lmc-slot__kind-icon');
             const applyKind = () => {
                 const isBot = kindSelect.value === 'bot';
                 card.classList.toggle('is-bot', isBot);
                 nameEl.textContent = isBot ? `Bot ${i}` : `Player ${i}`;
+                // Who sits where: the keys and the controller this seat answers to.
+                controlsEl.textContent = isBot ? 'Plays on its own'
+                    : seatSetupControls(i - 1, window.settingsManager?.get?.() || {});
                 kindIcon.innerHTML = mpIcon(isBot ? 'bot' : 'human', 18);
                 skillSelect.disabled = !isBot;
                 skillSelect._cosmicSelect?.syncDisabled();

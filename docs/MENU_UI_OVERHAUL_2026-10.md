@@ -213,7 +213,9 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Timed matches are won on score, but both scoreboards ranked them by frags (the gold leader could be the wrong player); a lines match never showed lines | Both rank and lead with the number that decides the match (`src/ui/scoreboard-metrics.js`) |
 | Local versus showed every number twice — a standings bar on top (frags, score, level, lines) and a six-icon bar under each board (frags, deaths, score, lines, level, incoming) — named players only by a colour square, and ranked a 0–0 start 1st, 2nd, 3rd, "4th" | One place per number: the deciding number on each board's name plate, ranked only once someone leads (ties share a place); the rest on one labelled line under the board; the match in one bar (§5.6) |
 | Local boards said only "P1"–"P4": no names, no sign of a bot, no hint of who plays on which keys | Each plate names the player, their keys or controller, or the bot and its skill; each human board shows its controls for the first seconds (§5.6) |
-| Four-player local versus overflowed a 1024 px window (the stage had `min-width: 1200px`) and its standings bar ran under the tray | The boards are sized to the window for 2–4 players, 1024 px to 4K, the queue beside the board or above it, whichever gives the bigger board (§5.6) |
+| Four-player local versus overflowed a 1024 px window (the stage had `min-width: 1200px`) and its standings bar ran under the tray | The boards are sized to the window for 2–4 players, 1024 px to 4K, the next queue in a row above each board (§5.6) |
+| The local next previews were fitted to the pieces' rotation matrices (the I piece's 4 × 4, the others' 3 × 3), so the I drew at a quarter of its room and every piece sat off-centre | They fit and centre the piece itself, with the single-player queue's trim (now shared, `trimShape` in `canvas-drawing-utils.js`) |
+| Local garbage was a slab in the attacker's own colour, so it read like a stack of their pieces | Solid slate, faintly tinted by the attacker; holes stay plain to see (§5.6) |
 | Local timed matches promised "the highest score when time runs out wins", but the standings ranked by frags and the match went to whoever won the last round | Timed matches rank, lead and are won on score, for players and teams; the clock is in the match bar and turns to "Last round" at zero |
 | In team play a frag goal counts rounds won, but the standings summed players' frags | The match bar races teams by their rule (rounds won, or the team's points or lines); each teammate's goal bar fills by the team |
 | A knock-out showed a 💀 emoji and "ELIMINATED" in red Arial | A Keystone card: "Out", the seat's colour, "Back next round" |
@@ -490,47 +492,75 @@ play, and how are they doing" at a glance, and every number lives in one place.
   zero) and, in team play, each team's total by the team rule. Below 861 px it keeps the
   goal and the clock.
 - **A station per player** (`.player-card[data-player]`, which themes read for their
-  composition, keeps its name and box): a name plate, the board with its incoming-garbage
-  meter on the left, the next queue, and one line of stats under the board.
+  composition, keeps its name and box): a name plate, the next queue in a row over the
+  well's open top, the well (the board with its incoming-garbage channel on the left),
+  and one line of stats under the board.
 - **The name plate:** the seat (P1–P4) in its colour, the name, how they play ("Arrow
   keys", "WASD", "Controller 3", "Bot · Master", read from the key bindings), a team chip
   in team play, the rank once someone leads (gold, cream, coral; ties share a place;
   teams are ranked in the bar instead) and the number that decides the match with its
   unit (Frags, Points, Lines, To roof), a bar along its foot filling toward the goal (by
   the team's total in team play). An eliminated player's plate dims until the round ends.
+- **The next queue:** above the board, "Next", then the next piece in a tile lit with the
+  seat's hue and the two after it smaller and quieter, standing in line on the well's
+  mouth. The tiles are wide, as pieces are, and each preview fits and centres the piece
+  itself (not its rotation matrix), so it draws at about half a block.
+- **The well:** the board has no lid. Its walls rise from the floor in the seat's hue and
+  fade out toward the top, faint column guides run down the glass, and the garbage
+  channel sits flush inside the left wall. Incoming garbage fills the channel (20 lines
+  fill it; from 8 it glows), and an attack lands in it with a flash and a "+n". When the
+  stack is within five rows of the top the walls turn coral and breathe, and they calm
+  only once it is three rows lower (no flicker at the line). A knocked-out well goes
+  quiet. The whole well shakes and dips with the board's juice.
+- **The boards' look (`src/rendering/phaser/versus-board-style.js`, local versus only):**
+  pieces and the stack keep the game's solid, fused shapes. Garbage is one solid slate
+  fill faintly tinted by the attacker, so it never passes for a stack of pieces and its
+  holes stay plain to see. The ghost is the piece's own colour, faint inside and
+  outlined, where it will land. Single player and the themes keep the base look
+  (`BaseBoardScene.setVersusStyle`, turned on by `local-board-hosts.js`).
+- **The match told as it happens:** a streak flies from the attacker's board to each
+  target's channel with the lines it carries; a frag pops "+1" on the plate; the
+  knock-out card names who did it ("By Ada" in their colour) or says "Topped out"; and as
+  the next round starts a banner gives the result ("Round 2 · Ada takes it", "A draw",
+  "Topped out, no frag"). Reduced motion keeps the facts and drops the flight.
 - **The stats line** shows what the plate does not: level, lines, score or frags. Deaths
-  and incoming garbage left the live HUD (the results keep deaths; the meter shows
+  and incoming garbage left the live HUD (the results keep deaths; the channel shows
   garbage).
-- **Sizing (`local-versus-layout.js`):** the largest block that fits below the top row,
-  with the next queue beside the board (the genre's reading order) or above it when
-  width is short, whichever gives the bigger board; stations wrap onto two rows on tall
-  windows. Plates and type scale with the block (×0.85–1.6), the smallest type never below
-  8 px. The sizes reach the stylesheet as variables on `#multiplayer-container`
-  (`--lv-block`, `--board-width`, …, `data-queue`), never on `:root`, so other modes'
-  boards never inherit them.
+- **Sizing (`local-versus-layout.js`):** the largest block that fits below the top row
+  with the queue above every board; stations wrap onto two rows on tall windows. Plates
+  and type scale with the block (×0.85–1.6), the smallest type never below 8 px. The
+  sizes reach the stylesheet as variables on `#multiplayer-container` (`--lv-block`,
+  `--board-width`, `--lv-next-w`, …, `data-rows`), never on `:root`, so other modes'
+  boards never inherit them. Board sizes (px): with the queue above every board, two and
+  three players give up about a tenth of the height the queue beside the board allowed
+  (1920 × 1080: 440 × 880 before), and four players gain, the tiles being wider than tall:
 
   | Window | 2 players | 3 players | 4 players |
   |---|---|---|---|
-  | 1024 × 768 | | | 210 × 420, queue above (overflowed before) |
-  | 1280 × 720 | 270 × 540, beside (was ~190 × 390) | | 240 × 480, above |
-  | 1366 × 768 | | 300 × 600, beside | |
-  | 1920 × 1080 | 440 × 880, beside (was 400 × 800) | 440 × 880, beside (was 350 × 700) | 390 × 780, above |
-  | 2560 × 1440 | 610 × 1220, beside | | |
+  | 1024 × 768 | 270 × 540 | 270 × 540 | 220 × 440 (was 210 × 420; overflowed before that) |
+  | 1280 × 720 | 250 × 500 | 250 × 500 | 250 × 500 (was 240 × 480) |
+  | 1366 × 768 | 270 × 540 | 270 × 540 | 270 × 540 (was 260 × 520) |
+  | 1920 × 1080 | 410 × 820 | 410 × 820 | 410 × 820 (was 390 × 780) |
+  | 2560 × 1440 | 560 × 1120 | 560 × 1120 | 560 × 1120 (was 530 × 1060) |
 
 - **Knock-out:** the board fades and dims as before, and a card rises: "Out", a stroke of
-  the seat's colour, "Back next round".
+  the seat's colour, who did it, "Back next round".
 - **Controls card:** for the first six seconds of a match each human board shows its
-  keys as keycaps (Move ← →, Turn ↑ Z, Drop ↓ Space; a controller's D-pad, A Y, ↓ B), in
-  the queue's free foot when the queue is beside the board, else on the board's foot.
-- **Hot potato:** the holder's plate glows coral and a chip on its foot counts down.
+  keys as keycaps on the board's foot (Move ← →, Turn ↑ Z, Drop ↓ Space; a controller's
+  D-pad, A Y, ↓ B). The setup sheet says the same under each seat ("Arrow keys ·
+  Controller 1", "Controller 3", a bot "Plays on its own"); both read
+  `src/ui/local-seat-controls.js`.
+- **Hot potato:** the holder's plate glows coral and a chip on its top edge, over the
+  deciding number's corner, counts down.
 - **Rules made consistent:** timed matches are won on score (what the setup sheet
   promises), for teams on the team's score; the results say the same goal as the bar.
 - Hooks kept: `#p{n}-phaser-container`, `#p{n}-next-0…2`, `#p{n}-garbage-bar`,
   `.player-card[data-player]`, `.hot-potato-holder` / `data-potato-time`,
-  `.infinity-lms` (the minimap sits beside the board, the queue above). Gone with the old
-  HUD: `#global-standings-hud` and its CSS in four stylesheets, the per-board six-stat
-  bars (`#p{n}-frags` …), the avatar header, the inline colours `_applyPlayerColors`
-  wrote (it now sets the seat's hue variables only).
+  `.infinity-lms` (the minimap sits beside the board). Gone with the old HUD:
+  `#global-standings-hud` and its CSS in four stylesheets, the per-board six-stat bars
+  (`#p{n}-frags` …), the avatar header, the inline colours `_applyPlayerColors` wrote (it
+  now sets the seat's hue variables only), the queue beside the board (`data-queue`), and
+  the mode's own garbage-meter writes (the HUD fills the channel from `incoming`).
 - **Online:** the "NET" network badge (`src/ui/network-qos.js`) and its styles are gone.
 
 ## 6. Verification
@@ -555,7 +585,11 @@ play, and how are they doing" at a glance, and every number lives in one place.
   past the window at any size), and a knock-out, team play, Hot potato, a timed match to
   its last round and results, a score race and Infinity captured from real matches set
   up through the sheet; unit tests for the layout and the HUD
-  (`tests/unit/local-versus-*.test.js`).
+  (`tests/unit/local-versus-*.test.js`). The well, the queue above the board and the
+  boards' look captured again from all-bot and human-seat matches at 1024 × 768,
+  1280 × 720, 1366 × 768, 1600 × 900, 1920 × 1080 and 1080 × 1920 (2–4 players, Infinity,
+  Hot potato), with the danger walls checked against the stacks' heights; preview fit in
+  `tests/unit/next-preview-presentation.test.js`.
 - No `backdrop-filter` remains on any Keystone surface.
 
 ## 7. Open follow-ups

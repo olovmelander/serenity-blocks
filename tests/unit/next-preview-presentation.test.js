@@ -3,7 +3,8 @@ import {
 } from 'vitest';
 
 const shared = vi.hoisted(() => ({ draws: [], events: new Map(), configs: {}, managers: [], operations: [] }));
-vi.mock('../../src/rendering/canvas/canvas-drawing-utils.js', () => ({
+vi.mock('../../src/rendering/canvas/canvas-drawing-utils.js', async (importOriginal) => ({
+    trimShape: (await importOriginal()).trimShape,
     drawPieceSolid: vi.fn((ctx, shape, x, y, size, style) => {
         shared.operations.push('draw');
         shared.draws.push({ ctx, shape, x, y, size, style });
@@ -351,6 +352,25 @@ describe('existing multiplayer preview canvases', () => {
         drawNextPieces(canvases, ['T', 'I', 'O']);
         expect(shared.draws).toHaveLength(11);
         expect(canvases[1].width).toBe(200);
+    });
+
+    it('fits and centres the piece itself in a wide tile, not its blank rotation rows', async () => {
+        const { drawNextPieces } = await import('../../src/rendering/draw.js');
+        const canvases = [new Canvas(), new Canvas()];
+        canvases.forEach((canvas) => {
+            new Element().appendChild(canvas);
+            canvas.size = { width: 100, height: 60 };
+        });
+        drawNextPieces(canvases, ['I', 'T']);
+        const [i, t] = shared.draws;
+        // I: one row of four, 78.4 / 4 wide (padding 0.18 × 60); centred both ways.
+        expect(i.shape).toEqual([[1, 1, 1, 1]]);
+        expect(i.size).toBe(19);
+        expect([i.x, i.y]).toEqual([12, 21]);
+        // T: two rows of three; 33.6 / 2 high (padding 0.22 × 60); centred both ways.
+        expect(t.shape).toEqual([[1, 1, 1], [0, 1, 0]]);
+        expect(t.size).toBe(16);
+        expect([t.x, t.y]).toEqual([26, 14]);
     });
 
     it('preserves time-varying glow pulses and only clears unchanged empty slots once', async () => {

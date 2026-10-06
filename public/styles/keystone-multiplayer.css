@@ -968,6 +968,26 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
+#local-match-config-modal .lmc-slot__who {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+#local-match-config-modal .lmc-slot__controls {
+    overflow: hidden;
+    color: var(--sb-text-muted);
+    font: 600 0.75rem / 1.2 var(--sb-font-text);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#local-match-config-modal .lmc-slot.is-bot .lmc-slot__controls {
+    color: var(--sb-text-faint);
+}
+
 #local-match-config-modal .lmc-slot__name {
     flex: 1;
     min-width: 0;
