@@ -182,6 +182,10 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Font URLs were absolute (`/fonts/...`) | Relative to the stylesheet |
 | Odyssey copy promised 56 levels in 7 chapters | Read from the level registry (59 in 8) |
 | The desktop game had no way to quit from its menus (Alt+F4 only, in fullscreen) | Quit in the main menu dock, two presses |
+| A failed game start raised a browser `alert` | A Keystone toast (the toast listener now installs at boot, with the main menu) |
+| On game over every controller face button restarted, B included, and a button still held from play fired at once | B is Main menu (like Escape); A, X, Y or Start play again; the sheet arms only after a neutral release |
+| Controller B ignored the multiplayer back stack | B goes back like Escape, and pad navigation stays inside the top multiplayer surface |
+| The floating Hale sessions tile covered the versus chat column and, on phones, the replay bar | It steps aside during versus matches and replays (the lotus tile still opens the Hub) |
 | Cancel or Escape from Create match left a blank screen; Escape over the multiplayer menus opened Settings | One back stack for every multiplayer sheet |
 | A failed create or join hid its sheet and said nothing (or used `alert`) | The sheet stays open with the reason |
 | `serenity:toast` events ("removed by the host", lobby full, version mismatch) had no listener | Keystone toasts |

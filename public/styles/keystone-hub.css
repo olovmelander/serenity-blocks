@@ -1794,6 +1794,13 @@ body.custom-cursor-active.serenity-volume-dragging * {
     display: none;
 }
 
+/* A versus match fills the right edge with its scoreboard and chat, and a replay has its
+   own bar; the lotus tile still opens the Hub (and Hale sessions) in both. */
+body.phaser-multiplayer-active #hale-sessions-btn.hale-sessions-entry,
+body.replay-playing #hale-sessions-btn.hale-sessions-entry {
+    display: none;
+}
+
 #hale-sessions-btn .hale-sessions-entry__icon {
     display: grid;
     place-items: center;

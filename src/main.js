@@ -2520,7 +2520,7 @@ class SerenityBlocks {
                     this.modalManager.hideAll();
                 } catch (error) {
                     console.error('[Main] Failed to start game:', error);
-                    alert(`Failed to start game: ${error.message}`);
+                    window.dispatchEvent(new CustomEvent('serenity:toast', { detail: { type: 'error', message: `The game could not start. ${error.message}` } }));
                 }
             });
         }
@@ -2933,7 +2933,7 @@ class SerenityBlocks {
                 console.error('[Main] Failed to start game from card selection:', error);
                 releaseLoadingSurface();
                 dismissCinematicLoadingOverlay(300);
-                alert(`Failed to start game: ${error.message}`);
+                window.dispatchEvent(new CustomEvent('serenity:toast', { detail: { type: 'error', message: `The game could not start. ${error.message}` } }));
             }
         };
         window.addEventListener('startGameWithMode', startGameWithModeHandler);

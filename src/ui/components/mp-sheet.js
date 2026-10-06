@@ -144,6 +144,19 @@ export function closeLayer(element) {
     if (index >= 0) layers.splice(index, 1);
 }
 
+/** The open multiplayer surface on top, if any (controller navigation scopes to it). */
+export function getTopLayerElement() {
+    return topLayer()?.element || null;
+}
+
+/** Controller B: the same as Escape on the top surface. True when a surface took it. */
+export function goBackFromTopLayer() {
+    const layer = topLayer();
+    if (!layer) return false;
+    layer.onBack();
+    return true;
+}
+
 /** Focus a control without scrolling the page, once the surface has painted. */
 export function focusSoon(getTarget) {
     if (typeof requestAnimationFrame !== 'function') return;

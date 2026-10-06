@@ -9,6 +9,8 @@
  * stage with the player's own progress, and routes the menu's secondary actions.
  */
 import '../menu-card-interactions.js';
+// Installs the serenity:toast listener at boot (a failed game start is announced as a toast).
+import '../components/toast.js';
 import { installInputModeTracking, getInputMode } from '../keystone/input-mode.js';
 import { installKeystoneFocus } from '../keystone/keystone-focus.js';
 import { getThemeIds } from '../../themes/theme-registry.js';
