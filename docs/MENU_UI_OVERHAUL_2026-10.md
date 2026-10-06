@@ -853,7 +853,8 @@ local versus does, and hands the sizes to the stylesheet as variables:
 - **The match won** holds 2.4 s (0.9 s with reduced motion) before the results, as
   local versus does: a crest over the winner's well — "Match won", "Victory", the name
   in their colour — your board's victory light or the opponent tile's (light rising in
-  their colour and gold, shells of motes), every other board stepped back. A tile too
+  their colour and gold, shells of motes; its move's callouts give way to the crest,
+  the late waves' light stays), every other board stepped back. A tile too
   small to hold the crest (a phone, a full field) gets it over the stage. The stage
   steps out over the beat's last 320 ms and the results fade in, so no empty window
   shows between them.

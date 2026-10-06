@@ -280,6 +280,25 @@ describe('opponent tile: the match won', () => {
         expect(fx.particles).toHaveLength(0);
     });
 
+    it('leaves the crest the tile\'s only words: the move\'s callouts go, and those on the way', () => {
+        const fx = makeFx();
+        fx.triggerCombo(5);
+        fx.triggerPerfectClear(0, '#fff', 200); // a clean canvas still on its way
+        expect(callouts(fx)).toHaveLength(1);
+        fx.triggerVictory('#22d3ee');
+        expect(callouts(fx)).toHaveLength(0);
+        vi.advanceTimersByTime(2000);
+        expect(callouts(fx)).toHaveLength(0);
+        // The move's last waves can land after the match's end: their light, not their words.
+        fx.triggerCombo(6);
+        expect(callouts(fx)).toHaveLength(0);
+        expect(fx.lights.some((l) => l.kind === 'ring')).toBe(true);
+        // A new match speaks again.
+        fx.clearAll();
+        fx.triggerCombo(2);
+        expect(callouts(fx)).toHaveLength(1);
+    });
+
     it('a reset cancels shells still on their way', () => {
         const fx = makeFx();
         fx.triggerVictory();

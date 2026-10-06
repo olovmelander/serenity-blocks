@@ -93,6 +93,8 @@ export class CanvasBoardEffects {
         this.moveLines = 0;
         this._cleanAt = -Infinity;
         this._timers = new Set();
+        // The match won: the crest is the tile's only words until the tile resets.
+        this._crowned = false;
 
         this.particles = [];
         this.maxParticles = this.isFocused ? MAX_PARTICLES_FOCUSED : MAX_PARTICLES_UNFOCUSED;
@@ -525,6 +527,11 @@ export class CanvasBoardEffects {
      * @param {string|number} [color] the winner's colour
      */
     triggerVictory(color = TONE.GOLD) {
+        // The crest is the tile's only words now: the move's callouts go, any on the way,
+        // and any its last waves would still raise (they can land after the match's end).
+        this._crowned = true;
+        this._clearTimers();
+        this.textLayer?.querySelectorAll('.sb-tile-callout').forEach((el) => el.remove());
         const seat = parseColorInt(color, TONE.GOLD);
         this._light('rise', {
             color: mixColor(TONE.GOLD, seat, 0.2), h: this.height, peak: 0.42, hold: 1.3, fade: 0.9,
@@ -649,7 +656,7 @@ export class CanvasBoardEffects {
     _callout({
         kicker = null, lead = null, title = null, tone = TONE.CREAM, y = 0.4, hold = 500,
     }) {
-        if (!this.textLayer) return;
+        if (!this.textLayer || this._crowned) return;
         this.textLayer.querySelectorAll('.sb-tile-callout').forEach((old) => old.remove());
         const el = document.createElement('div');
         el.className = 'sb-tile-callout';
@@ -711,6 +718,7 @@ export class CanvasBoardEffects {
         this.chainCount = 0;
         this.moveLines = 0;
         this._cleanAt = -Infinity;
+        this._crowned = false;
         this.releaseParticles();
     }
 
