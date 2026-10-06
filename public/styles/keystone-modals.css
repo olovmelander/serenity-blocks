@@ -1011,11 +1011,11 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
 }
 
 /* Steam leaderboards (only mounted when Steam reports leaderboards). */
-#game-over-modal .steam-leaderboard-host:empty {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-host:empty {
     display: none;
 }
 
-#game-over-modal .steam-leaderboard-panel {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-panel {
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -1029,7 +1029,7 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
     backdrop-filter: none;
 }
 
-#game-over-modal .steam-leaderboard-header {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1040,7 +1040,7 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
     text-transform: none;
 }
 
-#game-over-modal .steam-leaderboard-title {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-title {
     display: inline-flex;
     align-items: center;
     gap: 10px;
@@ -1050,7 +1050,7 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
     text-transform: uppercase;
 }
 
-#game-over-modal .steam-leaderboard-title::before {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-title::before {
     content: '';
     width: 7px;
     height: 7px;
@@ -1058,23 +1058,23 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
     background: currentColor;
 }
 
-#game-over-modal .steam-leaderboard-updated,
-#game-over-modal .steam-leaderboard-status,
-#game-over-modal .steam-leaderboard-empty,
-#game-over-modal .steam-leaderboard-notice {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-updated,
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-status,
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-empty,
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-notice {
     color: var(--sb-text-faint);
     font: 500 0.8125rem / 1.4 var(--sb-font-text);
     letter-spacing: 0;
     text-transform: none;
 }
 
-#game-over-modal .steam-leaderboard-notice {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-notice {
     padding-top: 8px;
     border-top: 1px solid var(--sb-line);
 }
 
-#game-over-modal .steam-leaderboard-board-tabs,
-#game-over-modal .steam-leaderboard-view-tabs {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-board-tabs,
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-view-tabs {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
@@ -1085,7 +1085,7 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
     width: fit-content;
 }
 
-#game-over-modal .steam-leaderboard-tab {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-tab {
     position: relative;
     min-height: 30px;
     padding: 0 11px;
@@ -1103,30 +1103,30 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
         color var(--sb-dur-2) var(--sb-ease-lock);
 }
 
-#game-over-modal .steam-leaderboard-tab:hover {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-tab:hover {
     background: rgba(var(--sb-cream-rgb), 0.06);
     color: var(--sb-text);
 }
 
-#game-over-modal .steam-leaderboard-tab.active {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-tab.active {
     border-color: var(--sb-line-strong);
     background: rgba(var(--sb-cream-rgb), 0.1);
     box-shadow: none;
     color: var(--sb-text);
 }
 
-#game-over-modal .steam-leaderboard-tab:focus-visible {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-tab:focus-visible {
     outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
     outline-offset: 2px;
 }
 
-#game-over-modal .steam-leaderboard-entries {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-entries {
     display: flex;
     flex-direction: column;
     gap: 2px;
 }
 
-#game-over-modal .steam-leaderboard-row {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-row {
     display: grid;
     grid-template-columns: 52px minmax(0, 1fr) auto;
     align-items: center;
@@ -1139,31 +1139,31 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
     font: 500 0.875rem / 1.3 var(--sb-font-text);
 }
 
-#game-over-modal .steam-leaderboard-row.self {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-row.self {
     border-color: rgba(var(--sb-aqua-rgb), 0.4);
     background: rgba(var(--sb-aqua-rgb), 0.08);
     color: var(--sb-text);
 }
 
-#game-over-modal .steam-leaderboard-row.pending {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-row.pending {
     border-style: dashed;
     border-color: var(--sb-line-strong);
     opacity: 1;
 }
 
-#game-over-modal .steam-leaderboard-rank {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-rank {
     color: var(--sb-text-faint);
     font: 600 0.75rem / 1 var(--sb-font-display);
     font-variant-numeric: tabular-nums;
 }
 
-#game-over-modal .steam-leaderboard-name {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-#game-over-modal .steam-leaderboard-score {
+:is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-score {
     color: var(--sb-text);
     font: 600 0.875rem / 1 var(--sb-font-display);
     font-variant-numeric: tabular-nums;
@@ -1318,7 +1318,7 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
     #demo-browser-modal .demo-card,
     #demo-browser-modal .demo-action,
     #demo-browser-modal .demo-action__label,
-    #game-over-modal .steam-leaderboard-tab {
+    :is(#game-over-modal, #odyssey-results-modal) .steam-leaderboard-tab {
         transition: none !important;
     }
 }

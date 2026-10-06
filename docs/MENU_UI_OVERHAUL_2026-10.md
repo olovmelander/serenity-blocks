@@ -206,6 +206,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | The Odyssey HUD progress fill filled its whole section (an unscoped absolute `.progress-fill` in `serenity-hub.css`) | The HUD keeps its fill in flow inside the track |
 | The countdown plate, Odyssey HUD and single-player stat rail blurred the live scene every frame | Opaque layered fills |
 | The online countdown named four keyframes that were never defined (it never animated), blurred the board at 15 px and counted in a traffic light to a green "GO!" | Keyframes defined (scale only — its inline opacity/transform are `!important`); the spectrum walks to a coral GO, Unbounded, no blur |
+| The Steam player card said "Offline" twice (status line and pill) in Orbitron with pill chips | One "Offline" with the reason in its tooltip; Keystone type and tile chips |
 | Replay controls were emoji glyphs named only by `title`, and the speed menu kept showing the last speed after a new replay reset to 1× | SVG buttons with labels; the speed row follows the player |
 | Odyssey results, failure, navigator and board views each injected a `<style>` block at runtime | Styles live in `keystone-overlays.css` |
 
@@ -338,7 +339,8 @@ shouted from the HUD.
   `src/ui/odyssey/keystone-sheet.js` (`createKeystoneSheet`, `appendKeyHint`): the
   level's name is the hero, earned stars land in gold one beat apart, score / lines /
   time are fact tiles, and there is one coral action (Continue, Retry) with key and
-  controller hints. The unranked notice ("Experimental Session · Unranked") is kept.
+  controller hints. The unranked notice ("Experimental Session · Unranked") is kept, and
+  the Steam leaderboard panel uses the same Keystone treatment as on game over.
 - **Goal complete** is a quiet banner at the top with the keystone and an
   `Enter Finish` hint; play continues underneath.
 - **Navigator** (`#odyssey-level-select`): chapters as panels, levels as tiles, the next
