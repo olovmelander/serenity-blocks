@@ -254,3 +254,38 @@ describe('opponent tile: out', () => {
         expect(fx.baseCanvas.style.opacity).toBe('1');
     });
 });
+
+describe('opponent tile: the match won', () => {
+    it('rises in gold and the winner\'s colour, then opens shells of motes over the well', () => {
+        const fx = makeFx();
+        fx.triggerVictory('#22d3ee');
+        expect(fx.lights.map((l) => l.kind)).toEqual(['rise', 'bloom']);
+        expect(fx.particles).toHaveLength(0);
+
+        vi.advanceTimersByTime(1300);
+        expect(fx.lights.filter((l) => l.kind === 'ring')).toHaveLength(5);
+        expect(fx.particles.length).toBeGreaterThan(0);
+        run(fx, 64);
+        expect(fx.ctx.fills.length).toBeGreaterThan(0);
+        fx.ctx.fills.forEach((fill) => expect(fill.op).toBe('lighter'));
+        expect(fx.ctx.strokes).toBe(0);
+    });
+
+    it('keeps the light alone with reduced motion', () => {
+        vi.stubGlobal('window', { matchMedia: () => ({ matches: true }) });
+        const fx = makeFx();
+        fx.triggerVictory('#22d3ee');
+        vi.advanceTimersByTime(2000);
+        expect(fx.lights.map((l) => l.kind)).toEqual(['rise', 'bloom']);
+        expect(fx.particles).toHaveLength(0);
+    });
+
+    it('a reset cancels shells still on their way', () => {
+        const fx = makeFx();
+        fx.triggerVictory();
+        fx.clearAll();
+        vi.advanceTimersByTime(2000);
+        expect(fx.lights).toHaveLength(0);
+        expect(fx.particles).toHaveLength(0);
+    });
+});

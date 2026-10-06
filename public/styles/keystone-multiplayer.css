@@ -4494,13 +4494,6 @@ body.start-modal-open #invite-toast-container {
     font-variant-numeric: tabular-nums;
 }
 
-/* "Joined mid-match": a quiet Keystone note over the waiting board. */
-#online-main-board .dropin-waiting-banner {
-    border-color: rgba(var(--sb-aqua-rgb, 158, 232, 237), 0.45) !important;
-    color: var(--sb-text) !important;
-    font-family: var(--sb-font-text) !important;
-}
-
 /* Your board dims and greys inside the board itself; the frame stays clear. */
 .online-game-area .online-main-board.eliminated,
 .online-main-board.eliminated,

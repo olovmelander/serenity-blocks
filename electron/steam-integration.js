@@ -993,8 +993,9 @@ export function registerSteamIPC() {
                     id: l.id.toString(),
                     name: l.getData('game_name') || '[No name]',
                     mode: l.getData('game_mode') || 'ffa',
-                    players: l.getMemberCount(),
-                    maxPlayers: l.getMemberLimit(),
+                    // BigInt in steamworks.js; plain numbers for the renderer.
+                    players: Number(l.getMemberCount()),
+                    maxPlayers: Number(l.getMemberLimit() ?? 0),
                     endCondition: l.getData('end_condition') || 'frags',
                     endConditionValue: l.getData('end_condition_value') || '10',
                     // Match lifecycle the host advertises via setLobbyData('status', ...)
