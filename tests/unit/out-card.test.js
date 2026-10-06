@@ -4,7 +4,7 @@
  * the marker the online mode and the watch manager look for.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { createOutCard, showOutCard } from '../../src/ui/keystone/out-card.js';
+import { createOutCard, createStatusCard, showOutCard } from '../../src/ui/keystone/out-card.js';
 
 function fakeDoc() {
     const make = () => {
@@ -50,6 +50,34 @@ describe('createOutCard', () => {
         const card = createOutCard(fakeDoc(), { cause: 'By <img src=x onerror=alert(1)>' });
         expect(card.children[1].textContent).toBe('By <img src=x onerror=alert(1)>');
         expect(card.children[1].innerHTML).toBeUndefined();
+    });
+});
+
+describe('createStatusCard', () => {
+    it('says a late joiner plays next round in aqua, never as Out', () => {
+        const card = createStatusCard(fakeDoc(), {
+            title: 'Next round', note: 'Joined mid-match', compact: true, tone: 'aqua', marker: 'waiting-overlay',
+        });
+        expect(card.className).toBe('waiting-overlay sb-out sb-out--compact sb-out--aqua');
+        expect(card.className).not.toContain('death-overlay');
+        expect(card.children.map((c) => c.textContent)).toEqual(['Next round', 'Joined mid-match']);
+    });
+
+    it('says a dropped connection in slate', () => {
+        const card = createStatusCard(fakeDoc(), {
+            title: 'Offline', cause: 'Connection lost', tone: 'slate', marker: 'disconnect-overlay',
+        });
+        expect(card.className).toBe('disconnect-overlay sb-out sb-out--slate');
+        expect(card.attrs.role).toBe('status');
+    });
+
+    it('uses words, never emoji', () => {
+        const emoji = /\p{Extended_Pictographic}/u;
+        [
+            createOutCard(fakeDoc(), { cause: 'Topped out', note: 'Watching until the round ends' }),
+            createStatusCard(fakeDoc(), { title: 'Next round', note: 'Joined mid-match', tone: 'aqua' }),
+            createStatusCard(fakeDoc(), { title: 'Offline', cause: 'Connection lost', tone: 'slate' }),
+        ].forEach((card) => card.children.forEach((c) => expect(emoji.test(c.textContent)).toBe(false)));
     });
 });
 

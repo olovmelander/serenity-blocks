@@ -256,6 +256,13 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Single player stopped the board scene before the results, so a top-out's effect never showed: the well went blank at once | The board stays up for the death; the next start or leaving the mode stops it |
 | A cascade's later waves looked exactly like its first (the depth physics passes with each impact was dropped) | Each wave reads its depth |
 | Garbage arriving on a local versus board had no effect on the board | The stack heaves, as online |
+| Combo counts stacked: dismissing the newest brought an older count back under it | Each wave's count replaces the last |
+| From ten waves a cascade fired its biggest effect at every wave | It is the move's finale, once (§5.8) |
+| Online cascades counted nothing on your board: the online physics callbacks dropped a wave's depth, and the online popup counted consecutive clears | The depth goes through; the count is the wave's |
+| A peer never saw an opponent's clean canvas (peers do not run an opponent's physics) | The host's per-wave clear message says which wave empties the board |
+| Rings froze as a bullseye in the middle of the well during a hit stop | Dark until they have opened out |
+| Opponent tiles painted: a full-tile wash in the player's colour every lock, flat white stripes for a clear, a red wash for garbage and a red gradient for a knock-out, "3x Combo!" pills | Light at tile size, a grey drain under the Out card (§5.8) |
+| Emoji in online status: ⏳ NEXT ROUND, 🔌 DISCONNECTED, ⚔️ frags, 👁 SPECTATING, the drop-in banner's hourglass, local versus' fallback "🏆 … WINS! 🏆" | Words: "Next round", "Offline", "3 frags", "Watching", "… wins" |
 
 ---
 
@@ -691,8 +698,8 @@ index back from the renderer.
 | Lock | Silhouette stamp plus a three-cell ring every lock | The stamp only |
 | Single–triple | A stripe in the theme tint, three square shards per cell, an upward fountain of streaks | The rows turn to light the instant they clear: one even slab per run of rows (a quad is one block, not four stripes), held, then bloomed away; a bright blade across it; chunks of the cells burst outward and fall; embers drift up |
 | Quad | + a full-board white wash, green dashes over the whole well | + a gold bloom from the rows and a "Four lines / Quad" callout (once per 1.2 s, however a cascade repeats it) |
-| Perfect clear | White supernova, three rings, "PERFECT / CLEAR" in Orbitron on a skewed band | "Board clear / Perfect" first, a gold bloom, dawn rising from the floor, two soft rings, gold motes |
-| Cascade | Only the popup counted the depth (wave 5 lit like wave 1); a hundred streaks at 5+ that began as a white disc | Each wave reads its depth (physics passes it with the impact): more of the chain's tone (aqua → gold → coral → hot pink), a longer hold, a bigger blade, more embers and weight; from wave 3 the walls haze and the rows bloom in the tone; at 5+ a soft ring in the tone; "Chain ×n / Cascade" at 10 |
+| Perfect clear | White supernova, three rings, "PERFECT / CLEAR" in Orbitron on a skewed band | "Clean canvas", named by the move that made it, first; a gold bloom, dawn rising from the floor, two to four soft rings, gold motes, all scaled by the move (below) |
+| Cascade | Only the popup counted the depth (wave 5 lit like wave 1); a hundred streaks at 5+ that began as a white disc | Each wave reads its depth (physics passes it with the impact): more of the chain's tone (aqua → gold → coral → hot pink), a longer hold, a bigger blade, more embers and weight; from wave 3 the walls haze and the rows bloom in the tone; what a wave drops lands in light; the move is summed up when it settles (below) |
 | Combo, T-spin, back-to-back | Orbitron with red/cyan fringes on skewed bands | The depth's number in Unbounded with "COMBO" under it, in the tone; "T-spin / Double" with a lavender ring; "Back to back" in gold |
 | Level up | A flat cyan box sweeping up | A band of lavender light sweeps up the well, the walls glow, "Level up / 5" |
 | Garbage in | An orange rail and dust; local versus showed nothing on the board | The stack heaves: light rises from the floor with a coral edge, dust is forced up, the walls flare; local versus now calls it too |
@@ -700,6 +707,49 @@ index back from the renderer.
 | Knock-out (versus) | A white DOM overlay over the card, the board at 0.3 alpha; online, a red card | The same tide and drain, pieces break off the stack and fall out of the well in slate, the board settles dim; the "Out" card (who did it) rises over it, local and online (`ui/keystone/out-card.js`); a new round undoes the filter |
 | Round won (versus) | `camera.flash` (a solid gold board), blob fireworks for a second, confetti | Gold light rises from the floor of the winner's well and two fireworks climb as one bright mote each and burst (flash, ring, embers in the winner's colour); the round waits 1.5 s on the outcome |
 | Match won (versus) | Nothing on the boards; the results faded in | A 2.4 s beat before the results: the boards hold still, the winner's well lights, a halo breathes behind it, five shells go up, a "Match won / Victory / name" crest rises in their colour (`local-versus-hud.js` `showVictory`), the other wells dim |
+
+**Cascades, as Quadra plays them.** The gravity is Quadra's (the physics is calibrated
+against its source: a 160 ms hold on cleared rows, 20 ms gravity steps). In Quadra a
+*move* is everything one piece sets off: its **depth** is the lines it clears in all,
+its **complexity** the waves — what this game calls the combo — and the score rewards
+lines over waves. When a move settles Quadra scrolls one line summing it up (its lines,
+"Double", "Triple", "Quad", and its points); a block's landing thud grows with how far
+it fell and the clear's pitch drops with each wave; an emptied well scrolls "Clean
+canvas!" and pays bonus lines. Sources:
+[harddrop.com/wiki/Quadra](https://harddrop.com/wiki/Quadra),
+[tetris.wiki/Quadra](https://tetris.wiki/Quadra) and the source,
+[github.com/quadra-game/quadra](https://github.com/quadra-game/quadra) (`canvas.cc`,
+`player.cc`). The boards follow it:
+
+- **Each wave counts**: the depth's number in the chain's tone; the next replaces it.
+- **What a wave drops lands**: a piece that fell two rows or more lights where it comes
+  to rest — a pool and a bright edge, wider and brighter the further it fell, dust from
+  three rows — the longest falls first, at most six a settle; a one-row shift says
+  nothing. The board watches its locked pieces from a wave's flash to the move's end
+  (`observeSettling`, called by the scene each frame, idle until a line clears), against
+  a snapshot taken as the rows leave, so a slow frame cannot shorten a fall.
+- **The move's finale**: when the physics lets go of the board, a move of two waves or
+  more is summed up low on the board, "Combo ×3 / 7 lines" in the chain's tone; from
+  ten waves the big "×n / Cascade" with the lines as its kicker. A lock's own clear says
+  nothing more (its light and the Quad callout carried it).
+- **Clean canvas** replaces the finale: "Combo ×4 · 9 lines / Clean canvas" ("Perfect
+  clear / Clean canvas" for one clear), its hold, type, rings, wall glow, motes, shake
+  and hit stop scaled by the move. Rings stay dark until they have opened out, since a
+  hit stop froze them at their first frame as a bullseye.
+
+**Opponents' boards online** (`ui/effects/canvas-board-effects.js`) speak the same
+language at tile size, on a 2D overlay added with `'lighter'`: never a fill.
+
+| Event | Before | Now |
+|---|---|---|
+| Clear | A flat white stripe per row and a wash | One slab per run of rows and a blade; a gold bloom for a quad; a few embers |
+| Wave | A "3x Combo!" pill in the player's colour | The count in Keystone type with a soft ring in the chain's tone; the light takes the tone |
+| Clean canvas | A "Perfect Clear" pill, on the host only | A gold dawn, a bloom, two rings, "Combo ×4 · 4 lines / Clean canvas", on every client: the host's per-wave clear message (`GAME_LINES_CLEAR`) carries `clean` on the wave that empties the board, and the tile lands it as that wave's rows go, once per move |
+| Hard drop | A burst and a full-tile pulse | Light pools along the edge it struck; sparks |
+| Lock | A full-tile wash in the player's colour | Nothing: the board shows it |
+| Garbage | A red tile wash | Coral light rises from the floor; dust |
+| Out | A red gradient over the tile | The tile drains to grey under the Out card |
+| Status | ⏳ NEXT ROUND, 🔌 DISCONNECTED, ⚔️ frags | "Next round" (aqua) and "Offline" (slate) cards in the Out card's anatomy (`createStatusCard`); "3 frags" |
 
 **Recipes.** Instant beats appear at full strength when created, since a tween can
 start a frame late on a slow device. Bright-edged textures keep their last rows clear,
@@ -752,21 +802,33 @@ cells stays a shade under white so the cells' colours read through it.
   quad and perfect clear, and local versus with 2 and 3 players (incoming garbage, a
   knock-out, a round won, the match won); the T-spin, back-to-back and chain callouts
   shot on their own. Pixel profiles confirmed the dark bands and square came from the
-  blend. The online knock-out needs two clients and was not run live; its card and the
-  shared knock-out are unit tested. Unit tests: `tests/unit/fx-kit.test.js`,
+  blend. The online knock-out's card and the shared knock-out are unit tested; the
+  two-client run below found the round-ending knock-out never shows (§7). Unit tests: `tests/unit/fx-kit.test.js`,
   `fx-moments.test.js`, `shared-effects-cascade-depth.test.js`, `out-card.test.js`, the
   victory crest in `local-versus-hud.test.js`, the victory beat in
   `local-multiplayer-loop-ownership.test.js`, and the updated shared-effects suites.
+- Cascades and online (§5.8): the landings measured from real five-wave and clean-canvas
+  cascades (each fall logged against the snapshot) and recorded slowed ×8 for the
+  callouts. Online with two clients on the mock transport (`?localMp=host` /
+  `?localMp=join`): the host's clean-canvas cascade recorded on its own board and on the
+  joiner's tile of it; every tile effect fired on the host's tile of the joiner; the
+  host topped out with both windows recording. Unit tests:
+  `shared-effects-cascade-finale.test.js` (landings, budget, finale, clean canvas,
+  popups, reset), `canvas-board-effects.test.js`, `ffa-opponent-clean-canvas.test.js`,
+  the ring in `shared-effects-cascade-depth.test.js`, the status cards in
+  `out-card.test.js`, the routing in `opponent-watch-animation.test.js`.
 - No `backdrop-filter` remains on any Keystone surface.
 
 ## 7. Open follow-ups
 
-- **Board effects.** Run an online match with two clients to see the knock-out card and
-  drain live. Odyssey still plays the top-out on a board its own flow tears down; give
-  it the same beat. A consecutive-clear combo (one clear per piece) is shown only by the
-  light's tone, by design (local versus's read); a popup for it is a product call. The
-  blocks that fall between a cascade's waves have no landing light, also by design
-  (earlier "settle beats" were dropped as noise).
+- **Board effects.** Online, the round that a knock-out ends restarts at once (the host
+  calls `restartMatch()` straight from `endMatch()`), so the last knock-out of a round —
+  every knock-out in a 1v1 — shows no drain, no Out card and no round won before
+  "Round 2"; a round-over beat belongs to the online UX audit. Odyssey still plays the
+  top-out on a board its own flow tears down; give it the same beat. A consecutive-clear
+  combo (one clear per piece) is shown only by the light's tone, by design (local
+  versus's read); a popup for it is a product call. Quadra's sound cues (a landing thud
+  by fall height, a lower pitch per wave) wait on the audio pass.
 
 - **One sheet primitive.** `keystone-modals.css` (`#… .sb-sheet`-style rules for
   Settings, Records, Replays, results), `mp-sheet.js` and `keystone-sheet.js` grew the

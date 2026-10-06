@@ -141,7 +141,7 @@ describe('opponent HUD changed-value presentation', () => {
 
         watcher.updateFromState([snapshot({ frags: 2, color: '#fb7185' })]);
 
-        expect(board.nodes['.opponent-frags'].textContent).toBe('⚔️ 2');
+        expect(board.nodes['.opponent-frags'].textContent).toBe('2 frags');
         expect(board.canvas.style.borderLeftColor).toBe('#fb7185');
         expect(board.nodes['.opponent-next-piece.highlight'].style.borderColor).toBe('#fb7185');
         expect(counts.texts).toBe(1);
@@ -250,7 +250,7 @@ describe('opponent HUD changed-value presentation', () => {
         expect(board.canvas).not.toBe(oldCanvas);
         expect(board.ctx).toBe(newCtx);
         expect(watcher._renderSigs.has('P2')).toBe(false);
-        expect(board.nodes['.opponent-frags'].textContent).toBe('⚔️ 0');
+        expect(board.nodes['.opponent-frags'].textContent).toBe('0 frags');
         expect(board.canvas.style.borderBottomColor).toBe('#22d3ee');
         expect(board.garbageFill).toBe(board.nodes['.opponent-garbage-fill']);
         expect(board.garbageFill.style.height).toBe('5%');
@@ -316,7 +316,7 @@ describe('opponent HUD changed-value presentation', () => {
         board.nodes['.opponent-frags'] = node(counts);
         board.nodes['.opponent-garbage-fill'] = node(counts);
         watcher.updateFromState([state]);
-        expect(board.nodes['.opponent-frags'].textContent).toBe('⚔️ 0');
+        expect(board.nodes['.opponent-frags'].textContent).toBe('0 frags');
         expect(board.garbageFill.style.height).toBe('15%');
         expect(board._hud.complete).toBe(true);
     });

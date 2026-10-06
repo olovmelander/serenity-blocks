@@ -36,6 +36,7 @@ import { readFlag as readNetFlag } from '../flags.js';
 import { FIXED_TICK_HZ, FIXED_TICK_MS } from '../fixed-tick-clock.js';
 import { hasActiveHitStop } from '../simulation-tick.js';
 import {
+    allowsSimHitStop,
     readFfaFixedTick,
     resetFfaFixedClockProjection,
     rollbackFixedTickOnPromotion,
@@ -95,7 +96,7 @@ import {
     stableFfaRuleHash,
 } from './ffa/net-diagnostics.js';
 import { garbageBurstKey, drainAllLineBursts } from './ffa/garbage-helpers.js';
-import { checkTopOut, serializeBoardGrid } from './ffa/board-helpers.js';
+import { checkTopOut, clearEmptiesBoard, serializeBoardGrid } from './ffa/board-helpers.js';
 import {
     buildStateSnapshot as buildFfaStateSnapshot,
     calculateStateDigest as calculateFfaStateDigest,
@@ -3367,26 +3368,21 @@ export class FFAGameStateP2P {
                     isLocal: isLocal(),
                 });
             },
-            onLineClearImpact: (lineCount = 1) => {
+            onLineClearImpact: (lineCount = 1, cascadeCount = 1) => {
                 const player = getPlayer();
                 if (!player) return;
 
-                const settings = (typeof window !== 'undefined' && window.settingsManager) ? window.settingsManager.get() : {};
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if ((!prefersReducedMotion || this._fixedTickEnabled) && player.gameState) {
-                    let hitStop = 0;
-                    if (lineCount >= 4) {
-                        hitStop = 70;
-                    }
-                    if (hitStop > 0) {
-                        player.gameState.hitStopRemaining = hitStop;
-                    }
+                if (allowsSimHitStop(this._fixedTickEnabled) && player.gameState && lineCount >= 4) {
+                    player.gameState.hitStopRemaining = 70;
                 }
 
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.LINE_CLEAR_IMPACT, {
                     steamId,
                     playerName: player.name,
                     linesCleared: lineCount,
+                    // The wave's depth in its cascade: the board lifts wave after wave
+                    // and counts the move (Quadra's combo) from it.
+                    cascadeCount: cascadeCount || 1,
                     isLocal: isLocal(),
                 });
             },
@@ -3418,6 +3414,8 @@ export class FFAGameStateP2P {
                 const rows = Array.isArray(fullLines) ? fullLines.slice() : [];
                 if (rows.length === 0) return;
                 player._clearSeq = (player._clearSeq || 0) + 1;
+                // Peers never run an opponent's physics: this is how their tile learns it.
+                const clean = clearEmptiesBoard(player.gameState?.boardGrid, rows);
                 this.network.broadcastToAll(MessageTypes.GAME_LINES_CLEAR, {
                     playerSteamId: steamId,
                     clearSeq: player._clearSeq,
@@ -3425,6 +3423,7 @@ export class FFAGameStateP2P {
                     rows,
                     lineCount: linesCleared,
                     cascadeCount: cascadeCount || 1,
+                    clean,
                 });
                 // The host never receives its own broadcast — drive the host's OWN watcher
                 // locally for its opponents (non-local players). The host's own full board
@@ -3436,6 +3435,7 @@ export class FFAGameStateP2P {
                         rows,
                         linesCleared,
                         cascadeCount: cascadeCount || 1,
+                        clean,
                     });
                 }
             },
@@ -3462,9 +3462,7 @@ export class FFAGameStateP2P {
                 const player = getPlayer();
                 if (!player) return;
 
-                const settings = (typeof window !== 'undefined' && window.settingsManager) ? window.settingsManager.get() : {};
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if ((!prefersReducedMotion || this._fixedTickEnabled) && player.gameState) {
+                if (allowsSimHitStop(this._fixedTickEnabled) && player.gameState) {
                     player.gameState.hitStopRemaining = Math.max(player.gameState.hitStopRemaining || 0, 30);
                 }
 
@@ -3479,9 +3477,7 @@ export class FFAGameStateP2P {
                 const player = getPlayer();
                 if (!player) return;
 
-                const settings = (typeof window !== 'undefined' && window.settingsManager) ? window.settingsManager.get() : {};
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if ((!prefersReducedMotion || this._fixedTickEnabled) && player.gameState) {
+                if (allowsSimHitStop(this._fixedTickEnabled) && player.gameState) {
                     player.gameState.hitStopRemaining = 110;
                 }
 
@@ -3757,6 +3753,7 @@ export class FFAGameStateP2P {
             rows: Array.isArray(data.rows) ? data.rows : [],
             linesCleared: data.lineCount,
             cascadeCount: data.cascadeCount || 1,
+            clean: data.clean === true,
         });
     }
 

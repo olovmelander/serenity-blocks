@@ -3705,11 +3705,19 @@ body.start-modal-open #invite-toast-container {
     letter-spacing: 0.02em;
 }
 
-#online-multiplayer-container .watching-count,
-#online-multiplayer-container .opponent-frags {
+#online-multiplayer-container .watching-count {
     color: var(--sb-text);
     font-family: var(--sb-font-display);
     font-variant-numeric: tabular-nums;
+}
+
+/* "3 frags": a word under the name, not an icon. */
+#online-multiplayer-container .opponent-frags {
+    color: var(--sb-text-muted);
+    font: 600 10px / 1.1 var(--sb-font-text);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 #online-multiplayer-container .opponent-name {
@@ -4271,6 +4279,7 @@ body.start-modal-open #invite-toast-container {
  * opponent's board takes a coral strike and gets the compact card. No white flashes,
  * no skull.
  * ================================================================================ */
+.sb-out,
 .death-overlay.sb-out {
     position: absolute;
     inset: 0;
@@ -4287,7 +4296,7 @@ body.start-modal-open #invite-toast-container {
     transition: opacity var(--sb-dur-3) ease;
 }
 
-.death-overlay.sb-out.is-shown {
+.sb-out.is-shown {
     opacity: 1;
 }
 
@@ -4320,7 +4329,7 @@ body.start-modal-open #invite-toast-container {
     font: 600 12px / 1.3 var(--sb-font-text);
 }
 
-.death-overlay.sb-out--compact {
+.sb-out.sb-out--compact {
     gap: 5px;
 }
 
@@ -4336,6 +4345,160 @@ body.start-modal-open #invite-toast-container {
 
 .sb-out--compact .sb-out__cause {
     font-size: 10px;
+}
+
+.sb-out--compact .sb-out__note {
+    font-size: 10px;
+}
+
+/* Not out: a late joiner waiting for the next round (aqua) and a dropped connection
+   (slate). The same card, its own stroke; the board under it stays as it is. */
+.sb-out--aqua .sb-out__title::after {
+    background: var(--sb-aqua);
+}
+
+.sb-out--aqua .sb-out__cause {
+    color: var(--sb-aqua);
+}
+
+.sb-out--aqua {
+    background: radial-gradient(circle at 50% 45%, rgba(9, 8, 24, 0.18) 0%, rgba(9, 8, 24, 0.5) 100%);
+}
+
+.sb-out--slate .sb-out__title::after {
+    background: var(--sb-text-faint);
+}
+
+.sb-out--slate .sb-out__cause {
+    color: var(--sb-text-muted);
+}
+
+/* =================================================================================
+ * Callouts on an opponent's board (ui/effects/canvas-board-effects.js): a cascade's
+ * wave count, a clean canvas. The Phaser boards' anatomy at tile size — a small
+ * kicker, the number or the word in Unbounded cream, a glow in the event's tone
+ * (--tone, set per callout). No pill, no emoji. Sized by the tile's own width.
+ * ================================================================================ */
+.board-effects-text-layer {
+    container-type: inline-size;
+    overflow: hidden;
+    border-radius: inherit;
+}
+
+.sb-tile-callout {
+    --tone: var(--sb-gold);
+    position: absolute;
+    left: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35em;
+    width: 92%;
+    text-align: center;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    /* At full strength from its first frame (a late frame never hides a count); it
+       only settles in size. */
+    animation: sb-tile-callout-in var(--sb-dur-2) var(--sb-ease-lock) both;
+}
+
+/* A soft dark scrim, so the words read over any stack (the boards' banners have one). */
+.sb-tile-callout::before {
+    content: '';
+    position: absolute;
+    inset: -35% -12%;
+    z-index: -1;
+    background: radial-gradient(closest-side, rgba(var(--sb-night-rgb), 0.6), rgba(var(--sb-night-rgb), 0));
+}
+
+.sb-tile-callout.is-leaving {
+    animation: sb-tile-callout-out 200ms ease-in both;
+}
+
+@keyframes sb-tile-callout-in {
+    from { transform: translate(-50%, -50%) scale(1.16); }
+    to { transform: translate(-50%, -50%); }
+}
+
+@keyframes sb-tile-callout-out {
+    from { opacity: 1; transform: translate(-50%, -50%); }
+    to { opacity: 0; transform: translate(-50%, -50%) translateY(-8px); }
+}
+
+.sb-tile-callout__kicker {
+    color: var(--tone);
+    font: 700 clamp(7px, 6.5cqi, 11px) / 1 var(--sb-font-text);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    text-shadow: 0 0 8px rgba(var(--sb-night-rgb), 0.9);
+}
+
+.sb-tile-callout__lead {
+    color: var(--sb-text);
+    font: 700 clamp(18px, 24cqi, 44px) / 0.95 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    text-shadow:
+        0 0 10px color-mix(in srgb, var(--tone) 75%, transparent),
+        0 0 24px color-mix(in srgb, var(--tone) 45%, transparent);
+}
+
+.sb-tile-callout__title {
+    color: var(--sb-text);
+    font: 700 clamp(9px, 9.5cqi, 17px) / 1 var(--sb-font-display);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 8px color-mix(in srgb, var(--tone) 70%, transparent),
+        0 0 18px color-mix(in srgb, var(--tone) 40%, transparent);
+}
+
+.sb-tile-callout__lead + .sb-tile-callout__title {
+    color: var(--tone);
+    font: 700 clamp(7px, 6.5cqi, 11px) / 1 var(--sb-font-text);
+    letter-spacing: 0.16em;
+    text-shadow: 0 0 8px rgba(var(--sb-night-rgb), 0.9);
+}
+
+@keyframes sb-tile-callout-fade-out {
+    to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-tile-callout {
+        animation: none;
+    }
+
+    .sb-tile-callout.is-leaving {
+        animation: sb-tile-callout-fade-out 200ms ease-in both;
+    }
+}
+
+/* The spectator's spotlight: "Watching" as a kicker before the player's name. */
+#online-multiplayer-container .spectator-spotlight-eye {
+    color: var(--sb-aqua);
+    font: 700 10px / 1 var(--sb-font-text);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+#online-multiplayer-container .spectator-spotlight-name {
+    color: var(--sb-text);
+    font: 700 15px / 1.1 var(--sb-font-display);
+    letter-spacing: 0.02em;
+}
+
+#online-multiplayer-container .spectator-spotlight-frags,
+#online-multiplayer-container .selection-frags {
+    color: var(--sb-text-muted);
+    font: 600 11px / 1 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+}
+
+/* "Joined mid-match": a quiet Keystone note over the waiting board. */
+#online-main-board .dropin-waiting-banner {
+    border-color: rgba(var(--sb-aqua-rgb, 158, 232, 237), 0.45) !important;
+    color: var(--sb-text) !important;
+    font-family: var(--sb-font-text) !important;
 }
 
 /* Your board dims and greys inside the board itself; the frame stays clear. */

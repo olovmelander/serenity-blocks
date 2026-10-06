@@ -69,6 +69,18 @@ const SHARD_LIFESPAN = 720;
 const SHARDS_PER_CELL = 2;
 // One callout per word in this window: a cascade can clear four rows wave after wave.
 const CALLOUT_REPEAT_MS = 1200;
+// A cascade's landings: a piece that fell and has been still this long has landed
+// (two of the physics' 20 ms gravity steps and a frame). Quadra marks the moment with
+// a thud as loud as the fall was long; here, light where it struck.
+const LANDING_QUIET_MS = 50;
+// Only a real fall lands with light: everything above a cleared row shifts down one
+// row, and lighting every one of those would sprinkle the whole stack. The longest
+// falls of a settle are lit, this many at most. A move whose board does not report
+// the physics (no isProcessingPhysics) ends after MOVE_QUIET_END_MS of quiet.
+const LANDING_MIN_ROWS = 2;
+const LANDINGS_PER_SETTLE = 6;
+const MOVE_QUIET_END_MS = 450;
+const SETTLE_WATCH_MS = 8000;
 // A top-out plays out before the results arrive over it (playGameOver returns it).
 const GAME_OVER_BEAT_MS = 760;
 const GAME_OVER_BEAT_REDUCED_MS = 320;
@@ -135,6 +147,14 @@ export class SharedEffects {
         // impact records it and the flash and embers right after it read it.
         this._waveDepth = 1;
 
+        // The move being resolved, in Quadra's terms: its waves (the combo, Quadra's
+        // "complexity"), its lines in all (Quadra's "depth"), and whether it left a
+        // clean canvas. The settle watch runs from a wave's flash to the move's end.
+        this._move = { waves: 0, lines: 0, clean: false };
+        this._settle = null;
+        this._lastCallout = null;
+        this._popups = new Set();
+
         debugLog('[SharedEffects] Initialized for scene:', scene.scene?.key || 'unknown');
     }
 
@@ -183,6 +203,300 @@ export class SharedEffects {
     /** How much a cascade's depth lifts a wave: 1 for the first, up to 1.6. */
     _depthLift() {
         return 1 + 0.1 * Math.min(Math.max(this._waveDepth - 1, 0), 6);
+    }
+
+    /** The effects' clock: the page's, so the physics' pacing and slow captures agree. */
+    _now() {
+        return typeof performance !== 'undefined' ? performance.now() : Date.now();
+    }
+
+    /** Counts a wave into the move; a lock's own clear starts a new move. */
+    _noteWave(lineCount) {
+        const lines = Math.max(0, Math.floor(Number(lineCount)) || 0);
+        if (this._waveDepth <= 1) this._move = { waves: 1, lines, clean: false };
+        else this._move = { waves: this._waveDepth, lines: this._move.lines + lines, clean: this._move.clean };
+    }
+
+    // ─── The settle watch: what a cascade drops lands where it lands ───────────────
+
+    /**
+     * Starts a wave's watch: a snapshot of the board as the cleared rows leave it,
+     * so each piece's fall is measured exactly even if a slow frame missed a step.
+     * @private
+     */
+    _armSettle() {
+        const grid = this.scene?.gameState?.boardGrid || this.scene?.gameState?.board;
+        if (!Array.isArray(grid)) return;
+        // The cleared rows (full now) are leaving; everything else is where it starts.
+        const snap = new Map();
+        grid.forEach((row, r) => {
+            if (!row || row.every(Boolean)) return;
+            row.forEach((cell, c) => { if (cell && cell.id !== undefined) snap.set(`${r},${c}`, cell.id); });
+        });
+        const now = this._now();
+        this._settle = {
+            snap,
+            seen: new WeakMap(),
+            falling: new Set(),
+            armedAt: now,
+            lastMove: now,
+            sawPhysics: this._settle?.sawPhysics ?? false,
+        };
+    }
+
+    /** How far a piece has fallen since the wave's snapshot (0 when it has not). */
+    _fallenSince(snap, piece) {
+        if (!piece?.shape || piece.pieceId === undefined) return 0;
+        const cells = [];
+        piece.shape.forEach((row, ry) => row.forEach((v, rx) => {
+            if (v > 0) cells.push([piece.y + ry, piece.x + rx]);
+        }));
+        if (!cells.length) return 0;
+        for (let k = 0; k <= 40; k++) {
+            if (cells.every(([r, c]) => snap.get(`${r - k},${c}`) === piece.pieceId)) return k;
+        }
+        return 0;
+    }
+
+    /**
+     * Called by the board scene every frame (cheap until a line clears). Between a
+     * wave's flash and the end of its move it watches the locked pieces: one that fell
+     * and has come to rest lands; when the physics lets go of the board, the move ends.
+     * @param {Object} gameState
+     */
+    observeSettling(gameState) {
+        const watch = this._settle;
+        if (!watch || !gameState) return;
+        const now = this._now();
+        const pieces = Array.isArray(gameState.lockedPieces) ? gameState.lockedPieces : [];
+        for (let i = 0; i < pieces.length; i++) {
+            const piece = pieces[i];
+            if (!piece) continue;
+            const seen = watch.seen.get(piece);
+            if (!seen) {
+                const fell = this._fallenSince(watch.snap, piece);
+                watch.seen.set(piece, { y: piece.y, fell, at: now });
+                if (fell > 0) watch.falling.add(piece);
+            } else if (piece.y > seen.y) {
+                seen.fell += piece.y - seen.y;
+                seen.y = piece.y;
+                seen.at = now;
+                watch.falling.add(piece);
+                watch.lastMove = now;
+            }
+        }
+        const landed = [];
+        watch.falling.forEach((piece) => {
+            const seen = watch.seen.get(piece);
+            if (!seen || now - seen.at < LANDING_QUIET_MS) return;
+            landed.push([piece, seen.fell]);
+            watch.falling.delete(piece);
+        });
+        if (landed.length) this._landAll(landed, gameState);
+        if (gameState.isProcessingPhysics === true) watch.sawPhysics = true;
+        const released = watch.sawPhysics ? gameState.isProcessingPhysics === false
+            : now - Math.max(watch.lastMove, watch.armedAt) > MOVE_QUIET_END_MS;
+        if (released || now - watch.armedAt > SETTLE_WATCH_MS) {
+            this._flushLandings(gameState);
+            this._settle = null;
+            this._endMove();
+        }
+    }
+
+    /** Lands everything still marked as falling (the next wave or the move's end). */
+    _flushLandings(gameState = this.scene?.gameState) {
+        const watch = this._settle;
+        if (!watch) return;
+        const landed = [];
+        watch.falling.forEach((piece) => {
+            const seen = watch.seen.get(piece);
+            if (seen) landed.push([piece, seen.fell]);
+        });
+        watch.falling.clear();
+        if (landed.length) this._landAll(landed, gameState);
+    }
+
+    /** Lights the real falls of a settle, the longest first, within the budget. */
+    _landAll(landed, gameState) {
+        const watch = this._settle;
+        const budget = watch ? LANDINGS_PER_SETTLE - (watch.lit || 0) : LANDINGS_PER_SETTLE;
+        landed
+            .filter(([, rows]) => rows >= LANDING_MIN_ROWS)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, Math.max(0, budget))
+            .forEach(([piece, rows]) => {
+                this._land(piece, rows, gameState);
+                if (watch) watch.lit = (watch.lit || 0) + 1;
+            });
+    }
+
+    /**
+     * A piece that fell lands: a pool of light and a bright edge where it struck,
+     * brighter and wider the further it fell, and from three rows a little dust.
+     * @param {Object} piece a locked piece (x, y, shape)
+     * @param {number} rows how far it fell
+     * @param {Object} gameState
+     * @private
+     */
+    _land(piece, rows, gameState) {
+        if (!(rows > 0) || !piece?.shape || !this._lit()) return;
+        const { scene } = this;
+        const bs = scene.blockSize;
+        const grid = gameState?.boardGrid || gameState?.board;
+        const floor = Array.isArray(grid) ? grid.length : Infinity;
+        const cells = [];
+        piece.shape.forEach((row, ry) => row.forEach((v, rx) => {
+            if (v > 0) cells.push({ c: piece.x + rx, r: piece.y + ry });
+        }));
+        const own = new Set(cells.map(({ c, r }) => `${c},${r}`));
+        const bottoms = cells.filter(({ c, r }) => !own.has(`${c},${r + 1}`)
+            && (r + 1 >= floor || Boolean(grid?.[r + 1]?.[c])));
+        const runs = [];
+        bottoms.sort((a, b) => (a.r - b.r) || (a.c - b.c)).forEach((cell) => {
+            const run = runs[runs.length - 1];
+            if (run && run.r === cell.r && run.c1 === cell.c - 1) run.c1 = cell.c;
+            else runs.push({ r: cell.r, c0: cell.c, c1: cell.c });
+        });
+        const visible = this._isInfinity() ? runs : runs.filter(({ r }) => r >= scene.hiddenRows);
+        if (!visible.length) return;
+        const weight = Math.min(1, rows / 6);
+        const tint = mixColor(this._cellColorInt(piece), TONE.CREAM, 0.45);
+        const scroll = this._scroll();
+        const reduced = this._reducedMotion();
+        visible.slice(0, 3).forEach(({ r, c0, c1 }) => {
+            const span = (c1 - c0 + 1) * bs;
+            const x = c0 * bs + span / 2;
+            const y = this._rowTop(r) + bs;
+            const pool = addLight(scene, FX.GLOW, x, y, {
+                tint,
+                width: span + bs * (1 + 0.8 * weight),
+                height: bs * (0.8 + 0.5 * weight),
+                alpha: 0.16 + 0.26 * weight,
+                depth: 5,
+                scroll,
+            });
+            if (pool) {
+                scene.tweens.add({
+                    targets: pool,
+                    scaleX: pool.scaleX * 1.25,
+                    alpha: 0,
+                    duration: 300,
+                    ease: 'Quad.easeOut',
+                    onComplete: destroyOnComplete(pool),
+                });
+            }
+            const edge = addLight(scene, FX.FLARE, x, y, {
+                tint, width: span + bs * 0.5, height: bs * 0.38, alpha: 0.42 + 0.45 * weight, depth: 8, scroll,
+            });
+            if (edge) {
+                scene.tweens.add({
+                    targets: edge,
+                    scaleX: edge.scaleX * (1.15 + 0.3 * weight),
+                    alpha: 0,
+                    duration: 240,
+                    ease: 'Quad.easeOut',
+                    onComplete: destroyOnComplete(edge),
+                });
+            }
+        });
+        // From three rows the landing kicks up a little dust from the ends of the edge.
+        if (rows >= 3 && !reduced && this.getQualityConfig()?.particles) {
+            const dust = createParticleEmitter(scene, 0, 0, FX.EMBER, {
+                speed: { min: 30 + 30 * weight, max: 90 + 70 * weight },
+                angle: { min: -160, max: -20 },
+                gravityY: 620,
+                lifespan: { min: 180, max: 340 },
+                quantity: 0,
+                alpha: { start: 0.9, end: 0 },
+                scale: { start: (bs / 40) * 0.45, end: 0 },
+                blendMode: lightBlend(this.scene),
+                emitting: false,
+                tint: [tint, TONE.CREAM],
+            });
+            if (dust) {
+                dust.setDepth?.(9);
+                dust.setScrollFactor?.(scroll);
+                visible.slice(0, 2).forEach(({ r, c0, c1 }) => {
+                    const y = this._rowTop(r) + bs - 2;
+                    dust.emitParticleAt?.(c0 * bs + 3, y, 1 + Math.round(weight));
+                    dust.emitParticleAt?.((c1 + 1) * bs - 3, y, 1 + Math.round(weight));
+                });
+                const timer = scene.time.delayedCall(520, () => {
+                    destroyParticleEmitter(dust);
+                    this.activeParticleSystems.delete(dust);
+                });
+                this._trackTimer(timer);
+                this.activeParticleSystems.add(dust);
+            }
+        }
+    }
+
+    /**
+     * The move is over. Quadra sums a move up once it settles (its lines, its combo);
+     * a move of one wave says nothing more (its light and the Quad callout carried it),
+     * one that left a clean canvas already had the clean canvas say it all.
+     * @private
+     */
+    _endMove() {
+        const { waves, lines, clean } = this._move;
+        if (clean || waves < 2) return;
+        this._showMoveSummary(waves, lines);
+    }
+
+    /**
+     * A chain's finale: "Combo ×3 / 7 lines" in the chain's tone, low on the board
+     * where the chain happened; from ten waves the big "×n / Cascade".
+     * @param {number} waves
+     * @param {number} lines
+     * @private
+     */
+    _showMoveSummary(waves, lines) {
+        this._dismissRecentCallout();
+        if (waves >= 10) {
+            this.showMegaCascadeEffect(waves, lines);
+            return;
+        }
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+        const tone = this._comboTone(waves);
+        this._showBanner({
+            kicker: `Combo \u00d7${waves}`,
+            title: `${lines} line${lines === 1 ? '' : 's'}`,
+            y: boardHeight * 0.62,
+            titleSize: 30 + 2 * Math.min(waves, 6),
+            accent: tone,
+            hold: 340 + 30 * Math.min(waves, 6),
+            depth: 56,
+        });
+        if (waves >= 5) {
+            this.createShockwaveRing((this.scene.cols * this.scene.blockSize) / 2, boardHeight * 0.62, tone, 1);
+        }
+    }
+
+    /** The last moments' callout and the combo count make way for a finale. */
+    _dismissRecentCallout() {
+        const last = this._lastCallout;
+        this._lastCallout = null;
+        if (last?.banner && this._now() - last.at <= 1200) this._fadeOut(last.banner, 90);
+        this._dismissPopups(90);
+    }
+
+    /** Retires every combo count still on the board. */
+    _dismissPopups(duration) {
+        this._popups.forEach((popup) => this._fadeOut(popup, duration));
+        this._popups.clear();
+    }
+
+    /** Fades a callout out now, whatever its timeline was doing. */
+    _fadeOut(banner, duration) {
+        if (!banner?.scene) return;
+        this.scene.tweens?.killTweensOf?.(banner);
+        if (typeof this.scene.tweens?.add !== 'function') {
+            banner.destroy?.();
+            return;
+        }
+        this.scene.tweens.add({
+            targets: banner, alpha: 0, duration, onComplete: () => banner.destroy?.(),
+        });
     }
 
     /**
@@ -512,6 +826,10 @@ export class SharedEffects {
     triggerLineClearFlash(clearedRows) {
         if (!clearedRows || clearedRows.length === 0) return;
         if (!this._effectEnabled('lineClearEffects')) return;
+        // What fell since the last wave has landed (it completed these rows); then
+        // watch what falls next.
+        this._flushLandings();
+        this._armSettle();
 
         const PhaserRef = window.Phaser;
         const bs = this.scene.blockSize;
@@ -1231,11 +1549,13 @@ export class SharedEffects {
      * @private
      */
     _calloutOnce(word, cfg) {
-        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const now = this._now();
         const last = this._calloutAt.get(word);
         if (last !== undefined && now - last < CALLOUT_REPEAT_MS) return null;
         this._calloutAt.set(word, now);
-        return this._showBanner(cfg);
+        const banner = this._showBanner(cfg);
+        this._lastCallout = banner ? { banner, at: now } : null;
+        return banner;
     }
 
     _comboTier(comboCount) {
@@ -1308,6 +1628,9 @@ export class SharedEffects {
         container.setDepth(12);
         container.setScrollFactor?.(0);
         this._trackGraphics(container);
+        // One count at a time: the previous wave's number makes way for this one.
+        this._dismissPopups(60);
+        this._popups.add(container);
 
         const numFont = {
             fontSize: `${Math.round(tier.numberSize * u)}px`,
@@ -1379,7 +1702,10 @@ export class SharedEffects {
             delay: exitStart,
             duration: EXIT,
             ease: 'Quint.easeIn',
-            onComplete: () => container.destroy(),
+            onComplete: () => {
+                this._popups.delete(container);
+                container.destroy();
+            },
         });
         if (line) {
             const { scaleX } = line;
@@ -1425,6 +1751,7 @@ export class SharedEffects {
      */
     playLineClearImpact(lineCount = 1, cascadeCount = 1) {
         this._waveDepth = Math.max(1, Math.floor(Number(cascadeCount)) || 1);
+        this._noteWave(lineCount);
         if (!this._effectEnabled('lineClearEffects')) return;
         const clampedLineCount = Math.max(1, Math.min(4, lineCount));
         const tier = this.getClearTier(lineCount);
@@ -1896,21 +2223,20 @@ export class SharedEffects {
      * @param {number} cascadeCount - Current cascade number
      */
     showCascadeWave(cascadeCount) {
-        // MEGA-ONLY, matching local MP's read (which the player prefers). A chain
-        // below 10 already carries the clear's own flash, debris, sparks, shake
-        // and the per-wave combo popup; the former ring/banner/shake step at 3-9
-        // was the layer that made single player feel cluttered next to local MP.
-        if (cascadeCount >= 10) {
-            this.showMegaCascadeEffect(cascadeCount);
-        }
+        // Nothing of its own, wave by wave: each wave already brings its light (lifted
+        // by its depth), debris, weight and the combo popup, and the chain's banner is
+        // its finale once the move settles (_endMove), as Quadra sums a move up once.
+        // A banner per wave from ten stacked one over the next at every wave.
+        debugLog(`[SharedEffects] cascade wave ${cascadeCount}`);
     }
 
     /**
-     * Show mega cascade special effect for 10+ cascades
-     * Creates an intense screen-filling effect to celebrate massive combos
-     * @param {number} cascadeCount - Current cascade number
+     * The finale of a chain of ten waves or more: "×n / Cascade" with the lines it
+     * cleared, a ring and weight.
+     * @param {number} cascadeCount - The chain's waves
+     * @param {number} [lines] - Lines it cleared in all
      */
-    showMegaCascadeEffect(cascadeCount) {
+    showMegaCascadeEffect(cascadeCount, lines = 0) {
         const boardHeight = this.scene.rows * this.scene.blockSize;
 
         debugLog(`[SharedEffects] MEGA CASCADE x${cascadeCount}!`);
@@ -1923,17 +2249,20 @@ export class SharedEffects {
         // combo 0.28, T-spin and quad 0.375, level 0.44, perfect clear 0.50,
         // cascade 0.62.
         this._showBanner({
-            kicker: 'Chain',
+            kicker: lines > 0 ? `${lines} lines` : 'Chain',
             lead: `\u00d7${cascadeCount}`,
             title: 'Cascade',
             y: boardHeight * 0.62,
             leadSize: cascadeCount >= 20 ? 84 : 72,
             titleSize: 24,
             accent: cascadeCount >= 20 ? TONE.GOLD : TONE.AQUA,
-            hold: 320,
+            hold: 560,
             depth: 56,
         });
-        this.createShockwaveRing((this.scene.cols * this.scene.blockSize) / 2, boardHeight * 0.62, TONE.AQUA, 2);
+        const tone = cascadeCount >= 20 ? TONE.GOLD : TONE.AQUA;
+        this.createShockwaveRing((this.scene.cols * this.scene.blockSize) / 2, boardHeight * 0.62, tone, 1);
+        this.createShockwaveRing((this.scene.cols * this.scene.blockSize) / 2, boardHeight * 0.62, TONE.CREAM, 2);
+        this._boardEdgePulse(tone, 0.5);
 
         // Camera shake - more intense for mega cascades
         if (this.scene.shakeCamera) {
@@ -1944,14 +2273,17 @@ export class SharedEffects {
     }
 
     /**
-     * Perfect Clear — the game's flagship moment, as a dawn in the empty well.
+     * Clean canvas — Quadra's name for the well emptied, the game's flagship moment,
+     * as a dawn in the empty well.
      *
      * Gold light rises from the floor and fills the well, a warm bloom opens from
-     * its middle, two rings go out, motes of gold drift up through the empty board,
-     * and the longest-held callout in the game names it. The flagship gets the
-     * biggest zoom kick and a hit-stop, but no white-out.
+     * its middle, rings go out, motes of gold drift up through the empty board, and
+     * the longest-held callout in the game names it. It carries the move that made
+     * it: a chain's combo and lines lead the callout ("Combo ×7 · 12 lines"), and
+     * the deeper the chain the longer and brighter the dawn, the more rings and
+     * motes, the heavier the hit. No white-out.
      *
-     * @param {number} [depth=0] - Total lines cleared in the run that emptied the board
+     * @param {number} [depth=0] - Total lines cleared in the move that emptied the board
      */
     playPerfectClear(depth = 0) {
         const bs = this.scene.blockSize;
@@ -1961,18 +2293,26 @@ export class SharedEffects {
         const centerY = boardHeight / 2;
         const reduced = this._reducedMotion();
 
+        // The move that made it (this wave's chain); the move ends here, said.
+        const move = this._move;
+        const waves = Math.max(1, move.waves || 1);
+        const lines = Math.max(Number(depth) || 0, move.lines || 0);
+        move.clean = true;
+        const power = Math.min(1, (waves - 1) / 6 + Math.max(0, lines - 4) / 16);
+
         // Celebration callout first, so it owns the centre lane.
+        this._dismissRecentCallout();
         this._showBanner({
-            kicker: 'Board clear',
-            title: 'Perfect',
+            kicker: waves >= 2 ? `Combo \u00d7${waves} \u00b7 ${lines} lines` : 'Perfect clear',
+            title: 'Clean canvas',
             y: centerY,
-            titleSize: 50,
+            titleSize: Math.round(36 + 6 * power),
             accent: TONE.GOLD,
-            hold: 620,
+            hold: Math.round(640 + 420 * power),
             depth: 60,
         });
 
-        this._screenFlash(TONE.GOLD, reduced ? 0.3 : 0.55, 80, 620, 5, centerY);
+        this._screenFlash(TONE.GOLD, (reduced ? 0.3 : 0.55) + 0.2 * power, 80, 620 + 300 * power, 5, centerY);
         if (this._lit()) {
             // The dawn: light rising from the floor through the whole well.
             const dawn = addLight(this.scene, FX.RISE, centerX, boardHeight, {
@@ -1982,16 +2322,25 @@ export class SharedEffects {
                 const { scaleY } = dawn;
                 dawn.scaleY = scaleY * 0.2;
                 this.scene.tweens.add({
-                    targets: dawn, alpha: 0.42, scaleY, duration: 520, ease: 'Sine.easeOut',
+                    targets: dawn, alpha: 0.42 + 0.2 * power, scaleY, duration: 520, ease: 'Sine.easeOut',
                 });
                 this.scene.tweens.add({
-                    targets: dawn, alpha: 0, delay: 760, duration: 900, ease: 'Sine.easeIn', onComplete: destroyOnComplete(dawn),
+                    targets: dawn,
+                    alpha: 0,
+                    delay: 760 + 500 * power,
+                    duration: 900,
+                    ease: 'Sine.easeIn',
+                    onComplete: destroyOnComplete(dawn),
                 });
             }
         }
-        for (let i = 0; i < 2; i++) {
-            this.createShockwaveRing(centerX, centerY, i ? TONE.CREAM : TONE.GOLD, 1 + i);
+        // Two rings, and up to two more for a deep chain; a deep chain lights the walls.
+        const ringTones = [TONE.GOLD, TONE.CREAM, TONE.AQUA, TONE.GOLD];
+        const rings = 2 + (power >= 0.35 ? 1 : 0) + (power >= 0.7 ? 1 : 0);
+        for (let i = 0; i < rings; i++) {
+            this.createShockwaveRing(centerX, centerY, ringTones[i], 1 + i);
         }
+        if (power >= 0.35) this._boardEdgePulse(TONE.GOLD, 0.3 + 0.3 * power);
 
         // Motes of gold drift up through the emptied board.
         if (this.getQualityConfig()?.particles && !reduced) {
@@ -2014,7 +2363,7 @@ export class SharedEffects {
                 if (motes) {
                     motes.setDepth?.(5);
                     motes.setScrollFactor?.(0);
-                    emitParticles(motes, Math.round(36 + Math.min(depth, 12) * 3));
+                    emitParticles(motes, Math.round((36 + Math.min(lines, 12) * 3) * (1 + power)));
                     const timer = this.scene.time.delayedCall(1900, () => {
                         destroyParticleEmitter(motes);
                         this.activeParticleSystems.delete(motes);
@@ -2026,12 +2375,12 @@ export class SharedEffects {
         }
 
         if (this.scene.shakeCamera) {
-            this.scene.shakeCamera(reduced ? 1.2 : 3.2, reduced ? 200 : 380);
+            this.scene.shakeCamera(reduced ? 1.2 : 3.2 + 2.4 * power, reduced ? 200 : 380 + 160 * power);
         }
         if (!reduced) {
-            this.triggerHitStop(110);
+            this.triggerHitStop(Math.round(110 + 50 * power));
         }
-        this._zoomPunch(0.028, 320); // the flagship moment gets the biggest kick
+        this._zoomPunch(0.028 + 0.012 * power, 320); // the flagship moment gets the biggest kick
     }
 
     /**
@@ -2051,14 +2400,23 @@ export class SharedEffects {
                 tint: color, width: 40 * index, height: 40 * index, alpha: 0.7, depth: 8,
             });
             if (ring) {
-                const grow = reach / (40 * index);
+                // Dark until it has opened out: a hit stop freezes tweens, and a ring held
+                // at its first frame read as a bullseye in the middle of the well.
+                const from = ring.scale;
+                const to = from * (reach / (40 * index));
+                const life = { p: 0 };
+                ring.setAlpha(0);
                 this.scene.tweens.add({
-                    targets: ring,
-                    scale: ring.scale * grow,
-                    alpha: 0,
+                    targets: life,
+                    p: 1,
                     delay: (index - 1) * 70,
                     duration: 680,
-                    ease: 'Expo.easeOut', // shockwaves expand fast then settle
+                    ease: 'Linear',
+                    onUpdate: () => {
+                        const opened = 1 - 2 ** (-10 * life.p); // expands fast, then settles
+                        ring.scale = from + (to - from) * opened;
+                        ring.setAlpha(0.7 * Math.min(1, life.p / 0.06) * (1 - opened));
+                    },
                     onComplete: destroyOnComplete(ring),
                 });
                 return;
@@ -2443,6 +2801,10 @@ export class SharedEffects {
         this._hitStopRestore?.();
         this._clearDrain();
         if (this._knockoutFilter) this.clearKnockout();
+        this._settle = null;
+        this._move = { waves: 0, lines: 0, clean: false };
+        this._lastCallout = null;
+        this._popups?.clear();
         debugLog('[SharedEffects] Cleaning up all resources:', {
             particles: this.activeParticleSystems.size,
             graphics: this.activeGraphics.length,
