@@ -1,16 +1,18 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
 import {
     LocalVersusHud,
     competitionRanks,
     formatClock,
-    keyboardScheme,
-    versusCoachRows,
-    versusControls,
     versusGoal,
     versusMetaStats,
     versusMetric,
     versusMode,
 } from '../../src/ui/local-versus-hud.js';
+import {
+    keyboardScheme, seatSetupControls, versusCoachRows, versusControls,
+} from '../../src/ui/local-seat-controls.js';
 
 const SETTINGS = {
     keyBindings: {
@@ -76,6 +78,11 @@ describe('local versus: who plays how', () => {
         expect(versusControls(1, { kind: 'human' }, SETTINGS)).toBe('WASD');
         expect(versusControls(2, { kind: 'human' }, SETTINGS)).toBe('Controller 3');
         expect(versusControls(3, { kind: 'bot', difficulty: 8 }, SETTINGS)).toBe('Bot · Master');
+        // Without settings the defaults speak (arrows, WASD).
+        expect(versusControls(0, { kind: 'human' }, {})).toBe('Arrow keys');
+        // The setup sheet names the controller that also drives the seat.
+        expect(seatSetupControls(1, SETTINGS)).toBe('WASD · Controller 2');
+        expect(seatSetupControls(3, SETTINGS)).toBe('Controller 4');
     });
 
     it('prints keycaps for keyboards and buttons for controllers', () => {
@@ -91,11 +98,13 @@ describe('local versus: who plays how', () => {
 // A minimal DOM: each plate answers for the parts the HUD updates.
 function fakeElement() {
     const classes = new Set();
-    return {
+    const element = {
         innerHTML: '',
         textContent: '',
         hidden: false,
         dataset: {},
+        children: [],
+        parentElement: null,
         style: { setProperty: vi.fn(function setProperty(name, value) { this[name] = value; }) },
         classList: {
             toggle: (name, on) => (on ? classes.add(name) : classes.delete(name)),
@@ -104,8 +113,14 @@ function fakeElement() {
             contains: (name) => classes.has(name),
         },
         setAttribute: vi.fn(),
+        appendChild: vi.fn((child) => {
+            element.children.push(child);
+            child.parentElement = element;
+        }),
+        remove: vi.fn(),
         closest: () => null,
     };
+    return element;
 }
 
 function fakeDom(players) {
@@ -116,13 +131,34 @@ function fakeDom(players) {
             '.lv-plate__rank': fakeElement(),
             '.lv-plate__goal-fill': fakeElement(),
         };
+        const card = fakeElement();
         const plate = fakeElement();
         plate.parts = parts;
         plate.querySelector = (selector) => parts[selector] || null;
+        plate.closest = (selector) => (selector === '.player-card' ? card : null);
+        nodes[`player-${n}-card`] = card;
         nodes[`p${n}-plate`] = plate;
         nodes[`p${n}-meta`] = fakeElement();
+        const well = fakeElement();
+        const meter = fakeElement();
+        const fill = fakeElement();
+        meter.parentElement = well;
+        meter.querySelector = (selector) => (selector === '.garbage-fill' ? fill : null);
+        meter.fill = fill;
+        nodes[`p${n}-garbage-bar`] = meter;
+        const section = fakeElement();
+        nodes[`p${n}-phaser-container`] = { closest: () => section };
+        nodes[`p${n}-section`] = section;
     }
     nodes['lv-match-bar'] = fakeElement();
+    const stage = fakeElement();
+    const append = stage.appendChild;
+    // Like the real DOM, an appended element with an id can be found by it.
+    stage.appendChild = (child) => {
+        append(child);
+        if (child.id) nodes[child.id] = child;
+    };
+    nodes['multiplayer-container'] = stage;
     return {
         nodes,
         doc: {
@@ -188,5 +224,69 @@ describe('local versus HUD', () => {
         expect(nodes['lv-match-bar'].innerHTML).toContain('>1:01<');
         timed.update([entry(), entry()], { clockMs: -200 });
         expect(nodes['lv-match-bar'].innerHTML).toContain('Last round');
+    });
+
+    it('pops a frag, turns a well coral near the top, and names who knocked a player out', () => {
+        vi.useFakeTimers();
+        const { nodes, doc } = fakeDom(2);
+        const hud = new LocalVersusHud({
+            config: { endCondition: 'frags', endConditionValue: 5, playerSlots: [{ name: 'Ada' }, { name: 'Bot 2', kind: 'bot' }] },
+            numPlayers: 2,
+            colorFor: (i) => ({ primary: i ? '#EF4444' : '#3B82F6' }),
+            doc,
+        });
+        hud.mount();
+        hud.update([entry(), entry({ stack: 16 })]);
+        expect(nodes['player-2-card'].classList.contains('lv-danger')).toBe(true);
+        expect(nodes['player-1-card'].classList.contains('lv-danger')).toBe(false);
+
+        hud.update([entry({ frags: 1 }), entry({ stack: 16 })]);
+        expect(nodes['p1-plate'].children.map((c) => c.textContent)).toContain('+1');
+        vi.advanceTimersByTime(20);
+        expect(nodes['p1-plate'].classList.contains('is-bumped')).toBe(true);
+
+        // The coral holds until the stack is clearly lower (no flicker at the line).
+        hud.update([entry({ frags: 1 }), entry({ stack: 14 })]);
+        expect(nodes['player-2-card'].classList.contains('lv-danger')).toBe(true);
+        hud.update([entry({ frags: 1 }), entry({ stack: 12 })]);
+        expect(nodes['player-2-card'].classList.contains('lv-danger')).toBe(false);
+
+        // Incoming garbage fills the channel; a heavy attack makes it glow.
+        hud.update([entry({ frags: 1, incoming: 5 }), entry({ incoming: 10 })]);
+        expect(nodes['p1-garbage-bar'].fill.style.height).toBe('25%');
+        expect(nodes['p1-garbage-bar'].classList.contains('is-heavy')).toBe(false);
+        expect(nodes['p2-garbage-bar'].classList.contains('is-heavy')).toBe(true);
+
+        hud.showKnockout(1, 0);
+        expect(nodes['p2-section'].children[0].innerHTML).toContain('By Ada');
+        hud.showKnockout(0, 0);
+        expect(nodes['p1-section'].children[0].innerHTML).toContain('Topped out');
+        vi.useRealTimers();
+    });
+
+    it('tells the round and lands an attack in the target\'s channel', () => {
+        vi.useFakeTimers();
+        const { nodes, doc } = fakeDom(2);
+        const hud = new LocalVersusHud({
+            config: { playerSlots: [{ name: 'Ada' }, { name: 'Bot 2' }] },
+            numPlayers: 2,
+            colorFor: () => ({ primary: '#3B82F6' }),
+            doc,
+        });
+        hud.announceRound(2, { winnerIndex: 0 });
+        const banner = nodes['multiplayer-container'].children[0];
+        expect(banner.innerHTML).toContain('Round 2');
+        expect(banner.innerHTML).toContain('Ada takes it');
+        hud.announceRound(3, { winnerIndex: 1, selfKill: true });
+        expect(banner.innerHTML).toContain('Topped out, no frag');
+
+        // No animation available: the hit lands at once (the reduced-motion path).
+        hud.showAttack(0, [1], 4);
+        const label = nodes['p2-garbage-bar'].parentElement.children.find((c) => c.className === 'lv-hit');
+        expect(label.textContent).toBe('+4');
+        vi.advanceTimersByTime(20);
+        expect(nodes['p2-garbage-bar'].classList.contains('is-hit')).toBe(true);
+        hud.destroy();
+        vi.useRealTimers();
     });
 });

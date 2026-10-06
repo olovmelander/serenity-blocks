@@ -427,6 +427,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         const numPlayers = this.matchConfig?.numPlayers || 2;
         this.multiplayerState = new MultiPlayerState(numPlayers);
+        // Attacks are drawn between the boards (local-versus-hud.js).
+        this.multiplayerState.onAttack = (from, targets, lines) => this.versusHud?.showAttack(from, targets, lines);
         this.multiplayerState.setMatchConfig(this.matchConfig);
         this.multiplayerState.reset();
         configureLocalMultiplayerSimulationClock(this);
@@ -764,12 +766,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // But ALWAYS update minimaps for smooth animation
         const shouldUpdateText = frameCount % 10 === 0;
 
-        if (shouldUpdateText) {
-            for (let i = 0; i < numPlayers; i++) {
-                this._updateGarbageIndicator(i + 1, this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0);
-            }
-            this._updateStandingsHUD();
-        }
+        if (shouldUpdateText) this._updateStandingsHUD();
 
         // Update minimaps for infinity mode
         if (this.matchConfig?.isInfinityLMS && this.playerMinimaps.length > 0) {
@@ -816,9 +813,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const { players } = this.multiplayerState;
         const entries = this._matchTotals().map((totals, i) => {
             const playerState = players[i] || {};
+            const board = playerState.boardGrid || playerState.board;
             return {
                 ...totals,
                 level: playerState.level ?? 1,
+                // Filled rows from the floor: the well turns coral near the top.
+                stack: board && !this.matchConfig?.isInfinityLMS ? board.length - this._findHighestBlockRow(board) : 0,
+                // Garbage waiting to rise: the channel beside the board.
+                incoming: this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0,
                 // Last Standing: rows left before this stack reaches the roof.
                 toRoof: this.matchConfig?.isInfinityLMS
                     ? Math.max(0, (playerState.maxRows || 100) - calculateBuildHeight(playerState)) : 0,
@@ -877,29 +879,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
             }
         });
         return leader;
-    }
-
-    /**
-     * Update garbage indicator bar for a player
-     * @private
-     */
-    _updateGarbageIndicator(playerNum, garbageAmount) {
-        const garbageBar = document.getElementById(`p${playerNum}-garbage-bar`);
-        if (!garbageBar) return;
-
-        const fill = garbageBar.querySelector('.garbage-fill');
-        const glow = garbageBar.querySelector('.garbage-glow');
-
-        // Calculate percentage (max 20 rows = 100%)
-        const maxGarbage = 20;
-        const percentage = Math.min((garbageAmount / maxGarbage) * 100, 100);
-
-        if (fill) {
-            fill.style.height = `${percentage}%`;
-        }
-        if (glow) {
-            glow.style.height = `${percentage}%`;
-        }
     }
 
     /**
@@ -1184,7 +1163,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         eliminated.forEach((playerIndex) => {
             const player = this.multiplayerState.players[playerIndex];
             if (player?.currentPiece) player.currentPiece = null;
-            this._showPlayerDeathAnimation(playerIndex);
+            this._showPlayerDeathAnimation(playerIndex, lastAttackers[playerIndex]);
         });
 
         const waitForOutcome = async () => {
@@ -1263,8 +1242,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
             console.log(`[LocalMultiplayer] Cleared current piece for eliminated Player ${playerIndex + 1}`);
         }
 
-        // Show death animation for the eliminated player
-        this._showPlayerDeathAnimation(playerIndex);
+        // Show death animation for the eliminated player, naming who did it
+        this._showPlayerDeathAnimation(playerIndex, isSelfKill ? null : killerId);
 
         // === INFINITY LMS LOGIC ===
         if (this.matchConfig?.isInfinityLMS) {
@@ -1453,10 +1432,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 this[`boardJuiceP${i}`] = null;
             }
 
+            // The whole well moves: garbage channel, board and walls (keystone-versus.css).
             const container = document.getElementById(`p${i}-phaser-container`);
-            const section = container?.closest('.player-board-section');
-            if (section) {
-                this[`boardJuiceP${i}`] = new BoardJuice(section);
+            const well = container?.closest('.player-board-wrapper');
+            if (well) {
+                this[`boardJuiceP${i}`] = new BoardJuice(well);
             }
         }
     }
@@ -2063,7 +2043,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
             return;
         }
 
-        // Quadra-style: Instant restart, just log it
+        // Quadra-style: instant restart; the banner names the round's winner as it begins.
+        this._roundOutcome = { winnerIndex, selfKill: isSelfKill };
         console.log(`[LocalMultiplayer] Starting next round... Winner: ${winnerName}, Wins: ${winnerWins}`);
         // Removed _showRoundEnd delay for instant transition
         await this._startNewRound();
@@ -2086,6 +2067,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         console.log(`[LocalMultiplayer] Starting next round... Winner: ${teamName}, Wins: ${teamWins}`);
+        this._roundOutcome = { teamId };
         await this._startNewRound();
     }
 
@@ -2153,6 +2135,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Clear death animations from previous round
         this._clearDeathAnimations();
+        this.versusHud?.announceRound(this.versusRound || 1, this._roundOutcome || null);
+        this._roundOutcome = null;
         this.versusRound = (this.versusRound || 1) + 1;
 
         // Aggregate current round stats into match totals BEFORE resetting logic
@@ -2419,7 +2403,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * Show death animation when a player is eliminated
      * @private
      */
-    _showPlayerDeathAnimation(playerIndex) {
+    _showPlayerDeathAnimation(playerIndex, by = null) {
         const boardScene = this.boardScenes[playerIndex];
         if (!boardScene) {
             console.warn(`[LocalMultiplayer] No board scene found for Player ${playerIndex + 1}`);
@@ -2429,7 +2413,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // The board fades out (Phaser), dims, and the knock-out card rises over it.
         this._createEliminationExplosion(boardScene, playerIndex);
         boardScene.cameras?.main?.setAlpha(0.3);
-        this.versusHud?.showKnockout(playerIndex);
+        this.versusHud?.showKnockout(playerIndex, by);
         if (!this.knockedOut) this.knockedOut = new Set();
         this.knockedOut.add(playerIndex);
     }

@@ -915,6 +915,30 @@ export function drawPieceStyledUnified(
 }
 
 /**
+ * Trim a piece shape matrix down to its occupied bounding box so previews are
+ * sized/centred on the actual piece (e.g. the I-piece is 4×4 with blank rows).
+ * @param {Array<Array<number>>} shape
+ * @returns {Array<Array<number>>}
+ */
+export function trimShape(shape) {
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    shape.forEach((row, y) => row.forEach((cell, x) => {
+        if (cell > 0) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        }
+    }));
+    if (maxX < minX) return shape; // empty, shouldn't happen
+    const trimmed = [];
+    for (let y = minY; y <= maxY; y++) {
+        trimmed.push(shape[y].slice(minX, maxX + 1));
+    }
+    return trimmed;
+}
+
+/**
  * Draw an entire tetromino piece with solid look (outer edges only)
  * This renders the piece as a cohesive unit rather than separate blocks
  * @param {CanvasRenderingContext2D} ctx - Canvas context

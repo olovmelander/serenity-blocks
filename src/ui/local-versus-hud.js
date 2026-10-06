@@ -9,15 +9,43 @@
  * - One line of stats under each board: the numbers that do not decide the match.
  * - The knock-out card on a board, and a controls card on each human board at the
  *   start of a match.
+ * - The match told as it happens: a streak from attacker to target with the lines it
+ *   carries, a "+1" on a frag, the round's result in a banner, a well that turns
+ *   coral when its stack nears the top.
  *
  * The mode owns the game and passes plain numbers; this module owns the DOM.
  * Styles: public/styles/keystone-versus.css. Markup hooks: index.html
  * (#lv-match-bar, #p{n}-plate, #p{n}-meta inside .player-card[data-player]).
  */
 import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
-import { BOT_SKILL_TIERS } from './local-match-config-modal.js';
+import { versusCoachRows, versusControls } from './local-seat-controls.js';
 
 const COACH_MS = 6000;
+const BANNER_MS = 1700;
+const ATTACK_MS = 440;
+/** Rows of 20 at which a stack is in danger (the well turns coral)... */
+const DANGER_ROWS = 15;
+/** ...and the rows it must clear before the well calms (no flicker at the line). */
+const DANGER_CALM = 3;
+/** Incoming garbage: the lines that fill the channel, and a heavy attack (it glows). */
+const METER_LINES = 20;
+const HEAVY_LINES = 8;
+
+/** Replays a CSS animation class on the next frame. */
+const replay = (el, className) => {
+    el.classList.remove(className);
+    const nextFrame = globalThis.requestAnimationFrame || ((fn) => setTimeout(fn, 16));
+    nextFrame(() => el.classList.add(className));
+};
+
+const reducedMotion = () => {
+    try {
+        return window.settingsManager?.get?.().reducedMotion
+            || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    } catch {
+        return false;
+    }
+};
 
 /**
  * The number that decides a local match, and its goal.
@@ -109,82 +137,6 @@ export function versusMetaStats(entry, metricKey) {
     });
 }
 
-const KEY_NAMES = {
-    ArrowLeft: '←',
-    ArrowRight: '→',
-    ArrowUp: '↑',
-    ArrowDown: '↓',
-    ' ': 'Space',
-    Space: 'Space',
-    Shift: 'Shift',
-    Control: 'Ctrl',
-    Enter: 'Enter',
-};
-
-/** A key as printed on a keycap. */
-export function keyName(key) {
-    if (!key) return '';
-    if (KEY_NAMES[key]) return KEY_NAMES[key];
-    return key.length === 1 ? key.toUpperCase() : key;
-}
-
-/** The keyboard layout a player uses, in a few words. */
-export function keyboardScheme(bindings = {}) {
-    const moves = [bindings.moveLeft, bindings.moveRight, bindings.softDrop];
-    if (moves.join() === 'ArrowLeft,ArrowRight,ArrowDown') return 'Arrow keys';
-    if (moves.map((k) => String(k || '').toLowerCase()).join() === 'a,d,s') return 'WASD';
-    return `Keys ${[bindings.moveLeft, bindings.moveRight].map(keyName).join(' ')}`.trim();
-}
-
-/** Standard-mapping button names, by index (12–15: the D-pad's directions). */
-const PAD_BUTTONS = [
-    'A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View', 'Menu',
-    'L3', 'R3', '↑', '↓', '←', '→',
-];
-
-/** Keyboard players are P1 and P2 (Settings → Controls); P3 and P4 play on controllers. */
-const KEY_BINDINGS = ['keyBindings', 'player2KeyBindings'];
-const PAD_BINDINGS = ['gamepadBindings', 'player2GamepadBindings', 'player3GamepadBindings', 'player4GamepadBindings'];
-
-/**
- * How a seat plays, for its plate.
- * @param {number} index seat (0–3)
- * @param {{ kind?: string, difficulty?: number }} slot
- * @param {object} settings
- */
-export function versusControls(index, slot = {}, settings = {}) {
-    if (slot.kind === 'bot') {
-        const tier = BOT_SKILL_TIERS[(Number(slot.difficulty) || 1) - 1];
-        return tier ? `Bot · ${tier}` : 'Bot';
-    }
-    const keys = settings?.[KEY_BINDINGS[index]];
-    return keys ? keyboardScheme(keys) : `Controller ${index + 1}`;
-}
-
-/**
- * The controls card's rows: [action, keys].
- * @returns {Array<[string, string[]]>}
- */
-export function versusCoachRows(index, settings = {}) {
-    const keys = settings?.[KEY_BINDINGS[index]];
-    if (keys) {
-        return [
-            ['Move', [keys.moveLeft, keys.moveRight].map(keyName)],
-            ['Turn', [keys.rotateRight, keys.rotateLeft].map(keyName)],
-            ['Drop', [keys.softDrop, keys.hardDrop].map(keyName)],
-        ];
-    }
-    const pad = settings?.[PAD_BINDINGS[index]] || {};
-    const button = (b, fallback) => PAD_BUTTONS[b] || fallback;
-    // Moving on the D-pad reads as one cap; its ↓ then reads as the D-pad's too.
-    const dpadMove = [pad.moveLeft ?? 14, pad.moveRight ?? 15].join() === '14,15';
-    return [
-        ['Move', dpadMove ? ['D-pad'] : [button(pad.moveLeft, '←'), button(pad.moveRight, '→')]],
-        ['Turn', [button(pad.rotateRight, 'A'), button(pad.rotateLeft, 'Y')]],
-        ['Drop', [button(pad.softDrop, '↓'), button(pad.hardDrop, 'B')]],
-    ];
-}
-
 /**
  * @typedef {object} VersusEntry
  * @property {number} frags
@@ -222,10 +174,42 @@ export class LocalVersusHud {
         this._barSig = '';
         this._knockouts = new Map();
         this._coachTimer = null;
+        this._lastValues = [];
+        this._danger = [];
+        this._incoming = [];
+        this._timers = new Set();
+    }
+
+    /** A timer the HUD clears when it is destroyed. */
+    _later(fn, ms) {
+        const id = setTimeout(() => {
+            this._timers.delete(id);
+            fn();
+        }, ms);
+        this._timers.add(id);
+    }
+
+    _name(index) {
+        return this.config.playerSlots?.[index]?.name || `Player ${index + 1}`;
+    }
+
+    _color(index) {
+        return sanitizeCssColor(this.colorFor(index)?.primary);
     }
 
     _el(id) {
         return this.doc.getElementById(id);
+    }
+
+    /** The channel beside a board fills with the garbage waiting to rise into it. */
+    _meter(index, lines) {
+        if (this._incoming[index] === lines) return;
+        this._incoming[index] = lines;
+        const meter = this._el(`p${index + 1}-garbage-bar`);
+        if (!meter) return;
+        const fill = meter.querySelector('.garbage-fill');
+        if (fill) fill.style.height = `${Math.min(100, (lines / METER_LINES) * 100)}%`;
+        meter.classList.toggle('is-heavy', lines >= HEAVY_LINES);
     }
 
     /** Builds the plates and the match bar for this match. */
@@ -258,6 +242,9 @@ export class LocalVersusHud {
                 </span>
                 ${goal}`;
             plate.dataset.kind = slot.kind === 'bot' ? 'bot' : 'human';
+            this._lastValues[i] = 0;
+            this._danger[i] = false;
+            this._meter(i, 0);
             plate.closest('.player-card')?.setAttribute('aria-label', `${name}, player ${n}`);
             this._plateSigs[i] = '';
         }
@@ -293,15 +280,24 @@ export class LocalVersusHud {
         entries.forEach((entry, i) => {
             const plate = this._el(`p${i + 1}-plate`);
             if (!plate || !entry) return;
+            this._meter(i, Number(entry.incoming) || 0);
             const value = values[i];
             const out = entry.isAlive === false;
             const meta = versusMetaStats(entry, key);
             // A teammate's bar shows the team's progress: the goal is the team's.
             const toward = teamMode && teamTotals ? (teamTotals[entry.team ?? i] ?? value) : value;
             const rank = showRanks ? ranks[i] : 0;
-            const sig = `${value}|${toward}|${rank}|${out ? 1 : 0}|${meta.map((m) => m[1]).join(',')}`;
+            const stack = Number(entry.stack) || 0;
+            const danger = !out && (stack >= DANGER_ROWS || (this._danger[i] && stack > DANGER_ROWS - DANGER_CALM));
+            this._danger[i] = danger;
+            const flags = `${out ? 1 : 0}${danger ? 1 : 0}`;
+            const sig = `${value}|${toward}|${rank}|${flags}|${meta.map((m) => m[1]).join(',')}`;
             if (sig === this._plateSigs[i]) return;
             this._plateSigs[i] = sig;
+            plate.closest('.player-card')?.classList.toggle('lv-danger', danger);
+            // A frag lands on the plate.
+            if (key === 'frags' && value > (this._lastValues[i] ?? 0)) this._bump(plate, value - this._lastValues[i]);
+            this._lastValues[i] = value;
 
             const valueEl = plate.querySelector('.lv-plate__value');
             if (valueEl) valueEl.textContent = key === 'score' ? value.toLocaleString() : String(value);
@@ -374,15 +370,40 @@ export class LocalVersusHud {
         return [...totals.values()].sort((a, b) => a.id - b.id);
     }
 
-    /** The knock-out card over a board (3–4 players, until the round ends). */
-    showKnockout(index, note = 'Back next round') {
+    /** The plate's number pops and a "+n" rises beside it. */
+    _bump(plate, by) {
+        if (!plate.classList || reducedMotion()) return;
+        // Restarts on a quick second frag.
+        replay(plate, 'is-bumped');
+        const chip = this.doc.createElement('span');
+        chip.className = 'lv-plate__bump';
+        chip.textContent = `+${by}`;
+        plate.appendChild(chip);
+        this._later(() => {
+            chip.remove();
+            plate.classList.remove('is-bumped');
+        }, 1000);
+    }
+
+    /**
+     * The knock-out card over a board (3–4 players, until the round ends), naming who
+     * did it.
+     * @param {number} index the player out
+     * @param {number|null} [by] who knocked them out (null or themselves: topped out)
+     */
+    showKnockout(index, by = null) {
         const section = this._el(`p${index + 1}-phaser-container`)?.closest('.player-board-section');
         if (!section) return;
         this._knockouts.get(index)?.remove();
         const card = this.doc.createElement('div');
         card.className = 'lv-ko';
         card.setAttribute('role', 'status');
-        card.innerHTML = `<span class="lv-ko__title">Out</span><span class="lv-ko__note">${escapeHtml(note)}</span>`;
+        const knockedBy = Number.isInteger(by) && by !== index;
+        const cause = knockedBy ? `By ${this._name(by)}` : 'Topped out';
+        const byColor = knockedBy ? ` style="--by-color:${this._color(by)}"` : '';
+        card.innerHTML = '<span class="lv-ko__title">Out</span>'
+            + `<span class="lv-ko__cause"${byColor}>${escapeHtml(cause)}</span>`
+            + '<span class="lv-ko__note">Back next round</span>';
         section.appendChild(card);
         this._knockouts.set(index, card);
         // Let the board fade first, then the card rises.
@@ -401,13 +422,8 @@ export class LocalVersusHud {
         const slots = this.config.playerSlots || [];
         for (let i = 0; i < this.numPlayers; i++) {
             if (slots[i]?.kind === 'bot') continue;
-            const card = this._el(`player-${i + 1}-card`);
-            // Beside the board the card waits under the queue; above it, on the board's foot.
-            const besideBoard = card?.closest('[data-queue]')?.dataset.queue === 'side'
-                && !card.classList.contains('infinity-lms');
-            const host = besideBoard
-                ? card.querySelector('.player-next-section')
-                : this._el(`p${i + 1}-phaser-container`)?.closest('.player-board-section');
+            // On the board's foot, under the falling pieces.
+            const host = this._el(`p${i + 1}-phaser-container`)?.closest('.player-board-section');
             if (!host) continue;
             const coach = this.doc.createElement('div');
             coach.className = 'lv-coach';
@@ -431,7 +447,118 @@ export class LocalVersusHud {
         });
     }
 
+    /**
+     * The round's result, for a moment, as the next round starts.
+     * @param {number} round the round that ended
+     * @param {{ winnerIndex?: number, teamId?: number, selfKill?: boolean }|null} outcome
+     */
+    announceRound(round, outcome = null) {
+        const stage = this._el('multiplayer-container');
+        if (!stage) return;
+        let banner = this._el('lv-round-banner');
+        if (!banner) {
+            banner = this.doc.createElement('div');
+            banner.id = 'lv-round-banner';
+            banner.className = 'lv-round';
+            banner.setAttribute('role', 'status');
+            stage.appendChild(banner);
+        }
+        let title = 'A draw';
+        let color = '';
+        if (Number.isInteger(outcome?.teamId)) {
+            title = `${this.teamLabel(outcome.teamId)} takes it`;
+            const member = (this.config.playerTeams || []).indexOf(outcome.teamId);
+            color = this._color(member >= 0 ? member : 0);
+        } else if (Number.isInteger(outcome?.winnerIndex)) {
+            title = `${this._name(outcome.winnerIndex)} takes it`;
+            color = this._color(outcome.winnerIndex);
+        }
+        const note = outcome?.selfKill ? 'Topped out, no frag' : '';
+        banner.style.setProperty('--round-color', color || 'var(--sb-keystone)');
+        const noteHtml = note ? `<span class="lv-round__note">${note}</span>` : '';
+        banner.innerHTML = `<span class="lv-round__kicker">Round ${round}</span>`
+            + `<span class="lv-round__title">${escapeHtml(title)}</span>${noteHtml}`;
+        replay(banner, 'is-shown');
+        clearTimeout(this._bannerTimer);
+        this._bannerTimer = setTimeout(() => banner.classList.remove('is-shown'), BANNER_MS);
+    }
+
+    /**
+     * An attack, drawn: a streak from the attacker's board into each target's garbage
+     * channel, which flashes and counts the lines in.
+     * @param {number} from attacker
+     * @param {number[]} targets
+     * @param {number} lines
+     */
+    showAttack(from, targets, lines) {
+        const stage = this._el('multiplayer-container');
+        const origin = this._el(`p${from + 1}-phaser-container`)?.closest('.player-board-section');
+        if (!stage || !origin || !lines) return;
+        const color = this._color(from);
+        const motion = !reducedMotion() && typeof origin.animate === 'function';
+        targets.forEach((target) => {
+            const meter = this._el(`p${target + 1}-garbage-bar`);
+            if (!meter) return;
+            const land = () => this._hit(meter, lines, color);
+            if (!motion) {
+                land();
+                return;
+            }
+            const a = origin.getBoundingClientRect();
+            const b = meter.getBoundingClientRect();
+            const x0 = a.left + a.width / 2;
+            const y0 = a.top + a.height * 0.42;
+            const x1 = b.left + b.width / 2;
+            const y1 = b.bottom - Math.min(b.height * 0.25, 60);
+            const dx = x1 - x0;
+            const dy = y1 - y0;
+            const angle = `${Math.atan2(dy, dx).toFixed(4)}rad`;
+            const streak = this.doc.createElement('div');
+            streak.className = 'lv-attack';
+            streak.style.cssText = `left:${x0}px;top:${y0}px;--attack-color:${color};`
+                + `--attack-len:${Math.hypot(dx, dy)}px`;
+            streak.innerHTML = '<span class="lv-attack__trail"></span><span class="lv-attack__orb"></span>';
+            stage.appendChild(streak);
+            streak.querySelector('.lv-attack__orb').animate(
+                [{ transform: 'translate(-50%, -50%) scale(0.6)' },
+                    { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1.15)` }],
+                { duration: ATTACK_MS, easing: 'cubic-bezier(0.55, 0, 0.8, 0.4)', fill: 'forwards' },
+            );
+            streak.querySelector('.lv-attack__trail').animate(
+                [{ transform: `rotate(${angle}) scaleX(0)`, opacity: 0.9 },
+                    { transform: `rotate(${angle}) scaleX(1)`, opacity: 0.6, offset: 0.85 },
+                    { transform: `rotate(${angle}) scaleX(1)`, opacity: 0 }],
+                { duration: ATTACK_MS + 160, easing: 'ease-in', fill: 'forwards' },
+            );
+            this._later(() => {
+                streak.remove();
+                land();
+            }, ATTACK_MS);
+        });
+    }
+
+    /** The target's channel takes the hit: a flash and "+n" rows. */
+    _hit(meter, lines, color) {
+        replay(meter, 'is-hit');
+        const well = meter.parentElement;
+        if (well) {
+            const label = this.doc.createElement('span');
+            label.className = 'lv-hit';
+            label.textContent = `+${lines}`;
+            label.style.setProperty('--attack-color', color);
+            well.appendChild(label);
+            this._later(() => label.remove(), 1100);
+        }
+        this._later(() => meter.classList.remove('is-hit'), 500);
+    }
+
     destroy() {
+        this._timers.forEach((id) => clearTimeout(id));
+        this._timers.clear();
+        clearTimeout(this._bannerTimer);
+        this.doc.getElementById?.('lv-round-banner')?.remove();
+        this.doc.querySelectorAll('#multiplayer-container .lv-attack, #multiplayer-container .lv-hit')
+            .forEach((node) => node.remove());
         this.hideCoach();
         this.clearKnockouts();
         for (let n = 1; n <= 4; n++) {

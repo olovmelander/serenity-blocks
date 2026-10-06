@@ -7,6 +7,7 @@ import { performanceMonitor } from '../../utils/performance-monitor.js';
 import { getGhostLandingY } from '../../core/game.js';
 import { projectInfinityPresentationCamera } from '../../core/infinity-spawn-policy.js';
 import { TetrominoStyleManager } from '../tetromino-style-manager.js';
+import { drawVersusGhost, versusGarbageColor } from './versus-board-style.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
 const DEFAULT_SHAKE_INTENSITY = 0.002;
@@ -123,6 +124,8 @@ export function createBaseBoardScene(
             this._blindOverlayCache = null;
             this._invalidatePresentation = () => { this._boardDirty = true; };
             this._reducedMotionQuery = null;
+            // Local versus boards opt in (setVersusStyle): slate garbage, a coloured ghost.
+            this.versusStyle = false;
 
             // No caching needed - simple is better
         }
@@ -236,6 +239,17 @@ export function createBaseBoardScene(
             } catch (error) {
                 console.error('[BaseBoardScene] Error in update loop:', error);
             }
+        }
+
+        /**
+         * Local versus look (versus-board-style.js): solid slate garbage and the ghost
+         * in the piece's colour. Single player keeps the base look.
+         * @param {boolean} [enabled]
+         */
+        setVersusStyle(enabled = true) {
+            this.versusStyle = Boolean(enabled);
+            this._boardDirty = true;
+            this._activePieceBodyCache = null;
         }
 
         setPresentationPaused(paused) {
@@ -987,7 +1001,8 @@ export function createBaseBoardScene(
                     const w = Math.round((worldX + 1) * bs) - px;
                     const h = Math.round((worldY + 1) * bs) - py;
                     if (isGarbage) {
-                        staticLayer.fillStyle(colorInt, 1); // matte
+                        // Matte; versus fills it slate, tinted by the attacker.
+                        staticLayer.fillStyle(this.versusStyle ? versusGarbageColor(colorInt) : colorInt, 1);
                     } else {
                         const top = shadeColorAt(colorInt, worldY);
                         const bot = shadeColorAt(colorInt, worldY + 1);
@@ -1195,6 +1210,12 @@ export function createBaseBoardScene(
             const alpha = minAlpha + (maxAlpha - minAlpha) * pulse;
 
             const geometry = this._getPieceGeometry(piece.shape, ghostY, skipHiddenRows);
+            if (this.versusStyle) {
+                const colorInt = this.colorToInt(this.getThemedColor(piece.type, piece.color));
+                const [ox, oy] = [piece.x * this.blockSize, ghostY * this.blockSize];
+                drawVersusGhost(this, this.pieceGraphics, geometry.loops, colorInt, ox, oy, pulse);
+                return;
+            }
             // Translucent fill MUST use the single contour polygon — per-cell rects
             // double-cover at their overlap and produce brighter internal seam lines.
             this.fillContour(this.pieceGraphics, geometry.loops, 0xffffff, alpha, piece.x * this.blockSize, ghostY * this.blockSize);

@@ -9,7 +9,7 @@ import {
     COLS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS,
 } from '../core/constants.js';
 import { generateBoard } from '../core/board.js';
-import { drawPieceSolid } from './canvas/canvas-drawing-utils.js';
+import { drawPieceSolid, trimShape } from './canvas/canvas-drawing-utils.js';
 import { TetrominoStyleManager } from './tetromino-style-manager.js';
 
 const COMBO_COLOR_STEPS = [
@@ -57,6 +57,7 @@ let nextPieceStyleRevision = 0;
 const nextCanvasDraws = new WeakMap();
 const watchedNextCanvases = new WeakSet();
 const fallbackNextStyles = new Map();
+const trimmedNextShapes = new Map();
 
 function getNextPieceStyleManager() {
     if (nextPieceStyleManager) {
@@ -200,7 +201,12 @@ export function drawNextPieces(nextCanvases, nextPieces = []) {
 
         if (slot) slot.classList.remove('empty');
 
-        const shape = SHAPES[nextKey];
+        // Fit and centre the piece itself, not its rotation matrix (blank rows and columns).
+        let shape = trimmedNextShapes.get(nextKey);
+        if (!shape) {
+            shape = trimShape(SHAPES[nextKey]);
+            trimmedNextShapes.set(nextKey, shape);
+        }
         const rows = shape.length;
         const cols = shape[0].length;
 

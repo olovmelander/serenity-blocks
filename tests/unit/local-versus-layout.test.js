@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { versusLayout, versusStation } from '../../src/ui/local-versus-layout.js';
+import {
+    VERSUS_COLS, versusLayout, versusParts, versusStation,
+} from '../../src/ui/local-versus-layout.js';
 
 const fits = (layout, width, height, players, infinity = false) => {
-    const station = versusStation(layout.block, layout.queue, infinity);
+    const station = versusStation(layout.block, infinity);
     const columns = Math.ceil(players / layout.rows);
     const totalWidth = columns * station.width + (columns - 1) * layout.gap + 2 * layout.inset;
     const totalHeight = layout.top + layout.rows * station.height + (layout.rows - 1) * 20 + layout.inset;
@@ -10,19 +12,25 @@ const fits = (layout, width, height, players, infinity = false) => {
 };
 
 describe('local versus layout', () => {
-    it('puts the queue beside the board when height is short (two players, wide window)', () => {
-        const layout = versusLayout({ width: 1920, height: 1080, players: 2 });
-        expect(layout.queue).toBe('side');
-        expect(layout.rows).toBe(1);
-        // Larger than the old 40 px blocks the queue-on-top layout allowed.
-        expect(layout.block).toBeGreaterThanOrEqual(44);
+    it('sizes two and four players on one row of a 1080p window', () => {
+        const two = versusLayout({ width: 1920, height: 1080, players: 2 });
+        expect(two.rows).toBe(1);
+        expect(two.block).toBeGreaterThanOrEqual(38);
+        const four = versusLayout({ width: 1920, height: 1080, players: 4 });
+        expect(four.columns).toBe(4);
+        expect(four.block).toBeGreaterThanOrEqual(36);
     });
 
-    it('puts the queue above the board when width is short (four players)', () => {
-        const layout = versusLayout({ width: 1920, height: 1080, players: 4 });
-        expect(layout.queue).toBe('top');
-        expect(layout.columns).toBe(4);
-        expect(layout.block).toBeGreaterThanOrEqual(38);
+    it('fits the queue row (label, next tile, two later tiles) over the board', () => {
+        [20, 28, 34, 44, 60, 80].forEach((block) => {
+            const p = versusParts(block);
+            const label = 48;
+            const row = label + p.nextWidth + 2 * p.laterWidth + 3 * p.nextGap;
+            expect(row, `block ${block}`).toBeLessThanOrEqual(VERSUS_COLS * block);
+            // Wide tiles, as pieces are; the later ones smaller.
+            expect(p.nextWidth).toBeGreaterThan(p.nextHeight);
+            expect(p.laterHeight).toBeLessThan(p.nextHeight);
+        });
     });
 
     it('always fits the window, from a 1024 × 768 tablet to 4K, two to four players', () => {
@@ -44,11 +52,11 @@ describe('local versus layout', () => {
         expect(fits(tall, 768, 1366, 4)).toBe(true);
     });
 
-    it('gives Last Standing the queue above and room for its minimap', () => {
+    it('gives Last Standing room for its minimap', () => {
         const layout = versusLayout({
             width: 1600, height: 900, players: 2, infinity: true,
         });
-        expect(layout.queue).toBe('top');
         expect(fits(layout, 1600, 900, 2, true)).toBe(true);
+        expect(layout.stationWidth).toBeGreaterThan(versusStation(layout.block).width);
     });
 });
