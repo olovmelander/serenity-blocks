@@ -218,6 +218,13 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Local garbage was a slab in the attacker's own colour, so it read like a stack of their pieces | Solid slate, faintly tinted by the attacker; holes stay plain to see (§5.6) |
 | The falling piece showed faint bright lines between its cells: its gloss was drawn cell by cell with overlapping rects in additive blend, so every overlap doubled | The gloss is one exact rect per run of cells; every mode's pieces are seamless (`glossPass` in `base-board-scene.js`) |
 | The garbage meter sat inside the well as a dark channel: the stack met the right wall but stopped short of the left one, and an empty meter could not be seen | The meter stands outside the left wall as a visible track; the pieces meet both walls (§5.6) |
+| The single-player and Infinity boards stopped growing near 300 × 600: a 1920 × 1080 window left almost half its height unused, and 1280 × 720 got 232 × 460 | The board is as tall as the window allows: 285 × 569 at 1280 × 720, 369 × 738 at 1600 × 900, 456 × 912 at 1920 × 1080 (§5.7) |
+| On a phone, Infinity's HUD and map were squeezed into slivers on either side of the board, their words cut off letter by letter | The HUD becomes a strip under the board (height and score) and the tower map a slim rail beside it; single player gets the same strip (§5.7) |
+| Infinity's map drew the whole 1,000-row ceiling as a gradient with one purple bar for the build and a sweeping scanline, so no piece could be seen and a young tower was a sliver at the bottom | A tower map: the build cell by cell in its colours, cells square, from the floor to a little above the summit; the rows on screen framed, the summit in gold, the climb to the ceiling on a rail (§5.7) |
+| Infinity's HUD blurred the scene behind it every frame (`backdrop-filter`), measured the tower on every update and rebuilt its stats with `innerHTML` | An opaque panel; the height is measured only when the board changes, and a number is written only when it changes |
+| Single player's seven stat tiles each had an icon and a box, and "Next Lv 15" did not say fifteen of what | One ledger: the score large, the level with a bar and "15 lines to go", the lines, the pace (§5.7) |
+| Nothing warned that a single-player stack was nearing the top | The well turns coral and breathes when the stack stands 15 rows high, calming only three rows lower (§5.7) |
+| Infinity said an empty board was 1 row high (the shared `calculateTopRow` reports an empty board's bottom row) | 0 rows, and the tower map draws no summit until something stands |
 | Local timed matches promised "the highest score when time runs out wins", but the standings ranked by frags and the match went to whoever won the last round | Timed matches rank, lead and are won on score, for players and teams; the clock is in the match bar and turns to "Last round" at zero |
 | In team play a frag goal counts rounds won, but the standings summed players' frags | The match bar races teams by their rule (rounds won, or the team's points or lines); each teammate's goal bar fills by the team |
 | A knock-out showed a 💀 emoji and "ELIMINATED" in red Arial | A Keystone card: "Out", the seat's colour, "Back next round" |
@@ -259,6 +266,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
 | In-game controls (the play rail: Levels, Serenity Hub, Settings) | `keystone-overlays.css`, `src/ui/keystone/play-rail.js` | Shipped |
 | Local versus (match bar, name plates, boards, stats lines, knock-out and controls cards) | `keystone-versus.css`, `src/ui/local-versus-hud.js`, `src/ui/local-versus-layout.js` | Shipped |
+| Single player and Infinity (the well, the queue, the ledger, Infinity's HUD and tower map) | `keystone-solo.css`, `src/ui/infinity/InfinityHUD.js`, `src/ui/infinity/InfinityMinimap.js` | Shipped |
 
 ### 5.1 Settings, pause, Records, Replays, results (`keystone-settings.css`, `keystone-modals.css`)
 
@@ -516,12 +524,14 @@ play, and how are they doing" at a glance, and every number lives in one place.
   turn coral and breathe, and they calm only once it is three rows lower (no flicker at
   the line). A knocked-out well goes quiet. The whole well, meter included, shakes and
   dips with the board's juice.
-- **The boards' look (`src/rendering/phaser/versus-board-style.js`, local versus only):**
+- **The boards' look (`src/rendering/phaser/well-board-style.js`, every well):**
   pieces and the stack keep the game's solid, fused shapes. Garbage is one solid slate
   fill faintly tinted by the attacker, so it never passes for a stack of pieces and its
   holes stay plain to see. The ghost is the piece's own colour, faint inside and
-  outlined, where it will land. Single player and the themes keep the base look
-  (`BaseBoardScene.setVersusStyle`, turned on by `local-board-hosts.js`).
+  outlined, where it will land. Local versus, single player and Infinity turn it on
+  (`BaseBoardScene.setWellStyle`, from `local-board-hosts.js`, `SinglePlayerMode` and
+  `InfinityMode`, which turn it off again on leaving); Odyssey and the other modes keep
+  the base look.
 - **The match told as it happens:** a streak flies from the attacker's board to each
   target's meter with the lines it carries; a frag pops "+1" on the plate; the
   knock-out card names who did it ("By Ada" in their colour) or says "Topped out"; and as
@@ -568,6 +578,75 @@ play, and how are they doing" at a glance, and every number lives in one place.
   the mode's own garbage-meter writes (the HUD fills the meter from `incoming`).
 - **Online:** the "NET" network badge (`src/ui/network-qos.js`) and its styles are gone.
 
+### 5.7 Single player and Infinity (`keystone-solo.css`)
+
+Both modes stand their board in the same open-top well as local versus, as large as the
+window allows, with every number in one place beside it.
+
+- **The stage** (`.single-player-stage[data-board='well']`, set by `SinglePlayerMode`
+  and `InfinityMode` while they run and removed when they stop): the whole window under
+  the tray's row, laid out in a row at every width (`main.css` stacked a narrow stage
+  into a centred column with a 900 × 720 minimum, so phones scrolled). The board is
+  2 : 1, 140–640 px wide, as tall as the window allows under the queue:
+
+  | Window | Before | Now |
+  |---|---|---|
+  | 1280 × 720 | 232 × 460 | 285 × 569 |
+  | 1600 × 900 | 296 × 590 (Infinity 306 × 610) | 369 × 738 |
+  | 1920 × 1080 | 296 × 590 | 456 × 912 |
+  | 2560 × 1440 | — | 636 × 1272 |
+  | 390 × 844 (phone) | 296 × 592, the stats pushed off the screen | 310 × 621, the strip under it |
+
+- **The queue:** on the well's mouth, as in local versus: "Next", the next piece in a
+  tile lit in the mode's hue, the two after it smaller and quieter, each preview fitted
+  and centred on the piece itself.
+- **The well:** walls in the mode's hue (lavender in single player, aqua in Infinity)
+  rise from the floor and fade out toward the top; the glass is plain; the pieces meet
+  both walls; the ghost and garbage have the well look (§5.6). When the stack stands 15
+  rows high (five from the top) a coral haze falls from the open top and the walls turn
+  coral and breathe; they calm only once the stack is three rows lower, so it never
+  flickers at the line (`updateWellDanger` in `draw.js`, measured only when the board
+  changes; the stage's `data-danger` is the state, and leaving single player clears it
+  with the well, so Infinity never starts coral). In Infinity, while the camera is above
+  the ground (the tower map marks `data-off-floor`), the well has no floor and its walls
+  fade out at both ends.
+- **The ledger (single player):** one panel beside the well, from its top, the mode's
+  hue along its left edge, like a seat's plate: the score large and grouped (12,480),
+  the level with a bar toward the next one and "15 lines to go", the lines, and the
+  pace (speed, BPM, PPM) in a row of small numbers. It replaces seven boxed tiles with
+  icons. Hooks kept: `#score`, `#level`, `#next-level`, `#lines`, `#speed`, `#bpm`,
+  `#ppm` and `.single-player-stats-bar` (themes measure it); new: `#level-progress`
+  (its `--sp-level` share, written by `draw.js`).
+- **Infinity's HUD (`InfinityHUD.js`):** a panel as tall as the well on its left.
+  Height: the rows built, a bar toward the next milestone with the rows left ("149 rows
+  to 250"), the milestones (a tenth, a quarter, half, three quarters and all of the
+  ceiling) passed in gold with the next one lit, and the rows left to the ceiling. This
+  climb: score, blocks, lines. Best of this climb: the biggest cascade, the most lines
+  from one piece, the longest chain, the cascades set off. A chaining cascade (×2 and
+  up) is counted over the board. The height is measured only when the board changes
+  and every number is written only when it changes (the panel was 829 lines with an
+  injected stylesheet; it is 235).
+- **The tower map (`InfinityMinimap.js`, also beside each Last Standing board):** a
+  miniature of the build itself, every cell in its own colour (garbage in slate) and
+  square — never squeezed or stretched to fill the box — from the floor to a little
+  above the summit (about a third of the build again, at least 12 rows). A young tower
+  is as wide as the map, in whole-pixel cells, with sky above it; as it grows the map
+  zooms out in steps and the tower narrows, centred, keeping its true shape. The rows
+  on screen are framed and the rest recedes; the summit has a gold line; a slim rail on
+  the left fills toward the ceiling with the milestones on it. Dragging it still pauses
+  the climb to look around the tower, and play resumes on release. It redraws only
+  when the board, the camera or its size changes, and keeps the build as a
+  one-pixel-per-cell image redrawn only with the board (the old map was 1,119 lines;
+  it is about 450). Its backing store follows its laid-out size (sharp at any pixel
+  ratio), so the box always has a definite size: Infinity and Last Standing size it,
+  and Odyssey's tall boards take the default 96 × 420.
+- **Infinity's layout:** the HUD, the well and the tower in a row, their feet on the
+  well's floor. 1280 × 720: HUD 218 px, tower 77 px; 1600 × 900 and up: 264 and 92 px.
+- **Portrait:** the ledger becomes one strip under the board (score, level with its
+  bar, lines); Infinity's HUD becomes the same strip (height with its bar, score) and
+  the tower a slim rail beside the board (`display: grid !important`, since the mode
+  sets the container's display inline).
+
 ## 6. Verification
 
 - Every surface captured with Playwright (Chromium, WebGPU) at 1600 × 900 and 390 × 844,
@@ -595,6 +674,16 @@ play, and how are they doing" at a glance, and every number lives in one place.
   1280 × 720, 1366 × 768, 1600 × 900, 1920 × 1080 and 1080 × 1920 (2–4 players, Infinity,
   Hot potato), with the danger walls checked against the stacks' heights; preview fit in
   `tests/unit/next-preview-presentation.test.js`.
+- Single player and Infinity (§5.7): captured from real play (random moves with hard
+  drops) before and after at 1280 × 720, 1600 × 900, 1920 × 1080 and 390 × 844, after
+  also at 820 × 1180; the boxes measured at those sizes and at 1366 × 768 and
+  2560 × 1440 (no overlaps, nothing past the window); the danger walls
+  checked against the stack's height; the tower map captured with young and 127-row
+  towers, on a phone and beside Last Standing boards, its cells checked square in
+  enlarged crops. Unit tests: `tests/unit/infinity-minimap-presentation.test.js`
+  (square cells, zoom, row picking, off-floor), `tests/unit/infinity-hud.test.js`, and
+  the ledger's grouping, level bar and danger in
+  `tests/unit/hud-stat-pulse-batching.test.js`.
 - No `backdrop-filter` remains on any Keystone surface.
 
 ## 7. Open follow-ups
@@ -614,3 +703,7 @@ play, and how are they doing" at a glance, and every number lives in one place.
 - The breathing guide's ELIXIR accent (255, 150, 120) sits close to coral and is pinned
   by a test; the Hub uses gold for ELIXIR. Moving the guide to gold would keep coral
   for the keystone alone.
+- Odyssey's tall-board map listens for `minimap-jump` but reads `event.detail.row`; the
+  map has always sent `targetRow`, so a click there hands the camera `undefined`.
+  Reading `targetRow` (and pausing as Infinity does while exploring) wants a GPU run of
+  a tall Odyssey level to verify.

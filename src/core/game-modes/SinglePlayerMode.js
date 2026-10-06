@@ -157,6 +157,10 @@ export class SinglePlayerMode extends BaseGameMode {
             console.log('[SinglePlayer] Stage computed after set:', window.getComputedStyle(singlePlayerStage).display);
         }
 
+        // The well: an open-top board with the ledger beside it (keystone-solo.css).
+        this._wellStage = singlePlayerStage || null;
+        if (this._wellStage) this._wellStage.dataset.board = 'well';
+
         const singlePlayerContainer = document.getElementById('single-player-container');
         console.log('[SinglePlayer] Found container element:', !!singlePlayerContainer);
         if (singlePlayerContainer) {
@@ -647,6 +651,12 @@ export class SinglePlayerMode extends BaseGameMode {
         this._fixedTickEnabled = false;
 
         this._stopPhaserBoardScene();
+        // Leave no well (nor its danger) on the stage Infinity and Serenity share.
+        if (this._wellStage) {
+            delete this._wellStage.dataset.board;
+            this._wellStage.removeAttribute('data-danger');
+        }
+        this._wellStage = null;
 
         // Clean up board juice
         if (this.boardJuice) {
@@ -1574,6 +1584,8 @@ export class SinglePlayerMode extends BaseGameMode {
         if (!phaserGame?.scene) return;
 
         const boardScene = phaserGame.scene.getScene('BoardScene');
+        // The well's look: a coloured ghost (well-board-style.js).
+        boardScene?.setWellStyle?.(true);
         if (boardScene) {
             if (boardScene.scene.isActive()) {
                 console.log('[SinglePlayer] BoardScene already active, restarting...');
@@ -1595,6 +1607,7 @@ export class SinglePlayerMode extends BaseGameMode {
     _stopPhaserBoardScene() {
         const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
         if (boardScene) {
+            boardScene.setWellStyle?.(false);
             boardScene.scene.stop();
         }
     }

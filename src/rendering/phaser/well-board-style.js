@@ -1,10 +1,11 @@
 /**
- * @fileoverview Local versus board style — the boards of LocalMultiplayerMode only
- * (local-board-hosts.js turns it on with BaseBoardScene.setVersusStyle). Single player
- * and the themes keep the base scene's look untouched.
+ * @fileoverview The well's board style — the boards drawn inside an open-top well:
+ * local versus (local-board-hosts.js), single player and Infinity (their modes turn it
+ * on with BaseBoardScene.setWellStyle). Odyssey and the online boards keep the base
+ * scene's look.
  *
- * Pieces and the stack stay the base scene's solid, fused shapes. Versus changes two
- * things, in any theme's palette, so a race reads from the couch at a glance:
+ * Pieces and the stack stay the base scene's solid, fused shapes. The well changes two
+ * things, in any theme's palette:
  * - garbage is one solid slate fill, faintly tinted by the attacker, so it never
  *   passes for a stack of pieces and its holes stay plain to see (it was a slab in
  *   the attacker's own colour);
@@ -27,7 +28,7 @@ const lerp = (a, b, t) => {
  * @param {number} attackerInt the attacker's colour (the garbage cell's colour)
  * @returns {number}
  */
-export function versusGarbageColor(attackerInt) {
+export function wellGarbageColor(attackerInt) {
     return lerp(GARBAGE_SLATE, attackerInt, GARBAGE_TINT);
 }
 
@@ -41,7 +42,7 @@ export function versusGarbageColor(attackerInt) {
  * @param {number} offsetY px
  * @param {number} pulse 0..1
  */
-export function drawVersusGhost(scene, graphics, loops, colorInt, offsetX, offsetY, pulse) {
+export function drawWellGhost(scene, graphics, loops, colorInt, offsetX, offsetY, pulse) {
     const fill = 0.14 + 0.08 * pulse;
     scene.fillContour(graphics, loops, colorInt, fill, offsetX, offsetY);
     const edge = lerp(colorInt, 0xffffff, 0.25);

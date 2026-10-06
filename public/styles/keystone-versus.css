@@ -318,6 +318,19 @@
     transition: border-color var(--sb-dur-3) ease, box-shadow var(--sb-dur-3) ease;
 }
 
+/* Last Standing above the ground (the tower map marks the card): no floor. */
+#multiplayer-container .player-card[data-off-floor] .lv-well {
+    bottom: 0;
+    border-bottom: 0;
+    border-radius: 0;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 24%, #000 76%, transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 24%, #000 76%, transparent 100%);
+}
+
+#multiplayer-container .player-card[data-off-floor] .player-board-section {
+    border-radius: 0;
+}
+
 /* Danger: the stack is near the top — the walls turn coral and breathe. */
 #multiplayer-container .player-card.lv-danger {
     --lv-wall: var(--sb-danger);

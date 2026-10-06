@@ -1,0 +1,919 @@
+/* =================================================================================
+ * Keystone — the solo well: single player and Infinity (`.single-player-stage
+ * [data-board='well']`, set by SinglePlayerMode and InfinityMode).
+ *
+ * The board stands in an open-top well, as in local versus (keystone-versus.css): walls
+ * in the mode's hue (lavender for single player, aqua for Infinity) rise from the floor
+ * and fade out toward the top, the glass is plain, the pieces meet both walls, and the
+ * next queue stands on the well's mouth. Single player keeps its numbers in one ledger
+ * beside the well; Infinity has its HUD on the left and the tower map on the right
+ * (src/ui/infinity/InfinityHUD.js, InfinityMinimap.js).
+ *
+ * The board is as tall as the window allows. On portrait screens the ledger (or the
+ * HUD) becomes one strip under the board and the tower a slim rail beside it. Themes
+ * still measure `.single-player-card`, its `.player-next-pieces` and
+ * `.single-player-stats-bar` for their composition.
+ * ================================================================================ */
+
+/* ---- Sizes ------------------------------------------------------------------------- */
+.single-player-stage[data-board='well'] {
+    --sp-vh: 100vh;
+    --sp-hue: var(--sb-lavender);
+    --sp-hue-rgb: var(--sb-lavender-rgb);
+    --sp-wall: color-mix(in srgb, var(--sp-hue) 82%, #fff6e9);
+    --sp-wall-glow: color-mix(in srgb, var(--sp-hue) 34%, transparent);
+    /* The top row (the controls tray), the air under the board. */
+    --sp-top: calc(var(--sb-play-inset, 16px) + var(--sb-play-tray, 48px) + 10px);
+    --sp-bottom: 22px;
+    /* The queue on the well's mouth: the next piece's tile height. */
+    --sp-next-h: clamp(30px, calc(var(--sp-vh) * 0.062), 62px);
+    --sp-queue-gap: 10px;
+    /* The ledger (single player) and the air between it and the well. */
+    --sp-side: clamp(196px, 15vw, 240px);
+    --sp-side-gap: clamp(20px, 2.4vw, 40px);
+    --sp-floor-r: 10px;
+    --sp-board-h-room: calc(var(--sp-vh) - var(--sp-top) - var(--sp-next-h) - var(--sp-queue-gap) - var(--sp-bottom));
+    --sp-board-w-room: calc(100vw - 2 * (16px + var(--sp-side) + var(--sp-side-gap)));
+    --board-width: clamp(140px, min(calc(var(--sp-board-h-room) / 2), var(--sp-board-w-room)), 640px);
+    --board-height: calc(var(--board-width) * 2);
+    /* The whole window (phones pad the body), a row at every width (main.css stacks a
+       narrow stage into a centred column). */
+    position: fixed;
+    inset: 0;
+    box-sizing: border-box;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+    width: auto;
+    max-width: none;
+    min-height: 0;
+    margin: 0;
+    padding: var(--sp-top) 16px var(--sp-bottom);
+    overflow: hidden;
+}
+
+@supports (height: 100dvh) {
+    .single-player-stage[data-board='well'] {
+        --sp-vh: 100dvh;
+    }
+}
+
+/* Infinity: the HUD on the left, the tower on the right. */
+.single-player-stage[data-board='well'].infinity-mode-active {
+    --sp-hue: var(--sb-aqua);
+    --sp-hue-rgb: var(--sb-aqua-rgb);
+    --ih-w: clamp(204px, 17vw, 264px);
+    --tower-w: clamp(64px, 6vw, 92px);
+    --sp-board-w-room: calc(100vw - 32px - var(--ih-w) - var(--tower-w) - 2 * var(--sp-side-gap));
+    gap: 0;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    padding: var(--sp-top) 16px var(--sp-bottom);
+}
+
+/* ---- The column: the queue over the well ------------------------------------------- */
+.single-player-stage[data-board='well'] #single-player-container {
+    --board-width: inherit;
+    --board-height: inherit;
+    justify-content: flex-start;
+    gap: 0;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+}
+
+.single-player-stage[data-board='well'] #single-player-container .single-player-card {
+    --board-width: inherit;
+    --board-height: inherit;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    transform: none;
+}
+
+.single-player-stage[data-board='well'] #single-player-container .single-player-body,
+.single-player-stage[data-board='well'] #single-player-container .single-player-main {
+    gap: 0;
+    max-height: none;
+    overflow: visible;
+}
+
+/* ---- The queue: a row on the well's mouth ------------------------------------------- */
+.single-player-stage[data-board='well'] #single-player-container .single-player-piece-previews {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 0;
+    width: var(--board-width);
+    height: var(--sp-next-h);
+    margin: 0 0 var(--sp-queue-gap);
+}
+
+.single-player-stage[data-board='well'] #single-player-container .single-player-piece-previews::before {
+    content: 'Next';
+    align-self: center;
+    margin-right: calc(var(--sp-next-h) * 0.24);
+    color: var(--sb-text-faint);
+    font: 600 max(8px, calc(var(--sp-next-h) * 0.15)) / 1 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.single-player-stage[data-board='well'] #single-player-container .player-next-pieces {
+    flex: none;
+    flex-direction: row;
+    align-items: flex-end;
+    gap: calc(var(--sp-next-h) * 0.18);
+    width: auto !important;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+.single-player-stage[data-board='well'] #single-player-container .player-next-piece {
+    width: calc(var(--sp-next-h) * 1.333);
+    height: calc(var(--sp-next-h) * 0.8);
+    border: 1px solid var(--sb-line);
+    border-radius: calc(var(--sp-next-h) * 0.15);
+    background: rgba(12, 10, 30, 0.82);
+    box-shadow: none;
+    opacity: 0.8;
+    transform: none;
+}
+
+.single-player-stage[data-board='well'] #single-player-container .player-next-piece.highlight {
+    width: calc(var(--sp-next-h) * 1.667);
+    height: var(--sp-next-h);
+    border-color: rgba(var(--sp-hue-rgb), 0.7);
+    background:
+        linear-gradient(180deg, rgba(var(--sp-hue-rgb), 0.12), transparent 70%),
+        rgba(12, 10, 30, 0.86);
+    box-shadow: 0 0 14px rgba(var(--sp-hue-rgb), 0.24);
+    opacity: 1;
+    transform: none;
+}
+
+.single-player-stage[data-board='well'] #single-player-container .player-next-piece:nth-child(3) {
+    opacity: 0.6;
+}
+
+/* ---- The well: plain glass between walls that fade toward the open top -------------- */
+.single-player-stage[data-board='well'] #single-player-container .player-board-section {
+    position: relative;
+    width: var(--board-width);
+    height: var(--board-height);
+    margin: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+.single-player-stage[data-board='well'] #single-player-card #phaser-game-container {
+    width: var(--board-width);
+    height: var(--board-height);
+    overflow: hidden;
+    border: 0;
+    border-radius: 0 0 var(--sp-floor-r) var(--sp-floor-r);
+    background: linear-gradient(180deg, rgba(9, 8, 24, 0.3) 0%, rgba(9, 8, 24, 0.84) 16%, rgba(9, 8, 24, 0.9) 100%);
+    box-shadow: none;
+}
+
+/* The walls: left, right and floor, fading out toward the top; the pieces meet them. */
+.single-player-stage[data-board='well'] #single-player-border {
+    position: absolute;
+    inset: 0 -3px -3px;
+    z-index: 4;
+    width: auto !important;
+    height: auto !important;
+    border: 3px solid var(--sp-wall);
+    border-top: 0;
+    border-radius: 0 0 calc(var(--sp-floor-r) + 3px) calc(var(--sp-floor-r) + 3px);
+    background: none;
+    box-shadow:
+        0 10px 28px -8px var(--sp-wall-glow),
+        inset 0 -1px 0 rgba(var(--sb-cream-rgb), 0.12);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 24%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 24%);
+    pointer-events: none;
+    transition: border-color var(--sb-dur-3) ease, box-shadow var(--sb-dur-3) ease;
+}
+
+/* Infinity above the ground (the tower map marks it): no floor, the walls run on down. */
+.single-player-stage[data-board='well'] #single-player-container[data-off-floor] #single-player-border {
+    bottom: 0;
+    border-bottom: 0;
+    border-radius: 0;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 24%, #000 76%, transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 24%, #000 76%, transparent 100%);
+}
+
+.single-player-stage[data-board='well'] #single-player-container[data-off-floor] #phaser-game-container {
+    border-radius: 0;
+}
+
+/* Near the top (single player): a coral haze from the open top, the walls breathe. */
+.single-player-stage[data-board='well'] #single-player-container .player-board-section::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 3;
+    height: 34%;
+    background: linear-gradient(180deg, rgba(var(--sb-danger-rgb), 0.3), transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--sb-dur-3) ease;
+}
+
+.single-player-stage[data-board='well'][data-danger] {
+    --sp-wall: var(--sb-danger);
+    --sp-wall-glow: rgba(var(--sb-danger-rgb), 0.55);
+}
+
+.single-player-stage[data-board='well'][data-danger] #single-player-container .player-board-section::before {
+    opacity: 1;
+}
+
+.single-player-stage[data-board='well'][data-danger] #single-player-border {
+    animation: sp-danger 1.1s var(--sb-ease-breathe) infinite alternate;
+}
+
+@keyframes sp-danger {
+    from { box-shadow: 0 10px 28px -8px var(--sp-wall-glow), inset 0 -1px 0 rgba(var(--sb-cream-rgb), 0.12); }
+    to { box-shadow: 0 10px 40px -2px var(--sp-wall-glow), inset 0 -1px 0 rgba(var(--sb-cream-rgb), 0.12); }
+}
+
+/* ---- The ledger (single player): one panel beside the well, from its top ----------- */
+.single-player-stage[data-board='well'] .single-player-stats-bar {
+    position: absolute;
+    top: calc(var(--sp-top) + var(--sp-next-h) + var(--sp-queue-gap));
+    left: calc(50% + var(--board-width) / 2 + var(--sp-side-gap));
+    z-index: 10;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0;
+    width: var(--sp-side);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--sb-line);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
+    transform: none;
+}
+
+/* The mode's hue as the ledger's left edge, like a seat's plate in local versus. */
+.single-player-stage[data-board='well'] .single-player-stats-bar::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--sp-hue);
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .single-player-stat {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 6px 10px;
+    width: auto;
+    margin: 0;
+    padding: 14px 16px 14px 18px;
+    border: 0;
+    border-top: 1px solid var(--sb-line);
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    opacity: 1;
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .single-player-stat:first-child {
+    border-top: 0;
+    box-shadow: none;
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .single-player-stat-label {
+    color: var(--sb-text-faint);
+    font: 600 9px / 1.2 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .single-player-stat .single-player-stat-value {
+    justify-self: end;
+    color: var(--sb-text);
+    font: 600 20px / 1.1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-shadow: none;
+    white-space: nowrap;
+    filter: none;
+}
+
+/* The score leads: its own line, large. */
+.single-player-stage[data-board='well'] .single-player-stats-bar .stat-score {
+    grid-template-columns: 1fr;
+    padding-top: 16px;
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .stat-score .single-player-stat-value {
+    justify-self: start;
+    font-size: clamp(24px, 2.2vw, 34px);
+}
+
+/* The level, its bar toward the next one, the lines left. */
+.single-player-stage[data-board='well'] .single-player-stats-bar .sp-level-track {
+    grid-column: 1 / -1;
+    position: relative;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: rgba(var(--sb-cream-rgb), 0.08);
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .sp-level-fill {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--sp-hue), var(--sb-gold));
+    transform: scaleX(var(--sp-level, 0));
+    transform-origin: left center;
+    transition: transform 420ms var(--sb-ease-lock);
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .sp-level-caption {
+    grid-column: 1 / -1;
+    color: var(--sb-text-muted);
+    font: 600 11px / 1.2 var(--sb-font-text);
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .sp-level-caption .single-player-stat-value {
+    color: var(--sb-text);
+    font: 700 11px / 1.2 var(--sb-font-text);
+}
+
+/* The pace: three small numbers in a row. */
+.single-player-stage[data-board='well'] .single-player-stats-bar .sp-pace {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid var(--sb-line);
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .sp-pace .single-player-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 12px 8px 14px 18px;
+    border-top: 0;
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .sp-pace .single-player-stat + .single-player-stat {
+    padding-left: 8px;
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .sp-pace .single-player-stat-value {
+    justify-self: start;
+    color: var(--sb-text-muted);
+    font: 600 13px / 1.1 var(--sb-font-display);
+}
+
+.single-player-stage[data-board='well'] .single-player-stats-bar .sp-pace .single-player-stat-label {
+    font-size: 8px;
+}
+
+.single-player-stage[data-board='well'] .single-player-stat-value.warning {
+    color: var(--sb-gold);
+}
+
+.single-player-stage[data-board='well'] .single-player-stat-value.danger {
+    color: var(--sb-coral);
+}
+
+/* ---- Infinity: the HUD, the well, the tower, bottoms aligned with the floor -------- */
+.single-player-stage[data-board='well'] #single-player-container.infinity-mode-active {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: center;
+    gap: var(--sp-side-gap);
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+}
+
+.single-player-stage[data-board='well'] #single-player-container.infinity-mode-active .single-player-card {
+    order: 2;
+    align-self: flex-end;
+    flex: none;
+}
+
+/* The HUD: as tall as the well, its sections from the top. */
+#single-player-container.infinity-mode-active #infinity-hud.infinity-hud {
+    order: 1;
+    align-self: flex-end;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: var(--ih-w, 240px);
+    height: var(--board-height);
+    max-height: none;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
+    border: 1px solid var(--sb-line);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%) !important;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
+    color: var(--sb-text);
+    font-family: var(--sb-font-text);
+    font-size: 13px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    transform: none;
+}
+
+#infinity-hud .ih-kicker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 18px 12px;
+    color: var(--sb-aqua);
+    font: 700 11px / 1 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+#infinity-hud .ih-kicker__mark {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--sb-aqua);
+    box-shadow: 0 0 12px rgba(var(--sb-aqua-rgb), 0.5);
+}
+
+#infinity-hud section {
+    padding: 14px 18px;
+    border-top: 1px solid var(--sb-line);
+}
+
+#infinity-hud .ih-label {
+    color: var(--sb-text-faint);
+    font: 600 9px / 1.3 var(--sb-font-display);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+#infinity-hud .ih-label--gold {
+    color: rgba(var(--sb-gold-rgb), 0.75);
+}
+
+#infinity-hud .ih-height {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 6px 0 12px;
+}
+
+#infinity-hud .ih-height__value {
+    color: var(--sb-text);
+    font: 700 clamp(32px, 3vw, 44px) / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+}
+
+#infinity-hud .ih-height__unit {
+    color: rgba(var(--sb-aqua-rgb), 0.8);
+    font: 600 11px / 1 var(--sb-font-display);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+#infinity-hud .ih-next__track {
+    position: relative;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: rgba(var(--sb-cream-rgb), 0.08);
+}
+
+#infinity-hud .ih-next__fill {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--sb-aqua), var(--sb-gold));
+    transform: scaleX(var(--ih-progress, 0));
+    transform-origin: left center;
+    transition: transform 420ms var(--sb-ease-lock);
+}
+
+#infinity-hud .ih-next__caption {
+    margin-top: 8px;
+    color: var(--sb-text-muted);
+    font: 600 12px / 1.3 var(--sb-font-text);
+}
+
+/* The milestones: a row of pips, passed in gold, the next lit. */
+#infinity-hud .ih-milestones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+#infinity-hud .ih-milestone {
+    padding: 4px 8px;
+    border: 1px solid var(--sb-line);
+    border-radius: 7px;
+    color: var(--sb-text-faint);
+    font: 700 10px / 1 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+    transition: color 400ms ease, border-color 400ms ease, background 400ms ease;
+}
+
+#infinity-hud .ih-milestone.is-next {
+    border-color: rgba(var(--sb-aqua-rgb), 0.7);
+    color: var(--sb-text);
+    background: rgba(var(--sb-aqua-rgb), 0.12);
+}
+
+#infinity-hud .ih-milestone.is-passed {
+    border-color: rgba(var(--sb-gold-rgb), 0.6);
+    color: var(--sb-gold);
+    background: rgba(var(--sb-gold-rgb), 0.12);
+}
+
+#infinity-hud .ih-milestone.is-new {
+    animation: ih-milestone 700ms var(--sb-ease-lock);
+}
+
+@keyframes ih-milestone {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.25); box-shadow: 0 0 16px rgba(var(--sb-gold-rgb), 0.6); }
+    100% { transform: scale(1); }
+}
+
+#infinity-hud .ih-ceiling {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    color: var(--sb-text-faint);
+    font: 600 11px / 1.3 var(--sb-font-text);
+}
+
+#infinity-hud .ih-ceiling span:last-child {
+    color: var(--sb-text-muted);
+}
+
+#infinity-hud .ih-score {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+#infinity-hud .ih-score__value {
+    color: var(--sb-text);
+    font: 600 clamp(20px, 1.8vw, 26px) / 1.1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+}
+
+#infinity-hud .ih-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 12px;
+}
+
+#infinity-hud .ih-best .ih-pair {
+    margin-top: 10px;
+}
+
+/* The climb at the head of the HUD, the records at its foot. */
+#infinity-hud .ih-best {
+    margin-top: auto;
+}
+
+#infinity-hud .ih-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+#infinity-hud .ih-stat .ih-label {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+}
+
+#infinity-hud .ih-stat__value {
+    color: var(--sb-text);
+    font: 700 14px / 1.2 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+}
+
+#infinity-hud .ih-best .ih-stat__value {
+    color: var(--sb-gold);
+}
+
+/* A chaining cascade, counted over the board. */
+.cascade-counter-overlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 10000;
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    padding: 14px 26px 16px;
+    border: 1px solid rgba(var(--sb-gold-rgb), 0.55);
+    border-radius: 16px;
+    background: rgba(12, 10, 30, 0.88);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), 0 0 36px rgba(var(--sb-gold-rgb), 0.25);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -50%) scale(0.92);
+    transition: opacity 200ms ease, transform 260ms var(--sb-ease-lock);
+}
+
+.cascade-counter-overlay.is-shown {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.cascade-counter-overlay__kicker {
+    color: rgba(var(--sb-gold-rgb), 0.85);
+    font: 700 11px / 1 var(--sb-font-display);
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+}
+
+.cascade-counter-overlay__count {
+    color: var(--sb-text);
+    font: 800 44px / 1 var(--sb-font-display);
+    text-shadow: 0 0 22px rgba(var(--sb-gold-rgb), 0.6);
+}
+
+.cascade-counter-overlay.is-big .cascade-counter-overlay__count {
+    font-size: 56px;
+}
+
+/* ---- The tower map (Infinity's minimap; also each Last Standing board) ------------- */
+/* A definite box (Infinity and Last Standing size their own; Odyssey's tall boards take
+   this one): the canvas fills it, so its backing store never feeds back into its size. */
+.infinity-minimap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-sizing: border-box;
+    width: 96px;
+    height: 420px;
+    padding: 12px 10px;
+    border: 1px solid var(--sb-line);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
+    cursor: grab;
+    touch-action: none;
+    transition: border-color var(--sb-dur-3) ease, box-shadow var(--sb-dur-3) ease;
+}
+
+.infinity-minimap:active {
+    cursor: grabbing;
+}
+
+.infinity-minimap .minimap-title {
+    color: var(--sb-text-faint);
+    font: 600 9px / 1 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.infinity-minimap .minimap-canvas,
+.infinity-minimap canvas {
+    display: block;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    border-radius: 6px;
+    background: rgba(9, 8, 24, 0.6);
+    image-rendering: pixelated;
+}
+
+.infinity-minimap .minimap-instruction {
+    color: var(--sb-text-faint);
+    font: 600 8px / 1.2 var(--sb-font-text);
+    text-align: center;
+    opacity: 0;
+    transition: opacity var(--sb-dur-3) ease;
+}
+
+/* Paused (or pointed at): the map can be dragged to look around. */
+.infinity-minimap:hover .minimap-instruction,
+.infinity-minimap.is-explorable .minimap-instruction {
+    opacity: 1;
+}
+
+.infinity-minimap.is-explorable,
+.infinity-minimap:hover {
+    border-color: rgba(var(--sb-aqua-rgb), 0.5);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3), 0 0 22px rgba(var(--sb-aqua-rgb), 0.16);
+}
+
+/* In Infinity: beside the well, as tall as it. */
+#single-player-container.infinity-mode-active #infinity-minimap.infinity-minimap {
+    order: 3;
+    align-self: flex-end;
+    width: var(--tower-w, 80px);
+    height: var(--board-height);
+    max-height: none;
+    margin: 0 !important;
+    padding: 12px 10px !important;
+    overflow: hidden;
+    border-radius: 14px !important;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%) !important;
+    opacity: 1;
+    transform: none;
+}
+
+#single-player-container.infinity-mode-active #infinity-minimap canvas {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    object-fit: fill;
+}
+
+#single-player-container.infinity-mode-active #infinity-minimap .minimap-title {
+    margin: 0 !important;
+    font-size: 9px !important;
+}
+
+/* ---- Portrait: the ledger and the HUD become a strip under the board --------------- */
+@media (max-aspect-ratio: 1/1) {
+    .single-player-stage[data-board='well'] {
+        --sp-strip: clamp(52px, calc(var(--sp-vh) * 0.07), 66px);
+        --sp-board-h-room: calc(var(--sp-vh) - var(--sp-top) - var(--sp-next-h) - var(--sp-queue-gap)
+            - var(--sp-strip) - 12px - var(--sp-bottom));
+        --sp-board-w-room: calc(100vw - 32px);
+    }
+
+    .single-player-stage[data-board='well'] .single-player-stats-bar {
+        top: calc(var(--sp-top) + var(--sp-next-h) + var(--sp-queue-gap) + var(--board-height) + 12px);
+        left: 50%;
+        flex-direction: row;
+        width: var(--board-width);
+        height: var(--sp-strip);
+        transform: translateX(-50%);
+    }
+
+    .single-player-stage[data-board='well'] .single-player-stats-bar .single-player-stat {
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 4px;
+        padding: 8px 12px;
+        border-top: 0;
+        border-left: 1px solid var(--sb-line);
+    }
+
+    .single-player-stage[data-board='well'] .single-player-stats-bar .single-player-stat:first-child {
+        flex: 1.4 1 0;
+        padding-left: 14px;
+        border-left: 0;
+    }
+
+    .single-player-stage[data-board='well'] .single-player-stats-bar .stat-score .single-player-stat-value {
+        font-size: 20px;
+    }
+
+    .single-player-stage[data-board='well'] .single-player-stats-bar .single-player-stat .single-player-stat-value {
+        justify-self: start;
+        font-size: 16px;
+    }
+
+    .single-player-stage[data-board='well'] .single-player-stats-bar .sp-level-caption,
+    .single-player-stage[data-board='well'] .single-player-stats-bar .sp-pace {
+        display: none;
+    }
+
+    .single-player-stage[data-board='well'] .single-player-stats-bar .sp-level-track {
+        width: 100%;
+        height: 4px;
+    }
+
+    /* Infinity: the tower a slim rail beside the board, the HUD a strip under it. */
+    .single-player-stage[data-board='well'].infinity-mode-active {
+        --tower-w: clamp(34px, 9vw, 48px);
+        --sp-side-gap: 10px;
+        --sp-board-w-room: calc(100vw - 32px - var(--tower-w) - var(--sp-side-gap));
+    }
+
+    /* (InfinityMode sets the container's display inline.) */
+    .single-player-stage[data-board='well'] #single-player-container.infinity-mode-active {
+        display: grid !important;
+        grid-template-columns: var(--board-width) var(--tower-w);
+        grid-template-areas:
+            "card tower"
+            "hud hud";
+        justify-content: center;
+        align-items: end;
+        column-gap: var(--sp-side-gap);
+        row-gap: 12px;
+    }
+
+    .single-player-stage[data-board='well'] #single-player-container.infinity-mode-active .single-player-card {
+        grid-area: card;
+    }
+
+    #single-player-container.infinity-mode-active #infinity-minimap.infinity-minimap {
+        grid-area: tower;
+        width: var(--tower-w);
+        padding: 6px 4px !important;
+        border-radius: 10px !important;
+    }
+
+    #single-player-container.infinity-mode-active #infinity-minimap .minimap-title,
+    #single-player-container.infinity-mode-active #infinity-minimap .minimap-instruction {
+        display: none;
+    }
+
+    #single-player-container.infinity-mode-active #infinity-hud.infinity-hud {
+        grid-area: hud;
+        flex-direction: row;
+        align-items: stretch;
+        width: auto;
+        height: var(--sp-strip);
+    }
+
+    #infinity-hud .ih-kicker,
+    #infinity-hud .ih-best,
+    #infinity-hud .ih-milestones,
+    #infinity-hud .ih-ceiling,
+    #infinity-hud .ih-pair,
+    #infinity-hud .ih-next__caption {
+        display: none;
+    }
+
+    #infinity-hud section {
+        display: flex;
+        flex: 1 1 0;
+        flex-direction: column;
+        justify-content: center;
+        padding: 6px 12px;
+        border-top: 0;
+    }
+
+    #infinity-hud section + section {
+        border-left: 1px solid var(--sb-line);
+    }
+
+    #infinity-hud .ih-height {
+        margin: 2px 0 4px;
+    }
+
+    #infinity-hud .ih-height__value {
+        font-size: 20px;
+    }
+
+    #infinity-hud .ih-score {
+        margin: 0;
+    }
+
+    #infinity-hud .ih-score__value {
+        font-size: 18px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .single-player-stage[data-board='well'][data-danger] #single-player-border,
+    #infinity-hud .ih-milestone.is-new {
+        animation: none;
+    }
+
+    .single-player-stage[data-board='well'] .single-player-stats-bar .sp-level-fill,
+    #infinity-hud .ih-next__fill,
+    .cascade-counter-overlay {
+        transition: none;
+    }
+}
