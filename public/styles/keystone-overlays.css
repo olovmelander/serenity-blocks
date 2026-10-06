@@ -1126,3 +1126,244 @@
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
 }
+
+/* ==================================================================================
+ * Replay playback bar (#playback-controls, src/ui/playback-controls.js): a two-row
+ * night card in the bottom-left corner, beside the board — the board fills the height,
+ * and at 1280 × 720 only ~40 px are left under it. Play/pause is the warm primary, the
+ * position fills with the spectrum, speed is a row of tiles. No blur: a replay is live.
+ * ================================================================================ */
+#playback-controls.playback-controls {
+    left: max(20px, env(safe-area-inset-left));
+    right: auto;
+    bottom: max(20px, env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    width: min(440px, calc(100vw - 40px));
+    min-width: 0;
+    max-width: none;
+    margin: 0;
+    padding: 12px;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: var(--sb-r-lg);
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.94), rgba(12, 10, 30, 0.96));
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    color: var(--sb-text);
+    font-family: var(--sb-font-text);
+    transform: none;
+    animation: sb-rise-in 0.36s var(--sb-ease-lock) both;
+}
+
+#playback-controls.playback-controls .playback-buttons {
+    display: flex;
+    gap: 6px;
+    flex: none;
+}
+
+#playback-controls.playback-controls .pb-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 14px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 11px;
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+    font: 600 0.62rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        transform var(--sb-dur-1) var(--sb-ease-lock);
+}
+
+#playback-controls.playback-controls .pb-btn:hover {
+    background: rgba(var(--sb-cream-rgb), 0.09);
+    border-color: rgba(var(--sb-cream-rgb), 0.34);
+}
+
+#playback-controls.playback-controls .pb-btn:active {
+    transform: translateY(1px);
+}
+
+#playback-controls #pb-play-pause.pb-btn {
+    min-width: 108px;
+    justify-content: center;
+    border-color: transparent;
+    background: var(--sb-keystone);
+    color: var(--sb-keystone-ink);
+    box-shadow: 0 10px 26px rgba(var(--sb-coral-rgb), 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+#playback-controls #pb-play-pause.pb-btn:hover {
+    background: #ffbb9c;
+}
+
+#playback-controls #pb-stop.pb-btn:hover {
+    border-color: rgba(var(--sb-danger-rgb), 0.45);
+    background: rgba(var(--sb-danger-rgb), 0.08);
+    color: var(--sb-danger);
+}
+
+#playback-controls.playback-controls .pb-btn__icon,
+#playback-controls.playback-controls .pb-btn svg {
+    display: inline-flex;
+    flex: none;
+}
+
+#playback-controls.playback-controls .pb-btn:focus-visible,
+#playback-controls.playback-controls .pb-speed:focus-visible,
+#playback-controls #pb-progress:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+#playback-controls.playback-controls .playback-info {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex: none;
+    min-width: 0;
+    color: var(--sb-text-faint);
+    font: 600 0.82rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+}
+
+#playback-controls.playback-controls .pb-eyebrow {
+    margin-right: 6px;
+    color: rgba(var(--sb-aqua-rgb), 0.9);
+    font-size: 0.58rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+#playback-controls #playback-time {
+    color: var(--sb-text);
+}
+
+/* Too wide for the first row on purpose: the position and speed form the second. */
+#playback-controls.playback-controls .playback-progress-container {
+    flex: 1 1 160px;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: 32px;
+}
+
+#playback-controls #pb-progress {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    margin: 0;
+    border-radius: 3px;
+    background:
+        var(--sb-spectrum) 0 0 / var(--pb-fill, 0%) 100% no-repeat,
+        rgba(var(--sb-cream-rgb), 0.12);
+    cursor: pointer;
+    transition: none;
+}
+
+#playback-controls #pb-progress:hover {
+    height: 6px;
+}
+
+#playback-controls #pb-progress::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 0;
+    border-radius: 5px;
+    background: var(--sb-cream);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    transform: none;
+}
+
+#playback-controls #pb-progress::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: 0;
+    border-radius: 5px;
+    background: var(--sb-cream);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+#playback-controls.playback-controls .playback-speed {
+    display: flex;
+    gap: 3px;
+    flex: none;
+    padding: 3px;
+    border: 1px solid var(--sb-line);
+    border-radius: 11px;
+    background: rgba(var(--sb-night-rgb), 0.5);
+}
+
+#playback-controls.playback-controls .pb-speed {
+    min-width: 40px;
+    height: 32px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--sb-text-muted);
+    font: 600 0.68rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background var(--sb-dur-2) var(--sb-ease-lock), color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#playback-controls.playback-controls .pb-speed:hover {
+    color: var(--sb-text);
+    background: rgba(var(--sb-cream-rgb), 0.06);
+}
+
+#playback-controls.playback-controls .pb-speed.is-current {
+    background: var(--sb-cream);
+    color: var(--sb-keystone-ink);
+}
+
+@media (max-width: 640px) {
+    /* Leave the corner tiles' column free. */
+    #playback-controls.playback-controls {
+        left: 12px;
+        right: 76px;
+        width: auto;
+        padding: 10px;
+    }
+
+    #playback-controls.playback-controls .pb-btn__label {
+        display: none;
+    }
+
+    #playback-controls #pb-play-pause.pb-btn {
+        min-width: 0;
+    }
+
+    #playback-controls.playback-controls .pb-eyebrow {
+        display: none;
+    }
+
+    #playback-controls.playback-controls .playback-progress-container {
+        order: 4;
+        flex-basis: 100%;
+        height: 24px;
+    }
+
+    #playback-controls.playback-controls .pb-speed {
+        min-width: 34px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #playback-controls.playback-controls {
+        animation: none;
+    }
+}
