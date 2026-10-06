@@ -2113,68 +2113,6 @@
   white-space: nowrap;
 }
 
-/* Network QoS HUD */
-.network-qos-hud {
-  position: absolute;
-  top: 90px;
-  right: 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  background: rgba(15, 20, 30, 0.8);
-  border: 1px solid rgba(102, 126, 234, 0.3);
-  border-radius: 10px;
-  z-index: 260;
-  color: #cbd5e0;
-  font-size: 11px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
-}
-
-.network-qos-hud.hidden {
-  display: none;
-}
-
-.network-qos-hud .network-qos-toggle {
-  border: none;
-  background: rgba(40, 45, 60, 0.6);
-  color: #cbd5e0;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.network-qos-hud .network-qos-stats {
-  display: grid;
-  grid-template-columns: repeat(2, auto);
-  column-gap: 12px;
-  row-gap: 6px;
-}
-
-.network-qos-hud.collapsed .network-qos-stats {
-  display: none;
-}
-
-.network-qos-hud .qos-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.network-qos-hud .qos-row .label {
-  text-transform: uppercase;
-  font-size: 9px;
-  color: #718096;
-  letter-spacing: 0.5px;
-}
-
-.network-qos-hud .qos-row .value {
-  font-weight: 600;
-  color: #f7fafc;
-}
-
 .online-chat {
   background: rgba(15, 20, 30, 0.8);
   border: 1px solid rgba(102, 126, 234, 0.3);
@@ -2542,39 +2480,3 @@
   color: #94a3b8;
 }
 
-/* ============================================
-   STANDINGS HUD EXTENSIONS
-   ============================================ */
-
-/* Secondary info line: level + lines cleared */
-.standing-item .player-meta {
-  font-family: 'Space Mono', monospace;
-  font-size: 10px;
-  color: rgba(200, 210, 230, 0.5);
-  letter-spacing: 0.5px;
-  padding-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  white-space: nowrap;
-}
-
-/* Tabular numbers, fixed width, no wrapping for score/frags column */
-.standing-item .player-score {
-  font-variant-numeric: tabular-nums;
-  min-width: 40px;
-  text-align: right;
-  white-space: nowrap;
-}
-
-/* Eliminated player: dim and desaturate */
-.standing-item--eliminated {
-  opacity: 0.35;
-  filter: grayscale(0.7);
-}
-
-.standing-item--eliminated .player-score {
-  font-size: 10px !important;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: #6b7280 !important;
-  text-shadow: none !important;
-}

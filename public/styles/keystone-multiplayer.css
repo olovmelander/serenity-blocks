@@ -29,7 +29,6 @@
 #match-results-modal,
 #online-multiplayer-container,
 #multiplayer-scoreboard-overlay,
-.network-qos-hud,
 #invite-toast-container {
     --sb-accent: var(--sb-sky);
     --sb-accent-rgb: var(--sb-sky-rgb);
@@ -3709,9 +3708,8 @@ body.start-modal-open #invite-toast-container {
     letter-spacing: 0.2em;
 }
 
-/* Stats bar under each board (local and online): calm pastel figures, no neon glow.
+/* Stats bar under the online board: calm pastel figures, no neon glow.
  * Same size and line box as before — the modes reserve its height. */
-#multiplayer-container .player-stats-bar .stat-value,
 #online-multiplayer-container .player-stats-bar .stat-value {
     font-family: var(--sb-font-display);
     font-weight: 600;
@@ -3719,132 +3717,18 @@ body.start-modal-open #invite-toast-container {
     line-height: normal;
 }
 
-#multiplayer-container .player-stats-bar .stat-icon,
 #online-multiplayer-container .player-stats-bar .stat-icon {
     filter: none;
     text-shadow: none;
 }
 
-#multiplayer-container .player-stats-bar .stat-frags :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-frags :is(.stat-value, .stat-icon) { color: var(--sb-mint); }
-#multiplayer-container .player-stats-bar .stat-deaths :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-deaths :is(.stat-value, .stat-icon) { color: var(--sb-text); }
-#multiplayer-container .player-stats-bar .stat-score :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-score :is(.stat-value, .stat-icon) { color: var(--sb-gold); }
-#multiplayer-container .player-stats-bar .stat-lines :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-lines :is(.stat-value, .stat-icon) { color: var(--sb-sky); }
-#multiplayer-container .player-stats-bar .stat-level :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-level :is(.stat-value, .stat-icon) { color: var(--sb-lavender); }
-#multiplayer-container .player-stats-bar .stat-garbage :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-garbage :is(.stat-value, .stat-icon) { color: var(--sb-danger); }
-#multiplayer-container .player-stats-bar .stat-ceiling :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-ceiling :is(.stat-value, .stat-icon) { color: var(--sb-rose); }
-
-/* Local standings strip (top centre): tiles, not pills; Keystone type. */
-#global-standings-hud.global-standings-hud {
-    border-radius: var(--sb-r-lg);
-    border-color: var(--sb-line);
-    background: linear-gradient(180deg, rgba(25, 21, 56, 0.9), rgba(12, 10, 30, 0.92));
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-}
-
-#global-standings-hud .standing-item {
-    border-radius: 12px;
-    border-color: var(--sb-line);
-    background: rgba(var(--sb-cream-rgb), 0.03);
-}
-
-#global-standings-hud .standing-item[data-rank='1'] {
-    border-color: rgba(var(--sb-gold-rgb), 0.4);
-    background: linear-gradient(90deg, rgba(var(--sb-gold-rgb), 0.14), rgba(var(--sb-gold-rgb), 0.03));
-    box-shadow: none;
-}
-
-#global-standings-hud .standing-item[data-rank='2'] {
-    border-color: rgba(var(--sb-cream-rgb), 0.3);
-    background: rgba(var(--sb-cream-rgb), 0.05);
-}
-
-#global-standings-hud .standing-item[data-rank='3'] {
-    border-color: rgba(var(--sb-coral-rgb), 0.28);
-    background: rgba(var(--sb-coral-rgb), 0.05);
-}
-
-#global-standings-hud .standing-item .rank-badge {
-    color: var(--sb-text-muted);
-    font-family: var(--sb-font-display);
-    font-weight: 700;
-    text-shadow: none;
-}
-
-#global-standings-hud .standing-item[data-rank='1'] .rank-badge {
-    color: var(--sb-gold);
-    text-shadow: none;
-}
-
-#global-standings-hud .standing-item .player-color-dot {
-    border-radius: 3px;
-    box-shadow: none;
-}
-
-#global-standings-hud .standing-item .player-name {
-    color: var(--sb-text);
-    font-family: var(--sb-font-display);
-    font-weight: 600;
-}
-
-#global-standings-hud .standing-item .player-score {
-    border-left-color: var(--sb-line);
-    color: var(--sb-text);
-    font-family: var(--sb-font-display);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-}
-
-#global-standings-hud .standing-item .player-meta {
-    border-left-color: var(--sb-line);
-    color: var(--sb-text-faint);
-    font-family: var(--sb-font-text);
-    font-weight: 600;
-    letter-spacing: 0.02em;
-}
-
-/* Network badge (NET) */
-.network-qos-hud {
-    border-color: var(--sb-line-strong);
-    background: linear-gradient(180deg, rgba(25, 21, 56, 0.92), rgba(12, 10, 30, 0.94));
-    color: var(--sb-text-muted);
-    font-family: var(--sb-font-text);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-}
-
-.network-qos-hud .network-qos-toggle {
-    background: rgba(var(--sb-cream-rgb), 0.06);
-    color: var(--sb-text-muted);
-    font-family: var(--sb-font-display);
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-}
-
-.network-qos-hud .network-qos-toggle:focus-visible {
-    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
-    outline-offset: 2px;
-}
-
-.network-qos-hud .qos-row .label {
-    color: var(--sb-text-faint);
-    font-family: var(--sb-font-display);
-}
-
-.network-qos-hud .qos-row .value {
-    color: var(--sb-text);
-    font-family: var(--sb-font-display);
-    font-variant-numeric: tabular-nums;
-}
 
 /* Tab scoreboard (#multiplayer-scoreboard-overlay): solid scrim, no blur. */
 #multiplayer-scoreboard-overlay.scoreboard-overlay {

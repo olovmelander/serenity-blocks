@@ -21,7 +21,6 @@ import { OnlineScoreboard } from '../../ui/online-scoreboard.js';
 import { OnlineKillFeed } from '../../ui/online-kill-feed.js';
 import { OnlineChat } from '../../ui/online-chat.js';
 import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-overlay.js';
-import { NetworkQosHud } from '../../ui/network-qos.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { handleOnlineSessionExit } from '../../ui/online-session-exit.js';
 import { MessageTypes } from '../network/message-types.js';
@@ -74,7 +73,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.scoreboardOverlay = null;
         this.killFeed = null;
         this.chat = null;
-        this.qosHud = null;
         this.gameLoopId = null;
         this.lastSyncTime = 0;
         this.matchPreparingUnsub = null;
@@ -1153,12 +1151,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }
         }
 
-        if (!this.qosHud) {
-            const parent = document.getElementById('online-multiplayer-container') || document.body;
-            this.qosHud = new NetworkQosHud(parent);
-        }
-        this._updateNetworkHud();
-
         console.log('[OnlineMultiplayer] Right panel initialized');
     }
 
@@ -1275,8 +1267,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 ? (this.snapshotStats.drops / this.snapshotStats.count) * 100
                 : 0;
 
-            this._updateNetworkHud();
-
             // Critical fix: Actually process the state update!
             this._handleStateUpdate(msg.data);
         };
@@ -1294,7 +1284,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             if (!msg?.data?.sentAt) return;
             this._ensureNetworkStats(); // null-safe after return-to-lobby cleanup
             this.networkStats.rttMs = Date.now() - msg.data.sentAt;
-            this._updateNetworkHud();
         };
 
         this.steamNetworking.on(MessageTypes.GAME_STATE_FULL, snapshotHandler);
@@ -2599,11 +2588,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
     }
 
-    _updateNetworkHud() {
-        if (!this.qosHud || !this.networkStats) return;
-        this.qosHud.update(this.networkStats);
-    }
-
     _updateInterpolationNetworkStats(players = []) {
         if (!this.networkStats || !this.snapshotInterpolator || !this._adaptiveInterpEnabled) return;
         const localId = this.steamNetworking?.steamId;
@@ -2619,7 +2603,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.networkStats.interpDelayMs = stats.interpolationDelay;
         this.networkStats.interpJitterMs = stats.jitterMs;
         this.networkStats.interpBuffer = stats.bufferSize;
-        this._updateNetworkHud();
     }
 
     _renderGarbageSegments(container, garbageQueue, totalLines) {
@@ -3056,10 +3039,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (this.chat) {
             this.chat.destroy();
             this.chat = null;
-        }
-        if (this.qosHud) {
-            this.qosHud.destroy();
-            this.qosHud = null;
         }
 
         this._restoreInputs();

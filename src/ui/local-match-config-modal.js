@@ -21,7 +21,8 @@ import {
     closeLayer, focusSoon, mpIcon, openLayer,
 } from './components/mp-sheet.js';
 
-const BOT_SKILL_TIERS = [
+/** Bot skill names, 1–10 (the versus plates name a bot's skill with them too). */
+export const BOT_SKILL_TIERS = [
     'Rookie', 'Novice', 'Learner', 'Steady', 'Skilled',
     'Sharp', 'Expert', 'Master', 'Ace', 'Machine',
 ];
