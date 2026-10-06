@@ -182,6 +182,12 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Font URLs were absolute (`/fonts/...`) | Relative to the stylesheet |
 | Odyssey copy promised 56 levels in 7 chapters | Read from the level registry (59 in 8) |
 | The desktop game had no way to quit from its menus (Alt+F4 only, in fullscreen) | Quit in the main menu dock, two presses |
+| Escape on Records, Replays or game over opened Settings on top | Escape goes back (game over: to the main menu) |
+| Any click inside the game-over sheet restarted the game | Only Play again, Enter/Space or a controller face button restart |
+| A controller A that started a key capture was bound immediately; B or Escape during a capture closed Settings; Escape with an option list open closed Settings | Captures and lists own their keys |
+| "Reset all bindings" only reset gamepads; resetting keys left the key tiles stale | "Reset controller bindings", tiles refresh |
+| An imported replay's `gameMode` was inserted as HTML | Escaped |
+| Replays: focus was lost after a delete; the browser never fired `modalShown`/`modalHidden` | Focus moves on; events fire |
 | Typing in the theme search fired Serenity's shortcuts (B random theme, T, F, H, Space) | The search owns its keys; the first Esc clears it, the second closes the Hub |
 | Space/Enter on a Hub button also reached the game; the closed Hub could still take focus | Contained in the Hub; the closed Hub is inert |
 | A Hale flow or breathing guide opened from the main menu let Space/Enter reach the menu (and reopen the Hub) | The menu stands down while either is open |
@@ -200,12 +206,44 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Surface | Layer | Status |
 |---|---|---|
 | Main menu, dock, corner tiles, player card | `keystone-menu.css` | Shipped |
-| Settings (also the pause sheet), Records, Replays, game over, replay complete | `keystone-settings.css`, `keystone-modals.css` | See below |
+| Settings (also the pause sheet), Records, Replays, game over, replay complete | `keystone-settings.css`, `keystone-modals.css` | Shipped |
 | Serenity Hub (Themes, Music, Breathing, Hale sessions), Hale flow, breathing guide chrome, Serenity controls overlay | `keystone-hub.css`, `breathwork-sessions.css`, `breathing-library.css`, `breathing-guide.css` | Shipped |
 | Multiplayer (local setup, lobby browser, create match, waiting room, results) | `keystone-multiplayer.css` | See below |
 | Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
 
-### 5.1 Serenity Hub (`keystone-hub.css`)
+### 5.1 Settings, pause, Records, Replays, results (`keystone-settings.css`, `keystone-modals.css`)
+
+Shared behaviour lives in `src/ui/sheet-input.js`: Escape and controller B go back on
+every sheet, Tab and gamepad navigation stay inside the open sheet (the mode list behind
+used to take the input), each sheet focuses its main control on open and hands focus back
+on close.
+
+- **Settings** is one sheet with icon tabs (full ARIA tabs; arrows, Home/End, Q/E or
+  LB/RB switch section). Every row is a label, a line of help (`aria-describedby`) and
+  its control: switches say On/Off, sliders fill with the spectrum and show a unit chip,
+  selects use the restyled option list. Controls is rebuilt: player-coloured navigation,
+  key tiles with arrow glyphs and spoken labels, a controller status list, Detect and
+  Reset in the overview.
+- **Pause:** pausing opens Settings as a "Paused" sheet — a strip with the mode
+  ("Single Player waits where you left it"), Resume as the primary (focused first) and
+  Main menu. From the main menu the strip is hidden.
+- **Records:** "Your best", a ranked list (rank tiles in gold/silver/bronze for 1–3,
+  level · lines, date, Watch when a replay exists) and six statistics as fact tiles;
+  empty and error states.
+- **Replays:** cards with a mode chip, date, time and four stats; icon buttons with
+  names; Import in the header; a status line instead of `alert`/`confirm`; delete asks
+  for a second press; empty, loading and error states.
+- **Game over** keeps "The cycle ends." with a hero score, rank chips (no "New record"
+  for a 0-point game), four cards (Performance, Pace, Career best, Session), an unranked
+  variant, the Steam leaderboard restyled, and **Play again** as the primary with Main
+  menu beside it. **Replay complete** uses the same layout: Watch again, Browse replays,
+  Main menu.
+
+`settings-aaa.css`, `high-scores-aaa.css`, `demo-browser-aaa.css` and `game-over-aaa.css`
+are deleted (their structural rules ported first); the demo-complete and `.demo-btn`
+rules left `overlays-aaa.css`.
+
+### 5.2 Serenity Hub (`keystone-hub.css`)
 
 **Before:** a centred glass box titled in spaced Orbitron, mono copy, a red ✕, pill chips
 and saturated purple/teal/green thumbnail backdrops behind every theme orb.
@@ -238,7 +276,7 @@ and saturated purple/teal/green thumbnail backdrops behind every theme orb.
 bare generic rule the Hub used to leak (`.progress-*`, `.section-title`, `.control-btn`,
 keyframes `pulse`/`spin`/`float`) is gone.
 
-### 5.2 In-game overlays (`keystone-overlays.css`)
+### 5.3 In-game overlays (`keystone-overlays.css`)
 
 **Before:** Orbitron and Space Mono over violet glass; every Odyssey view injected its
 own styles from JavaScript; the countdown was a traffic light (green, amber, red, then
