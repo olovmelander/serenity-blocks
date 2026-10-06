@@ -159,7 +159,10 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
   said "56 levels across 7 chapters", the game has 59 in 8.
 - **Dock** with labelled buttons (Serenity Hub, Records, Replays, Settings) that proxy to
   the existing global controls, so every existing handler keeps working; the corner tiles
-  are hidden on the menu and restyled as keystone tiles in game.
+  are hidden on the menu and restyled as keystone tiles in game. Desktop builds end the
+  dock with **Quit** (`desktop:quit` over the preload bridge); it asks for a second press
+  ("Press again to quit", resets after 4 s or when focus leaves), so a stray controller
+  press never closes the game.
 - **Hints** footer (↑↓ Choose · Enter Play · Esc Settings; controller glyphs when a pad is
   in use). Arrow keys walk the list, → reaches the stage button, Home/End jump, and Enter
   with nothing focused plays the mode the stage is showing.
@@ -178,6 +181,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | `.modal p` made every paragraph in every menu pulse and turn violet | Scoped to the game-over restart prompt |
 | Font URLs were absolute (`/fonts/...`) | Relative to the stylesheet |
 | Odyssey copy promised 56 levels in 7 chapters | Read from the level registry (59 in 8) |
+| The desktop game had no way to quit from its menus (Alt+F4 only, in fullscreen) | Quit in the main menu dock, two presses |
 | Tabbing to "Back to Map" in the Odyssey failure sheet and pressing Enter retried the level | A focused button owns Enter/Space; Retry takes focus when the sheet opens |
 | The Odyssey HUD progress fill filled its whole section (an unscoped absolute `.progress-fill` in `serenity-hub.css`) | The HUD keeps its fill in flow inside the track |
 | The countdown plate, Odyssey HUD and single-player stat rail blurred the live scene every frame | Opaque layered fills |

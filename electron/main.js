@@ -198,6 +198,11 @@ ipcMain.handle('desktop:get-process-metrics', () => {
     return app.getAppMetrics();
 });
 
+// The main menu's Quit (desktop only). will-quit still runs the Steam cleanup.
+ipcMain.handle('desktop:quit', () => {
+    app.quit();
+});
+
 // GPU health — real classification via electron/gpu-health.js (the module the
 // unit tests and the windows parity lane exercise). Status vocabulary is
 // 'healthy' | 'degraded' | 'unsafe', which is what the renderer's body classes,

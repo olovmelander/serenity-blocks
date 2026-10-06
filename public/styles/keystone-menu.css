@@ -617,6 +617,13 @@ body.start-modal-open #start-modal .main-menu-logo {
     color: var(--sb-text);
 }
 
+/* Quit (desktop only, main-menu.js) asks for a second press before it closes the game. */
+#start-modal .sb-dock__btn--quit.is-confirming {
+    color: var(--sb-danger);
+    border-color: rgba(var(--sb-danger-rgb), 0.45);
+    background: rgba(var(--sb-danger-rgb), 0.08);
+}
+
 #start-modal .headphone-badge {
     position: static;
     display: inline-flex;
@@ -1009,7 +1016,8 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
 
     #start-modal .sb-dock {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-auto-columns: minmax(0, 1fr);
+        grid-auto-flow: column;
         gap: 6px;
     }
 
