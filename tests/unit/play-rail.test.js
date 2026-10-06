@@ -2,7 +2,7 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 
-// A minimal DOM: just what the play rail touches (ids, order, attributes, labels, docks).
+// A minimal DOM: just what the play rail touches (ids, order, attributes, labels).
 function makeElement(tag, id = '') {
     const classes = new Set();
     return {
@@ -63,12 +63,11 @@ function find(root, id) {
     return null;
 }
 
-function setup(modeId = 'single', { settings = {}, docks = [] } = {}) {
+function setup(modeId = 'single', { settings = {} } = {}) {
     const body = makeElement('body');
     // Created in the page's order: the gear first, the lotus later.
     body.appendChild(makeElement('button', 'settings-btn-global'));
     body.appendChild(makeElement('div', 'serenity-hub-icon'));
-    docks.forEach((dock) => body.appendChild(dock));
     const handlers = new Map();
     const manager = {
         currentModeId: modeId,
@@ -82,7 +81,6 @@ function setup(modeId = 'single', { settings = {}, docks = [] } = {}) {
         body,
         createElement: (tag) => makeElement(tag),
         getElementById: (id) => find(body, id),
-        querySelectorAll: (selector) => (selector === '[data-play-dock]' ? docks : []),
         querySelector: (selector) => (selector === '.modal.visible' ? visibleModal : null),
         addEventListener: (type, handler) => { if (type === 'keydown') keydown = handler; },
         elementFromPoint: () => find(body, 'sb-play-rail'),
@@ -191,26 +189,18 @@ describe('play rail', () => {
         expect(rail.dataset.mode).toBe('menu');
     });
 
-    it('joins a mode\'s chrome when its dock is on screen, and floats again when it leaves', async () => {
-        const dock = makeElement('div');
-        dock.setAttribute('data-play-dock', 'online');
-        dock.onScreen = false;
-        const { body, manager, handlers } = setup('single', { docks: [dock] });
+    it('is the same tray in every mode: one place, the same names and keys', async () => {
+        const { body, manager, handlers } = setup('single');
         const rail = await install();
-        expect(rail.parentElement).toBe(body);
-        expect(rail.dataset.dock).toBeUndefined();
+        const read = () => rail.children.map((tile) => labelText(tile));
+        const single = read();
 
-        dock.onScreen = true;
-        manager.currentModeId = 'online-multiplayer';
-        handlers.get('modeActivated')();
-        expect(rail.parentElement).toBe(dock);
-        expect(rail.dataset.dock).toBe('online');
-
-        dock.onScreen = false;
-        manager.currentModeId = 'single';
-        handlers.get('modeActivated')();
-        expect(rail.parentElement).toBe(body);
-        expect(rail.dataset.dock).toBeUndefined();
+        for (const modeId of ['local-multiplayer', 'online-multiplayer', 'infinity', 'odyssey']) {
+            manager.currentModeId = modeId;
+            handlers.get('modeActivated')();
+            expect(rail.parentElement).toBe(body);
+            expect(read()).toEqual(single);
+        }
     });
 
     it('opens the Hub with its key in every mode Serenity does not handle itself', async () => {

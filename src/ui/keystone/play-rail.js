@@ -1,14 +1,13 @@
 /**
  * @fileoverview The play rail: every mode's in-game controls — Levels (Odyssey's board
- * view), the Serenity Hub and Settings, in that order, Settings outermost — with one home
- * in every mode: the top-right. The bottom of the screen belongs to the game: boards,
- * chat, stats, touch controls and toasts.
+ * view), the Serenity Hub and Settings, in that order, Settings outermost — as one small
+ * tray in the top-right corner, identical in every mode: the same place, size, icons,
+ * names and keys. The bottom of the screen belongs to the game: boards, chat, stats,
+ * touch controls and toasts; each mode keeps the corner free (online versus reserves the
+ * top of its info column, level with the spectator toolbar).
  *
- * Where a mode has its own chrome up there, the controls join it instead of floating over
- * it: an element marked `data-play-dock` that is on screen receives the rail (in an online
- * match it is the first panel of the info column, beside the spectator toolbar). Anywhere
- * else the rail is a small tray in the corner that rests dimmed while you play; the first
- * runs of each mode open it once to name its controls.
+ * The tray rests dimmed while you play; the first runs of each mode open it once to name
+ * its controls.
  *
  * The rail adopts the existing controls (#odyssey-navigator-btn, #serenity-hub-icon,
  * #settings-btn-global): their ids, handlers and the code that shows, hides or activates
@@ -109,31 +108,10 @@ function bindModeWatch(onChange) {
     MODE_EVENTS.forEach((event) => manager.on(event, () => onChange(event)));
 }
 
-/** The dock on screen right now, if any: its mode's chrome hosts the rail. */
-function activeDock() {
-    const docks = document.querySelectorAll?.('[data-play-dock]') || [];
-    return Array.from(docks).find((dock) => dock.getClientRects?.().length > 0) || null;
-}
-
-/** Join the mode's chrome when it has a dock on screen; float in the corner otherwise. */
-function placeRail() {
-    if (!rail) return;
-    const dock = activeDock();
-    const home = dock || document.body;
-    if (rail.parentElement !== home) home.appendChild(rail);
-    if (dock) {
-        rail.dataset.dock = dock.getAttribute('data-play-dock') || 'dock';
-        stopPeek();
-    } else {
-        delete rail.dataset.dock;
-    }
-}
-
 /** Re-label the tiles for the mode now being played. Cheap; safe to call often. */
 export function refreshPlayRail() {
     if (!rail) return;
     bindModeWatch(onModeEvent);
-    placeRail();
     const modeId = currentModeId();
     rail.dataset.mode = modeId || 'menu';
     if (!modeId) stopPeek();
@@ -192,16 +170,16 @@ function trayIsSeen() {
 
 /**
  * The first runs of each mode open the tray for a moment so its controls are named
- * where they live. Docked rails are named all the time; touch has no keys to teach.
+ * where they live. Touch has no keys to teach.
  */
 function peekForNewcomers() {
     const modeId = currentModeId();
-    if (!rail || !modeId || rail.dataset.dock || peekTimer) return;
+    if (!rail || !modeId || peekTimer) return;
     if (window.matchMedia?.('(hover: none) and (pointer: coarse)').matches) return;
     let tries = 0;
     const attempt = () => {
         peekTimer = null;
-        if (!rail || rail.dataset.dock || currentModeId() !== modeId) return;
+        if (!rail || currentModeId() !== modeId) return;
         // Odyssey's board view is not play, and its header chips sit beside the tray.
         if (document.getElementById(NAVIGATOR_ID)?.classList.contains('visible')) return;
         // A mode can start behind its loading veil or countdown: wait until the tray is in view.
@@ -288,24 +266,6 @@ export function installPlayRail() {
                 .some((node) => TILE_IDS.includes(node.id)));
             if (arrived) adoptTiles();
         }).observe(document.body, { childList: true });
-    }
-    // A dock coming on screen or leaving it (its layout shown, hidden or resized past a
-    // breakpoint) moves the rail — on the next frame, so the move cannot resize what the
-    // observer is still delivering.
-    if (typeof ResizeObserver === 'function') {
-        const docks = document.querySelectorAll?.('[data-play-dock]') || [];
-        if (docks.length) {
-            let queued = false;
-            const watcher = new ResizeObserver(() => {
-                if (queued) return;
-                queued = true;
-                requestAnimationFrame(() => {
-                    queued = false;
-                    placeRail();
-                });
-            });
-            docks.forEach((dock) => watcher.observe(dock));
-        }
     }
     window.addEventListener('modalShown', refreshPlayRail);
     window.addEventListener('modalHidden', refreshPlayRail);
