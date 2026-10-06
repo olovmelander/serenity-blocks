@@ -4809,7 +4809,7 @@ class SerenityBlocks {
         const finalStats = document.getElementById('final-stats');
         finalStats.innerHTML = `
             <div style="font-size:32px;margin-bottom:20px;color:#10b981;font-weight:bold;">
-                🏆 ${winnerName} WINS! 🏆
+                ${winnerName} wins
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;">
                 <div style="border:2px solid rgba(0,255,255,0.5);padding:15px;border-radius:8px;">

@@ -160,4 +160,28 @@ describe('radial wave in light', () => {
         expect(rings).toHaveLength(1);
         expect(rings[0].tint).toBe(TONE.CORAL);
     });
+
+    it('stays dark until it has opened out, so a hit stop never freezes a bullseye', () => {
+        const scene = makeScene();
+        const fx = new SharedEffects(scene);
+        fx.createShockwaveRing(W / 2, 400, TONE.GOLD, 1);
+        const ring = scene.images.find((img) => img.key === FX.RING);
+        const tween = scene.tweens.add.mock.calls.map(([cfg]) => cfg).find((cfg) => cfg.onUpdate);
+        const alpha = () => ring.setAlpha.mock.calls.at(-1)[0];
+        expect(alpha()).toBe(0);
+
+        // Held at its first frame (the hit stop's frozen clock).
+        tween.targets.p = 0.0001;
+        tween.onUpdate();
+        expect(alpha()).toBeLessThan(0.01);
+
+        tween.targets.p = 0.1;
+        tween.onUpdate();
+        expect(ring.scale).toBeGreaterThan(10);
+        expect(alpha()).toBeGreaterThan(0.3);
+
+        tween.targets.p = 1;
+        tween.onUpdate();
+        expect(alpha()).toBeLessThan(0.001);
+    });
 });

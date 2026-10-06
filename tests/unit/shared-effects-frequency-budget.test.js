@@ -112,9 +112,14 @@ describe('cascade budget', () => {
         expect(scene.screenFlashes).toBe(0);
     });
 
-    it('keeps the mega-cascade celebration at 10+', () => {
+    it('keeps the mega-cascade celebration at 10+ — once, as the chain\'s finale', () => {
+        // Quadra sums a move up once it settles; a banner per wave from ten stacked
+        // one over the next at every wave.
         const { scene, fx } = build();
         fx.showCascadeWave(12);
+        expect(scene.shakes).toHaveLength(0);
+        fx._move = { waves: 12, lines: 18, clean: false };
+        fx._endMove();
         expect(scene.shakes.length).toBeGreaterThan(0);
     });
 });

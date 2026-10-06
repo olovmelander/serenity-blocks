@@ -1001,7 +1001,7 @@
 }
 
 /* Late joiner waiting to spawn next round — NOT eliminated. Gently dimmed with a teal cast
-   (distinct from the grayscale .dead), paired with the ⏳ "NEXT ROUND" overlay. */
+   (distinct from the grayscale .dead), paired with the "Next round" card. */
 .opponent-mini-board.waiting {
   opacity: 0.78;
   filter: saturate(0.7) brightness(0.92);

@@ -191,6 +191,8 @@ export function createBaseBoardScene(
             if (!this.gameState) return;
             this._checkBoardDirty();
             this._checkVisibleRowRangeDirty();
+            // A cascade's falling pieces land where they land (idle until a line clears).
+            (this.sharedEffects || this.effects)?.observeSettling?.(this.gameState);
             // Keep the last board commands visible while a pausable game is
             // covered. Online games and Infinity exploration never set this.
             if ((this._presentationPaused || this._presentationCovered)

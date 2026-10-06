@@ -965,8 +965,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         container.innerHTML = `
             <div class="spectator-spotlight">
                 <div class="spectator-spotlight-header">
-                    <span class="spectator-spotlight-eye">👁</span>
-                    <span class="spectator-spotlight-name">SPECTATING</span>
+                    <span class="spectator-spotlight-eye">Watching</span>
+                    <span class="spectator-spotlight-name">Pick a board</span>
                     <span class="spectator-spotlight-frags"></span>
                 </div>
                 <div class="spectator-spotlight-stage">
@@ -1323,13 +1323,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     _registerEffectHandlers() {
         const localSteamId = this.steamNetworking?.steamId;
-        // Read settings per event, not once at registration: these handlers live
-        // for the whole match, so a snapshot here froze the effect toggles at
-        // whatever they were when the match started.
-        const settingsOf = () => this.deps.settingsManager?.get() || {};
-        // True consecutive-clear combo for the local board. The COMBO wire event
-        // carries cascade depth, and LINE_CLEAR_IMPACT carries no cascade index at
-        // all, so the chain is derived from the LINE_CLEAR / PIECE_LOCK pair.
+        // Consecutive-clear bookkeeping for the light's tint only. The combo the board
+        // counts out loud is the cascade's depth (the COMBO event), as in every other
+        // mode and as Quadra counts it: the chained waves of one piece.
         this._comboTracker = this._comboTracker || new ComboTracker();
         this._comboTracker.reset();
 
@@ -1341,10 +1337,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 if (detail.steamId !== localSteamId) return;
                 if (!this.mainBoardScene) return;
 
-                // Advance the real combo before the flash reads the tint state.
-                announceCombo(this._comboTracker, this.mainBoardScene, {
-                    popupEnabled: settingsOf().comboPopupEffect,
-                });
+                // Advance the consecutive-clear tint before the flash reads it (no popup:
+                // the popup counts cascade waves, from the COMBO event).
+                announceCombo(this._comboTracker, this.mainBoardScene, { popupEnabled: false });
 
                 // Emit event for theme integration
                 emitLineClear({
@@ -1400,9 +1395,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 // themes have keyed off it since launch, so it stays unchanged.
                 emitCombo({ comboCount });
 
-                // No popup here — that is the real combo's job, driven from the
-                // LINE_CLEAR handler. This event's board feedback is the cascade
-                // wave, which is what the payload actually describes.
+                // The wave's count, as in local versus and single player (the popup
+                // gates on comboPopupEffect inside SharedEffects).
+                this.mainBoardScene.showComboPopup?.(comboCount);
                 if (this.mainBoardScene.sharedEffects?.showCascadeWave) {
                     this.mainBoardScene.sharedEffects.showCascadeWave(comboCount);
                 }
@@ -1421,14 +1416,17 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 const lineCount = detail.linesCleared || (detail.rows?.length || 0);
                 const cascadeCount = detail.cascadeCount || 1;
                 const color = lineCount >= 4 ? '#f59e0b' : lineCount === 3 ? '#fbbf24' : '#ffffff';
+                // The wave's count first, so its light takes the chain's tone.
+                if (cascadeCount >= 2) {
+                    this.opponentWatchManager.triggerOpponentCombo?.(detail.steamId, cascadeCount, color);
+                }
                 this.opponentWatchManager.triggerOpponentClear?.(detail.steamId, {
                     rows: detail.rows || [],
                     lineCount,
                     color,
+                    cascadeCount,
+                    clean: detail.clean === true,
                 });
-                if (cascadeCount >= 2) {
-                    this.opponentWatchManager.triggerOpponentCombo?.(detail.steamId, cascadeCount, color);
-                }
             },
         );
         this.cleanupHandlers.push(this.opponentClearUnsub);
@@ -2198,7 +2196,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
         const banner = document.createElement('div');
         banner.className = 'dropin-waiting-banner';
-        banner.innerHTML = '<span class="dropin-waiting-icon">⏳</span> Joined mid-match — you\'ll spawn next round';
+        banner.textContent = 'Joined mid-match — you play from the next round';
         // Fit + WRAP within the board (was white-space:nowrap, which overflowed the narrow board
         // and got clipped at both ends by overflow:hidden).
         banner.style.cssText = 'position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:40;max-width:calc(100% - 16px);box-sizing:border-box;padding:8px 12px;border-radius:10px;background:rgba(8,10,23,0.88);border:1px solid rgba(94,234,212,0.45);color:#5eead4;font-weight:700;font-size:12px;letter-spacing:0.2px;line-height:1.3;text-align:center;white-space:normal;overflow-wrap:break-word;pointer-events:none;box-shadow:0 0 16px rgba(94,234,212,0.2);';
