@@ -93,6 +93,9 @@ const DEFAULT_PREFS = Object.freeze({
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 /** The live strip's End asks for a second press within this window. */
 const END_CONFIRM_MS = 4000;
+/** The primary action's keycaps; the body's input class shows the key or the button. */
+const KEY_HINTS = '<kbd class="sb-kbd" data-key aria-hidden="true">Enter</kbd>'
+    + '<kbd class="sb-kbd" data-pad aria-hidden="true">A</kbd>';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -213,7 +216,7 @@ export class SessionsTab {
             return `<article class="hale-card" data-session="${sessionId}">
                 <div class="hale-card__art" style="background-image:url('${info.poster}')" aria-hidden="true"></div>
                 <div class="hale-card__body">
-                    <span class="hale-card__tag">${escapeHtml(info.intensity)} · ${escapeHtml(info.style)}</span>
+                    <span class="sb-eyebrow hale-card__tag">${escapeHtml(info.intensity)} · ${escapeHtml(info.style)}</span>
                     <h3>${escapeHtml(info.name)}</h3>
                     <p class="hale-card__promise">${escapeHtml(info.promise)}</p>
                     <p class="hale-card__summary">${escapeHtml(info.summary)}</p>
@@ -223,7 +226,7 @@ export class SessionsTab {
                         <li>${escapeHtml(info.feature)}</li>
                     </ul>
                     <p class="hale-card__mine" data-mine="${sessionId}" hidden></p>
-                    <button type="button" class="hale-card__begin" data-session="${sessionId}">
+                    <button type="button" class="sb-btn hale-card__begin" data-session="${sessionId}">
                         Begin ${escapeHtml(info.name)} <span aria-hidden="true">→</span>
                     </button>
                 </div>
@@ -232,18 +235,18 @@ export class SessionsTab {
         this.container.innerHTML = `
             <div class="hale">
                 <header class="hale__intro">
-                    <span class="hale__eyebrow">Hale sessions · guided breathwork</span>
+                    <span class="sb-eyebrow hale__eyebrow">Hale sessions · guided breathwork</span>
                     <h2>A voice, a rhythm, and a world that follows your breath.</h2>
                     <p>Every session arrives gently, breathes through three rounds with a stillness after each, and ends in rest.</p>
                 </header>
                 <section class="hale__practice" aria-label="Your practice" hidden></section>
                 <section class="hale__live" hidden aria-live="polite">
                     <div>
-                        <span class="hale__eyebrow">Session in progress · paused while the Hub is open</span>
+                        <span class="sb-eyebrow hale__eyebrow">Session in progress · paused while the Hub is open</span>
                         <p class="hale__live-name"></p>
                     </div>
-                    <button type="button" class="hale__return">Return to session</button>
-                    <button type="button" class="hale__end">End session</button>
+                    <button type="button" class="sb-btn sb-btn--primary hale__return">Return to session</button>
+                    <button type="button" class="sb-btn sb-btn--quiet hale__end">End session</button>
                 </section>
                 <div class="hale__grid">${cards}</div>
                 <p class="hale__note">${csIcon('breath', 14)} Breath holds are strong practice. Sit or lie down, never practise in or near water or while driving, and stop if you feel dizzy.</p>
@@ -270,9 +273,12 @@ export class SessionsTab {
         });
         if (!summary.hasHistory) return;
         const last = HALE_SESSIONS[summary.last?.id]?.name;
-        const week = summary.week.map((day) => {
+        // The last of the seven days is today: practised today, it carries the keystone.
+        const week = summary.week.map((day, index) => {
             const date = new Date(day.start);
-            return `<li class="${day.practised ? 'is-practised' : ''}" title="${date.toDateString()}"><i></i><span>${WEEKDAYS[date.getDay()]}</span></li>`;
+            const classes = [day.practised ? 'is-practised' : '', index === summary.week.length - 1 ? 'is-today' : '']
+                .filter(Boolean).join(' ');
+            return `<li class="${classes}" title="${date.toDateString()}"><i></i><span>${WEEKDAYS[date.getDay()]}</span></li>`;
         }).join('');
         const streak = `<b>${summary.streak}</b><span>${summary.streak === 1 ? 'day' : 'days in a row'}</span>`;
         const totals = [
@@ -302,8 +308,9 @@ export class SessionsTab {
             <div class="hale-flow__art" aria-hidden="true"></div>
             <div class="hale-flow__panel hale-flow__panel--prepare" data-panel="prepare">
                 <div class="hale-flow__lead">
-                    <button type="button" class="hale-flow__back"><span aria-hidden="true">←</span> All sessions</button>
-                    <span class="hale__eyebrow hale-flow__facts"></span>
+                    <button type="button" class="sb-btn sb-btn--quiet hale-flow__back">
+                        <span aria-hidden="true">←</span> All sessions</button>
+                    <span class="sb-eyebrow hale__eyebrow hale-flow__facts"></span>
                     <h2 id="hale-flow-title" class="hale-flow__name"></h2>
                     <p class="hale-flow__promise"></p>
                     <p class="hale-flow__about"></p>
@@ -318,19 +325,19 @@ export class SessionsTab {
                     <div class="hale-flow__intentions" role="group" aria-label="Choose an intention"></div>
                     <div class="hale-flow__options" role="group" aria-label="Guidance">
                         <label class="hale-flow__switch">
-                            <input type="checkbox" class="hale-flow__voice" checked>
+                            <input type="checkbox" class="sb-toggle hale-flow__voice" checked>
                             <span>Voice guidance</span>
                         </label>
                         <label class="hale-flow__switch">
-                            <input type="checkbox" class="hale-flow__sounds" checked>
+                            <input type="checkbox" class="sb-toggle hale-flow__sounds" checked>
                             <span>Bells and breath tones</span>
                         </label>
                         <label class="hale-flow__switch hale-flow__switch--holds">
-                            <input type="checkbox" class="hale-flow__holds" checked>
+                            <input type="checkbox" class="sb-toggle hale-flow__holds" checked>
                             <span>Breathe in when you are ready <small>Holds end when you choose</small></span>
                         </label>
                         <label class="hale-flow__switch" ${canVibrate ? '' : 'hidden'}>
-                            <input type="checkbox" class="hale-flow__vibration" checked>
+                            <input type="checkbox" class="sb-toggle hale-flow__vibration" checked>
                             <span>Gentle vibration</span>
                         </label>
                     </div>
@@ -339,17 +346,20 @@ export class SessionsTab {
                         <label class="hale-flow__ack"><input type="checkbox" class="hale-flow__ack-input"><span>I understand</span></label>
                     </div>
                     <p class="hale-flow__safety">Sit or lie down somewhere you can let go. Breathe comfortably, and return to your natural breath whenever you need to.</p>
-                    <button type="button" class="hale-flow__begin">Begin session <span aria-hidden="true">→</span></button>
+                    <button type="button" class="sb-btn sb-btn--primary hale-flow__begin">
+                        <span>Begin session</span>${KEY_HINTS}
+                    </button>
                 </div>
             </div>
             <div class="hale-flow__panel hale-flow__panel--countdown" data-panel="countdown" role="status" aria-live="polite" aria-atomic="true">
                 <p class="hale-flow__intent"></p>
                 <div class="hale-flow__number">3</div>
+                <div class="sb-meter hale-flow__beats" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
                 <p class="hale-flow__message"></p>
-                <button type="button" class="hale-flow__cancel">Back to preparation</button>
+                <button type="button" class="sb-btn sb-btn--quiet hale-flow__cancel">Back to preparation</button>
             </div>
             <div class="hale-flow__panel hale-flow__panel--complete" data-panel="complete">
-                <span class="hale__eyebrow">Session complete</span>
+                <span class="sb-eyebrow hale__eyebrow">Session complete</span>
                 <h2 class="hale-flow__done-name"></h2>
                 <p class="hale-flow__record" hidden></p>
                 <dl class="hale-flow__stats"></dl>
@@ -357,8 +367,10 @@ export class SessionsTab {
                 <p class="hale-flow__streak-line" hidden></p>
                 <p class="hale-flow__closing"></p>
                 <div class="hale-flow__actions">
-                    <button type="button" class="hale-flow__finish">Done</button>
-                    <button type="button" class="hale-flow__again">Go again</button>
+                    <button type="button" class="sb-btn sb-btn--primary hale-flow__finish">
+                        <span>Done</span>${KEY_HINTS}
+                    </button>
+                    <button type="button" class="sb-btn sb-btn--quiet hale-flow__again">Go again</button>
                 </div>
             </div>`;
         document.body.appendChild(flow);
@@ -656,14 +668,20 @@ export class SessionsTab {
         if (!sessionId || !this.getSessionDetails(sessionId)) return;
         const { flow } = this;
         flow.querySelector('.hale-flow__intent').textContent = this.selectedIntention
-            ? `Your intention: ${this.selectedIntention.label}` : 'Nothing to achieve. Just be here.';
+            ? `Your intention · ${this.selectedIntention.label}` : 'Nothing to achieve. Just be here.';
         this.showStep('countdown');
         this.scheduleUI(() => flow.querySelector('.hale-flow__cancel').focus?.({ preventScroll: true }), 30);
         const number = flow.querySelector('.hale-flow__number');
         const message = flow.querySelector('.hale-flow__message');
+        const beats = Array.from(flow.querySelector('.hale-flow__beats')?.children || []);
         for (let i = 0; i < COUNTDOWN.length; i++) {
             const last = i === COUNTDOWN.length - 1;
             number.textContent = COUNTDOWN[i][0];
+            // One cell per beat; the current one is the keystone dropping into place.
+            beats.forEach((cell, beat) => {
+                cell.classList?.toggle('is-filled', beat < i);
+                cell.classList?.toggle('is-current', beat === i);
+            });
             message.textContent = last && !this.voiceGuidance ? 'Follow the light' : COUNTDOWN[i][1];
             number.classList.toggle('is-word', last);
             // Beats are sequential on purpose; cancellation settles the pending wait.

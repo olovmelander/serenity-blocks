@@ -15,6 +15,24 @@ import {
 import { initThemeCardInteractions } from './theme-card-interactions.js';
 import { csIcon } from '../components/cosmic-icons.js';
 
+const CURRENT_LABEL = 'Current';
+
+/** Tornado's live parameters, in words (the keys stay the settings' own). */
+const PARAM_LABELS = Object.freeze({
+    emissiveColor: 'Glow colour',
+    timeScale: 'Speed',
+    ribbonWidth: 'Ribbon width',
+    parabolaStrength: 'Curve strength',
+    parabolaOffset: 'Curve offset',
+    parabolaAmplitude: 'Curve height',
+    bloomStrength: 'Bloom',
+    bloomRadius: 'Bloom radius',
+});
+
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[char]);
+
 const CATEGORY_ICON_SVG_OPEN = [
     '<svg class="pill-icon-svg" viewBox="0 0 24 24" fill="none"',
     'stroke="currentColor" stroke-width="2" stroke-linecap="round"',
@@ -81,7 +99,23 @@ export function getCategoryIconSvg(categoryId) {
     return CATEGORY_ICON_SVGS[categoryId] || CATEGORY_ICON_SVGS.all;
 }
 
-export function getFilteredThemeIds(themes, selectedCategory = 'all', searchQuery = '') {
+/** What each theme group is called on screen (the chips, each card, and search). */
+export const CATEGORY_LABELS = Object.freeze({
+    biomes: 'Nature',
+    cosmic: 'Cosmic',
+    meditation: 'Meditation',
+    urban: 'Urban',
+    fantasy: 'Fantasy',
+    abstract: 'Abstract',
+    sky: 'Sky',
+    atmospheric: 'Atmospheric',
+});
+
+/**
+ * Theme ids in a category whose name, group id or category label holds the query —
+ * so "nature" finds the Nature themes even though their group id is "biomes".
+ */
+export function getFilteredThemeIds(themes, selectedCategory = 'all', searchQuery = '', labels = CATEGORY_LABELS) {
     let filteredThemes = selectedCategory === 'all'
         ? themes
         : themes.filter((theme) => theme.group === selectedCategory);
@@ -91,6 +125,7 @@ export function getFilteredThemeIds(themes, selectedCategory = 'all', searchQuer
         filteredThemes = filteredThemes.filter((theme) => (
             theme.displayName.toLowerCase().includes(normalizedQuery)
             || (theme.group && theme.group.toLowerCase().includes(normalizedQuery))
+            || (theme.group && labels[theme.group]?.toLowerCase().includes(normalizedQuery))
         ));
     }
 
@@ -237,6 +272,7 @@ export class ThemesTab {
         this.hubIconsReadyRecorded = false;
         this.themeCardElements = new Map();
         this.emptyStateElement = null;
+        this.searchClearButton = null;
         this.active = false;
         this.destroyed = false;
         this.renderedTheme = this.currentTheme;
@@ -276,65 +312,22 @@ export class ThemesTab {
 
         const categories = [
             {
-                id: 'all', name: 'All Themes', iconSvg: getCategoryIconSvg('all'), count: this.themes.length,
+                id: 'all', name: 'All', iconSvg: getCategoryIconSvg('all'), count: this.themes.length,
             },
         ];
 
-        const categoryInfo = {
-            biomes: { name: 'Nature' },
-            cosmic: { name: 'Cosmic' },
-            meditation: { name: 'Meditation' },
-            urban: { name: 'Urban' },
-            fantasy: { name: 'Fantasy' },
-            abstract: { name: 'Abstract' },
-            sky: { name: 'Sky' },
-            atmospheric: { name: 'Atmospheric' },
-        };
-
-        Array.from(categorySet).sort().forEach((cat) => {
-            const info = categoryInfo[cat] || { name: cat };
+        const label = (cat) => CATEGORY_LABELS[cat] || cat;
+        Array.from(categorySet).sort((a, b) => label(a).localeCompare(label(b))).forEach((cat) => {
             const count = this.themes.filter((t) => t.group === cat).length;
             categories.push({
                 id: cat,
-                name: info.name,
+                name: label(cat),
                 iconSvg: getCategoryIconSvg(cat),
                 count,
             });
         });
 
         return categories;
-    }
-
-    /**
-     * Get color scheme for a theme based on its group
-     * @param {string} group - Theme group
-     * @returns {Object} Color scheme
-     */
-    getThemeColorScheme(group) {
-        const schemes = {
-            biomes: {
-                primary: '#4CAF50', secondary: '#81C784', gradient: 'linear-gradient(135deg, #4CAF50, #81C784)',
-            },
-            cosmic: {
-                primary: '#9C27B0', secondary: '#CE93D8', gradient: 'linear-gradient(135deg, #9C27B0, #CE93D8)',
-            },
-            meditation: {
-                primary: '#FF9800', secondary: '#FFB74D', gradient: 'linear-gradient(135deg, #FF9800, #FFB74D)',
-            },
-            urban: {
-                primary: '#607D8B', secondary: '#90A4AE', gradient: 'linear-gradient(135deg, #607D8B, #90A4AE)',
-            },
-            fantasy: {
-                primary: '#E91E63', secondary: '#F48FB1', gradient: 'linear-gradient(135deg, #E91E63, #F48FB1)',
-            },
-            abstract: {
-                primary: '#00BCD4', secondary: '#80DEEA', gradient: 'linear-gradient(135deg, #00BCD4, #80DEEA)',
-            },
-            sky: {
-                primary: '#2196F3', secondary: '#64B5F6', gradient: 'linear-gradient(135deg, #2196F3, #64B5F6)',
-            },
-        };
-        return schemes[group] || schemes.biomes;
     }
 
     /**
@@ -428,48 +421,50 @@ export class ThemesTab {
             return;
         }
 
-        // Clear loading message
+        // Toolbar (sticky while the grid scrolls): search, what is on now, a random pick, the
+        // category chips. Then the worlds, then Tornado's live controls.
         container.innerHTML = `
             <div class="themes-tab">
-                <!-- Compact control bar: search + badge -->
-                <div class="themes-control-bar">
-                    <div class="themes-search-wrap">
-                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <path d="m21 21-4.35-4.35"></path>
-                        </svg>
-                        <input
-                            type="text"
-                            class="themes-search-input"
-                            id="themes-search-input"
-                            placeholder="Search themes..."
-                            autocomplete="off"
-                            spellcheck="false"
-                        />
+                <div class="themes-toolbar">
+                    <div class="themes-control-bar">
+                        <div class="themes-search-wrap" role="search">
+                            <label class="hub-sr-only" for="themes-search-input">Search themes</label>
+                            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                                <circle cx="11" cy="11" r="7"></circle>
+                                <path d="m20 20-3.6-3.6"></path>
+                            </svg>
+                            <input
+                                type="search"
+                                class="themes-search-input"
+                                id="themes-search-input"
+                                placeholder="Search by name or category"
+                                autocomplete="off"
+                                spellcheck="false"
+                                enterkeyhint="search"
+                            />
+                            <button type="button" class="themes-search-clear" aria-label="Clear search" hidden>
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                                    stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                                    <path d="M7 7l10 10M17 7 7 17"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="current-theme-badge">
+                            <span class="badge-label">Current</span>
+                            <span class="badge-text">${escapeHtml(this.getCurrentThemeDisplayName())}</span>
+                        </p>
+                        <button type="button" class="sb-btn random-theme-btn" id="random-theme-btn">
+                            ${csIcon('dice', 18)}<span class="btn-text">Try a random theme</span>
+                        </button>
                     </div>
-                    <div class="current-theme-badge">
-                        <span class="badge-icon">${csIcon('check', 14)}</span>
-                        <span class="badge-text">Current: ${this.getCurrentThemeDisplayName()}</span>
+                    <div class="category-filter" role="group" aria-label="Categories">
+                        ${this.renderCategoryFilters()}
                     </div>
                 </div>
 
-                <!-- Category Filter Pills -->
-                <div class="category-filter">
-                    ${this.renderCategoryFilters()}
-                </div>
-
-                <!-- Themes Grid -->
                 <div class="themes-grid" id="themes-grid"></div>
 
-                <!-- Random Theme Button -->
-                <div class="theme-actions">
-                    <button class="random-theme-btn" id="random-theme-btn">
-                        <span class="btn-icon">${csIcon('dice', 18)}</span>
-                        <span class="btn-text">Random Theme</span>
-                    </button>
-                </div>
-
-                <!-- Theme Parameters -->
                 <div class="theme-params" id="theme-params">
                     ${this.renderThemeParams()}
                 </div>
@@ -477,6 +472,7 @@ export class ThemesTab {
         `;
 
         this.badgeElement = container.querySelector('.badge-text');
+        this.searchClearButton = container.querySelector('.themes-search-clear');
         this.populateThemeGrid();
 
         // Phase 5: cursor-follow spotlight + parallax tilt on theme cards
@@ -489,14 +485,16 @@ export class ThemesTab {
      * @returns {string} HTML for category filters
      */
     renderCategoryFilters() {
-        return this.categories.map((cat) => `
-            <button class="category-pill ${cat.id === this.selectedCategory ? 'active' : ''}"
-                    data-category="${cat.id}">
+        return this.categories.map((cat) => {
+            const pressed = cat.id === this.selectedCategory;
+            return `
+            <button type="button" class="category-pill${pressed ? ' active' : ''}" data-category="${cat.id}"
+                    aria-pressed="${pressed}">
                 <span class="pill-icon" aria-hidden="true">${cat.iconSvg}</span>
-                <span class="pill-text">${cat.name}</span>
-                <span class="pill-count">${cat.count}</span>
-            </button>
-        `).join('');
+                <span class="pill-text">${escapeHtml(cat.name)}</span>
+                <span class="pill-count">${cat.count}<span class="hub-sr-only"> themes</span></span>
+            </button>`;
+        }).join('');
     }
 
     /**
@@ -517,26 +515,26 @@ export class ThemesTab {
     renderThemeCards() {
         const sortedThemes = [...this.themes].sort((left, right) => left.displayName.localeCompare(right.displayName));
 
+        // The category's hue comes from data-group in keystone-hub.css (no inline styles).
         return sortedThemes.map((theme) => {
             const isActive = theme.id === this.currentTheme;
-            const colorScheme = this.getThemeColorScheme(theme.group);
             const iconHtml = this.getThemeIcon(theme);
 
             return `
-                <div class="theme-card ${isActive ? 'active' : ''}"
+                <div class="theme-card${isActive ? ' active' : ''}"
                      data-theme="${theme.id}"
+                     data-group="${theme.group || ''}"
                      tabindex="0"
                      role="button"
-                     aria-label="Select ${theme.displayName} theme"
-                     aria-pressed="${isActive}"
-                     style="--theme-gradient: ${colorScheme.gradient}">
-                    <div class="theme-swatch" style="background: ${colorScheme.gradient}">
+                     aria-label="Select ${escapeHtml(theme.displayName)} theme"
+                     aria-pressed="${isActive}">
+                    <div class="theme-swatch">
                         ${iconHtml}
-                        ${isActive ? `<div class="active-indicator">${csIcon('check', 14)}</div>` : ''}
+                        ${isActive ? `<span class="active-indicator">${CURRENT_LABEL}</span>` : ''}
                     </div>
                     <div class="theme-info">
-                        <div class="theme-name">${theme.displayName}</div>
-                        <div class="theme-category">${this.getCategoryDisplayName(theme.group)}</div>
+                        <div class="theme-name">${escapeHtml(theme.displayName)}</div>
+                        <div class="theme-category">${escapeHtml(this.getCategoryDisplayName(theme.group))}</div>
                     </div>
                 </div>
             `;
@@ -551,7 +549,11 @@ export class ThemesTab {
 
         grid.innerHTML = `
             ${this.renderThemeCards()}
-            <div class="no-themes" id="themes-empty-state" hidden>No themes found</div>
+            <div class="no-themes" id="themes-empty-state" role="status" hidden>
+                <p class="no-themes__title">No themes found</p>
+                <p class="no-themes__note">Try another name, or show every category.</p>
+                <button type="button" class="sb-btn themes-clear-filters">Clear filters</button>
+            </div>
         `;
         this.themeCardElements = new Map(
             Array.from(grid.querySelectorAll('.theme-card')).map((card) => [card.dataset.theme, card]),
@@ -559,9 +561,37 @@ export class ThemesTab {
         this.emptyStateElement = grid.querySelector('#themes-empty-state');
         const visibleThemeIds = getFilteredThemeIds(this.themes, this.selectedCategory, this.searchQuery);
         const visibleCount = applyThemeCardFilter(Array.from(this.themeCardElements.values()), visibleThemeIds);
-        if (this.emptyStateElement) {
-            this.emptyStateElement.hidden = visibleCount !== 0;
+        this.showEmptyState(visibleCount === 0);
+    }
+
+    /** The empty state names what was searched for and offers the way back. */
+    showEmptyState(empty) {
+        const state = this.emptyStateElement;
+        if (!state) return;
+        if (empty) {
+            const query = this.searchQuery.trim();
+            const title = state.querySelector?.('.no-themes__title');
+            if (title) title.textContent = query ? `Nothing matches “${query}”` : 'No themes found';
         }
+        state.hidden = !empty;
+    }
+
+    /** Empty the search field and show what the chosen category holds. */
+    clearSearch({ focus = false, refresh = true } = {}) {
+        const input = this.tabContainer?.querySelector('#themes-search-input');
+        if (input) input.value = '';
+        this.searchQuery = '';
+        if (this.searchClearButton) this.searchClearButton.hidden = true;
+        if (this.searchTimer !== null) clearTimeout(this.searchTimer);
+        this.searchTimer = null;
+        if (refresh) this.refreshThemeGrid();
+        if (focus) input?.focus?.({ preventScroll: true });
+    }
+
+    /** Back to every theme: an empty search and the All chip. */
+    clearFilters() {
+        this.clearSearch({ focus: true, refresh: this.selectedCategory === 'all' });
+        if (this.selectedCategory !== 'all') this.selectCategory('all');
     }
 
     /**
@@ -571,9 +601,9 @@ export class ThemesTab {
     renderThemeParams() {
         if (this.currentTheme !== 'tornado') {
             return `
-                <div class="theme-params-empty">
-                    Select Tornado to adjust live parameters.
-                </div>
+                <p class="theme-params-empty">
+                    Tornado has live controls. Choose it to adjust them here.
+                </p>
             `;
         }
 
@@ -581,7 +611,7 @@ export class ThemesTab {
 
         return `
             <div class="theme-params-panel">
-                <div class="theme-params-title">Tornado Controls</div>
+                <p class="sb-eyebrow theme-params-title">Tornado · Live controls</p>
                 ${this.renderThemeParamColor('emissiveColor', params.emissiveColor)}
                 ${this.renderThemeParamRange('timeScale', params.timeScale)}
                 ${this.renderThemeParamRange('ribbonWidth', params.ribbonWidth)}
@@ -597,7 +627,7 @@ export class ThemesTab {
     renderThemeParamColor(key, value) {
         return `
             <div class="theme-param-row">
-                <label class="theme-param-label" for="theme-param-${key}">${key}</label>
+                <label class="theme-param-label" for="theme-param-${key}">${PARAM_LABELS[key] || key}</label>
                 <input class="theme-param-input theme-param-color"
                        id="theme-param-${key}"
                        type="color"
@@ -614,7 +644,7 @@ export class ThemesTab {
 
         return `
             <div class="theme-param-row">
-                <label class="theme-param-label" for="theme-param-${key}">${key}</label>
+                <label class="theme-param-label" for="theme-param-${key}">${PARAM_LABELS[key] || key}</label>
                 <input class="theme-param-input"
                        id="theme-param-${key}"
                        type="range"
@@ -701,11 +731,29 @@ export class ThemesTab {
                 this.selectRandomTheme().catch((error) => {
                     console.error('[ThemesTab] Failed to select random theme:', error);
                 });
+                return;
             }
+
+            if (target.closest('.themes-clear-filters')) this.clearFilters();
+            else if (target.closest('.themes-search-clear')) this.clearSearch({ focus: true });
         };
 
         this.tabContainer.addEventListener('click', this.tabClickHandler, { signal: this.domAbortController?.signal });
         this.tabKeydownHandler = (event) => {
+            const search = event.target?.closest?.('#themes-search-input');
+            if (search) {
+                if (event.key === 'Escape' && search.value) {
+                    // The first Escape empties the search; the next one closes the Hub.
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.clearSearch({ focus: true });
+                } else if (event.key !== 'Escape' && event.key !== 'Tab') {
+                    // Typing belongs to the field, not to a mode's one-key shortcuts
+                    // (in Serenity Mode B, T, F and H would otherwise fire mid-word).
+                    event.stopPropagation();
+                }
+                return;
+            }
             if (event.key !== 'Enter' && event.key !== ' ') return;
             const themeCard = event.target?.closest?.('.theme-card');
             if (!themeCard || !this.tabContainer.contains(themeCard)) return;
@@ -758,6 +806,7 @@ export class ThemesTab {
         if (searchInput) {
             this.searchInputHandler = (event) => {
                 this.searchQuery = event.target.value;
+                if (this.searchClearButton) this.searchClearButton.hidden = !this.searchQuery;
                 this.filterDirty = true;
                 if (this.searchTimer !== null) clearTimeout(this.searchTimer);
                 this.searchTimer = setTimeout(() => {
@@ -860,9 +909,7 @@ export class ThemesTab {
 
         const visibleThemeIds = getFilteredThemeIds(this.themes, this.selectedCategory, this.searchQuery);
         const visibleCount = applyThemeCardFilter(cards, visibleThemeIds);
-        if (this.emptyStateElement) {
-            this.emptyStateElement.hidden = visibleCount !== 0;
-        }
+        this.showEmptyState(visibleCount === 0);
         this.hydrateVisibleThemeCardIcons();
     }
 
@@ -996,10 +1043,12 @@ export class ThemesTab {
 
         this.selectedCategory = category;
 
-        // Update filter pills
+        // Update filter chips
         const pills = this.tabContainer?.querySelectorAll('.category-pill') || [];
         pills.forEach((pill) => {
-            pill.classList.toggle('active', pill.dataset.category === category);
+            const pressed = pill.dataset.category === category;
+            pill.classList.toggle('active', pressed);
+            pill.setAttribute?.('aria-pressed', String(pressed));
         });
 
         // Update themes grid
@@ -1108,18 +1157,19 @@ export class ThemesTab {
             if (!swatch) return;
             const indicator = swatch.querySelector('.active-indicator');
             if (isActive && !indicator) {
-                const nextIndicator = document.createElement('div');
+                const nextIndicator = document.createElement('span');
                 nextIndicator.className = 'active-indicator';
-                nextIndicator.innerHTML = csIcon('check', 14);
+                nextIndicator.textContent = CURRENT_LABEL;
                 swatch.appendChild(nextIndicator);
             } else if (!isActive && indicator) indicator.remove();
         });
         this.renderedTheme = this.currentTheme;
     }
 
+    /** The toolbar's "Current" line: the label is static, this is the world's name. */
     updateCurrentThemeBadge() {
         const badge = this.badgeElement;
-        const text = `Current: ${this.getCurrentThemeDisplayName()}`;
+        const text = this.getCurrentThemeDisplayName();
         if (badge && badge.textContent !== text) badge.textContent = text;
     }
 
@@ -1212,6 +1262,7 @@ export class ThemesTab {
         this.debouncedSearchHandler = null;
         this.themeCardElements.clear();
         this.emptyStateElement = null;
+        this.searchClearButton = null;
 
         this.tabContainer = null;
 

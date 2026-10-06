@@ -99,12 +99,14 @@
  * ================================================================================ */
 
 /* ---- Eyebrow: small spaced capitals with a tile bullet -------------------------- */
+/* Line height 1.5 so an eyebrow that wraps (phones) never stacks its lines on top of
+   each other; the tile bullet stays centred on the first line. */
 .sb-eyebrow {
     display: inline-flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     margin: 0;
-    font: 600 var(--sb-fs-label) / 1 var(--sb-font-display);
+    font: 600 var(--sb-fs-label) / 1.5 var(--sb-font-display);
     letter-spacing: var(--sb-track-label);
     text-transform: uppercase;
     color: rgba(var(--sb-accent-rgb), 0.92);
@@ -115,6 +117,7 @@
     width: 7px;
     height: 7px;
     flex: none;
+    margin-top: calc((1.5em - 7px) / 2);
     border-radius: 2px;
     background: currentColor;
 }
@@ -253,8 +256,8 @@
 .sb-kbd[data-pad] {
     display: none;
     min-width: 22px;
-    padding: 0;
-    border-radius: 50%;
+    padding: 0 4px;
+    border-radius: 11px;
     font-family: var(--sb-font-display);
     font-size: 0.625rem;
 }
@@ -338,7 +341,9 @@ body.sb-input-gamepad .sb-kbd[data-pad] {
     background: radial-gradient(circle at 3px 3px, rgba(var(--sb-cream-rgb), 0.18) 2.2px, transparent 2.5px) 0 0 / 12px 6px repeat-x;
 }
 
-/* ---- Toggle: a switch whose knob is a tile; on = the keystone ------------------- */
+/* ---- Toggle: a switch whose knob is a tile; on = a lit cream tile on the spectrum.
+   Not coral: settings stack many toggles, and coral stays for focus and the one
+   primary action. --------------------------------------------------------------- */
 input[type='checkbox'].sb-toggle {
     -webkit-appearance: none;
     appearance: none;
@@ -378,9 +383,9 @@ input[type='checkbox'].sb-toggle:checked {
 
 input[type='checkbox'].sb-toggle:checked::after {
     transform: translateX(22px);
-    background: var(--sb-keystone);
-    border-color: var(--sb-keystone);
-    box-shadow: 0 0 12px rgba(var(--sb-coral-rgb), 0.55);
+    background: var(--sb-cream);
+    border-color: var(--sb-cream);
+    box-shadow: 0 0 10px rgba(var(--sb-aqua-rgb), 0.45);
 }
 
 input[type='checkbox'].sb-toggle:focus-visible {

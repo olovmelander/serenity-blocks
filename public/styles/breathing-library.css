@@ -1,303 +1,411 @@
-/* Breathing tab: one featured world, a button that begins, and the twelve worlds as artwork.
-   Each world brings its own accent as --world-accent (r, g, b). */
+/* Breathing tab (Keystone): one featured world with a Begin that begins, the twelve worlds
+   as artwork, the way into Hale sessions, and two preferences. Each world brings its own
+   accent as --world-accent (r, g, b); the chosen world carries the keystone.
+   Shell, tokens (--hub-card-r, --hub-card-fill) and shared patterns: keystone-hub.css. */
 #serenity-hub-panel .breath-lib {
-    --world-accent: 110, 240, 190;
+    --world-accent: var(--sb-mint-rgb);
     display: flex;
     flex-direction: column;
-    gap: 24px;
-    padding: 2px 4px 10px;
-    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-    color: #e9f1ff;
+    gap: 26px;
+    padding: 0;
+    color: var(--sb-text);
+    font-family: var(--sb-font-text);
 }
-#serenity-hub-panel .breath-lib h3 { font-family: inherit; }
-#serenity-hub-panel .breath-lib button { font-family: inherit; }
 
 #serenity-hub-panel .breath-lib__eyebrow {
-    display: block;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     color: rgb(var(--world-accent));
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.16em;
-    line-height: 1.5;
+    font: 600 var(--sb-fs-label) / 1.45 var(--sb-font-display);
+    letter-spacing: var(--sb-track-label);
     text-transform: uppercase;
 }
 
-/* Featured world */
+#serenity-hub-panel .breath-lib__eyebrow::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+/* ---- The featured world --------------------------------------------------------- */
 #serenity-hub-panel .breath-lib__hero {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
-    min-height: 264px;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    min-height: 280px;
     overflow: hidden;
-    border: 1px solid rgba(var(--world-accent), 0.3);
-    border-radius: 20px;
-    background: #070c18;
+    border-radius: var(--hub-card-r);
+    border: 1px solid var(--sb-line);
+    background: var(--hub-card-fill);
 }
+
 #serenity-hub-panel .breath-lib__hero-art {
     position: relative;
-    min-height: 200px;
-    background-color: #0a1222;
+    min-height: 220px;
+    background-color: rgba(var(--sb-night-rgb), 0.8);
     background-position: center;
     background-size: cover;
-    transition: background-image 0.35s ease;
 }
+
+/* The art fades into the panel so the words sit on night, never on the picture. */
 #serenity-hub-panel .breath-lib__hero-art::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, rgba(7, 12, 24, 0) 52%, #070c18 100%);
+    background: linear-gradient(90deg, rgba(19, 16, 44, 0) 55%, rgba(19, 16, 44, 0.96) 100%);
 }
+
 #serenity-hub-panel .breath-lib__hero-body {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 11px;
-    padding: 24px 26px 24px 8px;
-}
-#serenity-hub-panel .breath-lib__name {
-    margin: 0;
-    font-size: 28px;
-    font-weight: 300;
-    letter-spacing: -0.01em;
-    line-height: 1.15;
-    color: #f4f8ff;
-}
-#serenity-hub-panel .breath-lib__description {
-    margin: 0;
-    color: #b6c4db;
-    font-size: 13px;
-    line-height: 1.65;
+    gap: 14px;
+    padding: 28px 30px 28px 14px;
 }
 
-/* The shape of one breath: each phase as wide as it is long. */
-#serenity-hub-panel .breath-rhythm { display: flex; gap: 4px; margin-top: 4px; }
+/* The featured world's line is a sentence, so it reads in sentence case. */
+#serenity-hub-panel .breath-lib__hero .breath-lib__eyebrow {
+    align-items: baseline;
+    font: 600 0.8125rem / 1.45 var(--sb-font-text);
+    letter-spacing: 0.01em;
+    text-transform: none;
+}
+
+#serenity-hub-panel .breath-lib__hero .breath-lib__eyebrow::before {
+    position: relative;
+    top: -1px;
+}
+
+#serenity-hub-panel .breath-lib__name {
+    margin: 0;
+    color: var(--sb-text);
+    font: 700 var(--sb-fs-title) / 1.1 var(--sb-font-display);
+    letter-spacing: -0.01em;
+}
+
+#serenity-hub-panel .breath-lib__description {
+    margin: 0;
+    max-width: 44ch;
+    color: var(--sb-text-muted);
+    font: 500 var(--sb-fs-body) / 1.6 var(--sb-font-text);
+    text-wrap: pretty;
+}
+
+/* The shape of one breath: each phase a cell as long as it lasts. */
+#serenity-hub-panel .breath-rhythm {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+}
+
 #serenity-hub-panel .breath-rhythm__step {
     display: flex;
     flex: 1 1 0;
     flex-direction: column;
-    gap: 2px;
-    min-width: 34px;
-    padding-top: 9px;
-    border-top: 3px solid rgba(var(--world-accent), 0.85);
-    color: #9fb1cc;
-    font-size: 9px;
-    letter-spacing: 0.12em;
+    gap: 7px;
+    min-width: 40px;
+    padding-top: 13px;
+    background: linear-gradient(rgba(var(--world-accent), 0.9), rgba(var(--world-accent), 0.9)) 0 0 / 100% 6px no-repeat;
+    border-radius: 2px;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.2em;
     text-transform: uppercase;
 }
-#serenity-hub-panel .breath-rhythm__step[data-phase="1"],
-#serenity-hub-panel .breath-rhythm__step[data-phase="3"] { border-top-color: rgba(var(--world-accent), 0.3); }
-#serenity-hub-panel .breath-rhythm__step b { font-weight: 600; }
+
+/* Holds and rests are quieter cells. */
+#serenity-hub-panel .breath-rhythm__step[data-phase='1'],
+#serenity-hub-panel .breath-rhythm__step[data-phase='3'] {
+    background-image: linear-gradient(rgba(var(--world-accent), 0.3), rgba(var(--world-accent), 0.3));
+}
+
+#serenity-hub-panel .breath-rhythm__step b {
+    font-weight: 600;
+}
+
 #serenity-hub-panel .breath-rhythm__step em {
-    color: #eef4ff;
-    font-size: 17px;
+    color: var(--sb-text);
+    font: 600 1.125rem / 1 var(--sb-font-display);
     font-style: normal;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0;
     text-transform: none;
 }
-#serenity-hub-panel .breath-rhythm__step small { margin-left: 1px; color: #8fa2bf; font-size: 10px; }
 
-#serenity-hub-panel .breath-lib__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 8px; }
+#serenity-hub-panel .breath-rhythm__step small {
+    margin-left: 2px;
+    color: var(--sb-text-faint);
+    font: 600 0.6875rem / 1 var(--sb-font-display);
+}
+
+#serenity-hub-panel .breath-lib__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 18px;
+    margin-top: 10px;
+}
+
+/* Begin is the tab's one primary action; while a practice runs it becomes a quiet Stop. */
 #serenity-hub-panel .breath-lib__begin {
-    min-height: 44px;
-    padding: 0 22px;
-    border: 1px solid rgba(var(--world-accent), 0.7);
-    border-radius: 999px;
-    background: rgb(var(--world-accent));
-    color: #06101c;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    cursor: pointer;
-    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+    min-width: 200px;
 }
-#serenity-hub-panel .breath-lib__begin:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 26px rgba(var(--world-accent), 0.28);
-}
-#serenity-hub-panel .breath-lib__begin.is-active { background: transparent; color: rgb(var(--world-accent)); }
-#serenity-hub-panel .breath-lib__begin:disabled { opacity: 0.45; cursor: default; }
-#serenity-hub-panel .breath-lib__cycle { color: #8fa2bf; font-size: 11px; }
 
+#serenity-hub-panel .breath-lib__begin.is-active {
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+    box-shadow: none;
+}
+
+#serenity-hub-panel .breath-lib__cycle {
+    color: var(--sb-text-faint);
+    font: 500 var(--sb-fs-small) / 1.4 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- A session owns the rhythm ------------------------------------------------------ */
 #serenity-hub-panel .breath-lib__notice {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 14px;
+    gap: 16px;
     padding: 14px 16px;
-    border: 1px solid rgba(125, 211, 252, 0.3);
-    border-radius: 14px;
-    background: rgba(41, 103, 133, 0.14);
+    border-radius: var(--hub-row-r);
+    border: 1px solid rgba(var(--sb-mint-rgb), 0.3);
+    background: rgba(var(--sb-mint-rgb), 0.06);
 }
-#serenity-hub-panel .breath-lib__notice[hidden] { display: none; }
-#serenity-hub-panel .breath-lib__notice p { display: flex; align-items: center; gap: 8px; margin: 0; color: #c4d6ea; font-size: 12px; }
 
+#serenity-hub-panel .breath-lib__notice p {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 var(--sb-fs-small) / 1.5 var(--sb-font-text);
+}
+
+#serenity-hub-panel .breath-lib__notice .cs-icon {
+    flex: none;
+    color: var(--sb-mint);
+}
+
+/* ---- The twelve worlds -------------------------------------------------------------- */
 #serenity-hub-panel .breath-lib__heading {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    gap: 12px;
-    margin: 0 0 14px;
-    color: #f0f5ff;
-    font-size: 16px;
-    font-weight: 500;
+    gap: 6px 14px;
+    margin: 0 0 16px;
+    color: var(--sb-text);
+    font: 600 var(--sb-fs-heading) / 1.2 var(--sb-font-display);
 }
-#serenity-hub-panel .breath-lib__heading small { color: #8fa2bf; font-size: 11px; font-weight: 400; }
+
+#serenity-hub-panel .breath-lib__heading small {
+    color: var(--sb-text-faint);
+    font: 500 var(--sb-fs-small) / 1.4 var(--sb-font-text);
+}
 
 #serenity-hub-panel .breath-lib__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+    gap: 16px 14px;
 }
+
 #serenity-hub-panel .breath-world {
     position: relative;
     display: flex;
     flex-direction: column;
     min-width: 0;
+    margin: 0;
     padding: 0;
-    overflow: hidden;
-    border: 1px solid rgba(190, 208, 232, 0.14);
-    border-radius: 14px;
-    background: #0a1020;
+    overflow: visible;
+    border-radius: var(--hub-card-r);
+    border: 1px solid var(--sb-line);
+    background: var(--hub-card-fill);
     color: inherit;
     text-align: left;
     cursor: pointer;
-    transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+    transition:
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock);
 }
+
 #serenity-hub-panel .breath-world__art {
     display: block;
     aspect-ratio: 16 / 10;
-    background-color: #0c1426;
+    border-radius: calc(var(--hub-card-r) - 1px) calc(var(--hub-card-r) - 1px) 0 0;
+    background-color: rgba(var(--sb-night-rgb), 0.8);
     background-position: center;
     background-size: cover;
 }
-#serenity-hub-panel .breath-world__name { padding: 10px 12px 2px; color: #f0f5ff; font-size: 13px; font-weight: 600; }
-#serenity-hub-panel .breath-world__meta { padding: 0 12px 12px; color: #93a6c3; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+
+#serenity-hub-panel .breath-world__name {
+    padding: 12px 14px 0;
+    color: var(--sb-text);
+    font: 600 0.8125rem / 1.25 var(--sb-font-display);
+}
+
+#serenity-hub-panel .breath-world__meta {
+    padding: 7px 14px 14px;
+    color: var(--sb-text-faint);
+    font: 500 0.75rem / 1.3 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+}
+
+#serenity-hub-panel .breath-world:hover:not(:disabled) {
+    border-color: var(--sb-line-strong);
+    background:
+        linear-gradient(180deg, rgba(var(--sb-cream-rgb), 0.06), rgba(var(--sb-cream-rgb), 0.02)),
+        rgba(9, 8, 24, 0.32);
+}
+
+/* The chosen world: its own light on the frame, the keystone on its corner. */
+#serenity-hub-panel .breath-world[aria-pressed='true'] {
+    border-color: rgba(var(--world-accent), 0.55);
+    background:
+        linear-gradient(180deg, rgba(var(--world-accent), 0.1), rgba(var(--world-accent), 0.02)),
+        rgba(9, 8, 24, 0.32);
+    box-shadow: none;
+}
+
 #serenity-hub-panel .breath-world__check {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    display: grid;
-    place-items: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    background: rgb(var(--world-accent));
-    color: #06101c;
+    top: -5px;
+    right: -5px;
+    z-index: 1;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: var(--sb-keystone);
+    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
     opacity: 0;
-    transform: scale(0.7);
-    transition: opacity 0.18s ease, transform 0.18s ease;
+    transform: translate3d(0, -10px, 0);
+    pointer-events: none;
+    transition:
+        opacity 120ms linear,
+        transform var(--sb-dur-2) var(--sb-ease-lock);
 }
-#serenity-hub-panel .breath-world:hover:not(:disabled) {
-    border-color: rgba(var(--world-accent), 0.6);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
-}
-#serenity-hub-panel .breath-world[aria-pressed="true"] {
-    border-color: rgb(var(--world-accent));
-    box-shadow: 0 0 0 1px rgb(var(--world-accent)), 0 8px 22px rgba(var(--world-accent), 0.14);
-}
-#serenity-hub-panel .breath-world[aria-pressed="true"] .breath-world__check { opacity: 1; transform: none; }
-#serenity-hub-panel .breath-world:disabled { opacity: 0.5; cursor: default; }
-#serenity-hub-panel .breath-world:focus-visible,
-#serenity-hub-panel .breath-world.gamepad-focused,
-#serenity-hub-panel .breath-lib button:focus-visible { outline: 2px solid #e9f5ff; outline-offset: 3px; }
 
-/* Hale sessions entry */
+#serenity-hub-panel .breath-world[aria-pressed='true'] .breath-world__check {
+    opacity: 1;
+    transform: none;
+}
+
+#serenity-hub-panel .breath-world:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+#serenity-hub-panel .breath-world:focus-visible,
+#serenity-hub-panel .breath-lib button:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+/* ---- The way into Hale sessions ---------------------------------------------------- */
 #serenity-hub-panel .breath-lib__hale {
-    --world-accent: 125, 211, 252;
+    --world-accent: var(--sb-mint-rgb);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 22px;
-    padding: 20px 22px;
-    border: 1px solid rgba(125, 211, 252, 0.26);
-    border-radius: 18px;
-    background: radial-gradient(ellipse at 0% 0%, rgba(94, 234, 212, 0.12), transparent 70%), #0a1626;
+    gap: 24px;
+    padding: 24px 26px;
+    border-radius: var(--hub-card-r);
+    border: 1px solid rgba(var(--sb-mint-rgb), 0.22);
+    background:
+        radial-gradient(70% 140% at 0% 0%, rgba(var(--sb-mint-rgb), 0.1), transparent 70%),
+        var(--hub-card-fill);
 }
-#serenity-hub-panel .breath-lib__hale h3 { margin: 6px 0; color: #eef5ff; font-size: 21px; font-weight: 400; }
-#serenity-hub-panel .breath-lib__hale p { margin: 0; max-width: 460px; color: #aebfd6; font-size: 12px; line-height: 1.65; }
-#serenity-hub-panel .breath-open-sessions {
-    flex-shrink: 0;
-    min-height: 42px;
-    padding: 0 18px;
-    border: 1px solid rgba(152, 213, 244, 0.5);
-    border-radius: 999px;
-    background: rgba(63, 118, 155, 0.24);
-    color: #e3f4ff;
-    font-size: 12px;
-    font-weight: 500;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: background 0.18s ease, border-color 0.18s ease;
-}
-#serenity-hub-panel .breath-open-sessions:hover { border-color: rgba(190, 236, 255, 0.85); background: rgba(63, 118, 155, 0.42); }
 
-/* Preferences */
+#serenity-hub-panel .breath-lib__hale h3 {
+    margin: 12px 0 8px;
+    color: var(--sb-text);
+    font: 700 1.375rem / 1.15 var(--sb-font-display);
+}
+
+#serenity-hub-panel .breath-lib__hale p {
+    max-width: 52ch;
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 var(--sb-fs-small) / 1.6 var(--sb-font-text);
+}
+
+#serenity-hub-panel .breath-open-sessions {
+    flex: none;
+}
+
+/* ---- Preferences ------------------------------------------------------------------- */
 #serenity-hub-panel .breath-lib__settings {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px 22px;
-    padding: 18px 4px 0;
-    border-top: 1px solid rgba(190, 208, 232, 0.12);
-}
-#serenity-hub-panel .breath-lib__switch { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
-#serenity-hub-panel .breath-lib__switch input {
-    appearance: none;
-    flex-shrink: 0;
-    position: relative;
-    width: 38px;
-    height: 22px;
-    margin: 1px 0 0;
-    border: 1px solid rgba(190, 208, 232, 0.3);
-    border-radius: 999px;
-    background: rgba(190, 208, 232, 0.1);
-    cursor: pointer;
-    transition: background 0.18s ease, border-color 0.18s ease;
-}
-#serenity-hub-panel .breath-lib__switch input::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #c8d5e8;
-    transition: transform 0.18s ease, background 0.18s ease;
-}
-#serenity-hub-panel .breath-lib__switch input:checked { border-color: #7dd3fc; background: rgba(125, 211, 252, 0.35); }
-#serenity-hub-panel .breath-lib__switch input:checked::after { background: #f2fbff; transform: translateX(16px); }
-#serenity-hub-panel .breath-lib__switch input:focus-visible { outline: 2px solid #e9f5ff; outline-offset: 3px; }
-#serenity-hub-panel .breath-lib__switch b { display: block; color: #e6eefc; font-size: 13px; font-weight: 500; }
-#serenity-hub-panel .breath-lib__switch small { display: block; margin-top: 3px; color: #8fa2bf; font-size: 11px; line-height: 1.5; }
-#serenity-hub-panel .breath-lib__keys { grid-column: 1 / -1; margin: 4px 0 0; color: #8496b3; font-size: 11px; }
-#serenity-hub-panel .breath-lib__keys kbd {
-    display: inline-block;
-    min-width: 20px;
-    padding: 1px 6px;
-    border: 1px solid rgba(190, 208, 232, 0.25);
-    border-radius: 5px;
-    background: rgba(190, 208, 232, 0.07);
-    color: #c9d6ea;
-    font: inherit;
-    text-align: center;
+    gap: 18px 28px;
+    padding: 22px 0 0;
+    border-top: 1px solid var(--sb-line);
 }
 
-@media (max-width: 640px) {
-    #serenity-hub-panel .breath-lib { gap: 18px; }
-    #serenity-hub-panel .breath-lib__hero { grid-template-columns: 1fr; }
-    #serenity-hub-panel .breath-lib__hero-art { min-height: 150px; }
-    #serenity-hub-panel .breath-lib__hero-art::after { background: linear-gradient(180deg, rgba(7, 12, 24, 0) 50%, #070c18 100%); }
-    #serenity-hub-panel .breath-lib__hero-body { padding: 4px 16px 18px; }
-    #serenity-hub-panel .breath-lib__name { font-size: 23px; }
-    #serenity-hub-panel .breath-lib__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-    #serenity-hub-panel .breath-lib__hale { flex-direction: column; align-items: stretch; gap: 14px; padding: 17px; }
-    #serenity-hub-panel .breath-lib__settings { grid-template-columns: 1fr; }
+#serenity-hub-panel .breath-lib__switch {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    cursor: pointer;
+}
+
+#serenity-hub-panel .breath-lib__switch b {
+    display: block;
+    color: var(--sb-text);
+    font: 600 var(--sb-fs-body) / 1.3 var(--sb-font-text);
+}
+
+#serenity-hub-panel .breath-lib__switch small {
+    display: block;
+    margin-top: 4px;
+    color: var(--sb-text-faint);
+    font: 500 0.75rem / 1.5 var(--sb-font-text);
+}
+
+#serenity-hub-panel .breath-lib__keys {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 18px;
+    margin: 2px 0 0;
+}
+
+#serenity-hub-panel .breath-lib__keys .sb-hints {
+    gap: 8px 18px;
+}
+
+@media (max-width: 700px) {
+    #serenity-hub-panel .breath-lib { gap: 20px; }
+    #serenity-hub-panel .breath-lib__hero { grid-template-columns: minmax(0, 1fr); }
+    #serenity-hub-panel .breath-lib__hero-art { min-height: 160px; }
+
+    #serenity-hub-panel .breath-lib__hero-art::after {
+        background: linear-gradient(180deg, rgba(19, 16, 44, 0) 50%, rgba(19, 16, 44, 0.96) 100%);
+    }
+
+    #serenity-hub-panel .breath-lib__hero-body { padding: 4px 18px 20px; }
+    #serenity-hub-panel .breath-rhythm__step { min-width: 46px; letter-spacing: 0.1em; }
+    #serenity-hub-panel .breath-lib__begin { flex: 1 1 auto; }
+    #serenity-hub-panel .breath-lib__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
+    #serenity-hub-panel .breath-lib__hale { flex-direction: column; align-items: stretch; gap: 16px; padding: 18px; }
+    #serenity-hub-panel .breath-lib__settings { grid-template-columns: minmax(0, 1fr); }
     #serenity-hub-panel .breath-lib__notice { flex-direction: column; align-items: flex-start; }
 }
+
+@media (hover: none) and (pointer: coarse) {
+    #serenity-hub-panel .breath-lib__keys { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-    #serenity-hub-panel .breath-lib *,
-    #serenity-hub-panel .breath-lib *::after { transition: none !important; }
-    #serenity-hub-panel .breath-world:hover:not(:disabled),
-    #serenity-hub-panel .breath-lib__begin:hover:not(:disabled) { transform: none; }
+    #serenity-hub-panel .breath-world,
+    #serenity-hub-panel .breath-world__check {
+        transition-duration: 1ms !important;
+    }
 }

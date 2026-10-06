@@ -207,26 +207,41 @@ export class BreathingGuide {
             node.setAttribute('aria-label', label);
             return node;
         };
+        // A keycap beside a label that never changes (the buttons carry aria-labels).
+        const keycap = (node, key) => {
+            const cap = el('kbd', 'sb-kbd', key);
+            cap.dataset.key = '';
+            cap.setAttribute('aria-hidden', 'true');
+            node.append(cap);
+            return node;
+        };
         this.controls = el('div', 'breath-guide__controls');
         this.previousButton = button('previous', 'Previous world', '‹');
         this.nextButton = button('next', 'Next world', '›');
         this.pauseButton = button('pause', 'Pause session', 'Pause');
-        this.endButton = button('end', 'End breathing', 'End');
+        this.endButton = keycap(button('end', 'End breathing', 'End'), 'Esc');
         this.controls.append(this.previousButton, this.nextButton, this.pauseButton, this.endButton);
         // An open hold ends when you breathe in: this, Space, or a tap anywhere on the world.
-        this.breatheButton = button('breathe', 'Breathe in now', 'Breathe in');
+        this.breatheButton = keycap(button('breathe', 'Breathe in now', 'Breathe in'), 'Space');
         // Ending a long session by accident would be unkind: it asks once, and the session
         // waits while it asks.
         this.confirm = el('div', 'breath-guide__confirm');
         this.confirm.hidden = true;
         this.confirm.setAttribute('role', 'alertdialog');
         this.confirm.setAttribute('aria-label', 'End this session?');
-        this.confirmHint = el('small', 'breath-guide__confirm-hint', 'Gamepad: A keeps going, B ends');
+        // Asked from a pad: the face buttons as keycaps (A keeps going, B ends).
+        this.confirmHint = el('small', 'breath-guide__confirm-hint');
+        this.confirmHint.append(
+            el('kbd', 'sb-kbd', 'A'),
+            el('span', '', 'Keep going'),
+            el('kbd', 'sb-kbd', 'B'),
+            el('span', '', 'End session'),
+        );
         this.confirmHint.hidden = true;
         this.confirm.append(
             el('p', '', 'End this session?'),
             button('confirm-end', 'End session', 'End session'),
-            button('keep-going', 'Keep going', 'Keep going'),
+            keycap(button('keep-going', 'Keep going', 'Keep going'), 'Esc'),
             this.confirmHint,
         );
         this.pausedBadge = el('div', 'breath-guide__paused');

@@ -1,30 +1,42 @@
-/* The breathing guide: a full-screen world, and a quiet layer of words over it.
-   One variable, --breath (0 empty .. 1 full), drives every CSS motion here. */
+/* The breathing guide (#breathing-guide): a full-screen world, and a quiet Keystone layer of
+   words over it. One variable, --breath (0 empty .. 1 full), drives every CSS motion here.
+   Unbounded for the phase, counts and titles; Manrope for what you read; the world's own
+   accent (--breath-accent) for its light; coral only for the one action a moment asks for
+   (Breathe in during an open hold, Keep going when asked to end). No backdrop blur: the
+   world underneath is live. */
 .breath-guide {
     --breath: 0;
     --breath-accent: 110, 240, 190;
-    --breath-ink: 240, 246, 255;
+    --breath-ink: var(--sb-cream-rgb);
+    --sb-accent-rgb: var(--breath-accent);
     position: fixed;
     inset: 0;
     z-index: 600;
     overflow: hidden;
     isolation: isolate;
-    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    font-family: var(--sb-font-text);
     color: rgb(var(--breath-ink));
     background:
         radial-gradient(ellipse at 50% 38%, rgba(var(--breath-accent), 0.13), transparent 62%),
-        #04070f;
+        var(--sb-bg);
     opacity: 0;
     transition: opacity 0.9s ease;
     -webkit-font-smoothing: antialiased;
 }
+
 .breath-guide[hidden] { display: none; }
 .breath-guide.is-open { opacity: 1; }
 .breath-guide.is-leaving { opacity: 0; transition-duration: 0.4s; }
 
+/* On the main menu (a Hale session started from its list) the guide covers the menu. */
+body.start-modal-open .breath-guide {
+    z-index: 1100;
+}
+
 .breath-guide__stage,
 .breath-guide__fallback,
 .breath-guide__scrim { position: absolute; inset: 0; pointer-events: none; }
+
 .breath-guide__canvas {
     position: absolute;
     inset: 0;
@@ -34,11 +46,13 @@
     opacity: 0;
     transition: opacity 0.42s ease;
 }
+
 /* The world arrives slowly and leaves quickly: a blink between worlds, a dawn on entry. */
 .breath-guide.is-live .breath-guide__canvas { opacity: 1; transition-duration: 1.3s; }
 
 /* CSS guide: shown while the world loads, between worlds, and wherever no GPU is available. */
 .breath-guide__fallback { z-index: -1; }
+
 .breath-guide__orb {
     position: absolute;
     left: 50%;
@@ -53,16 +67,18 @@
         transparent 70%);
     will-change: transform;
 }
+
 .breath-guide__orb--ring {
     background: none;
     border: 1px solid rgba(var(--breath-accent), 0.38);
     transform: translate(-50%, -50%) scale(calc(0.62 + var(--breath) * 0.42));
 }
+
 .breath-guide__scrim {
     z-index: 1;
     background:
-        linear-gradient(180deg, rgba(3, 6, 14, 0.62) 0%, rgba(3, 6, 14, 0) 24%),
-        linear-gradient(0deg, rgba(3, 6, 14, 0.86) 0%, rgba(3, 6, 14, 0.5) 22%, rgba(3, 6, 14, 0) 50%);
+        linear-gradient(180deg, rgba(7, 6, 22, 0.62) 0%, rgba(7, 6, 22, 0) 24%),
+        linear-gradient(0deg, rgba(7, 6, 22, 0.86) 0%, rgba(7, 6, 22, 0.5) 22%, rgba(7, 6, 22, 0) 50%);
 }
 
 .breath-guide__header,
@@ -73,97 +89,115 @@
 .breath-guide__confirm,
 .breath-guide__paused { position: absolute; z-index: 2; }
 
+/* ---- Header: the world (or the session's stage) ---------------------------------- */
 .breath-guide__header {
     top: max(4.5vh, 22px);
     left: 50%;
-    width: min(86vw, 640px);
+    width: min(86vw, 660px);
     transform: translateX(-50%);
     text-align: center;
     pointer-events: none;
 }
+
 .breath-guide__eyebrow {
-    margin: 0 0 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px;
     color: rgb(var(--breath-accent));
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.22em;
+    font: 600 var(--sb-fs-label) / 1.4 var(--sb-font-display);
+    letter-spacing: var(--sb-track-label);
     text-transform: uppercase;
     text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
 }
+
+.breath-guide__eyebrow::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+.breath-guide__eyebrow:empty { display: none; }
+
 .breath-guide__title {
     margin: 0;
-    font-size: clamp(20px, 2.6vw, 30px);
-    font-weight: 300;
-    letter-spacing: 0.01em;
-    line-height: 1.2;
+    font: 700 clamp(22px, 2.5vw, 32px) / 1.15 var(--sb-font-display);
+    letter-spacing: -0.005em;
     text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75);
 }
+
 .breath-guide__note {
-    margin: 9px auto 0;
     max-width: 520px;
+    margin: 10px auto 0;
     color: rgba(var(--breath-ink), 0.74);
-    font-size: clamp(12px, 1.15vw, 14px);
-    line-height: 1.6;
+    font: 500 clamp(13px, 1.1vw, 15px) / 1.6 var(--sb-font-text);
     text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8);
 }
 
+/* ---- The cue: what to do now ------------------------------------------------------- */
 .breath-guide__cue {
     left: 50%;
     bottom: clamp(104px, 17vh, 168px);
-    width: min(90vw, 560px);
+    width: min(90vw, 600px);
     transform: translateX(-50%);
     text-align: center;
     pointer-events: none;
 }
+
 .breath-guide__phase {
-    font-size: clamp(30px, 4.6vw, 52px);
-    font-weight: 200;
-    letter-spacing: 0.02em;
-    line-height: 1.1;
+    font: 600 clamp(30px, 4.2vw, 50px) / 1.1 var(--sb-font-display);
+    letter-spacing: -0.01em;
     text-shadow: 0 2px 26px rgba(0, 0, 0, 0.8);
 }
+
 .breath-guide__count {
     min-height: 1.3em;
-    margin-top: 4px;
+    margin-top: 8px;
     color: rgb(var(--breath-accent));
-    font-size: clamp(20px, 2.4vw, 28px);
-    font-weight: 300;
+    font: 600 clamp(22px, 2.3vw, 30px) / 1.2 var(--sb-font-display);
     font-variant-numeric: tabular-nums;
     text-shadow: 0 1px 14px rgba(0, 0, 0, 0.8);
 }
+
 .breath-guide__hint {
-    margin-top: 2px;
-    color: rgba(var(--breath-ink), 0.66);
-    font-size: clamp(12px, 1.1vw, 14px);
-    letter-spacing: 0.03em;
+    margin-top: 4px;
+    color: rgba(var(--breath-ink), 0.7);
+    font: 500 clamp(13px, 1.1vw, 15px) / 1.5 var(--sb-font-text);
     text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
 }
+
 .breath-guide.is-wordless .breath-guide__cue { display: none; }
 
-/* The whole breath at a glance: each phase as long as it lasts, filling as it passes. */
+/* ---- The whole breath at a glance: a cell per phase, filling as it passes ----------- */
 .breath-guide__cycle {
     left: 50%;
     bottom: clamp(52px, 8.5vh, 84px);
     display: flex;
-    gap: 5px;
-    width: min(82vw, 440px);
+    gap: 4px;
+    width: min(82vw, 460px);
     transform: translateX(-50%);
     pointer-events: none;
 }
+
 .breath-guide__segment {
     position: relative;
     flex: 1 1 0;
     min-width: 30px;
-    padding-top: 10px;
+    padding-top: 14px;
     color: rgba(var(--breath-ink), 0.5);
-    font-size: 10px;
-    letter-spacing: 0.14em;
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.2em;
     text-align: center;
     text-transform: uppercase;
     white-space: nowrap;
     transition: color 0.4s ease;
 }
+
 .breath-guide__segment[hidden] { display: none; }
+
 .breath-guide__segment::before,
 .breath-guide__segment i {
     content: '';
@@ -171,57 +205,85 @@
     top: 0;
     left: 0;
     width: 100%;
-    height: 3px;
-    border-radius: 3px;
+    height: 6px;
+    border-radius: 2px;
 }
-.breath-guide__segment::before { background: rgba(var(--breath-ink), 0.2); }
+
+.breath-guide__segment::before { background: rgba(var(--breath-ink), 0.16); }
+
 .breath-guide__segment i {
     background: rgb(var(--breath-accent));
     transform: scaleX(0);
     transform-origin: left center;
-    box-shadow: 0 0 10px rgba(var(--breath-accent), 0.55);
+    box-shadow: 0 0 10px rgba(var(--breath-accent), 0.5);
 }
-.breath-guide__segment b { font-weight: 600; }
-.breath-guide__segment em { margin-left: 5px; font-style: normal; font-variant-numeric: tabular-nums; opacity: 0.75; }
-.breath-guide__segment[data-active="true"] { color: rgb(var(--breath-ink)); }
 
-/* A session's journey sits where the standalone guide leaves the bottom edge free. */
+.breath-guide__segment b { font-weight: 600; }
+
+.breath-guide__segment em {
+    margin-left: 6px;
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
+}
+
+.breath-guide__segment[data-active='true'] { color: rgb(var(--breath-ink)); }
+
+/* ---- A session's journey: one cell per stage --------------------------------------- */
 .breath-guide__journey {
     left: 50%;
     bottom: max(2.2vh, 14px);
-    width: min(90vw, 720px);
+    width: min(90vw, 760px);
     transform: translateX(-50%);
     pointer-events: none;
 }
+
 .breath-guide__journey[hidden] { display: none; }
+
 .breath-guide__journey-status {
     display: flex;
     align-items: baseline;
-    gap: 12px;
-    margin-bottom: 8px;
-    font-size: 11px;
-    letter-spacing: 0.05em;
+    gap: 14px;
+    margin-bottom: 10px;
+    font: 500 0.8125rem / 1.2 var(--sb-font-text);
     text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
 }
+
 .breath-guide__journey-stage {
     color: rgb(var(--breath-accent));
-    font-weight: 600;
+    font: 600 0.625rem / 1 var(--sb-font-display);
     letter-spacing: 0.2em;
     text-transform: uppercase;
 }
-.breath-guide__journey-detail { color: rgba(var(--breath-ink), 0.88); font-variant-numeric: tabular-nums; }
-.breath-guide__journey-remaining { margin-left: auto; color: rgba(var(--breath-ink), 0.6); }
-.breath-guide__journey-track { display: flex; gap: 3px; }
+
+.breath-guide__journey-detail {
+    color: rgba(var(--breath-ink), 0.88);
+    font-variant-numeric: tabular-nums;
+}
+
+.breath-guide__journey-remaining {
+    margin-left: auto;
+    color: rgba(var(--breath-ink), 0.6);
+    font-variant-numeric: tabular-nums;
+}
+
+.breath-guide__journey-track {
+    display: flex;
+    gap: 3px;
+}
+
 .breath-guide__journey-mark {
     position: relative;
     flex: 1 1 0;
     min-width: 4px;
-    height: 3px;
+    height: 5px;
     overflow: hidden;
-    border-radius: 3px;
+    border-radius: 2px;
     background: rgba(var(--breath-ink), 0.16);
 }
-.breath-guide__journey-mark[data-type="retention"] { background: rgba(var(--breath-ink), 0.09); }
+
+.breath-guide__journey-mark[data-type='retention'] { background: rgba(var(--breath-ink), 0.09); }
+
 .breath-guide__journey-mark b {
     position: absolute;
     inset: 0;
@@ -229,44 +291,98 @@
     transform: scaleX(0);
     transform-origin: left center;
 }
-.breath-guide__journey-mark[data-state="done"] b { transform: scaleX(1); opacity: 0.55; }
+
+.breath-guide__journey-mark[data-state='done'] b { transform: scaleX(1); opacity: 0.55; }
+
 .breath-guide.is-session .breath-guide__cue { bottom: clamp(128px, 21vh, 196px); }
 .breath-guide.is-session .breath-guide__cycle { bottom: clamp(76px, 12.5vh, 112px); }
 
+/* ---- Controls: tile buttons in the top-right corner ---------------------------------- */
 .breath-guide__controls {
     top: max(3vh, 16px);
     right: max(1.6vw, 14px);
     display: flex;
     gap: 8px;
 }
+
 .breath-guide__button {
-    min-width: 40px;
-    min-height: 40px;
-    padding: 0 14px;
-    border: 1px solid rgba(var(--breath-ink), 0.2);
-    border-radius: 999px;
-    background: rgba(6, 11, 22, 0.5);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(var(--breath-ink), 0.22);
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.78), rgba(12, 10, 30, 0.84));
     color: rgba(var(--breath-ink), 0.86);
-    font: inherit;
-    font-size: 12px;
-    letter-spacing: 0.06em;
+    font: 600 0.6875rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
     cursor: pointer;
-    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock);
 }
-.breath-guide__button:hover,
-.breath-guide__button:focus-visible {
-    border-color: rgba(var(--breath-accent), 0.75);
-    background: rgba(var(--breath-accent), 0.16);
+
+.breath-guide__button:hover {
+    border-color: rgba(var(--breath-ink), 0.4);
+    background: linear-gradient(180deg, rgba(38, 33, 80, 0.86), rgba(16, 13, 38, 0.9));
     color: rgb(var(--breath-ink));
 }
-.breath-guide__button:focus-visible { outline: 2px solid rgb(var(--breath-accent)); outline-offset: 3px; }
+
+.breath-guide__button:active { transform: translateY(1px); }
+
+.breath-guide__button:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+.breath-guide__button .sb-kbd {
+    min-width: 20px;
+    height: 20px;
+    font-size: 0.625rem;
+}
+
 .breath-guide__button--previous,
-.breath-guide__button--next { padding: 0; font-size: 20px; line-height: 1; }
+.breath-guide__button--next {
+    padding: 0;
+    font: 500 1.25rem / 1 var(--sb-font-display);
+    letter-spacing: 0;
+}
+
 .breath-guide__button--pause { display: none; }
-.breath-guide.is-session .breath-guide__button--pause { display: inline-block; }
+.breath-guide.is-session .breath-guide__button--pause { display: inline-flex; }
+
 .breath-guide.is-session .breath-guide__button--previous,
 .breath-guide.is-session .breath-guide__button--next { display: none; }
 
+/* The keystone action of a moment: coral, like every primary button. */
+.breath-guide__button--keep-going,
+.breath-guide__button--breathe {
+    border-color: transparent;
+    background: var(--sb-keystone);
+    color: var(--sb-keystone-ink);
+    box-shadow: 0 12px 32px rgba(var(--sb-coral-rgb), 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.breath-guide__button--keep-going:hover,
+.breath-guide__button--breathe:hover {
+    border-color: transparent;
+    background: #ffbb9c;
+    color: var(--sb-keystone-ink);
+}
+
+.breath-guide__button--keep-going .sb-kbd,
+.breath-guide__button--breathe .sb-kbd {
+    border-color: rgba(43, 19, 8, 0.16);
+    background: rgba(43, 19, 8, 0.12);
+    color: var(--sb-keystone-ink);
+}
+
+/* ---- Asked to end: a small Keystone sheet; the session waits ------------------------- */
 .breath-guide__confirm {
     top: 50%;
     left: 50%;
@@ -274,41 +390,80 @@
     flex-wrap: wrap;
     justify-content: center;
     gap: 10px;
-    width: min(88vw, 340px);
-    padding: 22px;
+    width: min(88vw, 380px);
+    padding: 26px 24px 22px;
     transform: translate(-50%, -50%);
-    border: 1px solid rgba(var(--breath-ink), 0.16);
-    border-radius: 18px;
-    background: rgba(6, 11, 22, 0.9);
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+    border-radius: var(--sb-r-lg);
+    border: 1px solid var(--sb-line);
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.96), rgba(12, 10, 30, 0.97));
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
     text-align: center;
 }
+
 .breath-guide__confirm[hidden] { display: none; }
-.breath-guide__confirm p { flex: 1 0 100%; margin: 0 0 6px; font-size: 17px; font-weight: 300; }
-.breath-guide__button--keep-going {
-    border-color: rgba(var(--breath-accent), 0.6);
-    background: rgba(var(--breath-accent), 0.2);
+
+.breath-guide__confirm p {
+    flex: 1 0 100%;
+    margin: 0 0 10px;
+    font: 600 var(--sb-fs-heading) / 1.3 var(--sb-font-display);
 }
+
+.breath-guide__button--confirm-end {
+    color: var(--sb-danger);
+    border-color: rgba(var(--sb-danger-rgb), 0.4);
+}
+
+.breath-guide__button--confirm-end:hover {
+    color: var(--sb-danger);
+    border-color: rgba(var(--sb-danger-rgb), 0.7);
+}
+
+.breath-guide__confirm-hint {
+    display: flex;
+    flex: 1 0 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 6px;
+    color: rgba(var(--breath-ink), 0.6);
+    font: 500 0.75rem / 1.4 var(--sb-font-text);
+}
+
+.breath-guide__confirm-hint span + .sb-kbd {
+    margin-left: 10px;
+}
+
+.breath-guide__confirm-hint[hidden] { display: none; }
+
 .breath-guide__paused {
     top: 40%;
     left: 50%;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
-    padding: 11px 24px 10px;
+    gap: 7px;
+    padding: 14px 24px 13px;
     transform: translate(-50%, -50%);
+    border-radius: var(--sb-r-md);
     border: 1px solid rgba(var(--breath-ink), 0.22);
-    border-radius: 18px;
-    background: rgba(6, 11, 22, 0.66);
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.82), rgba(12, 10, 30, 0.88));
     text-align: center;
 }
-.breath-guide__paused b { font-size: 12px; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase; }
-.breath-guide__paused small { color: rgba(var(--breath-ink), 0.7); font-size: 11px; letter-spacing: 0.02em; }
+
+.breath-guide__paused b {
+    font: 600 0.75rem / 1 var(--sb-font-display);
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+}
+
+.breath-guide__paused small {
+    color: rgba(var(--breath-ink), 0.7);
+    font: 500 0.75rem / 1.3 var(--sb-font-text);
+}
+
 .breath-guide__paused[hidden] { display: none; }
 .breath-guide.is-confirming .breath-guide__paused { display: none; }
-.breath-guide__confirm-hint { flex: 1 0 100%; margin-top: 4px; color: rgba(var(--breath-ink), 0.6); font-size: 11px; }
-.breath-guide__confirm-hint[hidden] { display: none; }
+
 .breath-guide.is-paused .breath-guide__canvas,
 .breath-guide.is-paused .breath-guide__cue,
 .breath-guide.is-paused .breath-guide__cycle,
@@ -327,64 +482,73 @@
 /* The intention you chose, as you arrive and as you rest. */
 .breath-guide__intention {
     display: none;
-    margin: 12px auto 0;
+    margin: 14px auto 0;
     color: rgb(var(--breath-accent));
-    font-size: 12px;
-    letter-spacing: 0.08em;
+    font: 600 0.8125rem / 1.4 var(--sb-font-text);
     text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
 }
-.breath-guide[data-session-phase="grounding"] .breath-guide__intention:not([hidden]),
-.breath-guide[data-session-phase="integration"] .breath-guide__intention:not([hidden]) { display: block; }
 
-/* A round's title card: large, centred over the world, gone in a few seconds. */
+.breath-guide[data-session-phase='grounding'] .breath-guide__intention:not([hidden]),
+.breath-guide[data-session-phase='integration'] .breath-guide__intention:not([hidden]) { display: block; }
+
+/* ---- A round's title card: large, centred over the world, gone in a few seconds ------ */
 .breath-guide__chapter {
     position: absolute;
     z-index: 2;
     top: 38%;
     left: 50%;
-    width: min(90vw, 760px);
+    width: min(90vw, 780px);
     transform: translate(-50%, -50%);
     text-align: center;
     pointer-events: none;
     opacity: 0;
 }
+
 .breath-guide__chapter p { margin: 0; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 2px 30px rgba(0, 0, 0, 0.75); }
+
 /* A soft dusk behind the card keeps it readable over the brightest worlds (sunlit water, a star). */
 .breath-guide__chapter::before {
     content: '';
     position: absolute;
     z-index: -1;
     inset: -45% -12%;
-    background: radial-gradient(closest-side, rgba(3, 6, 14, 0.5), rgba(3, 6, 14, 0.22) 55%, transparent);
+    background: radial-gradient(closest-side, rgba(7, 6, 22, 0.5), rgba(7, 6, 22, 0.22) 55%, transparent);
     pointer-events: none;
 }
+
 .breath-guide__chapter-eyebrow {
     color: rgb(var(--breath-accent));
-    font-size: 12px;
-    font-weight: 600;
+    font: 600 0.75rem / 1 var(--sb-font-display);
     letter-spacing: 0.32em;
     text-transform: uppercase;
 }
+
 .breath-guide__chapter-title {
-    margin-top: 10px !important;
-    font-size: clamp(38px, 6.4vw, 78px);
-    font-weight: 200;
-    letter-spacing: -0.01em;
-    line-height: 1.04;
+    margin-top: 14px !important;
+    font: 700 clamp(38px, 6vw, 76px) / 1.04 var(--sb-font-display);
+    letter-spacing: -0.015em;
 }
-.breath-guide__chapter-note { margin-top: 14px !important; color: rgba(var(--breath-ink), 0.86); font-size: clamp(13px, 1.3vw, 16px); letter-spacing: 0.04em; }
+
+.breath-guide__chapter-note {
+    margin-top: 16px !important;
+    color: rgba(var(--breath-ink), 0.86);
+    font: 500 clamp(14px, 1.3vw, 17px) / 1.5 var(--sb-font-text);
+}
+
 .breath-guide__chapter.is-showing { animation: breath-guide-chapter 3.6s ease both; }
+
 @keyframes breath-guide-chapter {
-    0% { opacity: 0; transform: translate(-50%, calc(-50% + 14px)); filter: blur(6px); }
-    18% { opacity: 1; transform: translate(-50%, -50%); filter: blur(0); }
-    74% { opacity: 1; transform: translate(-50%, -50%); filter: blur(0); }
-    100% { opacity: 0; transform: translate(-50%, calc(-50% - 10px)); filter: blur(4px); }
+    0% { opacity: 0; transform: translate(-50%, calc(-50% + 14px)); }
+    18% { opacity: 1; transform: translate(-50%, -50%); }
+    74% { opacity: 1; transform: translate(-50%, -50%); }
+    100% { opacity: 0; transform: translate(-50%, calc(-50% - 10px)); }
 }
+
 /* While the card speaks, the header steps back so the two never compete. */
 .breath-guide__header { transition: opacity 0.6s ease; }
 .breath-guide.is-chaptering .breath-guide__header { opacity: 0.12; }
 
-/* The hold dial: a ring filling toward the suggested length, the time inside it. */
+/* ---- The hold dial: a ring filling toward the suggested length, the time inside ------- */
 .breath-guide__hold {
     position: relative;
     display: none;
@@ -393,6 +557,7 @@
     aspect-ratio: 1;
     margin: 14px auto 10px;
 }
+
 .breath-guide__hold-ring {
     position: absolute;
     inset: 0;
@@ -403,103 +568,111 @@
     filter: drop-shadow(0 0 10px rgba(var(--breath-accent), 0.45));
     transition: filter 0.8s ease;
 }
+
 .breath-guide__hold-time {
     position: relative;
     margin-top: -6px;
-    font-size: clamp(30px, 4.4vh, 40px);
-    font-weight: 200;
+    font: 600 clamp(28px, 4vh, 38px) / 1 var(--sb-font-display);
     font-variant-numeric: tabular-nums;
-    letter-spacing: 0.02em;
     text-shadow: 0 2px 20px rgba(0, 0, 0, 0.8);
 }
+
 .breath-guide__hold-label {
     position: absolute;
-    bottom: 26%;
+    bottom: 25%;
     left: 0;
     right: 0;
     color: rgba(var(--breath-ink), 0.66);
-    font-size: 10px;
-    letter-spacing: 0.08em;
+    font: 600 0.5rem / 1 var(--sb-font-display);
+    letter-spacing: 0.16em;
     text-transform: uppercase;
 }
-.breath-guide[data-guidance="open-hold"] .breath-guide__hold,
-.breath-guide[data-guidance="timed-hold"] .breath-guide__hold { display: grid; }
+
+.breath-guide[data-guidance='open-hold'] .breath-guide__hold,
+.breath-guide[data-guidance='timed-hold'] .breath-guide__hold { display: grid; }
+
 .breath-guide.is-hold-ready .breath-guide__hold-ring {
     filter: drop-shadow(0 0 16px rgba(var(--breath-accent), 0.85));
     animation: breath-guide-ready 2.8s ease-in-out infinite;
 }
+
 @keyframes breath-guide-ready {
     0%, 100% { opacity: 0.8; }
     50% { opacity: 1; }
 }
 
 /* Stages that are not counted breaths: no count, no cycle bar, the world keeps breathing. */
-.breath-guide[data-guidance="open-hold"] .breath-guide__count,
-.breath-guide[data-guidance="timed-hold"] .breath-guide__count,
-.breath-guide[data-guidance="carry"] .breath-guide__count,
-.breath-guide[data-guidance="natural"] .breath-guide__count,
-.breath-guide[data-guidance="closing"] .breath-guide__count { display: none; }
-.breath-guide__cycle { transition: opacity 0.8s ease; }
-.breath-guide[data-guidance="open-hold"] .breath-guide__cycle,
-.breath-guide[data-guidance="timed-hold"] .breath-guide__cycle,
-.breath-guide[data-guidance="carry"] .breath-guide__cycle,
-.breath-guide[data-guidance="natural"] .breath-guide__cycle,
-.breath-guide[data-guidance="closing"] .breath-guide__cycle { opacity: 0; }
-.breath-guide[data-guidance="natural"] .breath-guide__phase,
-.breath-guide[data-guidance="closing"] .breath-guide__phase,
-.breath-guide[data-guidance="carry"] .breath-guide__phase,
-.breath-guide.is-hold-ready .breath-guide__phase { font-size: clamp(26px, 3.6vw, 40px); }
+.breath-guide[data-guidance='open-hold'] .breath-guide__count,
+.breath-guide[data-guidance='timed-hold'] .breath-guide__count,
+.breath-guide[data-guidance='carry'] .breath-guide__count,
+.breath-guide[data-guidance='natural'] .breath-guide__count,
+.breath-guide[data-guidance='closing'] .breath-guide__count { display: none; }
 
-/* An open hold ends when you breathe in: a wide, calm button where the cycle bar was. */
+.breath-guide__cycle { transition: opacity 0.8s ease; }
+
+.breath-guide[data-guidance='open-hold'] .breath-guide__cycle,
+.breath-guide[data-guidance='timed-hold'] .breath-guide__cycle,
+.breath-guide[data-guidance='carry'] .breath-guide__cycle,
+.breath-guide[data-guidance='natural'] .breath-guide__cycle,
+.breath-guide[data-guidance='closing'] .breath-guide__cycle { opacity: 0; }
+
+.breath-guide[data-guidance='natural'] .breath-guide__phase,
+.breath-guide[data-guidance='closing'] .breath-guide__phase,
+.breath-guide[data-guidance='carry'] .breath-guide__phase,
+.breath-guide.is-hold-ready .breath-guide__phase { font-size: clamp(26px, 3.4vw, 40px); }
+
+/* An open hold ends when you breathe in: a wide primary button where the cycle bar was. */
 .breath-guide__button--breathe {
     position: absolute;
     z-index: 2;
     left: 50%;
     bottom: clamp(70px, 11.5vh, 104px);
     display: none;
-    min-width: 200px;
-    min-height: 50px;
+    min-width: 220px;
+    min-height: 52px;
     padding: 0 30px;
     transform: translateX(-50%);
-    border-color: rgba(var(--breath-accent), 0.6);
-    background: rgba(var(--breath-accent), 0.14);
-    color: rgb(var(--breath-ink));
-    font-size: 14px;
-    letter-spacing: 0.08em;
-    backdrop-filter: blur(6px);
+    font-size: 0.75rem;
 }
-.breath-guide[data-guidance="open-hold"] .breath-guide__button--breathe { display: inline-block; }
+
+.breath-guide__button--breathe:active { transform: translateX(-50%) translateY(1px); }
+
+.breath-guide[data-guidance='open-hold'] .breath-guide__button--breathe { display: inline-flex; }
+
 .breath-guide.is-hold-ready .breath-guide__button--breathe {
-    border-color: rgb(var(--breath-accent));
-    background: rgba(var(--breath-accent), 0.3);
-    box-shadow: 0 0 34px rgba(var(--breath-accent), 0.4);
+    box-shadow: 0 0 34px rgba(var(--sb-coral-rgb), 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
-.breath-guide[data-guidance="open-hold"] { cursor: pointer; }
-.breath-guide[data-guidance="open-hold"] .breath-guide__cue { bottom: clamp(140px, 23vh, 216px); }
+
+.breath-guide[data-guidance='open-hold'] { cursor: pointer; }
+.breath-guide[data-guidance='open-hold'] .breath-guide__cue { bottom: clamp(140px, 23vh, 216px); }
 
 @media (max-width: 600px) {
     .breath-guide__header { top: max(5vh, 54px); }
-    .breath-guide__eyebrow { font-size: 10px; letter-spacing: 0.18em; }
+    .breath-guide__eyebrow { letter-spacing: 0.16em; }
     .breath-guide__controls { top: max(1.4vh, 10px); right: 10px; gap: 6px; }
-    .breath-guide__button { min-width: 38px; min-height: 38px; padding: 0 12px; }
-    .breath-guide__segment { font-size: 9px; letter-spacing: 0.1em; }
+    .breath-guide__button { min-width: 40px; min-height: 40px; padding: 0 12px; }
+    .breath-guide__button .sb-kbd { display: none; }
+    .breath-guide__segment { letter-spacing: 0.12em; }
     .breath-guide__journey-remaining { display: none; }
+
     /* The Hub's lotus and the settings button sit in the bottom-right corner: stay clear of them. */
     .breath-guide__cycle,
     .breath-guide__journey { left: 20px; width: calc(100vw - 108px); transform: none; }
+
     .breath-guide__button--breathe { left: 20px; min-width: 0; width: calc(100vw - 108px); transform: none; }
+    .breath-guide__button--breathe:active { transform: translateY(1px); }
     .breath-guide__chapter { top: 36%; }
-    .breath-guide__chapter-eyebrow { font-size: 10.5px; letter-spacing: 0.26em; }
+    .breath-guide__chapter-eyebrow { font-size: 0.625rem; letter-spacing: 0.26em; }
 }
+
 @media (max-height: 520px) and (orientation: landscape) {
     .breath-guide__header { top: 10px; }
-    .breath-guide__eyebrow { margin-bottom: 3px; }
+    .breath-guide__eyebrow { margin-bottom: 4px; }
     .breath-guide__title { font-size: 17px; }
     .breath-guide__note { display: none; }
     .breath-guide__cue { bottom: 74px; }
-    .breath-guide__phase { font-size: 26px; }
+    .breath-guide__phase { display: inline-block; font-size: 24px; }
     .breath-guide__count { display: inline-block; min-height: 0; margin: 0 0 0 10px; font-size: 18px; }
-    .breath-guide__phase { display: inline-block; }
     .breath-guide__hint { display: none; }
     .breath-guide__cycle { bottom: 34px; }
     .breath-guide.is-session .breath-guide__cue { bottom: 96px; }
@@ -510,17 +683,23 @@
     .breath-guide__hold { width: 84px; margin: 4px auto; }
     .breath-guide__hold-time { font-size: 22px; }
     .breath-guide__hold-label { display: none; }
-    .breath-guide[data-guidance="open-hold"] .breath-guide__cue { bottom: 92px; }
+    .breath-guide[data-guidance='open-hold'] .breath-guide__cue { bottom: 92px; }
     .breath-guide__button--breathe { bottom: 44px; min-height: 40px; }
     .breath-guide__chapter-title { font-size: 34px; }
     .breath-guide__intention { margin-top: 4px; }
 }
+
+@media (hover: none) and (pointer: coarse) {
+    .breath-guide .sb-kbd { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .breath-guide,
     .breath-guide * { transition: none !important; }
     .breath-guide__chapter.is-showing { animation-name: breath-guide-chapter-still; }
     .breath-guide.is-hold-ready .breath-guide__hold-ring { animation: none; }
 }
+
 @keyframes breath-guide-chapter-still {
     0%, 100% { opacity: 0; }
     12%, 82% { opacity: 1; }
