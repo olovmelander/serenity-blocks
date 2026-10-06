@@ -1196,10 +1196,15 @@ export class SteamNetworking {
             }));
         }
 
-        // Real Steam mode via steamworks.js preload API
+        // Real Steam mode via steamworks.js preload API. Its member counts are BigInt and
+        // IPC keeps them so; everything downstream does arithmetic and JSON on them.
         try {
             const lobbies = await ipcRenderer.invoke('steam:getLobbies');
-            return lobbies;
+            return (Array.isArray(lobbies) ? lobbies : []).map((lobby) => ({
+                ...lobby,
+                players: Number(lobby.players) || 0,
+                maxPlayers: Number(lobby.maxPlayers) || 0,
+            }));
         } catch (err) {
             console.error('❌ Failed to get lobbies:', err);
             return [];

@@ -756,6 +756,115 @@ start a frame late on a slow device. Bright-edged textures keep their last rows 
 so a wrapping sampler never carries the bright foot to the top. Light that crosses
 cells stays a shade under white so the cells' colours read through it.
 
+### 5.9 Online versus (`keystone-online.css`)
+
+**Audit (October 2026).** Every online surface captured on the mock Steam transport
+(two and three browser windows on `?localMp=host|join|watch|browse`, and the game's
+`testLobby(n)`, `testMultiplayer(n)` and `testPostMatch(n)` helpers) at 1280 × 720,
+1366 × 768, 1600 × 900, 1920 × 1080 and 390 × 844: the lobby browser (empty, with an
+open match, with a match under way), Create a match, the waiting room (alone, two,
+four, eight players, ready and not), the countdown, play with 1, 3 and 7 opponents,
+a spectator, a mid-match drop-in, Esc in a match, a peer that drops, a knock-out, a
+round ending and a match won by a cascade, and the results for host and peer.
+
+The screens before a match (lobby browser, Create a match, waiting room) and the results
+already speak Keystone (§5.2). The match itself never got past type and colour, and its
+round and match endings cut the moments the board effects build:
+
+1. **Your board is small and the stage is empty.** Three fixed columns: a 400 px watch
+   panel, a 320 px rail, your board centred in what is left — 245 px wide at
+   1600 × 900 (a 24.5 px block, about half the window's height), with 280–330 px of
+   nothing on each side of it.
+2. **Opponents hide.** The watch panel shows four at most; in a five-to-eight player
+   match up to three opponents are off screen behind Select. Tiles keep one size
+   whatever the count, a lone third tile leaves a hole, and in a duel the opponent is a
+   side tile (with "Watching 1/4") rather than your peer.
+3. **The watch header is noise:** Auto Watch, an AUTO badge, "Watching n/4" and Select,
+   in mixed case; "Auto Watch" wraps at 1280 × 720.
+4. **Your board is a closed neon box**, not the open-top well of every other mode: a
+   coloured border round the whole card plus one round the board (inline styles from
+   `OnlineMultiplayerMode`), a garbage meter standing apart with a gap (fixed in local
+   versus), and five icon-only stats in five colours under it (the trophy reads as
+   wins).
+5. **Opponent tiles** repeat it small: full neon rectangles, a gap-separated meter, the
+   name and "0 frags" under the board.
+6. **The rail** keeps a large battle log and an always-open chat (old "SEND" button)
+   empty for most of a match.
+7. **Rounds end without an ending.** The host restarts the round the moment one player
+   is left: the knocked-out board never drains, no Out card, no round won — in a duel,
+   every knock-out — then the old "ROUND START / ROUND 2" stinger (sci-fi type in a box).
+8. **Matches end mid-move.** The results cover the boards about a second after the
+   deciding move, cutting its effects; local versus holds a 2.4 s victory beat first.
+9. **The results table overflows:** twelve columns, the last one cut at 1600 × 900,
+   several of them zero for most matches.
+10. **The lobby browser** puts Join by ID above the list of matches it is for.
+11. **Phones** (390 × 844): the watch header overlaps your board, the opponents and the
+    rail are off screen. The sheets before and after a match stack correctly.
+12. **Bugs:** a mid-match drop-in throws `Cannot read properties of null (reading
+    'setPlayers')` (a player list can arrive before the watch manager exists); the
+    drop-in banner and the board frame are inline styles.
+
+**The stage** (`src/ui/online-versus-layout.js`, `src/ui/online-versus-hud.js`,
+`keystone-online.css`). One solver sizes everything from the window and the roster, as
+local versus does, and hands the sizes to the stylesheet as variables:
+
+- **Your station is the hero, in the middle of the window** (findings 1, 4). Two equal
+  columns stand beside it, so it stays centred whatever is in them. It has local
+  versus' anatomy: a plate (your name, "You", and the number that decides the match
+  with its unit — frags, points or lines), the next queue over the well's open top, the
+  open-top well (walls in your colour fading toward the top), the garbage meter just
+  outside the left wall, and one line of stats under the board (the two numbers the
+  plate leaves, and the garbage waiting). At 1600 × 900 your board is 330 px wide (a
+  33 px block; 245 px before).
+- **Every opponent stays on screen** (findings 2, 3, 5): the field in the left column,
+  up to seven, each a smaller station of the same make (plate, next piece — the whole
+  queue on large stations — open-top well, meter outside the left wall). The grid that
+  gives the largest boards wins; opponents keep 34–64 % of your block by roster size,
+  and a duel's opponent stands at your size. Small stations show the frag count as the
+  number alone, so the name keeps its room. The watch header (Auto Watch, AUTO,
+  Watching n/4, Select) is gone: there is nothing left to pick.
+- **A match bar** at the top centre: the mode, the goal, the round, and how many are
+  still in.
+- **The rail** (finding 6) keeps the column on the right: scoreboard (a frag lights its
+  row), battle log, chat with the lobby's field and send.
+- **A spectator** gets the spotlight in your station's place: a plate naming who they
+  watch, then that board in an open-top well in the player's colour.
+- **Narrow and tall windows** (finding 11) stack: the field in a row over your station,
+  no rail. Nothing passes the window from 390 × 844 to 3840 × 2160 with 0–7 opponents
+  (`tests/unit/online-versus-layout.test.js`).
+
+**The endings** (findings 7, 8; `ffa-round-policy.js`, `online-versus-hud.js`):
+
+- **A round-over beat.** The host holds the round's end for 2.4 s
+  (`ROUND_OVER_BEAT_MS`) before `restartMatch()`, heartbeat kept, fenced by the round's
+  generation, the phase and disposal; every client hears the round end (the host
+  locally, peers from the match-end message).
+- **The knock-out shows from the death message itself** — the round's last one
+  included — and stays Out against a late snapshot until the round resets; the Out
+  card keeps who did it when the field is rebuilt.
+- **A round banner** over your station in the taker's colour: "Round 2 · You take it ·
+  Next round in a moment", "Round 2 · *name* · takes the round" (a long name whole, set
+  smaller), or "A draw"; your board celebrates when it was you. As the next round
+  starts, its number and the goal for a moment. The old "ROUND START" stinger is gone,
+  with its rules in `multiplayer-ui.css`.
+- **The round's last word.** The game loops stop as a round ends, so the rail, the bar
+  and your plate take the round's final standings from the host's final stats (the
+  last knock-out read "Alive" and "2 of 2 in" before).
+- **The match won** holds 2.4 s (0.9 s with reduced motion) before the results, as
+  local versus does: a crest over the winner's well — "Match won", "Victory", the name
+  in their colour — your board's victory light or the opponent tile's (light rising in
+  their colour and gold, shells of motes), every other board stepped back. A tile too
+  small to hold the crest (a phone, a full field) gets it over the stage. The stage
+  steps out over the beat's last 320 ms and the results fade in, so no empty window
+  shows between them.
+
+**Fixed along the way** (finding 12): the drop-in no longer throws (the field is
+guarded until the match UI exists); the drop-in card and the board frames are
+stylesheet work (a status card; `--player-primary` on each station). Steam reports
+lobby member counts as BigInt, which the lobby browser could not add to a number: the
+counts are numbers from the bridge on (`electron/steam-integration.js`,
+`steam-networking.js`, `lobby-browser.js`).
+
 ## 6. Verification
 
 - Every surface captured with Playwright (Chromium, WebGPU) at 1600 × 900 and 390 × 844,
@@ -803,7 +912,7 @@ cells stays a shade under white so the cells' colours read through it.
   knock-out, a round won, the match won); the T-spin, back-to-back and chain callouts
   shot on their own. Pixel profiles confirmed the dark bands and square came from the
   blend. The online knock-out's card and the shared knock-out are unit tested; the
-  two-client run below found the round-ending knock-out never shows (§7). Unit tests: `tests/unit/fx-kit.test.js`,
+  two-client run below found the round-ending knock-out never showed, which the round-over beat now fixes (§5.9). Unit tests: `tests/unit/fx-kit.test.js`,
   `fx-moments.test.js`, `shared-effects-cascade-depth.test.js`, `out-card.test.js`, the
   victory crest in `local-versus-hud.test.js`, the victory beat in
   `local-multiplayer-loop-ownership.test.js`, and the updated shared-effects suites.
@@ -817,15 +926,39 @@ cells stays a shade under white so the cells' colours read through it.
   popups, reset), `canvas-board-effects.test.js`, `ffa-opponent-clean-canvas.test.js`,
   the ring in `shared-effects-cascade-depth.test.js`, the status cards in
   `out-card.test.js`, the routing in `opponent-watch-animation.test.js`.
+- Online versus (§5.9): captured on the mock transport before and after at 1280 × 720,
+  1600 × 900 and 390 × 844, the stage also at 1920 × 1080, with 1, 3 and 7 opponents,
+  a spectator, a drop-in on both windows, Esc, a dropped peer, and the endings from
+  real two-window matches: the host topping out (the round banner on both windows, the
+  scoreboard and bar showing the knock-out, "Round 2" as it starts) and the host winning
+  a lines race with a cascade (the crest on both windows, the other boards stepped
+  back, then the results). Instrumented, the two windows held the match won
+  2,401–2,458 ms before the results; with 8 players the banner (a long name) and the
+  crest were captured at 1600 × 900, 1280 × 720 and 390 × 844. No page errors. Unit
+  tests: `online-versus-layout.test.js`, `online-versus-hud.test.js`,
+  `online-match-endings.test.js`, `ffa-round-over-beat.test.js`,
+  `frag-tracker-host-authority.test.js`, the tile's victory in
+  `canvas-board-effects.test.js`, the stations' colour in
+  `opponent-watch-hud-performance.test.js`. Gates: 597 test files (7,810 tests), lint
+  at its baseline, typecheck, the TypeScript ratchet (two new checked files), fitness
+  ceilings lowered (`ffa-p2p-game-state` 4,534 → 4,513 lines, `OnlineMultiplayerMode`
+  3,101 → 2,901, core DOM globals 457 → 438, core rAF drivers 25 → 23), boundaries,
+  theme lifecycle, perf budgets, release gates, build and boot closure, IP strings,
+  pages artifact. `check:palette` fails on a palette this work does not touch.
 - No `backdrop-filter` remains on any Keystone surface.
 
 ## 7. Open follow-ups
 
-- **Board effects.** Online, the round that a knock-out ends restarts at once (the host
-  calls `restartMatch()` straight from `endMatch()`), so the last knock-out of a round —
-  every knock-out in a 1v1 — shows no drain, no Out card and no round won before
-  "Round 2"; a round-over beat belongs to the online UX audit. Odyssey still plays the
-  top-out on a board its own flow tears down; give it the same beat. A consecutive-clear
+- **Online versus.** A player who leaves mid-match is not noticed: no departure reaches
+  the match (the transport's leave is not wired into the roster), so their station keeps
+  its last board and the Offline card (`_showDisconnectOverlay`) never shows. The host
+  stops syncing as a match ends, so a peer sees the winner's board as of the snapshot
+  before the deciding move (the crest covers its top); one last snapshot before the
+  match-end message would show the move. Everything online was verified on the mock
+  transport only; the endings' timing and the lobby counts want a run on two machines
+  with Steam.
+- **Board effects.** Odyssey still plays the top-out on a board its own flow tears down;
+  give it the beat online versus now has (§5.9). A consecutive-clear
   combo (one clear per piece) is shown only by the light's tone, by design (local
   versus's read); a popup for it is a product call. Quadra's sound cues (a landing thud
   by fall height, a lower pitch per wave) wait on the audio pass.

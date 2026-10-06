@@ -1,0 +1,1164 @@
+/* =================================================================================
+ * Keystone — online versus in play (#online-multiplayer-container; OnlineMultiplayerMode
+ * with src/ui/online-versus-layout.js and src/ui/opponent-watch-manager.js).
+ *
+ * The top row holds the match bar (the goal, the round, who is still in) and, at its
+ * right, the controls tray every mode shares (keystone-overlays.css). Below it: your
+ * station, the field of opponents beside it, and the rail (scoreboard, battle log,
+ * chat) on the window's right edge. Your station has local versus' anatomy
+ * (keystone-versus.css): a name plate, the next queue over the well's open top, the
+ * well (the board between its walls, the garbage meter just outside the left one), and
+ * one line of stats. Every opponent is a smaller station of the same make.
+ *
+ * Sizes come from the layout module as variables (--ov-* on the stage and the card,
+ * --mini-canvas-* on the field) and data-arrangement / data-field-size, so the CSS and
+ * the board sizing never disagree. This file supersedes the old three-column rules for
+ * this stage (multiplayer-ui.css, multiplayer-hud-aaa.css, keystone-overlays.css and
+ * the in-game section of keystone-multiplayer.css); it is scoped by the stage's id and
+ * loaded after them.
+ * ================================================================================ */
+
+/* ---- Stage --------------------------------------------------------------------------- */
+/* Three columns: the field, your station in the middle of the window, the rail. The two
+   outer columns are equal, so your station stays centred whatever stands beside it. */
+#online-multiplayer-container.online-game-area {
+    grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
+    grid-template-rows: var(--sb-play-tray, 48px) minmax(0, 1fr);
+    grid-template-areas:
+        ". . room"
+        "field station rail";
+    column-gap: var(--ov-gap, 24px);
+    row-gap: 12px;
+    align-items: start;
+    padding: var(--ov-inset, 16px);
+    background: transparent;
+}
+
+/* The stage wrapper only groups the markup; its two parts are the grid's. */
+#online-multiplayer-container > .ov-stage {
+    display: contents;
+}
+
+#online-multiplayer-container > .sb-play-room {
+    grid-area: room;
+    min-height: 0;
+}
+
+#online-multiplayer-container .main-board-panel,
+#online-multiplayer-container .opponents-panel {
+    position: relative;
+    display: block;
+    flex: none;
+    width: auto;
+    height: auto;
+    max-height: none;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+#online-multiplayer-container .main-board-panel {
+    grid-area: station;
+    justify-self: center;
+    align-self: start;
+}
+
+/* The field stands in the middle of its column, level with your board. */
+#online-multiplayer-container .opponents-panel {
+    grid-area: field;
+    justify-self: center;
+    align-self: center;
+}
+
+#online-multiplayer-container > .right-panel {
+    grid-area: rail;
+    justify-self: end;
+    align-self: stretch;
+    width: var(--ov-rail, 320px);
+    min-width: 0;
+    min-height: 0;
+}
+
+/* ---- Match bar ----------------------------------------------------------------------- */
+/* Centred on the window, so over your station, in the tray's row. */
+#online-multiplayer-container .ov-match-bar {
+    position: absolute;
+    top: max(var(--sb-play-inset, 16px), env(safe-area-inset-top, 0px));
+    left: 50%;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    max-width: 100%;
+    height: var(--sb-play-tray, 48px);
+    padding: 0 6px;
+    overflow: hidden;
+    border: 1px solid var(--sb-line);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.9) 0%, rgba(12, 10, 30, 0.92) 100%);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
+    transform: translateX(-50%);
+    white-space: nowrap;
+}
+
+/* Clear of the tray: two tiles in the top right corner. */
+#online-multiplayer-container .ov-match-bar {
+    max-width: calc(100vw - 2 * (var(--sb-play-inset, 16px) + 2 * var(--sb-play-tile, 40px) + 28px));
+}
+
+#online-multiplayer-container .ov-match-bar > span {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 14px;
+    color: var(--sb-text);
+    font: 700 13px / 1 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+}
+
+#online-multiplayer-container .ov-match-bar > span[hidden] {
+    display: none;
+}
+
+#online-multiplayer-container .ov-match-bar > span + span::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 1px;
+    height: 18px;
+    background: var(--sb-line);
+    transform: translateY(-50%);
+}
+
+/* The mode: the keystone tile, then the words in small capitals. */
+#online-multiplayer-container .ov-match-bar > .ov-match-bar__mode {
+    padding-left: 30px;
+    color: var(--sb-text-muted);
+    font: 600 10px / 1 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+#online-multiplayer-container .ov-match-bar > .ov-match-bar__mode::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    background: var(--sb-keystone, var(--sb-coral));
+    transform: translateY(-50%);
+}
+
+#online-multiplayer-container .ov-match-bar > .ov-match-bar__round {
+    color: var(--sb-text-muted);
+}
+
+#online-multiplayer-container .ov-match-bar > .ov-match-bar__alive {
+    color: var(--sb-aqua);
+}
+
+/* ---- Your station ------------------------------------------------------------------ */
+/* The plate over both columns, the queue over the board, the meter and the well, the
+   stats under the board. The first column is the meter and the air to the well. */
+#online-multiplayer-container #online-player-card.player-card {
+    --ov-u: var(--ov-unit, 1);
+    max-height: none;
+    --ov-wall: color-mix(in srgb, var(--player-primary, #b8a4ff) 82%, #fff6e9);
+    --ov-wall-glow: color-mix(in srgb, var(--player-primary, #b8a4ff) 34%, transparent);
+    position: relative;
+    display: grid;
+    grid-template-columns: calc(var(--ov-trash, 8px) + var(--ov-meter-gap, 7px)) var(--board-width);
+    grid-template-areas:
+        "plate plate"
+        ". queue"
+        "well well"
+        ". meta";
+    gap: 0;
+    align-items: start;
+    justify-items: stretch;
+    width: max-content;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    transition: opacity var(--sb-dur-3) ease;
+}
+
+/* The plate: your hue as its left edge, your name, "You", and the number that decides
+   the match with its unit. */
+#online-multiplayer-container .ov-plate {
+    grid-area: plate;
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    column-gap: calc(9px * var(--ov-u));
+    height: var(--ov-plate-h, 48px);
+    margin-bottom: 8px;
+    padding: 0 calc(12px * var(--ov-u)) 0 calc(14px * var(--ov-u));
+    overflow: hidden;
+    border: 1px solid var(--sb-line);
+    border-radius: calc(12px * var(--ov-u));
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
+}
+
+#online-multiplayer-container .ov-plate::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 3px;
+    background: var(--player-primary, var(--sb-lavender));
+}
+
+#online-multiplayer-container .ov-plate__name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--sb-text);
+    font: 700 max(12px, calc(14px * var(--ov-u))) / 1.1 var(--sb-font-text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#online-multiplayer-container .ov-plate__tag {
+    padding: 3px 6px;
+    border: 1px solid color-mix(in srgb, var(--player-primary, #b8a4ff) 55%, transparent);
+    border-radius: 6px;
+    color: color-mix(in srgb, var(--player-primary, #b8a4ff) 60%, #fff6e9);
+    font: 700 max(8px, calc(8px * var(--ov-u))) / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+#online-multiplayer-container .ov-plate__score {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+}
+
+#online-multiplayer-container .ov-plate__value {
+    color: var(--sb-text);
+    font: 700 max(15px, calc(19px * var(--ov-u))) / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+}
+
+#online-multiplayer-container .ov-plate__unit {
+    color: var(--sb-text-faint);
+    font: 600 max(7px, calc(7.5px * var(--ov-u))) / 1 var(--sb-font-display);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+/* The queue: a row over the well's open top — the next piece in a tile lit with your
+   hue, the two after it smaller and quieter. */
+#online-multiplayer-container #online-player-card .player-next-section {
+    grid-area: queue;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: var(--next-piece-gap, 8px);
+    width: auto;
+    height: var(--ov-next-h, 60px);
+    margin: 0 0 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+}
+
+#online-multiplayer-container #online-player-card .next-label {
+    display: block;
+    color: var(--sb-text-faint);
+    font: 600 max(8px, calc(8px * var(--ov-u))) / 1 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+#online-multiplayer-container #online-player-card .player-next-pieces {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+    align-self: stretch;
+    gap: var(--next-piece-gap, 8px);
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+#online-multiplayer-container #online-player-card .player-next-piece {
+    box-sizing: border-box;
+    width: var(--ov-later-w, 80px);
+    height: var(--ov-later-h, 48px);
+    margin: 0;
+    border: 1px solid var(--sb-line);
+    border-radius: calc(9px * var(--ov-u));
+    background: rgba(12, 10, 30, 0.82);
+    box-shadow: none;
+    opacity: 0.72;
+    transform: none;
+}
+
+#online-multiplayer-container #online-player-card .player-next-piece.highlight {
+    width: var(--ov-next-w, 100px);
+    height: var(--ov-next-h, 60px);
+    border-color: color-mix(in srgb, var(--player-primary, #b8a4ff) 70%, transparent);
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--player-primary, #b8a4ff) 12%, transparent), transparent 70%),
+        rgba(12, 10, 30, 0.86);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--player-primary, #b8a4ff) 24%, transparent);
+    opacity: 1;
+}
+
+/* The well: the meter, a little air, the board between the walls. */
+#online-multiplayer-container #online-player-card .player-board-wrapper {
+    grid-area: well;
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    gap: var(--ov-meter-gap, 7px);
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+/* Plain glass that thickens downward from the open top: no lines on the board. */
+#online-multiplayer-container #online-player-card .player-board-section {
+    position: relative;
+    flex: none;
+    width: var(--board-width);
+    height: var(--board-height);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0 0 calc(10px * var(--ov-u)) calc(10px * var(--ov-u));
+    background: linear-gradient(180deg, rgba(9, 8, 24, 0.3) 0%, rgba(9, 8, 24, 0.84) 16%, rgba(9, 8, 24, 0.9) 100%);
+    box-shadow: none;
+}
+
+#online-multiplayer-container #online-main-board.phaser-board-container {
+    width: var(--board-width);
+    height: var(--board-height);
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+#online-multiplayer-container #online-board-border {
+    display: none;
+}
+
+/* The walls: left, right and floor round the board, fading out toward the top. */
+#online-multiplayer-container .ov-well {
+    position: absolute;
+    inset: 0 -3px -3px calc(var(--ov-trash, 8px) + var(--ov-meter-gap, 7px) - 3px);
+    z-index: 4;
+    border: 3px solid var(--ov-wall);
+    border-top: 0;
+    border-radius: 0 0 calc(13px * var(--ov-u)) calc(13px * var(--ov-u));
+    box-shadow:
+        0 10px 28px -8px var(--ov-wall-glow),
+        inset 0 -1px 0 rgba(var(--sb-cream-rgb), 0.12);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 24%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 24%);
+    pointer-events: none;
+    transition: border-color var(--sb-dur-3) ease, box-shadow var(--sb-dur-3) ease;
+}
+
+/* Out until the round ends: the walls go quiet. */
+#online-multiplayer-container #online-player-card:has(.death-overlay) {
+    --ov-wall: rgba(var(--sb-cream-rgb), 0.22);
+    --ov-wall-glow: transparent;
+}
+
+/* Incoming garbage: a quiet track just outside the left wall, fading in from the open
+   top like the walls, filling from the floor. */
+#online-multiplayer-container #online-garbage-bar.garbage-indicator {
+    position: relative;
+    flex: none;
+    width: var(--ov-trash, 8px);
+    height: var(--board-height);
+    margin: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0 0 999px 999px;
+    background: linear-gradient(180deg,
+        transparent 0%,
+        rgba(var(--sb-cream-rgb), 0.08) 24%,
+        rgba(var(--sb-cream-rgb), 0.12) 100%);
+    box-shadow: none;
+}
+
+#online-multiplayer-container #online-garbage-bar .garbage-fill {
+    border-radius: 0;
+    background: linear-gradient(to top, var(--sb-danger) 0%, var(--sb-coral) 55%, var(--sb-gold) 100%);
+    box-shadow: 0 0 12px rgba(var(--sb-danger-rgb), 0.5);
+}
+
+#online-multiplayer-container #online-garbage-bar .garbage-glow {
+    display: none;
+}
+
+/* One line of stats under the board. */
+#online-multiplayer-container #online-player-card .player-stats-bar.ov-meta {
+    grid-area: meta;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: auto;
+    height: var(--ov-meta-h, 20px);
+    margin: 6px 0 0;
+    padding: 0 calc(4px * var(--ov-u));
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+#online-multiplayer-container .ov-meta__stat {
+    display: inline-flex;
+    align-items: baseline;
+    gap: calc(5px * var(--ov-u));
+    min-width: 0;
+    white-space: nowrap;
+}
+
+#online-multiplayer-container .ov-meta__label {
+    color: var(--sb-text-faint);
+    font: 600 max(8px, calc(8px * var(--ov-u))) / 1 var(--sb-font-display);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+#online-multiplayer-container .ov-meta__value {
+    color: var(--sb-text-muted);
+    font: 700 max(11px, calc(12px * var(--ov-u))) / 1 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+}
+
+#online-multiplayer-container .ov-meta__stat--incoming .ov-meta__value {
+    color: var(--sb-coral);
+}
+
+/* ---- The field: every opponent, each a smaller station --------------------------------- */
+#online-multiplayer-container .opponents-panel .watch-grid {
+    display: grid;
+    gap: 14px;
+    align-content: start;
+    justify-content: start;
+    width: max-content;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+#online-multiplayer-container .opponent-mini-board {
+    --ow-u: var(--ov-field-unit, 1);
+    --ow-wall: color-mix(in srgb, var(--player-primary, #b8a4ff) 78%, #fff6e9);
+    --ow-wall-glow: color-mix(in srgb, var(--player-primary, #b8a4ff) 30%, transparent);
+    position: relative;
+    display: grid;
+    grid-template-columns: calc(var(--ov-field-trash, 6px) + var(--ov-field-meter-gap, 4px)) var(--mini-canvas-width-px, 120px);
+    /* Exactly the layout's station (online-versus-layout.js fieldStation). */
+    grid-template-rows: var(--ov-field-plate-h, 24px) var(--ov-field-next-h, 24px) var(--mini-canvas-height-px, 240px);
+    grid-template-areas:
+        "plate plate"
+        ". queue"
+        ". well";
+    column-gap: 0;
+    row-gap: 4px;
+    align-items: start;
+    width: max-content;
+    min-width: 0;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    cursor: default;
+    transition: opacity var(--sb-dur-3) ease;
+}
+
+#online-multiplayer-container .opponent-plate {
+    grid-area: plate;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(6px * var(--ow-u));
+    box-sizing: border-box;
+    height: var(--ov-field-plate-h, 24px);
+    margin: 0;
+    padding: 0 calc(8px * var(--ow-u)) 0 calc(10px * var(--ow-u));
+    overflow: hidden;
+    border: 1px solid var(--sb-line);
+    border-radius: calc(8px * var(--ow-u));
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.9) 0%, rgba(12, 10, 30, 0.92) 100%);
+}
+
+#online-multiplayer-container .opponent-plate::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 3px;
+    background: var(--player-primary, var(--sb-lavender));
+}
+
+#online-multiplayer-container .opponent-plate .opponent-name {
+    display: block;
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--sb-text);
+    font: 700 max(10px, calc(11px * var(--ow-u))) / 1.1 var(--sb-font-text);
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#online-multiplayer-container .opponent-plate .opponent-frags {
+    display: block;
+    flex: none;
+    width: auto;
+    margin: 0;
+    padding: 0;
+    color: var(--sb-text-muted);
+    font: 600 max(9px, calc(10px * var(--ow-u))) / 1 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* The next piece over the open top; large stations show the whole queue. */
+#online-multiplayer-container .opponent-next-queue {
+    grid-area: queue;
+    display: flex;
+    justify-content: center;
+    box-sizing: border-box;
+    align-self: stretch;
+    width: auto;
+    height: var(--ov-field-next-h, 24px);
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    background: none;
+}
+
+#online-multiplayer-container .opponent-next-pieces {
+    display: flex;
+    align-items: flex-end;
+    gap: calc(5px * var(--ow-u));
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+#online-multiplayer-container .opponent-next-piece {
+    box-sizing: border-box;
+    width: calc(var(--ov-field-next-w, 40px) * 0.8);
+    height: calc(var(--ov-field-next-h, 24px) * 0.8);
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--sb-line);
+    border-radius: calc(6px * var(--ow-u));
+    background: rgba(12, 10, 30, 0.82);
+    box-shadow: none;
+    opacity: 0.7;
+}
+
+#online-multiplayer-container .opponent-next-piece.highlight {
+    width: var(--ov-field-next-w, 40px);
+    height: var(--ov-field-next-h, 24px);
+    border-color: color-mix(in srgb, var(--player-primary, #b8a4ff) 65%, transparent);
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--player-primary, #b8a4ff) 12%, transparent), transparent 70%),
+        rgba(12, 10, 30, 0.86);
+    opacity: 1;
+}
+
+#online-multiplayer-container:not([data-field-size="l"]) .opponent-next-piece:not(.highlight) {
+    display: none;
+}
+
+#online-multiplayer-container .opponent-next-piece canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* The well: exactly the board (its effects overlay covers it and nothing else); the
+   meter stands just outside the left wall. */
+#online-multiplayer-container .opponent-grid-frame {
+    grid-area: well;
+    position: relative;
+    display: block;
+    width: var(--mini-canvas-width-px, 120px);
+    height: var(--mini-canvas-height-px, 240px);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0 0 calc(8px * var(--ow-u)) calc(8px * var(--ow-u));
+    background: linear-gradient(180deg, rgba(9, 8, 24, 0.3) 0%, rgba(9, 8, 24, 0.84) 16%, rgba(9, 8, 24, 0.9) 100%);
+    box-shadow: none;
+}
+
+#online-multiplayer-container .opponent-mini-board canvas.opponent-grid {
+    display: block;
+    width: var(--mini-canvas-width-px, 120px);
+    height: var(--mini-canvas-height-px, 240px);
+    margin: 0;
+    border: 0;
+    border-radius: 0 0 calc(8px * var(--ow-u)) calc(8px * var(--ow-u));
+    background: transparent;
+    box-shadow: none;
+}
+
+#online-multiplayer-container .opponent-well {
+    position: absolute;
+    inset: 0 -2px -2px;
+    z-index: 4;
+    border: 2px solid var(--ow-wall);
+    border-top: 0;
+    border-radius: 0 0 calc(10px * var(--ow-u)) calc(10px * var(--ow-u));
+    box-shadow: 0 8px 22px -8px var(--ow-wall-glow);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 24%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 24%);
+    pointer-events: none;
+}
+
+#online-multiplayer-container .opponent-garbage-meter {
+    position: absolute;
+    top: 0;
+    right: calc(100% + var(--ov-field-meter-gap, 4px));
+    bottom: 0;
+    width: var(--ov-field-trash, 6px);
+    height: auto;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0 0 999px 999px;
+    background: linear-gradient(180deg,
+        transparent 0%,
+        rgba(var(--sb-cream-rgb), 0.08) 24%,
+        rgba(var(--sb-cream-rgb), 0.12) 100%);
+    box-shadow: none;
+}
+
+#online-multiplayer-container .opponent-garbage-fill {
+    border-radius: 0;
+    background: linear-gradient(to top, var(--sb-danger) 0%, var(--sb-coral) 55%, var(--sb-gold) 100%);
+}
+
+#online-multiplayer-container .opponent-garbage-glow {
+    display: none;
+}
+
+/* Out until the round ends: the walls and the plate go quiet (the board drains under the
+   Out card, canvas-board-effects.js). */
+#online-multiplayer-container .opponent-mini-board.dead {
+    --ow-wall: rgba(var(--sb-cream-rgb), 0.22);
+    --ow-wall-glow: transparent;
+}
+
+#online-multiplayer-container .opponent-mini-board.dead .opponent-plate {
+    opacity: 0.55;
+}
+
+/* A spectator's pick: the plate lifts in the player's colour. */
+#online-multiplayer-container .opponent-mini-board.spotlighted .opponent-plate {
+    border-color: color-mix(in srgb, var(--player-primary, #b8a4ff) 70%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--player-primary, #b8a4ff) 40%, transparent);
+}
+
+#online-multiplayer-container.spectating .opponent-mini-board {
+    cursor: pointer;
+}
+
+/* ---- The rail ------------------------------------------------------------------------- */
+#online-multiplayer-container .right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
+}
+
+#online-multiplayer-container .right-panel .online-scoreboard {
+    flex: none;
+}
+
+#online-multiplayer-container .right-panel .online-kill-feed {
+    flex: 1 1 0;
+    min-height: 96px;
+}
+
+#online-multiplayer-container .right-panel .online-chat {
+    flex: 1 1 0;
+    min-height: 120px;
+}
+
+/* The chat's field and send: the lobby's (keystone-multiplayer.css), not an old pill. */
+#online-multiplayer-container .chat-input-area {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+#online-multiplayer-container #chat-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 10px;
+    background: rgba(9, 8, 24, 0.7);
+    color: var(--sb-text);
+    font: 500 13px / 1 var(--sb-font-text);
+}
+
+#online-multiplayer-container #chat-input::placeholder {
+    color: var(--sb-text-faint);
+}
+
+#online-multiplayer-container #chat-input:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 2px;
+}
+
+#online-multiplayer-container #chat-send.chat-send-btn {
+    flex: none;
+    height: 40px;
+    padding: 0 14px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 10px;
+    background: rgba(var(--sb-cream-rgb), 0.05);
+    color: var(--sb-text);
+    font: 600 10px / 1 var(--sb-font-display);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    box-shadow: none;
+}
+
+#online-multiplayer-container #chat-send.chat-send-btn:hover {
+    border-color: rgba(var(--sb-cream-rgb), 0.4);
+    background: rgba(var(--sb-cream-rgb), 0.09);
+}
+
+/* A frag lights its row for a moment (online-scoreboard.js highlightPlayer). */
+#online-multiplayer-container .scoreboard-row.highlight {
+    animation: ov-frag-row 1.4s var(--sb-ease-lock, ease-out);
+}
+
+@keyframes ov-frag-row {
+    0% { box-shadow: inset 0 0 0 1px rgba(var(--sb-gold-rgb), 0.9), 0 0 18px rgba(var(--sb-gold-rgb), 0.35); }
+    100% { box-shadow: inset 0 0 0 1px rgba(var(--sb-gold-rgb), 0), 0 0 0 rgba(var(--sb-gold-rgb), 0); }
+}
+
+/* ---- A spectator: the spotlight takes your station's place ------------------------------ */
+#online-multiplayer-container.spectating .main-board-panel {
+    align-self: stretch;
+    width: calc(var(--board-width, 330px) + var(--ov-trash, 8px) + var(--ov-meter-gap, 7px));
+    height: 100%;
+}
+
+#online-multiplayer-container.spectating #online-player-card.player-card {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+#online-multiplayer-container.spectating .ov-plate,
+#online-multiplayer-container.spectating .ov-well,
+#online-multiplayer-container.spectating .player-stats-bar.ov-meta,
+#online-multiplayer-container.spectating #online-player-card .player-next-section,
+#online-multiplayer-container.spectating #online-garbage-bar.garbage-indicator {
+    display: none;
+}
+
+/* The spotlight: a plate (who you watch), then their board in an open-top well. */
+#online-multiplayer-container .spectator-spotlight {
+    gap: 10px;
+    padding: 0;
+}
+
+#online-multiplayer-container .spectator-spotlight-header {
+    position: relative;
+    justify-content: flex-start;
+    gap: 10px;
+    box-sizing: border-box;
+    height: 44px;
+    padding: 0 14px 0 16px;
+    overflow: hidden;
+    border: 1px solid var(--sb-line);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
+}
+
+#online-multiplayer-container .spectator-spotlight-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 3px;
+    background: var(--player-primary, var(--sb-aqua));
+}
+
+#online-multiplayer-container .spectator-spotlight-header .spectator-spotlight-name {
+    flex: 1 1 auto;
+    max-width: none;
+    min-width: 0;
+    color: var(--sb-text);
+}
+
+#online-multiplayer-container .spectator-spotlight-header .spectator-spotlight-frags {
+    flex: none;
+}
+
+#online-multiplayer-container .spectator-spotlight-garbage.garbage-indicator {
+    flex: 0 0 8px;
+    width: 8px;
+    border: 0;
+    border-radius: 0 0 999px 999px;
+    background: linear-gradient(180deg,
+        transparent 0%,
+        rgba(var(--sb-cream-rgb), 0.08) 24%,
+        rgba(var(--sb-cream-rgb), 0.12) 100%);
+    box-shadow: none;
+}
+
+/* The walls: left, right and floor in the watched player's hue; the top stays open. */
+#online-multiplayer-container .spectator-spotlight-canvas {
+    border: 3px solid color-mix(in srgb, var(--player-primary, #9ee8ed) 82%, #fff6e9);
+    border-top: 0;
+    border-radius: 0 0 12px 12px;
+    background: rgba(9, 8, 24, 0.9);
+    box-shadow: 0 10px 28px -8px color-mix(in srgb, var(--player-primary, #9ee8ed) 34%, transparent);
+}
+
+#online-multiplayer-container .spectator-spotlight-hint {
+    color: var(--sb-text-faint);
+    font: 600 11px / 1.3 var(--sb-font-text);
+    opacity: 1;
+}
+
+#online-multiplayer-container.spectating #online-player-card .player-board-wrapper,
+#online-multiplayer-container.spectating #online-player-card .player-board-section,
+#online-multiplayer-container.spectating #online-main-board.phaser-board-container {
+    width: 100%;
+    height: 100%;
+    background: none;
+}
+
+/* ---- Narrow and tall windows: the field over your station, no rail ---------------------- */
+#online-multiplayer-container.online-game-area[data-arrangement="stack"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--sb-play-tray, 48px) auto minmax(0, 1fr);
+    grid-template-areas:
+        "room"
+        "field"
+        "station";
+    column-gap: 0;
+}
+
+#online-multiplayer-container[data-arrangement="stack"] > .right-panel,
+#online-multiplayer-container[data-arrangement="stack"] > .sb-play-room {
+    display: none;
+}
+
+/* The bar starts at the left edge, clear of the tray. */
+#online-multiplayer-container[data-arrangement="stack"] .ov-match-bar {
+    left: var(--ov-inset, 16px);
+    max-width: calc(100vw - 2 * var(--ov-inset, 16px) - 2 * var(--sb-play-tile, 40px) - 24px);
+    transform: none;
+}
+
+#online-multiplayer-container[data-arrangement="stack"] .ov-match-bar > .ov-match-bar__mode,
+#online-multiplayer-container[data-arrangement="stack"] .ov-match-bar > .ov-match-bar__round {
+    display: none;
+}
+
+/* ---- The round's outcome, and the next round (online-versus-hud.js) ---------------------- */
+/* Over the upper well of your station, while the host's round-over beat holds: who took
+   it, in their colour; then, smaller, the next round's number as it starts. Above an Out
+   card (z 100), under the countdown and the modals. */
+/* Centred across the whole window (not from its middle), so a long name has the room
+   to wrap whole words. */
+#online-multiplayer-container .ov-round {
+    position: absolute;
+    top: 40%;
+    right: 0;
+    left: 0;
+    z-index: 120;
+    display: grid;
+    justify-items: center;
+    gap: 7px;
+    width: fit-content;
+    min-width: 240px;
+    max-width: min(calc(100vw - 2 * var(--ov-inset, 16px)), 460px);
+    margin: 0 auto;
+    padding: 16px 30px 18px;
+    box-sizing: border-box;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.95) 0%, rgba(12, 10, 30, 0.97) 100%);
+    box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.5),
+        0 0 0 1px color-mix(in srgb, var(--round-color, #ffac88) 30%, transparent),
+        inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+    opacity: 0;
+    transform: translateY(-50%) scale(0.92);
+    pointer-events: none;
+    transition: opacity 260ms ease, transform 420ms var(--sb-ease-lock);
+}
+
+#online-multiplayer-container .ov-round.is-shown {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+}
+
+#online-multiplayer-container .ov-round::before {
+    content: '';
+    width: 34px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--round-color, var(--sb-keystone));
+}
+
+#online-multiplayer-container .ov-round__kicker {
+    color: var(--sb-text-muted);
+    font: 600 10px / 1 var(--sb-font-display);
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+}
+
+/* A long name wraps (the verb stays with it), never cut. */
+#online-multiplayer-container .ov-round__title {
+    max-width: 100%;
+    color: color-mix(in srgb, var(--round-color, #fff6e9) 45%, #fff6e9);
+    font: 700 24px / 1.15 var(--sb-font-display);
+    text-align: center;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+}
+
+#online-multiplayer-container .ov-round__note {
+    color: var(--sb-text-muted);
+    font: 600 12px / 1.2 var(--sb-font-text);
+}
+
+#online-multiplayer-container .ov-round--long .ov-round__title {
+    font-size: 19px;
+}
+
+/* The next round starts: the number alone, lighter, a moment. */
+#online-multiplayer-container .ov-round.ov-round--start {
+    min-width: 0;
+    padding: 12px 26px 14px;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.88) 0%, rgba(12, 10, 30, 0.9) 100%);
+}
+
+#online-multiplayer-container .ov-round--start .ov-round__title {
+    font-size: 20px;
+}
+
+/* Stacked, your station stands under the field. */
+#online-multiplayer-container[data-arrangement="stack"] .ov-round {
+    top: 62%;
+    min-width: 0;
+    padding: 14px 22px 16px;
+}
+
+#online-multiplayer-container[data-arrangement="stack"] .ov-round__title {
+    font-size: 20px;
+}
+
+#online-multiplayer-container[data-arrangement="stack"] .ov-round--long .ov-round__title {
+    font-size: 16px;
+}
+
+/* ---- The match won: a crest over the winner's well, until the results ------------------- */
+/* Sized by the well it stands in: your block on your station, an opponent's on theirs. */
+#online-multiplayer-container .ov-victory {
+    --win-color: var(--sb-gold);
+    --crest-b: var(--ov-block, 32px);
+    position: absolute;
+    top: 22%;
+    left: 50%;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: calc(var(--crest-b) * 0.18);
+    padding: calc(var(--crest-b) * 0.5) calc(var(--crest-b) * 0.8);
+    text-align: center;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translate(-50%, calc(var(--crest-b) * 0.36)) scale(0.94);
+    transition: opacity 420ms var(--sb-ease-lock), transform 520ms var(--sb-ease-lock);
+    pointer-events: none;
+}
+
+#online-multiplayer-container .opponent-mini-board .ov-victory {
+    --crest-b: var(--ov-field-block, 16px);
+}
+
+/* A soft glow behind the words, never a box; deeper on a tile, over a busier board. */
+#online-multiplayer-container .ov-victory::before {
+    content: '';
+    position: absolute;
+    inset: -30% -40%;
+    z-index: -1;
+    background: radial-gradient(closest-side, rgba(9, 8, 24, 0.66), rgba(9, 8, 24, 0) 100%);
+}
+
+#online-multiplayer-container .opponent-mini-board .ov-victory::before {
+    inset: -22% -26%;
+    background: radial-gradient(closest-side, rgba(9, 8, 24, 0.88), rgba(9, 8, 24, 0.55) 62%, rgba(9, 8, 24, 0) 100%);
+}
+
+/* A tile too small to hold the crest: it stands over the stage, where the round banner
+   does, in your station's size. */
+#online-multiplayer-container > .ov-victory.ov-victory--stage {
+    --crest-b: 28px;
+    top: 38%;
+    z-index: 110;
+}
+
+#online-multiplayer-container[data-arrangement="stack"] > .ov-victory.ov-victory--stage {
+    top: 58%;
+}
+
+#online-multiplayer-container .ov-victory.is-shown {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+}
+
+#online-multiplayer-container .ov-victory__kicker {
+    color: var(--sb-gold);
+    font: 800 clamp(8px, calc(var(--crest-b) * 0.34), 12px) / 1 var(--sb-font-text);
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+}
+
+#online-multiplayer-container .ov-victory__title {
+    position: relative;
+    padding-bottom: calc(var(--crest-b) * 0.3);
+    background: linear-gradient(180deg, var(--sb-cream) 10%, var(--sb-gold) 90%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font: 800 clamp(16px, calc(var(--crest-b) * 1.25), 44px) / 1 var(--sb-font-display);
+    filter: drop-shadow(0 0 calc(var(--crest-b) * 0.5) rgba(var(--sb-gold-rgb), 0.55));
+}
+
+/* The underline: gold light that opens out from the middle. */
+#online-multiplayer-container .ov-victory__title::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 10%;
+    width: 80%;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--sb-gold), transparent);
+    transform: scaleX(0);
+    transition: transform 620ms var(--sb-ease-lock) 160ms;
+}
+
+#online-multiplayer-container .ov-victory.is-shown .ov-victory__title::after {
+    transform: scaleX(1);
+}
+
+#online-multiplayer-container .ov-victory__name {
+    max-width: calc(var(--crest-b) * 9);
+    overflow: hidden;
+    color: var(--win-color);
+    font: 700 clamp(10px, calc(var(--crest-b) * 0.44), 16px) / 1.2 var(--sb-font-text);
+    text-overflow: ellipsis;
+}
+
+/* The winner's plate lifts in gold; every other board steps back. */
+#online-multiplayer-container #online-player-card.is-victor .ov-plate,
+#online-multiplayer-container .opponent-mini-board.is-victor .opponent-plate {
+    border-color: rgba(var(--sb-gold-rgb), 0.7);
+    box-shadow: 0 0 22px rgba(var(--sb-gold-rgb), 0.35);
+    opacity: 1;
+}
+
+#online-multiplayer-container.is-match-over #online-player-card:not(.is-victor),
+#online-multiplayer-container.is-match-over .opponent-mini-board:not(.is-victor) {
+    opacity: 0.45;
+    transition: opacity 640ms ease;
+}
+
+/* The beat ends: the stage steps out, then the results fade in (STAGE_LEAVE_MS). */
+#online-multiplayer-container.is-leaving {
+    opacity: 0;
+    transition: opacity 320ms ease;
+}
+
+/* ---- Reduced motion ------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    #online-multiplayer-container .scoreboard-row.highlight {
+        animation: none;
+    }
+
+    #online-multiplayer-container .ov-round,
+    #online-multiplayer-container .ov-victory,
+    #online-multiplayer-container .ov-victory__title::after,
+    #online-multiplayer-container.is-leaving {
+        transition-duration: 1ms;
+    }
+}

@@ -43,6 +43,8 @@ import {
     transitionFfaSimulationClock,
 } from './ffa-fixed-tick-policy.js';
 import {
+    cancelFfaRoundRestart,
+    handleFfaMatchEnd,
     handleFfaRoundRestart,
     normalizeFfaRoundSeed,
     parseFfaRoundGeneration,
@@ -902,33 +904,7 @@ export class FFAGameStateP2P {
             console.log(`🏆 ${msg.data.killerName} fragged ${msg.data.victimName}!`);
         });
 
-        registry.register(MessageTypes.GAME_MATCH_END, (msg) => {
-            const data = msg.data || {};
-            const winnerName = data.winnerName || 'Draw';
-            console.log(`🎊 MATCH OVER! Winner: ${winnerName}`);
-
-            this.gamePhase = 'finished';
-            this.winner = data.winner
-                ? (this.players.get(data.winner) || { steamId: data.winner, name: winnerName })
-                : { steamId: null, name: winnerName };
-            this.lastMatchResults = data;
-
-            this.stopGameLoop();
-            this.stopStateSyncLoop();
-
-            if (data.isGameOver) {
-                emitMultiplayerEvent(MULTIPLAYER_EVENTS.GAME_OVER, {
-                    winner: this.winner,
-                    winnerName,
-                    finalStats: data.finalStats || [],
-                    endCondition: data.endCondition,
-                    endConditionValue: data.endConditionValue,
-                    duration: data.duration,
-                    killFeed: data.killFeed || [],
-                    isGameOver: true,
-                });
-            }
-        });
+        registry.register(MessageTypes.GAME_MATCH_END, (msg) => handleFfaMatchEnd(this, msg));
 
         registry.register(MessageTypes.GAME_GARBAGE_SENT, (msg) => {
             console.log(`💥 ${msg.data.fromName} sent ${msg.data.totalLines} lines to ${msg.data.targetCount} players`);
@@ -3981,6 +3957,7 @@ export class FFAGameStateP2P {
         }
 
         console.log('🔄 Restarting match...');
+        cancelFfaRoundRestart(this);
 
         // Select and publish ownership of the next round seed before reset or
         // any ready-barrier/resync-visible waiting window. This is deliberately
@@ -4290,6 +4267,7 @@ export class FFAGameStateP2P {
         }
 
         console.log('🔄 Restarting full game (resetting frags)...');
+        cancelFfaRoundRestart(this);
 
         // Stop current game
         this.stopGameLoop();
@@ -4500,6 +4478,7 @@ export class FFAGameStateP2P {
     cleanup() {
         this._transitionJoin(JOIN_EVENTS.CLOSE, { reason: 'cleanup' });
         this._disposed = true;
+        cancelFfaRoundRestart(this);
         this._networkHandlerRegistry?.dispose();
         this.hideCountdownOverlay();
         resyncInputBarrier.cancelResyncInputBarriers(this, 'cleanup');

@@ -7,6 +7,7 @@
 
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { MessageTypes } from '../network/message-types.js';
+import { scheduleFfaRoundRestart } from './ffa-round-policy.js';
 
 export class FragTracker {
     constructor(ffaGameState) {
@@ -292,16 +293,17 @@ export class FragTracker {
             });
         } else {
             // ROUND OVER - Continue to next round
-            console.log('🏁 ROUND OVER - Starting next round immediately...');
+            console.log('🏁 ROUND OVER - next round after the beat');
 
             if (this.gameState.isHost && this.gameState.players.size >= 1) {
-                // Emit round-over for any listeners, then immediately restart.
+                // The round's outcome holds for a beat (every client shows it), then the
+                // next round starts (ffa-round-policy.js).
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_OVER, {
                     winner,
                     finalStats,
                 });
 
-                this.gameState.restartMatch();
+                scheduleFfaRoundRestart(this.gameState);
             }
         }
     }
@@ -340,6 +342,7 @@ export class FragTracker {
                 attacksSent,
                 attackLinesSent,
                 isAlive: p.isAlive,
+                awaitingSpawn: p.awaitingSpawn === true,
                 placement: 0,
             };
         });

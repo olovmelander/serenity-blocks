@@ -12,6 +12,8 @@
  *   in Keystone type with a soft ring; a clean canvas is a gold dawn.
  * - Garbage heaves coral light up from the floor; a hard drop lights where it lands.
  * - Out: the tile drains to grey under the Out card (opponent-watch-manager.js).
+ * - The match won: light rises in the winner's colour, a halo breathes, shells of
+ *   motes open over the well (the Phaser boards' victory, as light).
  *
  * Never touches the opponent grid, so it cannot fight the snapshot interpolator.
  */
@@ -25,6 +27,20 @@ const MAX_PARTICLES_UNFOCUSED = 48;
 const TWO_PI = Math.PI * 2;
 /** One clean canvas per move: the host hears it twice (the emptying wave, then physics). */
 const CLEAN_CANVAS_ONCE_MS = 1500;
+
+/** The match won: where the shells open (x, y as fractions of the tile), when, how big. */
+const VICTORY_SHELLS = Object.freeze([
+    [0.3, 0.3, 0, 1], [0.72, 0.22, 300, 1.05], [0.5, 0.14, 650, 1.15], [0.26, 0.5, 980, 0.85], [0.76, 0.44, 1250, 0.9],
+]);
+
+const reducedMotion = () => {
+    try {
+        return Boolean(window.settingsManager?.get?.().reducedMotion
+            || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    } catch {
+        return false;
+    }
+};
 
 const rgbOf = (int) => ({ r: (int >> 16) & 255, g: (int >> 8) & 255, b: int & 255 });
 const rgba = ({ r, g, b }, a) => `rgba(${r}, ${g}, ${b}, ${clamp(a, 0, 1)})`;
@@ -500,6 +516,53 @@ export class CanvasBoardEffects {
             fade: 0.26,
             grow: 0.3,
         });
+    }
+
+    /**
+     * The match won on this tile: light rises in gold and the winner's colour, a halo
+     * breathes behind the well until the results, and shells of motes open over it.
+     * Reduced motion keeps the light alone.
+     * @param {string|number} [color] the winner's colour
+     */
+    triggerVictory(color = TONE.GOLD) {
+        const seat = parseColorInt(color, TONE.GOLD);
+        this._light('rise', {
+            color: mixColor(TONE.GOLD, seat, 0.2), h: this.height, peak: 0.42, hold: 1.3, fade: 0.9,
+        });
+        this._light('bloom', {
+            x: this.width / 2,
+            y: this.height * 0.42,
+            color: mixColor(TONE.GOLD, seat, 0.3),
+            r0: Math.max(this.width, this.height) * 0.62,
+            peak: 0.26,
+            hold: 1.4,
+            fade: 0.7,
+            delay: 0.12,
+        });
+        if (reducedMotion()) return;
+        VICTORY_SHELLS.forEach(([fx, fy, delay, scale], i) => this._later(delay, () => this._shell(
+            this.width * fx,
+            this.height * fy,
+            i % 2 ? TONE.GOLD : seat,
+            scale,
+        )));
+    }
+
+    /** A shell: a bloom, a ring opening from it and a sphere of motes drifting down. */
+    _shell(x, y, tone, scale = 1) {
+        const bs = this.blockSize;
+        this._light('bloom', {
+            x, y, color: mixColor(tone, TONE.CREAM, 0.3), r0: bs * 2.4 * scale, peak: 0.5, hold: 0.03, fade: 0.42,
+        });
+        this._light('ring', {
+            x, y, r0: bs * 0.6, r1: bs * 3.4 * scale, color: tone, peak: 0.55, hold: 0, fade: 0.62,
+        });
+        const count = Math.round((this.isFocused ? 16 : 12) * scale);
+        for (let i = 0; i < count && this.particles.length < this.maxParticles; i += 1) {
+            const angle = (i / count) * TWO_PI + Math.random() * 0.3;
+            const v = bs * (2.6 + Math.random() * 1.6) * scale;
+            this._mote(x, y, Math.cos(angle) * v, Math.sin(angle) * v, bs * 3, i % 3 ? tone : TONE.CREAM, 0.7 + Math.random() * 0.35);
+        }
     }
 
     /** Garbage heaves the stack: coral light up from the floor, dust from it. */

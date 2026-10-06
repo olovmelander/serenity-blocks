@@ -281,6 +281,9 @@ export class LobbyBrowser {
                 const countEl = this.container.querySelector('#lobby-count');
                 const count = String(this.lobbies.length);
                 if (countEl.textContent !== count) countEl.textContent = count;
+                const labelEl = this.container.querySelector('.lobby-count__label');
+                const label = this.lobbies.length === 1 ? 'match listed' : 'matches listed';
+                if (labelEl && labelEl.textContent !== label) labelEl.textContent = label;
             })
             .catch((err) => console.error('Failed to refresh lobbies:', err))
             .finally(() => { this.refreshPromise = null; });
@@ -293,7 +296,7 @@ export class LobbyBrowser {
     renderLobbies() {
         const listEl = this.container.querySelector('#lobby-list');
         const signature = JSON.stringify(this.lobbies.map((lobby) => [
-            lobby.id, lobby.name, lobby.hostName, lobby.maxPlayers || 8,
+            lobby.id, lobby.name, lobby.hostName, this.getMaxPlayers(lobby),
             this.getPlayerCount(lobby), this.getLobbyStatus(lobby), lobby.endCondition || 'frags',
             lobby.endConditionValue ?? null,
         ]));
@@ -309,7 +312,7 @@ export class LobbyBrowser {
     }
 
     lobbyRowHtml(lobby) {
-        const max = lobby.maxPlayers || 8;
+        const max = this.getMaxPlayers(lobby);
         const current = this.getPlayerCount(lobby);
         const status = this.getLobbyStatus(lobby);
         const condition = lobby.endCondition || 'frags';
@@ -361,7 +364,13 @@ export class LobbyBrowser {
    * Mock lobbies expose `players`; live game state uses `playerCount`.
    */
     getPlayerCount(lobby) {
-        return lobby.players ?? lobby.playerCount ?? lobby.currentPlayers ?? 0;
+        // Steam's counts are BigInt (steamworks.js); the list does arithmetic and JSON on them.
+        return Number(lobby.players ?? lobby.playerCount ?? lobby.currentPlayers ?? 0) || 0;
+    }
+
+    /** A lobby's seats (Steam's limit is a BigInt, or null for none). */
+    getMaxPlayers(lobby) {
+        return Number(lobby.maxPlayers) || 8;
     }
 
     /**
@@ -369,7 +378,7 @@ export class LobbyBrowser {
    */
     getLobbyStatus(lobby) {
         if (lobby.status) return lobby.status;
-        const max = lobby.maxPlayers || 8;
+        const max = this.getMaxPlayers(lobby);
         return this.getPlayerCount(lobby) >= max ? 'full' : 'open';
     }
 
@@ -379,7 +388,7 @@ export class LobbyBrowser {
     canJoinLobby(lobby) {
         const status = this.getLobbyStatus(lobby);
         if (status === 'playing' || status === 'finished') return false;
-        if (this.getPlayerCount(lobby) >= (lobby.maxPlayers || 8)) return false;
+        if (this.getPlayerCount(lobby) >= this.getMaxPlayers(lobby)) return false;
         return true;
     }
 
