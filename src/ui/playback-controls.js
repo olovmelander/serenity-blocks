@@ -128,6 +128,8 @@ export class PlaybackControls {
     show() {
         if (this.container) {
             this.container.style.display = 'flex';
+            // Lets other chrome (the Hale tile) step aside while a replay plays.
+            document.body.classList.add('replay-playing');
             this.startUpdateLoop();
             this.updateUI();
         }
@@ -136,6 +138,7 @@ export class PlaybackControls {
     hide() {
         if (this.container) {
             this.container.style.display = 'none';
+            document.body.classList.remove('replay-playing');
             this.stopUpdateLoop();
         }
     }

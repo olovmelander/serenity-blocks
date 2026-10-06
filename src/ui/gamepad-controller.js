@@ -8,6 +8,7 @@ import { performanceMonitor } from '../utils/performance-monitor.js';
 import { SpatialNavigation } from './spatial-navigation.js';
 import { getInputMode, hasGamepadActivity, markInputMode } from './keystone/input-mode.js';
 import { getOpenSheet, getSheetFocusables, getSheetInitialFocus } from './sheet-input.js';
+import { getTopLayerElement, goBackFromTopLayer } from './components/mp-sheet.js';
 import { COLS, ROWS } from '../core/constants.js';
 import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
@@ -675,6 +676,7 @@ export class GamepadController {
                 previousState.gameOverButton = mainButtons.some(
                     (buttonIndex) => freshGamepad.buttons[buttonIndex]?.pressed,
                 );
+                previousState.gameOverBack = freshGamepad.buttons[BUTTON_MAP.B]?.pressed;
                 previousState.gameModeSelect = freshGamepad.buttons[BUTTON_MAP.A]?.pressed;
                 continue;
             }
@@ -692,6 +694,7 @@ export class GamepadController {
                     this.processGameOverInput(freshGamepad, slot);
                     continue; // Don't process other input while game over modal is visible
                 }
+                this.previousStates[slot].gameOverArmed = false;
             }
 
             // Process game mode selection, menu navigation, or game input. A sheet open
@@ -722,15 +725,14 @@ export class GamepadController {
     }
 
     /**
-     * Process gamepad input when game over modal is visible
-     * Any button press will restart the game
+     * Process gamepad input when game over modal is visible.
+     * B goes to the main menu (like Escape on the sheet); A, X, Y or Start play again.
      */
     processGameOverInput(gamepad, slot) {
         const prevState = this.previousStates[slot];
 
-        // Check if any main button is pressed (A, B, X, Y, Start)
         const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
-        const bPressed = gamepad.buttons[BUTTON_MAP.B]?.pressed;
+        const bPressed = Boolean(gamepad.buttons[BUTTON_MAP.B]?.pressed);
         const xPressed = gamepad.buttons[BUTTON_MAP.X]?.pressed;
         const yPressed = gamepad.buttons[BUTTON_MAP.Y]?.pressed;
         const startPressed = gamepad.buttons[BUTTON_MAP.START]?.pressed;
@@ -738,8 +740,25 @@ export class GamepadController {
         const anyButtonPressed = aPressed || bPressed || xPressed || yPressed || startPressed;
         const wasAnyButtonPressed = prevState.gameOverButton;
 
+        // The first poll with the sheet up only latches: a button still held from play
+        // (rotate is often B) must be released and pressed again.
+        if (!prevState.gameOverArmed) {
+            prevState.gameOverArmed = true;
+            prevState.gameOverBack = bPressed;
+            prevState.gameOverButton = anyButtonPressed;
+            return;
+        }
+
+        if (bPressed && !prevState.gameOverBack && !wasAnyButtonPressed) {
+            prevState.gameOverBack = true;
+            prevState.gameOverButton = anyButtonPressed;
+            document.getElementById('game-over-main-menu')?.click();
+            return;
+        }
+        prevState.gameOverBack = bPressed;
+
         // Trigger restart on button press (rising edge)
-        if (anyButtonPressed && !wasAnyButtonPressed) {
+        if (anyButtonPressed && !bPressed && !wasAnyButtonPressed) {
             console.log('[Gamepad] Button pressed on game over screen - restarting');
 
             // Call the global startGame function if available
@@ -1283,6 +1302,12 @@ export class GamepadController {
         const sheet = this.getMenuSheet();
         if (!sheet) return;
 
+        // Multiplayer surfaces share one back stack with Escape (mp-sheet.js).
+        if (sheet.name === 'multiplayer') {
+            goBackFromTopLayer();
+            return;
+        }
+
         if (sheet.name === 'settings') {
             // B while a binding listens is the answer to the capture, not a way out — and
             // so is the B that a capture took a moment ago.
@@ -1304,7 +1329,12 @@ export class GamepadController {
      */
     getMenuSheet() {
         if (typeof document === 'undefined') return null;
-        return getOpenSheet(document, { exclude: ['gameOver'] });
+        const sheet = getOpenSheet(document, { exclude: ['gameOver'] });
+        if (sheet) return sheet;
+        // Local setup, the lobby screens and match results: the pad stays inside them.
+        const layer = getTopLayerElement();
+        if (!layer || !layer.getClientRects?.().length) return null;
+        return { name: 'multiplayer', element: layer, sheet: {} };
     }
 
     /**

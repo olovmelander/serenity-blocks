@@ -3015,6 +3015,15 @@
     bottom: calc(max(24px, env(safe-area-inset-bottom)) + 74px);
 }
 
+/* Over the main menu, toasts rise above its footer (dock and hints). */
+body.start-modal-open .sb-toast-region {
+    bottom: calc(max(24px, env(safe-area-inset-bottom)) + 64px);
+}
+
+body.start-modal-open #invite-toast-container {
+    bottom: calc(max(24px, env(safe-area-inset-bottom)) + 138px);
+}
+
 .sb-toast {
     display: flex;
     align-items: flex-start;

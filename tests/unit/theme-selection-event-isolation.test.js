@@ -439,6 +439,7 @@ describe('Serenity Hub owns gamepad theme confirmation', () => {
             index: 0,
         };
         const startGame = vi.fn();
+        const mainMenuClick = vi.fn();
         let hubOpen = true;
         vi.stubGlobal('window', {
             settings: {},
@@ -454,6 +455,7 @@ describe('Serenity Hub owns gamepad theme confirmation', () => {
                 },
             },
             getElementById: vi.fn((id) => {
+                if (id === 'game-over-main-menu') return { click: mainMenuClick };
                 if (id !== 'game-over-modal') return null;
                 return {
                     classList: {
@@ -486,11 +488,23 @@ describe('Serenity Hub owns gamepad theme confirmation', () => {
         controller.poll();
         expect(startGame).not.toHaveBeenCalled();
 
+        expect(mainMenuClick).not.toHaveBeenCalled();
+
         buttons[1] = { pressed: false, value: 0 };
+        controller.poll();
+        // After a neutral release, A plays again ...
+        buttons[0] = { pressed: true, value: 1 };
+        controller.poll();
+
+        expect(startGame).toHaveBeenCalledOnce();
+
+        // ... and B is Main menu, like Escape on the game-over sheet.
+        buttons[0] = { pressed: false, value: 0 };
         controller.poll();
         buttons[1] = { pressed: true, value: 1 };
         controller.poll();
 
+        expect(mainMenuClick).toHaveBeenCalledOnce();
         expect(startGame).toHaveBeenCalledOnce();
     });
 });
