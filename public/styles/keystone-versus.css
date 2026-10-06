@@ -4,8 +4,9 @@
  *
  * The top row holds the match bar and, at its right, the controls tray that every
  * mode shares (keystone-overlays.css). Below it, one station per player: a name plate,
- * the next queue in a row over the well's open top, the well (the board with its
- * incoming-garbage meter on the left), and one line of stats under the board.
+ * the next queue in a row over the well's open top, the well (the board between its
+ * walls, the incoming-garbage meter just outside the left one), and one line of stats
+ * under the board.
  * Every number lives in one place: the deciding number on the plate, the rest under
  * the board, the match (goal, round, clock, team totals) in the bar.
  *
@@ -42,8 +43,8 @@
 }
 
 /* ---- Station ----------------------------------------------------------------------- */
-/* The plate over both columns, the queue over the board, the well (garbage channel +
-   board), the stats under the board. */
+/* The plate over both columns, the queue over the board, the meter and the well, the
+   stats under the board. The first column is the meter and the air to the well. */
 #multiplayer-container .player-card[data-player] {
     --lv-u: var(--lv-unit, 1);
     /* The well's walls: the seat's hue, a touch lifted; danger and knock-out recolour it. */
@@ -51,7 +52,7 @@
     --lv-wall-glow: color-mix(in srgb, var(--player-primary, #b8a4ff) 34%, transparent);
     position: relative;
     display: grid;
-    grid-template-columns: var(--lv-trash, 8px) var(--board-width);
+    grid-template-columns: calc(var(--lv-trash, 8px) + var(--lv-meter-gap, 7px)) var(--board-width);
     grid-template-areas:
         "plate plate"
         ". queue"
@@ -78,7 +79,7 @@
 
 /* Last Standing: the minimap beside the board. */
 #multiplayer-container .player-card[data-player].infinity-lms {
-    grid-template-columns: var(--lv-trash, 8px) var(--board-width) 63px;
+    grid-template-columns: calc(var(--lv-trash, 8px) + var(--lv-meter-gap, 7px)) var(--board-width) 63px;
     grid-template-areas:
         "plate plate plate"
         ". queue ."
@@ -86,13 +87,13 @@
         ". meta .";
 }
 
-/* ---- The well: an open-top frame round the garbage channel and the board ---------- */
+/* ---- The well: an open-top frame round the board, the garbage meter outside it ------ */
 #multiplayer-container .player-card .player-board-wrapper {
     grid-area: well;
     position: relative;
     display: flex;
     align-items: stretch;
-    gap: 0;
+    gap: var(--lv-meter-gap, 7px);
     width: auto;
     margin: 0;
 }
@@ -277,7 +278,7 @@
     margin: 0;
     overflow: hidden;
     border: 0;
-    border-radius: 0 0 calc(10px * var(--lv-u)) 0;
+    border-radius: 0 0 calc(10px * var(--lv-u)) calc(10px * var(--lv-u));
     background: linear-gradient(180deg, rgba(9, 8, 24, 0.3) 0%, rgba(9, 8, 24, 0.84) 16%, rgba(9, 8, 24, 0.9) 100%);
     box-shadow: none;
 }
@@ -299,10 +300,11 @@
     opacity: 1;
 }
 
-/* The walls: left, right and floor round channel and board, fading out toward the top. */
+/* The walls: left, right and floor round the board, fading out toward the top. The
+   pieces meet both walls; the meter stands outside the left one. */
 #multiplayer-container .player-card .lv-well {
     position: absolute;
-    inset: 0 -3px -3px;
+    inset: 0 -3px -3px calc(var(--lv-trash, 8px) + var(--lv-meter-gap, 7px) - 3px);
     z-index: 4;
     border: 3px solid var(--lv-wall);
     border-top: 0;
@@ -348,8 +350,9 @@
     display: none;
 }
 
-/* Incoming garbage: a channel inside the well, against the board, filling from the
-   floor; it glows once a heavy attack waits (8+ rows). */
+/* Incoming garbage: a meter just outside the well's left wall — a quiet track, fading in
+   from the open top like the walls, that fills from the floor; it glows once a heavy
+   attack waits (8+ rows). */
 #multiplayer-container .player-card .garbage-indicator {
     position: relative;
     flex: none;
@@ -357,8 +360,11 @@
     height: var(--board-height);
     overflow: hidden;
     border: 0;
-    border-radius: 0 0 0 calc(10px * var(--lv-u));
-    background: linear-gradient(180deg, rgba(5, 4, 14, 0.25) 0%, rgba(5, 4, 14, 0.85) 16%);
+    border-radius: 0 0 999px 999px;
+    background: linear-gradient(180deg,
+        transparent 0%,
+        rgba(var(--sb-cream-rgb), 0.08) 24%,
+        rgba(var(--sb-cream-rgb), 0.12) 100%);
     box-shadow: none;
 }
 
@@ -692,7 +698,7 @@
     to { opacity: 0; transform: translateY(-120%); }
 }
 
-/* An attack: a streak from the attacker's board into the target's garbage channel. */
+/* An attack: a streak from the attacker's board into the target's garbage meter. */
 #multiplayer-container .lv-attack {
     position: absolute;
     z-index: 30;
@@ -725,7 +731,7 @@
     transform: translate(-50%, -50%);
 }
 
-/* The hit: the channel flashes and the rows it takes count in beside it. */
+/* The hit: the meter flashes and the rows it takes count in beside it, on the board. */
 #multiplayer-container .player-card .garbage-indicator.is-hit {
     animation: lv-hit 500ms ease-out;
 }
@@ -738,7 +744,7 @@
 #multiplayer-container .lv-hit {
     position: absolute;
     bottom: 16%;
-    left: calc(var(--lv-trash, 8px) + 6px);
+    left: calc(var(--lv-trash, 8px) + var(--lv-meter-gap, 7px) + 6px);
     z-index: 6;
     color: color-mix(in srgb, var(--attack-color, #ffac88) 55%, #fff6e9);
     font: 800 calc(18px * var(--lv-u)) / 1 var(--sb-font-display);

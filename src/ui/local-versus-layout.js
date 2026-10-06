@@ -3,8 +3,8 @@
  * @fileoverview Board size and arrangement for local versus (LocalMultiplayerMode).
  *
  * Every player has a station: a name plate, the next queue in a row over the well's
- * open top, the board with its garbage meter on the left, and one line of stats under
- * it. The block size is the largest that fits the window below the top row (the match
+ * open top, the well (the board between its walls) with the garbage meter just outside
+ * its left wall, and one line of stats under it. The block size is the largest that fits the window below the top row (the match
  * bar and the controls tray). Stations wrap onto two rows only where that gives the
  * bigger board (tall windows).
  *
@@ -48,6 +48,8 @@ export function versusParts(block) {
         plate: Math.round(VERSUS_CHROME.plate * unit),
         meta: Math.round(VERSUS_CHROME.meta * unit),
         trash: clamp(Math.round(block * 0.3), 7, 14),
+        // From the meter to the board: a little air and the well's 3 px wall.
+        meterGap: 3 + clamp(Math.round(block * 0.1), 3, 6),
         nextWidth,
         nextHeight,
         laterWidth: Math.round(nextWidth * 0.8),
@@ -85,8 +87,8 @@ export function versusParts(block) {
  */
 export function versusStation(block, infinity = false) {
     const p = versusParts(block);
-    // The garbage channel sits flush inside the well, against the board.
-    const width = p.trash + VERSUS_COLS * block + (infinity ? VERSUS_CHROME.minimap : 0);
+    // The garbage meter stands outside the well's left wall; the board meets both walls.
+    const width = p.trash + p.meterGap + VERSUS_COLS * block + (infinity ? VERSUS_CHROME.minimap : 0);
     const height = p.plate + VERSUS_CHROME.plateGap
         + p.nextHeight + VERSUS_CHROME.queueGap
         + VERSUS_ROWS * block
@@ -179,6 +181,7 @@ export function applyVersusLayout(stage, layout) {
         '--lv-plate-h': `${p.plate}px`,
         '--lv-meta-h': `${p.meta}px`,
         '--lv-trash': `${p.trash}px`,
+        '--lv-meter-gap': `${p.meterGap}px`,
         '--lv-next-w': `${p.nextWidth}px`,
         '--lv-next-h': `${p.nextHeight}px`,
         '--lv-later-w': `${p.laterWidth}px`,
