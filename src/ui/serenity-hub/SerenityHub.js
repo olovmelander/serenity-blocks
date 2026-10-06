@@ -948,6 +948,16 @@ export class SerenityHub {
             navigate: (direction) => this.handleNavigation(direction),
             confirmSelection: () => this.confirmItem(),
 
+            // Hale sessions while the Hub is closed: the session screens first, then the guide.
+            sessionPrimary: () => {
+                if (this.sessionsTab?.flowOpen) this.sessionsTab.primaryAction();
+                else window.breathingIndicator?.primaryAction?.();
+            },
+            sessionBack: () => {
+                if (this.sessionsTab?.flowOpen) this.sessionsTab.back();
+                else window.breathingIndicator?.backAction?.();
+            },
+
             // Scrolling
             scrollContent: (delta) => {
                 scrollHubScrollContainer(this.panel, delta);

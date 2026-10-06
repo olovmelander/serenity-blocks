@@ -2361,6 +2361,20 @@ export class GamepadController {
             if (Math.abs(rightStickY) > this.deadzone) {
                 callbacks.scrollContent?.(rightStickY * 15);
             }
+            // A press that closes the Hub must not also reach the session behind it.
+            prevState.serenitySessionPrimary = buttonActive('confirmSelection');
+            prevState.serenitySessionBack = buttonActive('closeHub');
+        } else {
+            // With the Hub closed, A and B belong to a Hale session: A breathes in during an open
+            // hold (or pauses), B asks to end; on the session screens they press and step back.
+            onButtonPress('confirmSelection', 'serenitySessionPrimary', () => {
+                callbacks.sessionPrimary?.();
+            });
+            onButtonPress('closeHub', 'serenitySessionBack', () => {
+                callbacks.sessionBack?.();
+            });
+            prevState.serenityConfirmSelection = buttonActive('confirmSelection');
+            prevState.serenityCloseHub = buttonActive('closeHub');
         }
     }
 
