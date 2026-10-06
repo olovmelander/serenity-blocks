@@ -5,6 +5,16 @@
 
 import { csIcon } from '../components/cosmic-icons.js';
 
+/** The game's own name: never printed as the artist of its own soundtrack. */
+const GAME_ARTIST = 'serenity blocks';
+const SEEK_STEPS = {
+    ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5, PageUp: 30, PageDown: -30,
+};
+
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[char]);
+
 export class MusicTab {
     constructor(hubInstance, soundManager) {
         this.hub = hubInstance;
@@ -53,126 +63,107 @@ export class MusicTab {
             return;
         }
 
-        // Clear loading message
+        const playing = this.isPlaying();
+        const musicPercent = Math.round(this.soundManager.musicVolume * 100);
+        const sfxPercent = Math.round(this.soundManager.sfxVolume * 100);
+        const muted = Boolean(this.soundManager.isMuted);
+        // Now playing (play / pause is the tab's one primary action), volume, the playlist.
         container.innerHTML = `
             <div class="music-tab">
-                <!-- Compact Now Playing + Controls Section -->
-                <div class="now-playing-section">
-                    <div class="now-playing-header">
-                        <span class="music-icon">${csIcon('note', 20)}</span>
-                        <h3>Now Playing</h3>
-                    </div>
+                <section class="now-playing-section" aria-labelledby="music-now-playing-label">
                     <div class="now-playing-card">
-                        <div class="album-art">
-                            <div class="vinyl-disc ${this.isPlaying() ? 'spinning' : ''}">
-                                <div class="vinyl-center"></div>
-                            </div>
+                        <div class="album-art" aria-hidden="true">
+                            <div class="vinyl-disc${playing ? ' spinning' : ''}">${csIcon('note', 42)}</div>
                         </div>
                         <div class="track-controls-container">
                             <div class="track-info">
-                                <div class="track-title" id="current-track-title">
-                                    ${this.getCurrentSongName()}
-                                </div>
-                                <div class="track-artist">Serenity Blocks</div>
+                                <p class="sb-eyebrow" id="music-now-playing-label">Now playing</p>
+                                <h3 class="track-title" id="current-track-title">
+                                    ${escapeHtml(this.getCurrentSongName())}</h3>
+                                <p class="track-meta" id="current-track-meta">${escapeHtml(this.getTrackMeta())}</p>
                             </div>
 
                             <div class="playback-controls-section">
                                 <div class="progress-container">
-                                    <div class="time-display">
-                                        <span id="current-time">0:00</span>
-                                        <span id="total-time">0:00</span>
-                                    </div>
-                                    <div class="progress-bar-container">
+                                    <span id="current-time">0:00</span>
+                                    <div class="progress-bar-container" role="slider" tabindex="0"
+                                        aria-label="Position in track" aria-valuemin="0" aria-valuemax="0"
+                                        aria-valuenow="0" aria-valuetext="0:00">
                                         <div class="progress-bar">
                                             <div class="progress-fill" id="progress-fill"></div>
                                             <div class="progress-handle" id="progress-handle"></div>
                                         </div>
                                     </div>
+                                    <span id="total-time">0:00</span>
                                 </div>
 
                                 <div class="main-controls">
-                                    <button class="control-btn secondary" id="prev-track" title="Previous Track">
-                                        <span class="control-icon">${csIcon('prev', 20)}</span>
+                                    <button type="button" class="control-btn secondary" id="prev-track"
+                                        aria-label="Previous track">
+                                        <span class="control-icon">${csIcon('prev', 18)}</span>
                                     </button>
-                                    <button class="control-btn primary" id="play-pause" title="${this.isPlaying() ? 'Pause' : 'Play'}">
-                                        <span class="control-icon">${csIcon(this.isPlaying() ? 'pause' : 'play', 22)}</span>
+                                    <button type="button" class="control-btn primary" id="play-pause"
+                                        aria-label="${playing ? 'Pause' : 'Play'}">
+                                        <span class="control-icon">${csIcon(playing ? 'pause' : 'play', 22)}</span>
                                     </button>
-                                    <button class="control-btn secondary" id="next-track" title="Next Track">
-                                        <span class="control-icon">${csIcon('next', 20)}</span>
+                                    <button type="button" class="control-btn secondary" id="next-track"
+                                        aria-label="Next track">
+                                        <span class="control-icon">${csIcon('next', 18)}</span>
                                     </button>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <!-- Volume Controls Section -->
-                <div class="volume-section">
+                <section class="volume-section" aria-labelledby="music-volume-label">
+                    <p class="sb-eyebrow" id="music-volume-label">Volume</p>
                     <div class="volume-controls-stack">
                         <div class="volume-control">
-                            <label class="volume-label">
-                                <span class="volume-icon">${csIcon('note', 16)}</span>
-                                Music Volume
+                            <label class="volume-label" for="hub-music-volume">
+                                <span class="volume-icon" aria-hidden="true">${csIcon('note', 16)}</span>
+                                Music
                             </label>
                             <div class="volume-slider-container">
-                                <input
-                                    type="range"
-                                    class="volume-slider"
-                                    id="hub-music-volume"
-                                    min="0"
-                                    max="100"
-                                    value="${Math.round(this.soundManager.musicVolume * 100)}"
-                                >
-                                <span class="volume-value" id="hub-music-volume-value">
-                                    ${Math.round(this.soundManager.musicVolume * 100)}%
-                                </span>
+                                <input type="range" class="volume-slider" id="hub-music-volume"
+                                    min="0" max="100" value="${musicPercent}">
+                                <span class="volume-value" id="hub-music-volume-value"
+                                    aria-hidden="true">${musicPercent}%</span>
                             </div>
                         </div>
 
                         <div class="volume-control">
-                            <label class="volume-label">
-                                <span class="volume-icon">${csIcon('volume', 16)}</span>
-                                SFX Volume
+                            <label class="volume-label" for="hub-sfx-volume">
+                                <span class="volume-icon" aria-hidden="true">${csIcon('volume', 16)}</span>
+                                Sound effects
                             </label>
                             <div class="volume-slider-container">
-                                <input
-                                    type="range"
-                                    class="volume-slider"
-                                    id="hub-sfx-volume"
-                                    min="0"
-                                    max="100"
-                                    value="${Math.round(this.soundManager.sfxVolume * 100)}"
-                                >
-                                <span class="volume-value" id="hub-sfx-volume-value">
-                                    ${Math.round(this.soundManager.sfxVolume * 100)}%
-                                </span>
+                                <input type="range" class="volume-slider" id="hub-sfx-volume"
+                                    min="0" max="100" value="${sfxPercent}">
+                                <span class="volume-value" id="hub-sfx-volume-value"
+                                    aria-hidden="true">${sfxPercent}%</span>
                             </div>
                         </div>
                     </div>
 
                     <div class="volume-actions">
-                        <button
-                            class="mute-btn ${this.soundManager.isMuted ? 'muted' : ''}"
-                            id="mute-toggle"
-                            aria-pressed="${this.soundManager.isMuted ? 'true' : 'false'}"
-                            title="${this.soundManager.isMuted ? 'Unmute' : 'Mute'}"
-                        >
-                            <span class="mute-icon">${csIcon(this.soundManager.isMuted ? 'mute' : 'volume', 18)}</span>
-                            <span class="mute-text">${this.soundManager.isMuted ? 'Unmute' : 'Mute'}</span>
+                        <button type="button" class="mute-btn${muted ? ' muted' : ''}" id="mute-toggle"
+                            aria-pressed="${muted ? 'true' : 'false'}">
+                            <span class="mute-icon" aria-hidden="true">${csIcon(muted ? 'mute' : 'volume', 18)}</span>
+                            <span class="mute-text">${muted ? 'Unmute' : 'Mute'}</span>
                         </button>
                     </div>
-                </div>
+                </section>
 
-                <!-- Playlist Section -->
-                <div class="playlist-section">
+                <section class="playlist-section" aria-labelledby="music-playlist-title">
                     <div class="playlist-header">
-                        <h3>Playlist</h3>
+                        <h3 id="music-playlist-title">Playlist</h3>
                         <span class="track-count">${this.songs.length} tracks</span>
                     </div>
                     <div class="playlist-container" id="playlist-container">
                         ${this.renderPlaylist()}
                     </div>
-                </div>
+                </section>
             </div>
         `;
         this.cacheNodes();
@@ -189,8 +180,11 @@ export class MusicTab {
         this.nodes = {};
         ['play-pause', 'prev-track', 'next-track', 'mute-toggle',
             'hub-music-volume', 'hub-music-volume-value', 'hub-sfx-volume', 'hub-sfx-volume-value',
-            'current-track-title', 'current-time', 'total-time', 'progress-fill', 'progress-handle',
+            'current-track-title', 'current-track-meta', 'current-time', 'total-time', 'progress-fill',
+            'progress-handle',
         ].forEach((id) => this.getNode(id));
+        this.paintSlider(this.getNode('hub-music-volume'));
+        this.paintSlider(this.getNode('hub-sfx-volume'));
         this.nodes.progressBar = this.container?.querySelector('.progress-bar-container');
         this.nodes.vinylDisc = this.container?.querySelector('.vinyl-disc');
         const fill = this.nodes['progress-fill'];
@@ -227,20 +221,36 @@ export class MusicTab {
         return sortedSongs.map((song, index) => {
             const songKey = this.nameToKey(song.name);
             const isActive = songKey === this.currentSong;
+            // A row names its artist only when it is not the game itself.
+            const artist = song.artist && String(song.artist).trim().toLowerCase() !== GAME_ARTIST
+                ? `<span class="playlist-item-artist">${escapeHtml(song.artist)}</span>` : '';
 
             return `
-                <div class="playlist-item ${isActive ? 'active' : ''}" data-track="${songKey}" tabindex="0">
-                    <div class="playlist-item-number">${(index + 1).toString().padStart(2, '0')}</div>
-                    <div class="playlist-item-info">
-                        <div class="playlist-item-title">${song.name}</div>
-                        <div class="playlist-item-artist">Serenity Blocks</div>
-                    </div>
-                    <div class="playlist-item-icon">
+                <button type="button" class="playlist-item${isActive ? ' active' : ''}" data-track="${songKey}"
+                    ${isActive ? 'aria-current="true"' : ''}>
+                    <span class="playlist-item-number" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>
+                    <span class="playlist-item-info">
+                        <span class="playlist-item-title">${escapeHtml(song.name)}</span>${artist}
+                    </span>
+                    <span class="playlist-item-icon" aria-hidden="true">
                         ${isActive ? `<span class="playing-indicator">${csIcon('equalizer', 16)}</span>` : ''}
-                    </div>
-                </div>
+                    </span>
+                </button>
             `;
         }).join('');
+    }
+
+    /** "Track 09 of 36": the now-playing card's place in the playlist below it. */
+    getTrackMeta(trackKey = this.audibleSong || this.currentSong) {
+        const sorted = [...this.songs].sort((a, b) => a.name.localeCompare(b.name));
+        const index = sorted.findIndex((song) => this.nameToKey(song.name) === trackKey);
+        if (index < 0) return `${sorted.length} tracks`;
+        return `Track ${String(index + 1).padStart(2, '0')} of ${sorted.length}`;
+    }
+
+    /** The slider's spectrum fill runs to its value (keystone-hub.css reads --fill). */
+    paintSlider(slider) {
+        if (slider) slider.style?.setProperty?.('--fill', `${slider.value}%`);
     }
 
     /**
@@ -293,6 +303,7 @@ export class MusicTab {
                 const volume = parseInt(e.target.value, 10) / 100;
                 this.previewVolume('musicVolume', volume);
                 this.getNode('hub-music-volume-value').textContent = `${e.target.value}%`;
+                this.paintSlider(e.target);
             });
         }
 
@@ -304,6 +315,7 @@ export class MusicTab {
                 const volume = parseInt(e.target.value, 10) / 100;
                 this.previewVolume('sfxVolume', volume);
                 this.getNode('hub-sfx-volume-value').textContent = `${e.target.value}%`;
+                this.paintSlider(e.target);
             });
         }
 
@@ -313,10 +325,11 @@ export class MusicTab {
             this.listen(muteBtn, 'click', () => this.toggleMute());
         }
 
-        // Progress bar scrubbing
+        // Progress bar: click to seek; as a slider, the arrows, Page keys and Home/End seek.
         const { progressBar } = this.nodes;
         if (progressBar) {
             this.listen(progressBar, 'click', (e) => this.seekToPosition(e));
+            this.listen(progressBar, 'keydown', (e) => this.seekByKey(e));
         }
 
         // Playlist items
@@ -419,14 +432,12 @@ export class MusicTab {
         if (isMuted) {
             muteBtn.classList.add('muted');
             muteBtn.setAttribute('aria-pressed', 'true');
-            muteBtn.title = 'Unmute';
             if (muteIcon) muteIcon.innerHTML = csIcon('mute', 18);
             if (muteText) muteText.textContent = 'Unmute';
             this.updateVinylAnimation(false);
         } else {
             muteBtn.classList.remove('muted');
             muteBtn.setAttribute('aria-pressed', 'false');
-            muteBtn.title = 'Mute';
             if (muteIcon) muteIcon.innerHTML = csIcon('volume', 18);
             if (muteText) muteText.textContent = 'Mute';
             this.updateVinylAnimation(true);
@@ -450,6 +461,23 @@ export class MusicTab {
         this.updateProgressBar();
     }
 
+    /** Keyboard seeking on the progress slider: 5 s per arrow, 30 s per Page key. */
+    seekByKey(event) {
+        const { audioElement } = this.soundManager;
+        const { duration } = audioElement || {};
+        if (!audioElement || !(Number.isFinite(duration) && duration > 0)) return;
+        let next = null;
+        if (SEEK_STEPS[event.key] !== undefined) next = audioElement.currentTime + SEEK_STEPS[event.key];
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = duration;
+        if (next === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        audioElement.currentTime = Math.max(0, Math.min(duration - 0.25, next));
+        this.lastProgress = null;
+        this.updateProgressBar();
+    }
+
     /**
      * Updates the now playing display
      */
@@ -458,6 +486,7 @@ export class MusicTab {
         if (titleElement) {
             this.setLabel(titleElement, this.getCurrentSongName(this.audibleSong || this.currentSong));
         }
+        this.setLabel(this.getNode('current-track-meta'), this.getTrackMeta());
     }
 
     /**
@@ -471,9 +500,11 @@ export class MusicTab {
             if (item.classList.contains('active') === isActive) return;
             if (isActive) {
                 item.classList.add('active');
+                item.setAttribute('aria-current', 'true');
                 item.querySelector('.playlist-item-icon').innerHTML = `<span class="playing-indicator">${csIcon('equalizer', 16)}</span>`;
             } else {
                 item.classList.remove('active');
+                item.removeAttribute('aria-current');
                 item.querySelector('.playlist-item-icon').innerHTML = '';
             }
         });
@@ -489,7 +520,7 @@ export class MusicTab {
             this.lastPlaying = isPlaying;
             const icon = playPauseBtn.querySelector('.control-icon');
             if (icon) icon.innerHTML = csIcon(isPlaying ? 'pause' : 'play', 22);
-            playPauseBtn.title = isPlaying ? 'Pause' : 'Play';
+            playPauseBtn.setAttribute?.('aria-label', isPlaying ? 'Pause' : 'Play');
         }
     }
 
@@ -535,6 +566,7 @@ export class MusicTab {
             const value = this.getNode(`${prefix}-volume-value`);
             const percent = Math.round(settings[key] * 100);
             if (slider) slider.value = percent;
+            this.paintSlider(slider);
             if (value) this.setLabel(value, `${percent}%`);
         });
     }
@@ -582,6 +614,19 @@ export class MusicTab {
         }
         this.setLabel(this.getNode('current-time'), this.formatTime(currentTime));
         this.setLabel(this.getNode('total-time'), loaded ? this.formatTime(duration) : '--:--');
+        this.setSeekValue(currentTime, loaded ? duration : 0);
+    }
+
+    /** The progress slider's value for assistive tech, written only when a second turns. */
+    setSeekValue(now, max) {
+        const bar = this.nodes.progressBar;
+        if (typeof bar?.setAttribute !== 'function') return;
+        const text = max > 0 ? `${this.formatTime(now)} of ${this.formatTime(max)}` : '0:00';
+        if (this.lastSeekText === text) return;
+        this.lastSeekText = text;
+        bar.setAttribute('aria-valuemax', String(Math.floor(max)));
+        bar.setAttribute('aria-valuenow', String(Math.floor(now)));
+        bar.setAttribute('aria-valuetext', text);
     }
 
     resetProgressBar() {
@@ -592,6 +637,7 @@ export class MusicTab {
         this.lastProgress = 0;
         this.setLabel(this.getNode('current-time'), '0:00');
         this.setLabel(this.getNode('total-time'), '0:00');
+        this.setSeekValue(0, 0);
     }
 
     /**

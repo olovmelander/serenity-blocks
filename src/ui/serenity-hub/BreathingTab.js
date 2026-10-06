@@ -53,28 +53,29 @@ export class BreathingTab {
                 aria-pressed="${world.id === selected}"
                 aria-label="${world.name}. ${this.formatPattern(world.pattern)}.">
                 <span class="breath-world__art" style="background-image:url('${breathPosterUrl(world.id)}')" aria-hidden="true"></span>
-                <span class="breath-world__check" aria-hidden="true">${csIcon('check', 12)}</span>
+                <span class="breath-world__check" aria-hidden="true"></span>
                 <span class="breath-world__name">${world.name}</span>
                 <span class="breath-world__meta">${world.intent} · ${formatPattern(world.pattern)}</span>
             </button>`).join('');
         container.innerHTML = `
             <div class="breath-lib">
-                <section class="breath-lib__hero" aria-live="polite">
+                <section class="breath-lib__hero" aria-label="Chosen world">
                     <div class="breath-lib__hero-art" aria-hidden="true"></div>
                     <div class="breath-lib__hero-body">
                         <span class="breath-lib__eyebrow"></span>
-                        <h3 class="breath-lib__name"></h3>
+                        <h3 class="breath-lib__name" aria-live="polite"></h3>
                         <p class="breath-lib__description"></p>
                         <div class="breath-rhythm"></div>
                         <div class="breath-lib__actions">
-                            <button type="button" class="breath-lib__begin" id="breathing-guide-toggle"></button>
+                            <button type="button" class="sb-btn sb-btn--primary breath-lib__begin"
+                                id="breathing-guide-toggle"></button>
                             <span class="breath-lib__cycle"></span>
                         </div>
                     </div>
                 </section>
                 <section class="breath-lib__notice" hidden>
                     <p>${csIcon('breath', 16)} A Hale session is running and owns the rhythm.</p>
-                    <button type="button" class="breath-open-sessions">Open Hale sessions</button>
+                    <button type="button" class="sb-btn breath-open-sessions">Open Hale sessions</button>
                 </section>
                 <section>
                     <h3 class="breath-lib__heading">Twelve worlds <small>Each one breathes at its own pace</small></h3>
@@ -86,18 +87,27 @@ export class BreathingTab {
                         <h3>Hale sessions</h3>
                         <p>Full journeys with a voice: arrive, three rounds of breathing and stillness, then rest.</p>
                     </div>
-                    <button type="button" class="breath-open-sessions breath-lib__hale-button">Explore Hale sessions <span aria-hidden="true">→</span></button>
+                    <button type="button" class="sb-btn breath-open-sessions breath-lib__hale-button">
+                        Explore Hale sessions <span aria-hidden="true">→</span></button>
                 </section>
                 <section class="breath-lib__settings">
                     <label class="breath-lib__switch">
-                        <input type="checkbox" id="breathing-text-toggle" ${this.settings.breathingText !== false ? 'checked' : ''}>
+                        <input type="checkbox" class="sb-toggle" id="breathing-text-toggle"
+                            ${this.settings.breathingText !== false ? 'checked' : ''}>
                         <span><b>Words and counts</b><small>Show “Breathe in”, the seconds, and the cue line</small></span>
                     </label>
                     <label class="breath-lib__switch">
-                        <input type="checkbox" id="breathing-auto-start" ${this.settings.breathingGuideAutoStart ? 'checked' : ''}>
+                        <input type="checkbox" class="sb-toggle" id="breathing-auto-start"
+                            ${this.settings.breathingGuideAutoStart ? 'checked' : ''}>
                         <span><b>Begin with Serenity Mode</b><small>Start breathing as soon as Serenity Mode opens</small></span>
                     </label>
-                    <p class="breath-lib__keys">In a practice: <kbd>←</kbd> <kbd>→</kbd> change world · <kbd>Esc</kbd> ends it</p>
+                    <div class="breath-lib__keys">
+                        <p class="sb-eyebrow sb-eyebrow--quiet">During a practice</p>
+                        <ul class="sb-hints">
+                            <li><kbd class="sb-kbd">←</kbd><kbd class="sb-kbd">→</kbd>Change world</li>
+                            <li><kbd class="sb-kbd">Esc</kbd>End it</li>
+                        </ul>
+                    </div>
                 </section>
             </div>`;
         this.refresh();
@@ -172,7 +182,8 @@ export class BreathingTab {
         hero.dataset.world = world.id;
         hero.querySelector('.breath-lib__hero-art').style.backgroundImage = `url('${breathPosterUrl(world.id)}')`;
         hero.querySelector('.breath-lib__eyebrow').textContent = `${world.intent} · ${world.summary}`;
-        hero.querySelector('.breath-lib__name').textContent = world.name;
+        const name = hero.querySelector('.breath-lib__name');
+        if (name.textContent !== world.name) name.textContent = world.name;
         hero.querySelector('.breath-lib__description').textContent = world.description;
         const rhythm = hero.querySelector('.breath-rhythm');
         if (rhythm.dataset.world !== world.id) {

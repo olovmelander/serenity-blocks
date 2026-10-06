@@ -78,7 +78,7 @@ in `fonts.css` with **relative** URLs — absolute `/fonts/...` URLs break under
 
 | Class | What |
 |---|---|
-| `.sb-eyebrow` (`--quiet`) | Spaced capitals with a tile bullet; colour from `--sb-accent-rgb` |
+| `.sb-eyebrow` (`--quiet`) | Spaced capitals with a tile bullet; colour from `--sb-accent-rgb`; line height 1.5 so a wrapped eyebrow never overlaps itself |
 | `.sb-panel` (`--open`) + `.sb-key` | Night-glass panel; `--open` masks the top-right corner for the keystone sibling |
 | `.sb-btn` (`--primary`, `--quiet`) | 48 px buttons; primary is the coral keystone |
 | `.sb-kbd[data-key]` / `.sb-kbd[data-pad]` | Keycaps; the body class `sb-input-gamepad` swaps key hints for pad hints |
@@ -86,7 +86,7 @@ in `fonts.css` with **relative** URLs — absolute `/fonts/...` URLs break under
 | `.sb-chip` | Rounded-square tag |
 | `.sb-meter > i` (`.is-filled`, `.is-current`, `.is-break`) | Progress drawn as cells; the current cell is the keystone |
 | `.sb-divider` | A cleared line of tile dots |
-| `input[type=checkbox].sb-toggle` | Switch whose knob is a tile; on = keystone |
+| `input[type=checkbox].sb-toggle` | Switch whose knob is a tile; on = a lit cream tile on the spectrum track (not coral: toggles stack) |
 | `.sb-keystone` | The focus marker (below) |
 
 ### 1.6 The keystone focus marker
@@ -182,6 +182,11 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Font URLs were absolute (`/fonts/...`) | Relative to the stylesheet |
 | Odyssey copy promised 56 levels in 7 chapters | Read from the level registry (59 in 8) |
 | The desktop game had no way to quit from its menus (Alt+F4 only, in fullscreen) | Quit in the main menu dock, two presses |
+| Typing in the theme search fired Serenity's shortcuts (B random theme, T, F, H, Space) | The search owns its keys; the first Esc clears it, the second closes the Hub |
+| Space/Enter on a Hub button also reached the game; the closed Hub could still take focus | Contained in the Hub; the closed Hub is inert |
+| A Hale flow or breathing guide opened from the main menu let Space/Enter reach the menu (and reopen the Hub) | The menu stands down while either is open |
+| A global `.gamepad-focused { outline: … !important }` drew an indigo ring over every focus style | Removed; the cream outline and the keystone mark focus |
+| Hub tab panels were labelled by themselves; `serenity-hub.css` redefined `@keyframes pulse` for the whole game | Labelled by their tabs; Hub keyframes are its own |
 | Tabbing to "Back to Map" in the Odyssey failure sheet and pressing Enter retried the level | A focused button owns Enter/Space; Retry takes focus when the sheet opens |
 | The Odyssey HUD progress fill filled its whole section (an unscoped absolute `.progress-fill` in `serenity-hub.css`) | The HUD keeps its fill in flow inside the track |
 | The countdown plate, Odyssey HUD and single-player stat rail blurred the live scene every frame | Opaque layered fills |
@@ -196,11 +201,44 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 |---|---|---|
 | Main menu, dock, corner tiles, player card | `keystone-menu.css` | Shipped |
 | Settings (also the pause sheet), Records, Replays, game over, replay complete | `keystone-settings.css`, `keystone-modals.css` | See below |
-| Serenity Hub (Themes, Music, Breathing, Hale sessions, Hale flow) | `keystone-hub.css` | See below |
+| Serenity Hub (Themes, Music, Breathing, Hale sessions), Hale flow, breathing guide chrome, Serenity controls overlay | `keystone-hub.css`, `breathwork-sessions.css`, `breathing-library.css`, `breathing-guide.css` | Shipped |
 | Multiplayer (local setup, lobby browser, create match, waiting room, results) | `keystone-multiplayer.css` | See below |
 | Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
 
-### 5.1 In-game overlays (`keystone-overlays.css`)
+### 5.1 Serenity Hub (`keystone-hub.css`)
+
+**Before:** a centred glass box titled in spaced Orbitron, mono copy, a red ✕, pill chips
+and saturated purple/teal/green thumbnail backdrops behind every theme orb.
+
+**After:**
+
+- **One sheet** with the open corner and keystone, an eyebrow per tab ("Breath · The world
+  you play in", "What you hear", "Rhythms to follow", "Guided journeys"), the title
+  "Serenity Hub", a labelled Close (Esc / B) and a solid scrim. Tabs are an ARIA tab strip
+  with a spectrum underline (←/→, Home/End, LB/RB; Tab still moves between controls), each
+  tab keeps its scroll position, and the footer carries the hints. Focus lands on the
+  title when the Hub opens.
+- **Themes:** a labelled search that also matches categories ("Nature" finds the biomes),
+  category chips with counts (`aria-pressed`), "Try a random theme", the current theme's
+  card carries the keystone and a "Current" label, an empty state with "Clear filters".
+  The 3D tilt is gone; lazy thumbnails and `content-visibility` stay.
+- **Music:** the track in Unbounded with "Track 09 of 36", a keyboard-operable seek
+  slider (arrows ±5 s, Page Up/Down ±30 s) that fills with the spectrum, a coral
+  play/pause between named previous/next, labelled volume sliders, playlist rows as
+  buttons with `aria-current` on the playing track.
+- **Breathing:** one coral Begin, the keystone on the chosen world, Keystone toggles.
+- **Hale sessions and the flow:** catalogue, a prepare panel with the open corner, a
+  four-beat meter on the countdown and a completion screen with the holds as bars.
+- **Breathing guide chrome and the Serenity controls overlay (`/`):** keycaps for every
+  key, the controls overlay built from the player's own bindings, the end confirmation's
+  controller line as A / B keycaps.
+
+`serenity-hub.css` went from 2,576 to 412 lines (only the floating icons remain);
+`serenity-hub-aaa.css` (1,297) and the unreferenced `scroll-opt.css` are deleted. Every
+bare generic rule the Hub used to leak (`.progress-*`, `.section-title`, `.control-btn`,
+keyframes `pulse`/`spin`/`float`) is gone.
+
+### 5.2 In-game overlays (`keystone-overlays.css`)
 
 **Before:** Orbitron and Space Mono over violet glass; every Odyssey view injected its
 own styles from JavaScript; the countdown was a traffic light (green, amber, red, then

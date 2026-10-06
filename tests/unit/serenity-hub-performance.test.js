@@ -130,6 +130,9 @@ describe('Serenity Hub performance helpers', () => {
 
         expect(getFilteredThemeIds(themes, 'all', '')).toEqual(['aurora', 'forest', 'winter']);
         expect(getFilteredThemeIds(themes, 'biomes', 'for')).toEqual(['forest']);
+        // A category's on-screen label finds its themes ("Nature" is the biomes group).
+        expect(getFilteredThemeIds(themes, 'all', 'Nature')).toEqual(['forest', 'winter']);
+        expect(getFilteredThemeIds(themes, 'all', 'sky')).toEqual(['aurora']);
     });
 
     it('updates existing theme card nodes in place when filtering', () => {

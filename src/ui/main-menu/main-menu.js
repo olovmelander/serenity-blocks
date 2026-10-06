@@ -282,7 +282,9 @@ class MainMenu {
     isMenuActive() {
         return Boolean(this.modal?.classList.contains('visible'))
             && !document.body.classList.contains('start-modal-covered')
-            && !document.body.classList.contains('serenity-hub-open');
+            && !document.body.classList.contains('serenity-hub-open')
+            // A Hale flow or breathing guide started from the menu owns Space and Enter.
+            && !document.querySelector('.hale-flow:not([hidden]), #breathing-guide:not([hidden])');
     }
 
     /** Arrow keys walk the list; Enter with nothing focused plays the current mode. */
