@@ -1368,31 +1368,45 @@
     }
 }
 
+
 /* ==================================================================================
- * Play rail (#sb-play-rail, src/ui/keystone/play-rail.js): every mode's in-game controls
- * in one row in the bottom-right corner — Levels (Odyssey board view), the Serenity Hub,
- * and Pause in the corner itself, where the gear always was. The tiles keep their ids
- * and handlers; the rail gives them one size, a label and their keys.
+ * Play rail (#sb-play-rail, src/ui/keystone/play-rail.js): the in-game controls —
+ * Levels (Odyssey's board view), the Serenity Hub and Settings, Settings outermost —
+ * with one home in every mode: the top-right. The bottom of the screen belongs to the
+ * game: boards, chat, stats, touch controls and toasts.
  *
- * It rests dimmed while you play and wakes under the pointer or focus; in Serenity it
- * fades out with the cursor. The breathing guide and a Hale flow bring their own
- * controls, so the rail steps aside for them; on the main menu the dock replaces it.
+ * The tray: a small night tile in the corner that rests dimmed while you play and wakes
+ * under the pointer or focus (in Serenity it leaves with the cursor). Names and keys
+ * show beneath it on hover or focus; a mode's first runs unroll them inside the tray for
+ * a moment (.is-peek, and .is-folding on the way in and out).
+ *
+ * Docked ([data-dock]): where a mode has chrome up there the rail joins it. In an online
+ * match it is the first panel of the info column, level with the spectator toolbar, so
+ * the chat keeps the bottom corner. Local versus centres the tray on the standings bar;
+ * Odyssey's board view ends its header chips before it.
  * ================================================================================ */
 #sb-play-rail {
+    --play-tile: 40px;
+    --play-inset: 16px;
     position: fixed;
-    right: max(16px, env(safe-area-inset-right));
-    bottom: max(16px, env(safe-area-inset-bottom));
+    top: max(var(--play-inset), env(safe-area-inset-top));
+    right: max(var(--play-inset), env(safe-area-inset-right));
     z-index: 1000;
     display: flex;
     align-items: center;
-    gap: 8px;
-    opacity: 0.62;
-    pointer-events: none;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--sb-line);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.84), rgba(12, 10, 30, 0.9));
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+    opacity: 0.72;
     transition: opacity 0.45s ease;
 }
 
 #sb-play-rail:hover,
-#sb-play-rail:focus-within {
+#sb-play-rail:focus-within,
+#sb-play-rail.is-peek {
     opacity: 1;
     transition-duration: var(--sb-dur-2);
 }
@@ -1404,75 +1418,114 @@ body:has(> .hale-flow:not([hidden])) #sb-play-rail {
 }
 
 /* Serenity hides the cursor after a few still seconds; the controls go with it. */
-body.serenity-mode.cursor-hidden #sb-play-rail:not(:focus-within) {
+body.serenity-mode.cursor-hidden #sb-play-rail:not(:focus-within, .is-peek) {
     opacity: 0;
     transition-duration: 1.2s;
 }
 
-/* One tile size and shape for every control the rail holds. */
-#sb-play-rail > .serenity-hub-icon,
-#sb-play-rail > .odyssey-navigator-icon,
-#sb-play-rail > #settings-btn-global {
+/* One tile for every control the rail holds: a line icon on the tray's fill. */
+#sb-play-rail > :is(#serenity-hub-icon, #odyssey-navigator-btn, #settings-btn-global) {
     position: relative;
     inset: auto;
+    z-index: auto;
     flex: none;
-    display: grid;
-    place-items: center;
-    width: 46px;
-    height: 46px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--play-tile);
+    height: var(--play-tile);
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    border-radius: 13px;
+    border: 0;
+    border-radius: 11px;
+    background: transparent;
+    box-shadow: none;
+    color: rgba(var(--sb-cream-rgb), 0.8);
+    opacity: 1;
     transform: none;
     filter: none;
+    cursor: pointer;
     pointer-events: auto;
+    transition:
+        background-color var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock);
 }
 
-#sb-play-rail > .odyssey-navigator-icon:not(.visible) {
+#sb-play-rail > #odyssey-navigator-btn:not(.visible) {
     display: none;
 }
 
-#sb-play-rail > .odyssey-navigator-icon.visible {
-    opacity: 1;
-}
-
-#sb-play-rail > #settings-btn-global .settings-icon {
-    width: 24px;
-    height: 24px;
-}
-
-#sb-play-rail > .serenity-hub-icon .hub-icon-svg {
-    width: 44px;
-    height: 44px;
-}
-
-#sb-play-rail > .odyssey-navigator-icon .odyssey-navigator-icon-svg {
-    width: 26px;
-    height: 26px;
-}
-
-#sb-play-rail > .serenity-hub-icon:hover,
-#sb-play-rail > .serenity-hub-icon:active,
-#sb-play-rail > .odyssey-navigator-icon:hover,
-#sb-play-rail > .odyssey-navigator-icon:active,
-#sb-play-rail > #settings-btn-global:hover,
-#sb-play-rail > #settings-btn-global:active {
+#sb-play-rail > :is(#serenity-hub-icon, #odyssey-navigator-btn, #settings-btn-global):hover {
+    background: rgba(var(--sb-cream-rgb), 0.08);
+    color: var(--sb-text);
     transform: none;
+    filter: none;
 }
 
-/* Open state (the Hub or the level list is showing): the tile stays lit. */
-#sb-play-rail > .serenity-hub-icon.active,
-#sb-play-rail > .odyssey-navigator-icon.active {
-    border-color: rgba(var(--sb-cream-rgb), 0.42);
+#sb-play-rail > :is(#serenity-hub-icon, #odyssey-navigator-btn, #settings-btn-global):active {
+    background: rgba(var(--sb-cream-rgb), 0.12);
+    transform: scale(0.96);
+}
+
+#sb-play-rail > :is(#serenity-hub-icon, #odyssey-navigator-btn, #settings-btn-global):focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 2px;
+}
+
+/* The Hub or the level list is open: its tile stays lit. */
+#sb-play-rail > :is(#serenity-hub-icon, #odyssey-navigator-btn).active {
+    background: rgba(var(--sb-cream-rgb), 0.1);
     color: var(--sb-text);
 }
 
-/* The label: what the tile does and its keys, above it on hover or focus. */
+#sb-play-rail .sb-play-rail__icon,
+#sb-play-rail .odyssey-navigator-icon-svg {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    transform: none;
+    filter: none;
+}
+
+/* The old tiles' glow layers: the tray has no idle motion. */
+#sb-play-rail .hub-icon-glow,
+#sb-play-rail .odyssey-navigator-icon-glow,
+#sb-play-rail > #settings-btn-global::before {
+    display: none;
+}
+
+/* While a breathing session runs, a mint ring breathes inside the Hub tile. */
+#sb-play-rail .hub-icon-pulse {
+    position: absolute;
+    inset: 3px;
+    width: auto;
+    height: auto;
+    border: 1px solid rgba(var(--sb-mint-rgb), 0.6);
+    border-radius: 9px;
+    background: none;
+    opacity: 0;
+    transform: none;
+    animation: none;
+    pointer-events: none;
+}
+
+#sb-play-rail .hub-icon-pulse.breathing-active {
+    animation: sb-play-breathe var(--sb-breath) var(--sb-ease-breathe) infinite;
+}
+
+@keyframes sb-play-breathe {
+    0%, 100% { opacity: 0.25; transform: scale(0.88); }
+    50% { opacity: 1; transform: none; }
+}
+
+/* Names and keys: beneath the tray, on hover or focus. */
 #sb-play-rail .sb-play-rail__label {
     position: absolute;
+    top: calc(100% + 12px);
     right: 0;
-    bottom: calc(100% + 10px);
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1487,7 +1540,7 @@ body.serenity-mode.cursor-hidden #sb-play-rail:not(:focus-within) {
     text-transform: uppercase;
     white-space: nowrap;
     opacity: 0;
-    translate: 0 4px;
+    translate: 0 -4px;
     pointer-events: none;
     transition: opacity var(--sb-dur-2) var(--sb-ease-lock), translate var(--sb-dur-2) var(--sb-ease-lock);
 }
@@ -1507,44 +1560,204 @@ body:not(.sb-input-pointer) #sb-play-rail > :focus > .sb-play-rail__label {
     translate: 0 0;
 }
 
-/* Online versus: the info column ends above the rail instead of under it. */
-#online-multiplayer-container.online-game-area .right-panel {
-    margin-bottom: 62px;
+/* A mode's first runs: the names unroll inside the tray, then fold back into it. */
+#sb-play-rail:is(.is-peek, .is-folding) > :is(#serenity-hub-icon, #odyssey-navigator-btn, #settings-btn-global) {
+    width: auto;
+    padding: 0 10px;
 }
 
-/* Phones: the bottom belongs to the board and its stats; the rail goes to the top-right
-   corner and its labels drop below the tiles. */
+#sb-play-rail:is(.is-peek, .is-folding) .sb-play-rail__label {
+    position: static;
+    max-width: 0;
+    margin-left: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    opacity: 0;
+    translate: none;
+    transition:
+        max-width 0.5s var(--sb-ease-lock),
+        margin-left 0.5s var(--sb-ease-lock),
+        opacity 0.3s linear;
+}
+
+#sb-play-rail.is-peek .sb-play-rail__label {
+    max-width: 240px;
+    margin-left: 9px;
+    opacity: 1;
+}
+
+/* ---- Docked: the online match's info column opens with the controls -------------- */
+.sb-play-dock {
+    display: flex;
+    min-width: 0;
+    container-type: inline-size;
+}
+
+#sb-play-rail[data-dock] {
+    position: static;
+    inset: auto;
+    z-index: auto;
+    flex: 1 1 auto;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px;
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.9) 0%, rgba(12, 10, 30, 0.93) 100%);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
+    opacity: 1;
+}
+
+#sb-play-rail[data-dock] > :is(#serenity-hub-icon, #settings-btn-global) {
+    flex: 1 1 0;
+    gap: 8px;
+    width: auto;
+    min-width: 0;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 8px;
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+}
+
+#sb-play-rail[data-dock] > :is(#serenity-hub-icon, #settings-btn-global):hover {
+    border-color: rgba(var(--sb-cream-rgb), 0.34);
+    background: rgba(var(--sb-cream-rgb), 0.08);
+}
+
+#sb-play-rail[data-dock] .sb-play-rail__icon {
+    width: 16px;
+    height: 16px;
+}
+
+#sb-play-rail[data-dock] .sb-play-rail__label {
+    position: static;
+    gap: 7px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    opacity: 1;
+    translate: none;
+    transition: none;
+}
+
+#sb-play-rail[data-dock] .sb-play-rail__label .sb-kbd {
+    height: 17px;
+    min-width: 17px;
+}
+
+/* Keys only where both names still fit beside them. */
+@container (max-width: 359px) {
+    #sb-play-rail[data-dock] .sb-kbd {
+        display: none;
+    }
+}
+
+/* Both side columns open with a toolbar row: the spectator controls on the left, the
+   game controls on the right. The chat runs to the bottom corner again. */
+@media (min-width: 901px) {
+    #online-multiplayer-container.online-game-area {
+        grid-template-rows: auto minmax(0, 1fr);
+        row-gap: 12px;
+    }
+
+    #online-multiplayer-container > .opponents-panel {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        display: grid;
+        grid-template-rows: subgrid;
+        row-gap: normal;
+    }
+
+    #online-multiplayer-container > .main-board-panel {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+    }
+
+    #online-multiplayer-container > .sb-play-dock {
+        grid-column: 3;
+        grid-row: 1;
+    }
+
+    #online-multiplayer-container > .right-panel {
+        grid-column: 3;
+        grid-row: 2;
+    }
+}
+
+/* Stacked online layout: no column to dock in. The tray floats in the corner and the
+   spectator row ends before it. */
+@media (max-width: 900px) {
+    #online-multiplayer-container > .sb-play-dock {
+        display: none;
+    }
+
+    #online-multiplayer-container > .opponents-panel {
+        margin-right: 112px;
+    }
+}
+
+/* ---- Per mode ---------------------------------------------------------------------- */
+/* Local versus: level with the standings bar (20px down, 60px tall). */
+#sb-play-rail[data-mode='local-multiplayer'] {
+    top: max(26px, env(safe-area-inset-top));
+}
+
+/* Odyssey's board view: the header lines up with the tray and its chips end before it.
+   The tray sits above the board overlay (1001), whose header takes the pointer, and the
+   level list (1002) that Levels opens and closes. */
+body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #odyssey-board-overlay .odyssey-header-bar {
+    padding-top: 26px;
+    padding-right: 164px;
+}
+
+body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #sb-play-rail {
+    z-index: 1003;
+}
+
+/* Phones: a tighter corner. Touch screens: larger tiles, and no keyboard keys to show. */
 @media (max-width: 640px) {
     #sb-play-rail {
-        top: max(10px, env(safe-area-inset-top));
-        right: max(10px, env(safe-area-inset-right));
-        bottom: auto;
-        gap: 6px;
+        --play-inset: 6px;
     }
 
-    #sb-play-rail > .serenity-hub-icon,
-    #sb-play-rail > .odyssey-navigator-icon,
-    #sb-play-rail > #settings-btn-global {
-        width: 40px;
-        height: 40px;
-        border-radius: 11px;
+    /* The tray takes the top band; the board starts beneath it. */
+    #single-player-card.single-player-card {
+        margin-top: 34px;
     }
 
-    #sb-play-rail > .serenity-hub-icon .hub-icon-svg {
-        width: 38px;
-        height: 38px;
+    #sb-play-rail[data-mode='local-multiplayer'] {
+        top: max(16px, env(safe-area-inset-top));
+    }
+}
+
+@media (hover: none) and (pointer: coarse) {
+    #sb-play-rail {
+        --play-tile: 44px;
+        opacity: 0.86;
     }
 
-    #sb-play-rail .sb-play-rail__label {
-        top: calc(100% + 8px);
-        bottom: auto;
-        translate: 0 -4px;
+    #sb-play-rail .sb-kbd[data-key] {
+        display: none;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
     #sb-play-rail,
+    #sb-play-rail > *,
     #sb-play-rail .sb-play-rail__label {
         transition: none;
+    }
+
+    #sb-play-rail .hub-icon-pulse.breathing-active {
+        animation: none;
+        opacity: 1;
     }
 }

@@ -1136,6 +1136,17 @@ function setupSettingsSheet(listen) {
         listen(resume, 'click', () => document.getElementById('close-settings')?.click());
     }
 
+    // Serenity Hub: close as Resume does, then open the Hub as its tile does. Both happen in
+    // this task, so no frame of play runs between them; the Hub pauses again in the modes it
+    // pauses. This is how a controller reaches the Hub outside Serenity (Start, then here).
+    const hub = document.getElementById('settings-hub-btn');
+    if (hub) {
+        listen(hub, 'click', () => {
+            document.getElementById('close-settings')?.click();
+            document.getElementById('serenity-hub-icon')?.click();
+        });
+    }
+
     listen(settingsModal, 'input', (event) => {
         if (event.target?.type === 'range') syncRangeFill(event.target);
     });

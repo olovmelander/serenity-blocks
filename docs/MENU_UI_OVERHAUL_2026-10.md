@@ -200,7 +200,12 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | A failed game start raised a browser `alert` | A Keystone toast (the toast listener now installs at boot, with the main menu) |
 | On game over every controller face button restarted, B included, and a button still held from play fired at once | B is Main menu (like Escape); A, X, Y or Start play again; the sheet arms only after a neutral release |
 | Controller B ignored the multiplayer back stack | B goes back like Escape, and pad navigation stays inside the top multiplayer surface |
-| The floating Hale sessions pill crowded every mode (Serenity most), and with the corner tiles covered the online chat and, on phones, the board | One play rail in the corner; Hale lives in the Hub; online versus leaves the rail its own space |
+| The floating Hale sessions pill crowded every mode (Serenity most), and with the corner tiles covered the online chat and, on phones, the board | One play rail; Hale lives in the Hub (§5.5) |
+| The controls took the online chat's corner (the chat column was shortened for them) and sat on player 4's board in 4-player local versus | The controls live at the top-right in every mode; online they are the first panel of the info column (§5.5) |
+| Rotating left with Y opened the Serenity Hub mid-run in every mode; LB/RB, LT/RT, L3 and R3 reached the Hub's music, volume, random-theme and fullscreen shortcuts during play | Serenity's pad shortcuts apply in Serenity Mode (and in the open Hub) only |
+| A controller could not reach the Hub outside Serenity | Serenity Hub on the pause sheet (Start, then the button) |
+| The D-pad stuck on the pause sheet's Resume: the focus finder's `[href]` matched the buttons' SVG `<use href>` icons | One `FOCUSABLE_SELECTOR` (`a[href]`, not `[href]`) for spatial navigation and the sheets' Tab trap |
+| Opening the Hub in an Odyssey level left the level running behind it | The Hub pauses Odyssey as Settings does |
 | Cancel or Escape from Create match left a blank screen; Escape over the multiplayer menus opened Settings | One back stack for every multiplayer sheet |
 | A failed create or join hid its sheet and said nothing (or used `alert`) | The sheet stays open with the reason |
 | `serenity:toast` events ("removed by the host", lobby full, version mismatch) had no listener | Keystone toasts |
@@ -236,7 +241,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Serenity Hub (Themes, Music, Breathing, Hale sessions), Hale flow, breathing guide chrome, Serenity controls overlay | `keystone-hub.css`, `breathwork-sessions.css`, `breathing-library.css`, `breathing-guide.css` | Shipped |
 | Multiplayer (local setup, lobby browser, create match, waiting room, results, toasts, invite, in-game HUD type) | `keystone-multiplayer.css` | Shipped |
 | Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
-| In-game controls (the play rail: Levels, Serenity Hub, Pause) | `keystone-overlays.css`, `src/ui/keystone/play-rail.js` | Shipped |
+| In-game controls (the play rail: Levels, Serenity Hub, Settings) | `keystone-overlays.css`, `src/ui/keystone/play-rail.js` | Shipped |
 
 ### 5.1 Settings, pause, Records, Replays, results (`keystone-settings.css`, `keystone-modals.css`)
 
@@ -252,8 +257,8 @@ on close.
   key tiles with arrow glyphs and spoken labels, a controller status list, Detect and
   Reset in the overview.
 - **Pause:** pausing opens Settings as a "Paused" sheet — a strip with the mode
-  ("Single Player waits where you left it"), Resume as the primary (focused first) and
-  Main menu. From the main menu the strip is hidden.
+  ("Single Player waits where you left it"), Resume as the primary (focused first),
+  Serenity Hub and Main menu. From the main menu the strip is hidden.
 - **Records:** "Your best", a ranked list (rank tiles in gold/silver/bronze for 1–3,
   level · lines, date, Watch when a replay exists) and six statistics as fact tiles;
   empty and error states.
@@ -389,41 +394,69 @@ show/hide base and the HUD layout.
 
 ### 5.5 In-game controls: the play rail (`src/ui/keystone/play-rail.js`)
 
-**Before:** the in-game controls were separate floating tiles stacked up the right edge
-(the Serenity Hub lotus, the settings gear, Odyssey's navigator) plus a 190 px "Hale
-sessions · Guided breathwork" pill beside them in every mode. The pill dominated
-Serenity's calm screen; in online versus it and the tiles sat over the chat column; on
-phones they sat on the board itself.
+**Before:** separate floating tiles stacked up the right edge (the Serenity Hub lotus, the
+settings gear, Odyssey's navigator) plus a 190 px "Hale sessions" pill beside them in
+every mode. A first rail gathered them into one row in the bottom-right corner — the right
+idea in the wrong place: online versus shortened its chat column to make room, the row sat
+on player 4's board in 4-player local versus, the lotus and gear were the old filled
+drawings with an idle blurred glow, and nothing named them.
 
-**After:** one row of Keystone tiles in the bottom-right corner, the same in every mode:
+**After:** one home in every mode, the top-right, in one of two forms. The bottom of the
+screen belongs to the game: boards, chat, stats, touch controls and toasts.
 
-| Tile | Shown | Label and keys |
+| Control | Shown | Name and keys |
 |---|---|---|
-| Levels (Odyssey navigator) | Odyssey's board view | "Levels" |
-| Serenity Hub (lotus) | every mode | "Serenity Hub", H / Y in Serenity |
-| Pause (gear) | every mode, in the corner where the gear always was | "Pause · Esc / ☰"; "Settings" in an online match (it cannot pause); no Esc in Serenity, where Escape goes back to the menu |
+| Levels | Odyssey's board view | "Levels" |
+| Serenity Hub | every mode | "Serenity Hub"; H in every mode (the Hub key, rebindable), Y on a pad in Serenity |
+| Settings | every mode, outermost | "Settings"; Esc / ☰ (no Esc in Serenity, where Escape goes back to the menu). While a game runs it opens the pause sheet |
 
+- **The tray** (solo modes, local versus, Odyssey, phones): a small night tile in the
+  corner holding the main-menu dock's line icons. It rests at 72 % opacity and wakes under
+  the pointer or focus; names and keys appear beneath it on hover or focus. No idle motion
+  (the lotus glow is gone); a mint ring breathes in the Hub tile only while a breathing
+  session runs. In Serenity the tray leaves with the cursor (`cursor-hidden`).
+- **Named on the first runs:** the first three runs of each mode unroll the names inside
+  the tray for 3.6 s once the tray is actually in view (after the loading veil and the
+  countdown), then fold them back (`serenity.playRail.peeks`). Not on touch screens, not
+  in Odyssey's board view.
+- **Docked** where a mode has its own chrome at the top: an on-screen `[data-play-dock]`
+  receives the rail (moved there by a ResizeObserver and the mode events). Online versus
+  has one as the first panel of its info column, the spectator toolbar's twin: the grid
+  gains a toolbar row (`auto 1fr`, the opponents column a subgrid) so both toolbars share
+  one height, the buttons are labelled and show their keys when the column is wide enough
+  (container query), and the chat runs to the bottom corner again. Below 901 px the dock
+  hides, the tray floats and the stacked spectator row ends before it.
+- **Per mode:** local versus centres the tray on the standings bar. Odyssey's board view
+  lines its header up with the tray and ends the chips before it; there the tray sits
+  above the board overlay (whose header takes the pointer) and the level list it opens
+  (z-index 1003). Phones get a 6 px corner and the single-player board starts beneath the
+  tray; touch screens get 44 px tiles and no keyboard keys.
+- **Every input reaches both:** pointer and touch through the tiles; keyboard Esc and H;
+  a controller through Start, then the pause sheet's **Serenity Hub** (it closes the sheet
+  as Resume does and opens the Hub as its tile does, in one task, so no frame of play runs
+  between; the Hub pauses again). Serenity keeps Y and Start. H leaves text fields alone,
+  steps aside when a player has the key bound, and closes an open Hub.
+- **Fixed with it:** Serenity's pad shortcuts were live in every mode (the always-loaded
+  Hub registers them at startup); they now apply in Serenity Mode and in the open Hub
+  only (`GamepadController.serenityShortcutsLive`). The Hub now pauses an Odyssey level
+  as Settings does. The D-pad no longer sticks on the pause sheet
+  (`FOCUSABLE_SELECTOR`, `src/ui/spatial-navigation.js`).
 - The rail **adopts** the existing controls (`#odyssey-navigator-btn`,
   `#serenity-hub-icon`, `#settings-btn-global`): ids, handlers and the code that shows,
-  hides or activates them are unchanged. Controls created later (the navigator) are
-  adopted when they reach `<body>`. Labels follow the mode (`modeActivated` …
-  `modeDeactivated` from the GameModeManager).
-- **Calm while you play:** the rail rests at 62 % opacity and wakes under the pointer or
-  focus; a label with the keys rises above a tile on hover or focus. In Serenity it fades
-  out with the cursor (`cursor-hidden`, three still seconds) and returns with it.
-- **Steps aside:** hidden on the main menu (the dock replaces it) and while the breathing
-  guide or a Hale flow is open (they bring their own controls).
-- **No Hale pill in play.** Hale sessions are one tap away in the Hub's own tab and on the
-  main menu's list; `#hale-sessions-btn` stays only as the Hub's programmatic route.
-- **Online versus** ends its info column above the rail, so the chat is never covered.
-- **Phones:** the bottom belongs to the board and its stats, so the rail moves to the
-  top-right corner with 40 px tiles and its labels drop below.
+  hides or activates them are unchanged. It is hidden on the main menu (the dock replaces
+  it) and while the breathing guide or a Hale flow is open.
 
 ## 6. Verification
 
 - Every surface captured with Playwright (Chromium, WebGPU) at 1600 × 900 and 390 × 844,
   most also at 1280 × 720, before and after; controller paths driven with a simulated
   standard pad (game over B / A, multiplayer back, sheet focus).
+- The play rail: every mode's layout measured for free zones (single, Infinity, Serenity,
+  local versus for 2–4, online for 2 and 4) at 1024 × 768, 1280 × 720, 1366 × 768,
+  1600 × 900, 1920 × 1080, 820 × 1180 and 390 × 844, then the result captured in each;
+  Odyssey's board header rendered on its own (its world needs a GPU). The pad drove
+  Y in play (no Hub), Start → D-pad → Serenity Hub → A (Hub open, game paused) → B
+  (resumed); the keyboard drove H, Esc and the pause sheet's Serenity Hub.
 - Gates on the final tree: `npm test` (579 files), `npm run typecheck`,
   `node scripts/ts-ratchet-check.mjs`, `npm run lint:ci` (baseline lowered 1,033 → 831),
   `node scripts/architecture-fitness-check.mjs` (ceilings lowered),

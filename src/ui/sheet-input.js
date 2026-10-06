@@ -13,6 +13,8 @@
  * Styles: public/styles/keystone-modals.css. Record: docs/MENU_UI_OVERHAUL_2026-10.md.
  */
 
+import { FOCUSABLE_SELECTOR } from './spatial-navigation.js';
+
 /** Sheets from the top layer down (Settings sits above the others). */
 export const SHEETS = Object.freeze([
     {
@@ -45,15 +47,6 @@ export const SHEETS = Object.freeze([
         focus: ['#game-over-play-again'],
     },
 ]);
-
-const FOCUSABLE = [
-    'button:not([disabled])',
-    '[href]',
-    'input:not([disabled]):not([type="hidden"])',
-    'select:not([disabled])',
-    'textarea:not([disabled])',
-    '[tabindex]:not([tabindex="-1"])',
-].join(', ');
 
 function isVisible(element) {
     if (!element) return false;
@@ -89,7 +82,7 @@ export function getOpenSheet(doc = globalThis.document, { exclude = [] } = {}) {
 /** Visible, focusable controls inside a sheet, in document order. */
 export function getSheetFocusables(element) {
     if (!element?.querySelectorAll) return [];
-    return Array.from(element.querySelectorAll(FOCUSABLE)).filter(isVisible);
+    return Array.from(element.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isVisible);
 }
 
 /** The control a sheet should focus when it opens. */
