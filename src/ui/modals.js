@@ -16,7 +16,7 @@ import { csIcon } from './components/cosmic-icons.js';
 import { normalizeWheelDeltaToPixels } from '../utils/wheel-routing.js';
 import { installSheetInput } from './sheet-input.js';
 
-const MENU_SURFACES = '.modal, .serenity-hub-panel, .match-config-modal, #lobby-browser';
+const MENU_SURFACES = '.modal, .serenity-hub-panel, .match-config-modal, #lobby-browser, .hale-flow, #breathing-guide';
 
 /** Suspend decoration only on menu surfaces covered by a higher menu. */
 export function updateMenuCoverage(documentRoot = document) {
@@ -24,6 +24,8 @@ export function updateMenuCoverage(documentRoot = document) {
     const visible = surfaces.filter((surface) => {
         if (surface.classList.contains('modal')) return surface.classList.contains('visible');
         if (surface.id === 'serenity-hub-panel') return surface.classList.contains('open');
+        // The Hale flow and the breathing guide hide with the `hidden` attribute.
+        if (surface.id === 'breathing-guide' || surface.classList.contains('hale-flow')) return !surface.hidden;
         return !surface.classList.contains('hidden');
     });
     const view = documentRoot.defaultView || globalThis.window;
