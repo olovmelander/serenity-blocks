@@ -67,10 +67,10 @@ function isRendered(element) {
     });
 }
 
-function wantsKeystone(element) {
+function wantsKeystone(element, { checkRendered = true } = {}) {
     if (!element || element === document.body || element === document.documentElement) return false;
     if (typeof element.closest !== 'function' || element.closest(EXCLUDED)) return false;
-    if (!isRendered(element)) return false;
+    if (checkRendered && !isRendered(element)) return false;
     const mode = getInputMode();
     if (mode === 'pointer') return false;
     if (mode === 'gamepad') return true;
@@ -148,9 +148,17 @@ export function installKeystoneFocus() {
         tile.animate(DROP_KEYFRAMES, DROP_TIMING);
     };
 
-    const follow = (element) => {
+    const follow = (element, attempt = 0) => {
         if (!wantsKeystone(element)) {
             release();
+            // A control focused while its surface fades in (opacity still near zero)
+            // becomes eligible a moment later.
+            if (attempt < 8 && element === document.activeElement
+                && wantsKeystone(element, { checkRendered: false })) {
+                setTimeout(() => {
+                    if (document.activeElement === element) follow(element, attempt + 1);
+                }, 120);
+            }
             return;
         }
         const changed = element !== target;

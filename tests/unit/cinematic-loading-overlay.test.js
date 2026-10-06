@@ -373,9 +373,10 @@ describe('cinematic loading overlay countdown', () => {
         expect(text).toBeTruthy();
         expect(layer.style.opacity).toBe('1');
         expect(text.textContent).toBe('5');
-        expect(text.style.color).toBe('#ef4444');
-        expect(text.style.webkitTextStroke).toContain('2.5px');
-        expect(plate.style.backdropFilter).toContain('blur');
+        // Keystone countdown: lavender for the high counts (docs/MENU_UI_OVERHAUL_2026-10.md).
+        expect(text.style.color).toBe('#b8a4ff');
+        // The plate sits over the live game: no backdrop blur (CORE_UI_PERFORMANCE_FIXES_2026-10).
+        expect(plate.style.backdropFilter ?? '').not.toContain('blur');
         expect(backdrop.style.opacity).toBe('0.84');
         expect(onFirstCountVisible).toHaveBeenCalledOnce();
         expect(onCount).toHaveBeenCalledWith(5);
@@ -403,22 +404,24 @@ describe('cinematic loading overlay countdown', () => {
 
         animationFrames.flush();
 
-        const { text, plate } = getCountdownNodes();
+        const { text, plate, layer } = getCountdownNodes();
+        // The spectrum walks down the count and lands on the coral keystone for GO.
         expect(text.textContent).toBe('3');
-        expect(text.style.color).toBe('#ef4444');
+        expect(text.style.color).toBe('#b8a4ff');
 
         vi.advanceTimersByTime(100);
         expect(text.textContent).toBe('2');
-        expect(text.style.color).toBe('#f59e0b');
+        expect(text.style.color).toBe('#9ee8ed');
 
         vi.advanceTimersByTime(100);
         expect(text.textContent).toBe('1');
-        expect(text.style.color).toBe('#10b981');
+        expect(text.style.color).toBe('#c5f1cf');
 
         vi.advanceTimersByTime(100);
-        expect(text.textContent).toBe('GO!');
-        expect(text.style.color).toBe('#fbbf24');
-        expect(plate.style.border).toContain('rgba(251, 191, 36');
+        expect(text.textContent).toBe('GO');
+        expect(text.style.color).toBe('#ffac88');
+        expect(plate.style.border).toContain('rgba(255, 172, 136');
+        expect(layer.dataset.count).toBe('go');
         expect(onGo).toHaveBeenCalledOnce();
 
         await vi.advanceTimersByTimeAsync(120);
