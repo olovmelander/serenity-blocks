@@ -11,26 +11,29 @@
  * ============================================================================== */
 
 :root {
+    /* Values follow the Keystone brand palette (keystone.css, sampled from the logo) so
+       every surface still on these legacy tokens reads as the same family. */
+
     /* ---- Accent palette (hex + matching rgb triple for rgba()) ------------- */
-    --cs-cyan: #7fdcff;     --cs-cyan-rgb: 127, 220, 255;
-    --cs-indigo: #8ea2ff;   --cs-indigo-rgb: 142, 162, 255;
-    --cs-teal: #5eead4;     --cs-teal-rgb: 94, 234, 212;
-    --cs-violet: #b39dff;   --cs-violet-rgb: 179, 157, 255;
-    --cs-pink: #ff9ecd;     --cs-pink-rgb: 255, 158, 205;
-    --cs-gold: #fcd17a;     --cs-gold-rgb: 252, 209, 122;
-    --cs-lavender: #a78bfa; --cs-lavender-rgb: 167, 139, 250;
-    --cs-amber: #ffb75e;    --cs-amber-rgb: 255, 183, 94;
+    --cs-cyan: #9ee8ed;     --cs-cyan-rgb: 158, 232, 237;
+    --cs-indigo: #a9b2ff;   --cs-indigo-rgb: 169, 178, 255;
+    --cs-teal: #9de6d6;     --cs-teal-rgb: 157, 230, 214;
+    --cs-violet: #b8a4ff;   --cs-violet-rgb: 184, 164, 255;
+    --cs-pink: #f5aed0;     --cs-pink-rgb: 245, 174, 208;
+    --cs-gold: #f3d28d;     --cs-gold-rgb: 243, 210, 141;
+    --cs-lavender: #b8a4ff; --cs-lavender-rgb: 184, 164, 255;
+    --cs-amber: #f6c98a;    --cs-amber-rgb: 246, 201, 138;
 
     /* ---- Neutral primitives ------------------------------------------------ */
-    --cs-soft-rgb: 150, 180, 255;             /* soft-indigo glass borders */
-    --cs-deep-rgb: 8, 10, 23;                 /* deep-navy surface base */
-    --cs-ink: #eef3ff;                        /* bright text */
-    --cs-ink-soft: rgba(211, 219, 245, 0.55); /* muted text */
+    --cs-soft-rgb: 255, 246, 233;             /* cream hairlines */
+    --cs-deep-rgb: 12, 10, 30;                /* night surface base */
+    --cs-ink: #fff6e9;                        /* bright text (cream) */
+    --cs-ink-soft: rgba(255, 246, 233, 0.62); /* muted text */
 
     /* ---- Floating-HUD glass recipe (side-rail tiles, player card, …) ------- */
-    --cs-hud-surface: rgba(16, 18, 34, 0.62);
-    --cs-hud-border: rgba(var(--cs-soft-rgb), 0.20);
-    --cs-hud-border-hover: rgba(var(--cs-soft-rgb), 0.45);
+    --cs-hud-surface: rgba(17, 15, 40, 0.70);
+    --cs-hud-border: rgba(var(--cs-soft-rgb), 0.14);
+    --cs-hud-border-hover: rgba(var(--cs-soft-rgb), 0.32);
     --cs-hud-shadow: 0 12px 32px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.06);
     --cs-hud-blur: blur(13px) saturate(140%);
 }

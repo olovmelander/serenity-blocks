@@ -6,6 +6,7 @@
 
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { SpatialNavigation } from './spatial-navigation.js';
+import { getInputMode, hasGamepadActivity, markInputMode } from './keystone/input-mode.js';
 import { COLS, ROWS } from '../core/constants.js';
 import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
@@ -644,6 +645,9 @@ export class GamepadController {
             // Get fresh gamepad state
             const freshGamepad = gamepads[gamepad.index];
             if (!freshGamepad) continue;
+            if (getInputMode() !== 'gamepad' && hasGamepadActivity(freshGamepad, this.deadzone)) {
+                markInputMode('gamepad');
+            }
 
             // The Serenity Hub is a top-layer input owner. Start/game-over
             // modals and game-mode cards can remain visible underneath it, so
@@ -1293,7 +1297,7 @@ export class GamepadController {
     navigateMenuBack() {
         // Check if settings modal is open
         const settingsModal = document.getElementById('settings-modal');
-        if (settingsModal && settingsModal.classList.contains('active')) {
+        if (settingsModal && settingsModal.classList.contains('visible')) {
             const closeBtn = document.getElementById('close-settings');
             if (closeBtn) {
                 closeBtn.click();
@@ -1303,7 +1307,7 @@ export class GamepadController {
 
         // Check if high scores modal is open
         const highScoresModal = document.getElementById('high-scores-modal');
-        if (highScoresModal && highScoresModal.classList.contains('active')) {
+        if (highScoresModal && highScoresModal.classList.contains('visible')) {
             const closeBtn = document.getElementById('close-high-scores');
             if (closeBtn) {
                 closeBtn.click();
