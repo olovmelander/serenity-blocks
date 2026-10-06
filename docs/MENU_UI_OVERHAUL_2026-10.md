@@ -120,7 +120,7 @@ mode instead, so controller players always see where they are.
 - `public/styles/keystone-<surface>.css` — one layer per surface, linked **last** in
   `index.html`, scoped by the surface root id so it wins over the older layers without
   `!important`.
-- `src/ui/keystone/` — input mode and the focus marker.
+- `src/ui/keystone/` — input mode, the focus marker and the in-game play rail.
 - `src/ui/main-menu/main-menu.js` — the main menu (imported by `main.js` in place of
   `menu-card-interactions.js`, which it imports in turn; `main.js` stays at its line
   ceiling). It also imports `components/toast.js`, so the `serenity:toast` listener is
@@ -173,8 +173,8 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
   (lazy-loaded — `levels.js` alone is 142 KB) instead of hard-coded copy; the old card
   said "56 levels across 7 chapters", the game has 59 in 8.
 - **Dock** with labelled buttons (Serenity Hub, Records, Replays, Settings) that proxy to
-  the existing global controls, so every existing handler keeps working; the corner tiles
-  are hidden on the menu and restyled as keystone tiles in game. Desktop builds end the
+  the existing global controls, so every existing handler keeps working; in game those
+  controls live in the play rail (§5.5). Desktop builds end the
   dock with **Quit** (`desktop:quit` over the preload bridge); it asks for a second press
   ("Press again to quit", resets after 4 s or when focus leaves), so a stray controller
   press never closes the game.
@@ -200,7 +200,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | A failed game start raised a browser `alert` | A Keystone toast (the toast listener now installs at boot, with the main menu) |
 | On game over every controller face button restarted, B included, and a button still held from play fired at once | B is Main menu (like Escape); A, X, Y or Start play again; the sheet arms only after a neutral release |
 | Controller B ignored the multiplayer back stack | B goes back like Escape, and pad navigation stays inside the top multiplayer surface |
-| The floating Hale sessions tile covered the versus chat column and, on phones, the replay bar | It steps aside during versus matches and replays (the lotus tile still opens the Hub) |
+| The floating Hale sessions pill crowded every mode (Serenity most), and with the corner tiles covered the online chat and, on phones, the board | One play rail in the corner; Hale lives in the Hub; online versus leaves the rail its own space |
 | Cancel or Escape from Create match left a blank screen; Escape over the multiplayer menus opened Settings | One back stack for every multiplayer sheet |
 | A failed create or join hid its sheet and said nothing (or used `alert`) | The sheet stays open with the reason |
 | `serenity:toast` events ("removed by the host", lobby full, version mismatch) had no listener | Keystone toasts |
@@ -236,6 +236,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Serenity Hub (Themes, Music, Breathing, Hale sessions), Hale flow, breathing guide chrome, Serenity controls overlay | `keystone-hub.css`, `breathwork-sessions.css`, `breathing-library.css`, `breathing-guide.css` | Shipped |
 | Multiplayer (local setup, lobby browser, create match, waiting room, results, toasts, invite, in-game HUD type) | `keystone-multiplayer.css` | Shipped |
 | Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
+| In-game controls (the play rail: Levels, Serenity Hub, Pause) | `keystone-overlays.css`, `src/ui/keystone/play-rail.js` | Shipped |
 
 ### 5.1 Settings, pause, Records, Replays, results (`keystone-settings.css`, `keystone-modals.css`)
 
@@ -385,6 +386,38 @@ level-card rules left with the markup they styled. What remains is the navigator
 show/hide base and the HUD layout.
 
 ---
+
+### 5.5 In-game controls: the play rail (`src/ui/keystone/play-rail.js`)
+
+**Before:** the in-game controls were separate floating tiles stacked up the right edge
+(the Serenity Hub lotus, the settings gear, Odyssey's navigator) plus a 190 px "Hale
+sessions · Guided breathwork" pill beside them in every mode. The pill dominated
+Serenity's calm screen; in online versus it and the tiles sat over the chat column; on
+phones they sat on the board itself.
+
+**After:** one row of Keystone tiles in the bottom-right corner, the same in every mode:
+
+| Tile | Shown | Label and keys |
+|---|---|---|
+| Levels (Odyssey navigator) | Odyssey's board view | "Levels" |
+| Serenity Hub (lotus) | every mode | "Serenity Hub", H / Y in Serenity |
+| Pause (gear) | every mode, in the corner where the gear always was | "Pause · Esc / ☰"; "Settings" in an online match (it cannot pause); no Esc in Serenity, where Escape goes back to the menu |
+
+- The rail **adopts** the existing controls (`#odyssey-navigator-btn`,
+  `#serenity-hub-icon`, `#settings-btn-global`): ids, handlers and the code that shows,
+  hides or activates them are unchanged. Controls created later (the navigator) are
+  adopted when they reach `<body>`. Labels follow the mode (`modeActivated` …
+  `modeDeactivated` from the GameModeManager).
+- **Calm while you play:** the rail rests at 62 % opacity and wakes under the pointer or
+  focus; a label with the keys rises above a tile on hover or focus. In Serenity it fades
+  out with the cursor (`cursor-hidden`, three still seconds) and returns with it.
+- **Steps aside:** hidden on the main menu (the dock replaces it) and while the breathing
+  guide or a Hale flow is open (they bring their own controls).
+- **No Hale pill in play.** Hale sessions are one tap away in the Hub's own tab and on the
+  main menu's list; `#hale-sessions-btn` stays only as the Hub's programmatic route.
+- **Online versus** ends its info column above the rail, so the chat is never covered.
+- **Phones:** the bottom belongs to the board and its stats, so the rail moves to the
+  top-right corner with 40 px tiles and its labels drop below.
 
 ## 6. Verification
 

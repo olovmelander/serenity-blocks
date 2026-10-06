@@ -1367,3 +1367,184 @@
         animation: none;
     }
 }
+
+/* ==================================================================================
+ * Play rail (#sb-play-rail, src/ui/keystone/play-rail.js): every mode's in-game controls
+ * in one row in the bottom-right corner — Levels (Odyssey board view), the Serenity Hub,
+ * and Pause in the corner itself, where the gear always was. The tiles keep their ids
+ * and handlers; the rail gives them one size, a label and their keys.
+ *
+ * It rests dimmed while you play and wakes under the pointer or focus; in Serenity it
+ * fades out with the cursor. The breathing guide and a Hale flow bring their own
+ * controls, so the rail steps aside for them; on the main menu the dock replaces it.
+ * ================================================================================ */
+#sb-play-rail {
+    position: fixed;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom));
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.62;
+    pointer-events: none;
+    transition: opacity 0.45s ease;
+}
+
+#sb-play-rail:hover,
+#sb-play-rail:focus-within {
+    opacity: 1;
+    transition-duration: var(--sb-dur-2);
+}
+
+body.start-modal-open #sb-play-rail,
+body:has(> #breathing-guide:not([hidden])) #sb-play-rail,
+body:has(> .hale-flow:not([hidden])) #sb-play-rail {
+    visibility: hidden;
+}
+
+/* Serenity hides the cursor after a few still seconds; the controls go with it. */
+body.serenity-mode.cursor-hidden #sb-play-rail:not(:focus-within) {
+    opacity: 0;
+    transition-duration: 1.2s;
+}
+
+/* One tile size and shape for every control the rail holds. */
+#sb-play-rail > .serenity-hub-icon,
+#sb-play-rail > .odyssey-navigator-icon,
+#sb-play-rail > #settings-btn-global {
+    position: relative;
+    inset: auto;
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    border-radius: 13px;
+    transform: none;
+    filter: none;
+    pointer-events: auto;
+}
+
+#sb-play-rail > .odyssey-navigator-icon:not(.visible) {
+    display: none;
+}
+
+#sb-play-rail > .odyssey-navigator-icon.visible {
+    opacity: 1;
+}
+
+#sb-play-rail > #settings-btn-global .settings-icon {
+    width: 24px;
+    height: 24px;
+}
+
+#sb-play-rail > .serenity-hub-icon .hub-icon-svg {
+    width: 44px;
+    height: 44px;
+}
+
+#sb-play-rail > .odyssey-navigator-icon .odyssey-navigator-icon-svg {
+    width: 26px;
+    height: 26px;
+}
+
+#sb-play-rail > .serenity-hub-icon:hover,
+#sb-play-rail > .serenity-hub-icon:active,
+#sb-play-rail > .odyssey-navigator-icon:hover,
+#sb-play-rail > .odyssey-navigator-icon:active,
+#sb-play-rail > #settings-btn-global:hover,
+#sb-play-rail > #settings-btn-global:active {
+    transform: none;
+}
+
+/* Open state (the Hub or the level list is showing): the tile stays lit. */
+#sb-play-rail > .serenity-hub-icon.active,
+#sb-play-rail > .odyssey-navigator-icon.active {
+    border-color: rgba(var(--sb-cream-rgb), 0.42);
+    color: var(--sb-text);
+}
+
+/* The label: what the tile does and its keys, above it on hover or focus. */
+#sb-play-rail .sb-play-rail__label {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 10px);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 9px 7px 11px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.97), rgba(12, 10, 30, 0.98));
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
+    color: var(--sb-text);
+    font: 600 0.6rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    opacity: 0;
+    translate: 0 4px;
+    pointer-events: none;
+    transition: opacity var(--sb-dur-2) var(--sb-ease-lock), translate var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#sb-play-rail .sb-play-rail__label .sb-kbd {
+    height: 18px;
+    min-width: 18px;
+    font-size: 0.625rem;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+#sb-play-rail > :hover > .sb-play-rail__label,
+#sb-play-rail > :focus-visible > .sb-play-rail__label,
+body:not(.sb-input-pointer) #sb-play-rail > :focus > .sb-play-rail__label {
+    opacity: 1;
+    translate: 0 0;
+}
+
+/* Online versus: the info column ends above the rail instead of under it. */
+#online-multiplayer-container.online-game-area .right-panel {
+    margin-bottom: 62px;
+}
+
+/* Phones: the bottom belongs to the board and its stats; the rail goes to the top-right
+   corner and its labels drop below the tiles. */
+@media (max-width: 640px) {
+    #sb-play-rail {
+        top: max(10px, env(safe-area-inset-top));
+        right: max(10px, env(safe-area-inset-right));
+        bottom: auto;
+        gap: 6px;
+    }
+
+    #sb-play-rail > .serenity-hub-icon,
+    #sb-play-rail > .odyssey-navigator-icon,
+    #sb-play-rail > #settings-btn-global {
+        width: 40px;
+        height: 40px;
+        border-radius: 11px;
+    }
+
+    #sb-play-rail > .serenity-hub-icon .hub-icon-svg {
+        width: 38px;
+        height: 38px;
+    }
+
+    #sb-play-rail .sb-play-rail__label {
+        top: calc(100% + 8px);
+        bottom: auto;
+        translate: 0 -4px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #sb-play-rail,
+    #sb-play-rail .sb-play-rail__label {
+        transition: none;
+    }
+}
