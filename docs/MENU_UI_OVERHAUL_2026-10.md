@@ -185,6 +185,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Tabbing to "Back to Map" in the Odyssey failure sheet and pressing Enter retried the level | A focused button owns Enter/Space; Retry takes focus when the sheet opens |
 | The Odyssey HUD progress fill filled its whole section (an unscoped absolute `.progress-fill` in `serenity-hub.css`) | The HUD keeps its fill in flow inside the track |
 | The countdown plate, Odyssey HUD and single-player stat rail blurred the live scene every frame | Opaque layered fills |
+| Replay controls were emoji glyphs named only by `title`, and the speed menu kept showing the last speed after a new replay reset to 1× | SVG buttons with labels; the speed row follows the player |
 | Odyssey results, failure, navigator and board views each injected a `<style>` block at runtime | Styles live in `keystone-overlays.css` |
 
 ---
@@ -197,7 +198,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Settings (also the pause sheet), Records, Replays, game over, replay complete | `keystone-settings.css`, `keystone-modals.css` | See below |
 | Serenity Hub (Themes, Music, Breathing, Hale sessions, Hale flow) | `keystone-hub.css` | See below |
 | Multiplayer (local setup, lobby browser, create match, waiting room, results) | `keystone-multiplayer.css` | See below |
-| Loading, countdown, Odyssey overlays and HUD, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
+| Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
 
 ### 5.1 In-game overlays (`keystone-overlays.css`)
 
@@ -230,6 +231,12 @@ shouted from the HUD.
   GO coral).
 - **Single-player stat rail and Infinity HUD**: Unbounded numbers, Manrope labels, no
   backdrop blur. The rail keeps its sizes — themes read its rect for composition.
+- **Replay playback bar** (`#playback-controls`, `src/ui/playback-controls.js`): a
+  two-row card in the bottom-left corner beside the board (at 1280 × 720 only ~40 px
+  remain under the board, so a centred bar would cover cells). Play/pause is the coral
+  primary with a visible label, Stop is quiet, "Replay 01:23 / 04:56" in Unbounded, the
+  position fills with the spectrum, and speed is a radio row of tiles (0.5× 1× 2× 4×,
+  arrow keys move it) that follows the player — a new replay starts at 1×.
 
 Kept for JavaScript and tests: `#odyssey-results-modal`, `#odyssey-failure-modal`,
 `#goal-complete-overlay`, `#odyssey-level-select` and its `#odyssey-*` value ids,
