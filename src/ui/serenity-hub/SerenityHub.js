@@ -248,7 +248,8 @@ export class SerenityHub {
         this.hubIcon.addEventListener('mouseleave', this.hubIconMouseLeaveHandler, { signal });
     }
 
-    /** A labelled route to guided sessions beside the permanent lotus control. */
+    /** The Hub's programmatic route to guided sessions (not shown: Hale lives in the Hub's
+     * own tab, one tap on the lotus in the play rail, and in the main menu's list). */
     createHaleSessionsEntry() {
         if (this.haleSessionsEntry) return;
         const button = document.getElementById('hale-sessions-btn') || document.createElement('button');
@@ -259,7 +260,6 @@ export class SerenityHub {
         button.setAttribute('aria-haspopup', 'dialog');
         button.setAttribute('aria-controls', 'serenity-hub-panel');
         button.setAttribute('aria-expanded', 'false');
-        // In game this is a labelled Keystone tile beside the lotus tile (keystone-hub.css).
         button.innerHTML = `<span class="hale-sessions-entry__icon">${csIcon('hale-base', 20)}</span>`
             + '<span class="hale-sessions-entry__text">'
             + '<strong>Hale sessions</strong><small>Guided breathwork</small></span>';

@@ -13,6 +13,7 @@ import '../menu-card-interactions.js';
 import '../components/toast.js';
 import { installInputModeTracking, getInputMode } from '../keystone/input-mode.js';
 import { installKeystoneFocus } from '../keystone/keystone-focus.js';
+import { installPlayRail } from '../keystone/play-rail.js';
 import { getThemeIds } from '../../themes/theme-registry.js';
 import { BREATH_WORLDS } from '../effects/breathing/breath-catalogue.js';
 import { formatPracticeTime, readPracticeLog, summarizePractice } from '../effects/breathwork-practice-log.js';
@@ -551,6 +552,7 @@ export function initMainMenu() {
     if (!root) return null;
     installInputModeTracking();
     installKeystoneFocus();
+    installPlayRail();
     menu = new MainMenu(root);
     return menu;
 }
