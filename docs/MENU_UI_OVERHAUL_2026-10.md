@@ -206,6 +206,8 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | A controller could not reach the Hub outside Serenity | Serenity Hub on the pause sheet (Start, then the button) |
 | The D-pad stuck on the pause sheet's Resume: the focus finder's `[href]` matched the buttons' SVG `<use href>` icons | One `FOCUSABLE_SELECTOR` (`a[href]`, not `[href]`) for spatial navigation and the sheets' Tab trap |
 | Opening the Hub in an Odyssey level left the level running behind it | The Hub pauses Odyssey as Settings does |
+| The online scoreboard hid every name at ≤1200 px windows (0 px left for them), cut names to six letters at 1600 px, and its status pill spilled out of the row | Names take the row's free width (about 20 characters at 1280–1600 px, longer at 1920 px; longer names end in an ellipsis with the full name on hover); status always shows (§5.2) |
+| Timed matches are won on score, but both scoreboards ranked them by frags (the gold leader could be the wrong player); a lines match never showed lines | Both rank and lead with the number that decides the match (`src/ui/scoreboard-metrics.js`) |
 | Cancel or Escape from Create match left a blank screen; Escape over the multiplayer menus opened Settings | One back stack for every multiplayer sheet |
 | A failed create or join hid its sheet and said nothing (or used `alert`) | The sheet stays open with the reason |
 | `serenity:toast` events ("removed by the host", lobby full, version mismatch) had no listener | Keystone toasts |
@@ -303,6 +305,18 @@ Back always return to the screen you came from) and an in-app confirm in place o
 - **In-game HUD:** type and colour only. Every panel box was compared against HEAD's
   stylesheets at 1600 × 900 and 1280 × 720 and matches; `.player-card[data-player]` and
   `.single-player-stats-bar` keep their names (themes read them).
+- **Scoreboard** (`src/ui/online-scoreboard.js`, rules in `src/ui/scoreboard-metrics.js`
+  shared with the Tab scoreboard): ranked by the number that decides the match — frags,
+  score for points and timed matches, lines — shown first in bold, with the second number
+  beside it when the info column is at least 360 px (the Tab scoreboard always shows
+  both). Names take the row's free width, ending in an ellipsis only when they must (the
+  full name is the cell's title); "You" is a tag that never covers your name's start.
+  Every row ends in its status (Alive, Out, Waiting). Rank is a numeral, gold / cream /
+  bronze for the top three, so the trophy keeps meaning score as it does under the
+  boards; the metric heads use the stat bar's icons, named for screen readers. The info
+  column is the container (`container: sb-info`): at 260–359 px the second number steps
+  aside, at ≤289 px the panel's side padding tightens; with five or more players the rows
+  tighten so the battle log and chat keep their room.
 
 `lobby-styles.css`, `match-config-styles.css`, `match-config-aaa.css`,
 `lobby-browser-aaa.css` and `lobby-room-aaa.css` are deleted (3,537 lines);

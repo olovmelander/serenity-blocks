@@ -1864,13 +1864,13 @@
   font-size: 11px;
 }
 
-.scoreboard-row .col-frags {
+.scoreboard-row .col-primary {
   font-weight: 700;
   color: white;
   text-align: right;
 }
 
-.scoreboard-row .col-score {
+.scoreboard-row .col-secondary {
   color: #a0aec0;
   text-align: right;
   font-family: monospace;
@@ -2062,7 +2062,7 @@
 
 .scoreboard-overlay-row {
   display: grid;
-  grid-template-columns: 40px 1fr 80px 90px 90px;
+  grid-template-columns: 40px minmax(0, 1fr) 80px 90px 90px;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
@@ -2099,11 +2099,18 @@
   color: #5eead4;
 }
 
-.scoreboard-overlay-row .col-frags,
-.scoreboard-overlay-row .col-score,
+.scoreboard-overlay-row .col-primary,
+.scoreboard-overlay-row .col-secondary,
 .scoreboard-overlay-row .col-status,
 .scoreboard-overlay-row .col-rank {
   text-align: right;
+}
+
+.scoreboard-overlay-row .col-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Network QoS HUD */
