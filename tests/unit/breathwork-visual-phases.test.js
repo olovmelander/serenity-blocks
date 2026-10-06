@@ -43,7 +43,17 @@ describe('guided breathwork visual phase accuracy', () => {
         expect(indicator.setSessionPhase).toHaveBeenLastCalledWith('grounding', 0);
     });
 
-    it.each(['BASE', 'ELIXIR', 'REST', 'FLOW'])('fits %s retention and recovery to their duration', (sessionId) => {
+    it('keeps Flow\'s box going, uncounted, in the stretch after each round', () => {
+        manager.startSession('FLOW');
+        manager.currentPhaseIndex = 2;
+        manager._runPhase();
+        expect(indicator.overridePattern).toHaveBeenLastCalledWith([4, 4, 4, 4]);
+        expect(indicator.setSessionPhase).toHaveBeenLastCalledWith('carry', 0);
+        expect(indicator.setTechnique).toHaveBeenLastCalledWith('triangle', false);
+        expect(manager._calculateTotalDuration('FLOW')).toBe(1459);
+    });
+
+    it.each(['BASE', 'ELIXIR', 'REST'])('fits %s retention and recovery to their duration', (sessionId) => {
         const durationBefore = manager._calculateTotalDuration(sessionId);
         manager.startSession(sessionId);
         manager.currentPhaseIndex = 2;

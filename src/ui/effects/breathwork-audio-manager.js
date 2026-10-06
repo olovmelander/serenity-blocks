@@ -1,6 +1,7 @@
 /**
- * BreathworkAudioManager - Handles teacher voice and ambient audio
- * Manages caching, playback, and volume control for breathwork sessions.
+ * BreathworkAudioManager - the Hale sessions' voice: stage lines, short spoken cues, and
+ * preloading so a stage never waits on the network. Two elements: the voice, and cues that
+ * yield to it (a cue never talks over the voice).
  */
 export class BreathworkAudioManager {
     constructor() {
@@ -30,32 +31,30 @@ export class BreathworkAudioManager {
     }
 
     /**
-     * Preload audio files for a session
-     * @param {string} sessionId - e.g. 'base', 'elixir'
+     * Preload every clip a session can play, in the order it plays them, so the first stage's
+     * lines arrive first.
+     * @param {string} sessionId - e.g. 'BASE'
      * @param {object} sessionPhaseData - The detailed session phases object
+     * @param {string[]} [extraVoices] - more voice clips (the intention you chose)
      */
-    async preloadSession(sessionId, sessionPhaseData) {
+    async preloadSession(sessionId, sessionPhaseData, extraVoices = []) {
         if (this.destroyed || !sessionPhaseData || !sessionPhaseData.phases) return;
 
-        console.log(`[AudioManager] Preloading audio for session: ${sessionId}`);
-
-        // Extract all unique audio paths from phases
         const pathsToLoad = new Set();
-
-        sessionPhaseData.phases.forEach((phase) => {
-            if (phase.audio) {
-                if (phase.audio.voice) pathsToLoad.add(`voices/${phase.audio.voice}`);
-                if (phase.audio.transition) pathsToLoad.add(`voices/${phase.audio.transition}`);
-                if (phase.audio.cue) pathsToLoad.add(phase.audio.cue);
-                if (phase.audio.cues) {
-                    // Handle object format { in: '...', out: '...' }
-                    if (phase.audio.cues.in) pathsToLoad.add(phase.audio.cues.in);
-                    if (phase.audio.cues.out) pathsToLoad.add(phase.audio.cues.out);
-                }
-                if (phase.audio.fillers) {
-                    phase.audio.fillers.forEach((filler) => pathsToLoad.add(`voices/${filler}`));
-                }
-            }
+        const voice = (path) => { if (path) pathsToLoad.add(`voices/${path}`); };
+        const cue = (path) => { if (path) pathsToLoad.add(path); };
+        sessionPhaseData.phases.forEach((phase, index) => {
+            const { audio } = phase;
+            if (!audio) return;
+            voice(audio.sessionIntro);
+            voice(audio.transition);
+            voice(audio.voice);
+            if (index === 0) extraVoices.forEach(voice);
+            cue(audio.cues?.in);
+            cue(audio.cues?.out);
+            cue(audio.release);
+            voice(audio.encourage?.clip);
+            (audio.fillers || []).forEach(voice);
         });
 
         const paths = [...pathsToLoad].filter((path) => !this.audioCache.has(path));
@@ -71,9 +70,8 @@ export class BreathworkAudioManager {
         try {
             // Session entry must not start dozens of media pipelines at once.
             await Promise.all(Array.from({ length: Math.min(4, paths.length) }, loadNext));
-            if (generation === this.preloadGeneration) console.log(`[AudioManager] Preloaded ${paths.length} files`);
         } catch (err) {
-            console.warn('[AudioManager] Some files failed to load (run generation script?)', err);
+            console.warn('[AudioManager] Some files failed to load', err);
         }
     }
 
@@ -149,7 +147,7 @@ export class BreathworkAudioManager {
 
     /**
      * Play teacher voice for a phase
-     * @param {string} relativePath - e.g., 'base/r1_active.mp3'
+     * @param {string} relativePath - e.g., 'base/r1_active.wav'
      */
     playVoice(relativePath) {
         if (this.destroyed || !this.isEnabled || !relativePath) return;
@@ -194,7 +192,6 @@ export class BreathworkAudioManager {
 
         this.currentVoicePath = relativePath;
         this.isVoicePlaying = true;
-        console.log(`[AudioManager] Playing voice (chained): ${relativePath}`);
 
         let completed = false;
         const finish = (error = null) => {
@@ -203,8 +200,7 @@ export class BreathworkAudioManager {
             audio.onended = null;
             this.isVoicePlaying = false;
             this.isVoicePending = false;
-            if (error) console.warn('[AudioManager] Play failed:', error);
-            else console.log(`[AudioManager] Voice finished: ${relativePath}`);
+            if (error && error.name !== 'AbortError') console.warn('[AudioManager] Play failed:', error?.message || error);
             // A chain may wait before its next voice, keeping this generation
             // current. Settle it once even if failure and ended events overlap.
             if (onComplete) onComplete();
@@ -261,12 +257,10 @@ export class BreathworkAudioManager {
 
         // Don't play cue if voice is currently playing or about to play
         if (this.isVoicePlaying || this.isVoicePending) {
-            console.log(`[AudioManager] Skipping cue (voice playing/pending): ${cuePath}`);
             return;
         }
 
         const fullPath = this.basePath + cuePath;
-        console.log(`[AudioManager] Playing cue: ${cuePath}`);
         this.cueAudio.src = fullPath;
         this.cueAudio.volume = this.cueVolume;
 

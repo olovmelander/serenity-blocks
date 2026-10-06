@@ -82,7 +82,7 @@ export class BreathingTab {
                 </section>
                 <section class="breath-lib__hale">
                     <div>
-                        <span class="breath-lib__eyebrow">Guided · 16 to 27 minutes</span>
+                        <span class="breath-lib__eyebrow">Guided · 19 to 26 minutes</span>
                         <h3>Hale sessions</h3>
                         <p>Full journeys with a voice: arrive, three rounds of breathing and stillness, then rest.</p>
                     </div>

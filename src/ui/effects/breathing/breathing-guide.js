@@ -19,8 +19,16 @@ import {
 const PHASE_WORDS = ['Breathe in', 'Hold', 'Breathe out', 'Rest'];
 const SEGMENT_LABELS = ['In', 'Hold', 'Out', 'Rest'];
 const SESSION_STAGE_LABELS = {
-    grounding: 'Arrive', active: 'Breathe', retention: 'Hold', recovery: 'Recover', integration: 'Rest',
+    grounding: 'Arrive', active: 'Breathe', retention: 'Hold', carry: 'On your own', recovery: 'Recover', integration: 'Rest',
 };
+/** What the guide says in the stages that are not counted breaths. */
+const GUIDANCE_WORDS = {
+    natural: { phase: 'Breathe naturally', hint: 'Let the breath find its own pace' },
+    carry: { phase: 'Keep the rhythm', hint: 'On your own now: in, hold, out, hold' },
+    closing: { phase: 'Come back gently', hint: 'Open your eyes when you are ready' },
+    'timed-hold': { phase: 'Pause', hint: 'Rest on empty, softly' },
+};
+const CHAPTER_MS = 3600;
 const SESSION_ACCENTS = {
     BASE: [125, 211, 252], ELIXIR: [255, 150, 120], REST: [196, 176, 255], FLOW: [110, 234, 212],
 };
@@ -74,6 +82,11 @@ export class BreathingGuide {
         this._journey = [];
         this._progress = {};
         this._progressVisible = false;
+        /** How a session's current stage is guided: see setGuidance(). */
+        this.guidance = null;
+        this.intention = null;
+        this._holdReady = false;
+        this._chapterTimer = null;
 
         // Legacy shape read by the Hub and Serenity Mode: id → { name, pattern, description, color }.
         this.techniques = Object.fromEntries(BREATH_WORLDS.map((world) => [world.id, {
@@ -122,8 +135,10 @@ export class BreathingGuide {
         this.eyebrow = el('p', 'breath-guide__eyebrow');
         this.title = el('h2', 'breath-guide__title');
         this.note = el('p', 'breath-guide__note');
+        this.intentionLine = el('p', 'breath-guide__intention');
+        this.intentionLine.hidden = true;
         const header = el('header', 'breath-guide__header');
-        header.append(this.eyebrow, this.title, this.note);
+        header.append(this.eyebrow, this.title, this.note, this.intentionLine);
 
         this.phaseWord = el('div', 'breath-guide__phase', PHASE_WORDS[0]);
         this.phaseWord.setAttribute('role', 'status');
@@ -133,8 +148,27 @@ export class BreathingGuide {
         this.count.setAttribute('aria-hidden', 'true');
         this.hint = el('div', 'breath-guide__hint');
         this.hint.setAttribute('aria-hidden', 'true');
+        // A hold's dial: a ring that fills toward the suggested length, the time inside it.
+        this.holdDial = el('div', 'breath-guide__hold');
+        this.holdDial.setAttribute('aria-hidden', 'true');
+        this.holdTime = el('span', 'breath-guide__hold-time', '0:00');
+        this.holdLabel = el('span', 'breath-guide__hold-label');
+        this.holdDial.append(el('span', 'breath-guide__hold-ring'), this.holdTime, this.holdLabel);
         this.cue = el('div', 'breath-guide__cue');
-        this.cue.append(this.phaseWord, this.count, this.hint);
+        this.cue.append(this.phaseWord, this.count, this.holdDial, this.hint);
+
+        // A round's title card, drawn large over the world as the round begins.
+        this.chapter = el('div', 'breath-guide__chapter');
+        this.chapter.setAttribute('aria-hidden', 'true');
+        this.chapterEyebrow = el('p', 'breath-guide__chapter-eyebrow');
+        this.chapterTitle = el('p', 'breath-guide__chapter-title');
+        this.chapterNote = el('p', 'breath-guide__chapter-note');
+        this.chapter.append(this.chapterEyebrow, this.chapterTitle, this.chapterNote);
+        // A session speaks its stages here; the phase word would chatter in a fast round.
+        this.announcer = el('div', 'breath-guide__announcer');
+        this.announcer.setAttribute('role', 'status');
+        this.announcer.setAttribute('aria-live', 'polite');
+        this.announcer.setAttribute('aria-atomic', 'true');
 
         this.cycle = el('div', 'breath-guide__cycle');
         this.cycle.setAttribute('aria-hidden', 'true');
@@ -179,17 +213,24 @@ export class BreathingGuide {
         this.pauseButton = button('pause', 'Pause session', 'Pause');
         this.endButton = button('end', 'End breathing', 'End');
         this.controls.append(this.previousButton, this.nextButton, this.pauseButton, this.endButton);
-        // Ending a long session by accident would be unkind: it asks once.
+        // An open hold ends when you breathe in: this, Space, or a tap anywhere on the world.
+        this.breatheButton = button('breathe', 'Breathe in now', 'Breathe in');
+        // Ending a long session by accident would be unkind: it asks once, and the session
+        // waits while it asks.
         this.confirm = el('div', 'breath-guide__confirm');
         this.confirm.hidden = true;
         this.confirm.setAttribute('role', 'alertdialog');
         this.confirm.setAttribute('aria-label', 'End this session?');
+        this.confirmHint = el('small', 'breath-guide__confirm-hint', 'Gamepad: A keeps going, B ends');
+        this.confirmHint.hidden = true;
         this.confirm.append(
             el('p', '', 'End this session?'),
             button('confirm-end', 'End session', 'End session'),
             button('keep-going', 'Keep going', 'Keep going'),
+            this.confirmHint,
         );
-        this.pausedBadge = el('div', 'breath-guide__paused', 'Paused');
+        this.pausedBadge = el('div', 'breath-guide__paused');
+        this.pausedBadge.append(el('b', '', 'Paused'), el('small', '', 'Resume when you are ready'));
         this.pausedBadge.hidden = true;
 
         this.root.append(
@@ -197,16 +238,20 @@ export class BreathingGuide {
             this.fallback,
             scrim,
             header,
+            this.chapter,
             this.cue,
             this.cycle,
+            this.breatheButton,
             this.journey,
             this.pausedBadge,
             this.controls,
             this.confirm,
+            this.announcer,
         );
         this.root.addEventListener('click', (event) => {
             const action = event.target.closest?.('[data-action]')?.dataset.action;
             if (action) this._act(action);
+            else if (this._canBreathe()) this._act('breathe');
         });
         // Native buttons must not also reach a mode's global Space/Enter shortcuts.
         this.root.addEventListener('keydown', (event) => {
@@ -254,6 +299,7 @@ export class BreathingGuide {
     _clearTimers() {
         this.timers.forEach((timer) => clearTimeout(timer));
         this.timers.clear();
+        this._chapterTimer = null;
     }
 
     _renderWorld() {
@@ -311,7 +357,8 @@ export class BreathingGuide {
         this.root.hidden = false;
         this.root.classList.remove('is-leaving', 'is-paused', 'is-live');
         this.pausedBadge.hidden = true;
-        this.confirm.hidden = true;
+        this._closeConfirm();
+        this._coarse = Boolean(window.matchMedia?.('(pointer: coarse)').matches);
         // Next frame, so the entrance transition has a starting state to leave.
         this._later(() => this.root.classList.add('is-open'), 20);
         // Once the guide is opaque the theme behind it is invisible: let it stop drawing.
@@ -379,7 +426,8 @@ export class BreathingGuide {
         window.removeEventListener('resize', this._onResize);
         this.root.classList.remove('is-open', 'is-paused');
         this.root.classList.add('is-leaving');
-        this.confirm.hidden = true;
+        this._closeConfirm();
+        this._hideChapter();
         this.stage?.stop();
         this._later(() => {
             this.root.hidden = true;
@@ -445,25 +493,61 @@ export class BreathingGuide {
         if (action === 'previous') this.cycleTechnique(-1);
         else if (action === 'next') this.cycleTechnique(1);
         else if (action === 'pause') this.onControl?.(this._isPaused ? 'resume' : 'pause');
-        else if (action === 'end') this.requestEnd();
+        else if (action === 'breathe') {
+            if (this._canBreathe()) this.onControl?.('breathe');
+        } else if (action === 'end') this.requestEnd();
         else if (action === 'confirm-end') {
-            this.confirm.hidden = true;
+            this._closeConfirm();
             this.onControl?.('end');
         } else if (action === 'keep-going') {
-            this.confirm.hidden = true;
+            this._closeConfirm();
+            this.onControl?.('unsuspend');
             this.endButton.focus?.({ preventScroll: true });
         }
     }
 
-    /** End a standalone practice at once; ask before ending a session. */
-    requestEnd() {
+    /** An open hold is waiting for you to breathe in (and nothing else is asking first). */
+    _canBreathe() {
+        return this.isActive && this.isExternallyControlled && this.guidance?.mode === 'open-hold'
+            && !this._isPaused && this.confirm.hidden;
+    }
+
+    _closeConfirm() {
+        this.confirm.hidden = true;
+        this.confirmHint.hidden = true;
+        this.root.classList.remove('is-confirming');
+    }
+
+    /** End a standalone practice at once; ask before ending a session (which waits meanwhile). */
+    requestEnd({ fromGamepad = false } = {}) {
         if (!this.isActive) return;
         if (this.isExternallyControlled) {
-            this.confirm.hidden = false;
+            if (this.confirm.hidden) {
+                this.confirm.hidden = false;
+                this.root.classList.add('is-confirming');
+                this.onControl?.('suspend');
+            }
+            this.confirmHint.hidden = !fromGamepad;
             this.confirm.querySelector('[data-action="keep-going"]')?.focus?.({ preventScroll: true });
             return;
         }
         this.stop();
+    }
+
+    /** A gamepad's A: breathe in during an open hold, keep going when asked, else pause. */
+    primaryAction() {
+        if (!this.isActive || !this.isExternallyControlled) return false;
+        if (!this.confirm.hidden) this._act('keep-going');
+        else this._act(this._canBreathe() ? 'breathe' : 'pause');
+        return true;
+    }
+
+    /** A gamepad's B: ask to end the session; asked already, end it. */
+    backAction() {
+        if (!this.isActive || !this.isExternallyControlled) return false;
+        if (!this.confirm.hidden) this._act('confirm-end');
+        else this.requestEnd({ fromGamepad: true });
+        return true;
     }
 
     _handleKey(event) {
@@ -479,6 +563,11 @@ export class BreathingGuide {
             else this.requestEnd();
         } else if (this.isExternallyControlled && (event.key === ' ' || event.code === 'Space')) {
             if (event.target?.closest?.('button')) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            // In an open hold Space is your in-breath; otherwise it pauses.
+            this._act(this._canBreathe() ? 'breathe' : 'pause');
+        } else if (this.isExternallyControlled && (event.key === 'p' || event.key === 'P')) {
             event.preventDefault();
             event.stopImmediatePropagation();
             this._act('pause');
@@ -529,16 +618,81 @@ export class BreathingGuide {
         this.isExternallyControlled = Boolean(enabled);
         this.root.classList.toggle('is-session', this.isExternallyControlled);
         this.journey.hidden = !(this.isExternallyControlled && this._progressVisible);
+        // A session announces its stages; a standalone practice speaks each phase.
+        this.phaseWord.setAttribute('aria-live', this.isExternallyControlled ? 'off' : 'polite');
         if (!this.isExternallyControlled) {
             this.onControl = null;
             this.sessionId = null;
-            this.confirm.hidden = true;
+            this._closeConfirm();
             this.root.removeAttribute('data-session');
             this.pattern = [...this.world.pattern];
             this._text(this.pauseButton, 'Pause');
+            this.pauseButton.setAttribute('aria-label', 'Pause session');
+            this.setGuidance(null);
+            this.setIntention(null);
+            this._hideChapter();
         }
         this.endButton.setAttribute('aria-label', this.isExternallyControlled ? 'End session' : 'End breathing');
         this._renderWorld();
+    }
+
+    /**
+     * How the current stage is guided.
+     * @param {{mode: 'paced'|'open-hold'|'timed-hold'|'carry'|'natural'|'closing',
+     *   suggested?: number, cap?: number}|null} guidance
+     */
+    setGuidance(guidance) {
+        this.guidance = guidance?.mode ? { ...guidance } : null;
+        const mode = this.guidance?.mode || '';
+        if ((this.root.dataset.guidance || '') !== mode) this.root.dataset.guidance = mode;
+        this._holdReady = false;
+        this.root.classList.remove('is-hold-ready');
+        if (mode === 'open-hold' || mode === 'timed-hold') {
+            const { suggested = 0 } = this.guidance;
+            this._style(this.root, '--hold', '0');
+            this._text(this.holdTime, mode === 'open-hold' ? '0:00' : formatClock(suggested));
+            this._text(this.holdLabel, mode === 'open-hold' ? `Suggested ${formatClock(suggested)}` : 'Rest in the pause');
+        }
+    }
+
+    /** The intention chosen for this session, shown as you arrive and as you rest. */
+    setIntention(label) {
+        this.intention = label || null;
+        this.intentionLine.hidden = !this.intention;
+        this._text(this.intentionLine, this.intention ? `Your intention · ${this.intention}` : '');
+    }
+
+    /** A title card over the world: a round beginning, the arrival, the rest. */
+    showChapter({ eyebrow = '', title = '', note = '' } = {}) {
+        if (!this.isActive) return;
+        this._text(this.chapterEyebrow, eyebrow);
+        this._text(this.chapterTitle, title);
+        this._text(this.chapterNote, note);
+        this.chapter.classList.remove('is-showing');
+        // Reading layout restarts the card's animation when one card follows another.
+        this.chapter.getBoundingClientRect?.();
+        this.chapter.classList.add('is-showing');
+        // The header steps back while the card speaks, so the two never compete.
+        this.root.classList.add('is-chaptering');
+        if (this._chapterTimer !== null) {
+            clearTimeout(this._chapterTimer);
+            this.timers.delete(this._chapterTimer);
+        }
+        this._chapterTimer = this._later(() => this._hideChapter(), CHAPTER_MS);
+    }
+
+    _hideChapter() {
+        this._chapterTimer = null;
+        this.chapter.classList.remove('is-showing');
+        this.root.classList.remove('is-chaptering');
+    }
+
+    /** Say something to a screen reader (a stage beginning, a hold ready to end). */
+    announce(message) {
+        if (!message) return;
+        // Cleared first, so the same words can be read twice in a row.
+        this.announcer.textContent = '';
+        this._later(() => { this.announcer.textContent = message; }, 60);
     }
 
     overridePattern(newPattern) {
@@ -623,13 +777,18 @@ export class BreathingGuide {
         if (!this.isExternallyControlled) return;
         const round = data.round > 0 ? `Round ${data.round} of ${data.totalRounds}` : '';
         this._text(this.eyebrow, [data.sessionName, round].filter(Boolean).join(' · '));
-        this._text(this.journeyStage, SESSION_STAGE_LABELS[data.phase] || '');
+        // A timed pause (Hale Rest) is a pause, not a hold.
+        const stage = this.guidance?.mode === 'timed-hold' ? 'Pause' : SESSION_STAGE_LABELS[data.phase];
+        this._text(this.journeyStage, stage || '');
         let detail = '';
         if (data.phase === 'active' && data.totalBreaths > 0) {
             detail = `Breath ${Math.min(data.totalBreaths, (data.breathCount || 0) + 1)} of ${data.totalBreaths}`;
+        } else if (data.phase === 'retention' && Number.isFinite(data.holdElapsed)) {
+            detail = `Held ${formatClock(Math.floor(data.holdElapsed))}`;
         } else if (Number.isFinite(data.remainingTime)) {
             detail = `${formatClock(data.remainingTime)} left`;
         }
+        this._renderHold(data);
         this._text(this.journeyDetail, detail);
         this._text(this.journeyRemaining, Number.isFinite(data.sessionRemaining)
             ? `${Math.max(1, Math.ceil(data.sessionRemaining / 60))} min to go` : '');
@@ -653,6 +812,50 @@ export class BreathingGuide {
         }
         const fill = marks[index]?.firstChild;
         if (fill) this._style(fill, 'transform', `scaleX(${Math.max(0, Math.min(1, data.phaseProgress ?? 0)).toFixed(4)})`);
+    }
+
+    /** The hold dial: an open hold counts up toward its suggestion; a timed pause counts down. */
+    _renderHold(data) {
+        const mode = this.guidance?.mode;
+        if (mode !== 'open-hold' && mode !== 'timed-hold') return;
+        const suggested = Math.max(1, this.guidance.suggested || data.phaseDuration || 1);
+        if (mode === 'timed-hold') {
+            const progress = Math.max(0, Math.min(1, data.phaseProgress ?? 0));
+            this._style(this.root, '--hold', progress.toFixed(4));
+            this._text(this.holdTime, formatClock(Number.isFinite(data.remainingTime) ? data.remainingTime : suggested));
+            return;
+        }
+        const elapsed = Number.isFinite(data.holdElapsed) ? Math.max(0, data.holdElapsed) : 0;
+        const ready = Boolean(data.holdReady) || elapsed >= suggested;
+        this._style(this.root, '--hold', Math.min(1, elapsed / suggested).toFixed(4));
+        this._text(this.holdTime, formatClock(Math.floor(elapsed)));
+        if (ready !== this._holdReady) {
+            this._holdReady = ready;
+            this.root.classList.toggle('is-hold-ready', ready);
+        }
+    }
+
+    /** What the cue says now: counted breaths, or the words of a stage that is not counted. */
+    _words(index, remaining) {
+        const mode = this.guidance?.mode;
+        if (mode === 'open-hold') {
+            const hint = this._coarse ? 'Tap anywhere to breathe in' : 'Press Space or click to breathe in';
+            return { phase: this._holdReady ? 'Breathe in when ready' : 'Hold', count: '', hint };
+        }
+        const words = mode && GUIDANCE_WORDS[mode];
+        if (words) return { ...words, count: '' };
+        // A session's long stillness is timed by its journey strip, not a 120-second count.
+        const retention = this.sessionPhase === 'retention';
+        let hint = '';
+        if (index === 0) [hint] = this.world.cues;
+        else if (index === 2) [, hint] = this.world.cues;
+        else if (index === 1) hint = 'Stay full, stay soft';
+        else hint = retention ? 'Rest in the stillness' : 'Stay empty, stay easy';
+        return {
+            phase: index === 3 && retention ? 'Hold' : PHASE_WORDS[index],
+            count: retention ? '' : `${Math.max(1, Math.ceil(remaining))}`,
+            hint,
+        };
     }
 
     // ── Clock ───────────────────────────────────────────────────────────────
@@ -700,16 +903,10 @@ export class BreathingGuide {
     _render(index, progress, breath, remaining) {
         this._style(this.root, '--breath', breath.toFixed(4));
         if (this.root.dataset.phase !== BREATH_PHASES[index]) this.root.dataset.phase = BREATH_PHASES[index];
-        const retention = this.sessionPhase === 'retention';
-        this._text(this.phaseWord, index === 3 && retention ? 'Hold' : PHASE_WORDS[index]);
-        // A session's long stillness is timed by its journey strip, not a 120-second count.
-        this._text(this.count, retention ? '' : `${Math.max(1, Math.ceil(remaining))}`);
-        let hint = '';
-        if (index === 0) [hint] = this.world.cues;
-        else if (index === 2) [, hint] = this.world.cues;
-        else if (index === 1) hint = 'Stay full, stay soft';
-        else hint = retention ? 'Rest in the stillness' : 'Stay empty, stay easy';
-        this._text(this.hint, hint);
+        const words = this._words(index, remaining);
+        this._text(this.phaseWord, words.phase);
+        this._text(this.count, words.count);
+        this._text(this.hint, words.hint);
         this.segments.forEach(({ segment, fill }, i) => {
             let amount = 0;
             if (i < index) amount = 1;
