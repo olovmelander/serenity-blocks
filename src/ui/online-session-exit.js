@@ -1,3 +1,6 @@
+// The toast region listens for the `serenity:toast` events dispatched below.
+import './components/toast.js';
+
 const EXIT_MESSAGES = Object.freeze({
     update_required: 'Update Serenity Blocks to join this match.',
     host_update_required: 'This host is using an older version. Ask the host to update Serenity Blocks.',

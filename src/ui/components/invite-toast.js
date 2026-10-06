@@ -1,8 +1,14 @@
 /**
  * InviteToastManager
  *
- * Lightweight toast UI for Steam invites.
+ * Keystone toast for Steam invites: stacked bottom-centre with the other toasts,
+ * announced as an alert, with focusable Join / Decline buttons. Styles: `.invite-toast*`
+ * in public/styles/keystone-multiplayer.css.
+ *
+ * This module loads at startup (steam-invite-manager.js), so it also installs the
+ * `serenity:toast` listener for the general toasts (./toast.js).
  */
+import './toast.js';
 
 class InviteToastManager {
     constructor() {
@@ -11,7 +17,7 @@ class InviteToastManager {
     }
 
     _ensureContainer() {
-        if (this.container) return;
+        if (this.container?.isConnected) return;
         this.container = document.createElement('div');
         this.container.id = 'invite-toast-container';
         document.body.appendChild(this.container);
@@ -22,7 +28,7 @@ class InviteToastManager {
 
         const {
             id = `invite-${Date.now()}`,
-            title = 'Game Invite',
+            title = 'Game invite',
             message = 'You received a game invite.',
             acceptText = 'Join',
             declineText = 'Decline',
@@ -39,32 +45,46 @@ class InviteToastManager {
         const toast = document.createElement('div');
         toast.className = `invite-toast${lowKey ? ' low-key' : ''}`;
         toast.dataset.toastId = id;
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-labelledby', `${id}-title`);
+        toast.setAttribute('aria-describedby', `${id}-message`);
 
         const titleEl = document.createElement('div');
         titleEl.className = 'invite-toast-title';
+        titleEl.id = `${id}-title`;
         titleEl.textContent = title;
 
         const messageEl = document.createElement('div');
         messageEl.className = 'invite-toast-message';
+        messageEl.id = `${id}-message`;
         messageEl.textContent = message;
 
         const actionsEl = document.createElement('div');
         actionsEl.className = 'invite-toast-actions';
 
-        const acceptBtn = document.createElement('button');
-        acceptBtn.className = 'invite-toast-btn invite-toast-accept';
-        acceptBtn.textContent = acceptText;
-
         const declineBtn = document.createElement('button');
+        declineBtn.type = 'button';
         declineBtn.className = 'invite-toast-btn invite-toast-decline';
         declineBtn.textContent = declineText;
 
-        actionsEl.appendChild(acceptBtn);
+        const acceptBtn = document.createElement('button');
+        acceptBtn.type = 'button';
+        acceptBtn.className = 'invite-toast-btn invite-toast-accept';
+        acceptBtn.textContent = acceptText;
+
         actionsEl.appendChild(declineBtn);
+        actionsEl.appendChild(acceptBtn);
+
+        // A thin bar drains while the invite is open (decorative).
+        const timerEl = document.createElement('span');
+        timerEl.className = 'invite-toast-timer';
+        timerEl.setAttribute('aria-hidden', 'true');
+        timerEl.style.setProperty('--invite-ms', `${Math.max(1000, timeoutMs)}ms`);
 
         toast.appendChild(titleEl);
         toast.appendChild(messageEl);
         toast.appendChild(actionsEl);
+        toast.appendChild(timerEl);
 
         const cleanup = () => {
             this.dismiss(id);
@@ -83,6 +103,9 @@ class InviteToastManager {
             }
             cleanup();
         });
+
+        // Keys pressed on the invite belong to it, not to the game underneath.
+        toast.addEventListener('keydown', (event) => event.stopPropagation());
 
         const timeoutId = setTimeout(() => {
             if (onDecline) {

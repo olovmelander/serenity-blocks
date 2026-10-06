@@ -376,6 +376,7 @@ describe('LocalMultiplayerMode loop ownership', () => {
         vi.stubGlobal('alert', vi.fn());
         const mode = new LocalMultiplayerMode({});
         mode.isActive = true;
+        mode.configModal = { show: vi.fn(), showError: vi.fn() };
         mode._setupMultiplayerUI = vi.fn(() => Promise.resolve());
         mode._dismissMatchStartLoadingOverlay = vi.fn(() => Promise.resolve());
         mode._removeInputWrappers = vi.fn();
@@ -393,9 +394,12 @@ describe('LocalMultiplayerMode loop ownership', () => {
         expect(mode.configuredForStart).toBe(false);
         expect(mode._removeInputWrappers).toHaveBeenCalledOnce();
         expect(mode._dismissMatchStartLoadingOverlay).toHaveBeenCalledOnce();
-        expect(alert).toHaveBeenCalledWith(
-            'Failed to start local multiplayer match: loop startup failed',
+        // The setup sheet comes back and says why, instead of a blocking alert.
+        expect(mode.configModal.show).toHaveBeenCalledOnce();
+        expect(mode.configModal.showError).toHaveBeenCalledWith(
+            'The match could not start. loop startup failed',
         );
+        expect(alert).not.toHaveBeenCalled();
     });
 
     it.each([

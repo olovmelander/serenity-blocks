@@ -182,6 +182,11 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Font URLs were absolute (`/fonts/...`) | Relative to the stylesheet |
 | Odyssey copy promised 56 levels in 7 chapters | Read from the level registry (59 in 8) |
 | The desktop game had no way to quit from its menus (Alt+F4 only, in fullscreen) | Quit in the main menu dock, two presses |
+| Cancel or Escape from Create match left a blank screen; Escape over the multiplayer menus opened Settings | One back stack for every multiplayer sheet |
+| A failed create or join hid its sheet and said nothing (or used `alert`) | The sheet stays open with the reason |
+| `serenity:toast` events ("removed by the host", lobby full, version mismatch) had no listener | Keystone toasts |
+| `player-card.js` injected global CSS that hit the boards' `.player-card`; lobby CSS enlarged the HUD scoreboard header | Scoped |
+| Results chat showed empty messages; non-hex player colours fell back to one colour | Fixed |
 | Escape on Records, Replays or game over opened Settings on top | Escape goes back (game over: to the main menu) |
 | Any click inside the game-over sheet restarted the game | Only Play again, Enter/Space or a controller face button restart |
 | A controller A that started a key capture was bound immediately; B or Escape during a capture closed Settings; Escape with an option list open closed Settings | Captures and lists own their keys |
@@ -208,7 +213,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Main menu, dock, corner tiles, player card | `keystone-menu.css` | Shipped |
 | Settings (also the pause sheet), Records, Replays, game over, replay complete | `keystone-settings.css`, `keystone-modals.css` | Shipped |
 | Serenity Hub (Themes, Music, Breathing, Hale sessions), Hale flow, breathing guide chrome, Serenity controls overlay | `keystone-hub.css`, `breathwork-sessions.css`, `breathing-library.css`, `breathing-guide.css` | Shipped |
-| Multiplayer (local setup, lobby browser, create match, waiting room, results) | `keystone-multiplayer.css` | See below |
+| Multiplayer (local setup, lobby browser, create match, waiting room, results, toasts, invite, in-game HUD type) | `keystone-multiplayer.css` | Shipped |
 | Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
 
 ### 5.1 Settings, pause, Records, Replays, results (`keystone-settings.css`, `keystone-modals.css`)
@@ -243,7 +248,42 @@ on close.
 are deleted (their structural rules ported first); the demo-complete and `.demo-btn`
 rules left `overlays-aaa.css`.
 
-### 5.2 Serenity Hub (`keystone-hub.css`)
+### 5.2 Multiplayer (`keystone-multiplayer.css`)
+
+Sheets share `src/ui/components/mp-sheet.js` (layers with a back stack: Escape, ✕ and
+Back always return to the screen you came from) and an in-app confirm in place of
+`window.confirm`.
+
+- **Local setup** ("Local versus"): seat cards in the team hues (sky, rose, mint, gold)
+  with kind, bot skill, team and handicap; rules as segmented controls and steppers with
+  "More rules"; Start match as the primary, Back quiet; inline errors; the last setup is
+  remembered (`serenity.localMatch.lastSetup`). `buildLocalMatchConfig` is unchanged.
+- **Lobby browser** ("Online versus"): Create match, Refresh, Join by ID; rows with a
+  capacity meter and "2/4", the win condition in words, a status chip and Join / Drop
+  in / Watch / Full with drawn icons; empty state and a match count.
+- **Create match** returns to the browser on Cancel/✕/Escape; a failed create keeps the
+  sheet open with the reason, a failed join keeps the browser open with the reason.
+- **Waiting room:** three columns; player cards in their colour with ready / host / you
+  states; Ready ↔ Not ready; the host's Start match is the primary; Leave and Kick
+  confirm in-app.
+- **Results:** online results lead with the winner and a standings table (player
+  colours, tabular numbers); local results moved out of `LocalMultiplayerMode` into
+  `src/ui/local-match-end-overlay.js`. Rematch / Play again takes focus; Escape is Main
+  menu.
+- **Toasts** (`src/ui/components/toast.js`): `serenity:toast` events now show —
+  bottom-centre, announced politely, auto-dismiss, no blur. The invite toast is an
+  alert with focusable Decline and Join and a draining bar.
+- **In-game HUD:** type and colour only. Every panel box was compared against HEAD's
+  stylesheets at 1600 × 900 and 1280 × 720 and matches; `.player-card[data-player]` and
+  `.single-player-stats-bar` keep their names (themes read them).
+
+`lobby-styles.css`, `match-config-styles.css`, `match-config-aaa.css`,
+`lobby-browser-aaa.css` and `lobby-room-aaa.css` are deleted (3,537 lines);
+`multiplayer-ui.css` went from 4,470 to 3,426 lines. `LocalMultiplayerMode.js` dropped
+from 3,822 to 3,198 lines (the dead `_showRoundEnd` and the extracted results overlay);
+the fitness ceilings are lowered to match.
+
+### 5.3 Serenity Hub (`keystone-hub.css`)
 
 **Before:** a centred glass box titled in spaced Orbitron, mono copy, a red ✕, pill chips
 and saturated purple/teal/green thumbnail backdrops behind every theme orb.
@@ -276,7 +316,7 @@ and saturated purple/teal/green thumbnail backdrops behind every theme orb.
 bare generic rule the Hub used to leak (`.progress-*`, `.section-title`, `.control-btn`,
 keyframes `pulse`/`spin`/`float`) is gone.
 
-### 5.3 In-game overlays (`keystone-overlays.css`)
+### 5.4 In-game overlays (`keystone-overlays.css`)
 
 **Before:** Orbitron and Space Mono over violet glass; every Odyssey view injected its
 own styles from JavaScript; the countdown was a traffic light (green, amber, red, then
