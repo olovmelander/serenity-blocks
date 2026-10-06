@@ -3260,31 +3260,80 @@ body.start-modal-open #invite-toast-container {
     border-bottom-color: var(--sb-line);
 }
 
-/* Heights the right column was laid out with (the old type set them). */
-#online-multiplayer-container .scoreboard-columns-header {
-    min-height: 31px;
-}
-
 #online-multiplayer-container .scoreboard-goal {
     color: var(--sb-text-muted);
     font-family: var(--sb-font-text);
     font-weight: 600;
 }
 
-#online-multiplayer-container .scoreboard-columns-header > span {
-    color: var(--sb-text-faint);
-    font-family: var(--sb-font-display);
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.14em;
+/* ---- Scoreboard (src/ui/online-scoreboard.js) ---------------------------------------
+ * Names take the row's free width; the number that decides the match comes first and
+ * the one beside it shows where the info column has room; every row shows its status.
+ * The info column (260 px at ≤1200 px windows, up to 440 px) is the size container. */
+#online-multiplayer-container > .right-panel {
+    container: sb-info / inline-size;
 }
 
-/* Scoreboard rows: each player's hue stays on the left edge; names read in Manrope,
- * numbers in Unbounded figures. */
+#online-multiplayer-container .scoreboard-columns-header,
+#online-multiplayer-container .scoreboard-row {
+    display: grid;
+    /* Rank, name, the deciding number, the second number, status (fits "Waiting"). */
+    grid-template-columns: 16px minmax(0, 1fr) 24px 42px 66px;
+    column-gap: 5px;
+    align-items: center;
+}
+
+#online-multiplayer-container .scoreboard-columns-header {
+    min-height: 24px;
+    margin-bottom: 6px;
+    /* The rows' 3px colour edge and padding, so heads sit over their numbers. */
+    padding: 0 7px 6px 10px;
+    border-bottom: 1px solid var(--sb-line);
+}
+
+#online-multiplayer-container .scoreboard-columns-header > span {
+    color: var(--sb-text-faint);
+    font: 600 9px / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+#online-multiplayer-container .scoreboard-columns-header .col-rank {
+    text-align: center;
+}
+
+#online-multiplayer-container .scoreboard-columns-header :is(.col-primary, .col-secondary) {
+    display: flex;
+    justify-content: flex-end;
+}
+
+#online-multiplayer-container .scoreboard-columns-header .col-primary {
+    color: var(--sb-text-muted);
+}
+
+#online-multiplayer-container .scoreboard-columns-header .col-status {
+    text-align: right;
+}
+
+#online-multiplayer-container .scoreboard-list {
+    gap: 5px;
+}
+
 #online-multiplayer-container .scoreboard-row {
     min-height: 34px;
+    padding: 6px 7px;
+    border: 0;
+    border-left: 3px solid var(--player-row-color, rgba(var(--sb-cream-rgb), 0.3));
+    border-radius: 9px;
     background: rgba(var(--sb-cream-rgb), 0.03);
+    box-shadow: none;
     color: var(--sb-text);
+    font-size: 12px;
+}
+
+#online-multiplayer-container .scoreboard-row::before {
+    opacity: 0.08;
 }
 
 #online-multiplayer-container .scoreboard-row:first-child {
@@ -3299,43 +3348,84 @@ body.start-modal-open #invite-toast-container {
     box-shadow: inset 0 0 0 1px rgba(var(--sb-cream-rgb), 0.3);
 }
 
-#online-multiplayer-container .scoreboard-row.local-player .col-name::after {
-    color: var(--sb-text-muted);
-    font-family: var(--sb-font-display);
+#online-multiplayer-container .scoreboard-row.dead {
+    opacity: 0.55;
+    filter: grayscale(0.6);
 }
 
+#online-multiplayer-container .scoreboard-row .col-rank {
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 600 11px / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+#online-multiplayer-container .scoreboard-row[data-rank='1'] .col-rank { color: var(--sb-gold); }
+#online-multiplayer-container .scoreboard-row[data-rank='2'] .col-rank { color: var(--sb-text); }
+#online-multiplayer-container .scoreboard-row[data-rank='3'] .col-rank { color: #e8a98a; }
+
+/* The name gets what the numbers leave; a long one ends in an ellipsis (its title has it
+   whole). "You" is a tag that never takes the name's start. */
 #online-multiplayer-container .scoreboard-row .col-name {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    overflow: visible;
     color: var(--sb-text);
-    font-family: var(--sb-font-text);
+    font: 700 12px / 1.2 var(--sb-font-text);
+}
+
+#online-multiplayer-container .scoreboard-row .col-name__text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#online-multiplayer-container .scoreboard-row .col-name__you {
+    flex: none;
+    padding: 2px 4px;
+    border-radius: 4px;
+    background: rgba(var(--sb-cream-rgb), 0.12);
+    color: var(--sb-text);
+    font: 700 8px / 1 var(--sb-font-display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+#online-multiplayer-container .scoreboard-row :is(.col-primary, .col-secondary) {
+    font-family: var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+}
+
+#online-multiplayer-container .scoreboard-row .col-primary {
+    color: var(--sb-text);
+    font-size: 13px;
     font-weight: 700;
 }
 
-#online-multiplayer-container .scoreboard-row .col-rank,
-#online-multiplayer-container .scoreboard-row .col-frags,
-#online-multiplayer-container .scoreboard-row .col-score {
-    font-family: var(--sb-font-display);
-    font-variant-numeric: tabular-nums;
-}
-
-#online-multiplayer-container .scoreboard-row .col-frags {
-    color: var(--sb-text);
-}
-
-#online-multiplayer-container .scoreboard-row .col-score {
+#online-multiplayer-container .scoreboard-row .col-secondary {
     color: var(--sb-text-muted);
-}
-
-#online-multiplayer-container .scoreboard-row .col-status {
-    border-radius: 6px;
-    font-family: var(--sb-font-display);
+    font-size: 10px;
     font-weight: 600;
-    letter-spacing: 0.1em;
 }
 
-#online-multiplayer-container .scoreboard-row:not(.dead) .col-status {
-    border-color: rgba(var(--sb-success-rgb), 0.42);
+/* Status: a tile on the right, in every row. */
+#online-multiplayer-container .scoreboard-row .col-status {
+    justify-self: end;
+    padding: 3px 6px;
+    border: 1px solid rgba(var(--sb-success-rgb), 0.42);
+    border-radius: 6px;
     background: rgba(var(--sb-success-rgb), 0.08);
     color: var(--sb-success);
+    font: 600 8.5px / 1 var(--sb-font-display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
 }
 
 #online-multiplayer-container .scoreboard-row.dead .col-status {
@@ -3348,6 +3438,34 @@ body.start-modal-open #invite-toast-container {
     border-color: rgba(var(--sb-accent-rgb), 0.42);
     background: rgba(var(--sb-accent-rgb), 0.08);
     color: var(--sb-accent);
+}
+
+/* Five to eight players: tighter rows, so the battle log and chat keep their room. */
+#online-multiplayer-container .scoreboard-list:has(> .scoreboard-row:nth-child(5)) {
+    gap: 3px;
+}
+
+#online-multiplayer-container .scoreboard-list:has(> .scoreboard-row:nth-child(5)) > .scoreboard-row {
+    min-height: 28px;
+    padding-block: 3px;
+}
+
+/* Below 360 px (windows under ~1800 px) names come first: the deciding number, the name
+   and the status; the second number waits for room (the Tab scoreboard always has it). */
+@container sb-info (max-width: 359px) {
+    #online-multiplayer-container :is(.scoreboard-columns-header, .scoreboard-row) {
+        grid-template-columns: 16px minmax(0, 1fr) 24px 66px;
+    }
+
+    #online-multiplayer-container :is(.scoreboard-columns-header, .scoreboard-row) > .col-secondary {
+        display: none;
+    }
+}
+
+@container sb-info (max-width: 289px) {
+    #online-multiplayer-container .online-scoreboard {
+        padding-inline: 12px;
+    }
 }
 
 /* Battle log */
@@ -3755,6 +3873,18 @@ body.start-modal-open #invite-toast-container {
     color: var(--sb-text-faint);
     font: 600 9px / 1 var(--sb-font-display);
     letter-spacing: 0.16em;
+}
+
+#multiplayer-scoreboard-overlay .scoreboard-overlay-row .col-name__you {
+    margin-left: 8px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: rgba(var(--sb-cream-rgb), 0.12);
+    color: var(--sb-text);
+    font: 700 9px / 1 var(--sb-font-display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    vertical-align: 1px;
 }
 
 #multiplayer-scoreboard-overlay .scoreboard-overlay-row.local-player {
