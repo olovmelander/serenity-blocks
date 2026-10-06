@@ -59,19 +59,10 @@ export class LobbyBrowser {
             <button type="button" class="sb-mp-close" id="close-lobby-browser" aria-label="Close and return to the menu">${mpIcon('close', 20)}</button>
           </header>
 
+          <!-- The matches first; joining a friend by ID is the way in when the list can't
+               show their match (Steam filters it by region), under the list. -->
           <div class="lobby-browser-controls sb-mp-toolbar">
-            <form class="lobby-join-by-id" id="join-by-id-form" novalidate>
-              <label class="sb-mp-field__label" for="join-by-id-input">Join by lobby ID</label>
-              <div class="lobby-join-by-id__row">
-                <input type="text" id="join-by-id-input" class="sb-mp-input"
-                  placeholder="Paste a friend's lobby ID"
-                  maxlength="32" inputmode="numeric" autocomplete="off" spellcheck="false"
-                  aria-describedby="join-by-id-hint join-by-id-error" />
-                <button type="submit" class="sb-btn lobby-join-by-id__btn" id="join-by-id-btn">${mpIcon('join', 16)}<span>Join</span></button>
-              </div>
-              <p class="join-by-id-hint sb-mp-help" id="join-by-id-hint">The host sees the ID in their waiting room. Steam invites and Join game work too.</p>
-              <p class="join-by-id-error sb-mp-alert" id="join-by-id-error" role="alert" hidden></p>
-            </form>
+            <h3 class="lobby-browser-controls__title" id="lobby-list-title">Open matches</h3>
             <button type="button" class="sb-btn sb-btn--quiet lobby-refresh" id="refresh-lobbies-btn">${mpIcon('refresh', 16)}<span>Refresh</span></button>
           </div>
 
@@ -83,10 +74,23 @@ export class LobbyBrowser {
               <span class="col-status">Status</span>
               <span class="col-action"></span>
             </div>
-            <div class="lobby-list" id="lobby-list" role="list" aria-label="Open matches">
+            <div class="lobby-list" id="lobby-list" role="list" aria-labelledby="lobby-list-title">
               ${this.emptyStateHtml()}
             </div>
           </div>
+
+          <form class="lobby-join-by-id" id="join-by-id-form" novalidate>
+            <label class="sb-mp-field__label" for="join-by-id-input">Join by lobby ID</label>
+            <div class="lobby-join-by-id__row">
+              <input type="text" id="join-by-id-input" class="sb-mp-input"
+                placeholder="Paste a friend's lobby ID"
+                maxlength="32" inputmode="numeric" autocomplete="off" spellcheck="false"
+                aria-describedby="join-by-id-hint join-by-id-error" />
+              <button type="submit" class="sb-btn lobby-join-by-id__btn" id="join-by-id-btn">${mpIcon('join', 16)}<span>Join</span></button>
+            </div>
+            <p class="join-by-id-hint sb-mp-help" id="join-by-id-hint">The host sees the ID in their waiting room. Steam invites and Join game work too.</p>
+            <p class="join-by-id-error sb-mp-alert" id="join-by-id-error" role="alert" hidden></p>
+          </form>
 
           <footer class="lobby-browser-footer sb-mp-sheet__footer">
             <ul class="sb-hints sb-mp-sheet__hints" aria-hidden="true">

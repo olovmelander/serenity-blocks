@@ -858,6 +858,24 @@ local versus does, and hands the sizes to the stylesheet as variables:
   steps out over the beat's last 320 ms and the results fade in, so no empty window
   shows between them.
 
+**Before and after the match** (findings 9, 10):
+
+- **Results.** The table keeps seven numbers — frags, deaths, score, lines, pieces per
+  second, attacks per minute, lines sent (blocks per minute, points per minute and the
+  attack count said those again) — and marks the column that decided the match in
+  gold; a phone keeps place, player, frags, score and lines. The standings rank by
+  what decided the match, the winner first: frags always came first, so a lines race's
+  winner card and first place could disagree. The winner's line leads with the
+  deciding number ("40 lines · 9,800 points"), a draw has none, and the goal reads
+  right when the host sends it as text.
+- **Lobby browser.** The open matches come first, under their heading with Refresh;
+  Join by lobby ID moves to a band under the list, for the match the list can't show.
+- **Waiting room.** A spectator no longer gets a Ready that does nothing: the room says
+  they are watching and that the host starts the match.
+- **One sentence for a goal** on every online surface (lobby list, waiting room, match
+  bar, scoreboard heads, results): "First to 10,000 points", "First to 1 frag",
+  "3-minute match".
+
 **Fixed along the way** (finding 12): the drop-in no longer throws (the field is
 guarded until the match UI exists); the drop-in card and the board frames are
 stylesheet work (a status card; `--player-primary` on each station). Steam reports
@@ -934,12 +952,17 @@ counts are numbers from the bridge on (`electron/steam-integration.js`,
   a lines race with a cascade (the crest on both windows, the other boards stepped
   back, then the results). Instrumented, the two windows held the match won
   2,401–2,458 ms before the results; with 8 players the banner (a long name) and the
-  crest were captured at 1600 × 900, 1280 × 720 and 390 × 844. No page errors. Unit
+  crest were captured at 1600 × 900, 1280 × 720 and 390 × 844. The lobby browser with a
+  live host's match at 1600 × 900 and 390 × 844; the results for 4 and 8 players at
+  1600 × 900, 1280 × 720 and 390 × 844 (the table inside its panel at each). No page
+  errors. Unit
   tests: `online-versus-layout.test.js`, `online-versus-hud.test.js`,
   `online-match-endings.test.js`, `ffa-round-over-beat.test.js`,
   `frag-tracker-host-authority.test.js`, the tile's victory in
   `canvas-board-effects.test.js`, the stations' colour in
-  `opponent-watch-hud-performance.test.js`. Gates: 597 test files (7,810 tests), lint
+  `opponent-watch-hud-performance.test.js`, the standings, table and winner's line in
+  `online-results.test.js`, the spectator's waiting room in
+  `lobby-waiting-room-spectator.test.js`. Gates: 599 test files (7,820 tests), lint
   at its baseline, typecheck, the TypeScript ratchet (two new checked files), fitness
   ceilings lowered (`ffa-p2p-game-state` 4,534 → 4,513 lines, `OnlineMultiplayerMode`
   3,101 → 2,901, core DOM globals 457 → 438, core rAF drivers 25 → 23), boundaries,
@@ -954,9 +977,12 @@ counts are numbers from the bridge on (`electron/steam-integration.js`,
   its last board and the Offline card (`_showDisconnectOverlay`) never shows. The host
   stops syncing as a match ends, so a peer sees the winner's board as of the snapshot
   before the deciding move (the crest covers its top); one last snapshot before the
-  match-end message would show the move. Everything online was verified on the mock
-  transport only; the endings' timing and the lobby counts want a run on two machines
-  with Steam.
+  match-end message would show the move. A host migration is silent: the new host
+  emits `HOST_MIGRATED` (`host-migration.js`), peers emit nothing, and nothing listens; a
+  battle-log line ("*name* hosts now") wants the peers' side in `ffa-p2p-game-state.js`
+  (at its line ceiling) and a three-window migration run. Everything online was
+  verified on the mock transport only; the endings' timing and the lobby counts want a
+  run on two machines with Steam.
 - **Board effects.** Odyssey still plays the top-out on a board its own flow tears down;
   give it the beat online versus now has (§5.9). A consecutive-clear
   combo (one clear per piece) is shown only by the light's tone, by design (local
