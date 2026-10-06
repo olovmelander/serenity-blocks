@@ -4155,3 +4155,40 @@ body.start-modal-open #invite-toast-container {
         opacity: 0.4;
     }
 }
+
+/* =================================================================================
+ * Online countdown (#multiplayer-countdown, ffa-p2p-game-state.js showCountdown). Its
+ * inline styles set colour, size, position, opacity and transform with !important (the
+ * colours walk the spectrum to a coral GO, like the single-player countdown); this owns
+ * the type tracking and the keyframes it names, which were never defined. They animate
+ * `scale` only: the inline transform and opacity are !important and would win.
+ * ================================================================================ */
+#multiplayer-countdown.multiplayer-countdown {
+    letter-spacing: 0.04em;
+}
+
+@keyframes countdownFadeInScale {
+    from { scale: 0.92; }
+    to { scale: 1; }
+}
+
+@keyframes countdownFadeOut {
+    from { scale: 1; }
+    to { scale: 0.97; }
+}
+
+@keyframes countdownPulse {
+    from { scale: 0.84; }
+    to { scale: 1; }
+}
+
+@keyframes countdownGo {
+    from { scale: 0.78; }
+    to { scale: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #multiplayer-countdown.multiplayer-countdown {
+        animation: none !important;
+    }
+}
