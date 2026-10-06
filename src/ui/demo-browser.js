@@ -1,13 +1,70 @@
+/**
+ * @fileoverview Replays sheet (#demo-browser-modal): the saved replays, newest first,
+ * each with Play, Share and Delete. A Keystone sheet (public/styles/keystone-modals.css);
+ * it sits outside ModalManager, so it announces itself with the same modalShown /
+ * modalHidden events, which give it focus handling and Escape (src/ui/sheet-input.js).
+ */
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { introAnimation } from './intro-animation.js';
+import { csIcon } from './components/cosmic-icons.js';
+
+const STATUS_CLEAR_MS = 4500;
+const DELETE_CONFIRM_MS = 4000;
+
+const MODE_NAMES = {
+    'single-player': 'Single Player',
+    single: 'Single Player',
+    infinity: 'Infinity',
+};
+
+const TRASH_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">'
+    + '<path d="M4.5 7h15"/><path d="M9.6 7V5.3a1.3 1.3 0 0 1 1.3-1.3h2.2a1.3 1.3 0 0 1 1.3 1.3V7"/>'
+    + '<path d="M6.6 7l.8 11.1a2 2 0 0 0 2 1.9h5.2a2 2 0 0 0 2-1.9L17.4 7"/><path d="M10.3 11v5M13.7 11v5"/></svg>';
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
 
 // Helper function to format time
 function formatTime(ms) {
-    if (!ms || isNaN(ms)) return '00:00';
+    if (!ms || Number.isNaN(Number(ms))) return '00:00';
     const totalSeconds = Math.floor(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function formatWhen(timestamp) {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return { text: '', iso: '' };
+    const day = date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    const time = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return { text: `${day} · ${time}`, iso: date.toISOString() };
+}
+
+function modeName(gameMode) {
+    if (!gameMode) return 'Single Player';
+    if (MODE_NAMES[gameMode]) return MODE_NAMES[gameMode];
+    return String(gameMode).replace(/[-_]+/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
+}
+
+/** Show a status line when the browser has one (shared helpers call this unbound). */
+function notify(browser, message, tone) {
+    if (typeof browser?.setStatus === 'function') browser.setStatus(message, tone);
+}
+
+function replayStat(label, value, modifier = '') {
+    return `<div class="stat${modifier ? ` ${modifier}` : ''}"><dt class="stat-label">${label}</dt>`
+        + `<dd class="stat-value">${value}</dd></div>`;
+}
+
+function formatCount(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toLocaleString() : '0';
 }
 
 export class DemoBrowser {
@@ -17,7 +74,10 @@ export class DemoBrowser {
         this.modal = document.getElementById('demo-browser-modal');
         this.listContainer = document.getElementById('demo-list');
         this.importInput = document.getElementById('import-demo-input');
+        this.statusEl = document.getElementById('demo-browser-status');
         this.refreshGeneration = 0;
+        this.statusTimer = 0;
+        this.pendingDelete = null;
 
         this.setupEventListeners();
     }
@@ -41,32 +101,69 @@ export class DemoBrowser {
         }
     }
 
+    isOpen() {
+        return Boolean(this.modal?.classList.contains('visible'));
+    }
+
+    announce(type) {
+        if (typeof window === 'undefined' || typeof CustomEvent !== 'function') return;
+        window.dispatchEvent(new CustomEvent(type, { detail: { modalName: 'demoBrowser' } }));
+    }
+
     show() {
-        if (this.modal) {
-            this.modal.classList.add('visible');
-            this.refreshList();
-        }
+        if (!this.modal) return;
+        const wasOpen = this.isOpen();
+        this.modal.classList.add('visible');
+        this.setStatus('');
+        const listed = this.refreshList();
+        if (wasOpen) return;
+        // Announce once the list is in, so focus lands on the newest replay.
+        Promise.resolve(listed).finally(() => {
+            if (this.isOpen()) this.announce('modalShown');
+        });
     }
 
     hide() {
         this.refreshGeneration += 1;
-        if (this.modal) {
-            this.modal.classList.remove('visible');
+        this.clearPendingDelete();
+        if (!this.modal) return;
+        const wasOpen = this.isOpen();
+        this.modal.classList.remove('visible');
+        if (wasOpen) this.announce('modalHidden');
+    }
+
+    /** A short message under the header (copied, imported, failed) instead of alert(). */
+    setStatus(message, tone = 'info') {
+        if (!this.statusEl) return;
+        clearTimeout(this.statusTimer);
+        this.statusEl.textContent = message || '';
+        this.statusEl.dataset.tone = tone;
+        if (message) {
+            this.statusTimer = setTimeout(() => {
+                if (this.statusEl) this.statusEl.textContent = '';
+            }, STATUS_CLEAR_MS);
         }
     }
 
     async refreshList() {
         if (!this.listContainer || !this.modal?.classList.contains('visible')) return;
         const generation = ++this.refreshGeneration;
+        this.clearPendingDelete();
 
-        this.listContainer.innerHTML = '<div class="loading-spinner">Loading...</div>';
+        this.listContainer.innerHTML = '<p class="loading-spinner" role="status">Loading replays…</p>';
 
         try {
             const demos = await this.demoManager.listDemos({ includeReplayData: false });
             if (generation !== this.refreshGeneration) return;
 
             if (demos.length === 0) {
-                this.listContainer.innerHTML = '<div class="empty-state">No replays found. Play a game to record one!</div>';
+                this.listContainer.innerHTML = `
+                    <div class="sb-empty demo-empty">
+                        <span class="sb-empty__icon" aria-hidden="true">${csIcon('play', 24)}</span>
+                        <p class="sb-empty__title">No replays yet</p>
+                        <p class="sb-empty__text">Finish a Single Player game and it is saved here to watch again.
+                            A replay file someone shared with you comes in through Import file.</p>
+                    </div>`;
                 return;
             }
 
@@ -84,63 +181,92 @@ export class DemoBrowser {
         } catch (err) {
             if (generation !== this.refreshGeneration) return;
             console.error('Failed to load demos:', err);
-            this.listContainer.innerHTML = '<div class="error-state">Failed to load replays.</div>';
+            this.listContainer.innerHTML = '<p class="error-state">'
+                + 'Replays could not be loaded. Close this and try again.</p>';
         }
     }
 
     createDemoCard(demo) {
-        const card = document.createElement('div');
+        const card = document.createElement('article');
         card.className = 'demo-card';
 
-        const date = new Date(demo.timestamp);
-        const dateStr = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
-        const duration = demo.metadata?.duration ? formatTime(demo.metadata.duration) : '??:??';
-        const score = demo.metadata?.score?.toLocaleString() || '0';
+        const when = formatWhen(demo.timestamp);
+        const meta = demo.metadata || {};
+        const score = formatCount(meta.score ?? meta.finalScore);
+        const lines = meta.lines ?? meta.linesCleared;
+        const duration = meta.duration ? formatTime(meta.duration) : '—';
+        const subject = `replay: ${score} points${when.text ? `, ${when.text}` : ''}`;
 
         card.innerHTML = `
             <div class="demo-info">
                 <div class="demo-header">
-                    <span class="demo-mode">${demo.gameMode || 'Single Player'}</span>
-                    <span class="demo-date">${dateStr}</span>
+                    <span class="demo-mode">${escapeHtml(modeName(demo.gameMode))}</span>
+                    <time class="demo-date"${when.iso ? ` datetime="${when.iso}"` : ''}>${escapeHtml(when.text)}</time>
                 </div>
-                <div class="demo-stats">
-                    <span class="stat stat--score">
-                        <span class="stat-value">${score}</span>
-                        <span class="stat-label">Score</span>
-                    </span>
-                    <span class="stat">
-                        <span class="stat-value">${demo.metadata?.level || 1}</span>
-                        <span class="stat-label">Level</span>
-                    </span>
-                    <span class="stat">
-                        <span class="stat-value">${duration}</span>
-                        <span class="stat-label">Duration</span>
-                    </span>
-                </div>
+                <dl class="demo-stats">
+                    ${replayStat('Score', score, 'stat--score')}
+                    ${replayStat('Level', formatCount(meta.level || 1))}
+                    ${lines != null ? replayStat('Lines', formatCount(lines)) : ''}
+                    ${replayStat('Time', duration)}
+                </dl>
             </div>
             <div class="demo-actions">
-                <button class="btn-play" title="Watch Replay">▶</button>
-                <button class="btn-share" title="Share Link">🔗</button>
-                <button class="btn-delete" title="Delete">🗑️</button>
+                <button type="button" class="demo-action btn-play" aria-label="Play ${escapeHtml(subject)}">
+                    ${csIcon('play', 18)}<span class="demo-action__label" aria-hidden="true">Play</span>
+                </button>
+                <button type="button" class="demo-action btn-share" aria-label="Share ${escapeHtml(subject)}">
+                    ${csIcon('chain', 18)}<span class="demo-action__label" aria-hidden="true">Share</span>
+                </button>
+                <button type="button" class="demo-action btn-delete" aria-label="Delete ${escapeHtml(subject)}">
+                    ${TRASH_ICON}<span class="demo-action__label" aria-hidden="true">Delete</span>
+                </button>
             </div>
         `;
 
         // Add listeners
-        const playBtn = card.querySelector('.btn-play');
-        playBtn.addEventListener('click', () => this.playDemo(demo.id));
+        card.querySelector('.btn-play').addEventListener('click', () => this.playDemo(demo.id));
+        card.querySelector('.btn-share').addEventListener('click', () => this.shareDemo(demo));
 
-        const shareBtn = card.querySelector('.btn-share');
-        shareBtn.addEventListener('click', () => this.shareDemo(demo));
-
+        // Delete asks twice, in place: the first press arms it, the second deletes.
         const deleteBtn = card.querySelector('.btn-delete');
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (confirm('Are you sure you want to delete this replay?')) {
+            if (this.pendingDelete?.button === deleteBtn) {
+                this.clearPendingDelete();
                 this.deleteDemo(demo.id);
+                return;
             }
+            this.armDelete(deleteBtn, subject);
+        });
+        deleteBtn.addEventListener('blur', () => {
+            if (this.pendingDelete?.button === deleteBtn) this.clearPendingDelete();
         });
 
         return card;
+    }
+
+    armDelete(button, subject) {
+        this.clearPendingDelete();
+        const label = button.querySelector('.demo-action__label');
+        button.classList.add('is-confirming');
+        if (label) label.textContent = 'Press again to delete';
+        button.setAttribute('aria-label', `Press again to delete this ${subject}`);
+        this.pendingDelete = {
+            button,
+            subject,
+            timer: setTimeout(() => this.clearPendingDelete(), DELETE_CONFIRM_MS),
+        };
+    }
+
+    clearPendingDelete() {
+        const pending = this.pendingDelete;
+        if (!pending) return;
+        this.pendingDelete = null;
+        clearTimeout(pending.timer);
+        pending.button.classList.remove('is-confirming');
+        const label = pending.button.querySelector('.demo-action__label');
+        if (label) label.textContent = 'Delete';
+        pending.button.setAttribute('aria-label', `Delete ${pending.subject}`);
     }
 
     async playDemo(id) {
@@ -165,7 +291,7 @@ export class DemoBrowser {
             await this.gameModeManager.startCurrentMode({ demo });
         } catch (err) {
             console.error('Failed to play demo:', err);
-            alert('Failed to play replay.');
+            notify(this, 'This replay could not be played.', 'error');
         }
     }
 
@@ -179,19 +305,27 @@ export class DemoBrowser {
 
             const url = await this.demoManager.exportToURL(fullDemo);
             await navigator.clipboard.writeText(url);
-            alert('Replay link copied to clipboard!');
+            notify(this, 'Replay link copied to the clipboard.', 'success');
         } catch (err) {
             console.error('Failed to share demo:', err);
-            alert('Failed to generate share link.');
+            notify(this, 'The replay link could not be copied.', 'error');
         }
     }
 
     async deleteDemo(id) {
+        const hadFocus = typeof document !== 'undefined' && Boolean(this.modal?.contains?.(document.activeElement));
         try {
             await this.demoManager.deleteDemo(id);
-            this.refreshList();
+            await this.refreshList();
+            notify(this, 'Replay deleted.', 'success');
+            // The pressed button is gone; keep focus inside the sheet.
+            if (hadFocus) {
+                (this.listContainer?.querySelector('.btn-play') || document.getElementById('import-demo-btn'))
+                    ?.focus({ preventScroll: true });
+            }
         } catch (err) {
             console.error('Failed to delete demo:', err);
+            notify(this, 'The replay could not be deleted.', 'error');
         }
     }
 
@@ -203,11 +337,11 @@ export class DemoBrowser {
             const text = await file.text();
             const demo = await this.demoManager.importFromJSON(text);
             await this.demoManager.saveDemo(demo);
-            this.refreshList();
-            alert('Replay imported successfully!');
+            await this.refreshList();
+            notify(this, 'Replay imported.', 'success');
         } catch (err) {
             console.error('Import failed:', err);
-            alert('Failed to import replay. Invalid file format.');
+            notify(this, 'That file is not a replay this game can read.', 'error');
         }
 
         // Reset input

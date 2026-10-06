@@ -1,0 +1,1228 @@
+/* =================================================================================
+ * KEYSTONE — Settings (#settings-modal), also the pause sheet
+ * ---------------------------------------------------------------------------------
+ * The shared sheet (open corner, header, Close, footer hints) comes from
+ * keystone-modals.css, loaded just before this file. Here: the Paused strip,
+ * the section tabs, setting rows with helper text, Keystone toggles and spectrum
+ * sliders, keycap binding tiles and the Controls sidebar.
+ * Behaviour: src/ui/settings.js (tabs, pause context, captures), src/ui/modals.js
+ * (open/close, scroll performance mode). Record: docs/MENU_UI_OVERHAUL_2026-10.md.
+ *
+ * Replaces settings-aaa.css. Zero backdrop-filter (a previous perf pass made it so):
+ * Settings opens over live gameplay. The scroll-performance rules for
+ * .is-scrolling / body.settings-scroll-active stay in main.css.
+ * ============================================================================== */
+
+#settings-modal {
+    --sb-sheet-w: 960px;
+    --sb-accent: var(--sb-aqua);
+    --sb-accent-rgb: var(--sb-aqua-rgb);
+}
+
+#settings-modal > .modal-content {
+    /* One height for every section, so switching tabs never resizes the sheet. */
+    height: min(800px, 100%);
+}
+
+#settings-modal .sb-sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+}
+
+#settings-modal :is(.cs-settings-icon, .settings-tab__icon, .sb-btn__icon) {
+    display: inline-block;
+    flex: none;
+    width: 18px;
+    height: 18px;
+    color: currentColor;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    overflow: visible;
+    filter: none;
+}
+
+/* ---- Paused strip (only while a game is in progress) ------------------------------- */
+#settings-modal .settings-pause {
+    display: none;
+}
+
+#settings-modal[data-context='pause'] .settings-pause {
+    position: relative;
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px 20px;
+    margin: clamp(16px, 2.6vh, 24px) calc(var(--sb-notch) + 14px) 0 var(--sb-sheet-pad);
+    padding: 14px 14px 14px 18px;
+    border: 1px solid rgba(var(--sb-mint-rgb), 0.3);
+    border-radius: var(--sb-r-lg);
+    background: linear-gradient(90deg, rgba(var(--sb-mint-rgb), 0.13), rgba(var(--sb-mint-rgb), 0.03) 72%);
+}
+
+#settings-modal .settings-pause__state {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+/* Two tiles: the pause sign, breathing slowly while the game waits. */
+#settings-modal .settings-pause__glyph {
+    display: inline-flex;
+    gap: 5px;
+    flex: none;
+}
+
+#settings-modal .settings-pause__glyph i {
+    width: 7px;
+    height: 22px;
+    border-radius: 2px;
+    background: var(--sb-mint);
+    box-shadow: 0 0 12px rgba(var(--sb-mint-rgb), 0.45);
+    animation: sb-pause-breathe var(--sb-breath) var(--sb-ease-breathe) infinite;
+}
+
+@keyframes sb-pause-breathe {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+}
+
+#settings-modal .settings-pause__title {
+    margin: 0;
+    color: var(--sb-text);
+    font: 700 1.125rem / 1.1 var(--sb-font-display);
+}
+
+#settings-modal .settings-pause__note {
+    margin: 5px 0 0;
+    color: var(--sb-text-muted);
+    font: 500 0.8125rem / 1.4 var(--sb-font-text);
+}
+
+#settings-modal .settings-pause__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#settings-modal .settings-pause__resume {
+    min-width: 150px;
+}
+
+/* In a game, Resume is the way back; Close would only say it twice. */
+#settings-modal[data-context='pause'] #close-settings {
+    display: none;
+}
+
+#settings-modal[data-context='pause'] .settings-header {
+    padding-top: 18px;
+}
+
+/* ---- Header -------------------------------------------------------------------------- */
+#settings-modal .settings-header {
+    flex-shrink: 0;
+    border-bottom: 0;
+    background: none;
+}
+
+/* ---- Section tabs ---------------------------------------------------------------------- */
+#settings-modal .settings-tabs {
+    display: flex;
+    flex: none;
+    justify-content: flex-start;
+    gap: 4px;
+    margin: 0 var(--sb-sheet-pad) 14px;
+    padding: 5px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid var(--sb-line);
+    border-radius: 15px;
+    background: rgba(var(--sb-night-rgb), 0.45);
+    box-shadow: none;
+    scrollbar-width: none;
+}
+
+#settings-modal .settings-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+#settings-modal .settings-tab {
+    position: relative;
+    display: inline-flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-width: max-content;
+    min-height: 42px;
+    margin: 0;
+    padding: 0 16px;
+    overflow: visible;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--sb-text-muted);
+    font: 600 0.65rem / 1 var(--sb-font-display);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+    transform: none;
+    transition:
+        color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#settings-modal .settings-tab .settings-tab__icon {
+    width: 16px;
+    height: 16px;
+    opacity: 0.8;
+}
+
+#settings-modal .settings-tab:hover {
+    color: var(--sb-text);
+    background: rgba(var(--sb-cream-rgb), 0.05);
+    transform: none;
+}
+
+#settings-modal .settings-tab.active {
+    border-color: var(--sb-line-strong);
+    background: linear-gradient(180deg, rgba(var(--sb-cream-rgb), 0.11), rgba(var(--sb-cream-rgb), 0.05));
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.08);
+    color: var(--sb-text);
+}
+
+#settings-modal .settings-tab.active .settings-tab__icon {
+    opacity: 1;
+    color: var(--sb-accent);
+}
+
+/* The current section carries the keystone, like the current mode in the menu. */
+#settings-modal .settings-tab::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--sb-keystone);
+    box-shadow: var(--sb-glow-keystone);
+    opacity: 0;
+    transform: translateY(-6px);
+    transition:
+        opacity 120ms linear,
+        transform var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#settings-modal .settings-tab.active::after {
+    opacity: 1;
+    transform: none;
+}
+
+#settings-modal .settings-tab:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+/* ---- Scrolling body ------------------------------------------------------------------- */
+#settings-modal .settings-scroll-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    padding: 4px var(--sb-sheet-pad) 20px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.2) transparent;
+}
+
+#settings-modal .settings-tab-content.active {
+    display: block;
+    animation: sb-settings-swap 0.32s var(--sb-ease-lock) both;
+}
+
+@keyframes sb-settings-swap {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+}
+
+#settings-modal .settings-tab-content.active > .settings-grid > .settings-section,
+#settings-modal .settings-tab-content.active > .controls-layout {
+    animation: none;
+}
+
+#settings-modal .settings-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+    margin: 0;
+}
+
+/* ---- Sections ------------------------------------------------------------------------- */
+#settings-modal .settings-section,
+#settings-modal .controls-section {
+    position: relative;
+    margin: 0 0 12px;
+    padding: 4px 20px;
+    border: 1px solid var(--sb-line);
+    border-radius: var(--sb-r-lg);
+    background: rgba(var(--sb-cream-rgb), 0.025);
+    box-shadow: none;
+}
+
+#settings-modal .settings-section:last-child {
+    margin-bottom: 0;
+}
+
+#settings-modal :is(.settings-section-title, .controls-section-title) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0 4px;
+    color: rgba(var(--sb-accent-rgb), 0.92);
+    font: 600 0.625rem / 1.2 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+#settings-modal :is(.settings-section-title, .controls-section-title)::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+#settings-modal :is(.settings-section-title, .controls-section-title)::after {
+    content: none;
+}
+
+/* ---- Rows: what it is (and why) on the left, the control on the right ---------------- */
+#settings-modal .setting {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 300px);
+    align-items: center;
+    gap: 10px 28px;
+    min-height: 64px;
+    box-sizing: border-box;
+    margin: 0;
+    /* Side padding keeps focus outlines inside the row: main.css gives rows
+       content-visibility: auto, whose paint containment clips at the row edge. */
+    padding: 14px 6px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    transform: none;
+    contain-intrinsic-size: auto 76px;
+}
+
+#settings-modal .setting + .setting {
+    border-top: 1px solid var(--sb-line);
+}
+
+#settings-modal .setting::before {
+    content: none;
+}
+
+#settings-modal .setting:hover {
+    background: none;
+    border-color: var(--sb-line);
+}
+
+#settings-modal .setting[hidden] {
+    display: none;
+}
+
+#settings-modal .setting-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+#settings-modal .setting label,
+#settings-modal .setting .setting-label {
+    flex: none;
+    margin: 0;
+    padding: 0;
+    color: var(--sb-text);
+    font: 600 0.9375rem / 1.35 var(--sb-font-text);
+    letter-spacing: 0;
+    text-align: left;
+    text-transform: none;
+}
+
+#settings-modal .setting-help {
+    max-width: 56ch;
+    margin: 0;
+    color: var(--sb-text-faint);
+    font: 500 0.8125rem / 1.45 var(--sb-font-text);
+    text-wrap: pretty;
+}
+
+#settings-modal .setting-status[data-tone='success'] { color: var(--sb-success); }
+#settings-modal .setting-status[data-tone='error'] { color: var(--sb-danger); }
+
+/* ---- Toggle: the keystone tile switch ----------------------------------------------- */
+#settings-modal .setting .cs-toggle {
+    display: inline-flex;
+    flex: none;
+    flex-direction: row-reverse;
+    align-items: center;
+    justify-self: end;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#settings-modal .cs-toggle-state {
+    min-width: 2.6em;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.16em;
+    text-align: right;
+    text-transform: uppercase;
+    transition: color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#settings-modal .cs-toggle-state::after {
+    content: 'Off';
+}
+
+#settings-modal .cs-toggle-input:checked ~ .cs-toggle-state {
+    color: var(--sb-text);
+}
+
+#settings-modal .cs-toggle-input:checked ~ .cs-toggle-state::after {
+    content: 'On';
+}
+
+#settings-modal .cs-toggle-input.sb-toggle:hover {
+    border-color: rgba(var(--sb-cream-rgb), 0.38);
+}
+
+#settings-modal .cs-toggle-input.sb-toggle:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ---- Slider: a thin track filled with the spectrum, a cream tile thumb -------------- */
+#settings-modal .slider-container {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    justify-self: stretch;
+    width: 100%;
+    min-width: 0;
+}
+
+#settings-modal input[type='range'] {
+    --sb-fill: 50%;
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+}
+
+#settings-modal input[type='range']::-webkit-slider-runnable-track {
+    height: 6px;
+    border: 0;
+    border-radius: 3px;
+    background:
+        var(--sb-spectrum) 0 0 / var(--sb-fill) 100% no-repeat,
+        rgba(var(--sb-cream-rgb), 0.12);
+    box-shadow: none;
+    transition: none;
+}
+
+#settings-modal input[type='range']:hover::-webkit-slider-runnable-track {
+    background:
+        var(--sb-spectrum) 0 0 / var(--sb-fill) 100% no-repeat,
+        rgba(var(--sb-cream-rgb), 0.18);
+}
+
+#settings-modal input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    margin-top: -6px;
+    border: 0;
+    border-radius: 5px;
+    background: var(--sb-cream);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 4px rgba(var(--sb-cream-rgb), 0.08);
+    transform: none;
+    transition: transform var(--sb-dur-1) var(--sb-ease-lock);
+}
+
+#settings-modal input[type='range']:hover::-webkit-slider-thumb {
+    background: var(--sb-cream);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 5px rgba(var(--sb-cream-rgb), 0.12);
+    transform: scale(1.08);
+}
+
+#settings-modal input[type='range']:active::-webkit-slider-thumb {
+    transform: scale(0.94);
+}
+
+#settings-modal input[type='range']::-moz-range-track {
+    height: 6px;
+    border: 0;
+    border-radius: 3px;
+    background: rgba(var(--sb-cream-rgb), 0.12);
+}
+
+#settings-modal input[type='range']::-moz-range-progress {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--sb-spectrum);
+}
+
+#settings-modal input[type='range']::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 5px;
+    background: var(--sb-cream);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+#settings-modal input[type='range']:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 4px;
+}
+
+/* Value chips: Unbounded tabular numbers, the unit quieter beside them. */
+#settings-modal .slider-container .setting-value {
+    flex: none;
+    box-sizing: border-box;
+    min-width: 66px;
+    margin: 0;
+    padding: 7px 9px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 8px;
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    box-shadow: none;
+    color: var(--sb-text);
+    font: 600 0.75rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    white-space: nowrap;
+}
+
+#settings-modal .setting-value[data-unit]::after {
+    content: '\2009' attr(data-unit);
+    color: var(--sb-text-faint);
+}
+
+#settings-modal .setting-value[data-unit='%']::after {
+    content: '%';
+}
+
+#settings-modal #render-quality-value {
+    min-width: 118px;
+    padding: 7px 9px;
+    font-size: 0.6875rem;
+}
+
+/* ---- Select (the cosmic overlay list is styled in cosmic-select.css) --------------- */
+#settings-modal .setting-select {
+    -webkit-appearance: none;
+    appearance: none;
+    justify-self: stretch;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: 44px;
+    margin: 0;
+    padding: 0 40px 0 14px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: var(--sb-r-sm);
+    background-color: rgba(var(--sb-cream-rgb), 0.04);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%23fff6e9' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
+    background-position: right 14px center;
+    background-repeat: no-repeat;
+    background-size: 12px 12px;
+    box-shadow: none;
+    color: var(--sb-text);
+    font: 600 0.875rem / 1 var(--sb-font-text);
+    text-align: left;
+    cursor: pointer;
+    transform: none;
+    transition:
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        background-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#settings-modal .setting-select:hover,
+#settings-modal .setting-select.cosmic-open {
+    border-color: rgba(var(--sb-cream-rgb), 0.36);
+    background-color: rgba(var(--sb-cream-rgb), 0.07);
+    transform: none;
+}
+
+#settings-modal .setting-select:focus {
+    outline: none;
+    border-color: rgba(var(--sb-cream-rgb), 0.36);
+    background-color: rgba(var(--sb-cream-rgb), 0.07);
+    box-shadow: none;
+}
+
+#settings-modal .setting-select:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+#settings-modal .setting-select:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#settings-modal .setting-select option {
+    background: #17143a;
+    color: var(--sb-cream);
+}
+
+/* ---- Buttons inside rows ------------------------------------------------------------- */
+#settings-modal .sb-btn {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    font-family: var(--sb-font-display);
+}
+
+#settings-modal .setting > .sb-btn {
+    justify-self: end;
+}
+
+#settings-modal .settings-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 14px 2px 0;
+    color: var(--sb-text-faint);
+    font: 500 0.8125rem / 1.5 var(--sb-font-text);
+}
+
+#settings-modal .settings-note .cs-settings-icon {
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    color: var(--sb-text-muted);
+}
+
+/* ---- Controls: a sidebar of control sets, then bindings as keycaps ----------------- */
+#settings-modal .controls-layout {
+    display: grid;
+    grid-template-columns: 216px minmax(0, 1fr);
+    align-items: start;
+    gap: 26px;
+}
+
+#settings-modal .controls-nav {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+}
+
+#settings-modal .controls-nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+#settings-modal .controls-nav-heading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 6px 12px;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+}
+
+#settings-modal .controls-nav-heading::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--sb-line-strong), transparent);
+}
+
+#settings-modal .controls-subtabs {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    /* The current set's keystone tile overhangs its corner. */
+    overflow: visible;
+}
+
+#settings-modal .controls-subtab {
+    --player-rgb: var(--sb-cream-rgb);
+    position: relative;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 40px;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--sb-text-muted);
+    font: 600 0.75rem / 1.2 var(--sb-font-display);
+    letter-spacing: 0.01em;
+    text-align: left;
+    cursor: pointer;
+    transform: none;
+    transition:
+        color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#settings-modal .controls-subtab[data-subtab='player1'],
+#settings-modal .controls-subtab[data-subtab='gamepad1'] { --player-rgb: var(--sb-sky-rgb); }
+#settings-modal .controls-subtab[data-subtab='player2'],
+#settings-modal .controls-subtab[data-subtab='gamepad2'] { --player-rgb: var(--sb-rose-rgb); }
+#settings-modal .controls-subtab[data-subtab='gamepad3'] { --player-rgb: var(--sb-mint-rgb); }
+#settings-modal .controls-subtab[data-subtab='gamepad4'] { --player-rgb: var(--sb-gold-rgb); }
+#settings-modal .controls-subtab[data-subtab^='serenity'] { --player-rgb: var(--sb-mint-rgb); }
+
+#settings-modal .controls-subtab:hover,
+#settings-modal .controls-subtab:focus-visible {
+    border-color: transparent;
+    background: rgba(var(--sb-cream-rgb), 0.05);
+    color: var(--sb-text);
+    box-shadow: none;
+    transform: none;
+}
+
+#settings-modal .controls-subtab.active {
+    border-color: rgba(var(--player-rgb), 0.3);
+    background: linear-gradient(90deg, rgba(var(--player-rgb), 0.15), rgba(var(--player-rgb), 0.03) 80%);
+    box-shadow: none;
+    color: var(--sb-text);
+}
+
+#settings-modal .controls-subtab::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--sb-keystone);
+    box-shadow: var(--sb-glow-keystone);
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition:
+        opacity 120ms linear,
+        transform var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#settings-modal .controls-subtab.active::before {
+    opacity: 1;
+    transform: none;
+}
+
+#settings-modal .controls-subtab:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 2px;
+}
+
+#settings-modal .controls-subtab-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    color: rgba(var(--player-rgb), 0.85);
+}
+
+#settings-modal .controls-subtab-icon .cs-settings-icon {
+    width: 18px;
+    height: 18px;
+}
+
+#settings-modal .controls-subtab-label {
+    min-width: 0;
+}
+
+#settings-modal .controls-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: rgba(var(--sb-cream-rgb), 0.18);
+    box-shadow: none;
+}
+
+#settings-modal .controls-status-dot.connected {
+    background: var(--sb-mint);
+    box-shadow: 0 0 8px rgba(var(--sb-mint-rgb), 0.6);
+}
+
+#settings-modal .controls-nav-action {
+    --sb-btn-h: 40px;
+    width: auto;
+    padding: 0 16px;
+    border: 1px solid var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    box-shadow: none;
+    color: var(--sb-text);
+    font-size: 0.5625rem;
+    letter-spacing: 0.14em;
+}
+
+#settings-modal .controls-nav-action:hover,
+#settings-modal .controls-nav-action:focus-visible {
+    border-color: rgba(var(--sb-cream-rgb), 0.34);
+    background: rgba(var(--sb-cream-rgb), 0.09);
+    box-shadow: none;
+    color: var(--sb-text);
+}
+
+#settings-modal .controls-nav-action.ghost {
+    border-color: var(--sb-line);
+    background: transparent;
+    color: var(--sb-text-muted);
+}
+
+#settings-modal .controls-nav-action.ghost:hover,
+#settings-modal .controls-nav-action.ghost:focus-visible {
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.06);
+    color: var(--sb-text);
+}
+
+#settings-modal .controls-status {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    justify-self: stretch;
+}
+
+#settings-modal .controls-content {
+    min-width: 0;
+    min-height: 0;
+}
+
+#settings-modal .controls-subtab-content.active {
+    display: block;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+#settings-modal .controls-subtab-content > .controls-section-title {
+    margin: 4px 0 6px;
+}
+
+#settings-modal .controls-section {
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+}
+
+#settings-modal .controls-section .settings-grid {
+    margin: 0;
+}
+
+/* Binding rows: the action, then its keycap. */
+#settings-modal .setting--binding {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 56px;
+    padding: 8px 6px;
+}
+
+#settings-modal .key-input {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    justify-self: end;
+    box-sizing: border-box;
+    min-width: 76px;
+    width: auto;
+    max-width: 100%;
+    height: 40px;
+    margin: 0;
+    padding: 0 14px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(var(--sb-cream-rgb), 0.11), rgba(var(--sb-cream-rgb), 0.04));
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    color: var(--sb-text);
+    font: 600 0.8125rem / 1 var(--sb-font-display);
+    letter-spacing: 0.02em;
+    text-align: center;
+    white-space: nowrap;
+    cursor: pointer;
+    transform: none;
+    transition:
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        transform var(--sb-dur-1) var(--sb-ease-lock);
+}
+
+#settings-modal .gamepad-input {
+    min-width: 132px;
+    font-size: 0.6875rem;
+}
+
+#settings-modal .key-input:hover {
+    border-color: rgba(var(--sb-cream-rgb), 0.4);
+    background: linear-gradient(180deg, rgba(var(--sb-cream-rgb), 0.15), rgba(var(--sb-cream-rgb), 0.06));
+    transform: none;
+}
+
+#settings-modal .key-input:active {
+    transform: translateY(1px);
+}
+
+#settings-modal .key-input:focus {
+    outline: none;
+    border-color: var(--sb-line-strong);
+    background: linear-gradient(180deg, rgba(var(--sb-cream-rgb), 0.11), rgba(var(--sb-cream-rgb), 0.04));
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+#settings-modal .key-input:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+/* Listening: the tile waits for the new key, breathing in the spectrum's aqua. */
+#settings-modal .key-input.listening {
+    border-color: rgba(var(--sb-aqua-rgb), 0.75);
+    background: rgba(var(--sb-aqua-rgb), 0.12);
+    box-shadow: inset 0 0 0 1px rgba(var(--sb-aqua-rgb), 0.25);
+    color: var(--sb-aqua);
+    font: 600 0.8125rem / 1 var(--sb-font-text);
+    letter-spacing: 0;
+    animation: sb-listen 1.4s var(--sb-ease-breathe) infinite;
+}
+
+@keyframes sb-listen {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.62; }
+}
+
+#settings-modal .controls-subtab-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin: 10px 0 0;
+}
+
+#settings-modal .controls-subtab-action {
+    --sb-btn-h: 38px;
+    padding: 0 14px;
+    font-size: 0.5625rem;
+    box-shadow: none;
+}
+
+/* Connected controllers. main.js colours each line inline; the sheet keeps them quiet
+ * and lights the ones the sidebar marks as connected. */
+#settings-modal .setting--status {
+    align-items: start;
+}
+
+#settings-modal .controls-status-list {
+    display: grid;
+    gap: 8px;
+    justify-self: stretch;
+    padding-top: 2px;
+}
+
+#settings-modal .controls-status-list > div {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--sb-text-faint) !important;
+    font: 500 0.8125rem / 1.3 var(--sb-font-text);
+}
+
+#settings-modal .controls-status-list > div::before {
+    content: '';
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: rgba(var(--sb-cream-rgb), 0.18);
+}
+
+#settings-modal:has(.controls-status-dot[data-controller-status='1'].connected) #controller-1-status,
+#settings-modal:has(.controls-status-dot[data-controller-status='2'].connected) #controller-2-status,
+#settings-modal:has(.controls-status-dot[data-controller-status='3'].connected) #controller-3-status,
+#settings-modal:has(.controls-status-dot[data-controller-status='4'].connected) #controller-4-status {
+    color: var(--sb-text) !important;
+}
+
+#settings-modal:has(.controls-status-dot[data-controller-status='1'].connected) #controller-1-status::before,
+#settings-modal:has(.controls-status-dot[data-controller-status='2'].connected) #controller-2-status::before,
+#settings-modal:has(.controls-status-dot[data-controller-status='3'].connected) #controller-3-status::before,
+#settings-modal:has(.controls-status-dot[data-controller-status='4'].connected) #controller-4-status::before {
+    background: var(--sb-mint);
+    box-shadow: 0 0 8px rgba(var(--sb-mint-rgb), 0.6);
+}
+
+/* Help cards (the rebinding note wraps instead of overflowing). */
+#settings-modal .controls-helper-card {
+    margin: 12px 0 0;
+    padding: 16px 20px;
+    border: 1px solid var(--sb-line);
+    border-radius: var(--sb-r-lg);
+    background: rgba(var(--sb-cream-rgb), 0.025);
+    box-shadow: none;
+    color: var(--sb-text-muted);
+}
+
+#settings-modal .controls-helper-card h5 {
+    margin: 0 0 6px;
+    color: var(--sb-text);
+    font: 700 0.9375rem / 1.35 var(--sb-font-text);
+}
+
+#settings-modal .controls-helper-card p {
+    min-width: 0;
+    max-width: 68ch;
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.55 var(--sb-font-text);
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
+}
+
+#settings-modal .controls-shortcuts {
+    display: grid;
+    grid-template-columns: max-content max-content;
+    align-items: center;
+    gap: 10px 22px;
+    overflow-wrap: normal;
+}
+
+#settings-modal .controls-shortcuts .sb-kbd {
+    min-width: 24px;
+    height: 24px;
+    padding: 0 7px;
+    color: var(--sb-text);
+}
+
+/* ---- Footer hints: Close or Resume, by context ------------------------------------- */
+#settings-modal .settings-foot {
+    justify-content: flex-end;
+    padding-top: 12px;
+    padding-bottom: 14px;
+}
+
+#settings-modal .settings-foot__resume,
+#settings-modal[data-context='pause'] .settings-foot__close {
+    display: none;
+}
+
+#settings-modal[data-context='pause'] .settings-foot__resume {
+    display: inline;
+}
+
+/* ---- The controller's select list (gamepad-controller.js styles it inline) --------- */
+.gamepad-select-overlay {
+    padding: 6px !important;
+    border: 1px solid var(--sb-line-strong) !important;
+    border-radius: 12px !important;
+    background: linear-gradient(180deg, rgba(30, 26, 66, 0.98), rgba(14, 12, 34, 0.98)) !important;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5) !important;
+    color: var(--sb-text) !important;
+    font: 600 0.875rem / 1.2 var(--sb-font-text) !important;
+}
+
+.gamepad-select-overlay [data-option-index] {
+    border-radius: 8px;
+}
+
+/* The highlighted option (inline background set by updateSelectOverlayHighlight). */
+.gamepad-select-overlay [data-option-index][style*='59, 130, 246'] {
+    background: rgba(var(--sb-cream-rgb), 0.1) !important;
+    color: var(--sb-cream) !important;
+    box-shadow: inset 3px 0 0 var(--sb-keystone);
+}
+
+/* ---- Responsive ------------------------------------------------------------------------ */
+@media (max-height: 760px) and (min-width: 701px) {
+    #settings-modal .setting {
+        min-height: 56px;
+        padding: 11px 6px;
+    }
+
+    #settings-modal .settings-tabs {
+        margin-bottom: 10px;
+    }
+
+    #settings-modal .settings-tab {
+        min-height: 38px;
+    }
+
+    #settings-modal[data-context='pause'] .settings-pause {
+        margin-top: 14px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+}
+
+@media (max-width: 900px) {
+    #settings-modal .controls-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 18px;
+    }
+
+    #settings-modal .controls-nav {
+        position: static;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 12px;
+    }
+
+    #settings-modal .controls-nav-group {
+        min-width: 0;
+    }
+}
+
+@media (max-width: 700px) {
+    #settings-modal > .modal-content {
+        height: 100%;
+    }
+
+    #settings-modal .settings-tab {
+        flex: 0 0 auto;
+        padding: 0 14px;
+    }
+
+    #settings-modal .settings-tab span {
+        letter-spacing: 0.12em;
+    }
+
+    #settings-modal .settings-section,
+    #settings-modal .controls-section {
+        padding: 2px 14px;
+    }
+
+    #settings-modal .setting {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+        padding: 14px 6px;
+    }
+
+    #settings-modal .setting .cs-toggle {
+        justify-self: start;
+        flex-direction: row;
+    }
+
+    #settings-modal .cs-toggle-state {
+        text-align: left;
+    }
+
+    /* Toggle and binding rows keep the control beside the words. */
+    #settings-modal .setting--toggle,
+    #settings-modal .setting--binding {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    #settings-modal .setting--toggle .cs-toggle {
+        justify-self: end;
+        flex-direction: row-reverse;
+    }
+
+    #settings-modal .controls-nav {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #settings-modal .controls-subtabs {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    #settings-modal .controls-subtab {
+        width: auto;
+        border-color: var(--sb-line);
+    }
+
+    #settings-modal[data-context='pause'] .settings-pause {
+        margin-right: calc(var(--sb-notch) + 8px);
+    }
+
+    #settings-modal .settings-pause__actions {
+        width: 100%;
+    }
+
+    #settings-modal .settings-pause__actions .sb-btn {
+        flex: 1 1 auto;
+    }
+}
+
+/* Touch-first devices: no key hints, so no footer either. */
+@media (hover: none) and (pointer: coarse) {
+    #settings-modal .settings-foot {
+        display: none;
+    }
+}
+
+/* ---- Reduced motion ------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    #settings-modal .settings-tab-content.active,
+    #settings-modal .settings-pause__glyph i,
+    #settings-modal .key-input.listening {
+        animation: none !important;
+    }
+
+    #settings-modal .settings-tab,
+    #settings-modal .settings-tab::after,
+    #settings-modal .controls-subtab,
+    #settings-modal .controls-subtab::before,
+    #settings-modal .key-input,
+    #settings-modal .setting-select,
+    #settings-modal input[type='range']::-webkit-slider-thumb {
+        transition: none !important;
+    }
+}

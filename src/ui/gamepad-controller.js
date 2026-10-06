@@ -7,6 +7,7 @@
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { SpatialNavigation } from './spatial-navigation.js';
 import { getInputMode, hasGamepadActivity, markInputMode } from './keystone/input-mode.js';
+import { getOpenSheet, getSheetFocusables, getSheetInitialFocus } from './sheet-input.js';
 import { COLS, ROWS } from '../core/constants.js';
 import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
@@ -693,10 +694,12 @@ export class GamepadController {
                 }
             }
 
-            // Process game mode selection, menu navigation, or game input
-            if (this.gameModeSelectionEnabled) {
+            // Process game mode selection, menu navigation, or game input. A sheet open
+            // over the main menu (Settings, Records, Replays) owns the pad: without this
+            // the D-pad walked the mode list behind it and A could start a game.
+            if (this.gameModeSelectionEnabled && !this.getMenuSheet()) {
                 this.processGameModeSelection(freshGamepad, slot);
-            } else if (this.menuNavigationEnabled) {
+            } else if (this.menuNavigationEnabled || this.getMenuSheet()) {
                 this.processMenuNavigation(freshGamepad, slot);
             } else {
                 // Always check for Start button to open settings, even without gameActions
@@ -1159,34 +1162,16 @@ export class GamepadController {
         }
 
         // Use Spatial Navigation to find the best next element
-        // We restrict the search to the visible modal if one exists
-        let container = document.body;
-        const settingsModal = document.getElementById('settings-modal');
-        const highScoresModal = document.getElementById('high-scores-modal');
-
-        if (settingsModal && settingsModal.classList.contains('visible')) {
-            container = settingsModal.querySelector('.modal-content');
-        } else if (highScoresModal && highScoresModal.classList.contains('visible')) {
-            container = highScoresModal.querySelector('.modal-content');
-        }
+        // We restrict the search to the open sheet if there is one
+        const sheet = this.getMenuSheet();
+        const container = sheet?.element.querySelector('.modal-content') || document.body;
 
         const nextElement = SpatialNavigation.findNextElement(current, direction, container);
 
+        // Nothing further that way: stay put. Tabs change with LB/RB (switchMainTab).
         if (nextElement) {
             nextElement.focus();
             nextElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        } else {
-            // If no element found in that direction, check if we should switch tabs (only for Left/Right)
-            // But only if we are NOT in a slider or special control
-            if (direction === 'left') {
-                // Try to navigate to previous tab if at the edge
-                // this.navigateTab(-1);
-                // Actually, let's keep tab navigation on LB/RB to avoid confusion,
-                // or only allow it if we are explicitly on the tab bar.
-                // For now, let's rely on LB/RB for tabs as requested.
-            } else if (direction === 'right') {
-                // this.navigateTab(1);
-            }
         }
     }
 
@@ -1295,24 +1280,31 @@ export class GamepadController {
      * Navigate back / close menu
      */
     navigateMenuBack() {
-        // Check if settings modal is open
-        const settingsModal = document.getElementById('settings-modal');
-        if (settingsModal && settingsModal.classList.contains('visible')) {
-            const closeBtn = document.getElementById('close-settings');
-            if (closeBtn) {
-                closeBtn.click();
-            }
+        const sheet = this.getMenuSheet();
+        if (!sheet) return;
+
+        if (sheet.name === 'settings') {
+            // B while a binding listens is the answer to the capture, not a way out — and
+            // so is the B that a capture took a moment ago.
+            const settingsModal = sheet.element;
+            const endedAt = Number(settingsModal.getAttribute?.('data-capture-ended')) || 0;
+            if (settingsModal.querySelector?.('.listening') || Date.now() - endedAt < 300) return;
+            document.getElementById('close-settings')?.click();
             return;
         }
 
-        // Check if high scores modal is open
-        const highScoresModal = document.getElementById('high-scores-modal');
-        if (highScoresModal && highScoresModal.classList.contains('visible')) {
-            const closeBtn = document.getElementById('close-high-scores');
-            if (closeBtn) {
-                closeBtn.click();
-            }
-        }
+        // Records and Replays close; replay complete goes back to the main menu.
+        if (sheet.sheet.back) document.getElementById(sheet.sheet.back)?.click();
+    }
+
+    /**
+     * The open Keystone sheet that menu navigation is scoped to (game over keeps its
+     * own any-button restart in processGameOverInput).
+     * @returns {{name: string, element: HTMLElement, sheet: Object}|null}
+     */
+    getMenuSheet() {
+        if (typeof document === 'undefined') return null;
+        return getOpenSheet(document, { exclude: ['gameOver'] });
     }
 
     /**
@@ -1367,6 +1359,8 @@ export class GamepadController {
      * Get all focusable elements in the current view
      */
     getFocusableElements() {
+        const sheet = this.getMenuSheet();
+        if (sheet) return getSheetFocusables(sheet.element);
         const selector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
         const elements = Array.from(document.querySelectorAll(selector));
 
@@ -1383,6 +1377,13 @@ export class GamepadController {
      * Get the first focusable element
      */
     getFirstFocusableElement() {
+        // Inside an open sheet: keep the focus it already placed, or its primary control.
+        const sheet = this.getMenuSheet();
+        if (sheet) {
+            const active = document.activeElement;
+            if (active && active !== document.body && sheet.element.contains(active)) return active;
+            return getSheetInitialFocus(sheet.sheet, sheet.element);
+        }
         const focusable = this.getFocusableElements();
         return focusable.length > 0 ? focusable[0] : null;
     }
