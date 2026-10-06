@@ -1,25 +1,19 @@
 /**
- * @fileoverview Cosmic Serenity main-menu card micro-interactions.
+ * @fileoverview Keystone main-menu list micro-interactions.
  *
- * Three desktop "feel" layers on top of public/styles/menu-aaa.css:
- *   1. Cursor-follow spotlight  → translates a prepainted gradient layer
- *   2. Parallax 3D tilt         → writes --rx / --ry (degrees), composited by CSS
- *   3. Audio juice              → warm, soft tonal cues (eased-in sine bodies,
- *                                 low-passed, no transient/click): a gentle hum
- *                                 on hover, a soft warm "bloom" on select —
- *                                 synthesised on the shared AudioContext
- *                                 (respects SFX volume + mute, no audio files).
+ * Two desktop "feel" layers on top of public/styles/keystone-menu.css:
+ *   1. Cursor-follow light  → writes --spotlight-x / --spotlight-y (px from the
+ *                             item's centre), read by the current item's wash
+ *   2. Audio juice          → warm, soft tonal cues (eased-in sine bodies,
+ *                             low-passed, no transient/click): a gentle hum
+ *                             on hover, a soft warm "bloom" on select —
+ *                             synthesised on the shared AudioContext
+ *                             (respects SFX volume + mute, no audio files).
  *
- * The transform layers only set CSS custom properties — they never touch
- * `transform` directly, so they can't fight the entrance/hover animations.
- * Honors prefers-reduced-motion and skips Steam-gated (disabled) cards.
+ * It only sets CSS custom properties — never `transform` — so it can't fight the
+ * entrance animations. Skips Steam-gated (disabled) items.
  * Self-initialises on the `start` modal.
  */
-
-const MAX_TILT_DEG = 7;
-const reducedMotion = typeof window !== 'undefined' && window.matchMedia
-    ? window.matchMedia('(prefers-reduced-motion: reduce)')
-    : { matches: false };
 
 /* ---- Audio juice ----------------------------------------------------------- */
 // Professional, restrained UI sound design — the kind of crisp-but-warm feedback
@@ -39,6 +33,7 @@ const HOVER_NOTE = {
     serenity: 698.46, // F5 — rose
     infinity: 783.99, // G5 — indigo
     odyssey: 880.0, // A5 — gold
+    hale: 698.46, // F5 — shares Serenity's note: both breathe
 };
 
 let lastHoverAt = 0;
@@ -166,7 +161,7 @@ function playConfirm(card) {
     } catch { /* silent */ }
 }
 
-/* ---- Pointer spotlight + parallax tilt ------------------------------------- */
+/* ---- Pointer light ----------------------------------------------------------- */
 function bindCard(card) {
     if (card.__csInteractive || card.classList.contains('steam-disabled')) {
         return;
@@ -185,10 +180,6 @@ function bindCard(card) {
         const { px, py } = pending;
         card.style.setProperty('--spotlight-x', `${((px - 0.5) * rect.width).toFixed(1)}px`);
         card.style.setProperty('--spotlight-y', `${((py - 0.5) * rect.height).toFixed(1)}px`);
-        if (!reducedMotion.matches) {
-            card.style.setProperty('--ry', `${((px - 0.5) * 2 * MAX_TILT_DEG).toFixed(2)}deg`);
-            card.style.setProperty('--rx', `${((0.5 - py) * 2 * MAX_TILT_DEG).toFixed(2)}deg`);
-        }
     };
 
     const onMove = (event) => {
@@ -206,8 +197,6 @@ function bindCard(card) {
         pending = null;
         card.style.setProperty('--spotlight-x', '0px');
         card.style.setProperty('--spotlight-y', '0px');
-        card.style.setProperty('--rx', '0deg');
-        card.style.setProperty('--ry', '0deg');
     };
 
     card.addEventListener('pointerenter', () => { refresh(); playHover(card); });

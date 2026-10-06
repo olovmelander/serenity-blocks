@@ -191,7 +191,9 @@ describe('theme picker bounded work', () => {
         expect(previous.querySelector).toHaveBeenCalledOnce();
         expect(current.querySelector).toHaveBeenCalledOnce();
         expect(cards.every((card) => card.querySelector.mock.calls.length === 0)).toBe(true);
-        expect(tab.badgeElement.textContent).toBe('Current: Ocean');
+        // The toolbar shows a "Current" label beside the name (Keystone: no colon after a label),
+        // so the badge's text is the world's name alone.
+        expect(tab.badgeElement.textContent).toBe('Ocean');
         expect(tab.refreshThemeParams).toHaveBeenCalledOnce();
     });
 

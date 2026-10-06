@@ -212,7 +212,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             await this.showLobbyBrowser();
         } catch (error) {
             console.error('[OnlineMultiplayer] Failed to activate:', error);
-            alert(`Failed to initialize online multiplayer: ${error.message}`);
+            window.dispatchEvent(new CustomEvent('serenity:toast', { detail: { message: `Online play could not start. ${error.message}`, type: 'error' } }));
             throw error;
         }
     }
@@ -256,9 +256,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             () => this.handleLobbyBrowserCancelled(),
         );
 
-        // Create match config modal
+        // Create match config modal (Back returns to the browser it replaced)
         this.matchConfigModal = new MatchConfigModal(
             (config) => this.handleCreateLobby(config),
+            () => this.showLobbyBrowser(),
         );
 
         console.log('[OnlineMultiplayer] ✅ Lobby UI initialized');
@@ -407,13 +408,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             console.error('[OnlineMultiplayer] Failed to join lobby:', error);
             this._clearLobbyRichPresence();
             try {
-                if (this.lobbyBrowser) {
-                    await this.showLobbyBrowser();
-                }
+                if (this.lobbyBrowser) await this.showLobbyBrowser();
             } catch (showErr) {
                 console.warn('[OnlineMultiplayer] Failed to restore lobby browser:', showErr.message);
             }
-            alert(`Failed to join lobby: ${error.message}`);
+            this.lobbyBrowser?.showError(`Could not join that match. ${error.message}`); // shown again, with why
         }
     }
 
@@ -494,7 +493,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             console.log(`[OnlineMultiplayer] ✅ Lobby created: ${lobbyId}`);
         } catch (error) {
             console.error('[OnlineMultiplayer] Failed to create lobby:', error);
-            alert(`Failed to create lobby: ${error.message}`);
+            throw error; // the create sheet stays open and shows the reason inline
         }
     }
 
@@ -1138,7 +1137,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 // Send chat message via network
                 this._sendChatMessage(text);
             });
-            this.chat.addSystemMessage('Match started! Good luck!');
+            this.chat.addSystemMessage('Match started. Good luck.');
 
             // Restore chat history from game state
             if (this.ffaGameState && this.ffaGameState.chatHistory) {

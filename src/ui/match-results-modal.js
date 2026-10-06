@@ -1,12 +1,40 @@
 /**
- * Match Results Modal
+ * Match Results Modal (online)
  *
- * Displays final standings, stats, and actions after a match ends.
+ * Final standings, the winner, the battle log and chat after a match ends. One
+ * primary action: Rematch for the host; Back to lobby for everyone else (only the
+ * host can start a rematch). Escape leaves a text field first, then goes back to
+ * the lobby. Styles: public/styles/keystone-multiplayer.css (#match-results-modal).
  */
 
 import steamService from '../core/steam/steam-service.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
 import { MessageTypes } from '../core/network/message-types.js';
+import { escapeAttribute, sanitizeCssColor } from '../utils/dom-safety.js';
+import { csIcon } from './components/cosmic-icons.js';
+import {
+    closeLayer, describeGoal, mpIcon, openLayer,
+} from './components/mp-sheet.js';
+
+const STAT_COLUMNS = [
+    ['frags', 'Frags'],
+    ['deaths', 'Deaths'],
+    ['score', 'Score'],
+    ['lines', 'Lines'],
+    ['bpm', 'BPM', 'Blocks per minute'],
+    ['pps', 'PPS', 'Pieces per second'],
+    ['ppm', 'PPM', 'Points per minute'],
+    ['apm', 'APM', 'Attacks per minute'],
+    ['attacksSent', 'Attacks'],
+    ['attackLinesSent', 'Sent', 'Garbage lines sent'],
+];
+
+/* Player colours are hex (PLAYER_COLORS); plain rgb()/hsl() numbers are allowed too. */
+const NUMERIC_COLOR = /^(?:rgb|hsl)a?\(\s*[\d.]+(?:deg)?%?(?:\s*[,/\s]\s*[\d.]+%?){2,3}\s*\)$/i;
+function playerColor(value, fallback) {
+    return typeof value === 'string' && NUMERIC_COLOR.test(value.trim())
+        ? value.trim() : sanitizeCssColor(value, fallback);
+}
 
 export class MatchResultsModal {
     constructor(options = {}) {
@@ -25,6 +53,7 @@ export class MatchResultsModal {
         this.chatUnsub = null;
         this.chatHandler = null;
         this._autoReturnInterval = null; // cosmetic "returning to lobby in N s" ticker
+        this._baseHint = '';
 
         this.createUI();
     }
@@ -38,66 +67,62 @@ export class MatchResultsModal {
         // Use unified grid layout
         this.container.className = 'online-game-area results-mode hidden';
 
-        // Accessibility (dialog role still valid for fullscreen overlay)
         this.container.setAttribute('role', 'dialog');
         this.container.setAttribute('aria-modal', 'true');
+        this.container.setAttribute('aria-labelledby', 'match-results-title');
+        this.container.setAttribute('aria-describedby', 'match-results-winner-name');
 
         this.container.innerHTML = `
-      <!-- LEFT PANEL: Summary & Actions -->
-      <div class="opponents-panel results-left-panel">
-          <!-- Header -->
+      <!-- LEFT PANEL: Winner & Actions -->
+      <div class="opponents-panel results-left-panel mr-panel">
           <div class="results-header">
-             <h2 class="results-title">MATCH RESULTS</h2>
-             <div class="results-subtitle" id="match-results-subtitle"></div>
+             <p class="sb-eyebrow">Match complete</p>
+             <h2 class="results-title" id="match-results-title">Results</h2>
+             <p class="results-subtitle" id="match-results-subtitle"></p>
           </div>
-          
-          <!-- Winner Display -->
+
           <div class="match-results-winner">
-             <div class="winner-label">Champion</div>
-             <!-- Winner Avatar -->
+             <div class="winner-label">${mpIcon('crown', 14)}<span>Winner</span></div>
              <div class="winner-avatar-container" id="winner-avatar-container">
-               <div class="winner-avatar-placeholder">?</div>
+               <div class="winner-avatar-placeholder" aria-hidden="true">?</div>
              </div>
-             <div class="winner-name" id="match-results-winner-name">-</div>
+             <div class="winner-name" id="match-results-winner-name">–</div>
              <div class="winner-meta" id="match-results-winner-meta"></div>
           </div>
-          
-          <!-- Spacer -->
+
           <div class="results-spacer"></div>
-          
-          <!-- Actions (Moved to Left) -->
+
           <div class="match-results-actions">
-             <div class="host-hint" id="match-results-host-hint"></div>
-             <button class="btn btn-primary" id="match-results-play-again">Vote Rematch</button>
-             <button class="btn btn-secondary" id="match-results-return-lobby">Return to Lobby</button>
-             <button class="btn btn-danger" id="match-results-exit">Exit</button>
+             <p class="host-hint" id="match-results-host-hint" aria-live="polite"></p>
+             <button type="button" class="sb-btn sb-btn--primary" id="match-results-play-again">${mpIcon('rematch', 16)}<span>Rematch</span></button>
+             <button type="button" class="sb-btn" id="match-results-return-lobby">${mpIcon('people', 16)}<span>Back to lobby</span></button>
+             <button type="button" class="sb-btn sb-btn--quiet" id="match-results-exit">${mpIcon('home', 16)}<span>Main menu</span></button>
           </div>
       </div>
 
-      <!-- CENTER PANEL: Detailed Stats Table -->
-      <div class="main-board-panel results-center-panel">
-          <div class="section-title">Performance Statistics</div>
+      <!-- CENTER PANEL: Standings -->
+      <div class="main-board-panel results-center-panel mr-panel">
+          <h3 class="section-title sb-mp-label">Standings</h3>
           <div class="match-results-stats">
              <div class="stats-table-wrapper" id="match-results-stats-table"></div>
           </div>
       </div>
 
-      <!-- RIGHT PANEL: Chat & Activity -->
+      <!-- RIGHT PANEL: Battle log & Chat -->
       <div class="right-panel">
-         <!-- Battle Log -->
-         <div class="online-kill-feed results-battle-log">
-            <div class="kill-feed-header">Battle Log</div>
+         <section class="online-kill-feed results-battle-log mr-panel" aria-labelledby="match-results-log-title">
+            <h3 class="kill-feed-header sb-mp-label" id="match-results-log-title">Battle log</h3>
             <div class="match-results-kill-list" id="match-results-kill-feed"></div>
-         </div>
-         
-         <!-- Chat -->
-         <div class="online-chat">
-            <div class="chat-messages" id="results-chat-messages"></div>
-            <div class="chat-input-row">
-                <input type="text" id="results-chat-input" placeholder="Chat..." maxlength="100">
-                <button id="results-chat-send">SEND</button>
-            </div>
-         </div>
+         </section>
+
+         <section class="online-chat mr-panel" aria-labelledby="match-results-chat-title">
+            <h3 class="sb-mp-label mr-chat__title" id="match-results-chat-title">Chat</h3>
+            <div class="chat-messages" id="results-chat-messages" role="log" aria-live="polite"></div>
+            <form class="chat-input-row" id="results-chat-form" novalidate>
+                <input type="text" id="results-chat-input" class="sb-mp-input" placeholder="Say something" maxlength="100" autocomplete="off" aria-label="Chat message">
+                <button type="submit" class="sb-btn wr-send" id="results-chat-send" aria-label="Send message">${mpIcon('send', 16)}</button>
+            </form>
+         </section>
       </div>
     `;
 
@@ -137,7 +162,7 @@ export class MatchResultsModal {
 
         // Chat Logic
         const chatInput = this.container.querySelector('#results-chat-input');
-        const chatSend = this.container.querySelector('#results-chat-send');
+        const chatForm = this.container.querySelector('#results-chat-form');
 
         const sendChat = () => {
             const text = chatInput.value.trim();
@@ -145,7 +170,7 @@ export class MatchResultsModal {
 
             const localPlayer = this.gameState?.getLocalPlayer?.()
         || this.gameState?.players?.get(this.gameState?.localPlayerId);
-            const playerColor = localPlayer?.color || '#a78bfa';
+            const localColor = localPlayer?.color || '#a78bfa';
             const playerName = this.gameState?.network?.playerName || 'You';
             const steamId = this.gameState?.localPlayerId || 'local';
 
@@ -153,7 +178,7 @@ export class MatchResultsModal {
                 message: text,
                 playerName,
                 steamId,
-                color: playerColor,
+                color: localColor,
                 timestamp: Date.now(),
             };
 
@@ -177,14 +202,13 @@ export class MatchResultsModal {
             chatInput.value = '';
         };
 
-        if (chatSend) chatSend.addEventListener('click', sendChat);
-        if (chatInput) chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                sendChat();
-            }
+        chatForm?.addEventListener('submit', (e) => {
+            e.preventDefault();
             e.stopPropagation();
+            sendChat();
         });
+        // Keys typed here are chat, not gameplay (Escape is handled by the screen first).
+        if (chatInput) chatInput.addEventListener('keydown', (e) => e.stopPropagation());
     }
 
     /**
@@ -196,15 +220,6 @@ export class MatchResultsModal {
         if (!steamId || !this.gameState?.players) return null;
         const player = this.gameState.players.get(steamId);
         return player?.color || null;
-    }
-
-    /**
-   * Escape HTML to prevent XSS
-   */
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     /**
@@ -222,17 +237,17 @@ export class MatchResultsModal {
         // Handle both object format and string format
         if (typeof message === 'string') {
             // Legacy string format or system message
-            const msgClass = isSystem ? 'system-message' : 'player-message';
-            msgDiv.className = msgClass;
+            msgDiv.className = isSystem ? 'system-message' : 'player-message';
             msgDiv.textContent = message;
         } else {
             // Object format with player info
-            const playerColor = message.color || this.getPlayerColor(message.steamId) || '#a78bfa';
+            const color = playerColor(message.color || this.getPlayerColor(message.steamId), '#a78bfa');
             msgDiv.className = 'player-message';
+            msgDiv.style.setProperty('--player-color', color);
             msgDiv.innerHTML = `
-        <span class="color-indicator" style="background: ${playerColor};"></span>
-        <span class="author" style="color: ${playerColor};">${this.escapeHtml(message.playerName)}:</span>
-        <span class="text">${this.escapeHtml(message.message)}</span>
+        <span class="color-indicator" aria-hidden="true"></span>
+        <span class="author">${this.escapeHtml(message.playerName)}</span>
+        <span class="text">${this.escapeHtml(message.message ?? message.text ?? '')}</span>
       `;
         }
 
@@ -288,6 +303,17 @@ export class MatchResultsModal {
         this.container.classList.remove('hidden');
         this.container.classList.add('visible');
         this.isVisible = true;
+        openLayer(this.container, () => this.onReturnToLobby(), { fieldsFirst: true });
+
+        // Focus the one primary action (Rematch for the host, Back to lobby otherwise).
+        const primary = this.isHost ? this.playAgainBtn : this.returnLobbyBtn;
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => {
+                if (this.isVisible && primary && !this.container.contains(document.activeElement)) {
+                    primary.focus({ preventScroll: true });
+                }
+            });
+        }
     }
 
     /**
@@ -298,10 +324,11 @@ export class MatchResultsModal {
         this._stopAutoReturnCountdown();
         this.container.classList.remove('visible');
         this.isVisible = false;
+        closeLayer(this.container);
 
         setTimeout(() => {
             if (!this.isVisible) {
-                this.container.classList.add('hidden');
+                this.container?.classList.add('hidden');
             }
         }, 220);
     }
@@ -322,7 +349,7 @@ export class MatchResultsModal {
 
         const subtitleEl = this.container.querySelector('#match-results-subtitle');
         if (subtitleEl) {
-            subtitleEl.textContent = `${winCondition} • ${duration}`;
+            subtitleEl.textContent = `${winCondition} · ${duration}`;
         }
 
         const winnerEl = this.container.querySelector('#match-results-winner-name');
@@ -333,65 +360,34 @@ export class MatchResultsModal {
         const winnerMetaEl = this.container.querySelector('#match-results-winner-meta');
         if (winnerMetaEl) {
             const topStat = standings[0];
-            if (topStat) {
-                winnerMetaEl.textContent = `${topStat.frags || 0} frags • ${this.formatNumber(topStat.score || 0)} pts`;
-            } else {
-                winnerMetaEl.textContent = '';
-            }
+            winnerMetaEl.textContent = topStat
+                ? `${topStat.frags || 0} frags · ${this.formatNumber(topStat.score || 0)} points`
+                : '';
         }
 
         // Load winner avatar
-        const winnerColor = standings[0]?.color || '#fbbf24';
-        this._loadWinnerAvatar(winnerId, winnerName, winnerColor);
-
-        const standingsEl = this.container.querySelector('#match-results-standings');
-        if (standingsEl) {
-            standingsEl.innerHTML = standings.map((player, index) => {
-                const placement = player.placement || index + 1;
-                const medal = this.formatPlacement(placement);
-                const isLocal = this.localPlayerId && player.steamId === this.localPlayerId;
-                const isWinner = player.steamId && winnerId && player.steamId === winnerId;
-                const classes = [
-                    'standings-row',
-                    isLocal ? 'local' : '',
-                    isWinner ? 'winner' : '',
-                ].filter(Boolean).join(' ');
-
-                const colorStyle = player.color ? `style="background:${player.color}"` : '';
-
-                return `
-          <div class="${classes}">
-            <span class="standings-rank">${medal}</span>
-            <span class="standings-name">
-              <span class="player-color-dot" ${colorStyle}></span>
-              ${this.escapeHtml(player.name)}
-            </span>
-            <span class="standings-frags">${player.frags || 0} frags</span>
-            <span class="standings-score">${this.formatNumber(player.score || 0)} pts</span>
-          </div>
-        `;
-            }).join('');
-        }
+        this._loadWinnerAvatar(winnerId, winnerName, standings[0]?.color || '#f3d28d');
 
         const killFeedEl = this.container.querySelector('#match-results-kill-feed');
         if (killFeedEl) {
             const killFeed = Array.isArray(results.killFeed) ? results.killFeed : [];
             if (killFeed.length === 0) {
-                killFeedEl.innerHTML = '<div class="match-results-empty">No eliminations recorded.</div>';
+                killFeedEl.innerHTML = '<div class="match-results-empty">No eliminations this match.</div>';
             } else {
                 killFeedEl.innerHTML = killFeed.slice(0, 10).map((entry) => {
                     if (!entry.killer) {
                         return `
               <div class="match-kill-item self">
+                <span class="kill-icon" aria-hidden="true">${csIcon('skull', 14)}</span>
                 <span class="victim">${this.escapeHtml(entry.victim || 'Unknown')}</span>
-                <span class="kill-note">self-eliminated</span>
+                <span class="kill-note">topped out</span>
               </div>
             `;
                     }
                     return `
             <div class="match-kill-item">
               <span class="killer">${this.escapeHtml(entry.killer)}</span>
-              <span class="kill-icon">⚔️</span>
+              <span class="kill-icon" aria-label="eliminated" role="img">${csIcon('crossed-swords', 14)}</span>
               <span class="victim">${this.escapeHtml(entry.victim)}</span>
             </div>
           `;
@@ -401,61 +397,45 @@ export class MatchResultsModal {
 
         const statsTableEl = this.container.querySelector('#match-results-stats-table');
         if (statsTableEl) {
-            const header = `
+            const head = STAT_COLUMNS.map(([, label, title]) => (title
+                ? `<th scope="col"><abbr title="${title}">${label}</abbr></th>`
+                : `<th scope="col">${label}</th>`)).join('');
+            const rows = standings.map((player, index) => {
+                const placement = player.placement || index + 1;
+                const isLocal = this.localPlayerId && player.steamId === this.localPlayerId;
+                const isWinner = player.steamId && winnerId && player.steamId === winnerId;
+                const rowClass = [isLocal ? 'local' : '', isWinner ? 'winner' : ''].filter(Boolean).join(' ');
+                const color = playerColor(player.color, '#b8a4ff');
+                const cells = STAT_COLUMNS.map(([key]) => {
+                    const value = player[key] || 0;
+                    return `<td>${key === 'score' ? this.formatNumber(value) : this.escapeHtml(String(value))}</td>`;
+                }).join('');
+                return `
+              <tr class="${rowClass}" style="--player-color:${color}">
+                <td class="col-rank"><span class="mr-place mr-place--${Math.min(placement, 4)}">${placement}</span></td>
+                <th scope="row" class="col-player">
+                  <div class="player-stats-wrapper">
+                    <span class="player-color-dot" aria-hidden="true"></span>
+                    <span class="mr-player-name" title="${escapeAttribute(player.name || '')}">${this.escapeHtml(player.name)}</span>
+                    ${isLocal ? '<span class="mr-you">You</span>' : ''}
+                  </div>
+                </th>
+                ${cells}
+              </tr>`;
+            }).join('');
+            statsTableEl.innerHTML = `
         <table class="stats-table">
+          <caption class="mr-sr">Final standings</caption>
           <thead>
             <tr>
-              <th class="col-rank">#</th>
-              <th>Player</th>
-              <th>Frags</th>
-              <th>Deaths</th>
-              <th>Score</th>
-              <th>Lines</th>
-              <th>BPM</th>
-              <th>PPS</th>
-              <th>PPM</th>
-              <th>APM</th>
-              <th>Atk</th>
-              <th>Sent</th>
+              <th scope="col" class="col-rank"><abbr title="Place">#</abbr></th>
+              <th scope="col" class="col-player">Player</th>
+              ${head}
             </tr>
           </thead>
-          <tbody>
-            ${standings.map((player, index) => {
-        const placement = player.placement || index + 1;
-        const medal = this.formatPlacement(placement);
-        const isLocal = this.localPlayerId && player.steamId === this.localPlayerId;
-        const isWinner = player.steamId && winnerId && player.steamId === winnerId;
-        const rowClass = [
-            isLocal ? 'local' : '',
-            isWinner ? 'winner' : '',
-        ].filter(Boolean).join(' ');
-        const colorStyle = player.color ? `style="background:${player.color}"` : '';
-        return `
-              <tr class="${rowClass}">
-                <td class="col-rank">${medal}</td>
-                <td class="col-player">
-                  <div class="player-stats-wrapper">
-                    <span class="player-color-dot" ${colorStyle}></span>
-                    ${this.escapeHtml(player.name)}
-                  </div>
-                </td>
-                <td>${player.frags || 0}</td>
-                <td>${player.deaths || 0}</td>
-                <td>${this.formatNumber(player.score || 0)}</td>
-                <td>${player.lines || 0}</td>
-                <td>${player.bpm || 0}</td>
-                <td>${player.pps || 0}</td>
-                <td>${player.ppm || 0}</td>
-                <td>${player.apm || 0}</td>
-                <td>${player.attacksSent || 0}</td>
-                <td>${player.attackLinesSent || 0}</td>
-              </tr>
-            `;
-    }).join('')}
-          </tbody>
+          <tbody>${rows}</tbody>
         </table>
       `;
-            statsTableEl.innerHTML = header;
         }
     }
 
@@ -465,31 +445,29 @@ export class MatchResultsModal {
     updateHostState() {
         if (!this.playAgainBtn || !this.hostHint) return;
 
-        if (this.isHost) {
-            this.playAgainBtn.disabled = false;
-            this.playAgainBtn.classList.remove('btn-disabled');
-            this.hostHint.textContent = '';
-        } else {
-            this.playAgainBtn.disabled = true;
-            this.playAgainBtn.classList.add('btn-disabled');
-            this.hostHint.textContent = 'Waiting for host to start a rematch.';
-        }
+        this.playAgainBtn.disabled = !this.isHost;
+        this.playAgainBtn.classList.toggle('btn-disabled', !this.isHost);
+        // One primary action: Rematch for the host, Back to lobby for everyone else.
+        this.playAgainBtn.classList.toggle('sb-btn--primary', this.isHost);
+        this.returnLobbyBtn?.classList.toggle('sb-btn--primary', !this.isHost);
+        this._baseHint = this.isHost ? '' : 'Only the host can start a rematch.';
+        this.hostHint.textContent = this._baseHint;
     }
 
     /**
-   * Cosmetic countdown shown to ALL clients: "<base hint> • Returning to lobby in N s".
+   * Cosmetic countdown shown to ALL clients: "<base hint> · Back to the lobby in N s".
    * The authoritative auto-return is driven host-side (it broadcasts RETURN_TO_LOBBY); this
    * is purely the visible heads-up so nobody is surprised when the screen advances.
    */
     _startAutoReturnCountdown(autoReturnMs) {
         this._stopAutoReturnCountdown();
         if (!this.hostHint || !autoReturnMs || autoReturnMs <= 0) return;
-        const baseHint = this.hostHint.textContent || '';
+        const baseHint = this._baseHint || '';
         const endsAt = Date.now() + autoReturnMs;
         const render = () => {
             const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-            const suffix = `Returning to lobby in ${remaining}s…`;
-            this.hostHint.textContent = baseHint ? `${baseHint} • ${suffix}` : suffix;
+            const suffix = `Back to the lobby in ${remaining} s`;
+            this.hostHint.textContent = baseHint ? `${baseHint} ${suffix}.` : `${suffix}.`;
             if (remaining <= 0) this._stopAutoReturnCountdown();
         };
         render();
@@ -513,15 +491,8 @@ export class MatchResultsModal {
 
         // Reset to placeholder
         const letter = (name || 'W').charAt(0).toUpperCase();
-        container.innerHTML = `
-      <div class="winner-avatar-placeholder">${letter}</div>
-    `;
-        container.style.setProperty('--winner-color', color);
-        container.style.setProperty('--winner-color-dark', this._darkenColor(color));
-
-        // Update border color to match winner
-        container.style.borderColor = color;
-        container.style.boxShadow = `0 0 30px ${color}66`;
+        container.innerHTML = `<div class="winner-avatar-placeholder" aria-hidden="true">${this.escapeHtml(letter)}</div>`;
+        container.style.setProperty('--winner-color', playerColor(color, '#f3d28d'));
 
         if (!steamId) return;
 
@@ -531,7 +502,7 @@ export class MatchResultsModal {
                 const img = document.createElement('img');
                 img.className = 'winner-avatar-image';
                 img.src = avatarUrl;
-                img.alt = name || 'Winner';
+                img.alt = '';
                 img.onerror = () => {
                     // Keep placeholder on error
                     img.remove();
@@ -544,38 +515,9 @@ export class MatchResultsModal {
         }
     }
 
-    /**
-   * Darken a hex color for gradient
-   * @private
-   */
-    _darkenColor(hex) {
-        if (!hex || !hex.startsWith('#')) return '#888888';
-        const num = parseInt(hex.slice(1), 16);
-        const r = Math.max(0, (num >> 16) - 40);
-        const g = Math.max(0, ((num >> 8) & 0x00FF) - 40);
-        const b = Math.max(0, (num & 0x0000FF) - 40);
-        return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
-    }
-
-    formatPlacement(place) {
-        switch (place) {
-        case 1: return '🥇';
-        case 2: return '🥈';
-        case 3: return '🥉';
-        default: return `${place}.`;
-        }
-    }
-
     formatWinCondition(endCondition, value) {
-        const safeValue = typeof value === 'number' ? value : '-';
-        const conditions = {
-            frags: `First to ${safeValue} frags`,
-            time: `${safeValue} minute limit`,
-            points: `First to ${safeValue}k points`,
-            lines: `First to ${safeValue} lines`,
-            never: 'Endless',
-        };
-        return conditions[endCondition] || 'Match Complete';
+        if (!endCondition) return 'Match complete';
+        return describeGoal(endCondition, typeof value === 'number' ? value : null);
     }
 
     formatDuration(durationMs) {
@@ -606,7 +548,9 @@ export class MatchResultsModal {
             this.chatUnsub = null;
             this.chatHandler = null;
         }
+        this._stopAutoReturnCountdown();
         if (this.container) {
+            closeLayer(this.container);
             this.container.remove();
         }
         this.container = null;

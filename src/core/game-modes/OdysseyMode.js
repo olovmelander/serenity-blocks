@@ -1202,7 +1202,7 @@ export class OdysseyMode extends BaseGameMode {
         const playBtn = document.getElementById('level-panel-play-btn');
         if (playBtn) {
             playBtn.classList.remove('clicked');
-            playBtn.textContent = this.selectedLevelId ? '▶ Play' : playBtn.textContent;
+            playBtn.textContent = this.selectedLevelId ? 'Play' : playBtn.textContent;
         }
 
         const panel = document.getElementById('odyssey-level-panel');
@@ -1861,22 +1861,22 @@ export class OdysseyMode extends BaseGameMode {
             padding: '18px 28px',
             borderRadius: '22px',
             background: cuePanelBackground,
-            border: '1px solid rgba(120, 255, 224, 0.16)',
+            border: '1px solid rgba(255, 246, 233, 0.12)',
             boxShadow: '0 0 40px rgba(0, 0, 0, 0.22)',
         });
 
         const readyTextShadow = [
-            '0 0 18px rgba(142, 249, 236, 0.92), ',
-            '0 0 48px rgba(20, 210, 196, 0.55)',
+            '0 0 18px rgba(158, 232, 237, 0.85), ',
+            '0 0 48px rgba(158, 232, 237, 0.4)',
         ].join('');
         cueState.label.id = 'odyssey-level-start-cue-label';
         Object.assign(cueState.label.style, {
-            fontFamily: '"Orbitron", "Eurostile", sans-serif',
+            fontFamily: '"Unbounded", "Orbitron", sans-serif',
             fontSize: 'clamp(48px, 7vw, 92px)',
             fontWeight: '700',
             letterSpacing: '0.18em',
             textTransform: 'uppercase',
-            color: '#8ef9ec',
+            color: '#9ee8ed',
             textShadow: readyTextShadow,
             transform: 'scale(1)',
             transition: [
@@ -1891,11 +1891,11 @@ export class OdysseyMode extends BaseGameMode {
 
         cueState.subtitle.id = 'odyssey-level-start-cue-subtitle';
         Object.assign(cueState.subtitle.style, {
-            fontFamily: '"Rajdhani", "Orbitron", sans-serif',
+            fontFamily: '"Unbounded", "Manrope", sans-serif',
             fontSize: 'clamp(12px, 1.2vw, 16px)',
             letterSpacing: '0.18em',
             textTransform: 'uppercase',
-            color: 'rgba(214, 247, 255, 0.86)',
+            color: 'rgba(255, 246, 233, 0.78)',
             textAlign: 'center',
         });
         cueState.subtitle.textContent = levelConfig?.name || 'Odyssey';
@@ -1915,18 +1915,18 @@ export class OdysseyMode extends BaseGameMode {
 
         const isGo = phase === 'go';
         cueState.label.textContent = isGo ? 'GO' : 'READY';
-        cueState.label.style.color = isGo ? '#ffd86a' : '#8ef9ec';
+        cueState.label.style.color = isGo ? '#ffac88' : '#9ee8ed';
         cueState.label.style.textShadow = isGo
-            ? '0 0 18px rgba(255, 216, 106, 0.95), 0 0 48px rgba(255, 169, 60, 0.58)'
-            : '0 0 18px rgba(142, 249, 236, 0.92), 0 0 48px rgba(20, 210, 196, 0.55)';
+            ? '0 0 18px rgba(255, 172, 136, 0.9), 0 0 48px rgba(255, 172, 136, 0.45)'
+            : '0 0 18px rgba(158, 232, 237, 0.85), 0 0 48px rgba(158, 232, 237, 0.4)';
         cueState.label.style.transform = isGo ? 'scale(1.08)' : 'scale(1)';
         cueState.label.style.opacity = '1';
 
         if (cueState.subtitle) {
             cueState.subtitle.textContent = isGo ? 'Now' : (this.currentLevelConfig?.name || 'Odyssey');
             cueState.subtitle.style.color = isGo
-                ? 'rgba(255, 239, 191, 0.92)'
-                : 'rgba(214, 247, 255, 0.86)';
+                ? 'rgba(255, 246, 233, 0.92)'
+                : 'rgba(255, 246, 233, 0.78)';
         }
     }
 
@@ -3749,7 +3749,7 @@ export class OdysseyMode extends BaseGameMode {
         const progress = document.getElementById('odyssey-header-progress');
         if (stars) {
             const totalStars = this.odysseyState.getTotalStars();
-            stars.textContent = `⭐ ${totalStars}/168`;
+            stars.textContent = `★ ${totalStars} / ${this.odysseyState.getProgressSummary().maxStars}`;
         }
         if (progress) {
             const pct = this.odysseyState.getOverallProgress();
@@ -3805,20 +3805,20 @@ export class OdysseyMode extends BaseGameMode {
         // Stars display
         const starsEl = document.getElementById('level-panel-stars');
         starsEl.textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-        starsEl.style.color = stars > 0 ? '#ffdd00' : '#555';
+        starsEl.dataset.earned = stars > 0 ? 'true' : 'false';
 
         // Objectives
         const objectivesEl = document.getElementById('level-panel-objectives');
         const primary = level.victory?.primary;
         objectivesEl.innerHTML = `
             <div><strong>Goal:</strong> ${this._formatObjective(primary)}</div>
-            ${level.metadata?.tip ? `<div style="color: #88ff88; margin-top: 0.5rem;">💡 ${level.metadata.tip}</div>` : ''}
+            ${level.metadata?.tip ? `<div class="level-tip">${level.metadata.tip}</div>` : ''}
         `;
 
         // Play button
         const playBtn = document.getElementById('level-panel-play-btn');
         playBtn.disabled = !isUnlocked;
-        playBtn.textContent = isUnlocked ? '▶ Play' : '🔒 Locked';
+        playBtn.textContent = isUnlocked ? 'Play' : 'Locked';
 
         // Show panel
         panel.classList.remove('hidden');
@@ -4114,7 +4114,7 @@ export class OdysseyMode extends BaseGameMode {
             }
             chapterEl.innerHTML = `
                 <div class="odyssey-chapter-header">
-                    <span class="odyssey-chapter-name">Chapter ${chapter.id}: ${chapter.name}</span>
+                    <span class="odyssey-chapter-name"><small>Chapter ${chapter.id}</small>${chapter.name}</span>
                     <span class="odyssey-chapter-stars">${chapterProgress.stars}/${chapterProgress.maxStars} ★</span>
                 </div>
                 <div class="odyssey-levels" id="odyssey-chapter-${chapter.id}-levels"></div>

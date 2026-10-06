@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Steam leaderboard panel (game over, Odyssey results). Board and view
+ * switches are toggle buttons (aria-pressed); the game-over sheet draws it in the
+ * Keystone language (public/styles/keystone-modals.css).
+ */
 import steamService from '../../core/steam/steam-service.js';
 import { LeaderboardCache } from '../leaderboards/leaderboard-cache.js';
 
@@ -157,15 +162,19 @@ export class SteamLeaderboardPanel {
         if (this.boards.length > 1) {
             const boardTabs = document.createElement('div');
             boardTabs.className = 'steam-leaderboard-board-tabs';
+            boardTabs.setAttribute?.('role', 'group');
+            boardTabs.setAttribute?.('aria-label', 'Leaderboard');
             this.boards.forEach((board) => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'steam-leaderboard-tab';
                 btn.dataset.boardId = board.id;
                 btn.textContent = board.label;
-                if (board.id === this.currentBoardId) {
+                const active = board.id === this.currentBoardId;
+                if (active) {
                     btn.classList.add('active');
                 }
+                btn.setAttribute?.('aria-pressed', String(active));
                 boardTabs.appendChild(btn);
             });
             this.container.appendChild(boardTabs);
@@ -174,15 +183,19 @@ export class SteamLeaderboardPanel {
         if (this.views.length > 1) {
             const viewTabs = document.createElement('div');
             viewTabs.className = 'steam-leaderboard-view-tabs';
+            viewTabs.setAttribute?.('role', 'group');
+            viewTabs.setAttribute?.('aria-label', 'Players');
             this.views.forEach((view) => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'steam-leaderboard-tab steam-leaderboard-view-tab';
                 btn.dataset.viewId = view.id;
                 btn.textContent = view.label;
-                if (view.id === this.currentView) {
+                const active = view.id === this.currentView;
+                if (active) {
                     btn.classList.add('active');
                 }
+                btn.setAttribute?.('aria-pressed', String(active));
                 viewTabs.appendChild(btn);
             });
             this.container.appendChild(viewTabs);
@@ -195,6 +208,7 @@ export class SteamLeaderboardPanel {
 
         const status = document.createElement('div');
         status.className = 'steam-leaderboard-status';
+        status.setAttribute?.('role', 'status');
         status.textContent = 'Loading leaderboards…';
         this.statusEl = status;
         this.container.appendChild(status);
@@ -239,6 +253,7 @@ export class SteamLeaderboardPanel {
             if (!(btn instanceof HTMLElement)) return;
             const isActive = btn.dataset[dataKey] === activeValue;
             btn.classList.toggle('active', isActive);
+            btn.setAttribute?.('aria-pressed', String(isActive));
         });
     }
 

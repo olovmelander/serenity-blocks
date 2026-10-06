@@ -1,30 +1,105 @@
 /**
- * Local Match Configuration Modal
+ * Local Match Configuration Modal — "Local versus" (Keystone sheet).
  *
  * UI for configuring local multiplayer matches (2-4 players, each human or bot).
+ * Opened by the main menu's Local Versus entry; Escape, the close tile and Back all
+ * return to the menu.
  *
- * Layout: two zones — a grid of per-player SLOT CARDS (each consolidating the
- * slot's human/bot toggle, bot skill, handicap, and team) and a MATCH RULES
- * area — with a sticky Start Match footer. All dropdowns are themed CosmicSelects
- * (the cosmic cursor works over them; native <select> popups break it). The
- * native <select>s remain as the form source of truth, so the emitted config is
- * byte-identical to the previous form-based implementation.
+ * Layout: one sheet with an open corner — the PLAYERS zone (a seat card per player
+ * with its hue, human/bot, bot skill, handicap and team) and the RULES zone
+ * (segmented controls), with Back and the one primary action, Start match, in the
+ * footer. Every control is a CosmicSelect over a native <select> (the cosmic cursor
+ * works over them; native <select> popups break it). The native <select>s remain the
+ * form source of truth, so the emitted config is unchanged: `buildLocalMatchConfig`
+ * is pure and keeps its field names. The last setup is remembered locally.
+ *
+ * Styles: public/styles/keystone-multiplayer.css (#local-match-config-modal).
  */
 
-import { csIcon } from './components/cosmic-icons.js';
 import { enhanceSelect, enhanceSegmented } from './components/cosmic-select.js';
-import { TEAM_COLORS } from '../core/multi-player-state.js';
+import {
+    closeLayer, focusSoon, mpIcon, openLayer,
+} from './components/mp-sheet.js';
 
 const BOT_SKILL_TIERS = [
     'Rookie', 'Novice', 'Learner', 'Steady', 'Skilled',
     'Sharp', 'Expert', 'Master', 'Ace', 'Machine',
 ];
 const DEFAULT_BOT_SKILL = 5;
+const LAST_SETUP_KEY = 'serenity.localMatch.lastSetup';
 
-// The card accent for a given team id, sourced from the SAME palette the game
-// uses at runtime (A=Blue, B=Red, C=Green, D=Amber) so the setup card is a true
-// preview of the board border / HUD / garbage color.
-const teamAccent = (teamId) => (TEAM_COLORS[teamId] || TEAM_COLORS[0]).primary;
+// Each seat wears its team's hue, in the pastel family of the logo: Team A sky,
+// B rose, C mint, D gold — the same order as the runtime board colours (blue, red,
+// green, amber), so two seats on one team share a colour here as they do in play.
+const SEAT_HUES = ['sky', 'rose', 'mint', 'gold'];
+const seatHue = (teamId) => SEAT_HUES[teamId] || SEAT_HUES[0];
+
+const CONDITION_COPY = {
+    frags: {
+        label: 'Frags to win',
+        unit: 'frags',
+        defaultValue: 7,
+        min: 1,
+        max: 100,
+        help: 'The first player to reach this many frags wins.',
+    },
+    time: {
+        label: 'Minutes',
+        unit: 'minutes',
+        defaultValue: 3,
+        min: 1,
+        max: 60,
+        help: 'The highest score when time runs out wins.',
+    },
+    points: {
+        label: 'Score target, thousands',
+        unit: 'thousand points',
+        defaultValue: 10,
+        min: 1,
+        max: 999,
+        help: 'The first player to reach this score wins — 10 means 10,000.',
+    },
+    lines: {
+        label: 'Lines to win',
+        unit: 'lines',
+        defaultValue: 100,
+        min: 10,
+        max: 999,
+        help: 'The first player to clear this many lines wins.',
+    },
+    never: {
+        label: 'No win condition',
+        unit: '',
+        defaultValue: 0,
+        min: 0,
+        max: 0,
+        help: 'The match runs until you end it.',
+    },
+};
+
+const ATTACK_HELP = {
+    standard: 'Clearing two or more lines sends garbage lines to an opponent.',
+    blind: 'Garbage lines plus a short blackout of the target board.',
+    full_blind: 'A heavier attack with a longer blackout.',
+    hot_potato: 'Hold the potato too long and it goes off — clear lines to pass it on.',
+    peaceful: 'No attacks are sent — a calm, side-by-side match.',
+};
+
+function readLastSetup() {
+    try {
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(LAST_SETUP_KEY) : null;
+        const parsed = raw ? JSON.parse(raw) : null;
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function writeLastSetup(values) {
+    try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(LAST_SETUP_KEY, JSON.stringify(values));
+    } catch { /* private mode: the next setup simply starts from the defaults */ }
+}
 
 /**
  * Map an attack-style selection to a garbage `rules` object understood by
@@ -121,6 +196,15 @@ export function buildLocalMatchConfig(values = {}) {
     return config;
 }
 
+const stepper = (id, name, {
+    min, max, value, step = 1, label,
+}) => `
+    <div class="sb-stepper" data-stepper-for="${id}">
+        <button type="button" class="sb-stepper__btn" data-step="-${step}" aria-label="Decrease ${label}">${mpIcon('minus', 16)}</button>
+        <input type="number" id="${id}" name="${name}" min="${min}" max="${max}" step="${step}" value="${value}" inputmode="numeric" />
+        <button type="button" class="sb-stepper__btn" data-step="${step}" aria-label="Increase ${label}">${mpIcon('plus', 16)}</button>
+    </div>`;
+
 export class LocalMatchConfigModal {
     constructor(onStartMatch, onCancel = null) {
         this.onStartMatch = onStartMatch;
@@ -134,146 +218,153 @@ export class LocalMatchConfigModal {
     createUI() {
         this.container = document.createElement('div');
         this.container.id = 'local-match-config-modal';
-        this.container.className = 'match-config-modal hidden';
+        this.container.className = 'match-config-modal sb-mp-screen hidden';
 
         this.container.innerHTML = `
-      <div class="match-config-overlay"></div>
-      <div class="match-config-content lmc">
-        <div class="match-config-header">
-          <h2>${csIcon('gamepad', 26, 'lmc-title-icon')}<span class="lmc-title-text">Local Multiplayer Setup</span></h2>
-          <button class="close-btn" id="close-local-match-config" aria-label="Close">✕</button>
-        </div>
+      <div class="match-config-overlay" aria-hidden="true"></div>
+      <div class="sb-mp-sheet lmc" role="dialog" aria-modal="true"
+           aria-labelledby="local-match-config-title" aria-describedby="local-match-config-lede">
+        <div class="match-config-content sb-mp-sheet__panel">
+          <header class="match-config-header sb-mp-sheet__header">
+            <div class="sb-mp-sheet__heading">
+              <p class="sb-eyebrow">Stack · Local versus</p>
+              <h2 class="sb-mp-sheet__title" id="local-match-config-title">Local versus</h2>
+              <p class="sb-mp-sheet__lede" id="local-match-config-lede">Up to four players on one screen — keyboards, controllers or bots.</p>
+            </div>
+            <button type="button" class="sb-mp-close" id="close-local-match-config" aria-label="Close and return to the menu">${mpIcon('close', 20)}</button>
+          </header>
 
-        <form id="local-match-config-form" class="match-config-form">
-          <div class="lmc-body">
-            <!-- PLAYERS ZONE -->
-            <section class="lmc-zone">
-              <div class="lmc-zone__head">
-                <span class="lmc-zone__title">Players</span>
-                <select id="num-players" name="numPlayers" data-cosmic-variant="segmented"
-                        aria-label="Number of players">
-                  <option value="2" selected>2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                </select>
-              </div>
-              <div id="player-slot-cards" class="lmc-slot-grid"></div>
-              <small class="form-help">Set any slot to a Bot and pick its skill. Each player starts on
-                their own team — put two players on the same Team to make them allies (shared color,
-                no friendly fire).</small>
-            </section>
-
-            <!-- MATCH RULES ZONE -->
-            <section class="lmc-zone">
-              <div class="lmc-zone__title">Match Rules</div>
-              <div class="lmc-rules">
-                <div class="cosmic-field">
-                  <label for="match-mode">Game Mode</label>
-                  <select id="match-mode" name="matchMode" data-cosmic-variant="segmented">
-                    <option value="ffa" selected>FFA</option>
-                    <option value="infinity-lms">Infinity LMS</option>
-                  </select>
-                  <small class="form-help" id="match-mode-help">Classic FFA with customizable win conditions</small>
-                </div>
-
-                <div class="cosmic-field" id="attack-style-group">
-                  <label for="attack-style">Attack Style</label>
-                  <select id="attack-style" name="attackStyle">
-                    <option value="standard" selected>Standard — Line Garbage</option>
-                    <option value="blind">Blind — garbage + temporary blackout</option>
-                    <option value="full_blind">Full Blind — heavier, longer blackout</option>
-                    <option value="hot_potato">Hot Potato — pass the timer bomb</option>
-                    <option value="peaceful">Peaceful — no attacks</option>
-                  </select>
-                  <small class="form-help" id="attack-style-help">Classic garbage lines sent on multi-line clears</small>
-                </div>
-
-                <div class="cosmic-field" id="end-condition-group">
-                  <label for="end-condition">Win Condition</label>
-                  <select id="end-condition" name="endCondition">
-                    <option value="frags" selected>Frags (Kills)</option>
-                    <option value="time">Time Limit</option>
-                    <option value="points">Score Target</option>
-                    <option value="lines">Lines Cleared</option>
-                    <option value="never">Never (Play Forever)</option>
+          <form id="local-match-config-form" class="match-config-form sb-mp-sheet__form" novalidate>
+            <div class="lmc-body sb-mp-sheet__body">
+              <section class="lmc-zone" aria-labelledby="lmc-players-label">
+                <div class="lmc-zone__head">
+                  <h3 class="sb-mp-label" id="lmc-players-label">Players</h3>
+                  <select id="num-players" name="numPlayers" aria-label="Number of players">
+                    <option value="2" selected>2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
                   </select>
                 </div>
+                <div id="player-slot-cards" class="lmc-slot-grid"></div>
+                <p class="sb-mp-help lmc-zone__note">Seats on the same team are allies — one colour, no attacks between them.</p>
+              </section>
 
-                <div class="cosmic-field" id="infinity-rows-group">
-                  <label for="infinity-max-rows">Infinity Row Cap</label>
-                  <input type="number" id="infinity-max-rows" name="infinityMaxRows"
-                         min="100" max="1000" value="100" placeholder="100" />
-                  <small class="form-help">Default 100, max 1000 rows</small>
+              <section class="lmc-zone" aria-labelledby="lmc-rules-label">
+                <div class="lmc-zone__head">
+                  <h3 class="sb-mp-label" id="lmc-rules-label">Rules</h3>
                 </div>
-
-                <div class="cosmic-field" id="end-value-group">
-                  <label for="end-condition-value" id="end-value-label">Frags to Win</label>
-                  <input type="number" id="end-condition-value" name="endConditionValue"
-                         min="1" max="999" value="7" placeholder="7" />
-                  <small class="form-help" id="end-value-help">First player to reach 7 frags wins</small>
-                </div>
-              </div>
-
-              <details class="advanced-settings">
-                <summary>${csIcon('gear', 18, 'lmc-summary-icon')}<span>Advanced Settings</span></summary>
-
-                <div class="form-group">
-                  <label for="start-level">Starting Level (1-9)</label>
-                  <div class="lmc-number-stepper" data-stepper-for="start-level">
-                    <input type="number" id="start-level" name="startLevel"
-                           min="1" max="9" value="1" placeholder="1" inputmode="numeric" />
-                    <div class="lmc-number-stepper__controls">
-                      <button type="button" class="lmc-number-stepper__button lmc-number-stepper__button--up"
-                              data-start-level-step="1" aria-label="Increase starting level"></button>
-                      <button type="button" class="lmc-number-stepper__button lmc-number-stepper__button--down"
-                              data-start-level-step="-1" aria-label="Decrease starting level"></button>
-                    </div>
+                <div class="lmc-rules">
+                  <div class="sb-mp-field" id="match-mode-group">
+                    <span class="sb-mp-field__label" id="match-mode-label">Game mode</span>
+                    <select id="match-mode" name="matchMode" aria-label="Game mode">
+                      <option value="ffa" selected>Classic</option>
+                      <option value="infinity-lms">Infinity</option>
+                    </select>
+                    <p class="sb-mp-help" id="match-mode-help"></p>
                   </div>
-                  <small class="form-help">Higher level = faster pieces</small>
+
+                  <div class="sb-mp-field" id="attack-style-group">
+                    <span class="sb-mp-field__label" id="attack-style-label">Attacks</span>
+                    <select id="attack-style" name="attackStyle" aria-label="Attacks">
+                      <option value="standard" selected>Standard</option>
+                      <option value="blind">Blind</option>
+                      <option value="full_blind">Full blind</option>
+                      <option value="hot_potato">Hot potato</option>
+                      <option value="peaceful">Peaceful</option>
+                    </select>
+                    <p class="sb-mp-help" id="attack-style-help"></p>
+                  </div>
+
+                  <div class="sb-mp-field" id="end-condition-group">
+                    <span class="sb-mp-field__label" id="end-condition-label">Win condition</span>
+                    <select id="end-condition" name="endCondition" aria-label="Win condition">
+                      <option value="frags" selected>Frags</option>
+                      <option value="time">Time</option>
+                      <option value="points">Score</option>
+                      <option value="lines">Lines</option>
+                      <option value="never">Endless</option>
+                    </select>
+                  </div>
+
+                  <div class="sb-mp-field sb-mp-field--inline" id="end-value-group">
+                    <div class="sb-mp-field__text">
+                      <label class="sb-mp-field__label" for="end-condition-value" id="end-value-label">Frags to win</label>
+                      <p class="sb-mp-help" id="end-value-help"></p>
+                    </div>
+                    ${stepper('end-condition-value', 'endConditionValue', {
+        min: 1, max: 100, value: 7, label: 'the target',
+    })}
+                  </div>
+
+                  <div class="sb-mp-field sb-mp-field--inline" id="infinity-rows-group" hidden>
+                    <div class="sb-mp-field__text">
+                      <label class="sb-mp-field__label" for="infinity-max-rows">Well height</label>
+                      <p class="sb-mp-help">Rows in each well, from 100 to 1,000.</p>
+                    </div>
+                    ${stepper('infinity-max-rows', 'infinityMaxRows', {
+        min: 100, max: 1000, value: 100, step: 50, label: 'the well height',
+    })}
+                  </div>
                 </div>
 
-                <div class="form-group">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="level-progression" name="levelProgression" />
-                    <span>Enable Level Progression</span>
-                  </label>
-                  <small class="form-help">Level increases every 15 lines cleared</small>
-                </div>
+                <details class="advanced-settings sb-mp-more">
+                  <summary><span>More rules</span>${mpIcon('chevron', 16, 'sb-mp-more__chevron')}</summary>
+                  <div class="sb-mp-more__body">
+                    <div class="sb-mp-field sb-mp-field--inline form-group" id="start-level-group">
+                      <div class="sb-mp-field__text">
+                        <label class="sb-mp-field__label" for="start-level">Starting level</label>
+                        <p class="sb-mp-help">Higher levels drop pieces faster.</p>
+                      </div>
+                      ${stepper('start-level', 'startLevel', {
+        min: 1, max: 9, value: 1, label: 'the starting level',
+    })}
+                    </div>
+                    <label class="sb-mp-switch form-group" id="level-progression-group">
+                      <span class="sb-mp-field__text">
+                        <span class="sb-mp-field__label">Level up as you clear</span>
+                        <span class="sb-mp-help">One level for every 15 lines.</span>
+                      </span>
+                      <input type="checkbox" class="sb-toggle" id="level-progression" name="levelProgression" />
+                    </label>
+                    <label class="sb-mp-switch form-group" id="boring-rules-group">
+                      <span class="sb-mp-field__text">
+                        <span class="sb-mp-field__label">No attack scaling</span>
+                        <span class="sb-mp-help">Attacks keep full strength with three or four players.</span>
+                      </span>
+                      <input type="checkbox" class="sb-toggle" id="boring-rules" name="boringRules" />
+                    </label>
+                  </div>
+                </details>
+              </section>
+            </div>
 
-                <div class="form-group">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="boring-rules" name="boringRules" />
-                    <span>Boring Rules (No Attack Scaling)</span>
-                  </label>
-                  <small class="form-help">Attacks always deal full damage (no reduction for 3-4 players)</small>
-                </div>
-              </details>
-            </section>
-          </div>
-
-          <div class="lmc-footer form-actions">
-            <button type="button" class="btn-secondary" id="cancel-local-match">Cancel</button>
-            <button type="submit" class="btn-primary">${csIcon('match-start', 22, 'lmc-action-icon lmc-action-icon--match-start')}<span>Start Match</span></button>
-          </div>
-        </form>
+            <footer class="lmc-footer form-actions sb-mp-sheet__footer">
+              <p class="sb-mp-alert" id="local-match-error" role="alert" hidden></p>
+              <ul class="sb-hints sb-mp-sheet__hints" aria-hidden="true">
+                <li><kbd class="sb-kbd" data-key>Esc</kbd><kbd class="sb-kbd" data-pad>B</kbd>Back</li>
+                <li><kbd class="sb-kbd" data-key>Enter</kbd><kbd class="sb-kbd" data-pad>A</kbd>Start</li>
+              </ul>
+              <div class="sb-mp-sheet__actions">
+                <button type="button" class="sb-btn sb-btn--quiet" id="cancel-local-match">Back</button>
+                <button type="submit" class="sb-btn sb-btn--primary" id="start-local-match">Start match</button>
+              </div>
+            </footer>
+          </form>
+        </div>
+        <span class="sb-mp-sheet__key" aria-hidden="true"></span>
       </div>
     `;
 
         document.body.appendChild(this.container);
         this.setupEventListeners();
-        // Enhance the static rule dropdowns (slot-card dropdowns are enhanced per render).
+        // Enhance the static rule controls (seat-card controls are enhanced per render).
         this.enhanceStaticControls();
     }
 
     enhanceStaticControls() {
-        const segmented = ['#num-players', '#match-mode'];
-        segmented.forEach((sel) => {
+        ['#num-players', '#match-mode', '#end-condition', '#attack-style'].forEach((sel) => {
             const el = this.container.querySelector(sel);
             if (el) this._enhancers.push(enhanceSegmented(el));
-        });
-        ['#attack-style', '#end-condition'].forEach((sel) => {
-            const el = this.container.querySelector(sel);
-            if (el) this._enhancers.push(enhanceSelect(el));
         });
     }
 
@@ -291,46 +382,51 @@ export class LocalMatchConfigModal {
             this.updateAttackStyleUI(e.target.value);
         });
 
-        this.container.querySelector('#local-match-config-form')?.addEventListener('submit', (e) => {
+        const form = this.container.querySelector('#local-match-config-form');
+        form?.addEventListener('submit', (e) => {
             e.preventDefault();
             this.handleSubmit();
         });
+        // Any edit clears a previous validation message.
+        form?.addEventListener('input', () => this.clearError());
+        form?.addEventListener('change', () => this.clearError());
 
         this.container.querySelector('#num-players')?.addEventListener('change', () => {
             this.renderSlotCards();
         });
 
-        this.setupStartingLevelStepper();
+        this.setupSteppers();
         this.setupScrollPerformanceMode();
     }
 
-    setupStartingLevelStepper() {
-        const input = this.container.querySelector('#start-level');
-        const buttons = this.container.querySelectorAll('[data-start-level-step]');
-        if (!input || buttons.length === 0) return;
-
-        const min = parseInt(input.min, 10) || 1;
-        const max = parseInt(input.max, 10) || 9;
-        const clamp = (value) => Math.min(max, Math.max(min, value));
-        const emitValueChange = () => {
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-        };
-        const normalize = () => {
-            const parsed = parseInt(input.value, 10);
-            input.value = String(clamp(Number.isFinite(parsed) ? parsed : min));
-        };
-
-        buttons.forEach((button) => {
-            button.addEventListener('click', () => {
-                const step = parseInt(button.dataset.startLevelStep, 10) || 0;
-                const current = parseInt(input.value, 10);
-                input.value = String(clamp((Number.isFinite(current) ? current : min) + step));
-                emitValueChange();
+    /** −/+ buttons beside each number field; values clamp to the field's range. */
+    setupSteppers() {
+        this.container.querySelectorAll('.sb-stepper').forEach((wrap) => {
+            const input = wrap.querySelector('input[type="number"]');
+            if (!input) return;
+            const range = () => ({
+                min: parseInt(input.min, 10) || 0,
+                max: parseInt(input.max, 10) || 0,
+            });
+            const clamp = (value) => {
+                const { min, max } = range();
+                return Math.min(max, Math.max(min, value));
+            };
+            wrap.querySelectorAll('[data-step]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const step = parseInt(button.dataset.step, 10) || 0;
+                    const current = parseInt(input.value, 10);
+                    input.value = String(clamp((Number.isFinite(current) ? current : range().min) + step));
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+            });
+            input.addEventListener('blur', () => {
+                if (input.value === '') return;
+                const parsed = parseInt(input.value, 10);
+                input.value = String(clamp(Number.isFinite(parsed) ? parsed : range().min));
             });
         });
-
-        input.addEventListener('blur', normalize);
     }
 
     setupScrollPerformanceMode() {
@@ -368,20 +464,27 @@ export class LocalMatchConfigModal {
     }
 
     /**
-     * Render the per-player slot cards. Each card consolidates the slot's
-     * human/bot toggle, bot skill, handicap and team — preserving any prior
-     * selections across re-renders. All <select>s are enhanced to CosmicSelects.
+     * Render one seat card per player — human/bot, bot skill, handicap and team —
+     * preserving prior selections across re-renders. Every <select> is enhanced.
+     * @param {Object} [restore] saved values to prefer over the current ones
      */
-    renderSlotCards() {
+    renderSlotCards(restore = null) {
         const grid = this.container.querySelector('#player-slot-cards');
         if (!grid) return;
 
         const numPlayers = this.getNumPlayers();
+        grid.dataset.count = String(numPlayers);
 
         // Preserve current selections (read the native selects before clearing).
         const previous = {};
         grid.querySelectorAll('select').forEach((sel) => { previous[sel.name] = sel.value; });
+        if (restore) Object.assign(previous, restore);
 
+        // Retire the enhancers of the cards being replaced.
+        this._enhancers = this._enhancers.filter((enhancer) => {
+            if (enhancer?.element && grid.contains(enhancer.element)) return false;
+            return true;
+        });
         grid.innerHTML = '';
 
         for (let i = 1; i <= numPlayers; i++) {
@@ -390,84 +493,90 @@ export class LocalMatchConfigModal {
             const handicapName = `player${i}Handicap`;
             const teamName = `player${i}Team`;
             const defaultKind = i === 2 ? 'bot' : 'human';
-            const kindVal = previous[kindName] ?? defaultKind;
+            const kindVal = previous[kindName] === 'bot' || previous[kindName] === 'human'
+                ? previous[kindName]
+                : defaultKind;
 
-            // Resolve this slot's team: prior selection if still valid for the
+            // Resolve this seat's team: prior selection if still valid for the
             // current player count, else the player's own team (P_i -> Team i).
             let teamId = previous[teamName] !== undefined ? parseInt(previous[teamName], 10) : i - 1;
             if (!Number.isInteger(teamId) || teamId < 0 || teamId >= numPlayers) teamId = i - 1;
 
+            const savedSkill = parseInt(previous[skillName], 10);
+            const skill = savedSkill >= 1 && savedSkill <= BOT_SKILL_TIERS.length ? savedSkill : DEFAULT_BOT_SKILL;
+            const savedHandicap = parseInt(previous[handicapName], 10);
+            const handicap = savedHandicap >= 0 && savedHandicap <= 4 ? savedHandicap : 2;
+
             const card = document.createElement('div');
             card.className = 'lmc-slot';
-            card.style.setProperty('--slot-accent', teamAccent(teamId));
+            card.dataset.seat = String(i);
+            card.dataset.hue = seatHue(teamId);
 
             const skillOptions = BOT_SKILL_TIERS.map((tierLabel, index) => {
                 const tier = index + 1;
-                const selected = tier === (parseInt(previous[skillName], 10) || DEFAULT_BOT_SKILL);
-                return `<option value="${tier}" ${selected ? 'selected' : ''}>Lv${tier} · ${tierLabel}</option>`;
+                return `<option value="${tier}" ${tier === skill ? 'selected' : ''}>${tier} · ${tierLabel}</option>`;
             }).join('');
 
             // Team options A..D, capped at the player count (no point offering a
-            // team a player could never share). Default = the slot's own team.
+            // team a player could never share). Default = the seat's own team.
             const teamOptions = Array.from({ length: numPlayers }, (_, t) => {
                 const letter = String.fromCharCode(65 + t);
                 return `<option value="${t}" ${t === teamId ? 'selected' : ''}>Team ${letter}</option>`;
             }).join('');
 
+            const handicapOptions = ['Beginner', 'Apprentice', 'Intermediate', 'Master', 'Grandmaster']
+                .map((label, value) => `<option value="${value}" ${value === handicap ? 'selected' : ''}>${label}</option>`)
+                .join('');
+
             card.innerHTML = `
                 <div class="lmc-slot__head">
-                    <span class="lmc-slot__badge">P${i}</span>
-                    <span class="lmc-slot__name">Player ${i}</span>
+                    <span class="lmc-slot__badge" aria-hidden="true">P${i}</span>
+                    <span class="lmc-slot__name" id="lmc-seat-${i}-name">Player ${i}</span>
+                    <span class="lmc-slot__kind-icon" aria-hidden="true"></span>
                 </div>
-                <select class="lmc-slot__kind" name="${kindName}" data-cosmic-variant="segmented"
-                        aria-label="Player ${i} controller">
+                <select class="lmc-slot__kind" name="${kindName}" aria-label="Player ${i} plays as">
                     <option value="human" ${kindVal === 'human' ? 'selected' : ''}>Human</option>
                     <option value="bot" ${kindVal === 'bot' ? 'selected' : ''}>Bot</option>
                 </select>
-                <div class="cosmic-field lmc-slot__skill">
-                    <label for="${skillName}">Bot Skill</label>
+                <div class="sb-mp-field lmc-slot__skill">
+                    <label class="sb-mp-field__label" for="${skillName}">Bot skill</label>
                     <select id="${skillName}" name="${skillName}">${skillOptions}</select>
                 </div>
-                <div class="cosmic-field lmc-slot__handicap">
-                    <label for="${handicapName}">Handicap</label>
-                    <select id="${handicapName}" name="${handicapName}">
-                        <option value="0">Beginner</option>
-                        <option value="1">Apprentice</option>
-                        <option value="2">Intermediate</option>
-                        <option value="3">Master</option>
-                        <option value="4">Grandmaster</option>
-                    </select>
+                <div class="sb-mp-field lmc-slot__handicap">
+                    <label class="sb-mp-field__label" for="${handicapName}">Handicap</label>
+                    <select id="${handicapName}" name="${handicapName}">${handicapOptions}</select>
                 </div>
-                <div class="cosmic-field lmc-slot__team">
-                    <label for="${teamName}">Team</label>
-                    <select id="${teamName}" name="${teamName}">
-                        ${teamOptions}
-                    </select>
+                <div class="sb-mp-field lmc-slot__team">
+                    <label class="sb-mp-field__label" for="${teamName}">Team</label>
+                    <select id="${teamName}" name="${teamName}">${teamOptions}</select>
                 </div>
             `;
-
-            const handicapSelect = card.querySelector(`[name="${handicapName}"]`);
-            handicapSelect.value = previous[handicapName] ?? '2';
+            card.setAttribute('role', 'group');
+            card.setAttribute('aria-labelledby', `lmc-seat-${i}-name`);
 
             grid.appendChild(card);
 
             // Reflect bot/human state, then enhance every select on the card.
             const kindSelect = card.querySelector(`[name="${kindName}"]`);
             const skillSelect = card.querySelector(`[name="${skillName}"]`);
+            const handicapSelect = card.querySelector(`[name="${handicapName}"]`);
+            const nameEl = card.querySelector('.lmc-slot__name');
+            const kindIcon = card.querySelector('.lmc-slot__kind-icon');
             const applyKind = () => {
                 const isBot = kindSelect.value === 'bot';
                 card.classList.toggle('is-bot', isBot);
+                nameEl.textContent = isBot ? `Bot ${i}` : `Player ${i}`;
+                kindIcon.innerHTML = mpIcon(isBot ? 'bot' : 'human', 18);
                 skillSelect.disabled = !isBot;
                 skillSelect._cosmicSelect?.syncDisabled();
             };
             kindSelect.addEventListener('change', applyKind);
 
-            // Live-preview the runtime color: changing a slot's team recolors
-            // its accent to that team's color, so two slots on the same team
-            // show the same color the boards/garbage will use in-game.
+            // Live-preview the team colour: two seats on one team share a hue, as
+            // their boards, garbage and HUD will in play.
             const teamSelect = card.querySelector(`[name="${teamName}"]`);
             teamSelect.addEventListener('change', () => {
-                card.style.setProperty('--slot-accent', teamAccent(parseInt(teamSelect.value, 10)));
+                card.dataset.hue = seatHue(parseInt(teamSelect.value, 10));
             });
 
             this._enhancers.push(enhanceSegmented(kindSelect));
@@ -485,66 +594,28 @@ export class LocalMatchConfigModal {
         const valueHelp = this.container.querySelector('#end-value-help');
         if (!valueGroup || !valueLabel || !valueInput || !valueHelp) return;
 
-        const configs = {
-            frags: {
-                label: 'Frags to Win',
-                defaultValue: 7,
-                help: 'First player to reach this many frags wins',
-                min: 1,
-                max: 100,
-                placeholder: '7',
-            },
-            time: {
-                label: 'Time Limit (minutes)',
-                defaultValue: 3,
-                help: 'Player with highest score after this time wins',
-                min: 1,
-                max: 60,
-                placeholder: '3',
-            },
-            points: {
-                label: 'Score Target (thousands)',
-                defaultValue: 10,
-                help: 'First player to reach this score wins (e.g., 10 = 10,000 points)',
-                min: 1,
-                max: 999,
-                placeholder: '10',
-            },
-            lines: {
-                label: 'Lines to Clear',
-                defaultValue: 100,
-                help: 'First player to clear this many lines wins',
-                min: 10,
-                max: 999,
-                placeholder: '100',
-            },
-            never: {
-                label: 'No Win Condition',
-                defaultValue: 0,
-                help: 'Match continues until manually ended',
-                min: 0,
-                max: 0,
-                placeholder: '0',
-            },
-        };
-        const config = configs[condition];
+        const config = CONDITION_COPY[condition];
         if (!config) {
             console.warn(`Unknown end condition: ${condition}`);
             return;
         }
 
         if (condition === 'never') {
-            valueGroup.style.display = 'none';
+            valueGroup.hidden = true;
             return;
         }
 
-        valueGroup.style.display = '';
+        valueGroup.hidden = this.isInfinity();
         valueLabel.textContent = config.label;
-        valueInput.value = config.defaultValue;
         valueInput.min = config.min;
         valueInput.max = config.max;
-        valueInput.placeholder = config.placeholder;
+        valueInput.value = config.defaultValue;
+        valueInput.placeholder = String(config.defaultValue);
         valueHelp.textContent = config.help;
+    }
+
+    isInfinity() {
+        return this.container.querySelector('#match-mode')?.value === 'infinity-lms';
     }
 
     refreshFormState() {
@@ -554,36 +625,98 @@ export class LocalMatchConfigModal {
         const endCondition = this.container.querySelector('#end-condition');
         const valueGroup = this.container.querySelector('#end-value-group');
         const infinityRowsGroup = this.container.querySelector('#infinity-rows-group');
-        const startLevelGroup = this.container.querySelector('#start-level')?.closest('.form-group');
-        const levelProgressionGroup = this.container.querySelector('#level-progression')?.closest('.form-group');
+        const startLevelGroup = this.container.querySelector('#start-level-group');
+        const levelProgressionGroup = this.container.querySelector('#level-progression-group');
         if (!matchMode) return;
 
         const isInfinity = matchMode.value === 'infinity-lms';
         if (modeHelp) {
             modeHelp.textContent = isInfinity
-                ? 'Last player standing wins. Set the row cap below (100-1000)'
-                : 'Classic FFA with customizable win conditions';
+                ? 'A well up to 1,000 rows tall. The last player standing wins.'
+                : 'Win by frags, time, score or lines — you choose below.';
         }
-        if (endConditionGroup) endConditionGroup.style.display = isInfinity ? 'none' : '';
-        if (valueGroup) valueGroup.style.display = isInfinity ? 'none' : '';
-        if (infinityRowsGroup) infinityRowsGroup.style.display = isInfinity ? '' : 'none';
-        if (startLevelGroup) startLevelGroup.style.display = isInfinity ? 'none' : '';
-        if (levelProgressionGroup) levelProgressionGroup.style.display = isInfinity ? 'none' : '';
-
-        if (!isInfinity && endCondition) this.updateEndConditionUI(endCondition.value);
+        if (endConditionGroup) endConditionGroup.hidden = isInfinity;
+        if (valueGroup) valueGroup.hidden = isInfinity || endCondition?.value === 'never';
+        if (infinityRowsGroup) infinityRowsGroup.hidden = !isInfinity;
+        if (startLevelGroup) startLevelGroup.hidden = isInfinity;
+        if (levelProgressionGroup) levelProgressionGroup.hidden = isInfinity;
     }
 
     updateAttackStyleUI(style) {
         const help = this.container.querySelector('#attack-style-help');
         if (!help) return;
-        const helpText = {
-            standard: 'Classic garbage lines sent on multi-line clears',
-            blind: 'Blind: garbage lines plus a short blackout of the target board',
-            full_blind: 'Full Blind: a stronger, longer blackout attack',
-            hot_potato: 'Hold the potato too long and it detonates; clear lines to pass it',
-            peaceful: 'No attacks are sent — a calm, non-competitive match',
+        help.textContent = ATTACK_HELP[style] || ATTACK_HELP.standard;
+    }
+
+    readFormValues() {
+        const form = this.container.querySelector('#local-match-config-form');
+        const values = {};
+        if (form) new FormData(form).forEach((value, key) => { values[key] = value; });
+        return values;
+    }
+
+    /** Re-apply a remembered setup, accepting only values the form can offer. */
+    restoreSetup(saved) {
+        if (!saved) return;
+        const setSelect = (selector, value) => {
+            const select = this.container.querySelector(selector);
+            if (!select || value === undefined) return false;
+            const allowed = Array.from(select.options).some((option) => option.value === String(value));
+            if (!allowed || select.value === String(value)) return false;
+            select.value = String(value);
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
         };
-        help.textContent = helpText[style] || helpText.standard;
+        const setNumber = (selector, value) => {
+            const input = this.container.querySelector(selector);
+            const parsed = parseInt(value, 10);
+            if (!input || !Number.isFinite(parsed)) return;
+            const min = parseInt(input.min, 10);
+            const max = parseInt(input.max, 10);
+            if (parsed >= min && parsed <= max) input.value = String(parsed);
+        };
+
+        setSelect('#num-players', saved.numPlayers);
+        // Seat values: the re-render reads `restore` before falling back to defaults.
+        const seats = {};
+        Object.keys(saved).forEach((key) => {
+            if (/^player[1-4](Kind|BotDifficulty|Handicap|Team)$/.test(key)) seats[key] = String(saved[key]);
+        });
+        this.renderSlotCards(seats);
+
+        setSelect('#match-mode', saved.matchMode);
+        setSelect('#attack-style', saved.attackStyle);
+        setSelect('#end-condition', saved.endCondition);
+        setNumber('#end-condition-value', saved.endConditionValue);
+        setNumber('#infinity-max-rows', saved.infinityMaxRows);
+        setNumber('#start-level', saved.startLevel);
+        const progression = this.container.querySelector('#level-progression');
+        if (progression) progression.checked = saved.levelProgression === 'on';
+        const boring = this.container.querySelector('#boring-rules');
+        if (boring) boring.checked = saved.boringRules === 'on';
+    }
+
+    showError(message, field = null) {
+        const alert = this.container.querySelector('#local-match-error');
+        if (alert) {
+            alert.textContent = message;
+            alert.hidden = false;
+        }
+        this.container.querySelector('.sb-mp-sheet__footer')?.classList.add('has-error');
+        if (field) {
+            field.setAttribute('aria-invalid', 'true');
+            field.closest('details')?.setAttribute('open', '');
+            field.focus({ preventScroll: false });
+        }
+    }
+
+    clearError() {
+        const alert = this.container?.querySelector('#local-match-error');
+        if (!alert || alert.hidden) return;
+        alert.hidden = true;
+        alert.textContent = '';
+        this.container.querySelector('.sb-mp-sheet__footer')?.classList.remove('has-error');
+        this.container.querySelectorAll('[aria-invalid="true"]').forEach((el) => el.removeAttribute('aria-invalid'));
     }
 
     handleSubmit() {
@@ -593,25 +726,27 @@ export class LocalMatchConfigModal {
             return;
         }
 
-        const values = {};
-        new FormData(form).forEach((value, key) => { values[key] = value; });
+        const values = this.readFormValues();
         const config = buildLocalMatchConfig(values);
 
         if (config.numPlayers < 2 || config.numPlayers > 4) {
-            alert('Number of players must be between 2 and 4');
+            const seats = this.container.querySelector('#num-players')?.parentElement;
+            this.showError('Choose two, three or four players.', seats?.querySelector('.is-checked'));
             return;
         }
         if (!config.isInfinityLMS) {
             if (config.startLevel < 1 || config.startLevel > 9) {
-                alert('Starting level must be between 1 and 9');
+                this.showError('Choose a starting level from 1 to 9.', this.container.querySelector('#start-level'));
                 return;
             }
             if (config.endCondition !== 'never' && config.endConditionValue <= 0) {
-                alert('Win condition value must be greater than 0');
+                const unit = CONDITION_COPY[config.endCondition]?.unit || 'points';
+                this.showError(`Set how many ${unit} win the match.`, this.container.querySelector('#end-condition-value'));
                 return;
             }
         }
 
+        writeLastSetup(values);
         console.log('[LocalMatchConfig] Starting match with config:', config);
         this.hide();
         if (this.onStartMatch) this.onStartMatch(config);
@@ -627,15 +762,22 @@ export class LocalMatchConfigModal {
 
         const endCondition = this.container.querySelector('#end-condition');
         if (endCondition) this.updateEndConditionUI(endCondition.value);
+        this.renderSlotCards();
+        this.restoreSetup(readLastSetup());
         const attackStyle = this.container.querySelector('#attack-style');
         if (attackStyle) this.updateAttackStyleUI(attackStyle.value);
-        this.renderSlotCards();
         this.refreshFormState();
+        this.clearError();
+
+        openLayer(this.container, () => this.cancel());
+        // The remembered setup is usually the one to play: Start has focus.
+        focusSoon(() => this.container?.querySelector('#start-local-match'));
         console.log('[LocalMatchConfig] Modal shown');
     }
 
     hide() {
         if (!this.container) return;
+        closeLayer(this.container);
         this.container.classList.remove('show');
         this.container.classList.add('hidden');
         console.log('[LocalMatchConfig] Modal hidden');
@@ -655,6 +797,7 @@ export class LocalMatchConfigModal {
         }
         this._enhancers.forEach((enhancer) => enhancer?.destroy?.());
         this._enhancers = [];
+        if (this.container) closeLayer(this.container);
         if (this.container && this.container.parentNode) {
             this.container.parentNode.removeChild(this.container);
             this.container = null;

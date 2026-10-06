@@ -1,404 +1,107 @@
 # Serenity Hub
 
-> A unified, beautiful control panel for Serenity Mode
+The sheet that holds everything around a calm game: the world you play in (themes), what
+you hear (music), rhythms to follow (breathing worlds) and guided journeys (Hale sessions).
+It opens over Serenity mode (H, Y on a pad, or the lotus tile) and from the main menu.
 
-![Status](https://img.shields.io/badge/status-phase%201%20complete-success)
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+The visual language is **Keystone** — see
+[docs/MENU_UI_OVERHAUL_2026-10.md](../../../docs/MENU_UI_OVERHAUL_2026-10.md) for the
+tokens and primitives (`.sb-panel`, `.sb-key`, `.sb-btn`, `.sb-kbd`, `.sb-hints`, `.sb-chip`,
+`.sb-meter`, `.sb-toggle`). Breathing content follows
+[docs/BREATHING_OVERHAUL_2026-10.md](../../../docs/BREATHING_OVERHAUL_2026-10.md) and
+[docs/HALE_SESSIONS_2026-10.md](../../../docs/HALE_SESSIONS_2026-10.md).
 
----
+## Files
 
-## 📁 Directory Structure
+| File | Role |
+|------|------|
+| `SerenityHub.js` | The sheet: lotus tile, Hale sessions tile, backdrop, header, tab strip, footer hints, open/close, keyboard and gamepad routing, the controls overlay (`/` or Select). |
+| `ThemesTab.js` | Theme browser: labelled search, category chips, Random theme, card grid, the current theme, Tornado's live controls. |
+| `theme-card-interactions.js` | Pointer spotlight on theme cards (writes `--mx` / `--my`). |
+| `theme-thumbnail-manifest.js` | Resolves bundled theme thumbnails for the cards. |
+| `MusicTab.js` | Now playing, seek slider, transport, volume sliders, playlist. |
+| `BreathingTab.js` | The twelve breathing worlds and the guide's settings. |
+| `SessionsTab.js` | The Hale catalogue and its full-screen flow (prepare, countdown, complete). |
+| `hub-scroll-utils.js` | Wheel / gamepad scrolling of the shared `.hub-tab-content` scroller. |
+
+`SerenityMode.js` creates the hub for the mode; `main.js` (`initializeGlobalSerenityHub`)
+creates a shared one for the menu and other modes with a small `deps` wrapper.
+
+## Sheet structure
 
 ```
-/src/ui/serenity-hub/
-├── SerenityHub.js       # Main hub component (Phase 1 ✅)
-├── index.js             # Module exports
-├── README.md            # This file
-│
-├── BreathingTab.js      # The twelve breathing worlds (docs/BREATHING_OVERHAUL_2026-10.md)
-├── MusicTab.js          # Music player (Phase 3 ⏳)
-└── ThemesTab.js         # Theme browser (Phase 4 ⏳)
+.serenity-hub-backdrop                 solid night scrim, data-wheel-lock
+#serenity-hub-panel.serenity-hub       role=dialog aria-modal, data-tab=<current tab>
+  .hub-key                             the keystone in the open top-right corner
+  header.hub-panel-header
+    .hub-eyebrow                       "Breath · …", follows the tab
+    h2#hub-title                       "Serenity Hub" (focused on open)
+    button.hub-close-btn               "Close" + Esc / B keycaps
+  nav.hub-tabs[role=tablist]           #hub-tab-<id>, roving tabindex
+  .hub-tab-content                     the one scroller (is-scrolling mode, lazy panels)
+    #tab-<id>.tab-panel[role=tabpanel] aria-labelledby="hub-tab-<id>"
+  footer.hub-footer > ul.sb-hints      input hints (keyboard or pad by body class)
 ```
 
----
-
-## 🎯 Purpose
-
-The Serenity Hub provides a **unified interface** for controlling all Serenity Mode features:
-
-- 🧘 **Breathing** - twelve worlds and four guided Hale sessions
-- 🎵 **Music Player** - Ambient track controls
-- 🎨 **Themes** - Visual theme browser
-
----
-
-## ✨ Features
-
-### Phase 1 (Complete ✅)
-
-- ✅ Floating hub icon with auto-hide
-- ✅ Frosted glass panel with tabs
-- ✅ Smooth animations and transitions
-- ✅ Keyboard navigation
-- ✅ Screen reader support
-- ✅ Responsive design
-- ✅ Icon state indicators
-
-### Coming Soon
-
-- ⏳ Breathing techniques selector (Phase 2)
-- ⏳ Music player controls (Phase 3)
-- ⏳ Theme browser (Phase 4)
-
----
-
-## 🚀 Quick Start
-
-### Import
-
-```javascript
-import { SerenityHub } from './SerenityHub.js';
-```
-
-### Initialize
-
-```javascript
-const hub = new SerenityHub(serenityModeInstance);
-```
-
-### Use
-
-```javascript
-// Show/hide
-hub.show();
-hub.hide();
-hub.toggle();
-
-// Switch tabs
-hub.switchTab('breathing');
-hub.switchTab('music');
-hub.switchTab('themes');
-
-// Update icon state
-hub.updateIconState({
-  breathingActive: true,
-  musicPlaying: false
-});
-
-// Cleanup
-hub.destroy();
-```
-
----
-
-## 📖 API Reference
-
-### Constructor
-
-```javascript
-new SerenityHub(serenityMode)
-```
-
-**Parameters:**
-- `serenityMode` (Object) - Instance of SerenityMode
-
-**Returns:**
-- `SerenityHub` instance
-
----
-
-### Methods
-
-#### show()
-Opens the hub panel
-
-```javascript
-hub.show();
-```
-
-**Returns:** `void`
-
----
-
-#### hide()
-Closes the hub panel
-
-```javascript
-hub.hide();
-```
-
-**Returns:** `void`
-
----
-
-#### toggle()
-Opens if closed, closes if open
-
-```javascript
-hub.toggle();
-```
-
-**Returns:** `void`
-
----
-
-#### switchTab(tabName)
-Switches to specified tab
-
-```javascript
-hub.switchTab('breathing'); // or 'music' or 'themes'
-```
-
-**Parameters:**
-- `tabName` (String) - Tab to switch to
-
-**Returns:** `void`
-
----
-
-#### updateIconState(options)
-Updates hub icon animations
-
-```javascript
-hub.updateIconState({
-  breathingActive: true,
-  musicPlaying: false
-});
-```
-
-**Parameters:**
-- `options` (Object)
-  - `breathingActive` (Boolean) - Show breathing pulse
-  - `musicPlaying` (Boolean) - Show music wave
-
-**Returns:** `void`
-
----
-
-#### destroy()
-Cleans up all resources
-
-```javascript
-hub.destroy();
-```
-
-**Returns:** `void`
-
----
-
-### Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `isOpen` | Boolean | Whether panel is open |
-| `currentTab` | String | Current active tab |
-| `serenityMode` | Object | SerenityMode instance |
-| `hubIcon` | HTMLElement | Hub icon element |
-| `panel` | HTMLElement | Panel element |
-| `backdrop` | HTMLElement | Backdrop element |
-
----
-
-## 🎨 Styling
-
-All styles are in `/public/styles/serenity-hub.css`
-
-### CSS Variables
-
-```css
-:root {
-  /* Colors */
-  --hub-primary: rgba(255, 255, 255, 0.95);
-  --hub-secondary: rgba(255, 255, 255, 0.6);
-  --hub-accent: linear-gradient(135deg, #667eea, #764ba2);
-  --hub-background: rgba(255, 255, 255, 0.1);
-  --hub-border: rgba(255, 255, 255, 0.2);
-
-  /* Spacing */
-  --hub-spacing-xs: 8px;
-  --hub-spacing-sm: 12px;
-  --hub-spacing-md: 16px;
-  --hub-spacing-lg: 24px;
-
-  /* Timing */
-  --hub-transition-fast: 0.2s ease;
-  --hub-transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-```
-
----
-
-## 🔌 Integration
-
-### With SerenityMode
-
-```javascript
-// In SerenityMode.js
-import { SerenityHub } from '../../ui/serenity-hub/SerenityHub.js';
-
-class SerenityMode extends BaseGameMode {
-  async onStart() {
-    // Initialize hub
-    this.serenityHub = new SerenityHub(this);
-  }
-
-  _onKeyPress(event) {
-    if (event.key === 'h') {
-      this.serenityHub.toggle();
-    }
-  }
-
-  async onDeactivate() {
-    // Cleanup
-    this.serenityHub.destroy();
-  }
-}
-```
-
----
-
-## 🧪 Testing
-
-### Manual Testing
-
-```bash
-# Start dev server
-npm run dev
-
-# Open browser
-# → Go to Serenity Mode
-# → Move mouse (icon appears)
-# → Click icon or press 'H'
-# → Panel opens
-```
-
-### Checklist
-
-- [ ] Icon appears on mouse movement
-- [ ] Icon auto-hides after 3 seconds
-- [ ] Click icon opens panel
-- [ ] Press 'H' toggles panel
-- [ ] Tabs are clickable
-- [ ] ESC closes panel
-- [ ] Backdrop click closes panel
-
----
-
-## 📊 Performance
-
-| Metric | Value |
-|--------|-------|
-| Bundle size | ~8 KB |
-| First paint | < 16ms |
-| Animation FPS | 60 fps |
-| Memory | Minimal |
-| Memory leaks | None |
-
----
-
-## ♿ Accessibility
-
-### Features
-
-✅ **Keyboard Navigation**
-- Tab through controls
-- Enter/Space to activate
-- ESC to close
-
-✅ **Screen Reader Support**
-- ARIA roles and labels
-- Semantic HTML
-- Descriptive text
-
-✅ **Browser Support**
-- High contrast mode
-- Reduced motion mode
-- Dark mode
-
----
-
-## 📱 Responsive Design
-
-### Breakpoints
-
-| Size | Width | Features |
-|------|-------|----------|
-| Mobile | < 600px | Icon-only tabs, compact layout |
-| Tablet | 601-900px | Full labels, medium layout |
-| Desktop | > 900px | All features, full layout |
-
----
-
-## 🐛 Known Issues
-
-None! Phase 1 is complete.
-
----
-
-## 🔮 Future Enhancements
-
-### Phase 2: Breathing Tab
-- Technique selector with 7 options
-- Visual technique cards
-- Live preview
-- Info display
-
-### Phase 3: Music Tab
-- Now playing display
-- Playback controls
-- Volume sliders
-- Playlist browser
-
-### Phase 4: Themes Tab
-- Theme swatches grid
-- Category filtering
-- One-click switching
-- Auto-rotation
-
----
-
-## 📚 Documentation
-
-- [Implementation Plan](../../../SERENITY_HUB_IMPLEMENTATION_PLAN.md) - Full roadmap
-- [Architecture](../../../SERENITY_HUB_ARCHITECTURE.md) - Technical details
-- [Quick Start](../../../SERENITY_HUB_QUICK_START.md) - Getting started
-- [Phase 1 Report](../../../PHASE_1_COMPLETE.md) - Completion info
-
----
-
-## 🤝 Contributing
-
-### Adding a New Tab
-
-1. Create `YourTab.js` in this directory
-2. Export class with `constructor(hub)` and `render()` methods
-3. Import in `SerenityHub.js`
-4. Instantiate in `loadTabContent()`
-5. Add cleanup in `destroy()`
-
-See [Quick Start Guide](../../../SERENITY_HUB_QUICK_START.md) for details.
-
----
-
-## 📝 License
-
-MIT License - See project LICENSE file
-
----
-
-## 👤 Author
-
-Built with ❤️ as part of Serenity Blocks
-
----
-
-## 🎉 Status
-
-**Phase 1: Foundation - COMPLETE ✅**
-
-Ready for Phase 2! 🚀
-
----
-
-*Last updated: October 28, 2025*
+Tab ids are `themes`, `music`, `breathing`, `sessions` (see `HUB_TABS`). Each tab module
+builds its content on first use; `switchTab()` remembers each tab's scroll position.
+
+The `.serenity-hub` class is load-bearing: SerenityMode ignores clicks inside it (the
+sheet, the lotus and Hale tiles, the controls overlay). Keep it on anything new that floats
+over the game.
+
+## Input
+
+| Keyboard | Pad | Action |
+|----------|-----|--------|
+| H | Y | Open or close the hub |
+| ← → on the title or a tab, Home / End on a tab | LB / RB | Switch tabs |
+| Tab | D-pad | Move between controls |
+| Enter / Space | A | Choose |
+| Esc | B | Close (in search, Esc first clears the text) |
+| ← → / Page Up / Page Down / Home / End on the seek bar | | Seek 5 s / 30 s / to either end |
+
+While the search field has focus, typed letters stay in the field (Serenity's single-key
+shortcuts are not fired). Bindings for the controls overlay come from
+`settings.serenityKeyBindings` / `serenityGamepadBindings` over `DEFAULT_*_BINDINGS`.
+
+## Styles
+
+| Sheet | Scope |
+|-------|-------|
+| `public/styles/keystone-hub.css` | The sheet, Themes, Music, Hale tile, controls overlay, responsive, reduced motion. Loaded after `keystone.css` and `keystone-menu.css`. |
+| `public/styles/breathing-library.css` | Breathing tab (`.breath-lib`). |
+| `public/styles/breathwork-sessions.css` | Hale catalogue and `.hale-flow`. |
+| `public/styles/breathing-guide.css` | The guide's DOM chrome (`#breathing-guide`). |
+| `public/styles/serenity-hub.css` | Floating icons only (lotus, records, replays, navigator). |
+
+Rules stay scoped under `#serenity-hub-panel`, `.hale-flow` or `#breathing-guide`; do not add
+bare generic class rules (`.progress-fill`, `.section-title`, …) — they leak onto other
+screens. No `backdrop-filter`; motion is transform / opacity only, and everything has a
+`prefers-reduced-motion` path. Focus is drawn by the shared Keystone focus marker: give
+controls the cream `:focus-visible` outline and mark a control `data-keystone="none"` only
+when the marker looks wrong on it.
+
+## Performance
+
+- Panels render lazily; theme thumbnails hydrate through an IntersectionObserver rooted on
+  `.hub-tab-content` (first visible row eagerly).
+- Theme cards use `content-visibility: auto` (the current card switches it off so its
+  keystone can overhang).
+- While the content scrolls, `.is-scrolling` on the panel pauses hover and spotlight work.
+- Filtering updates existing cards in place (`applyThemeCardFilter`).
+
+## Tests
+
+`tests/unit/serenity-hub-performance.test.js`, `serenity-hub-hidden-work.test.js`,
+`music-tab-lifecycle.test.js`, `theme-selection-event-isolation.test.js`,
+`breathing-library.test.js`, `breathwork-sessions-presentation.test.js`,
+`hale-session-entry.test.js`, `breathing-guide.test.js`, `menu-coverage.test.js`.
+
+## Adding a tab
+
+1. Add an entry to `HUB_TABS` in `SerenityHub.js` (id, label, eyebrow, icon).
+2. Create `<Name>Tab.js` with `constructor(hub)`, `render()` returning markup, and
+   `destroy()`; build it in `loadTabContent()` and clean it up in `destroy()`.
+3. Give the tab a hue in `keystone-hub.css` (`#serenity-hub-panel[data-tab='<id>']`).
+4. Verify at 1600×900 and 390×844 before calling it done.

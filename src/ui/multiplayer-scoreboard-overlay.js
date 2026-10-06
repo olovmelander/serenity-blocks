@@ -1,6 +1,19 @@
 /**
  * MultiplayerScoreboardOverlay - Fullscreen scoreboard overlay for online multiplayer
+ * (Tab). Ranks and labels players by the same rules as the in-game scoreboard
+ * (scoreboard-metrics.js): the number that decides the match first.
  */
+import { escapeHtml } from '../utils/dom-safety.js';
+import {
+    METRIC_LABELS,
+    compareStandings,
+    goalText,
+    metricValue,
+    playerStatus,
+    primaryMetric,
+    secondaryMetric,
+} from './scoreboard-metrics.js';
+
 export class MultiplayerScoreboardOverlay {
     constructor() {
         this.container = null;
@@ -27,13 +40,7 @@ export class MultiplayerScoreboardOverlay {
                     <span class="scoreboard-overlay-goal"></span>
                 </div>
                 <div class="scoreboard-overlay-table">
-                    <div class="scoreboard-overlay-row header">
-                        <span class="col-rank">#</span>
-                        <span class="col-name">Player</span>
-                        <span class="col-frags">Frags</span>
-                        <span class="col-score">Score</span>
-                        <span class="col-status">Status</span>
-                    </div>
+                    <div class="scoreboard-overlay-row header"></div>
                     <div class="scoreboard-overlay-body"></div>
                 </div>
             </div>
@@ -43,6 +50,16 @@ export class MultiplayerScoreboardOverlay {
 
         this.listContainer = this.container.querySelector('.scoreboard-overlay-body');
         this.goalContainer = this.container.querySelector('.scoreboard-overlay-goal');
+        this.headerRow = this.container.querySelector('.scoreboard-overlay-row.header');
+        this._renderHeader();
+    }
+
+    _renderHeader() {
+        if (!this.headerRow) return;
+        this.headerRow.innerHTML = '<span class="col-rank">#</span><span class="col-name">Player</span>'
+            + `<span class="col-primary">${METRIC_LABELS[this.sortBy]}</span>`
+            + `<span class="col-secondary">${METRIC_LABELS[secondaryMetric(this.sortBy)]}</span>`
+            + '<span class="col-status">Status</span>';
     }
 
     setLocalPlayer(playerId) {
@@ -50,39 +67,24 @@ export class MultiplayerScoreboardOverlay {
     }
 
     setGoal(endCondition, value) {
-        const conditions = {
-            frags: `First to ${value} frags`,
-            time: `${value} minutes`,
-            points: `First to ${value}k points`,
-            lines: `First to ${value} lines`,
-            never: 'Endless',
-        };
-
-        this.goalText = conditions[endCondition] || '';
-        const sortBy = this._getSortField(endCondition);
-        if (sortBy !== this.sortBy) this.playersDirty = true;
-        this.sortBy = sortBy;
+        this.goalText = goalText(endCondition, value);
+        const sortBy = primaryMetric(endCondition);
+        if (sortBy !== this.sortBy) {
+            this.playersDirty = true;
+            this.sortBy = sortBy;
+            this._renderHeader();
+        }
 
         if (this.goalContainer) {
             this.goalContainer.textContent = this.goalText;
         }
     }
 
-    _getSortField(endCondition) {
-        if (endCondition === 'points') {
-            return 'score';
-        }
-        if (endCondition === 'lines') {
-            return 'lines';
-        }
-        return 'frags';
-    }
-
     updatePlayers(players) {
         if (!players || !Array.isArray(players)) return;
 
-        // Deterministic total order (see OnlineScoreboard): primary metric → frags →
-        // score → lines → stable id, so tied players never swap on input-order wobble.
+        // Deterministic total order (scoreboard-metrics.js), so tied players never swap
+        // on input-order wobble.
         this.players = [...players];
         this.playersDirty = true;
         // Network and RAF feeds continue while Tab's overlay is hidden. Keep the
@@ -90,13 +92,9 @@ export class MultiplayerScoreboardOverlay {
         if (this.isVisible()) this.render();
     }
 
+    /** The sort comparator: the shared total order for this match's deciding number. */
     _compare(a, b) {
-        const primary = (b[this.sortBy] || 0) - (a[this.sortBy] || 0);
-        if (primary) return primary;
-        if ((b.frags || 0) !== (a.frags || 0)) return (b.frags || 0) - (a.frags || 0);
-        if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
-        if ((b.lines || 0) !== (a.lines || 0)) return (b.lines || 0) - (a.lines || 0);
-        return String(a.id ?? '').localeCompare(String(b.id ?? ''));
+        return compareStandings(a, b, this.sortBy);
     }
 
     render() {
@@ -107,32 +105,32 @@ export class MultiplayerScoreboardOverlay {
         }
 
         // Dirty-check: skip the innerHTML rebuild when nothing rendered changed.
-        const sig = this.players.map((p) => `${p.id}|${p.name}|${p.frags || 0}|${p.score || 0}|`
-            + `${p.lines || 0}|${p.isAlive !== false ? 1 : 0}|${p.awaitingSpawn === true ? 1 : 0}|${p.id === this.localPlayerId ? 1 : 0}`).join('~');
+        const sig = this.sortBy + this.players.map((p) => `${p.id}|${p.name}|${p.frags || 0}|${p.score || 0}|`
+            + `${p.lines || 0}|${p.isAlive !== false ? 1 : 0}|${p.awaitingSpawn === true ? 1 : 0}|`
+            + `${p.id === this.localPlayerId ? 1 : 0}`).join('~');
         if (sig === this._lastRenderSig) return;
         this._lastRenderSig = sig;
 
+        const primary = this.sortBy;
+        const secondary = secondaryMetric(primary);
         const html = this.players.map((player, index) => {
             const isLocal = player.id === this.localPlayerId;
-            // A late joiner waiting to spawn is isAlive:false but NOT eliminated.
-            const isWaiting = player.awaitingSpawn === true;
-            const isDead = player.isAlive === false && !isWaiting;
-            let status = 'Alive';
-            if (isWaiting) status = 'Waiting';
-            else if (isDead) status = 'Dead';
+            const { label, isDead, isWaiting } = playerStatus(player);
 
             const classes = ['scoreboard-overlay-row'];
             if (isLocal) classes.push('local-player');
             if (isDead) classes.push('dead');
             if (isWaiting) classes.push('waiting');
 
+            const name = escapeHtml(player.name || '');
+            const you = isLocal ? '<span class="col-name__you">You</span>' : '';
             return `
                 <div class="${classes.join(' ')}">
                     <span class="col-rank">${index + 1}</span>
-                    <span class="col-name">${this._escapeHtml(player.name)}</span>
-                    <span class="col-frags">${player.frags || 0}</span>
-                    <span class="col-score">${player.score || 0}</span>
-                    <span class="col-status">${status}</span>
+                    <span class="col-name" title="${name}">${name}${you}</span>
+                    <span class="col-primary">${metricValue(player, primary)}</span>
+                    <span class="col-secondary">${metricValue(player, secondary)}</span>
+                    <span class="col-status">${label}</span>
                 </div>
             `;
         }).join('');
@@ -171,11 +169,5 @@ export class MultiplayerScoreboardOverlay {
         this.listContainer = null;
         this.goalContainer = null;
         this.players = [];
-    }
-
-    _escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text || '';
-        return div.innerHTML;
     }
 }

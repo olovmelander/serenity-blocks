@@ -101,7 +101,7 @@ import {
 } from './ui/cinematic-loading-overlay.js';
 // Cosmic Serenity main-menu micro-interactions (cursor spotlight + parallax tilt).
 // Side-effect import: self-initialises on the `start` modal.
-import './ui/menu-card-interactions.js';
+import './ui/main-menu/main-menu.js';
 
 // Audio imports
 import { SoundManager } from './audio/sound-manager.js';
@@ -2400,7 +2400,7 @@ class SerenityBlocks {
             this.serenityHub.setPauseResumeCallbacks(
                 () => {
                     const currentMode = this.gameModeManager?.getCurrentModeId();
-                    const pausableModes = ['single', 'local-multiplayer', 'infinity'];
+                    const pausableModes = ['single', 'local-multiplayer', 'infinity', 'odyssey'];
 
                     if (pausableModes.includes(currentMode)) {
                         console.log('[SerenityHub] Pausing game for mode:', currentMode);
@@ -2411,7 +2411,7 @@ class SerenityBlocks {
                 },
                 () => {
                     const currentMode = this.gameModeManager?.getCurrentModeId();
-                    const pausableModes = ['single', 'local-multiplayer', 'infinity'];
+                    const pausableModes = ['single', 'local-multiplayer', 'infinity', 'odyssey'];
 
                     if (pausableModes.includes(currentMode)) {
                         console.log('[SerenityHub] Resuming game for mode:', currentMode);
@@ -2520,7 +2520,7 @@ class SerenityBlocks {
                     this.modalManager.hideAll();
                 } catch (error) {
                     console.error('[Main] Failed to start game:', error);
-                    alert(`Failed to start game: ${error.message}`);
+                    window.dispatchEvent(new CustomEvent('serenity:toast', { detail: { type: 'error', message: `The game could not start. ${error.message}` } }));
                 }
             });
         }
@@ -2933,7 +2933,7 @@ class SerenityBlocks {
                 console.error('[Main] Failed to start game from card selection:', error);
                 releaseLoadingSurface();
                 dismissCinematicLoadingOverlay(300);
-                alert(`Failed to start game: ${error.message}`);
+                window.dispatchEvent(new CustomEvent('serenity:toast', { detail: { type: 'error', message: `The game could not start. ${error.message}` } }));
             }
         };
         window.addEventListener('startGameWithMode', startGameWithModeHandler);

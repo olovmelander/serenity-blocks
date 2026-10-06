@@ -2,7 +2,7 @@
  * @fileoverview Infinity Mode HUD Component
  * Displays height, build statistics, and milestone achievements.
  *
- * Visual language: Cosmic Serenity (violet glass). Accents are pulled from the
+ * Visual language: Keystone (docs/MENU_UI_OVERHAUL_2026-10.md). Accents are pulled from the
  * shared tokens in public/styles/cosmic-tokens.css via var() — they resolve inside
  * inline styles too. Semantics: VIOLET = brand/current, GOLD = records/summit,
  * TEAL = live progress. (Note: this HUD is built with inline styles, so it can't be
@@ -21,8 +21,8 @@ const C = {
     teal: 'var(--cs-teal)',
     tealRgb: 'var(--cs-teal-rgb)',
     ink: 'var(--cs-ink)',
-    label: 'rgba(196, 181, 253, 0.62)', // violet-grey muted label
-    hairline: 'rgba(167, 139, 250, 0.16)',
+    label: 'rgba(255, 246, 233, 0.5)', // Keystone faint cream label
+    hairline: 'rgba(255, 246, 233, 0.12)',
 };
 
 /**
@@ -108,7 +108,7 @@ export class InfinityHUD {
                 0 0 70px rgba(${C.violetRgb}, 0.10);
             backdrop-filter: blur(14px) saturate(135%);
             -webkit-backdrop-filter: blur(14px) saturate(135%);
-            font-family: 'Orbitron', 'Segoe UI', sans-serif;
+            font-family: 'Unbounded', 'Segoe UI', sans-serif;
             color: #fff;
             display: none;
             box-sizing: border-box;
@@ -186,7 +186,7 @@ export class InfinityHUD {
      */
     _labelCss(color = C.label) {
         return `
-            font-family: 'Space Mono', monospace;
+            font-family: 'Manrope', 'Segoe UI', sans-serif;
             font-size: clamp(8px, 0.8vw, 10px);
             color: ${color};
             margin-bottom: 8px;
@@ -236,7 +236,7 @@ export class InfinityHUD {
         this.rowUnit = document.createElement('div');
         this.rowUnit.textContent = 'ROWS';
         this.rowUnit.style.cssText = `
-            font-family: 'Space Mono', monospace;
+            font-family: 'Manrope', 'Segoe UI', sans-serif;
             font-size: clamp(9px, 0.9vw, 11px);
             color: rgba(${C.violetRgb}, 0.7);
             letter-spacing: 1.5px;
@@ -256,7 +256,7 @@ export class InfinityHUD {
         const topRowLabel = document.createElement('div');
         topRowLabel.textContent = 'TO CEILING';
         topRowLabel.style.cssText = `
-            font-family: 'Space Mono', monospace;
+            font-family: 'Manrope', 'Segoe UI', sans-serif;
             font-size: clamp(7px, 0.7vw, 9px);
             color: rgba(${C.goldRgb}, 0.7);
             letter-spacing: 1.2px;
@@ -268,7 +268,7 @@ export class InfinityHUD {
         this.topRowDisplay.className = 'top-row-value';
         this.topRowDisplay.textContent = '—';
         this.topRowDisplay.style.cssText = `
-            font-family: 'Space Mono', monospace;
+            font-family: 'Manrope', 'Segoe UI', sans-serif;
             font-size: clamp(13px, 1.3vw, 16px);
             font-weight: 700;
             color: ${C.gold};
@@ -307,7 +307,7 @@ export class InfinityHUD {
         this.progressText = document.createElement('div');
         this.progressText.textContent = '0%';
         this.progressText.style.cssText = `
-            font-family: 'Space Mono', monospace;
+            font-family: 'Manrope', 'Segoe UI', sans-serif;
             font-size: clamp(12px, 1.2vw, 15px);
             font-weight: 700;
             color: ${C.teal};
@@ -389,8 +389,8 @@ export class InfinityHUD {
     _milestoneCss(state) {
         const base = `
             padding: 4px 11px;
-            border-radius: 999px;
-            font-family: 'Space Mono', monospace;
+            border-radius: 7px;
+            font-family: 'Manrope', 'Segoe UI', sans-serif;
             font-size: clamp(9px, 0.9vw, 11px);
             font-weight: 700;
             letter-spacing: 0.5px;
@@ -445,10 +445,10 @@ export class InfinityHUD {
             font-size: clamp(10px, 1vw, 12px);
         `;
 
-        const cellLabel = `font-family: 'Space Mono', monospace; font-size: 0.78em; color: ${C.label}; text-transform: uppercase; letter-spacing: 0.6px;`;
-        const cellValue = `font-family: 'Space Mono', monospace; font-weight: 700; color: ${C.ink};`;
-        const goldLabel = `font-family: 'Space Mono', monospace; font-size: 0.78em; color: rgba(${C.goldRgb}, 0.7); text-transform: uppercase; letter-spacing: 0.6px;`;
-        const goldValue = `font-family: 'Space Mono', monospace; font-weight: 700; color: ${C.gold}; text-shadow: 0 0 14px rgba(${C.goldRgb}, 0.30);`;
+        const cellLabel = `font-family: 'Manrope', 'Segoe UI', sans-serif; font-size: 0.78em; color: ${C.label}; text-transform: uppercase; letter-spacing: 0.6px;`;
+        const cellValue = `font-family: 'Manrope', 'Segoe UI', sans-serif; font-weight: 700; color: ${C.ink};`;
+        const goldLabel = `font-family: 'Manrope', 'Segoe UI', sans-serif; font-size: 0.78em; color: rgba(${C.goldRgb}, 0.7); text-transform: uppercase; letter-spacing: 0.6px;`;
+        const goldValue = `font-family: 'Manrope', 'Segoe UI', sans-serif; font-weight: 700; color: ${C.gold}; text-shadow: 0 0 14px rgba(${C.goldRgb}, 0.30);`;
 
         this.statsDisplay.innerHTML = `
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
@@ -461,7 +461,7 @@ export class InfinityHUD {
             </div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px; grid-column: span 2;">
                 <span style="${cellLabel}">Score</span>
-                <span id="stat-score" style="font-family: 'Space Mono', monospace; font-size: 1.5em; font-weight: 700; color: ${C.violet}; text-shadow: 0 0 16px rgba(${C.violetRgb}, 0.45);">0</span>
+                <span id="stat-score" style="font-family: 'Manrope', 'Segoe UI', sans-serif; font-size: 1.5em; font-weight: 700; color: ${C.violet}; text-shadow: 0 0 16px rgba(${C.violetRgb}, 0.45);">0</span>
             </div>
             <div style="grid-column: span 2; height: 1px; background: ${C.hairline}; margin: 4px 0;"></div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
@@ -525,7 +525,7 @@ export class InfinityHUD {
             left: 50%;
             transform: translate(-50%, -50%);
             padding: 24px 40px;
-            font-family: 'Orbitron', monospace;
+            font-family: 'Unbounded', sans-serif;
             font-size: 48px;
             font-weight: 900;
             color: #ffffff;

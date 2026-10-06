@@ -1,7 +1,9 @@
 /* =================================================================================
  * COSMIC SERENITY — In-game online HUD + Match Results (online multiplayer)
  * ---------------------------------------------------------------------------------
- * Loaded AFTER multiplayer-ui.css. Phase 5 of the online-MP redesign. TEAL accent.
+ * Loaded AFTER multiplayer-ui.css. Phase 5 of the online-MP redesign. Colour and
+ * type now come from keystone-multiplayer.css (#online-multiplayer-container); the
+ * layout values here are what OnlineMultiplayerMode measures. No backdrop blur.
  *
  * SAFE-BY-DESIGN:
  *  - Re-points the existing `--round-start-accent-rgb` HUD accent var to cosmic teal
@@ -11,8 +13,6 @@
  *    (gameplay-critical readability).
  *  - The lobby (`#lobby-waiting-room`) keeps its own id-scoped styling (id > class),
  *    so these `.online-game-area` rules don't disturb it.
- *  - The Match Results modal is inline-styled, so a few rules use !important to beat
- *    non-important inline styles (no JS changes needed).
  * ============================================================================== */
 
 /* Unify the HUD accent to the exact cosmic teal */
@@ -42,8 +42,6 @@
         rgba(9, 11, 22, 0.90);
     border: 1px solid rgba(94, 234, 212, 0.20);
     border-radius: 14px;
-    backdrop-filter: blur(12px) saturate(130%);
-    -webkit-backdrop-filter: blur(12px) saturate(130%);
     box-shadow: 0 14px 36px rgba(0, 0, 0, 0.40);
 }
 
@@ -85,102 +83,8 @@
     box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.18);
 }
 
-/* =================================================================================
- * PHASE B — Scoreboard clarity: gold leader, YOU highlight, status pills,
- * emphasised frags. Keeps each player's --player-row-color as the left bar.
- * ============================================================================== */
-.online-game-area .scoreboard-list {
-    gap: 5px;
-}
-
-/* Slightly wider status column so the pill fits */
-.online-game-area .scoreboard-row,
-.online-game-area .scoreboard-columns-header {
-    grid-template-columns: 26px 1fr 46px 52px 58px;
-}
-
-.online-game-area .scoreboard-row {
-    padding: 7px 10px;
-    border-radius: 9px;
-    background: rgba(255, 255, 255, 0.03);
-    border-left: 3px solid var(--player-row-color, rgba(94, 234, 212, 0.5));
-}
-
-.online-game-area .scoreboard-row::before {
-    opacity: 0.08;
-}
-
-/* #1 leader — gold accent */
-.online-game-area .scoreboard-row:first-child {
-    background:
-        linear-gradient(90deg, rgba(252, 209, 122, 0.10), transparent 60%),
-        rgba(255, 255, 255, 0.03);
-    box-shadow: inset 0 0 0 1px rgba(252, 209, 122, 0.22);
-}
-
-/* YOU — teal highlight + inline tag */
-.online-game-area .scoreboard-row.local-player {
-    background: rgba(94, 234, 212, 0.12);
-    border-left-width: 4px;
-    box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.35);
-}
-
-.online-game-area .scoreboard-row.local-player::before {
-    opacity: 0.12;
-}
-
-.online-game-area .scoreboard-row.local-player .col-name::after {
-    content: ' · YOU';
-    color: #5eead4;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-}
-
-/* Columns */
-.online-game-area .scoreboard-row .col-name {
-    color: #eef3ff;
-    font-size: 11.5px;
-}
-
-.online-game-area .scoreboard-row .col-frags {
-    color: #5eead4;
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-}
-
-.online-game-area .scoreboard-row .col-score {
-    color: rgba(211, 219, 245, 0.60);
-    font-variant-numeric: tabular-nums;
-}
-
-/* Status → pills */
-.online-game-area .scoreboard-row .col-status {
-    justify-self: end;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    border: 1px solid transparent;
-}
-
-.online-game-area .scoreboard-row:not(.dead) .col-status {
-    background: rgba(94, 234, 212, 0.12);
-    border-color: rgba(94, 234, 212, 0.40);
-    color: #5eead4;
-}
-
-.online-game-area .scoreboard-row.dead {
-    opacity: 0.55;
-    filter: grayscale(0.6);
-}
-
-.online-game-area .scoreboard-row.dead .col-status {
-    background: rgba(255, 120, 120, 0.12);
-    border-color: rgba(255, 120, 120, 0.40);
-    color: #ff9a9a;
-}
+/* PHASE B (scoreboard rows: columns, You tag, status tiles) moved to the scoreboard
+ * section of keystone-multiplayer.css with the scoreboard's rebuild. */
 
 /* =================================================================================
  * PHASE C — Opponent boards + spectator controls
@@ -191,8 +95,6 @@
     background: rgba(9, 11, 22, 0.88);
     border: 1px solid rgba(94, 234, 212, 0.20);
     border-radius: 12px;
-    backdrop-filter: blur(10px) saturate(130%);
-    -webkit-backdrop-filter: blur(10px) saturate(130%);
 }
 
 .online-game-area .watch-btn {
@@ -260,12 +162,7 @@
     color: #5eead4;
 }
 
-.online-game-area .opponent-mini-avatar {
-    border-color: rgba(255, 255, 255, 0.50);
-}
-
 /* Eliminated opponent → unmistakably out */
-.online-game-area .player-board.eliminated,
 .online-game-area .online-main-board.eliminated {
     opacity: 0.42;
     filter: grayscale(0.7);
@@ -284,8 +181,6 @@
     background: rgba(9, 11, 22, 0.88);
     border: 1px solid rgba(94, 234, 212, 0.22);
     color: #cbd5e0;
-    backdrop-filter: blur(8px) saturate(130%);
-    -webkit-backdrop-filter: blur(8px) saturate(130%);
 }
 
 .online-game-area .watch-grid {
@@ -300,125 +195,3 @@
  * (The bottom 5-icon stat row appears to be a testLobby mock artifact — not
  * restyled/labelled until its real meaning is confirmed.)
  * ============================================================================== */
-.online-game-area .online-next-queue-wrapper {
-    position: relative;
-}
-
-.online-game-area .online-next-queue-wrapper::before {
-    content: 'NEXT';
-    position: absolute;
-    top: -7px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 1px 10px;
-    border-radius: 999px;
-    background: rgba(9, 11, 22, 0.92);
-    border: 1px solid rgba(94, 234, 212, 0.32);
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    color: #5eead4;
-    z-index: 4;
-    pointer-events: none;
-}
-
-/* =================================================================================
- * MATCH RESULTS modal (#match-results-modal). Inline-styled → !important overrides.
- * Gold "Champion" section is intentionally kept (semantic).
- * ============================================================================== */
-
-#match-results-modal.online-game-area.results-mode {
-    background:
-        radial-gradient(90% 60% at 50% -8%, rgba(94, 234, 212, 0.07), transparent 60%),
-        linear-gradient(180deg, rgba(11, 14, 26, 0.96), rgba(7, 8, 16, 0.97)) !important;
-}
-
-#match-results-modal .results-left-panel {
-    border-color: rgba(94, 234, 212, 0.22) !important;
-}
-
-#match-results-modal .results-center-panel {
-    border-color: rgba(94, 234, 212, 0.20) !important;
-}
-
-#match-results-modal .section-title {
-    color: #5eead4 !important;
-}
-
-/* Performance stats table */
-#match-results-modal .stats-table th {
-    background: rgba(94, 234, 212, 0.10);
-    color: #5eead4;
-}
-
-/* Action buttons */
-#match-results-modal .btn-primary {
-    background: linear-gradient(135deg, #5eead4, #7fdcff);
-    border: 1px solid rgba(94, 234, 212, 0.50);
-    color: #08201c;
-    box-shadow: 0 4px 16px rgba(94, 234, 212, 0.30);
-}
-
-#match-results-modal .btn-primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 7px 22px rgba(94, 234, 212, 0.48);
-}
-
-#match-results-modal .btn-secondary {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(8, 10, 23, 0.5));
-    border: 1px solid rgba(var(--cs-soft-rgb), 0.20);
-    color: #eef3ff;
-}
-
-#match-results-modal .btn-secondary:hover {
-    border-color: rgba(94, 234, 212, 0.50);
-    background: rgba(94, 234, 212, 0.10);
-    color: #fff;
-}
-
-#match-results-modal .btn-danger {
-    background:
-        linear-gradient(180deg, rgba(255, 118, 118, 0.15), rgba(255, 80, 80, 0.08)),
-        rgba(8, 10, 23, 0.46);
-    border: 1px solid rgba(255, 118, 118, 0.40);
-    color: #ffb6b6;
-}
-
-#match-results-modal .btn-danger:hover {
-    border-color: rgba(255, 148, 148, 0.74);
-    color: #ffd4d4;
-    box-shadow: 0 0 18px rgba(255, 100, 100, 0.25);
-}
-
-#match-results-modal .btn-primary:focus-visible,
-#match-results-modal .btn-secondary:focus-visible,
-#match-results-modal .btn-danger:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.28);
-}
-
-/* Results chat input + send (override inline purple) */
-#match-results-modal #results-chat-input {
-    background: rgba(12, 15, 30, 0.60) !important;
-    border: 1px solid rgba(var(--cs-soft-rgb), 0.20) !important;
-    color: #eef3ff !important;
-    border-radius: 9px !important;
-}
-
-#match-results-modal #results-chat-input:focus {
-    outline: none;
-    border-color: rgba(94, 234, 212, 0.85) !important;
-    box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.18) !important;
-}
-
-#match-results-modal #results-chat-send {
-    background: linear-gradient(135deg, #5eead4, #7fdcff) !important;
-    color: #08201c !important;
-    border-radius: 9px !important;
-}
-
-#match-results-modal .chat-input-row {
-    background: rgba(6, 8, 18, 0.4) !important;
-    border-top: 1px solid rgba(94, 234, 212, 0.12);
-}

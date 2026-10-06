@@ -1,6 +1,8 @@
 /**
  * @fileoverview Settings Management for Serenity Blocks
- * Handles game settings, persistence to localStorage, and settings UI
+ * Handles game settings, persistence to localStorage, and settings UI.
+ * The Settings sheet (also the pause sheet in a game) is a Keystone sheet:
+ * public/styles/keystone-settings.css, docs/MENU_UI_OVERHAUL_2026-10.md.
  */
 
 import { DEFAULT_SETTINGS } from '../core/constants.js';
@@ -285,6 +287,57 @@ function snapshotSettings(settings) {
 }
 
 const captureSessions = new WeakMap();
+
+// The tile whose capture just ended, so the press that finished it (a controller's
+// A, read by menu navigation a frame later) cannot start a new capture at once.
+let lastCapture = { element: null, at: 0 };
+const CAPTURE_SETTLE_MS = 300;
+
+function noteCaptureEnded(element) {
+    const now = Date.now();
+    lastCapture = { element, at: now };
+    const modal = typeof document !== 'undefined' ? document.getElementById?.('settings-modal') : null;
+    modal?.setAttribute?.('data-capture-ended', String(now));
+}
+
+function captureJustEnded(element) {
+    return lastCapture.element === element && Date.now() - lastCapture.at < CAPTURE_SETTLE_MS;
+}
+
+const KEY_NAMES = {
+    ' ': ['Space', 'Space'],
+    Space: ['Space', 'Space'],
+    ArrowLeft: ['\u2190', 'Left arrow'],
+    ArrowRight: ['\u2192', 'Right arrow'],
+    ArrowUp: ['\u2191', 'Up arrow'],
+    ArrowDown: ['\u2193', 'Down arrow'],
+    Escape: ['Esc', 'Escape'],
+    Control: ['Ctrl', 'Control'],
+    Backspace: ['\u232b', 'Backspace'],
+};
+
+/**
+ * How a bound key is drawn on its keycap, and how it is read aloud.
+ * @param {string} key - KeyboardEvent.key as stored in the bindings
+ * @returns {{text: string, spoken: string}}
+ */
+export function describeKey(key) {
+    if (KEY_NAMES[key]) return { text: KEY_NAMES[key][0], spoken: KEY_NAMES[key][1] };
+    const name = String(key ?? '');
+    if (name.length === 1) return { text: name.toUpperCase(), spoken: name.toUpperCase() };
+    return { text: name, spoken: name };
+}
+
+function nameBinding(element, spoken) {
+    const label = element.dataset?.actionLabel;
+    if (label) element.setAttribute?.('aria-label', `${label}: ${spoken}`);
+}
+
+function renderKeyBinding(element, key) {
+    const { text, spoken } = describeKey(key);
+    element.textContent = text;
+    nameBinding(element, spoken);
+}
 
 export function cancelSettingsCapture(settingsManager) {
     const cancel = captureSessions.get(settingsManager);
@@ -641,7 +694,7 @@ export function handleKeybinding(event, element, settingsManager, updateCallback
     // Check if key is already used for another action in the same player's bindings
     if (Object.values(currentBindings).includes(key) && currentBindings[action] !== key) {
         // Revert to original key
-        element.textContent = currentBindings[action];
+        renderKeyBinding(element, currentBindings[action]);
         element.classList.remove('listening');
         return;
     }
@@ -653,7 +706,7 @@ export function handleKeybinding(event, element, settingsManager, updateCallback
     };
 
     settingsManager.update({ [bindingsKey]: newBindings });
-    element.textContent = key;
+    renderKeyBinding(element, key);
     element.classList.remove('listening');
 
     settingsManager.save();
@@ -682,6 +735,24 @@ const GAMEPAD_BUTTON_NAMES = {
     15: 'D-Right',
     16: 'Home',
 };
+
+function renderPadBinding(element, buttonIndex) {
+    const name = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
+    element.textContent = name;
+    nameBinding(element, name);
+}
+
+/** Buttons already down when a capture starts (the press that opened it). */
+function readHeldButtons() {
+    const held = new Set();
+    const gamepads = (typeof navigator !== 'undefined' && navigator.getGamepads?.()) || [];
+    Array.from(gamepads).forEach((gamepad) => {
+        gamepad?.buttons?.forEach((button, index) => {
+            if (button?.pressed || button?.value > 0.3) held.add(`${gamepad.index}:${index}`);
+        });
+    });
+    return held;
+}
 
 function getGamepadBindingContext(elementId) {
     if (elementId.startsWith('gamepad-serenity-')) {
@@ -716,26 +787,33 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
     cancelSettingsCapture(settingsManager);
     const { action, bindingsKey, defaultBindings } = getGamepadBindingContext(element.id);
     const currentBindings = settingsManager.get()[bindingsKey] || defaultBindings;
+    // A press that is still held from opening the capture (A on the tile) is not an answer.
+    const heldAtStart = readHeldButtons();
     let pollInterval = null;
     let timeout = null;
     const cancel = () => {
         clearInterval(pollInterval);
         clearTimeout(timeout);
         element.classList.remove('listening');
-        const button = (settingsManager.get()[bindingsKey] || defaultBindings)[action];
-        element.textContent = GAMEPAD_BUTTON_NAMES[button] || `Button ${button}`;
+        renderPadBinding(element, (settingsManager.get()[bindingsKey] || defaultBindings)[action]);
+        noteCaptureEnded(element);
         if (captureSessions.get(settingsManager) === cancel) captureSessions.delete(settingsManager);
     };
     captureSessions.set(settingsManager, cancel);
     element.classList.add('listening');
-    element.textContent = 'Press a button...';
+    element.textContent = 'Press a button\u2026';
     pollInterval = setInterval(() => {
         const gamepads = navigator.getGamepads?.() || [];
         for (const gamepad of gamepads) {
             if (!gamepad) continue;
             for (let index = 0; index < gamepad.buttons.length; index++) {
                 const button = gamepad.buttons[index];
-                if (!(button.pressed || button.value > 0.3)) continue;
+                const heldKey = `${gamepad.index}:${index}`;
+                if (!(button.pressed || button.value > 0.3)) {
+                    heldAtStart.delete(heldKey);
+                    continue;
+                }
+                if (heldAtStart.has(heldKey)) continue;
                 if (!Object.values(currentBindings).includes(index) || currentBindings[action] === index) {
                     settingsManager.update({
                         [bindingsKey]: {
@@ -760,21 +838,26 @@ export function startKeyboardBindingCapture(element, settingsManager, updateCall
     let timeout = null;
     let onKeydown = null;
     const cancel = () => {
-        document.removeEventListener('keydown', onKeydown);
+        document.removeEventListener('keydown', onKeydown, { capture: true });
         clearTimeout(timeout);
         element.classList.remove('listening');
-        element.textContent = (settingsManager.get()[bindingsKey] || defaultBindings)[action];
+        renderKeyBinding(element, (settingsManager.get()[bindingsKey] || defaultBindings)[action]);
+        noteCaptureEnded(element);
         if (captureSessions.get(settingsManager) === cancel) captureSessions.delete(settingsManager);
     };
     onKeydown = (event) => {
+        // The capture owns this press: Escape cancels the capture only (it no longer
+        // also closes Settings), and no other key handler sees the new binding.
+        event.stopImmediatePropagation?.();
         if (event.key === 'Escape') event.preventDefault();
         else handleKeybinding(event, element, settingsManager, updateCallback);
         cancel();
     };
     captureSessions.set(settingsManager, cancel);
     element.classList.add('listening');
-    element.textContent = 'Press a key...';
-    document.addEventListener('keydown', onKeydown);
+    element.textContent = 'Press a key\u2026';
+    // Capture phase, so it runs before the document handlers that close Settings.
+    document.addEventListener('keydown', onKeydown, { capture: true });
     timeout = setTimeout(cancel, 10000);
     return cancel;
 }
@@ -798,8 +881,21 @@ export function updateGamepadControlsDisplay(settings) {
             const element = document.getElementById(`${descriptor.prefix}${action}`);
             if (!element || bindings?.[action] === undefined) return;
 
-            const buttonIndex = bindings[action];
-            element.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
+            renderPadBinding(element, bindings[action]);
+        });
+    });
+}
+
+/** Refresh the Player 1 and Player 2 keyboard tiles (after a reset or a capture). */
+function updateKeyboardControlsDisplay(settings) {
+    [
+        ['keyBindings', 'key-', DEFAULT_CONFIG.keyBindings],
+        ['player2KeyBindings', 'key-p2-', DEFAULT_CONFIG.player2KeyBindings],
+    ].forEach(([key, prefix, fallback]) => {
+        const bindings = settings[key] || fallback;
+        KEYBOARD_BINDING_ACTIONS.forEach((action) => {
+            const element = document.getElementById(`${prefix}${action}`);
+            if (element && bindings[action]) renderKeyBinding(element, bindings[action]);
         });
     });
 }
@@ -809,7 +905,7 @@ function updateSerenityControlsDisplay(settings) {
     SERENITY_KEYBOARD_BINDING_ACTIONS.forEach((action) => {
         const element = document.getElementById(`key-serenity-${action}`);
         if (element && keyBindings[action]) {
-            element.textContent = keyBindings[action];
+            renderKeyBinding(element, keyBindings[action]);
         }
     });
 
@@ -818,7 +914,7 @@ function updateSerenityControlsDisplay(settings) {
         const element = document.getElementById(`gamepad-serenity-${action}`);
         const buttonIndex = gamepadBindings[action];
         if (element && buttonIndex !== undefined) {
-            element.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
+            renderPadBinding(element, buttonIndex);
         }
     });
 }
@@ -836,11 +932,36 @@ export function activateSettingsTab(settingsModal, targetTab) {
         return false;
     }
 
-    settingsModal.querySelectorAll('.settings-tab').forEach((item) => item.classList.remove('active'));
+    settingsModal.querySelectorAll('.settings-tab').forEach((item) => {
+        item.classList.remove('active');
+        // Tab pattern: one tab in the Tab order, the selection announced.
+        item.setAttribute?.('aria-selected', 'false');
+        item.setAttribute?.('tabindex', '-1');
+    });
     settingsModal.querySelectorAll('.settings-tab-content').forEach((item) => item.classList.remove('active'));
     tab.classList.add('active');
+    tab.setAttribute?.('aria-selected', 'true');
+    tab.setAttribute?.('tabindex', '0');
     settingsModal.querySelector(`#settings-${targetTab}`)?.classList.add('active');
+    // A new section starts at its top, not where the last one was scrolled to.
+    const scroller = settingsModal.querySelector('.settings-scroll-container');
+    if (scroller) scroller.scrollTop = 0;
     return true;
+}
+
+/**
+ * Move to the previous or next settings section (Q/E, LB/RB, arrow keys on the tabs).
+ * @param {HTMLElement} settingsModal
+ * @param {number} direction - -1 or 1
+ * @returns {HTMLElement|null} the newly selected tab
+ */
+export function stepSettingsTab(settingsModal, direction) {
+    const tabs = Array.from(settingsModal?.querySelectorAll?.('.settings-tab') || []);
+    if (!tabs.length) return null;
+    const current = tabs.findIndex((tab) => tab.classList.contains('active'));
+    const next = tabs[(current + direction + tabs.length) % tabs.length];
+    activateSettingsTab(settingsModal, next.getAttribute('data-tab'));
+    return next;
 }
 
 export function setupSettingsTabs() {
@@ -876,9 +997,13 @@ export function activateControlsSubtab(controlsTab, targetSubtab) {
         return false;
     }
 
-    controlsTab.querySelectorAll('.controls-subtab').forEach((item) => item.classList.remove('active'));
+    controlsTab.querySelectorAll('.controls-subtab').forEach((item) => {
+        item.classList.remove('active');
+        item.removeAttribute?.('aria-current');
+    });
     controlsTab.querySelectorAll('.controls-subtab-content').forEach((item) => item.classList.remove('active'));
     subtab.classList.add('active');
+    subtab.setAttribute?.('aria-current', 'true');
     controlsTab.querySelector(`#controls-${targetSubtab}`)?.classList.add('active');
     return true;
 }
@@ -901,6 +1026,138 @@ export function setupControlsSubTabs() {
         const controlsTab = document.getElementById('settings-controls');
         activateControlsSubtab(controlsTab, targetSubtab);
     });
+}
+
+/** Fill a range input's track up to its value (the spectrum part of the slider). */
+export function syncRangeFill(slider) {
+    if (!slider) return;
+    const min = Number(slider.min);
+    const max = Number(slider.max);
+    const value = Number(slider.value);
+    const low = Number.isFinite(min) ? min : 0;
+    const high = Number.isFinite(max) && max > low ? max : 100;
+    const ratio = Number.isFinite(value) ? (value - low) / (high - low) : 0;
+    slider.style?.setProperty?.('--sb-fill', `${Math.round(Math.min(1, Math.max(0, ratio)) * 1000) / 10}%`);
+}
+
+/** A binding tile is a button: named by its row, and Enter or Space starts a capture. */
+function prepareBindingTile(input, listen) {
+    input.setAttribute?.('role', 'button');
+    const label = document.querySelector?.(`label[for="${input.id}"]`)?.textContent?.trim();
+    if (label && input.dataset) input.dataset.actionLabel = label;
+    listen(input, 'keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        input.click();
+    });
+}
+
+const PAUSED_MODE_NAMES = {
+    single: 'Single Player',
+    infinity: 'Infinity',
+    serenity: 'Serenity',
+    odyssey: 'Odyssey',
+    'local-multiplayer': 'Local Versus',
+    'online-multiplayer': 'Online Versus',
+};
+
+/**
+ * Settings doubles as the pause sheet: from the main menu it is just Settings; while a
+ * game is in progress it gains the Paused strip with Resume and Main menu.
+ * @param {HTMLElement} settingsModal
+ * @returns {'pause'|'menu'}
+ */
+export function applySettingsContext(settingsModal) {
+    if (!settingsModal) return 'menu';
+    const onMainMenu = Boolean(document.body?.classList?.contains('start-modal-open'));
+    const app = typeof window !== 'undefined' ? window.serenityBlocks : null;
+    const mode = onMainMenu ? null : app?.gameModeManager?.getCurrentMode?.();
+    const context = mode?.isRunning ? 'pause' : 'menu';
+    settingsModal.setAttribute?.('data-context', context);
+    if (context !== 'pause') return context;
+
+    const modeId = mode.getModeId?.();
+    const online = modeId === 'online-multiplayer';
+    const name = PAUSED_MODE_NAMES[modeId];
+    const set = (selector, text) => {
+        const element = settingsModal.querySelector?.(selector);
+        if (element) element.textContent = text;
+    };
+    set('.settings-pause__title', online ? 'Match in progress' : 'Paused');
+    let note = name ? `${name} waits where you left it.` : 'Your game waits where you left it.';
+    if (online) note = 'Online matches keep going while Settings is open.';
+    set('#settings-pause-note', note);
+    set('#settings-resume-btn > span', online ? 'Back to the match' : 'Resume');
+    return context;
+}
+
+/** Sheet behaviour: section keys, the pause strip, slider fills. */
+function setupSettingsSheet(listen) {
+    const settingsModal = document.getElementById('settings-modal');
+    if (!settingsModal) return;
+
+    // Arrow keys move along the tab strip and select as they go (WAI-ARIA tabs).
+    const tabList = settingsModal.querySelector?.('.settings-tabs');
+    if (tabList) {
+        listen(tabList, 'keydown', (event) => {
+            const tab = event.target?.closest?.('.settings-tab');
+            if (!tab) return;
+            const tabs = Array.from(tabList.querySelectorAll('.settings-tab'));
+            let next = null;
+            if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+                next = stepSettingsTab(settingsModal, event.key === 'ArrowRight' ? 1 : -1);
+            } else if (event.key === 'Home' || event.key === 'End') {
+                next = event.key === 'Home' ? tabs[0] : tabs[tabs.length - 1];
+                activateSettingsTab(settingsModal, next.getAttribute('data-tab'));
+            } else {
+                return;
+            }
+            event.preventDefault();
+            next?.focus();
+        });
+    }
+
+    // Q and E switch sections from anywhere in the sheet (LB and RB on a controller).
+    if (typeof document.addEventListener === 'function') {
+        listen(document, 'keydown', (event) => {
+            if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+            const key = String(event.key || '').toLowerCase();
+            if ((key !== 'q' && key !== 'e') || !settingsModal.classList.contains('visible')) return;
+            if (event.target?.closest?.('select, textarea, input:not([type="range"]):not([type="checkbox"])')) return;
+            event.preventDefault();
+            stepSettingsTab(settingsModal, key === 'e' ? 1 : -1)?.focus({ preventScroll: true });
+        });
+    }
+
+    // Resume does exactly what Close does (modals.js closes, main.js resumes the game).
+    const resume = document.getElementById('settings-resume-btn');
+    if (resume) {
+        listen(resume, 'click', () => document.getElementById('close-settings')?.click());
+    }
+
+    // Serenity Hub: close as Resume does, then open the Hub as its tile does. Both happen in
+    // this task, so no frame of play runs between them; the Hub pauses again in the modes it
+    // pauses. This is how a controller reaches the Hub outside Serenity (Start, then here).
+    const hub = document.getElementById('settings-hub-btn');
+    if (hub) {
+        listen(hub, 'click', () => {
+            document.getElementById('close-settings')?.click();
+            document.getElementById('serenity-hub-icon')?.click();
+        });
+    }
+
+    listen(settingsModal, 'input', (event) => {
+        if (event.target?.type === 'range') syncRangeFill(event.target);
+    });
+
+    if (typeof window !== 'undefined') {
+        listen(window, 'modalShown', (event) => {
+            if (event.detail?.modalName !== 'settings') return;
+            applySettingsContext(settingsModal);
+            settingsModal.querySelectorAll?.('input[type="range"]').forEach(syncRangeFill);
+        });
+    }
 }
 
 /**
@@ -974,6 +1231,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         settingsManager.update({ [key]: { ...defaults } });
         settingsManager.save();
         updateControlsDisplay(settingsManager.get());
+        updateKeyboardControlsDisplay(settingsManager.get());
         updateSerenityControlsDisplay(settingsManager.get());
     };
 
@@ -1528,7 +1786,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         let usesExternalDebugger = false;
 
         const getPrimaryButtonLabel = () => (
-            usesExternalDebugger ? 'Open Renderer Debugger' : 'Open DevTools'
+            usesExternalDebugger ? 'Open renderer debugger' : 'Open DevTools'
         );
 
         const setStatus = (message, tone = 'info') => {
@@ -1539,13 +1797,8 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             openDevToolsStatus.hidden = !message;
             openDevToolsStatus.textContent = message || '';
 
-            if (tone === 'error') {
-                openDevToolsStatus.style.color = 'rgba(255, 120, 120, 0.92)';
-            } else if (tone === 'success') {
-                openDevToolsStatus.style.color = 'rgba(120, 255, 185, 0.92)';
-            } else {
-                openDevToolsStatus.style.color = 'rgba(255, 255, 255, 0.72)';
-            }
+            // Colour by tone lives in keystone-settings.css.
+            openDevToolsStatus.dataset.tone = tone;
         };
 
         const clearPendingDevToolsRequest = () => {
@@ -1565,7 +1818,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
         const applyDiagnosticsSnapshot = (diagnostics) => {
             if (diagnostics?.remoteDebuggingUrl) {
-                remoteDebuggingUrl = diagnostics.remoteDebuggingUrl;
+                ({ remoteDebuggingUrl } = diagnostics);
             }
             if (diagnostics?.debugToolsStatus?.packagedExternalDebugger) {
                 usesExternalDebugger = true;
@@ -1636,26 +1889,25 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
                 if (payload.type === 'devtools-opened') {
                     clearPendingDevToolsRequest();
-                    openDevToolsBtn.textContent = payload.alreadyOpen
-                        ? 'Already Open'
-                        : (payload.external || usesExternalDebugger ? 'Debugger Opened' : 'DevTools Open');
-                    setStatus(
-                        payload.external || usesExternalDebugger
-                            ? `Renderer debugger opened. ${payload.debuggerUrl || remoteDebuggingUrl || ''}`.trim()
-                            : (
-                                remoteDebuggingUrl
-                                    ? `DevTools opened. Remote inspector available at ${remoteDebuggingUrl}.`
-                                    : 'DevTools opened.'
-                            ),
-                        'success',
-                    );
+                    const external = payload.external || usesExternalDebugger;
+                    let openedLabel = external ? 'Debugger opened' : 'DevTools open';
+                    if (payload.alreadyOpen) openedLabel = 'Already open';
+                    openDevToolsBtn.textContent = openedLabel;
+                    let openedStatus = remoteDebuggingUrl
+                        ? `DevTools opened. Remote inspector available at ${remoteDebuggingUrl}.`
+                        : 'DevTools opened.';
+                    if (external) {
+                        const debuggerUrl = payload.debuggerUrl || remoteDebuggingUrl || '';
+                        openedStatus = `Renderer debugger opened. ${debuggerUrl}`.trim();
+                    }
+                    setStatus(openedStatus, 'success');
                     queueButtonReset();
                     return;
                 }
 
                 if (payload.type === 'devtools-open-failed') {
                     clearPendingDevToolsRequest();
-                    openDevToolsBtn.textContent = payload.failureKind === 'timeout' ? 'Timed Out' : 'Open Failed';
+                    openDevToolsBtn.textContent = payload.failureKind === 'timeout' ? 'Timed out' : 'Could not open';
 
                     try {
                         const diagnostics = applyDiagnosticsSnapshot(
@@ -1673,7 +1925,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             listen(openDevToolsBtn, 'click', async () => {
                 clearPendingDevToolsRequest();
                 openDevToolsBtn.disabled = true;
-                openDevToolsBtn.textContent = usesExternalDebugger ? 'Opening Debugger...' : 'Opening...';
+                openDevToolsBtn.textContent = usesExternalDebugger ? 'Opening debugger…' : 'Opening…';
                 setStatus(
                     usesExternalDebugger
                         ? 'Request accepted. Waiting for the external renderer debugger to launch...'
@@ -1690,7 +1942,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
                     pendingDevToolsRequestId = result.requestId;
                     if (result.alreadyOpen) {
                         clearPendingDevToolsRequest();
-                        openDevToolsBtn.textContent = 'Already Open';
+                        openDevToolsBtn.textContent = 'Already open';
                         setStatus(
                             remoteDebuggingUrl
                                 ? `DevTools already open. Remote inspector available at ${remoteDebuggingUrl}.`
@@ -1707,7 +1959,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
                         }
 
                         clearPendingDevToolsRequest();
-                        openDevToolsBtn.textContent = 'Timed Out';
+                        openDevToolsBtn.textContent = 'Timed out';
 
                         try {
                             const diagnostics = applyDiagnosticsSnapshot(
@@ -1723,7 +1975,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
                 } catch (error) {
                     clearPendingDevToolsRequest();
                     console.error('[Settings] Error opening DevTools:', error);
-                    openDevToolsBtn.textContent = 'Open Failed';
+                    openDevToolsBtn.textContent = 'Could not open';
 
                     try {
                         const diagnostics = applyDiagnosticsSnapshot(
@@ -1769,17 +2021,20 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Initialize key bindings listeners
     const keyInputs = document.querySelectorAll('.key-input:not(.gamepad-input)');
     keyInputs.forEach((input) => {
+        prepareBindingTile(input, listen);
         const context = getKeyboardBindingContext(input.id);
         const currentBindings = settings[context.bindingsKey] || context.defaultBindings;
 
         if (currentBindings && currentBindings[context.action]) {
-            input.textContent = currentBindings[context.action];
+            renderKeyBinding(input, currentBindings[context.action]);
         }
 
         listen(input, 'click', () => {
+            if (input.classList.contains('listening') || captureJustEnded(input)) return;
             startKeyboardBindingCapture(input, settingsManager, () => {
                 const refreshedSettings = settingsManager.get();
                 updateControlsDisplay(refreshedSettings);
+                updateKeyboardControlsDisplay(refreshedSettings);
                 updateSerenityControlsDisplay(refreshedSettings);
             });
         });
@@ -1787,11 +2042,12 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     const gamepadInputs = document.querySelectorAll('.gamepad-input');
     gamepadInputs.forEach((input) => {
+        prepareBindingTile(input, listen);
         const context = getGamepadBindingContext(input.id);
         const currentBindings = settings[context.bindingsKey] || context.defaultBindings;
-        const button = currentBindings[context.action];
-        input.textContent = GAMEPAD_BUTTON_NAMES[button] || `Button ${button}`;
+        renderPadBinding(input, currentBindings[context.action]);
         listen(input, 'click', () => {
+            if (input.classList.contains('listening') || captureJustEnded(input)) return;
             handleGamepadBinding(input, settingsManager, () => {
                 const refreshedSettings = settingsManager.get();
                 updateGamepadControlsDisplay(refreshedSettings);
@@ -1800,8 +2056,11 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     });
 
+    setupSettingsSheet(listen);
+
     document.querySelectorAll('#settings-modal input[type="range"]').forEach((slider) => {
         listen(slider, 'change', () => settingsManager.flushPendingSave?.());
+        syncRangeFill(slider);
     });
 
     // Update controls display
@@ -1818,6 +2077,6 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 export function setRandomIntervalVisibility(visible) {
     const intervalControl = document.getElementById('random-theme-interval-setting');
     if (intervalControl) {
-        intervalControl.style.display = visible ? '' : 'none';
+        intervalControl.hidden = !visible;
     }
 }

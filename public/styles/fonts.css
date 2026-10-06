@@ -17,7 +17,7 @@
     font-style: normal;
     font-display: swap;
     font-weight: 400;
-    src: url('/fonts/orbitron/orbitron-latin-400-normal.woff2') format('woff2');
+    src: url('../fonts/orbitron/orbitron-latin-400-normal.woff2') format('woff2');
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -27,7 +27,7 @@
     font-style: normal;
     font-display: swap;
     font-weight: 700;
-    src: url('/fonts/orbitron/orbitron-latin-700-normal.woff2') format('woff2');
+    src: url('../fonts/orbitron/orbitron-latin-700-normal.woff2') format('woff2');
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -37,7 +37,7 @@
     font-style: normal;
     font-display: swap;
     font-weight: 900;
-    src: url('/fonts/orbitron/orbitron-latin-900-normal.woff2') format('woff2');
+    src: url('../fonts/orbitron/orbitron-latin-900-normal.woff2') format('woff2');
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -47,7 +47,7 @@
     font-style: normal;
     font-display: swap;
     font-weight: 400;
-    src: url('/fonts/space-mono/space-mono-latin-400-normal.woff2') format('woff2');
+    src: url('../fonts/space-mono/space-mono-latin-400-normal.woff2') format('woff2');
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -57,7 +57,7 @@
     font-style: normal;
     font-display: swap;
     font-weight: 400;
-    src: url('/fonts/space-mono/space-mono-latin-ext-400-normal.woff2') format('woff2');
+    src: url('../fonts/space-mono/space-mono-latin-ext-400-normal.woff2') format('woff2');
     unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
@@ -67,7 +67,7 @@
     font-style: normal;
     font-display: swap;
     font-weight: 700;
-    src: url('/fonts/space-mono/space-mono-latin-700-normal.woff2') format('woff2');
+    src: url('../fonts/space-mono/space-mono-latin-700-normal.woff2') format('woff2');
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -77,6 +77,50 @@
     font-style: normal;
     font-display: swap;
     font-weight: 700;
-    src: url('/fonts/space-mono/space-mono-latin-ext-700-normal.woff2') format('woff2');
+    src: url('../fonts/space-mono/space-mono-latin-ext-700-normal.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/*
+ * Keystone interface type (docs/MENU_UI_OVERHAUL_2026-10.md).
+ * Unbounded — wide, soft-cornered display face; its capitals echo the logo's
+ * custom block lettering, so titles, labels, numbers and buttons use it.
+ * Manrope — calm, legible text face for descriptions, rows and body copy.
+ * Variable files vendored from @fontsource-variable/unbounded 5.3.0 and
+ * @fontsource-variable/manrope 5.3.0 (SIL Open Font License 1.1 — see
+ * LICENSE-OFL.txt next to each font). Unbounded ships latin only: display text
+ * is ASCII; player-entered text uses Manrope, which also ships latin-ext.
+ */
+
+/* unbounded-latin-wght-normal */
+@font-face {
+    font-family: 'Unbounded';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 200 900;
+    src: url('../fonts/unbounded/unbounded-latin-wght-normal.woff2') format('woff2-variations'),
+        url('../fonts/unbounded/unbounded-latin-wght-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* manrope-latin-wght-normal */
+@font-face {
+    font-family: 'Manrope';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 200 800;
+    src: url('../fonts/manrope/manrope-latin-wght-normal.woff2') format('woff2-variations'),
+        url('../fonts/manrope/manrope-latin-wght-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* manrope-latin-ext-wght-normal */
+@font-face {
+    font-family: 'Manrope';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 200 800;
+    src: url('../fonts/manrope/manrope-latin-ext-wght-normal.woff2') format('woff2-variations'),
+        url('../fonts/manrope/manrope-latin-ext-wght-normal.woff2') format('woff2');
     unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }

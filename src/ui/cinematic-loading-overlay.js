@@ -162,6 +162,7 @@ export function transitionCinematicLoadingOverlayToCountdown(options = {}) {
             visuals,
             backdrop,
             stars,
+            layer,
             plate,
             text,
         });
@@ -174,11 +175,12 @@ export function transitionCinematicLoadingOverlayToCountdown(options = {}) {
     const renderGo = () => {
         const visuals = _getCountdownVisualState('GO');
 
-        text.textContent = 'GO!';
+        text.textContent = 'GO';
         _applyCountdownVisualState({
             visuals,
             backdrop,
             stars,
+            layer,
             plate,
             text,
         });
@@ -333,95 +335,50 @@ export function setCinematicLoadingOverlayBuilding(building) {
     if (overlay) overlay.dataset.building = building ? 'true' : 'false';
 }
 
+// Keystone countdown: the logo's spectrum walks down the count (lavender, aqua, mint)
+// and lands on the coral keystone for GO — the block that completes the word.
+const COUNTDOWN_HUES = Object.freeze({
+    high: { color: '#b8a4ff', rgb: '184, 164, 255' },
+    two: { color: '#9ee8ed', rgb: '158, 232, 237' },
+    one: { color: '#c5f1cf', rgb: '197, 241, 207' },
+    go: { color: '#ffac88', rgb: '255, 172, 136' },
+});
+
+const COUNTDOWN_BACKDROP_OPACITY = Object.freeze({
+    high: '0.84',
+    two: '0.82',
+    one: '0.8',
+    go: '0.78',
+});
+const COUNTDOWN_STARS_OPACITY = Object.freeze({
+    high: '0.48',
+    two: '0.5',
+    one: '0.54',
+    go: '0.56',
+});
+
 function _getCountdownVisualState(value) {
-    if (value === 'GO') {
-        return {
-            textColor: '#fbbf24',
-            textShadow: `
-                0 0 18px rgba(251, 191, 36, 0.95),
-                0 0 42px rgba(251, 191, 36, 0.72),
-                0 14px 34px rgba(2, 6, 23, 0.9)
-            `,
-            plateBackground: [
-                'radial-gradient(circle at 50% 28%, rgba(120, 53, 15, 0.9) 0%, ',
-                'rgba(30, 18, 5, 0.88) 54%, rgba(2, 6, 23, 0.92) 100%)',
-            ].join(''),
-            plateBorder: '1px solid rgba(251, 191, 36, 0.44)',
-            plateShadow: [
-                '0 26px 72px rgba(2, 6, 23, 0.7)',
-                'inset 0 1px 0 rgba(255, 255, 255, 0.16)',
-                '0 0 36px rgba(251, 191, 36, 0.18)',
-            ].join(', '),
-            backdropOpacity: '0.78',
-            starsOpacity: '0.56',
-        };
-    }
-
-    if (value >= 3) {
-        return {
-            textColor: '#ef4444',
-            textShadow: `
-                0 0 16px rgba(239, 68, 68, 0.92),
-                0 0 38px rgba(239, 68, 68, 0.58),
-                0 14px 34px rgba(2, 6, 23, 0.9)
-            `,
-            plateBackground: [
-                'radial-gradient(circle at 50% 28%, rgba(127, 29, 29, 0.92) 0%, ',
-                'rgba(38, 10, 10, 0.9) 54%, rgba(2, 6, 23, 0.94) 100%)',
-            ].join(''),
-            plateBorder: '1px solid rgba(248, 113, 113, 0.38)',
-            plateShadow: [
-                '0 26px 68px rgba(2, 6, 23, 0.72)',
-                'inset 0 1px 0 rgba(255, 255, 255, 0.14)',
-                '0 0 26px rgba(239, 68, 68, 0.16)',
-            ].join(', '),
-            backdropOpacity: '0.84',
-            starsOpacity: '0.48',
-        };
-    }
-
-    if (value === 2) {
-        return {
-            textColor: '#f59e0b',
-            textShadow: `
-                0 0 16px rgba(245, 158, 11, 0.94),
-                0 0 38px rgba(245, 158, 11, 0.6),
-                0 14px 34px rgba(2, 6, 23, 0.9)
-            `,
-            plateBackground: [
-                'radial-gradient(circle at 50% 28%, rgba(120, 53, 15, 0.9) 0%, ',
-                'rgba(42, 23, 8, 0.9) 54%, rgba(2, 6, 23, 0.94) 100%)',
-            ].join(''),
-            plateBorder: '1px solid rgba(251, 191, 36, 0.38)',
-            plateShadow: [
-                '0 26px 68px rgba(2, 6, 23, 0.72)',
-                'inset 0 1px 0 rgba(255, 255, 255, 0.14)',
-                '0 0 28px rgba(245, 158, 11, 0.14)',
-            ].join(', '),
-            backdropOpacity: '0.82',
-            starsOpacity: '0.5',
-        };
-    }
-
+    let key = 'one';
+    if (value === 'GO') key = 'go';
+    else if (value >= 3) key = 'high';
+    else if (value === 2) key = 'two';
+    const { color, rgb } = COUNTDOWN_HUES[key];
     return {
-        textColor: '#10b981',
-        textShadow: `
-            0 0 16px rgba(16, 185, 129, 0.96),
-            0 0 38px rgba(16, 185, 129, 0.58),
-            0 14px 34px rgba(2, 6, 23, 0.9)
-        `,
+        key,
+        textColor: color,
+        textShadow: `0 0 26px rgba(${rgb}, 0.5), 0 0 64px rgba(${rgb}, 0.26)`,
         plateBackground: [
-            'radial-gradient(circle at 50% 28%, rgba(6, 95, 70, 0.92) 0%, ',
-            'rgba(6, 40, 31, 0.9) 54%, rgba(2, 6, 23, 0.94) 100%)',
+            `radial-gradient(circle at 50% 30%, rgba(${rgb}, 0.2) 0%, transparent 62%), `,
+            'linear-gradient(180deg, rgba(27, 23, 60, 0.97) 0%, rgba(12, 10, 30, 0.98) 100%)',
         ].join(''),
-        plateBorder: '1px solid rgba(52, 211, 153, 0.38)',
+        plateBorder: `1px solid rgba(${rgb}, 0.34)`,
         plateShadow: [
-            '0 26px 68px rgba(2, 6, 23, 0.72)',
-            'inset 0 1px 0 rgba(255, 255, 255, 0.14)',
-            '0 0 26px rgba(16, 185, 129, 0.14)',
+            '0 26px 68px rgba(2, 6, 23, 0.62)',
+            'inset 0 1px 0 rgba(255, 246, 233, 0.08)',
+            `0 0 44px rgba(${rgb}, 0.14)`,
         ].join(', '),
-        backdropOpacity: '0.8',
-        starsOpacity: '0.54',
+        backdropOpacity: COUNTDOWN_BACKDROP_OPACITY[key],
+        starsOpacity: COUNTDOWN_STARS_OPACITY[key],
     };
 }
 
@@ -429,6 +386,7 @@ function _applyCountdownVisualState({
     visuals,
     backdrop,
     stars,
+    layer,
     plate,
     text,
 }) {
@@ -438,6 +396,8 @@ function _applyCountdownVisualState({
     if (stars) {
         stars.style.opacity = visuals.starsOpacity;
     }
+    // CSS (keystone-overlays.css) drops the keystone into the plate's open corner on GO.
+    if (layer) layer.dataset.count = visuals.key;
 
     plate.style.background = visuals.plateBackground;
     plate.style.border = visuals.plateBorder;
@@ -445,8 +405,16 @@ function _applyCountdownVisualState({
 
     text.style.color = visuals.textColor;
     text.style.textShadow = visuals.textShadow;
-    text.style.webkitTextStroke = '2.5px rgba(2, 6, 23, 0.92)';
-    text.style.paintOrder = 'stroke fill';
+
+    // Each number drops a few pixels and locks, like a piece landing.
+    const reduced = typeof window !== 'undefined'
+        && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    if (!reduced && typeof text.animate === 'function') {
+        text.animate(
+            [{ opacity: 0.4, transform: 'translateY(-14px)' }, { opacity: 1, transform: 'none' }],
+            { duration: 320, easing: 'cubic-bezier(0.2, 0.9, 0.1, 1)' },
+        );
+    }
 }
 
 function _createOverlayElement(title) {
@@ -533,6 +501,7 @@ function _ensureCountdownLayer(overlay) {
     let layer = overlay.querySelector(`[data-cinematic-role="${ROLE_COUNTDOWN_LAYER}"]`);
     if (!layer) {
         layer = document.createElement('div');
+        layer.className = 'cinematic-countdown';
         layer.dataset.cinematicRole = ROLE_COUNTDOWN_LAYER;
         Object.assign(layer.style, {
             position: 'absolute',
@@ -552,51 +521,24 @@ function _ensureCountdownLayer(overlay) {
 
     let plate = layer.querySelector(`[data-cinematic-role="${ROLE_COUNTDOWN_PLATE}"]`);
     if (!plate) {
+        // Static look lives in keystone-overlays.css (.cinematic-countdown__plate): a night
+        // panel with an open corner. No backdrop blur — the live game is already drawing.
         plate = document.createElement('div');
+        plate.className = 'cinematic-countdown__plate';
         plate.dataset.cinematicRole = ROLE_COUNTDOWN_PLATE;
-        Object.assign(plate.style, {
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: 'min(84vw, 460px)',
-            minWidth: '280px',
-            height: 'min(34vh, 280px)',
-            minHeight: '210px',
-            borderRadius: '34px',
-            background: [
-                'radial-gradient(circle at 50% 28%, rgba(127, 29, 29, 0.92) 0%, ',
-                'rgba(38, 10, 10, 0.9) 54%, rgba(2, 6, 23, 0.94) 100%)',
-            ].join(''),
-            border: '1px solid rgba(248, 113, 113, 0.38)',
-            boxShadow: [
-                '0 26px 68px rgba(2, 6, 23, 0.72)',
-                'inset 0 1px 0 rgba(255, 255, 255, 0.14)',
-                '0 0 26px rgba(239, 68, 68, 0.16)',
-            ].join(', '),
-            backdropFilter: 'blur(24px) saturate(115%)',
-            WebkitBackdropFilter: 'blur(24px) saturate(115%)',
-            pointerEvents: 'none',
-        });
         layer.appendChild(plate);
+
+        const key = document.createElement('div');
+        key.className = 'cinematic-countdown__key';
+        key.ariaHidden = 'true';
+        layer.appendChild(key);
     }
 
     let text = layer.querySelector(`[data-cinematic-role="${ROLE_COUNTDOWN_TEXT}"]`);
     if (!text) {
         text = document.createElement('div');
+        text.className = 'cinematic-countdown__text';
         text.dataset.cinematicRole = ROLE_COUNTDOWN_TEXT;
-        Object.assign(text.style, {
-            position: 'relative',
-            zIndex: '1',
-            fontFamily: "'Orbitron', 'Arial', sans-serif",
-            fontSize: 'clamp(120px, 16vw, 170px)',
-            fontWeight: '900',
-            lineHeight: '1',
-            letterSpacing: '0.08em',
-            paddingLeft: '0.08em',
-            userSelect: 'none',
-            textAlign: 'center',
-        });
         layer.appendChild(text);
     }
 

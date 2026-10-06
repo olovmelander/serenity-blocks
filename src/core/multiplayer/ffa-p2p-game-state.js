@@ -4390,13 +4390,13 @@ export class FFAGameStateP2P {
         z-index: 99999 !important;
         margin: 0 !important;
         padding: 0 !important;
-        background: rgba(0, 0, 0, 0.85) !important;
-        backdrop-filter: blur(15px) !important;
-        font-family: 'Orbitron', sans-serif !important;
-        font-weight: 900 !important;
+        background: rgba(7, 6, 18, 0.86) !important;
+        backdrop-filter: none !important;
+        font-family: 'Unbounded', 'Orbitron', sans-serif !important;
+        font-weight: 700 !important;
         text-align: center !important;
-        color: #ffffff !important;
-        text-shadow: 0 0 30px rgba(255, 255, 255, 0.9), 0 0 50px rgba(102, 126, 234, 0.7), 0 0 80px rgba(102, 126, 234, 0.4) !important;
+        color: #fff6e9 !important;
+        text-shadow: 0 0 28px rgba(255, 246, 233, 0.32), 0 0 72px rgba(184, 164, 255, 0.28) !important;
         transform: none !important;
         translate: none !important;
         inset: 0 !important;
@@ -4408,7 +4408,7 @@ export class FFAGameStateP2P {
             forceFullScreen();
             countdownElement.textContent = prefixText;
             countdownElement.style.fontSize = '80px';
-            countdownElement.style.color = '#fbbf24'; // Yellow/gold
+            countdownElement.style.color = '#f3d28d'; // Keystone gold
             countdownElement.style.animation = 'countdownFadeInScale 0.4s ease-out forwards';
 
             setTimeout(runIfCurrent(() => {
@@ -4423,9 +4423,9 @@ export class FFAGameStateP2P {
         function startCountdown() {
             const showGo = () => {
                 requestAnimationFrame(runIfCurrent(() => {
-                    countdownElement.textContent = 'GO!';
+                    countdownElement.textContent = 'GO';
                     countdownElement.style.fontSize = '160px';
-                    countdownElement.style.color = '#10b981'; // Bright Green
+                    countdownElement.style.color = '#ffac88'; // The coral keystone
                     countdownElement.style.animation = 'none';
 
                     void countdownElement.offsetHeight;
@@ -4460,7 +4460,7 @@ export class FFAGameStateP2P {
                 requestAnimationFrame(runIfCurrent(() => {
                     countdownElement.textContent = String(displayCount);
                     countdownElement.style.fontSize = '140px';
-                    countdownElement.style.color = displayCount >= 3 ? '#ef4444' : displayCount === 2 ? '#f59e0b' : '#10b981'; // Red (5,4,3) -> Orange (2) -> Green (1)
+                    countdownElement.style.color = displayCount >= 3 ? '#b8a4ff' : displayCount === 2 ? '#9ee8ed' : '#c5f1cf'; // The spectrum: lavender (5-3), aqua (2), mint (1)
                     countdownElement.style.animation = 'none'; // Clear previous animation
 
                     void countdownElement.offsetHeight;

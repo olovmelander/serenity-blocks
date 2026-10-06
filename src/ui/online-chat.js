@@ -116,9 +116,9 @@ export class OnlineChat {
 
             const nameColor = this._sanitizeColor(msg.color);
             return `
-                <div class="player-message">
-                    <span class="color-indicator" style="background:${nameColor};"></span>
-                    <span class="author" style="color:${nameColor}">${this._escapeHtml(msg.author)}:</span>
+                <div class="player-message" style="--player-color:${nameColor}">
+                    <span class="color-indicator" aria-hidden="true"></span>
+                    <span class="author">${this._escapeHtml(msg.author)}</span>
                     <span class="text">${this._escapeHtml(msg.text)}</span>
                 </div>
             `;

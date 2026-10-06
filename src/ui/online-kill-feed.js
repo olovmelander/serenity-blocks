@@ -152,7 +152,7 @@ export class OnlineKillFeed {
      */
     addSystemEvent(type, event) {
         this._addItem({
-            type: type, // 'join', 'leave', 'disconnect'
+            type, // 'join', 'leave', 'disconnect'
             player: event.player,
             playerColor: event.playerColor,
         });
@@ -199,7 +199,7 @@ export class OnlineKillFeed {
                 if (item.isSelfKill) {
                     return `
                     <div class="${classes.join(' ')} self-kill">
-                        <span class="kill-icon">☠️</span>
+                        <span class="kf-icon kf-icon--skull" aria-hidden="true"></span>
                         <span class="victim"${victimStyle}>${this._escapeHtml(item.victim)}</span>
                         <span class="kill-note">topped out</span>
                     </div>
@@ -212,7 +212,7 @@ export class OnlineKillFeed {
                 return `
                     <div class="${classes.join(' ')}">
                         <span class="killer"${killerStyle}>${this._escapeHtml(killerLabel)}</span>
-                        ⚔️
+                        <span class="kf-icon kf-icon--swords" aria-hidden="true"></span><span class="kf-sr">eliminated</span>
                         <span class="victim"${victimStyle}>${this._escapeHtml(item.victim)}</span>
                     </div>
                 `;
@@ -223,7 +223,7 @@ export class OnlineKillFeed {
                 const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
                 return `
                     <div class="${classes.join(' ')} cancel-event">
-                        <span class="cancel-icon">🛡️</span>
+                        <span class="kf-icon kf-icon--shield cancel-icon" aria-hidden="true"></span>
                         <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
                         <span class="cancel-note">cancelled ${item.linesCancelled} line${item.linesCancelled !== 1 ? 's' : ''}</span>
                     </div>
@@ -233,7 +233,7 @@ export class OnlineKillFeed {
             if (item.type === 'round') {
                 return `
                     <div class="${classes.join(' ')} round-divider">
-                        <span class="round-note">— Round ${this._escapeHtml(String(item.roundNumber ?? ''))} —</span>
+                        <span class="round-note">Round ${this._escapeHtml(String(item.roundNumber ?? ''))}</span>
                     </div>
                 `;
             }
@@ -242,29 +242,29 @@ export class OnlineKillFeed {
                 const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
                 return `
                     <div class="${classes.join(' ')} combo-event">
-                        <span class="combo-icon">🔥</span>
+                        <span class="kf-icon kf-icon--flame combo-icon" aria-hidden="true"></span>
                         <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
-                        <span class="combo-note">${item.count}x COMBO!</span>
+                        <span class="combo-note">${item.count}× combo</span>
                     </div>
                 `;
             }
 
             if (item.type === 'join' || item.type === 'leave' || item.type === 'disconnect') {
                 const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
-                let icon = '👋';
+                let icon = 'join';
                 let action = 'joined';
 
                 if (item.type === 'leave') {
-                    icon = '🚪';
+                    icon = 'leave';
                     action = 'left';
                 } else if (item.type === 'disconnect') {
-                    icon = '🔌';
-                    action = 'disconnected';
+                    icon = 'plug';
+                    action = 'lost connection to';
                 }
 
                 return `
                     <div class="${classes.join(' ')} system-event">
-                        <span class="system-icon">${icon}</span>
+                        <span class="kf-icon kf-icon--${icon} system-icon" aria-hidden="true"></span>
                         <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
                         <span class="system-note">${action} the match</span>
                     </div>
