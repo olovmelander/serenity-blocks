@@ -3485,9 +3485,9 @@ body.start-modal-open #invite-toast-container {
     padding-block: 3px;
 }
 
-/* Below 310 px (windows under ~1600 px) names come first: the deciding number, the name
-   and the status; the second number waits for room (the Tab scoreboard always has it). */
-@container sb-info (max-width: 309px) {
+/* Below 300 px (windows of 1200 px and less) names come first: the deciding number, the
+   name and the status; the second number waits for room (the Tab scoreboard has it). */
+@container sb-info (max-width: 299px) {
     #online-multiplayer-container .online-scoreboard {
         grid-template-columns: 16px minmax(0, 1fr) var(--sb-col-primary) minmax(46px, auto);
     }
@@ -3497,7 +3497,9 @@ body.start-modal-open #invite-toast-container {
     }
 }
 
-@container sb-info (max-width: 289px) {
+/* Up to 309 px (windows to about 1540 px, so 1280 and 1366 px with both numbers): the
+   panel's sides tighten for the names. */
+@container sb-info (max-width: 309px) {
     #online-multiplayer-container .online-scoreboard {
         padding-inline: 12px;
     }
