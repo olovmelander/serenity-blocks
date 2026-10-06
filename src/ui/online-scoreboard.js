@@ -72,6 +72,8 @@ export class OnlineScoreboard {
 
     /** Column heads: the metric columns carry the stat bar's icons, named for every reader. */
     _renderHeader() {
+        // The columns keep room for the deciding number's usual size (keystone-multiplayer.css).
+        if (this.container?.dataset) this.container.dataset.primary = this.sortBy;
         if (!this.headerContainer) return;
         const metricHead = (column, metric) => {
             const label = METRIC_LABELS[metric];
