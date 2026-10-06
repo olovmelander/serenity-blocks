@@ -1,3 +1,5 @@
+import { sanitizeCssColor } from '../utils/dom-safety.js';
+
 export class InGameChat {
     constructor(gameState) {
         this.gameState = gameState;
@@ -96,12 +98,13 @@ export class InGameChat {
             el.textContent = msg;
         } else {
             // Player message - get player color
-            const playerColor = msg.color || this.getPlayerColor(msg.steamId) || '#a78bfa';
+            const playerColor = sanitizeCssColor(msg.color || this.getPlayerColor(msg.steamId), '#a78bfa');
             el.className = 'player-message';
+            el.style.setProperty('--player-color', playerColor);
             el.innerHTML = `
-                <span class="color-indicator" style="background: ${playerColor};"></span>
-                <span class="author" style="color: ${playerColor};">${this.escapeHtml(msg.playerName)}:</span>
-                <span class="text">${this.escapeHtml(msg.message)}</span>
+                <span class="color-indicator" aria-hidden="true"></span>
+                <span class="author">${this.escapeHtml(msg.playerName)}</span>
+                <span class="text">${this.escapeHtml(msg.message ?? msg.text ?? '')}</span>
             `;
         }
 

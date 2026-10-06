@@ -1,15 +1,24 @@
 /**
  * Lobby Waiting Room
  *
- * Players wait here after joining a lobby before the match starts
- * Shows all connected players, ready states, and host controls
-*/
+ * Players wait here after joining a lobby before the match starts. Three columns:
+ * the lobby (goal, settings, lobby ID, invites), the players (one card each with
+ * their hue and host / you / ready state, and the one primary action — Start match
+ * for the host, Ready for everyone else) and the room (activity and chat).
+ * Leaving asks first, in-app. Escape leaves a text field first, then asks to leave.
+ * Styles: public/styles/keystone-multiplayer.css (#lobby-waiting-room).
+ */
 
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
 import { createPlayerCard } from './components/player-card.js';
 import steamService from '../core/steam/steam-service.js';
 import { MessageTypes } from '../core/network/message-types.js';
 import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
+import {
+    closeLayer, conditionLabel, confirmSheet, describeGoal, mpIcon, openLayer,
+} from './components/mp-sheet.js';
+
+const WELCOME = 'Welcome to the lobby.';
 
 export class LobbyWaitingRoom {
     constructor(ffaGameState, onMatchStart, onLeaveLobby = null) {
@@ -20,13 +29,16 @@ export class LobbyWaitingRoom {
         this.updateInterval = null;
         this.initialUpdateTimeout = null;
         this.isVisible = false;
+        this.leaving = false;
 
         this.createUI();
     }
 
-    /**
- * Create the waiting room UI
- */
+    /** Element by id inside the room (never another surface's duplicate id). */
+    $(id) {
+        return this.container?.querySelector?.(`#${id}`) || null;
+    }
+
     /**
  * Create the waiting room UI
  */
@@ -35,118 +47,101 @@ export class LobbyWaitingRoom {
         this.container.id = 'lobby-waiting-room';
         // Use the same grid layout class as the game
         this.container.className = 'online-game-area lobby-mode hidden';
+        this.container.setAttribute('role', 'region');
+        this.container.setAttribute('aria-labelledby', 'room-name');
 
         this.container.innerHTML = `
       <!-- LEFT PANEL: Lobby Info & Settings -->
-      <div class="opponents-panel lobby-left-panel">
-        <div class="watch-controls">
-            <div class="watch-controls-row">
-                <span style="font-weight: 700; color: #fff;">LOBBY</span>
-                <button class="close-btn" id="leave-lobby-btn" style="width: 32px; height: 32px; font-size: 16px;">✕</button>
+      <div class="opponents-panel lobby-left-panel wr-panel">
+        <div class="watch-controls wr-head">
+            <div class="watch-controls-row wr-head__row">
+                <p class="sb-eyebrow">Online lobby</p>
+                <button type="button" class="sb-btn sb-btn--quiet wr-leave" id="leave-lobby-btn">${mpIcon('leave', 16)}<span>Leave</span></button>
             </div>
             <div class="lobby-header-info">
-                <h2 id="room-name" style="font-size: 18px; margin: 10px 0;">Loading...</h2>
+                <h2 id="room-name" class="wr-title">Connecting…</h2>
             </div>
         </div>
 
-        <div class="match-info-panel" style="flex: 1; overflow-y: auto;">
-            <h3>Match Settings</h3>
-            <div class="lobby-objective" id="lobby-objective"></div>
-            <div class="match-info-grid" style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="match-info-panel wr-scroll">
+            <p class="lobby-objective sb-mp-note" id="lobby-objective"></p>
+            <h3 class="sb-mp-label">Match</h3>
+            <dl class="match-info-grid wr-facts">
               <div class="info-item">
-                <span class="info-label">Max Players</span>
-                <span class="info-value" id="max-players-value">-</span>
+                <dt class="info-label">Players</dt>
+                <dd class="info-value" id="max-players-value">–</dd>
               </div>
               <div class="info-item">
-                <span class="info-label">Win Condition</span>
-                <span class="info-value" id="win-condition-value">-</span>
+                <dt class="info-label">Win condition</dt>
+                <dd class="info-value" id="win-condition-value">–</dd>
               </div>
               <div class="info-item">
-                <span class="info-label">Target</span>
-                <span class="info-value" id="win-target-value">-</span>
+                <dt class="info-label">Target</dt>
+                <dd class="info-value" id="win-target-value">–</dd>
               </div>
               <div class="info-item">
-                <span class="info-label">Host</span>
-                <span class="info-value" id="host-name-value">-</span>
+                <dt class="info-label">Host</dt>
+                <dd class="info-value" id="host-name-value">–</dd>
               </div>
-            </div>
+            </dl>
         </div>
-        
-        <!-- Controls Area (Bottom Left) -->
-        <div class="lobby-controls" style="margin-top: auto; padding-top: 20px;">
-             <!-- Invite Link / Room Code -->
+
+        <div class="lobby-controls wr-invite">
              <div class="room-code-display">
-                <div class="room-code-label">Lobby ID — share this to let friends join</div>
+                <div class="room-code-label" id="lobby-id-label">Lobby ID</div>
                 <div class="room-code-row">
-                   <span class="room-code-value" id="lobby-id-display">Connecting...</span>
-                   <button class="lobby-copy-btn" id="copy-lobby-id" title="Copy Lobby ID" aria-label="Copy Lobby ID">
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
-                   </button>
+                   <span class="room-code-value" id="lobby-id-display" aria-labelledby="lobby-id-label">Connecting…</span>
+                   <button type="button" class="lobby-copy-btn" id="copy-lobby-id" aria-label="Copy lobby ID">${mpIcon('copy', 16)}</button>
                 </div>
+                <p class="room-code-hint">Share it so friends can join.</p>
              </div>
-             <button class="btn btn-secondary" id="invite-friends-btn" style="width: 100%; margin-top: 10px;">
-               INVITE FRIENDS
-             </button>
+             <button type="button" class="sb-btn wr-invite__btn" id="invite-friends-btn">${mpIcon('invite', 16)}<span>Invite friends</span></button>
         </div>
       </div>
 
       <!-- CENTER PANEL: Player Grid -->
-      <div class="main-board-panel lobby-center-panel">
+      <div class="main-board-panel lobby-center-panel wr-players">
         <div class="lobby-center-header">
-             <h3 style="color: #fff; font-size: 20px; display: flex; align-items: center; gap: 10px;">
-                PLAYERS <span class="player-count-badge" id="player-count-badge"><span id="player-count">0</span>/<span id="max-players-count">8</span></span>
-             </h3>
-             <div class="ready-legend">
-                <span class="ready-indicator ready">●</span> Ready
-                <span class="ready-indicator not-ready">●</span> Not Ready
+             <h3 class="wr-players__title">Players <span class="player-count-badge" id="player-count-badge"><span id="player-count">0</span>/<span id="max-players-count">8</span></span></h3>
+             <div class="ready-legend" aria-hidden="true">
+                <span class="ready-indicator ready"></span>Ready
+                <span class="ready-indicator not-ready"></span>Not ready
              </div>
         </div>
 
         <div class="lobby-ready-progress">
-             <div class="ready-progress-track"><div class="ready-progress-fill" id="ready-progress-fill"></div></div>
-             <span class="ready-progress-label" id="ready-progress-label">0/0 ready</span>
+             <div class="sb-meter lobby-ready-meter" id="ready-progress-fill" role="img" aria-label="No players yet"></div>
+             <span class="ready-progress-label" id="ready-progress-label">0 of 0 ready</span>
         </div>
 
-        <div class="lobby-player-grid" id="player-list">
-             <!-- Big player cards go here -->
-        </div>
-        
-        <!-- CENTER FOOTER: Main Actions -->
+        <div class="lobby-player-grid" id="player-list" role="list" aria-label="Players in this lobby"></div>
+
         <div class="lobby-center-footer">
-             <span class="waiting-indicator" id="waiting-text">Waiting for players...</span>
-             
+             <p class="waiting-indicator" id="waiting-text" aria-live="polite">Waiting for players…</p>
              <div class="lobby-action-buttons">
-                <!-- Ready Button -->
-                <button class="btn btn-ready" id="ready-btn" style="display: none;">
-                  READY UP
-                </button>
-                
-                <!-- Start Button -->
-                <button class="btn btn-primary btn-start" id="start-match-btn" style="display: none;" disabled>
-                  🚀 START MATCH
-                </button>
+                <button type="button" class="sb-btn sb-btn--primary btn-ready" id="ready-btn" aria-pressed="false" hidden>Ready</button>
+                <button type="button" class="sb-btn sb-btn--primary btn-start" id="start-match-btn" hidden disabled>Start match</button>
              </div>
         </div>
       </div>
-      
-      <!-- RIGHT PANEL: Chat & Activity -->
-      <div class="right-panel">
-          <!-- Hidden Scoreboard (Empty for lobby) or maybe Activity Log -->
-          <div class="online-kill-feed" id="lobby-activity-log" style="flex: 1; min-height: 200px;">
-             <div class="kill-feed-header">Activity Log</div>
-             <div class="kill-feed-list" id="activity-log-list"></div>
-          </div>
-          
-          <!-- Chat Area (Bottom Right - Same as In-Game) -->
-          <div class="online-chat">
-            <div class="chat-messages" id="chat-messages">
-              <div class="system-message">Welcome to the lobby!</div>
+
+      <!-- RIGHT PANEL: Activity & Chat -->
+      <div class="right-panel wr-room">
+          <section class="online-kill-feed wr-panel" id="lobby-activity-log" aria-labelledby="lobby-activity-title">
+             <h3 class="kill-feed-header sb-mp-label" id="lobby-activity-title">Activity</h3>
+             <div class="kill-feed-list" id="activity-log-list" role="log" aria-live="polite"></div>
+          </section>
+
+          <section class="online-chat wr-panel" aria-labelledby="lobby-chat-title">
+            <h3 class="sb-mp-label wr-chat__title" id="lobby-chat-title">Chat</h3>
+            <div class="chat-messages" id="lobby-chat-messages" role="log" aria-live="polite">
+              <div class="system-message">${WELCOME}</div>
             </div>
-            <div class="chat-input-row" style="display: flex; gap: 8px; padding: 10px; background: rgba(0,0,0,0.3);">
-                <input type="text" id="lobby-chat-input" placeholder="Chat..." maxlength="100" style="flex: 1;">
-                <button id="lobby-chat-send" style="padding: 0 15px; cursor: pointer; font-weight: bold; border: none;">SEND</button>
-            </div>
-          </div>
+            <form class="chat-input-row" id="lobby-chat-form" novalidate>
+                <input type="text" id="lobby-chat-input" class="sb-mp-input" placeholder="Say something" maxlength="100" autocomplete="off" aria-label="Chat message">
+                <button type="submit" class="sb-btn wr-send" id="lobby-chat-send" aria-label="Send message">${mpIcon('send', 16)}</button>
+            </form>
+          </section>
       </div>
     `;
 
@@ -179,10 +174,16 @@ export class LobbyWaitingRoom {
             copyBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const id = this.container.querySelector('#lobby-id-display')?.textContent || '';
-                if (!id || id === 'Connecting...') return;
+                if (!id || id === 'Connecting…') return;
                 const done = () => {
                     copyBtn.classList.add('copied');
-                    setTimeout(() => copyBtn.classList.remove('copied'), 1200);
+                    copyBtn.setAttribute('aria-label', 'Lobby ID copied');
+                    copyBtn.innerHTML = mpIcon('check', 16);
+                    setTimeout(() => {
+                        copyBtn.classList.remove('copied');
+                        copyBtn.setAttribute('aria-label', 'Copy lobby ID');
+                        copyBtn.innerHTML = mpIcon('copy', 16);
+                    }, 1400);
                 };
                 if (navigator.clipboard?.writeText) {
                     navigator.clipboard.writeText(id).then(done).catch(() => {});
@@ -207,20 +208,20 @@ export class LobbyWaitingRoom {
 
                 // Check if Steam is available
                 if (!steamService.isOnline) {
-                    this.addChatMessage('[System] Steam is not available. Invites require Steam.', true);
+                    this.addChatMessage('Invites need Steam, which is not running.', true);
                     return;
                 }
 
                 const lobbyId = this.gameState?.network?.currentLobbyId || null;
                 if (!lobbyId) {
-                    this.addChatMessage('[System] No lobby active. Cannot send invites.', true);
+                    this.addChatMessage('There is no lobby to invite to yet.', true);
                     return;
                 }
 
                 const opened = await steamService.openLobbyInviteDialog(lobbyId);
                 if (!opened) {
                     console.warn('[LobbyWaitingRoom] Unable to open Steam invite dialog');
-                    this.addChatMessage('[System] Could not open Steam invite dialog. Try Shift+Tab to open Steam overlay.', true);
+                    this.addChatMessage('The Steam invite window did not open. Try Shift+Tab for the Steam overlay.', true);
                 }
             });
         }
@@ -239,7 +240,7 @@ export class LobbyWaitingRoom {
 
         // Chat input
         const chatInput = this.container.querySelector('#lobby-chat-input');
-        const chatSend = this.container.querySelector('#lobby-chat-send');
+        const chatForm = this.container.querySelector('#lobby-chat-form');
 
         const sendChat = () => {
             const text = chatInput.value.trim();
@@ -270,11 +271,13 @@ export class LobbyWaitingRoom {
             }
         };
 
-        if (chatSend) chatSend.addEventListener('click', sendChat);
-        if (chatInput) chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') sendChat();
+        chatForm?.addEventListener('submit', (e) => {
+            e.preventDefault();
             e.stopPropagation();
+            sendChat();
         });
+        // Keys typed here are chat, not gameplay (Escape is handled by the room first).
+        if (chatInput) chatInput.addEventListener('keydown', (e) => e.stopPropagation());
     }
 
     /**
@@ -287,6 +290,7 @@ export class LobbyWaitingRoom {
         }
         if (this.isVisible) return;
         this.isVisible = true;
+        this.leaving = false;
 
         if (!this.gameState) {
             console.warn('⚠️ No game state set for waiting room');
@@ -294,6 +298,7 @@ export class LobbyWaitingRoom {
 
         console.log('📋 Showing waiting room...');
         this.container.classList.remove('hidden');
+        openLayer(this.container, () => this.leaveLobby(), { fieldsFirst: true });
 
         // Update UI after a brief delay to ensure DOM is ready
         this.initialUpdateTimeout = setTimeout(() => {
@@ -301,17 +306,10 @@ export class LobbyWaitingRoom {
             if (!this.isVisible || !this.container) return;
             this.updateUI();
 
-            // Load chat history
-            const chatEl = this.container.querySelector('#chat-messages');
+            // Load chat history (re-render so a reopened room never duplicates it).
+            const chatEl = this.container.querySelector('#lobby-chat-messages');
             if (chatEl && this.gameState && this.gameState.chatHistory) {
-                // Clear current (except welcome message?) - keeping welcome message at top
-                // Actually, if we just append, we might duplicate.
-                // Let's clear and re-render to be safe.
-                chatEl.innerHTML = `
-              <div class="system-message">
-                Welcome to the lobby!
-              </div>
-          `;
+                chatEl.innerHTML = `<div class="system-message">${WELCOME}</div>`;
 
                 this.gameState.chatHistory.forEach((msg) => {
                     if (!msg.playerName) {
@@ -323,6 +321,11 @@ export class LobbyWaitingRoom {
                     }
                 });
             }
+
+            // Initial focus: the one primary action for this player.
+            const primary = [this.$('start-match-btn'), this.$('ready-btn')]
+                .find((button) => button && !button.hidden);
+            if (primary && !this.container.contains(document.activeElement)) primary.focus({ preventScroll: true });
         }, 50);
 
         // Update every second
@@ -348,6 +351,7 @@ export class LobbyWaitingRoom {
     hide() {
         this.isVisible = false;
         this.container?.classList.add('hidden');
+        if (this.container) closeLayer(this.container);
 
         if (this.initialUpdateTimeout) {
             clearTimeout(this.initialUpdateTimeout);
@@ -390,6 +394,14 @@ export class LobbyWaitingRoom {
         }
     }
 
+    /** Write text only when it changed (the room refreshes every second). */
+    setText(id, text) {
+        const el = this.$(id);
+        const value = String(text ?? '');
+        if (el && el.textContent !== value) el.textContent = value;
+        return el;
+    }
+
     /**
  * Update match info panel
  */
@@ -397,81 +409,52 @@ export class LobbyWaitingRoom {
         const config = this.gameState.matchConfig;
 
         // Max players
-        const maxPlayersValue = document.getElementById('max-players-value');
-        const maxPlayersCount = document.getElementById('max-players-count');
-
-        if (maxPlayersValue) maxPlayersValue.textContent = config.maxPlayers;
-        if (maxPlayersCount) maxPlayersCount.textContent = config.maxPlayers;
+        this.setText('max-players-value', `Up to ${config.maxPlayers}`);
+        this.setText('max-players-count', config.maxPlayers);
 
         // Win condition
-        const conditionText = this.getConditionText(config.endCondition);
-        const winConditionValue = document.getElementById('win-condition-value');
-        if (winConditionValue) winConditionValue.textContent = conditionText;
+        this.setText('win-condition-value', this.getConditionText(config.endCondition));
 
         // Room Name & ID
-        const roomNameEl = document.getElementById('room-name');
-        if (roomNameEl && this.gameState.lobbyName) {
-            roomNameEl.textContent = this.gameState.lobbyName;
-        }
-
-        const lobbyIdEl = document.getElementById('lobby-id-display');
-        if (lobbyIdEl && this.gameState.lobbyId) {
-            lobbyIdEl.textContent = this.gameState.lobbyId;
-        }
+        if (this.gameState.lobbyName) this.setText('room-name', this.gameState.lobbyName);
+        if (this.gameState.lobbyId) this.setText('lobby-id-display', this.gameState.lobbyId);
 
         // Target value
         let targetText = config.endConditionValue;
         if (config.endCondition === 'points') {
-            targetText = `${config.endConditionValue}K`;
+            targetText = `${config.endConditionValue * 1000} points`;
         } else if (config.endCondition === 'time') {
             targetText = `${config.endConditionValue} min`;
         } else if (config.endCondition === 'never') {
-            targetText = 'N/A';
+            targetText = 'None';
+        } else if (config.endCondition === 'frags' || config.endCondition === 'lines') {
+            targetText = `${config.endConditionValue} ${config.endCondition}`;
         }
-        const winTargetValue = document.getElementById('win-target-value');
-        if (winTargetValue) winTargetValue.textContent = targetText;
+        this.setText('win-target-value', targetText);
 
         // Objective summary callout
-        const objectiveEl = document.getElementById('lobby-objective');
-        if (objectiveEl) {
-            const cond = conditionText.toLowerCase();
-            if (config.endCondition === 'never') {
-                objectiveEl.textContent = '∞ Endless — no win condition';
-            } else if (config.endCondition === 'time') {
-                objectiveEl.textContent = `🎯 ${targetText} — most ${cond} wins`;
-            } else {
-                objectiveEl.textContent = `🎯 First to ${targetText} ${cond}`;
-            }
-        }
+        this.setText('lobby-objective', config.endCondition === 'never'
+            ? 'Endless — the host ends the match'
+            : describeGoal(config.endCondition, config.endConditionValue));
 
         // Host name
         const hostPlayer = Array.from(this.gameState.players.values())
             .find((p) => p.steamId === this.gameState.network.hostSteamId);
-        const hostNameValue = document.getElementById('host-name-value');
-        if (hostNameValue) {
-            hostNameValue.textContent = hostPlayer ? hostPlayer.name : 'Unknown';
-        }
+        this.setText('host-name-value', hostPlayer ? hostPlayer.name : 'Unknown');
     }
 
     /**
  * Get condition text
  */
     getConditionText(condition) {
-        const map = {
-            frags: 'Frags',
-            time: 'Time Limit',
-            points: 'Score Target',
-            lines: 'Lines Cleared',
-            never: 'Never (Manual)',
-        };
-        return map[condition] || condition;
+        return conditionLabel(condition);
     }
 
     /**
  * Update player list
  */
     updatePlayerList() {
-        const listEl = document.getElementById('player-list');
+        const listEl = this.$('player-list');
         if (!listEl) return;
         const players = Array.from(this.gameState.players.values());
 
@@ -482,18 +465,18 @@ export class LobbyWaitingRoom {
         // visually identical (covers name/ready/color/host/local/count changes).
         const hostId = this.gameState.network?.hostSteamId;
         const localId = this.gameState.localPlayerId;
-        const sig = `${players.length}@${localId || ''}|` + players
+        const roster = players
             .map((p) => `${p.steamId}:${p.name}:${p.isReady ? 1 : 0}:${p.color}:${p.steamId === hostId ? 1 : 0}`)
             .sort()
             .join('|');
+        const sig = `${players.length}@${localId || ''}@${this.gameState.matchConfig?.maxPlayers || ''}|${roster}`;
         if (sig === this._lastPlayerListSig) return;
         this._lastPlayerListSig = sig;
 
         console.log(`📊 [LOBBY] Updating player list: ${players.length} players`);
-        players.forEach((p) => console.log(`   - ${p.name} (${p.steamId}) - Color: ${p.color}`));
 
         // Update count
-        document.getElementById('player-count').textContent = players.length;
+        this.setText('player-count', players.length);
 
         // Batch preload all avatars in parallel for faster rendering
         const steamIds = players.map((p) => p.steamId).filter(Boolean);
@@ -501,7 +484,10 @@ export class LobbyWaitingRoom {
             console.warn('[LobbyWaitingRoom] Failed to preload avatars:', err.message);
         });
 
-        // Clear and rebuild player cards with real avatars
+        // Clear and rebuild player cards with real avatars (keep focus on a kick
+        // button that survives the rebuild).
+        const focusedKick = listEl.contains(document.activeElement)
+            ? document.activeElement.dataset.steamId : null;
         listEl.innerHTML = '';
 
         players.forEach((player) => {
@@ -510,20 +496,18 @@ export class LobbyWaitingRoom {
             const isReady = player.isReady || isHost;
             const playerColor = sanitizeCssColor(player.color, '#808080');
 
-            // Create card container (visual styling owned by lobby-room-aaa.css;
-            // the per-player neon colour is passed through as a CSS var)
             const cardEl = document.createElement('div');
             cardEl.className = `lobby-player-card ${isReady ? 'ready' : 'not-ready'} ${isLocal ? 'local' : ''} ${isHost ? 'host' : ''}`.trim();
             cardEl.style.setProperty('--player-color', playerColor);
+            cardEl.setAttribute('role', 'listitem');
 
-            // Color strip (per-player neon)
+            // Player hue along the top edge
             const colorStrip = document.createElement('div');
             colorStrip.className = 'player-color-strip';
+            colorStrip.setAttribute('aria-hidden', 'true');
             cardEl.appendChild(colorStrip);
 
-            // Player avatar + name. Render the name via the PlayerCard component's
-            // built-in label (showName) — the reliable path used elsewhere in the app —
-            // with a non-empty fallback so a card is never nameless.
+            // Avatar + name, with a non-empty fallback so a card is never nameless.
             const displayName = player.name || (isLocal ? 'You' : 'Player');
             const playerCard = createPlayerCard({
                 steamId: player.steamId,
@@ -533,46 +517,54 @@ export class LobbyWaitingRoom {
                 showName: true,
                 vertical: true,
             });
-            cardEl.appendChild(playerCard);
+            if (playerCard) cardEl.appendChild(playerCard);
 
-            // Player status
+            // Role: host / you / player
             const statusEl = document.createElement('div');
             statusEl.className = 'player-status';
-            statusEl.textContent = isHost ? '👑 HOST' : isLocal ? 'YOU' : 'PLAYER';
+            const roles = [isHost ? 'Host' : '', isLocal ? 'You' : ''].filter(Boolean);
+            statusEl.innerHTML = `${isHost ? mpIcon('crown', 13) : ''}<span>${roles.join(' · ') || 'Player'}</span>`;
             cardEl.appendChild(statusEl);
 
-            // Ready badge
+            // Ready state in words
             const badgeEl = document.createElement('div');
             badgeEl.className = 'player-ready-badge';
-            badgeEl.textContent = isReady ? 'READY' : 'WAITING';
+            badgeEl.textContent = isReady ? 'Ready' : 'Not ready';
             cardEl.appendChild(badgeEl);
 
-            // Host admin: a kick button on every OTHER player's card (host-only, can't kick self/host).
+            // Host admin: remove any OTHER player (host-only, never self/host).
             if (this.gameState.isHost && !isHost && !isLocal && this.gameState.kickPlayer) {
-                cardEl.style.position = cardEl.style.position || 'relative';
                 const kickBtn = document.createElement('button');
+                kickBtn.type = 'button';
                 kickBtn.className = 'player-kick-btn';
-                kickBtn.textContent = '✕';
-                kickBtn.title = `Kick ${displayName}`;
-                kickBtn.style.cssText = 'position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:6px;border:1px solid rgba(248,113,113,0.5);background:rgba(248,113,113,0.18);color:#fca5a5;font-size:12px;line-height:1;cursor:pointer;z-index:5;padding:0;';
-                kickBtn.addEventListener('click', (e) => {
+                kickBtn.dataset.steamId = player.steamId;
+                kickBtn.setAttribute('aria-label', `Remove ${displayName} from the lobby`);
+                kickBtn.innerHTML = mpIcon('remove', 16);
+                kickBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    if (confirm(`Kick ${displayName} from the match?`)) {
-                        this.gameState.kickPlayer(player.steamId);
-                    }
+                    const confirmed = await confirmSheet({
+                        eyebrow: 'Host',
+                        title: `Remove ${displayName}?`,
+                        message: 'They leave this lobby now.',
+                        confirmLabel: 'Remove',
+                        cancelLabel: 'Keep',
+                    });
+                    if (confirmed) this.gameState.kickPlayer(player.steamId);
                 });
                 cardEl.appendChild(kickBtn);
+                if (focusedKick && focusedKick === player.steamId) queueMicrotask(() => kickBtn.focus({ preventScroll: true }));
             }
 
             listEl.appendChild(cardEl);
         });
 
-        // Empty "waiting" ghost slots up to max capacity, so the grid always reads as N/max
-        const maxPlayers = parseInt(document.getElementById('max-players-count')?.textContent, 10) || players.length || 8;
+        // Empty seats up to max capacity, so the grid always reads as N/max
+        const maxPlayers = parseInt(this.gameState.matchConfig?.maxPlayers, 10) || players.length || 8;
         for (let i = players.length; i < maxPlayers; i++) {
             const slot = document.createElement('div');
             slot.className = 'lobby-player-card empty-slot';
-            slot.innerHTML = '<div class="empty-slot-icon">+</div><div class="empty-slot-label">Waiting for player…</div>';
+            slot.setAttribute('role', 'listitem');
+            slot.innerHTML = `<div class="empty-slot-icon" aria-hidden="true">${mpIcon('plus', 18)}</div><div class="empty-slot-label">Open seat</div>`;
             listEl.appendChild(slot);
         }
     }
@@ -583,68 +575,63 @@ export class LobbyWaitingRoom {
     updateControls() {
         const { isHost } = this.gameState;
         const players = Array.from(this.gameState.players.values());
-        const readyCount = players.filter((p) => p.isReady || p.steamId === this.gameState.network.hostSteamId).length;
+        const hostId = this.gameState.network.hostSteamId;
+        const readyFlags = players.map((p) => Boolean(p.isReady || p.steamId === hostId));
+        const readyCount = readyFlags.filter(Boolean).length;
         const minPlayers = 2; // Minimum 2 players to start
 
-        // Ready-progress bar
+        // Ready meter: one cell per player, filled when ready (ready first).
         const total = players.length;
-        const progressFill = document.getElementById('ready-progress-fill');
-        const progressLabel = document.getElementById('ready-progress-label');
-        if (progressFill) {
-            progressFill.style.width = total > 0 ? `${Math.round((readyCount / total) * 100)}%` : '0%';
-            progressFill.classList.toggle('all-ready', total > 0 && readyCount === total);
+        const meter = this.$('ready-progress-fill');
+        if (meter) {
+            const cells = readyFlags.slice().sort((a, b) => Number(b) - Number(a))
+                .map((ready) => (ready ? '<i class="is-filled"></i>' : '<i></i>')).join('');
+            if (meter.innerHTML !== cells) meter.innerHTML = cells;
+            meter.classList.toggle('all-ready', total > 0 && readyCount === total);
+            meter.setAttribute('aria-label', `${readyCount} of ${total} players ready`);
         }
-        if (progressLabel) {
-            const watching = this.gameState.getSpectatorCount ? this.gameState.getSpectatorCount() : 0;
-            progressLabel.textContent = `${readyCount}/${total} ready${watching > 0 ? ` · 👁 ${watching} watching` : ''}`;
-        }
+        const watching = this.gameState.getSpectatorCount ? this.gameState.getSpectatorCount() : 0;
+        this.setText('ready-progress-label', `${readyCount} of ${total} ready${watching > 0 ? ` · ${watching} watching` : ''}`);
 
-        const readyBtn = document.getElementById('ready-btn');
-        const startBtn = document.getElementById('start-match-btn');
-        const waitingText = document.getElementById('waiting-text');
+        const readyBtn = this.$('ready-btn');
+        const startBtn = this.$('start-match-btn');
+        const waitingText = this.$('waiting-text');
+        if (!readyBtn || !startBtn || !waitingText) return;
 
         if (isHost) {
-            // Show start button for host
-            readyBtn.style.display = 'none';
-            startBtn.style.display = 'block';
+            readyBtn.hidden = true;
+            startBtn.hidden = false;
 
             // Quadra-style: the host can START as soon as there are >=2 players — readiness
             // is a courtesy signal, not a hard gate. One AFK/unready peer no longer blocks the
             // whole lobby; unready peers still receive the seed and start with everyone.
-            const allReady = readyCount === players.length;
-            const canStart = players.length >= minPlayers;
-            startBtn.disabled = !canStart;
             const notReady = players.length - readyCount;
+            startBtn.disabled = players.length < minPlayers;
 
             if (players.length < minPlayers) {
-                startBtn.textContent = '🚀 START MATCH';
-                waitingText.textContent = `Waiting for ${minPlayers - players.length} more player(s)...`;
+                const missing = minPlayers - players.length;
+                this.setText('waiting-text', `Waiting for ${missing} more ${missing === 1 ? 'player' : 'players'}`);
                 waitingText.className = 'waiting-indicator';
-            } else if (allReady) {
-                startBtn.textContent = '🚀 START MATCH';
-                waitingText.textContent = '✅ All players ready!';
+            } else if (notReady === 0) {
+                this.setText('waiting-text', 'Everyone is ready.');
                 waitingText.className = 'waiting-indicator ready';
             } else {
-                // Enabled, but make it clear some players aren't ready yet.
-                startBtn.textContent = `🚀 Start anyway (${notReady} not ready)`;
-                waitingText.textContent = `${notReady} player(s) not ready — you can start anyway`;
+                this.setText('waiting-text', `${notReady} ${notReady === 1 ? 'player is' : 'players are'} not ready — you can start anyway.`);
                 waitingText.className = 'waiting-indicator';
             }
         } else {
-            // Show ready button for non-host
-            readyBtn.style.display = 'block';
-            startBtn.style.display = 'none';
+            readyBtn.hidden = false;
+            startBtn.hidden = true;
 
             const localPlayer = this.gameState.getLocalPlayer();
-            if (localPlayer && localPlayer.isReady) {
-                readyBtn.textContent = '✓ Ready';
-                readyBtn.classList.add('ready');
-                waitingText.textContent = 'Waiting for host to start...';
-            } else {
-                readyBtn.textContent = 'Ready Up';
-                readyBtn.classList.remove('ready');
-                waitingText.textContent = 'Click ready when you\'re set!';
-            }
+            const ready = Boolean(localPlayer && localPlayer.isReady);
+            if (readyBtn.textContent !== (ready ? 'Not ready' : 'Ready')) readyBtn.textContent = ready ? 'Not ready' : 'Ready';
+            readyBtn.setAttribute('aria-pressed', ready ? 'true' : 'false');
+            readyBtn.classList.toggle('ready', ready);
+            // Ready is the primary action until it is done; then undoing it is quiet.
+            readyBtn.classList.toggle('sb-btn--primary', !ready);
+            this.setText('waiting-text', ready ? 'You are ready. Waiting for the host to start.' : 'Press Ready when you are set.');
+            waitingText.className = `waiting-indicator${ready ? ' ready' : ''}`;
         }
     }
 
@@ -659,7 +646,7 @@ export class LobbyWaitingRoom {
         this.gameState.setReady(newReadyState);
 
         // Add chat message
-        this.addChatMessage(`You are now ${newReadyState ? 'ready' : 'not ready'}`);
+        this.addChatMessage(`You are ${newReadyState ? 'ready' : 'not ready'}.`);
 
         // Update UI immediately
         this.updateUI();
@@ -679,7 +666,8 @@ export class LobbyWaitingRoom {
         const readyCount = players.filter((p) => p.isReady || p.steamId === this.gameState.network.hostSteamId).length;
 
         if (players.length < 2) {
-            alert('Need at least 2 players to start');
+            // The button is disabled below two players; say why if it is reached anyway.
+            this.setText('waiting-text', 'A match needs at least two players.');
             return;
         }
 
@@ -703,11 +691,22 @@ export class LobbyWaitingRoom {
     }
 
     /**
- * Leave the lobby
+ * Leave the lobby (asks first, in-app)
  */
-    leaveLobby() {
-        const confirmed = confirm('Are you sure you want to leave the lobby?');
-        if (!confirmed) return;
+    async leaveLobby() {
+        if (this.leaving) return;
+        this.leaving = true;
+        const confirmed = await confirmSheet({
+            eyebrow: 'Online versus',
+            title: 'Leave this lobby?',
+            message: this.gameState?.isHost
+                ? 'You are the host. You will return to the match list.'
+                : 'You will return to the match list.',
+            confirmLabel: 'Leave',
+            cancelLabel: 'Stay',
+        });
+        this.leaving = false;
+        if (!confirmed || !this.isVisible) return;
 
         console.log('👋 Leaving lobby');
 
@@ -743,7 +742,7 @@ export class LobbyWaitingRoom {
    */
     addChatMessage(message, isSystem = true) {
         if (!this.container) return;
-        const chatEl = this.container.querySelector('#chat-messages');
+        const chatEl = this.container.querySelector('#lobby-chat-messages');
         if (!chatEl) return;
 
         const msgDiv = document.createElement('div');
@@ -760,10 +759,11 @@ export class LobbyWaitingRoom {
                 this.getPlayerColor(message.steamId) || message.color,
             );
             msgDiv.className = 'player-message';
+            msgDiv.style.setProperty('--player-color', playerColor);
             msgDiv.innerHTML = `
-        <span class="color-indicator" style="background: ${playerColor};"></span>
-        <span class="author" style="color: ${playerColor};">${escapeHtml(message.playerName)}:</span>
-        <span class="text">${escapeHtml(message.message)}</span>
+        <span class="color-indicator" aria-hidden="true"></span>
+        <span class="author">${escapeHtml(message.playerName)}</span>
+        <span class="text">${escapeHtml(message.message ?? message.text ?? '')}</span>
       `;
         }
 
@@ -781,7 +781,7 @@ export class LobbyWaitingRoom {
         const entry = document.createElement('div');
         entry.className = `activity-log-entry activity-${type}`;
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        entry.innerHTML = `<span class="activity-dot"></span><span class="activity-text">${this.escapeHtml(text)}</span><span class="activity-time">${time}</span>`;
+        entry.innerHTML = `<span class="activity-dot" aria-hidden="true"></span><span class="activity-text">${this.escapeHtml(text)}</span><span class="activity-time">${time}</span>`;
         listEl.appendChild(entry);
         listEl.scrollTop = listEl.scrollHeight;
     }
@@ -803,7 +803,7 @@ export class LobbyWaitingRoom {
         // watching from the moment the lobby opened.
         if (!this._activitySnapshot) {
             this._activitySnapshot = next;
-            this.addActivityLogEntry('Lobby ready — waiting for players', 'info');
+            this.addActivityLogEntry('Lobby open — waiting for players', 'info');
             next.forEach((info) => this.addActivityLogEntry(`${info.name} joined`, 'join'));
             return;
         }

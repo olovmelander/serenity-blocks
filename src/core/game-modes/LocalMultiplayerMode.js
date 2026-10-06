@@ -19,7 +19,7 @@ import { LocalBotManager } from '../ai/local-bot-manager.js';
 import { expandGridIfNeeded, calculateBuildHeight } from '../infinity-grid.js';
 import { bindLegacySessionRng, generateSessionSeed } from '../session-rng.js';
 import { drawNextPieces } from '../../rendering/draw.js';
-import { csIcon } from '../../ui/components/cosmic-icons.js';
+import { showLocalMatchEnd } from '../../ui/local-match-end-overlay.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
@@ -197,7 +197,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
             }
             if (this.matchConfig === config) this._destroySeparatePhaserGames();
             await this._dismissMatchStartLoadingOverlay({ fadeOutMs: 300, minVisibleMs: 0 });
-            alert(`Failed to start local multiplayer match: ${error.message}`);
+            // Back to the setup sheet, which says what went wrong (no blocking alert).
+            this.configModal?.show();
+            this.configModal?.showError(`The match could not start. ${error.message}`);
         }
     }
 
@@ -2591,59 +2593,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Show round end overlay
-     * @private
-     */
-    async _showRoundEnd(winner, p1Wins, p2Wins) {
-        const winnerName = winner === 'player1' ? 'Player 1' : 'Player 2';
-
-        // Create overlay
-        const overlay = document.createElement('div');
-        overlay.id = 'round-end-overlay';
-        overlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100 %;
-        height: 100 %;
-        background: rgba(0, 0, 0, 0.85);
-        display: flex;
-        flex - direction: column;
-        align - items: center;
-        justify - content: center;
-        z - index: 10000;
-        animation: fadeIn 0.3s ease;
-        `;
-
-        overlay.innerHTML = `
-            < div style = "text-align: center; color: white;" >
-                <div style="font-size: 48px; margin-bottom: 30px; color: #10b981; font-weight: bold;">
-                    🏆 ${winnerName} Wins Round! 🏆
-                </div>
-                <div style="font-size: 32px; margin-bottom: 40px;">
-                    Frags: ${p1Wins} - ${p2Wins}
-                </div>
-                <div style="font-size: 24px; color: #94a3b8;">
-                    ${this._getWinConditionText()}
-                </div>
-                <div style="font-size: 20px; color: #64748b; margin-top: 10px;">
-                    Next round starting...
-                </div>
-            </div >
-            `;
-
-        document.body.appendChild(overlay);
-
-        // Wait 3 seconds
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-
-        // Remove overlay with fade out
-        overlay.style.opacity = '0';
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        overlay.remove();
-    }
-
-    /**
      * Start a new round
      * @private
      */
@@ -2799,21 +2748,17 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
     async _showMatchEnd(winner) {
         let winnerName = 'Player 1';
+        let winnerIndex = -1;
+        const teamWin = winner && typeof winner === 'object' && winner.type === 'team';
         if (winner === 'draw') {
             winnerName = 'Draw';
-        } else if (winner && typeof winner === 'object' && winner.type === 'team') {
+        } else if (teamWin) {
             winnerName = this._getTeamLabel(winner.teamId);
         } else if (typeof winner === 'string') {
-            const winnerIndex = parseInt(winner.replace('player', ''), 10) - 1;
+            winnerIndex = parseInt(winner.replace('player', ''), 10) - 1;
             winnerName = `Player ${winnerIndex + 1}`;
         }
         const { numPlayers } = this.multiplayerState;
-
-        let fragsText = '';
-        for (let i = 0; i < numPlayers; i++) {
-            if (i > 0) fragsText += ' - ';
-            fragsText += this.multiplayerState.frags[i] ?? 0;
-        }
 
         console.log(`[LocalMultiplayer] Match ended! Winner: ${winnerName}`);
 
@@ -2870,7 +2815,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const apm = Math.round((metrics.attacksSent || 0) / minutes);
 
             players.push({
-                name: `P${i + 1}`,
+                name: this.matchConfig?.playerSlots?.[i]?.name || `Player ${i + 1}`,
+                color: this._getPlayerColorScheme(i)?.primary,
+                isWinner: teamWin ? this._getResolvedTeamId(i) === winner.teamId : i === winnerIndex,
                 score: finalScore,
                 lines: finalLines,
                 deaths: finalDeaths,
@@ -2893,591 +2840,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Only show Hot Potato rows if the mode was actually played this match
         const potatoPlayed = players.some((p) => ((p.potatoPasses || 0) + (p.potatoHits || 0)) > 0);
-
-        const resultIcon = (name, tone = 'violet') => (
-            `<span class="match-result-icon match-result-icon--${tone}">`
-            + `${csIcon(name, 22, 'match-result-icon-svg')}</span>`
-        );
-        const clearBadge = (value, tone) => (
-            `<span class="match-result-icon match-result-clear-badge match-result-icon--${tone}">${value}</span>`
-        );
-        const winnerCrown = (side) => (
-            `<span class="winner-crown winner-crown--${side}">${csIcon('crown', 58, 'winner-crown-svg')}</span>`
-        );
-
-        const rowIcon = {
-            score: resultIcon('trophy', 'gold'),
-            bpm: resultIcon('bolt', 'orange'),
-            ppm: resultIcon('chart-up', 'cyan'),
-            frags: resultIcon('crossed-swords', 'violet'),
-            deaths: resultIcon('skull', 'rose'),
-            lines: resultIcon('line-stack', 'mint'),
-            single: clearBadge(1, 'blue'),
-            double: clearBadge(2, 'blue'),
-            triple: clearBadge(3, 'blue'),
-            tetris: clearBadge(4, 'blue'),
-            pps: resultIcon('match-start', 'rocket'),
-            apm: resultIcon('burst', 'rose'),
-            attacksSent: resultIcon('inbox', 'cyan'),
-            attackLines: resultIcon('crossed-swords', 'amber'),
-            cleanLines: resultIcon('star', 'gold'),
-            maxCombo: resultIcon('chain', 'silver'),
-            maxCascade: resultIcon('spiral', 'cyan'),
-            potatoPasses: resultIcon('potato', 'amber'),
-            potatoHits: resultIcon('bomb', 'rose'),
-        };
-
-        // CSS Styles Injection
-        const styleBlock = `
-            <style>
-                @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-                @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-                @keyframes pulseGlow { 0% { text-shadow: 0 0 20px rgba(16, 185, 129, 0.4); } 50% { text-shadow: 0 0 40px rgba(16, 185, 129, 0.8); } 100% { text-shadow: 0 0 20px rgba(16, 185, 129, 0.4); } }
-                @keyframes crownFloat { 0%, 100% { transform: translateY(0) rotate(var(--crown-tilt)); } 50% { transform: translateY(-5px) rotate(var(--crown-tilt)); } }
-                
-                #match-end-overlay {
-                    font-family: 'Inter', system-ui, sans-serif;
-                    --match-end-accent-rgb: var(--cs-accent-rgb, 139, 92, 246);
-                }
-
-                .glass-panel {
-                    background: rgba(15, 23, 42, 0.7);
-                    backdrop-filter: blur(20px);
-                    -webkit-backdrop-filter: blur(20px);
-                    border: 1px solid rgba(255, 255, 255, 0.08);
-                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
-                    border-radius: 24px;
-                    max-width: 1000px;
-                    width: min(1000px, 95vw);
-                    max-height: min(90vh, 860px);
-                    display: flex;
-                    flex-direction: column;
-                    overflow: hidden;
-                    scrollbar-width: thin;
-                    scrollbar-color: rgba(var(--match-end-accent-rgb), 0.62) rgba(0, 0, 0, 0.12);
-                    animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-                    opacity: 0;
-                }
-
-                .match-end-header {
-                    flex: 0 0 auto;
-                    text-align: center;
-                    padding: 40px 40px 0;
-                }
-
-                .match-end-scroll-area {
-                    flex: 1 1 auto;
-                    min-height: 0;
-                    overflow-y: auto;
-                    overflow-x: hidden;
-                    padding: 0 40px 18px;
-                    scrollbar-gutter: stable;
-                    scrollbar-width: thin;
-                    scrollbar-color: rgba(var(--match-end-accent-rgb), 0.62) rgba(0, 0, 0, 0.12);
-                }
-
-                .match-end-scroll-area::-webkit-scrollbar {
-                    width: 7px;
-                }
-
-                .match-end-scroll-area::-webkit-scrollbar-track {
-                    background: rgba(0, 0, 0, 0.10);
-                    border-radius: 7px;
-                }
-
-                .match-end-scroll-area::-webkit-scrollbar-thumb {
-                    background: linear-gradient(180deg, rgba(var(--match-end-accent-rgb), 0.80), rgba(142, 162, 255, 0.55));
-                    border: 1px solid rgba(8, 10, 23, 0.68);
-                    border-radius: 7px;
-                }
-
-                .match-end-scroll-area::-webkit-scrollbar-thumb:hover {
-                    background: rgba(var(--match-end-accent-rgb), 0.92);
-                }
-
-                .winner-title {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 24px;
-                    font-size: 64px;
-                    font-weight: 900;
-                    margin-bottom: 8px;
-                    filter: drop-shadow(0 0 30px rgba(16, 185, 129, 0.4));
-                    letter-spacing: -2px;
-                    animation: slideUp 0.6s ease-out forwards;
-                }
-
-                .winner-title .winner-text {
-                    background: linear-gradient(135deg, #9ef3c1 0%, #68d391 48%, #38bdf8 100%);
-                    -webkit-background-clip: text;
-                    background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    color: transparent;
-                }
-
-                .winner-crown {
-                    --crown-tilt: -7deg;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    color: #6ee7b7;
-                    filter:
-                        drop-shadow(0 0 18px rgba(110, 231, 183, 0.35))
-                        drop-shadow(0 10px 24px rgba(16, 185, 129, 0.22));
-                    animation: crownFloat 2.8s ease-in-out infinite;
-                }
-
-                .winner-crown--right {
-                    --crown-tilt: 7deg;
-                }
-
-                .winner-crown-svg {
-                    overflow: visible;
-                }
-
-                .winner-crown .cs-crown-band {
-                    fill: rgba(110, 231, 183, 0.24);
-                    stroke: #6ee7b7;
-                }
-
-                .winner-crown .cs-crown-rim {
-                    stroke: #d9fff1;
-                }
-
-                .winner-crown .cs-crown-gem {
-                    fill: #b9fbff;
-                    stroke: #38bdf8;
-                }
-
-                .win-condition {
-                    font-size: 18px;
-                    color: #94a3b8;
-                    margin-bottom: 30px;
-                    animation: slideUp 0.6s ease-out 0.1s forwards;
-                    opacity: 0;
-                }
-
-                .stat-grid {
-                    display: grid;
-                    grid-template-columns: 180px repeat(${numPlayers}, 1fr);
-                    margin: 0 0 12px 0;
-                    border-radius: 12px;
-                    overflow: hidden;
-                    border: 1px solid rgba(255, 255, 255, 0.05);
-                    background: rgba(0, 0, 0, 0.2);
-                    animation: slideUp 0.6s ease-out 0.2s forwards;
-                    opacity: 0;
-                }
-                
-                .grid-header-row {
-                    display: contents;
-                    font-weight: 700;
-                    font-size: 13px;
-                    text-transform: uppercase;
-                    letter-spacing: 1px;
-                    color: #94a3b8;
-                }
-
-                .grid-header-cell {
-                    padding: 16px;
-                    background: rgba(255, 255, 255, 0.03);
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-                    text-align: center;
-                }
-                .grid-header-cell:first-child { text-align: left; }
-
-                .grid-row { display: contents; }
-                
-                .grid-cell {
-                    padding: 14px 16px;
-                    color: #e2e8f0;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-                    font-size: 16px;
-                    text-align: center;
-                    transition: background 0.2s;
-                }
-                
-                .grid-cell.label {
-                    text-align: left;
-                    font-weight: 500;
-                    color: #cbd5e1;
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                }
-
-                .grid-cell.label > span:last-child {
-                    min-width: 0;
-                }
-
-                .match-result-icon {
-                    width: 28px;
-                    height: 28px;
-                    flex: 0 0 28px;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    border: 1px solid rgba(255, 255, 255, 0.08);
-                    border-radius: 9px;
-                    background:
-                        linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015)),
-                        rgba(6, 9, 22, 0.54);
-                    box-shadow:
-                        inset 0 1px 0 rgba(255, 255, 255, 0.10),
-                        0 6px 16px rgba(0, 0, 0, 0.22);
-                }
-
-                .match-result-icon-svg {
-                    width: 21px;
-                    height: 21px;
-                    overflow: visible;
-                }
-
-                .match-result-icon--gold { color: #f9c74f; }
-                .match-result-icon--orange { color: #fb923c; }
-                .match-result-icon--cyan { color: #67e8f9; }
-                .match-result-icon--violet { color: #a78bfa; }
-                .match-result-icon--rose { color: #fb7185; }
-                .match-result-icon--mint { color: #6ee7b7; }
-                .match-result-icon--blue { color: #93c5fd; }
-                .match-result-icon--rocket { color: #8ea2ff; }
-                .match-result-icon--amber { color: #fbbf24; }
-                .match-result-icon--silver { color: #cbd5e1; }
-
-                .match-result-clear-badge {
-                    font-weight: 900;
-                    color: #dbeafe;
-                    background:
-                        radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.28), transparent 35%),
-                        linear-gradient(135deg, rgba(59, 130, 246, 0.92), rgba(124, 58, 237, 0.86));
-                    border-color: rgba(147, 197, 253, 0.45);
-                    text-shadow: 0 1px 4px rgba(15, 23, 42, 0.45);
-                }
-
-                .match-result-icon .cs-trophy-cup,
-                .match-result-icon .cs-trophy-base {
-                    stroke: #f9c74f;
-                    fill: rgba(249, 199, 79, 0.16);
-                }
-
-                .match-result-icon .cs-trophy-handle,
-                .match-result-icon .cs-crown-gem {
-                    stroke: #fff3b0;
-                }
-
-                .match-result-icon .cs-chart-frame {
-                    stroke: rgba(103, 232, 249, 0.55);
-                }
-
-                .match-result-icon .cs-chart-line,
-                .match-result-icon .cs-chart-point {
-                    stroke: #67e8f9;
-                }
-
-                .match-result-icon .cs-sword-a {
-                    stroke: currentColor;
-                }
-
-                .match-result-icon .cs-sword-b {
-                    stroke: #d8b4fe;
-                }
-
-                .match-result-icon--amber .cs-sword-b {
-                    stroke: #fed7aa;
-                }
-
-                .match-result-icon .cs-skull-head {
-                    fill: rgba(251, 113, 133, 0.14);
-                    stroke: #fda4af;
-                }
-
-                .match-result-icon .cs-skull-eye,
-                .match-result-icon .cs-skull-nose {
-                    fill: #ffe4e6;
-                    stroke: #ffe4e6;
-                }
-
-                .match-result-icon .cs-lines-block-a { fill: rgba(110, 231, 183, 0.32); stroke: #6ee7b7; }
-                .match-result-icon .cs-lines-block-b { fill: rgba(56, 189, 248, 0.26); stroke: #38bdf8; }
-                .match-result-icon .cs-lines-block-c { fill: rgba(167, 139, 250, 0.24); stroke: #a78bfa; }
-                .match-result-icon .cs-lines-base { stroke: rgba(226, 232, 240, 0.76); }
-
-                .match-result-icon .cs-match-start-body { stroke: #8ea2ff; }
-                .match-result-icon .cs-match-start-fin { stroke: #c084fc; }
-                .match-result-icon .cs-match-start-window { fill: #b9fbff; stroke: #22d3ee; }
-                .match-result-icon .cs-match-start-flame {
-                    stroke: #ff8a3d;
-                    filter: drop-shadow(0 0 4px rgba(255, 138, 61, 0.55));
-                }
-
-                .match-result-icon .cs-burst-core {
-                    fill: rgba(251, 113, 133, 0.18);
-                    stroke: #fb7185;
-                }
-
-                .match-result-icon .cs-burst-rays {
-                    stroke: #fbbf24;
-                }
-
-                .match-result-icon .cs-inbox-tray {
-                    fill: rgba(103, 232, 249, 0.12);
-                    stroke: #67e8f9;
-                }
-
-                .match-result-icon .cs-inbox-slot,
-                .match-result-icon .cs-inbox-arrow {
-                    stroke: #d9faff;
-                }
-
-                .match-result-icon .cs-chain-a {
-                    stroke: #e2e8f0;
-                }
-
-                .match-result-icon .cs-chain-b {
-                    stroke: #94a3b8;
-                }
-
-                .match-result-icon .cs-potato-body {
-                    fill: rgba(251, 191, 36, 0.16);
-                    stroke: #fbbf24;
-                }
-
-                .match-result-icon .cs-potato-eye {
-                    stroke: #fed7aa;
-                }
-
-                .match-result-icon .cs-potato-spark,
-                .match-result-icon .cs-bomb-spark {
-                    stroke: #fef3c7;
-                }
-
-                .match-result-icon .cs-bomb-body {
-                    fill: rgba(251, 113, 133, 0.16);
-                    stroke: #fb7185;
-                }
-
-                .match-result-icon .cs-bomb-fuse {
-                    stroke: #fbbf24;
-                }
-                
-                .grid-cell.highlight {
-                    background: rgba(16, 185, 129, 0.05);
-                    color: #34d399;
-                    font-weight: 600;
-                }
-
-                .grid-row:hover .grid-cell {
-                    background: rgba(255, 255, 255, 0.04);
-                }
-                .grid-row:hover .grid-cell.highlight {
-                    background: rgba(16, 185, 129, 0.08);
-                }
-
-                .separator {
-                    grid-column: 1 / -1;
-                    height: 1px;
-                    background: rgba(255, 255, 255, 0.08);
-                    margin: 4px 0;
-                }
-
-                .match-end-actions {
-                    flex: 0 0 auto;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 20px;
-                    padding: 18px 40px 24px;
-                    border-top: 1px solid rgba(255, 255, 255, 0.08);
-                    background:
-                        linear-gradient(180deg, rgba(15, 23, 42, 0.40), rgba(8, 11, 24, 0.82)),
-                        rgba(8, 11, 24, 0.62);
-                    box-shadow: 0 -18px 32px rgba(0, 0, 0, 0.22);
-                }
-
-                .btn-primary {
-                    font-size: 18px;
-                    padding: 14px 32px;
-                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-                    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
-                    border: none;
-                    border-radius: 12px;
-                    color: white;
-                    cursor: pointer;
-                    font-weight: 600;
-                    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-                    animation: slideUp 0.6s ease-out 0.4s forwards;
-                    opacity: 0;
-                }
-                .btn-primary:hover {
-                    box-shadow: 0 8px 30px rgba(99, 102, 241, 0.5);
-                    transform: translateY(-2px);
-                }
-                .btn-primary:active {
-                    transform: translateY(0);
-                }
-            </style>
-        `;
-
-        // Helper to generate a stat row
-        const genRow = (icon, label, accessor) => {
-            let html = `<div class="grid-row">
-                          <div class="grid-cell label">${icon}<span>${label}</span></div>`;
-            players.forEach((p) => {
-                const value = accessor(p);
-                // Mark value for animation
-                const isNum = typeof value === 'number';
-                const formatted = isNum ? 0 : value; // Start at 0
-                const target = isNum ? value : '';
-                const highlightClass = p.isWinner ? 'highlight' : '';
-
-                html += `<div class="grid-cell ${highlightClass}">
-                            <span class="stat-value" data-target="${target}">${formatted}</span>
-                         </div>`;
-            });
-            html += '</div>';
-            return html;
-        };
-
-        // Screen HTML
-        const overlay = document.createElement('div');
-        overlay.id = 'match-end-overlay';
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(8px);
-            display: flex;
-            align-items: center; 
-            justify-content: center;
-            z-index: 10000;
-        `;
-
-        overlay.innerHTML = `
-            ${styleBlock}
-            <div class="glass-panel">
-                <div class="match-end-header">
-                    <div class="winner-title">
-                        ${winnerCrown('left')}<span class="winner-text">${winnerName} WINS!</span>${winnerCrown('right')}
-                    </div>
-                    <div class="win-condition">
-                        ${this._getWinConditionText()}
-                    </div>
-                </div>
-
-                <div class="match-end-scroll-area">
-                    <div class="stat-grid">
-                        <!-- Header -->
-                        <div class="grid-header-row">
-                            <div class="grid-header-cell">Statistic</div>
-                            ${players.map((p) => `<div class="grid-header-cell ${p.isWinner ? 'highlight' : ''}">${p.name}</div>`).join('')}
-                        </div>
-
-                        <!-- Core Stats -->
-                        ${genRow(rowIcon.score, 'Score', (p) => p.score)}
-                        ${genRow(rowIcon.bpm, 'BPM', (p) => p.bpm)}
-                        ${genRow(rowIcon.ppm, 'PPM', (p) => p.ppm)}
-                        
-                        <div class="separator"></div>
-                        
-                        ${genRow(rowIcon.frags, 'Frags', (p) => p.frags)}
-                        ${genRow(rowIcon.deaths, 'Deaths', (p) => p.deaths)}
-                        ${genRow(rowIcon.lines, 'Lines', (p) => p.lines)}
-
-                        <div class="separator"></div>
-
-                        <!-- Clears -->
-                        ${genRow(rowIcon.single, 'Single', (p) => p.clears[1] || 0)}
-                        ${genRow(rowIcon.double, 'Double', (p) => p.clears[2] || 0)}
-                        ${genRow(rowIcon.triple, 'Triple', (p) => p.clears[3] || 0)}
-                        ${genRow(rowIcon.tetris, 'Quad', (p) => p.clears[4] || 0)}
-
-                        <div class="separator"></div>
-
-                        <!-- Combat / advanced -->
-                        ${genRow(rowIcon.pps, 'PPS', (p) => p.pps)}
-                        ${genRow(rowIcon.apm, 'APM', (p) => p.apm)}
-                        ${genRow(rowIcon.attacksSent, 'Attacks Sent', (p) => p.attacksSent)}
-                        ${genRow(rowIcon.attackLines, 'Attack Lines', (p) => p.attackLinesSent)}
-                        ${genRow(rowIcon.cleanLines, 'Clean Lines', (p) => p.cleanLinesSent)}
-                        ${genRow(rowIcon.maxCombo, 'Max Combo', (p) => p.maxCombo)}
-                        ${genRow(rowIcon.maxCascade, 'Max Cascade', (p) => p.maxDepth)}
-                        ${potatoPlayed ? '<div class="separator"></div>' : ''}
-                        ${potatoPlayed ? genRow(rowIcon.potatoPasses, 'Potato Passes', (p) => p.potatoPasses) : ''}
-                        ${potatoPlayed ? genRow(rowIcon.potatoHits, 'Potato Hits', (p) => p.potatoHits) : ''}
-                    </div>
-                </div>
-
-                <div class="match-end-actions">
-                    <button id="restart-match-btn" class="btn-primary" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);">
-                        Restart Match
-                    </button>
-                    <button id="return-to-menu-btn" class="btn-primary">
-                        Return to Menu
-                    </button>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(overlay);
-
-        // Animation Logic
-        const animateValue = (obj, start, end, duration) => {
-            let startTimestamp = null;
-            const step = (timestamp) => {
-                if (!startTimestamp) startTimestamp = timestamp;
-                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-                // Ease out quart
-                const ease = 1 - (1 - progress) ** 4;
-
-                const current = Math.floor(ease * (end - start) + start);
-                obj.innerHTML = current.toLocaleString();
-                if (progress < 1) {
-                    window.requestAnimationFrame(step);
-                }
-            };
-            window.requestAnimationFrame(step);
-        };
-
-        // Trigger animations
-        setTimeout(() => {
-            const counters = overlay.querySelectorAll('.stat-value');
-            counters.forEach((counter) => {
-                const target = parseInt(counter.getAttribute('data-target'), 10);
-                if (!isNaN(target) && target > 0) {
-                    animateValue(counter, 0, target, 1500);
-                } else if (!isNaN(target)) {
-                    counter.innerHTML = target.toLocaleString();
-                }
-            });
-        }, 500);
-
-        // Handle buttons
-        const restartBtn = document.getElementById('restart-match-btn');
-        restartBtn.addEventListener('click', () => {
-            overlay.style.transition = 'opacity 0.3s';
-            overlay.style.opacity = '0';
-            setTimeout(() => {
-                if (!this.isActive || this._startGeneration !== resultGeneration) {
-                    overlay.remove();
-                    return;
-                }
-                overlay.remove();
+        const ownsResult = () => this.isActive && this._startGeneration === resultGeneration;
+        showLocalMatchEnd({
+            title: winner === 'draw' ? 'A draw' : `${players[winnerIndex]?.name || winnerName} wins`,
+            winCondition: this._getWinConditionText(),
+            players,
+            potatoPlayed,
+            onPlayAgain: () => {
+                if (!ownsResult()) return;
                 this.onStart().catch((error) => {
                     console.error('[LocalMultiplayer] Match restart failed:', error);
                 });
-            }, 300);
-        });
-
-        // Handle return button
-        const returnBtn = document.getElementById('return-to-menu-btn');
-        returnBtn.addEventListener('click', () => {
-            // Fade out
-            overlay.style.transition = 'opacity 0.3s';
-            overlay.style.opacity = '0';
-            setTimeout(() => {
-                overlay.remove();
-                if (!this.isActive || this._startGeneration !== resultGeneration) return;
+            },
+            onMainMenu: () => {
+                if (!ownsResult()) return;
                 // Reset round wins
                 this.roundWins.player1 = 0;
                 this.roundWins.player2 = 0;
@@ -3485,7 +2861,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 this.roundWins.player4 = 0;
                 this.teamRoundWins = {};
                 eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
-            }, 300);
+            },
         });
     }
 

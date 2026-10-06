@@ -1,13 +1,86 @@
 /**
- * Match Configuration Modal
+ * Match Configuration Modal — "Create a match" (Keystone sheet).
  *
- * UI for configuring and creating new FFA matches
+ * UI for configuring and creating new online FFA matches. It replaces the lobby
+ * browser while open: Back, the close tile and Escape return to the browser
+ * (`onCancel`). A failed create keeps the sheet open with the reason inline.
+ * Styles: public/styles/keystone-multiplayer.css (#match-config-modal).
  */
+import { enhanceSegmented } from './components/cosmic-select.js';
+import {
+    closeLayer, focusSoon, mpIcon, openLayer,
+} from './components/mp-sheet.js';
+
+const CONDITIONS = {
+    frags: {
+        label: 'Frags to win',
+        unit: 'frags',
+        defaultValue: 10,
+        min: 1,
+        max: 100,
+        help: 'The first player to reach this many frags wins.',
+    },
+    time: {
+        label: 'Minutes',
+        unit: 'minutes',
+        defaultValue: 3,
+        min: 1,
+        max: 60,
+        help: 'The highest score when time runs out wins.',
+    },
+    points: {
+        label: 'Score target, thousands',
+        unit: 'thousand points',
+        defaultValue: 10,
+        min: 1,
+        max: 999,
+        help: 'The first player to reach this score wins — 10 means 10,000.',
+    },
+    lines: {
+        label: 'Lines to win',
+        unit: 'lines',
+        defaultValue: 100,
+        min: 10,
+        max: 999,
+        help: 'The first player to clear this many lines wins.',
+    },
+    never: {
+        label: 'No win condition',
+        unit: '',
+        defaultValue: 0,
+        min: 0,
+        max: 0,
+        help: 'The match runs until the host ends it.',
+    },
+};
+
+const LOBBY_TYPE_HELP = {
+    public: 'Anyone can find it in the list and join.',
+    friends: 'Only your Steam friends can join.',
+    private: 'Hidden from the list — players join by invite or lobby ID.',
+};
+
+const ATTACK_HELP = {
+    standard: 'Clearing two or more lines sends garbage lines to an opponent.',
+    blind: 'Garbage lines plus a short blackout of the target board.',
+    full_blind: 'A heavier attack with a longer blackout.',
+    hot_potato: 'Hold the potato too long and it goes off — clear lines to pass it on.',
+    peaceful: 'No attacks are sent in this match.',
+};
+
+const SEGMENTED = ['#max-players', '#lobby-type', '#online-end-condition', '#online-attack-style', '#garbage-cancellation'];
 
 export class MatchConfigModal {
-    constructor(onCreateMatch) {
+    /**
+     * @param {Function} onCreateMatch resolves when the lobby exists; throws to keep the sheet open
+     * @param {Function} [onCancel] Back / Escape — returns to the lobby browser
+     */
+    constructor(onCreateMatch, onCancel = null) {
         this.onCreateMatch = onCreateMatch;
+        this.onCancel = onCancel;
         this.container = null;
+        this.submitting = false;
+        this._enhancers = [];
 
         this.createUI();
     }
@@ -18,128 +91,133 @@ export class MatchConfigModal {
     createUI() {
         this.container = document.createElement('div');
         this.container.id = 'match-config-modal';
-        this.container.className = 'match-config-modal hidden';
+        this.container.className = 'match-config-modal sb-mp-screen hidden';
 
         this.container.innerHTML = `
-      <div class="match-config-overlay"></div>
-      <div class="match-config-content">
-        <div class="match-config-header">
-          <h2>⚙️ Create Match</h2>
-          <button class="close-btn" id="close-match-config">✕</button>
+      <div class="match-config-overlay" aria-hidden="true"></div>
+      <div class="sb-mp-sheet" role="dialog" aria-modal="true" aria-labelledby="match-config-title">
+        <div class="match-config-content sb-mp-sheet__panel">
+          <header class="match-config-header sb-mp-sheet__header">
+            <div class="sb-mp-sheet__heading">
+              <p class="sb-eyebrow">Online versus</p>
+              <h2 class="sb-mp-sheet__title" id="match-config-title">Create a match</h2>
+            </div>
+            <button type="button" class="sb-mp-close" id="close-match-config" aria-label="Close and return to the match list">${mpIcon('close', 20)}</button>
+          </header>
+
+          <form id="match-config-form" class="match-config-form sb-mp-sheet__form" novalidate>
+            <div class="sb-mp-sheet__body mc-body">
+              <div class="sb-mp-field">
+                <label class="sb-mp-field__label" for="match-name">Match name</label>
+                <input type="text" id="match-name" name="matchName" class="sb-mp-input"
+                  placeholder="Friday night versus" maxlength="50" autocomplete="off" required />
+              </div>
+
+              <div class="mc-grid">
+                <div class="sb-mp-field">
+                  <span class="sb-mp-field__label">Players</span>
+                  <select id="max-players" name="maxPlayers" aria-label="Most players">
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4" selected>4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                  </select>
+                  <p class="sb-mp-help">The most players who can join.</p>
+                </div>
+
+                <div class="sb-mp-field">
+                  <span class="sb-mp-field__label">Who can join</span>
+                  <select id="lobby-type" name="lobbyType" aria-label="Who can join">
+                    <option value="public" selected>Anyone</option>
+                    <option value="friends">Friends</option>
+                    <option value="private">Invite only</option>
+                  </select>
+                  <p class="sb-mp-help" id="lobby-type-help"></p>
+                </div>
+
+                <div class="sb-mp-field">
+                  <span class="sb-mp-field__label">Win condition</span>
+                  <select id="online-end-condition" name="endCondition" aria-label="Win condition">
+                    <option value="frags" selected>Frags</option>
+                    <option value="time">Time</option>
+                    <option value="points">Score</option>
+                    <option value="lines">Lines</option>
+                    <option value="never">Endless</option>
+                  </select>
+                </div>
+
+                <div class="sb-mp-field sb-mp-field--inline" id="online-end-value-group">
+                  <div class="sb-mp-field__text">
+                    <label class="sb-mp-field__label" for="online-end-condition-value" id="online-end-value-label">Frags to win</label>
+                    <p class="sb-mp-help" id="online-end-value-help"></p>
+                  </div>
+                  <div class="sb-stepper" data-stepper-for="online-end-condition-value">
+                    <button type="button" class="sb-stepper__btn" data-step="-1" aria-label="Decrease the target">${mpIcon('minus', 16)}</button>
+                    <input type="number" id="online-end-condition-value" name="endConditionValue" min="1" max="100" value="10" inputmode="numeric" />
+                    <button type="button" class="sb-stepper__btn" data-step="1" aria-label="Increase the target">${mpIcon('plus', 16)}</button>
+                  </div>
+                </div>
+              </div>
+
+              <details class="advanced-settings sb-mp-more">
+                <summary><span>More rules</span>${mpIcon('chevron', 16, 'sb-mp-more__chevron')}</summary>
+                <div class="sb-mp-more__body">
+                  <div class="sb-mp-field">
+                    <span class="sb-mp-field__label">Attacks</span>
+                    <select id="online-attack-style" name="attackStyle" aria-label="Attacks">
+                      <option value="standard" selected>Standard</option>
+                      <option value="blind">Blind</option>
+                      <option value="full_blind">Full blind</option>
+                      <option value="hot_potato">Hot potato</option>
+                      <option value="peaceful">Peaceful</option>
+                    </select>
+                    <p class="sb-mp-help" id="online-attack-style-help">${ATTACK_HELP.standard}</p>
+                  </div>
+                  <div class="sb-mp-field">
+                    <span class="sb-mp-field__label">Garbage cancelling</span>
+                    <select id="garbage-cancellation" name="garbageCancellation" aria-label="Garbage cancelling">
+                      <option value="full" selected>On</option>
+                      <option value="disabled">Off</option>
+                    </select>
+                    <p class="sb-mp-help" id="garbage-cancellation-help">Lines you send cancel garbage on its way to you, one for one.</p>
+                  </div>
+                  <label class="sb-mp-switch">
+                    <span class="sb-mp-field__text">
+                      <span class="sb-mp-field__label">No attack scaling</span>
+                      <span class="sb-mp-help">Attacks keep full strength with three or more players.</span>
+                    </span>
+                    <input type="checkbox" class="sb-toggle" id="online-boring-rules" name="boringRules" />
+                  </label>
+                </div>
+              </details>
+            </div>
+
+            <footer class="form-actions sb-mp-sheet__footer">
+              <p class="sb-mp-alert" id="match-config-error" role="alert" hidden></p>
+              <ul class="sb-hints sb-mp-sheet__hints" aria-hidden="true">
+                <li><kbd class="sb-kbd" data-key>Esc</kbd><kbd class="sb-kbd" data-pad>B</kbd>Back</li>
+                <li><kbd class="sb-kbd" data-key>Enter</kbd><kbd class="sb-kbd" data-pad>A</kbd>Create</li>
+              </ul>
+              <div class="sb-mp-sheet__actions">
+                <button type="button" class="sb-btn sb-btn--quiet" id="cancel-match-config">Back</button>
+                <button type="submit" class="sb-btn sb-btn--primary" id="create-match-submit">Create match</button>
+              </div>
+            </footer>
+          </form>
         </div>
-        
-        <form id="match-config-form" class="match-config-form">
-          <!-- Match Name -->
-          <div class="form-group">
-            <label for="match-name">Match Name</label>
-            <input 
-              type="text" 
-              id="match-name" 
-              name="matchName"
-              placeholder="My Awesome Match"
-              maxlength="50"
-              required
-            />
-          </div>
-          
-          <!-- Max Players -->
-          <div class="form-group">
-            <label for="max-players">Max Players</label>
-            <select id="max-players" name="maxPlayers">
-              <option value="2">2 Players</option>
-              <option value="3">3 Players</option>
-              <option value="4" selected>4 Players</option>
-              <option value="5">5 Players</option>
-              <option value="6">6 Players</option>
-              <option value="7">7 Players</option>
-              <option value="8">8 Players</option>
-            </select>
-          </div>
-          
-          <!-- End Condition -->
-          <div class="form-group">
-            <label for="end-condition">Win Condition</label>
-            <select id="end-condition" name="endCondition">
-              <option value="frags" selected>Frags (Kills)</option>
-              <option value="time">Time Limit</option>
-              <option value="points">Score Target</option>
-              <option value="lines">Lines Cleared</option>
-              <option value="never">Never (Manual End)</option>
-            </select>
-          </div>
-          
-          <!-- End Condition Value -->
-          <div class="form-group" id="end-value-group">
-            <label for="end-condition-value" id="end-value-label">Frags to Win</label>
-            <input 
-              type="number" 
-              id="end-condition-value" 
-              name="endConditionValue"
-              min="1"
-              max="999"
-              value="10"
-            />
-            <small class="form-help" id="end-value-help">First player to reach 10 frags wins</small>
-          </div>
-          
-          <!-- Lobby Type -->
-          <div class="form-group">
-            <label for="lobby-type">Lobby Type</label>
-            <select id="lobby-type" name="lobbyType">
-              <option value="public" selected>Public (Anyone can join)</option>
-              <option value="friends">Friends Only</option>
-              <option value="private">Private (Invite only)</option>
-            </select>
-          </div>
-          
-          <!-- Advanced Settings -->
-          <details class="advanced-settings">
-            <summary>⚙️ Advanced Settings</summary>
-
-            <div class="form-group">
-              <label for="online-attack-style">Attack Style</label>
-              <select id="online-attack-style" name="attackStyle">
-                <option value="standard" selected>Standard - Line Garbage</option>
-                <option value="blind">Blind - garbage plus blackout</option>
-                <option value="full_blind">Full Blind - heavier blackout</option>
-                <option value="hot_potato">Hot Potato - pass the timer bomb</option>
-                <option value="peaceful">Peaceful - no attacks</option>
-              </select>
-              <small class="form-help" id="online-attack-style-help">Classic garbage lines sent on multi-line clears</small>
-            </div>
-
-            <div class="form-group">
-              <label for="garbage-cancellation">Garbage Cancellation</label>
-              <select id="garbage-cancellation" name="garbageCancellation">
-                <option value="full" selected>Full (Modern)</option>
-                <option value="disabled">Disabled (Classic)</option>
-              </select>
-              <small class="form-help">Full: Outgoing lines cancel incoming garbage 1:1. Disabled: Classic mode, no cancellation.</small>
-            </div>
-
-            <div class="form-group">
-              <label class="checkbox-label">
-                <input type="checkbox" id="boring-rules" name="boringRules" />
-                <span>Boring Rules (Disable attack scaling)</span>
-              </label>
-              <small class="form-help">Classic mode - no attack reduction with 3+ players</small>
-            </div>
-          </details>
-          
-          <!-- Buttons -->
-          <div class="form-actions">
-            <button type="button" class="btn btn-secondary" id="cancel-match-config">
-              Cancel
-            </button>
-            <button type="submit" class="btn btn-primary">
-              🚀 Create Match
-            </button>
-          </div>
-        </form>
+        <span class="sb-mp-sheet__key" aria-hidden="true"></span>
       </div>
     `;
 
         document.body.appendChild(this.container);
+
+        SEGMENTED.forEach((sel) => {
+            const select = this.container.querySelector(sel);
+            if (select) this._enhancers.push(enhanceSegmented(select));
+        });
 
         this.setupEventListeners();
     }
@@ -148,34 +226,51 @@ export class MatchConfigModal {
    * Setup event listeners
    */
     setupEventListeners() {
-    // Close button
-        const closeBtn = this.container.querySelector('#close-match-config');
-        closeBtn.addEventListener('click', () => this.hide());
+        const back = () => this.cancel();
+        this.container.querySelector('#close-match-config').addEventListener('click', back);
+        this.container.querySelector('#cancel-match-config').addEventListener('click', back);
+        this.container.querySelector('.match-config-overlay').addEventListener('click', back);
 
-        // Cancel button
-        const cancelBtn = this.container.querySelector('#cancel-match-config');
-        cancelBtn.addEventListener('click', () => this.hide());
-
-        // Overlay click
-        const overlay = this.container.querySelector('.match-config-overlay');
-        overlay.addEventListener('click', () => this.hide());
-
-        // End condition change
-        const endConditionSelect = this.container.querySelector('#end-condition');
-        endConditionSelect.addEventListener('change', (e) => {
+        this.container.querySelector('#online-end-condition').addEventListener('change', (e) => {
             this.updateEndConditionUI(e.target.value);
         });
-
-        const attackStyleSelect = this.container.querySelector('#online-attack-style');
-        attackStyleSelect?.addEventListener('change', (e) => {
+        this.container.querySelector('#online-attack-style')?.addEventListener('change', (e) => {
             this.updateAttackStyleUI(e.target.value);
         });
+        this.container.querySelector('#lobby-type')?.addEventListener('change', (e) => {
+            this.updateLobbyTypeUI(e.target.value);
+        });
+        this.container.querySelector('#garbage-cancellation')?.addEventListener('change', (e) => {
+            const help = this.container.querySelector('#garbage-cancellation-help');
+            if (help) {
+                help.textContent = e.target.value === 'disabled'
+                    ? 'Garbage always arrives in full, as in the classic game.'
+                    : 'Lines you send cancel garbage on its way to you, one for one.';
+            }
+        });
 
-        // Form submit
+        // Typing a name is not gameplay.
+        this.container.querySelector('#match-name')?.addEventListener('keydown', (e) => e.stopPropagation());
+
         const form = this.container.querySelector('#match-config-form');
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             this.handleSubmit();
+        });
+        form.addEventListener('input', () => this.clearError());
+
+        this.container.querySelectorAll('.sb-stepper').forEach((wrap) => {
+            const input = wrap.querySelector('input');
+            wrap.querySelectorAll('[data-step]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const min = parseInt(input.min, 10) || 0;
+                    const max = parseInt(input.max, 10) || 0;
+                    const current = parseInt(input.value, 10);
+                    const next = (Number.isFinite(current) ? current : min) + (parseInt(button.dataset.step, 10) || 0);
+                    input.value = String(Math.min(max, Math.max(min, next)));
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                });
+            });
         });
     }
 
@@ -183,67 +278,23 @@ export class MatchConfigModal {
    * Update end condition UI based on selection
    */
     updateEndConditionUI(condition) {
-        const valueGroup = this.container.querySelector('#end-value-group');
-        const valueLabel = this.container.querySelector('#end-value-label');
-        const valueInput = this.container.querySelector('#end-condition-value');
-        const valueHelp = this.container.querySelector('#end-value-help');
-
-        const configs = {
-            frags: {
-                label: 'Frags to Win',
-                placeholder: '10',
-                help: 'First player to reach this many frags wins',
-                defaultValue: 10,
-                min: 1,
-                max: 100,
-            },
-            time: {
-                label: 'Time Limit (minutes)',
-                placeholder: '3',
-                help: 'Player with highest score after this time wins',
-                defaultValue: 3,
-                min: 1,
-                max: 60,
-            },
-            points: {
-                label: 'Score Target (thousands)',
-                placeholder: '10',
-                help: 'First player to reach this score wins (e.g., 10 = 10,000 points)',
-                defaultValue: 10,
-                min: 1,
-                max: 999,
-            },
-            lines: {
-                label: 'Lines to Clear',
-                placeholder: '100',
-                help: 'First player to clear this many lines wins',
-                defaultValue: 100,
-                min: 10,
-                max: 999,
-            },
-            never: {
-                label: 'No Win Condition',
-                placeholder: '0',
-                help: 'Match continues until manually ended',
-                defaultValue: 0,
-                min: 0,
-                max: 0,
-            },
-        };
-
-        const config = configs[condition];
+        const valueGroup = this.container.querySelector('#online-end-value-group');
+        const valueLabel = this.container.querySelector('#online-end-value-label');
+        const valueInput = this.container.querySelector('#online-end-condition-value');
+        const valueHelp = this.container.querySelector('#online-end-value-help');
+        const config = CONDITIONS[condition] || CONDITIONS.frags;
 
         if (condition === 'never') {
-            valueGroup.style.display = 'none';
-        } else {
-            valueGroup.style.display = 'block';
-            valueLabel.textContent = config.label;
-            valueInput.placeholder = config.placeholder;
-            valueInput.value = config.defaultValue;
-            valueInput.min = config.min;
-            valueInput.max = config.max;
-            valueHelp.textContent = config.help;
+            valueGroup.hidden = true;
+            return;
         }
+        valueGroup.hidden = false;
+        valueLabel.textContent = config.label;
+        valueInput.placeholder = String(config.defaultValue);
+        valueInput.min = config.min;
+        valueInput.max = config.max;
+        valueInput.value = config.defaultValue;
+        valueHelp.textContent = config.help;
     }
 
     _attackRulesFor(style) {
@@ -268,31 +319,57 @@ export class MatchConfigModal {
     updateAttackStyleUI(style) {
         const help = this.container.querySelector('#online-attack-style-help');
         if (!help) return;
+        help.textContent = ATTACK_HELP[style] || ATTACK_HELP.standard;
+    }
 
-        const helpText = {
-            standard: 'Classic garbage lines sent on multi-line clears',
-            blind: 'Blind: garbage lines plus a short blackout of the target board',
-            full_blind: 'Full Blind: a stronger, longer blackout attack',
-            hot_potato: 'Hold the potato too long and it detonates; clear lines to pass it',
-            peaceful: 'No attacks are sent in this match',
-        };
+    updateLobbyTypeUI(type) {
+        const help = this.container.querySelector('#lobby-type-help');
+        if (help) help.textContent = LOBBY_TYPE_HELP[type] || LOBBY_TYPE_HELP.public;
+    }
 
-        help.textContent = helpText[style] || helpText.standard;
+    showError(message, field = null) {
+        const alert = this.container.querySelector('#match-config-error');
+        alert.textContent = message;
+        alert.hidden = false;
+        this.container.querySelector('.sb-mp-sheet__footer')?.classList.add('has-error');
+        if (field) {
+            field.setAttribute('aria-invalid', 'true');
+            field.focus();
+        }
+    }
+
+    clearError() {
+        const alert = this.container?.querySelector('#match-config-error');
+        if (!alert || alert.hidden) return;
+        alert.hidden = true;
+        alert.textContent = '';
+        this.container.querySelector('.sb-mp-sheet__footer')?.classList.remove('has-error');
+        this.container.querySelectorAll('[aria-invalid="true"]').forEach((el) => el.removeAttribute('aria-invalid'));
+    }
+
+    setSubmitting(submitting) {
+        this.submitting = submitting;
+        const submit = this.container.querySelector('#create-match-submit');
+        if (!submit) return;
+        submit.disabled = submitting;
+        submit.setAttribute('aria-busy', submitting ? 'true' : 'false');
+        submit.textContent = submitting ? 'Creating…' : 'Create match';
     }
 
     /**
    * Handle form submission
    */
     async handleSubmit() {
+        if (this.submitting) return;
         const form = this.container.querySelector('#match-config-form');
         const formData = new FormData(form);
 
         const config = {
-            gameName: formData.get('matchName').trim() || 'Unnamed Match',
-            maxPlayers: parseInt(formData.get('maxPlayers')),
+            gameName: (formData.get('matchName') || '').trim() || 'Unnamed Match',
+            maxPlayers: parseInt(formData.get('maxPlayers'), 10),
             lobbyType: formData.get('lobbyType'),
             endCondition: formData.get('endCondition'),
-            endConditionValue: parseInt(formData.get('endConditionValue')) || 0,
+            endConditionValue: parseInt(formData.get('endConditionValue'), 10) || 0,
             boringRules: formData.get('boringRules') === 'on',
             garbageCancellation: formData.get('garbageCancellation') || 'full',
             attackStyle: formData.get('attackStyle') || 'standard',
@@ -305,16 +382,14 @@ export class MatchConfigModal {
         }
 
         // Validation
-        if (config.gameName.length === 0) {
-            alert('Please enter a match name');
-            return;
-        }
-
         if (config.endCondition !== 'never' && config.endConditionValue <= 0) {
-            alert('Please enter a valid win condition value');
+            const unit = CONDITIONS[config.endCondition]?.unit || 'points';
+            this.showError(`Set how many ${unit} win the match.`, this.container.querySelector('#online-end-condition-value'));
             return;
         }
 
+        this.clearError();
+        this.setSubmitting(true);
         try {
             console.log('🎮 Creating match with config:', config);
 
@@ -325,7 +400,9 @@ export class MatchConfigModal {
             this.hide();
         } catch (err) {
             console.error('Failed to create match:', err);
-            alert(`Failed to create match: ${err.message}`);
+            this.showError(`The match could not be created. ${err?.message || 'Try again in a moment.'}`.trim());
+        } finally {
+            this.setSubmitting(false);
         }
     }
 
@@ -335,12 +412,12 @@ export class MatchConfigModal {
     show() {
         this.container.classList.remove('hidden');
 
-        // Focus match name input
-        const nameInput = this.container.querySelector('#match-name');
-        setTimeout(() => nameInput.focus(), 100);
-
         // Reset to default values
         this.reset();
+        openLayer(this.container, () => this.cancel());
+
+        // Focus match name input
+        focusSoon(() => this.container?.querySelector('#match-name'));
     }
 
     /**
@@ -348,6 +425,14 @@ export class MatchConfigModal {
    */
     hide() {
         this.container.classList.add('hidden');
+        closeLayer(this.container);
+    }
+
+    /** Back: close the sheet and return to whatever opened it (the lobby browser). */
+    async cancel() {
+        if (this.submitting) return;
+        this.hide();
+        if (this.onCancel) await this.onCancel();
     }
 
     /**
@@ -356,10 +441,15 @@ export class MatchConfigModal {
     reset() {
         const form = this.container.querySelector('#match-config-form');
         form.reset();
+        // form.reset() fires no change events: redraw the segmented controls.
+        this._enhancers.forEach((enhancer) => enhancer?.refresh?.());
 
         // Reset to default end condition UI
         this.updateEndConditionUI('frags');
         this.updateAttackStyleUI('standard');
+        this.updateLobbyTypeUI('public');
+        this.clearError();
+        this.setSubmitting(false);
     }
 
     /**
@@ -367,6 +457,9 @@ export class MatchConfigModal {
    */
     destroy() {
         if (this.container) {
+            closeLayer(this.container);
+            this._enhancers.forEach((enhancer) => enhancer?.destroy?.());
+            this._enhancers = [];
             this.container.remove();
         }
     }
