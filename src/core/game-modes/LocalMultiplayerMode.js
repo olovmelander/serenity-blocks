@@ -2,9 +2,7 @@ import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { MultiPlayerState, PLAYER_COLORS, TEAM_COLORS } from '../multi-player-state.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
-import {
-    GAME_MODES, COLS, ROWS, BLOCK_SIZE,
-} from '../constants.js';
+import { GAME_MODES, BLOCK_SIZE } from '../constants.js';
 import {
     spawnPiece,
     fillBag,
@@ -21,6 +19,8 @@ import { bindLegacySessionRng, generateSessionSeed } from '../session-rng.js';
 import { drawNextPieces } from '../../rendering/draw.js';
 import { showLocalMatchEnd } from '../../ui/local-match-end-overlay.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
+import { LocalVersusHud, versusGoal } from '../../ui/local-versus-hud.js';
+import { applyVersusLayout, readVersusViewport, versusLayout } from '../../ui/local-versus-layout.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
     showCinematicLoadingOverlay,
@@ -346,57 +346,16 @@ export class LocalMultiplayerMode extends BaseGameMode {
             gameArea.classList.add('infinity-lms');
         }
 
-        // Show/hide player cards and apply infinity class
+        // Show the seats in play (keystone-versus.css lays them out; a team shows on its
+        // plate, local-versus-hud.js).
         for (let i = 1; i <= 4; i++) {
             const playerCard = document.getElementById(`player-${i}-card`);
             if (playerCard) {
-                if (i <= numPlayers) {
-                    playerCard.style.display = this.matchConfig?.isInfinityLMS ? 'grid' : 'flex';
-                    playerCard.removeAttribute('aria-hidden');
-
-                    // Add infinity class to card
-                    if (this.matchConfig?.isInfinityLMS) {
-                        playerCard.classList.add('infinity-lms');
-                    } else {
-                        playerCard.classList.remove('infinity-lms');
-                        const header = playerCard.querySelector('.player-header');
-                        if (header) {
-                            header.style.left = '';
-                            header.style.transform = '';
-                        }
-                    }
-
-                    // Add team marker if in team mode
-                    if (this.matchConfig?.isTeamMode) {
-                        const teamId = this._getResolvedTeamId(i - 1);
-                        const teamName = this._getTeamLabel(teamId).toUpperCase();
-                        const teamColor = this._getTeamColorScheme(teamId).primary;
-
-                        let teamMarker = playerCard.querySelector('.team-marker');
-                        if (!teamMarker) {
-                            teamMarker = document.createElement('div');
-                            teamMarker.className = 'team-marker';
-                            playerCard.appendChild(teamMarker);
-                        }
-                        teamMarker.textContent = teamName;
-                        teamMarker.style.backgroundColor = teamColor;
-                        teamMarker.style.color = 'white';
-                        teamMarker.style.fontSize = '10px';
-                        teamMarker.style.padding = '2px 6px';
-                        teamMarker.style.borderRadius = '4px';
-                        teamMarker.style.position = 'absolute';
-                        teamMarker.style.top = '10px';
-                        teamMarker.style.right = '10px';
-                        teamMarker.style.fontWeight = 'bold';
-                        teamMarker.style.zIndex = '10';
-                    } else {
-                        const teamMarker = playerCard.querySelector('.team-marker');
-                        if (teamMarker) teamMarker.remove();
-                    }
-                } else {
-                    playerCard.style.display = 'none';
-                    playerCard.setAttribute('aria-hidden', 'true');
-                }
+                const inPlay = i <= numPlayers;
+                playerCard.style.display = inPlay ? '' : 'none';
+                if (inPlay) playerCard.removeAttribute('aria-hidden');
+                else playerCard.setAttribute('aria-hidden', 'true');
+                playerCard.classList.toggle('infinity-lms', inPlay && Boolean(this.matchConfig?.isInfinityLMS));
             }
         }
 
@@ -463,6 +422,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.lastMatchResultClock = null;
 
         this.matchStartTime = Date.now();
+        this.versusRound = 1;
+        this.versusHud?.mount();
 
         const numPlayers = this.matchConfig?.numPlayers || 2;
         this.multiplayerState = new MultiPlayerState(numPlayers);
@@ -565,6 +526,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState.isPaused = false;
         this.multiplayerState.lastTime = performance.now();
         this._startGameLoop();
+        // Each human board shows its controls for the first seconds of the match.
+        this.versusHud?.showCoach();
     }
 
     _initializeSharedPieceRng(seed) {
@@ -665,10 +628,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Resume single player scene
         this._resumeSinglePlayerScene();
 
-        // Hide standings HUD
-        const standingsHud = document.getElementById('global-standings-hud');
-        if (standingsHud) standingsHud.classList.add('hidden');
-        this._hudItems = null;
+        // Clear the plates and the match bar
+        this.versusHud?.destroy();
+        this.versusHud = null;
 
         // Clean up state
         this.multiplayerState = null;
@@ -803,151 +765,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const shouldUpdateText = frameCount % 10 === 0;
 
         if (shouldUpdateText) {
-            // Initialize previous values tracking if not exists
-            if (!this._prevStats) {
-                this._prevStats = {};
-            }
-
             for (let i = 0; i < numPlayers; i++) {
-                const playerNum = i + 1;
-                const playerState = this.multiplayerState.players[i];
-                if (!playerState) continue;
-
-                const matchKey = `player${playerNum}`;
-                const matchTotals = this.matchStats[matchKey] || {
-                    score: 0,
-                    lines: 0,
-                    deaths: 0,
-                };
-
-                const totalScore = (matchTotals.score || 0) + (playerState.score || 0);
-                const totalLines = (matchTotals.lines || 0) + (playerState.totalLinesCleared || 0);
-                const totalLevel = playerState.level ?? 1;
-                const totalGarbage = this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0;
-                const roundFrags = (matchTotals.frags || 0) + (this.multiplayerState.frags[i] ?? 0);
-
-                // Fix: Sum match deaths + current round deaths
-                const totalDeaths = (matchTotals.deaths || 0) + (this.multiplayerState.deaths?.[i] ?? 0);
-
-                const fragsEl = document.getElementById(`p${playerNum}-frags`);
-                const deathsEl = document.getElementById(`p${playerNum}-deaths`);
-                const scoreEl = document.getElementById(`p${playerNum}-score`);
-                const linesEl = document.getElementById(`p${playerNum}-lines`);
-                const levelEl = document.getElementById(`p${playerNum}-level`);
-                const garbageEl = document.getElementById(`p${playerNum}-garbage`);
-
-                // Track previous values for pulse animation
-                const prevKey = `p${playerNum}`;
-                if (!this._prevStats[prevKey]) {
-                    this._prevStats[prevKey] = {
-                        frags: 0, deaths: 0, score: 0, lines: 0, level: 1, garbage: 0,
-                    };
-                }
-                const prev = this._prevStats[prevKey];
-
-                // Infinity LMS: Update Distance to Ceiling
-                if (this.matchConfig?.isInfinityLMS) {
-                    const ceilingContainerEl = document.getElementById(`p${playerNum}-ceiling-container`);
-                    const ceilingEl = document.getElementById(`p${playerNum}-ceiling`);
-
-                    if (ceilingContainerEl && ceilingEl) {
-                        ceilingContainerEl.style.display = 'flex';
-
-                        // Calculate distance to absolute ceiling
-                        const buildHeight = calculateBuildHeight(playerState);
-                        const distanceToCeiling = Math.max(0, (playerState.maxRows || 100) - buildHeight);
-
-                        ceilingEl.textContent = distanceToCeiling;
-
-                        // Initialize previous tracking for ceiling if needed
-                        if (prev.ceiling === undefined) prev.ceiling = distanceToCeiling;
-
-                        if (distanceToCeiling !== prev.ceiling) {
-                            this._pulseElement(ceilingEl);
-                            prev.ceiling = distanceToCeiling;
-                        }
-                    }
-                } else {
-                    // Hide if not in Infinity LMS mode
-                    const ceilingContainerEl = document.getElementById(`p${playerNum}-ceiling-container`);
-                    if (ceilingContainerEl) {
-                        ceilingContainerEl.style.display = 'none';
-                    }
-                }
-
-                // Update values with pulse animation if changed
-                if (fragsEl) {
-                    fragsEl.textContent = roundFrags;
-                    if (roundFrags !== prev.frags) {
-                        this._pulseElement(fragsEl);
-                        prev.frags = roundFrags;
-                    }
-                }
-                if (deathsEl) {
-                    deathsEl.textContent = totalDeaths;
-                    if (totalDeaths !== prev.deaths) {
-                        this._pulseElement(deathsEl);
-                        prev.deaths = totalDeaths;
-                    }
-                }
-                if (scoreEl) {
-                    scoreEl.textContent = this._formatStatValue(totalScore);
-                    if (totalScore !== prev.score) {
-                        this._pulseElement(scoreEl);
-                        prev.score = totalScore;
-                    }
-                }
-                if (linesEl) {
-                    linesEl.textContent = totalLines;
-                    if (totalLines !== prev.lines) {
-                        this._pulseElement(linesEl);
-                        prev.lines = totalLines;
-                    }
-                }
-                if (levelEl) {
-                    levelEl.textContent = totalLevel;
-                    if (totalLevel !== prev.level) {
-                        this._pulseElement(levelEl);
-                        prev.level = totalLevel;
-                    }
-                }
-                if (garbageEl) {
-                    garbageEl.textContent = totalGarbage;
-                    if (totalGarbage !== prev.garbage) {
-                        this._pulseElement(garbageEl);
-                        prev.garbage = totalGarbage;
-                    }
-                }
-
-                // Update garbage indicator bar
-                this._updateGarbageIndicator(playerNum, totalGarbage);
+                this._updateGarbageIndicator(i + 1, this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0);
             }
-
-            // Update board-level frag displays for all players (used in 3-4 player mode)
-            for (let i = 1; i <= numPlayers; i++) {
-                const boardFragDisplay = document.getElementById(`p${i}-board-frags`);
-                if (boardFragDisplay) {
-                    const playerKey = `player${i}`;
-                    let displayVal = `${(this.matchStats[playerKey]?.frags || 0) + (this.multiplayerState.frags[i - 1] || 0)} F`;
-
-                    // If team mode, show team total frags on the board. Group by
-                    // the resolved team id so the total matches the color/standings.
-                    if (this.matchConfig?.isTeamMode) {
-                        const teamId = this._getResolvedTeamId(i - 1);
-                        let teamTotalFrags = 0;
-                        for (let j = 0; j < numPlayers; j++) {
-                            if (this._getResolvedTeamId(j) === teamId) {
-                                teamTotalFrags += this.multiplayerState.frags[j];
-                            }
-                        }
-                        displayVal = `${teamTotalFrags} TF`;
-                    }
-
-                    boardFragDisplay.textContent = displayVal;
-                }
-            }
-
-            // Update top standings HUD
             this._updateStandingsHUD();
         }
 
@@ -970,168 +790,93 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Format a stat number with K/M suffixes for readability.
-     * @private
-     */
-    _formatStatValue(n) {
-        if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-        if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-        return String(n);
-    }
-
-    /**
-     * Build the global standings HUD items (one per player).
+     * The plates and the match bar for this match (src/ui/local-versus-hud.js).
      * Called once from _setupMultiplayerUI().
      * @private
      */
     _initStandingsHUD() {
-        const hud = document.getElementById('global-standings-hud');
-        if (!hud) return;
-
-        const numPlayers = this.matchConfig?.numPlayers || 2;
-        hud.innerHTML = '';
-        this._hudItems = {};
-
-        for (let i = 0; i < numPlayers; i++) {
-            const playerNum = i + 1;
-            const colorScheme = this._getPlayerColorScheme(i);
-            const color = colorScheme?.primary || '#8b5cf6';
-
-            const item = document.createElement('div');
-            item.className = 'standing-item';
-            item.dataset.player = playerNum;
-            item.dataset.rank = playerNum;
-            item.innerHTML = `
-                <span class="rank-badge">${playerNum}</span>
-                <span class="player-color-dot" style="background:${color};color:${color}"></span>
-                <span class="player-name">P${playerNum}</span>
-                <span class="player-score">0</span>
-                <span class="player-meta">Lv1 · 0L</span>
-            `;
-            hud.appendChild(item);
-            this._hudItems[i] = {
-                el: item,
-                rankEl: item.querySelector('.rank-badge'),
-                scoreEl: item.querySelector('.player-score'),
-                metaEl: item.querySelector('.player-meta'),
-            };
-        }
-
-        hud.classList.remove('hidden');
+        this.versusHud?.destroy();
+        this.versusHud = new LocalVersusHud({
+            config: this.matchConfig || {},
+            numPlayers: this.matchConfig?.numPlayers || 2,
+            colorFor: (i) => this._getPlayerColorScheme(i),
+            teamLabel: (teamId) => this._getTeamLabel(teamId),
+            settings: this.deps.settingsManager?.get?.() || {},
+        });
+        this.versusHud.mount();
     }
 
     /**
-     * Returns sort key, primary value renderer, and meta renderer for the HUD
-     * based on the active win condition.
-     * @private
-     */
-    _getHUDProfile() {
-        const ec = this.matchConfig?.endCondition || 'frags';
-        const fmt = (n) => this._formatStatValue(n);
-
-        const fragsIcon = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em;margin-right:2px"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="11" x2="11" y2="5"/><line x1="3" y1="13" x2="5" y2="15"/><line x1="8" y1="8" x2="4" y2="12"/></svg>';
-
-        switch (ec) {
-        case 'frags':
-        case 'time':
-            // Frags wins / time limit: most kills leads
-            return {
-                sortKey: 'frags',
-                primaryFn: (e) => `${fragsIcon}${e.frags}`,
-                metaFn: (e) => `${fmt(e.score)} · Lv${e.level} · ${e.lines}L`,
-            };
-        case 'lines':
-            // First to N lines: lines cleared leads
-            return {
-                sortKey: 'lines',
-                primaryFn: (e) => `${e.lines}L`,
-                metaFn: (e) => `${fragsIcon}${e.frags} · ${fmt(e.score)} · Lv${e.level}`,
-            };
-        case 'infinity-lms':
-            // Survival: alive status + lines cleared as tiebreak
-            return {
-                sortKey: 'lines',
-                primaryFn: (e) => `${e.lines}L`,
-                metaFn: (e) => `Lv${e.level}`,
-            };
-        case 'points':
-        case 'never':
-        default:
-            // Score-based / endless: score leads
-            return {
-                sortKey: 'score',
-                primaryFn: (e) => fmt(e.score),
-                metaFn: (e) => `${fragsIcon}${e.frags} · Lv${e.level} · ${e.lines}L`,
-            };
-        }
-    }
-
-    /**
-     * Update the global standings HUD with live player data, sorted by the
-     * active win condition stat.
+     * Live numbers for the plates and the match bar: the match so far plus this round.
      * Called inside the shouldUpdateText throttle in _updateMultiplayerStats().
      * @private
      */
     _updateStandingsHUD() {
-        const hud = document.getElementById('global-standings-hud');
-        if (!hud || !this.multiplayerState || !this._hudItems) return;
-
-        const { numPlayers } = this.multiplayerState;
-        const trophySvg = (color) => `<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.2em"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>`;
-        const RANK_LABELS = [trophySvg('#FFF480'), trophySvg('#E2E8F0'), trophySvg('#CD7F32'), '4th'];
-        const { sortKey, primaryFn, metaFn } = this._getHUDProfile();
-
-        // Build standings array from live state
-        const standings = [];
-        for (let i = 0; i < numPlayers; i++) {
-            const playerState = this.multiplayerState.players[i];
-            if (!playerState) continue;
-            const matchKey = `player${i + 1}`;
-            const matchTotals = this.matchStats[matchKey] || {};
-            standings.push({
-                playerIndex: i,
-                score: (matchTotals.score || 0) + (playerState.score || 0),
+        if (!this.versusHud || !this.multiplayerState) return;
+        const { players } = this.multiplayerState;
+        const entries = this._matchTotals().map((totals, i) => {
+            const playerState = players[i] || {};
+            return {
+                ...totals,
                 level: playerState.level ?? 1,
-                lines: (matchTotals.lines || 0) + (playerState.totalLinesCleared || 0),
-                frags: (matchTotals.frags || 0) + (this.multiplayerState.frags[i] ?? 0),
+                // Last Standing: rows left before this stack reaches the roof.
+                toRoof: this.matchConfig?.isInfinityLMS
+                    ? Math.max(0, (playerState.maxRows || 100) - calculateBuildHeight(playerState)) : 0,
                 isAlive: playerState.isAlive !== false,
+                team: this._getResolvedTeamId(i),
+            };
+        });
+        // Teams race by their rule: rounds won for a frag goal, the team's sum otherwise.
+        let teamTotals = null;
+        if (this.matchConfig?.isTeamMode) {
+            const { key } = this.versusHud.metric;
+            teamTotals = {};
+            new Set(entries.map((e) => e.team)).forEach((teamId) => {
+                teamTotals[teamId] = key === 'frags'
+                    ? (this.teamRoundWins[teamId] || 0)
+                    : (this._getTeamAggregateStats(teamId)[key] || 0);
             });
         }
-
-        // Sort: alive players by the win-condition stat descending, eliminated last
-        standings.sort((a, b) => {
-            if (a.isAlive !== b.isAlive) return a.isAlive ? -1 : 1;
-            return b[sortKey] - a[sortKey];
-        });
-
-        standings.forEach((entry, rankIndex) => {
-            const refs = this._hudItems[entry.playerIndex];
-            if (!refs) return;
-            const {
-                el, rankEl, scoreEl, metaEl,
-            } = refs;
-
-            rankEl.innerHTML = RANK_LABELS[rankIndex] ?? `${rankIndex + 1}`;
-            el.dataset.rank = rankIndex + 1;
-            scoreEl.innerHTML = entry.isAlive ? primaryFn(entry) : 'ELIM';
-            metaEl.innerHTML = entry.isAlive ? metaFn(entry) : '';
-            el.classList.toggle('standing-item--eliminated', !entry.isAlive);
-
-            // Re-appending reorders DOM nodes to match sorted standings
-            hud.appendChild(el);
+        const limitMs = this.matchConfig?.endCondition === 'time'
+            ? (Number(this.matchConfig.endConditionValue) || 0) * 60000 : null;
+        this.versusHud.update(entries, {
+            round: this.versusRound || 1,
+            // The HUD reads the wall clock (as _checkMatchWinCondition times the match).
+            clock: limitMs === null ? null : { limitMs, startedAt: this.matchStartTime },
+            teamTotals,
         });
     }
 
     /**
-     * Add pulse animation to an element
+     * Each player's match so far: the rounds played plus this one.
      * @private
      */
-    _pulseElement(element) {
-        if (!element) return;
-        element.classList.remove('pulse');
-        // Trigger reflow to restart animation
-        void element.offsetWidth;
-        element.classList.add('pulse');
+    _matchTotals() {
+        const { numPlayers, players, frags } = this.multiplayerState;
+        return Array.from({ length: numPlayers }, (_, i) => {
+            const totals = this.matchStats[`player${i + 1}`] || {};
+            const playerState = players[i] || {};
+            return {
+                frags: (totals.frags || 0) + (frags[i] ?? 0),
+                score: (totals.score || 0) + (playerState.score || 0),
+                lines: (totals.lines || 0) + (playerState.totalLinesCleared || 0),
+            };
+        });
+    }
+
+    /** The team with the highest match score (a timed team match). @private */
+    _leadingTeamByScore() {
+        const teams = new Set(this.multiplayerState.players.map((_, i) => this._getResolvedTeamId(i)));
+        let leader = null;
+        let best = -1;
+        teams.forEach((teamId) => {
+            const { score } = this._getTeamAggregateStats(teamId);
+            if (score > best) {
+                best = score;
+                leader = teamId;
+            }
+        });
+        return leader;
     }
 
     /**
@@ -1662,146 +1407,27 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Calculate dynamic block size based on window height
+     * The largest block that fits the window below the top row, and where each next
+     * queue goes (src/ui/local-versus-layout.js). Kept for _updateBoardCSSVariables.
      * @private
      */
     _calculateDynamicBlockSize() {
-        const windowHeight = window.innerHeight;
-        const windowWidth = window.innerWidth;
-        const numPlayers = this.matchConfig?.numPlayers || 2;
-        const isInfinity = this.matchConfig?.isInfinityLMS;
-
-        if (isInfinity) {
-            // Infinity mode: prioritize vertical space for 20 visible rows
-            const maxHeight = windowHeight * 0.80; // Use 80% of viewport height
-            const visibleRows = 20; // Standard infinity viewport
-
-            // Calculate block size from height constraint
-            const blockSizeByHeight = Math.floor(maxHeight / visibleRows);
-
-            // Calculate block size from width constraint
-            // We need to account for UI overhead in the layout:
-            // - Minimap column: ~65px
-            // - Minimap gap: ~8px
-            // - Card padding: ~28px total
-            // - Card borders: ~6px total
-            // - Garbage bar + gap: ~14px
-            // - Grid gaps: Between players (handled separately)
-            // - Global screen padding: ~100px total
-
-            const perPlayerFixedOverhead = 65 + 8 + 28 + 6 + 14;
-            const totalFixedOverhead = (perPlayerFixedOverhead * numPlayers) + 100;
-
-            const baseGap = numPlayers === 2 ? 40 : numPlayers === 3 ? 30 : 20;
-            const gapWidth = baseGap * (numPlayers - 1);
-
-            const availableWidthForBoards = windowWidth - totalFixedOverhead - gapWidth;
-            const boardWidthPerPlayer = availableWidthForBoards / numPlayers;
-            const blockSizeByWidth = Math.floor(boardWidthPerPlayer / COLS);
-
-            // Use smaller of the two to ensure fit
-            const blockSize = Math.min(blockSizeByHeight, blockSizeByWidth);
-
-            // Clamp to playable range (smaller than normal multiplayer)
-            const clampedSize = Math.max(12, Math.min(32, blockSize));
-
-            console.log(`[LocalMultiplayer] Infinity Mode Sizing:
-                Window: ${windowWidth}x${windowHeight}
-                Block size by height (${visibleRows} rows): ${blockSizeByHeight}px
-                Block size by width (${numPlayers} players): ${blockSizeByWidth}px
-                Final size: ${clampedSize}px
-            `);
-
-            return clampedSize;
-        }
-
-        // Normal multiplayer mode
-        // Height constraint
-        // Fixed elements: top/bottom screen padding (40px each), player label (~30px),
-        // stats section (~50px), card padding (~30px), bottom gap (~30px)
-        // +60px for standings HUD pill (always shown in all player counts)
-        const fixedVerticalSpace = 280;
-        const availableHeight = windowHeight - fixedVerticalSpace;
-
-        // The next pieces also scale with blockSize (~2.5 blocks tall including padding)
-        // So effective height = ROWS * blockSize + 2.5 * blockSize = (ROWS + 2.5) * blockSize
-        const effectiveRows = ROWS + 2.5;
-        const sizeByHeight = availableHeight / effectiveRows;
-
-        // Width constraint
-        const cardPadding = 40;
-        const gapSize = 60;
-        const outerPadding = 80;
-
-        const totalFixedHorizontalSpace = (numPlayers * cardPadding) + ((numPlayers - 1) * gapSize) + outerPadding;
-        const availableWidth = windowWidth - totalFixedHorizontalSpace;
-        const totalCols = numPlayers * COLS;
-        const sizeByWidth = availableWidth / totalCols;
-
-        // Take the smaller of the two to ensure it fits both dimensions
-        let size = Math.min(sizeByHeight, sizeByWidth);
-
-        console.log(`[LocalMultiplayer] Sizing Debug:
-            Window: ${windowWidth}x${windowHeight}
-            Available Height: ${availableHeight} (Fixed: ${fixedVerticalSpace}, EffectiveRows: ${effectiveRows}) -> Size: ${sizeByHeight}
-            Available Width: ${availableWidth} (Fixed: ${totalFixedHorizontalSpace}) -> Size: ${sizeByWidth}
-            Raw Size: ${size}
-        `);
-
-        // Clamp size between reasonable min and max
-        // Min 10px allows for very small screens
-        // Max 80px allows for large screens (4K)
-        size = Math.max(10, Math.min(80, size));
-
-        console.log(`[LocalMultiplayer] Calculated block size: ${size}px (Window: ${windowWidth}x${windowHeight}, Players: ${numPlayers})`);
-        return size;
+        this.versusLayout = versusLayout({
+            ...readVersusViewport(),
+            players: this.matchConfig?.numPlayers || 2,
+            infinity: Boolean(this.matchConfig?.isInfinityLMS),
+        });
+        return this.versusLayout.block;
     }
 
     /**
-     * Update CSS variables for board dimensions
+     * Hands the layout to keystone-versus.css: sizes as variables on the local stage
+     * (scoped to it, so other modes' boards never inherit them).
      * @private
      */
     _updateBoardCSSVariables(blockSize) {
-        const boardWidth = COLS * blockSize;
-        const boardHeight = ROWS * blockSize;
-
-        // Dynamic gap: 1.5 blocks, clamped between 20px and 80px
-        const dynamicGap = Math.max(20, Math.min(80, blockSize * 1.5));
-
-        // Next piece sizes: scale proportionally with block size
-        // Highlight piece: ~2.2 blocks, clamped between 44px and 100px
-        const nextPieceHighlightSize = Math.max(44, Math.min(100, blockSize * 2.2));
-        // Regular pieces: ~1.9 blocks, clamped between 38px and 86px
-        const nextPieceSize = Math.max(38, Math.min(86, blockSize * 1.9));
-        // Gap between next pieces: ~0.25 blocks, clamped between 4px and 12px
-        const nextPieceGap = Math.max(4, Math.min(12, blockSize * 0.25));
-
-        console.log(`[LocalMultiplayer] Updating CSS variables: width=${boardWidth}px, height=${boardHeight}px, gap=${dynamicGap}px, nextPiece=${nextPieceSize}px`);
-
-        // Set globally on root to ensure all elements pick it up
-        document.documentElement.style.setProperty('--board-width', `${boardWidth}px`);
-        document.documentElement.style.setProperty('--board-height', `${boardHeight}px`);
-        document.documentElement.style.setProperty('--board-gap', `${dynamicGap}px`);
-        document.documentElement.style.setProperty('--next-piece-size', `${nextPieceSize}px`);
-        document.documentElement.style.setProperty('--next-piece-highlight-size', `${nextPieceHighlightSize}px`);
-        document.documentElement.style.setProperty('--next-piece-gap', `${nextPieceGap}px`);
-
-        // Also set on specific containers as fallback
-        const gameArea = document.querySelector('.multiplayer-game-area');
-        if (gameArea) {
-            gameArea.style.setProperty('--board-width', `${boardWidth}px`);
-            gameArea.style.setProperty('--board-height', `${boardHeight}px`);
-            gameArea.style.setProperty('--board-gap', `${dynamicGap}px`);
-        }
-
-        const playerCards = document.querySelectorAll('.player-card');
-        playerCards.forEach((card) => {
-            card.style.setProperty('--board-width', `${boardWidth}px`);
-            card.style.setProperty('--board-height', `${boardHeight}px`);
-            card.style.setProperty('--next-piece-size', `${nextPieceSize}px`);
-            card.style.setProperty('--next-piece-highlight-size', `${nextPieceHighlightSize}px`);
-            card.style.setProperty('--next-piece-gap', `${nextPieceGap}px`);
-        });
+        if (!this.versusLayout) this._calculateDynamicBlockSize();
+        applyVersusLayout(document.getElementById('multiplayer-container'), { ...this.versusLayout, block: blockSize });
     }
 
     /**
@@ -2335,66 +1961,16 @@ export class LocalMultiplayerMode extends BaseGameMode {
     _applyPlayerColors() {
         const numPlayers = this.matchConfig?.numPlayers || 2;
 
+        // Each seat's hue (its team's in team play) for keystone-versus.css: the plate,
+        // the board frame and the queue's first tile.
         for (let i = 1; i <= numPlayers; i++) {
             const scheme = this._getPlayerColorScheme(i - 1);
             const primary = scheme?.primary || '#3b82f6';
-            const light = scheme?.light || primary;
-            const glow = scheme?.glow || `${primary}80`;
-            const backgroundTint = `${primary}0D`;
-
-            // Update player card border
             const playerCard = document.getElementById(`player-${i}-card`);
             if (playerCard) {
                 playerCard.style.setProperty('--player-primary', primary);
-                playerCard.style.setProperty('--player-primary-light', light);
-                playerCard.style.setProperty('--player-glow', glow);
-                playerCard.style.borderColor = `${primary}80`; // 50% opacity
-                playerCard.style.boxShadow = `0 0 20px ${primary}20`; // Glow
-                playerCard.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${backgroundTint})`;
-            }
-
-            // Darken the board explicitly
-            const boardSection = document.querySelector(`#player-${i}-card .player-board-section`);
-            if (boardSection) {
-                boardSection.style.background = 'rgba(10, 8, 24, 0.8)';
-            }
-
-            // Update label color
-            const label = document.querySelector(`#player-${i}-card .player-board-label`);
-            if (label) {
-                label.style.color = primary;
-                label.style.borderColor = `${primary}40`;
-                label.style.textShadow = `0 0 10px ${primary}80`;
-            }
-
-            const border = document.getElementById(`p${i}-border`);
-            if (border) {
-                border.style.borderColor = primary;
-                border.style.borderTop = 'none';
-                border.style.borderRadius = '0 0 12px 12px';
-                border.style.boxShadow = `0 0 15px ${primary}60, inset 0 0 10px ${primary}40`;
-            }
-
-            // Update phaser container border
-            const container = document.getElementById(`p${i}-phaser-container`);
-            if (container) {
-                container.style.border = `2px solid ${primary}`;
-                container.style.borderTop = 'none';
-                container.style.borderRadius = '0 0 12px 12px';
-                container.style.boxShadow = `0 0 20px ${primary}40`;
-            }
-
-            const avatar = document.querySelector(`#player-${i}-card .player-avatar`);
-            if (avatar) {
-                avatar.style.borderColor = primary;
-                avatar.style.setProperty('--player-primary', primary);
-                avatar.style.setProperty('--player-glow', glow);
-            }
-
-            const avatarText = document.querySelector(`#player-${i}-card .avatar-text`);
-            if (avatarText) {
-                avatarText.style.color = primary;
-                avatarText.style.textShadow = `0 0 6px ${primary}80`;
+                playerCard.style.setProperty('--player-primary-light', scheme?.light || primary);
+                playerCard.style.setProperty('--player-glow', scheme?.glow || `${primary}80`);
             }
         }
     }
@@ -2442,37 +2018,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Get win condition display text
-     */
-    _getWinConditionText() {
-        if (!this.matchConfig) {
-            return 'First to 7 frags wins';
-        }
-
-        const config = this.matchConfig;
-        if (config.isInfinityLMS) {
-            const maxRows = config.infinityMaxRows || 100;
-            return config.isTeamMode
-                ? `Last team standing wins (${maxRows} rows)`
-                : `Last player standing wins (${maxRows} rows)`;
-        }
-        switch (config.endCondition) {
-        case 'frags':
-            return `First to ${config.endConditionValue} frags wins`;
-        case 'time':
-            return `${config.endConditionValue} minute time limit`;
-        case 'points':
-            return `First to ${config.endConditionValue * 1000} points wins`;
-        case 'lines':
-            return `First to ${config.endConditionValue} lines wins`;
-        case 'never':
-            return 'Play until manual end';
-        default:
-            return `First to ${config.endConditionValue} frags wins`;
-        }
-    }
-
-    /**
      * Handle round end - check if match is over or start new round
      * @param {string} winner - 'player1' or 'player2'
      */
@@ -2499,17 +2044,19 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const wonMatch = this._checkMatchWinCondition(winner);
 
         if (wonMatch) {
-            // For frags mode, the winner is whoever has the most individual kills,
-            // not necessarily the round winner (they may have been outfragged mid-match)
+            // Frags and time limits go to the leader, not necessarily the round's winner:
+            // the most frags, or the highest score when time runs out (the setup sheet's
+            // rule, and what the plates rank by).
             let matchWinner = winner;
-            if (this.matchConfig?.endCondition === 'frags') {
-                const np = this.matchConfig.numPlayers || 2;
-                let maxF = -1;
-                for (let fi = 0; fi < np; fi++) {
-                    const mk = `player${fi + 1}`;
-                    const f = (this.matchStats[mk]?.frags || 0) + (this.multiplayerState.frags[fi] ?? 0);
-                    if (f > maxF) { maxF = f; matchWinner = `player${fi + 1}`; }
-                }
+            const leaderKey = { frags: 'frags', time: 'score' }[this.matchConfig?.endCondition];
+            if (leaderKey) {
+                let best = -1;
+                this._matchTotals().forEach((totals, i) => {
+                    if (totals[leaderKey] > best) {
+                        best = totals[leaderKey];
+                        matchWinner = `player${i + 1}`;
+                    }
+                });
             }
             console.log(`[LocalMultiplayer] ${winnerName} wins the match!`);
             await this._showMatchEnd(matchWinner);
@@ -2531,8 +2078,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const wonMatch = this._checkTeamMatchWinCondition(teamId);
 
         if (wonMatch) {
-            console.log(`[LocalMultiplayer] ${teamName} wins the match!`);
-            await this._showMatchEnd({ type: 'team', teamId });
+            // A timed match goes to the team with the highest score, as the setup sheet says.
+            const winnerTeam = this.matchConfig?.endCondition === 'time' ? this._leadingTeamByScore() : teamId;
+            console.log(`[LocalMultiplayer] ${this._getTeamLabel(winnerTeam)} wins the match!`);
+            await this._showMatchEnd({ type: 'team', teamId: winnerTeam });
             return;
         }
 
@@ -2604,6 +2153,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Clear death animations from previous round
         this._clearDeathAnimations();
+        this.versusRound = (this.versusRound || 1) + 1;
 
         // Aggregate current round stats into match totals BEFORE resetting logic
         const { numPlayers } = this.multiplayerState;
@@ -2843,7 +2393,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const ownsResult = () => this.isActive && this._startGeneration === resultGeneration;
         showLocalMatchEnd({
             title: winner === 'draw' ? 'A draw' : `${players[winnerIndex]?.name || winnerName} wins`,
-            winCondition: this._getWinConditionText(),
+            winCondition: versusGoal(this.matchConfig || {}),
             players,
             potatoPlayed,
             onPlayAgain: () => {
@@ -2870,147 +2420,28 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @private
      */
     _showPlayerDeathAnimation(playerIndex) {
-        const playerNum = playerIndex + 1;
         const boardScene = this.boardScenes[playerIndex];
-
         if (!boardScene) {
-            console.warn(`[LocalMultiplayer] No board scene found for Player ${playerNum}`);
+            console.warn(`[LocalMultiplayer] No board scene found for Player ${playerIndex + 1}`);
             return;
         }
 
-        console.log(`[LocalMultiplayer] Showing death animation for Player ${playerNum}`);
-
-        // === PHASER EFFECTS ===
+        // The board fades out (Phaser), dims, and the knock-out card rises over it.
         this._createEliminationExplosion(boardScene, playerIndex);
-
-        // Get the Phaser container for this player
-        // Get the Phaser container for this player
-        const phaserContainer = document.getElementById(`p${playerNum}-phaser-container`);
-        if (!phaserContainer) {
-            console.warn(`[LocalMultiplayer] No phaser container found for Player ${playerNum}`);
-            return;
-        }
-
-        // Create death overlay
-        const deathOverlay = document.createElement('div');
-        deathOverlay.className = 'player-death-overlay';
-        deathOverlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-            pointer-events: none;
-            transition: background 0.5s ease;
-        `;
-
-        // Create skull/death icon
-        const deathIcon = document.createElement('div');
-        deathIcon.style.cssText = `
-            font-size: 80px;
-            margin-bottom: 10px;
-            opacity: 0;
-            transform: scale(0.5) rotate(-45deg);
-            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-        `;
-        deathIcon.textContent = '💀';
-
-        // Create "ELIMINATED" text
-        const eliminatedText = document.createElement('div');
-        eliminatedText.style.cssText = `
-            font-family: Arial, sans-serif;
-            font-size: 28px;
-            font-weight: bold;
-            color: #ef4444;
-            text-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
-            opacity: 0;
-            transform: translateY(20px);
-            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.1s;
-        `;
-        eliminatedText.textContent = 'ELIMINATED';
-
-        deathOverlay.appendChild(deathIcon);
-        deathOverlay.appendChild(eliminatedText);
-
-        // Make container relative for absolute positioning
-        if (phaserContainer.style.position !== 'relative') {
-            phaserContainer.style.position = 'relative';
-        }
-
-        phaserContainer.appendChild(deathOverlay);
-
-        // Delay overlay appearance to let fade effect play first
-        setTimeout(() => {
-            // Trigger animations
-            requestAnimationFrame(() => {
-                deathOverlay.style.background = 'rgba(0, 0, 0, 0.75)';
-                deathIcon.style.opacity = '1';
-                deathIcon.style.transform = 'scale(1) rotate(0deg)';
-                eliminatedText.style.opacity = '1';
-                eliminatedText.style.transform = 'translateY(0)';
-            });
-        }, 1000); // Show overlay after gentle fade (1 second)
-
-        // Dim the board scene if possible
-        if (boardScene.cameras && boardScene.cameras.main) {
-            boardScene.cameras.main.setAlpha(0.3);
-        }
-
-        // Store reference for cleanup if needed
-        if (!this.deathOverlays) {
-            this.deathOverlays = [];
-        }
-        this.deathOverlays[playerIndex] = deathOverlay;
-
-        console.log(`[LocalMultiplayer] Death animation displayed for Player ${playerNum}`);
+        boardScene.cameras?.main?.setAlpha(0.3);
+        this.versusHud?.showKnockout(playerIndex);
+        if (!this.knockedOut) this.knockedOut = new Set();
+        this.knockedOut.add(playerIndex);
     }
 
     /**
-     * Clear all death overlays (when starting new round)
+     * Clear the knock-out cards and restore the boards (when a new round starts)
      * @private
      */
     _clearDeathAnimations() {
-        console.log('[LocalMultiplayer] Clearing death animations, overlays:', this.deathOverlays?.length || 0);
-
-        // Clear overlay array
-        if (this.deathOverlays && this.deathOverlays.length > 0) {
-            this.deathOverlays.forEach((overlay, index) => {
-                if (overlay) {
-                    console.log(`[LocalMultiplayer] Removing overlay for player ${index + 1}`);
-                    if (overlay.parentElement) {
-                        overlay.remove();
-                    }
-
-                    // Restore board scene alpha
-                    const boardScene = this.boardScenes[index];
-                    if (boardScene && boardScene.cameras && boardScene.cameras.main) {
-                        boardScene.cameras.main.setAlpha(1.0);
-                        console.log(`[LocalMultiplayer] Restored alpha for player ${index + 1}`);
-                    }
-                }
-            });
-        }
-
-        // Also search for any lingering overlays in the DOM (safety cleanup)
-        // Search globally for any death overlays and remove them
-        const lingeringOverlays = document.querySelectorAll('.player-death-overlay');
-        if (lingeringOverlays.length > 0) {
-            console.log(`[LocalMultiplayer] Found ${lingeringOverlays.length} lingering overlays via global search`);
-            lingeringOverlays.forEach((overlay) => {
-                console.log('[LocalMultiplayer] Force removing lingering overlay');
-                overlay.remove();
-            });
-        }
-
-        // Reset array
-        this.deathOverlays = [];
-        console.log('[LocalMultiplayer] Death animations cleared');
+        this.knockedOut?.forEach((index) => this.boardScenes[index]?.cameras?.main?.setAlpha(1.0));
+        this.knockedOut = new Set();
+        this.versusHud?.clearKnockouts();
     }
 
     /**

@@ -168,20 +168,9 @@
     filter: grayscale(0.7);
 }
 
-/* ---- Pre-D fixes: NET badge overlap + opponent-column backing ------------- *
- * The QoS "NET" badge was pinned top-right (top:90px; right:20px) — right over
- * the scoreboard. The whole right column is panels, so we relocate it to the
- * clear top-centre strip above the board. Also ground the opponent boards with a
- * subtle dark backing so they read over bright theme art. */
-.network-qos-hud {
-    top: 10px;
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    background: rgba(9, 11, 22, 0.88);
-    border: 1px solid rgba(94, 234, 212, 0.22);
-    color: #cbd5e0;
-}
+/* ---- Pre-D fixes: opponent-column backing ----------------------------------- *
+ * Ground the opponent boards with a subtle dark backing so they read over bright
+ * theme art. */
 
 .online-game-area .watch-grid {
     background: rgba(9, 11, 22, 0.42);

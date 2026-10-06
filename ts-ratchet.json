@@ -59,6 +59,7 @@
     "src/themes/shared/mrt-blend.js",
     "src/themes/shared/warm-hidden-drawables.js",
     "src/themes/theme-frame-pacer.js",
+    "src/ui/local-versus-layout.js",
     "src/ui/startup-ident-hold.js",
     "src/utils/gpu-loss-coordinator.js",
     "src/utils/viewport.js"

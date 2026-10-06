@@ -1645,11 +1645,6 @@ body:not(.sb-input-pointer) #sb-play-rail > :focus > .sb-play-rail__label {
 }
 
 /* ---- Per mode ---------------------------------------------------------------------- */
-/* Local versus: the standings bar (60px tall) shares the tray's centre line. */
-#multiplayer-container #global-standings-hud.global-standings-hud {
-    top: calc(var(--sb-play-inset) + var(--sb-play-tray) / 2 - 30px);
-}
-
 /* Odyssey's board view: the header lines up with the tray and its chips end before it.
    The tray sits above the board overlay (1001), whose header takes the pointer, and the
    level list (1002) that Levels opens and closes. */

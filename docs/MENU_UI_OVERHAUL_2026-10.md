@@ -121,6 +121,9 @@ mode instead, so controller players always see where they are.
   `index.html`, scoped by the surface root id so it wins over the older layers without
   `!important`.
 - `src/ui/keystone/` — input mode, the focus marker and the in-game play rail.
+- `src/ui/local-versus-hud.js` and `src/ui/local-versus-layout.js` — local versus: the
+  match bar, the name plates, the stats lines and the board sizing (§5.6), out of
+  `LocalMultiplayerMode.js` (−569 lines).
 - `src/ui/main-menu/main-menu.js` — the main menu (imported by `main.js` in place of
   `menu-card-interactions.js`, which it imports in turn; `main.js` stays at its line
   ceiling). It also imports `components/toast.js`, so the `serenity:toast` listener is
@@ -208,6 +211,13 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Opening the Hub in an Odyssey level left the level running behind it | The Hub pauses Odyssey as Settings does |
 | The online scoreboard hid every name at ≤1200 px windows (0 px left for them), cut names to six letters at 1600 px, and its status pill spilled out of the row | Names take the row's free width (about 19 characters at 1024 px; with frags and score both shown in every window wider than 1200 px, 17 at 1280–1366 px, 19 at 1600 px and about 29 at 1920 px; longer names end in an ellipsis with the full name on hover); status always shows (§5.2) |
 | Timed matches are won on score, but both scoreboards ranked them by frags (the gold leader could be the wrong player); a lines match never showed lines | Both rank and lead with the number that decides the match (`src/ui/scoreboard-metrics.js`) |
+| Local versus showed every number twice — a standings bar on top (frags, score, level, lines) and a six-icon bar under each board (frags, deaths, score, lines, level, incoming) — named players only by a colour square, and ranked a 0–0 start 1st, 2nd, 3rd, "4th" | One place per number: the deciding number on each board's name plate, ranked only once someone leads (ties share a place); the rest on one labelled line under the board; the match in one bar (§5.6) |
+| Local boards said only "P1"–"P4": no names, no sign of a bot, no hint of who plays on which keys | Each plate names the player, their keys or controller, or the bot and its skill; each human board shows its controls for the first seconds (§5.6) |
+| Four-player local versus overflowed a 1024 px window (the stage had `min-width: 1200px`) and its standings bar ran under the tray | The boards are sized to the window for 2–4 players, 1024 px to 4K, the queue beside the board or above it, whichever gives the bigger board (§5.6) |
+| Local timed matches promised "the highest score when time runs out wins", but the standings ranked by frags and the match went to whoever won the last round | Timed matches rank, lead and are won on score, for players and teams; the clock is in the match bar and turns to "Last round" at zero |
+| In team play a frag goal counts rounds won, but the standings summed players' frags | The match bar races teams by their rule (rounds won, or the team's points or lines); each teammate's goal bar fills by the team |
+| A knock-out showed a 💀 emoji and "ELIMINATED" in red Arial | A Keystone card: "Out", the seat's colour, "Back next round" |
+| A "NET" badge of raw network numbers (RTT, loss, snapshot rate) sat over every online match | Removed; the numbers stay in the console's network summary for diagnosis |
 | Cancel or Escape from Create match left a blank screen; Escape over the multiplayer menus opened Settings | One back stack for every multiplayer sheet |
 | A failed create or join hid its sheet and said nothing (or used `alert`) | The sheet stays open with the reason |
 | `serenity:toast` events ("removed by the host", lobby full, version mismatch) had no listener | Keystone toasts |
@@ -244,6 +254,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Multiplayer (local setup, lobby browser, create match, waiting room, results, toasts, invite, in-game HUD type) | `keystone-multiplayer.css` | Shipped |
 | Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
 | In-game controls (the play rail: Levels, Serenity Hub, Settings) | `keystone-overlays.css`, `src/ui/keystone/play-rail.js` | Shipped |
+| Local versus (match bar, name plates, boards, stats lines, knock-out and controls cards) | `keystone-versus.css`, `src/ui/local-versus-hud.js`, `src/ui/local-versus-layout.js` | Shipped |
 
 ### 5.1 Settings, pause, Records, Replays, results (`keystone-settings.css`, `keystone-modals.css`)
 
@@ -442,8 +453,8 @@ belongs to the game: boards, chat, stats, touch controls and toasts.
   row (`auto 1fr`, the opponents column a subgrid): the spectator toolbar on the left and,
   on the right, `.sb-play-room`, an empty slot the tray floats in, so the scoreboard starts
   below it and the chat runs to the bottom corner; below 901 px the stacked spectator row
-  ends before the tray. Local versus moves its standings bar onto the tray's centre line
-  (10 px from the top). Odyssey's board header lines up with the tray and ends its chips
+  ends before the tray. Local versus puts its match bar in the tray's row and starts the
+  boards below it (§5.6). Odyssey's board header lines up with the tray and ends its chips
   before it; there the tray sits above the board overlay (whose header takes the
   pointer) and the level list it opens (z-index 1003). The metrics are tokens on `:root`
   (`--sb-play-tile`, `--sb-play-inset`, `--sb-play-tray`) so every reservation follows
@@ -467,6 +478,61 @@ belongs to the game: boards, chat, stats, touch controls and toasts.
   hides or activates them are unchanged. It is hidden on the main menu (the dock replaces
   it) and while the breathing guide or a Hale flow is open.
 
+### 5.6 Local versus (`keystone-versus.css`)
+
+Couch play for two to four people, so every board answers "whose is this, how do they
+play, and how are they doing" at a glance, and every number lives in one place.
+
+- **The top row:** the match bar, centred in the tray's row (the tray keeps the right):
+  the mode (Free-for-all, Teams, Hot potato, Infinity) after the keystone tile, the goal
+  ("First to 7 frags", "First team to 7 rounds", "Highest score in 3 min", "Last one
+  standing"), the round, the clock in a timed match (coral under 30 s, "Last round" at
+  zero) and, in team play, each team's total by the team rule. Below 861 px it keeps the
+  goal and the clock.
+- **A station per player** (`.player-card[data-player]`, which themes read for their
+  composition, keeps its name and box): a name plate, the board with its incoming-garbage
+  meter on the left, the next queue, and one line of stats under the board.
+- **The name plate:** the seat (P1–P4) in its colour, the name, how they play ("Arrow
+  keys", "WASD", "Controller 3", "Bot · Master", read from the key bindings), a team chip
+  in team play, the rank once someone leads (gold, cream, coral; ties share a place;
+  teams are ranked in the bar instead) and the number that decides the match with its
+  unit (Frags, Points, Lines, To roof), a bar along its foot filling toward the goal (by
+  the team's total in team play). An eliminated player's plate dims until the round ends.
+- **The stats line** shows what the plate does not: level, lines, score or frags. Deaths
+  and incoming garbage left the live HUD (the results keep deaths; the meter shows
+  garbage).
+- **Sizing (`local-versus-layout.js`):** the largest block that fits below the top row,
+  with the next queue beside the board (the genre's reading order) or above it when
+  width is short, whichever gives the bigger board; stations wrap onto two rows on tall
+  windows. Plates and type scale with the block (×0.85–1.6), the smallest type never below
+  8 px. The sizes reach the stylesheet as variables on `#multiplayer-container`
+  (`--lv-block`, `--board-width`, …, `data-queue`), never on `:root`, so other modes'
+  boards never inherit them.
+
+  | Window | 2 players | 3 players | 4 players |
+  |---|---|---|---|
+  | 1024 × 768 | | | 210 × 420, queue above (overflowed before) |
+  | 1280 × 720 | 270 × 540, beside (was ~190 × 390) | | 240 × 480, above |
+  | 1366 × 768 | | 300 × 600, beside | |
+  | 1920 × 1080 | 440 × 880, beside (was 400 × 800) | 440 × 880, beside (was 350 × 700) | 390 × 780, above |
+  | 2560 × 1440 | 610 × 1220, beside | | |
+
+- **Knock-out:** the board fades and dims as before, and a card rises: "Out", a stroke of
+  the seat's colour, "Back next round".
+- **Controls card:** for the first six seconds of a match each human board shows its
+  keys as keycaps (Move ← →, Turn ↑ Z, Drop ↓ Space; a controller's D-pad, A Y, ↓ B), in
+  the queue's free foot when the queue is beside the board, else on the board's foot.
+- **Hot potato:** the holder's plate glows coral and a chip on its foot counts down.
+- **Rules made consistent:** timed matches are won on score (what the setup sheet
+  promises), for teams on the team's score; the results say the same goal as the bar.
+- Hooks kept: `#p{n}-phaser-container`, `#p{n}-next-0…2`, `#p{n}-garbage-bar`,
+  `.player-card[data-player]`, `.hot-potato-holder` / `data-potato-time`,
+  `.infinity-lms` (the minimap sits beside the board, the queue above). Gone with the old
+  HUD: `#global-standings-hud` and its CSS in four stylesheets, the per-board six-stat
+  bars (`#p{n}-frags` …), the avatar header, the inline colours `_applyPlayerColors`
+  wrote (it now sets the seat's hue variables only).
+- **Online:** the "NET" network badge (`src/ui/network-qos.js`) and its styles are gone.
+
 ## 6. Verification
 
 - Every surface captured with Playwright (Chromium, WebGPU) at 1600 × 900 and 390 × 844,
@@ -484,6 +550,12 @@ belongs to the game: boards, chat, stats, touch controls and toasts.
   `npm run audit:theme-lifecycle`, `npm run check:boundaries`,
   `npm run perf:budgets:gate`, `npm run check:release-gates`, `npm run build` (boot
   closure), `npm run check:ip-strings`, `npm run check:pages-artifact`.
+- Local versus (§5.6): 2–4 players captured and measured at 1024 × 768, 1280 × 720,
+  1366 × 768, 1600 × 900, 1920 × 1080, 2560 × 1440, 3840 × 2160 and 390 × 844 (no station
+  past the window at any size), and a knock-out, team play, Hot potato, a timed match to
+  its last round and results, a score race and Infinity captured from real matches set
+  up through the sheet; unit tests for the layout and the HUD
+  (`tests/unit/local-versus-*.test.js`).
 - No `backdrop-filter` remains on any Keystone surface.
 
 ## 7. Open follow-ups
