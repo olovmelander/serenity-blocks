@@ -555,6 +555,7 @@ class MainMenuPlayerCard {
         this.setConnectionVisualState(state);
         this.statePill.classList.remove('visible', 'partial', 'offline');
         this.retryButton.classList.remove('visible');
+        this.statusText.title = '';
 
         if (state === 'partial') {
             this.statePill.textContent = 'Limited';
@@ -568,13 +569,11 @@ class MainMenuPlayerCard {
                 ? `Steam API missing: ${missing.join(', ')}${queueNote}`
                 : `Steam API limited${queueNote}`;
         } else if (state === 'connecting') {
-            this.statePill.textContent = 'Connecting';
-            this.statePill.classList.add('visible');
+            // The status line already says "Connecting"; the pill is only for "Limited".
             this.statePill.title = 'Connecting to Steam';
         } else if (state === 'offline' || state === 'no_steam') {
-            this.statePill.textContent = 'Offline';
-            this.statePill.classList.add('visible', 'offline');
-            this.statePill.title = state === 'no_steam'
+            // The status line says "Offline"; its tooltip says why, and Retry now stays.
+            this.statusText.title = state === 'no_steam'
                 ? `Steam client unavailable${queueNote}`
                 : `Steam offline${queueNote}`;
             this.retryButton.classList.add('visible');

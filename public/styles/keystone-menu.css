@@ -807,6 +807,47 @@ body.start-modal-open .main-menu-player-card .mmpc-avatar-container {
     box-shadow: none;
 }
 
+/* The card's own injected styles (main-menu-player-card.js) still name Orbitron and
+   pill chips; the Keystone type and tile chips win here. */
+body.start-modal-open .main-menu-player-card .mmpc-name {
+    font-family: var(--sb-font-display);
+    font-weight: 600;
+    color: var(--sb-text);
+}
+
+body.start-modal-open .main-menu-player-card .mmpc-status {
+    color: var(--sb-text-muted);
+    font-family: var(--sb-font-text);
+    font-size: 11px;
+}
+
+body.start-modal-open .main-menu-player-card :is(.mmpc-state-pill, .mmpc-retry-btn, .mmpc-friends-badge) {
+    padding: 2px 7px;
+    border-radius: 6px;
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.06);
+    color: var(--sb-text-muted);
+    font-family: var(--sb-font-display);
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+}
+
+body.start-modal-open .main-menu-player-card .mmpc-state-pill.partial {
+    border-color: rgba(var(--sb-warning-rgb), 0.45);
+    color: var(--sb-warning);
+}
+
+body.start-modal-open .main-menu-player-card .mmpc-friends-badge {
+    border-color: rgba(var(--sb-mint-rgb), 0.45);
+    color: var(--sb-mint);
+}
+
+body.start-modal-open .main-menu-player-card .mmpc-retry-btn:hover {
+    border-color: rgba(var(--sb-cream-rgb), 0.4);
+    color: var(--sb-text);
+}
+
 /* ---- Corner tiles (game-wide) ----------------------------------------------------
  * Hub, records, replays, the Odyssey navigator and settings share one rounded-square
  * tile on the right edge in every mode. On the main menu the dock replaces them. */
