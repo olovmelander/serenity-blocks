@@ -152,31 +152,6 @@
         linear-gradient(135deg, rgba(8, 10, 23, 0.96), rgba(20, 24, 44, 0.92));
 }
 
-.match-config-modal .team-selection-area {
-    margin-top: 20px !important;
-    padding-top: 20px !important;
-    border-top: 1px solid rgba(var(--cs-accent-rgb), 0.18) !important;
-}
-
-.match-config-modal .team-assignments-heading {
-    margin-bottom: 15px;
-}
-
-.match-config-modal #player-team-assignments {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 16px !important;
-    padding: 14px;
-    border: 1px solid rgba(var(--cs-accent-rgb), 0.14);
-    border-radius: 14px;
-    background: rgba(5, 8, 20, 0.34);
-}
-
-@keyframes overlay-pop {
-    from { opacity: 0; transform: translateY(14px) scale(0.985); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
 @media (max-width: 640px) {
     #playback-controls.playback-controls {
         right: 12px;
@@ -185,10 +160,6 @@
         min-width: 0;
         max-width: none;
         flex-wrap: wrap;
-    }
-
-    .match-config-modal #player-team-assignments {
-        grid-template-columns: 1fr !important;
     }
 }
 

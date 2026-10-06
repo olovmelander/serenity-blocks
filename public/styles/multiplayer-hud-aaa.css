@@ -256,12 +256,7 @@
     color: #5eead4;
 }
 
-.online-game-area .opponent-mini-avatar {
-    border-color: rgba(255, 255, 255, 0.50);
-}
-
 /* Eliminated opponent → unmistakably out */
-.online-game-area .player-board.eliminated,
 .online-game-area .online-main-board.eliminated {
     opacity: 0.42;
     filter: grayscale(0.7);
@@ -294,25 +289,3 @@
  * (The bottom 5-icon stat row appears to be a testLobby mock artifact — not
  * restyled/labelled until its real meaning is confirmed.)
  * ============================================================================== */
-.online-game-area .online-next-queue-wrapper {
-    position: relative;
-}
-
-.online-game-area .online-next-queue-wrapper::before {
-    content: 'NEXT';
-    position: absolute;
-    top: -7px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 1px 10px;
-    border-radius: 999px;
-    background: rgba(9, 11, 22, 0.92);
-    border: 1px solid rgba(94, 234, 212, 0.32);
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    color: #5eead4;
-    z-index: 4;
-    pointer-events: none;
-}

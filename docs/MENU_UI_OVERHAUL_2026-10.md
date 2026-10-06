@@ -123,10 +123,25 @@ mode instead, so controller players always see where they are.
 - `src/ui/keystone/` — input mode and the focus marker.
 - `src/ui/main-menu/main-menu.js` — the main menu (imported by `main.js` in place of
   `menu-card-interactions.js`, which it imports in turn; `main.js` stays at its line
-  ceiling).
-- A legacy `*-aaa.css` layer is deleted once its surface's keystone layer fully replaces
-  it (`menu-aaa.css` is gone; its animated mode icons and corner tiles moved into
-  `keystone-menu.css`).
+  ceiling). It also imports `components/toast.js`, so the `serenity:toast` listener is
+  installed at boot.
+- Shared input: `src/ui/sheet-input.js` (Settings, Records, Replays, results: Escape / B
+  back, focus trap, initial focus), `src/ui/components/mp-sheet.js` (multiplayer back
+  stack, in-app confirm), `src/ui/odyssey/keystone-sheet.js` (Odyssey sheets). The
+  gamepad controller scopes navigation to whichever of these is on top.
+- A legacy layer is deleted once its surface's keystone layer fully replaces it. Gone:
+  `menu-aaa.css`, `settings-aaa.css`, `high-scores-aaa.css`, `demo-browser-aaa.css`,
+  `game-over-aaa.css`, `serenity-hub-aaa.css`, `lobby-browser-aaa.css`,
+  `lobby-room-aaa.css`, `match-config-aaa.css`, `lobby-styles.css`,
+  `match-config-styles.css`, `scroll-opt.css`. Still loaded for structure and layout,
+  with their dead rules pruned: `odyssey-aaa.css` (navigator base, HUD layout),
+  `overlays-aaa.css`, `multiplayer-ui.css`, `multiplayer-hud-aaa.css`,
+  `single-player-hud-aaa.css`, `serenity-hub.css` (floating icons only) and `main.css`.
+- Pruning was mechanical and conservative: a rule went only when a class or id it needs
+  appears nowhere in `src/`, `index.html`, `electron/` or `public/` scripts, and was not
+  built from a template. In `main.css` only menu-related dead rules went (−1,482 lines);
+  the ~400 dead tokens left there belong to the old DOM theme effects and are the theme
+  owners' call.
 
 Ids, classes and copy that JavaScript or tests depend on are preserved (each surface's
 section lists them).
@@ -199,7 +214,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Replays: focus was lost after a delete; the browser never fired `modalShown`/`modalHidden` | Focus moves on; events fire |
 | Typing in the theme search fired Serenity's shortcuts (B random theme, T, F, H, Space) | The search owns its keys; the first Esc clears it, the second closes the Hub |
 | Space/Enter on a Hub button also reached the game; the closed Hub could still take focus | Contained in the Hub; the closed Hub is inert |
-| A Hale flow or breathing guide opened from the main menu let Space/Enter reach the menu (and reopen the Hub) | The menu stands down while either is open |
+| A Hale flow or breathing guide opened from the main menu let Space/Enter reach the menu (and reopen the Hub), and the menu kept animating underneath | The menu stands down while either is open; both count as menu surfaces, so the menu behind them is marked covered |
 | A global `.gamepad-focused { outline: … !important }` drew an indigo ring over every focus style | Removed; the cream outline and the keystone mark focus |
 | Hub tab panels were labelled by themselves; `serenity-hub.css` redefined `@keyframes pulse` for the whole game | Labelled by their tabs; Hub keyframes are its own |
 | Tabbing to "Back to Map" in the Odyssey failure sheet and pressing Enter retried the level | A focused button owns Enter/Space; Retry takes focus when the sheet opens |
@@ -368,3 +383,36 @@ Kept for JavaScript and tests: `#odyssey-results-modal`, `#odyssey-failure-modal
 `odyssey-aaa.css` went from 1,317 to about 400 lines: the preview, results and
 level-card rules left with the markup they styled. What remains is the navigator's
 show/hide base and the HUD layout.
+
+---
+
+## 6. Verification
+
+- Every surface captured with Playwright (Chromium, WebGPU) at 1600 × 900 and 390 × 844,
+  most also at 1280 × 720, before and after; controller paths driven with a simulated
+  standard pad (game over B / A, multiplayer back, sheet focus).
+- Gates on the final tree: `npm test` (579 files), `npm run typecheck`,
+  `node scripts/ts-ratchet-check.mjs`, `npm run lint:ci` (baseline lowered 1,033 → 831),
+  `node scripts/architecture-fitness-check.mjs` (ceilings lowered),
+  `npm run audit:theme-lifecycle`, `npm run check:boundaries`,
+  `npm run perf:budgets:gate`, `npm run check:release-gates`, `npm run build` (boot
+  closure), `npm run check:ip-strings`, `npm run check:pages-artifact`.
+- No `backdrop-filter` remains on any Keystone surface.
+
+## 7. Open follow-ups
+
+- **One sheet primitive.** `keystone-modals.css` (`#… .sb-sheet`-style rules for
+  Settings, Records, Replays, results), `mp-sheet.js` and `keystone-sheet.js` grew the
+  same anatomy three times (open-corner panel, key, head, title, close, body, foot).
+  Promote it to `keystone.css` as `.sb-sheet` and give multiplayer the labelled Close
+  the other sheets use (it has an icon ✕ plus a footer Back).
+- **More primitives** suggested by the surface work: segmented control, stepper,
+  `.sb-sr-only`, `.sb-empty`, `.sb-tabs`, `.sb-chip--gold/--accent`, and a player-colour
+  helper (`color-mix(in oklab, var(--player-color) 58%, #fff6e9)`).
+- `main.js` writes inline colours on the controller status lines (Settings overrides
+  them with `!important`); move them to classes when `main.js` has room.
+- `SerenityMode._onKeyPress` should ignore keys typed into text fields centrally (the
+  Hub's search guards itself today).
+- The breathing guide's ELIXIR accent (255, 150, 120) sits close to coral and is pinned
+  by a test; the Hub uses gold for ELIXIR. Moving the guide to gold would keep coral
+  for the keystone alone.
