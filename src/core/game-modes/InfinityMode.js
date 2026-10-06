@@ -1559,7 +1559,7 @@ export class InfinityMode extends BaseGameMode {
                 effectHandlers.clearFlashBeat(fullLines);
             },
             // Line clear impact (camera shake and particles)
-            onLineClearImpact: (lineCount) => {
+            onLineClearImpact: (lineCount, cascadeCount) => {
                 if (!ownsCallbackSession()) return;
                 if (usesFixedTiming) {
                     applyFixedLineImpactHitStop(callbackState, lineCount);
@@ -1581,7 +1581,7 @@ export class InfinityMode extends BaseGameMode {
                     }
                 }
 
-                effectHandlers.clearImpactBeat(lineCount);
+                effectHandlers.clearImpactBeat(lineCount, cascadeCount);
             },
             // Parity with local MP: no background pulse. Key kept for shape.
             triggerBackgroundPulse: () => {},
@@ -1814,8 +1814,10 @@ export class InfinityMode extends BaseGameMode {
         if (this.isProcessingGameOver) return;
         this.isProcessingGameOver = true;
 
-        // The board dies before the results screen arrives over it.
-        this._getBoardScene()?.sharedEffects?.playGameOver?.();
+        // The board dies before the results screen arrives over it: the death
+        // plays out while the run is saved, and the results wait for the rest.
+        const beatMs = this._getBoardScene()?.sharedEffects?.playGameOver?.();
+        const deathBeat = beatMs > 0 ? new Promise((resolve) => { setTimeout(resolve, beatMs); }) : null;
 
         const resultState = activeSession.gameState;
         console.log('[Infinity] Game over!');
@@ -1852,6 +1854,7 @@ export class InfinityMode extends BaseGameMode {
             );
         }
 
+        if (deathBeat) await deathBeat;
         if (!this._ownsStoppedSessionUi(stoppedSession)) {
             return;
         }

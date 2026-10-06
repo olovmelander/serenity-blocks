@@ -19,6 +19,7 @@ import {
 import { OpponentWatchManager, wireSpectatorSpotlight } from '../../ui/opponent-watch-manager.js';
 import { OnlineScoreboard } from '../../ui/online-scoreboard.js';
 import { OnlineKillFeed } from '../../ui/online-kill-feed.js';
+import { createOutCard, showOutCard } from '../../ui/keystone/out-card.js';
 import { OnlineChat } from '../../ui/online-chat.js';
 import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-overlay.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
@@ -2102,8 +2103,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Show death animation on the main board
-     * Includes camera flash, explosion overlay, and "ELIMINATED" text
+     * Your knock-out on the main board: the stack goes dark, loses its colour and
+     * comes apart (shared-effects.js playKnockout), then the Out card rises naming
+     * who did it (ui/keystone/out-card.js).
      */
     _showDeathAnimation(killerName = null) {
         const boardContainer = document.getElementById('online-main-board');
@@ -2119,142 +2121,21 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // board) until the round resolves. Reverted on revive in _clearDeathState.
         this._enterDeadSpectate();
 
-        // 1. Camera flash effect (if board scene available)
-        if (this.mainBoardScene?.cameras?.main) {
-            this.mainBoardScene.cameras.main.flash(400, 255, 255, 255, false);
-        }
+        this.mainBoardScene?.sharedEffects?.playKnockout?.();
 
-        boardContainer.classList.add('death-shake');
-        if (this._deathShakeTimer) clearTimeout(this._deathShakeTimer);
-        this._deathShakeTimer = setTimeout(() => boardContainer.classList.remove('death-shake'), 450);
-
-        // 2. Create white flash overlay
-        const flashOverlay = document.createElement('div');
-        flashOverlay.className = 'death-flash-overlay';
-        flashOverlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: white;
-            opacity: 0;
-            z-index: 50;
-            pointer-events: none;
-            transition: opacity 0.4s ease-in-out;
-            border-radius: 8px;
-        `;
-        boardContainer.appendChild(flashOverlay);
-
-        // Trigger flash animation
-        requestAnimationFrame(() => {
-            flashOverlay.style.opacity = '0.8';
-            setTimeout(() => {
-                flashOverlay.style.opacity = '0';
-                setTimeout(() => flashOverlay.remove(), 400);
-            }, 200);
-        });
-
-        // 3. Create death overlay with skull and text (after flash).
-        // Track the handle so _clearDeathState can cancel a still-pending overlay
-        // (a round-ending death emits ROUND_RESTART BEFORE this fires).
+        // The card after the board has gone dark. Tracked so _clearDeathState can cancel
+        // a still-pending card (a round-ending death emits ROUND_RESTART BEFORE this fires).
         if (this._deathOverlayTimer) clearTimeout(this._deathOverlayTimer);
         this._deathOverlayTimer = setTimeout(() => {
             this._deathOverlayTimer = null;
             // If we were revived/cleared while the timer was pending, don't show it.
             if (!this._deathShown) return;
-            this._createDeathOverlay(boardContainer, killerName);
-        }, 500);
-
-        // 4. Add eliminated class to board for grayscale effect
-        boardContainer.classList.add('eliminated');
-    }
-
-    /**
-     * Create the death overlay with skull icon and "ELIMINATED" text
-     */
-    _createDeathOverlay(container, killerName = null) {
-        const overlay = document.createElement('div');
-        overlay.className = 'death-overlay';
-        overlay.innerHTML = `
-            <div class="death-content">
-                <div class="death-skull">💀</div>
-                <div class="death-text">ELIMINATED</div>
-                <div class="death-killer"></div>
-            </div>
-        `;
-        overlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.75);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-            pointer-events: none;
-            border-radius: 8px;
-        `;
-
-        // Style the content
-        const content = overlay.querySelector('.death-content');
-        content.style.cssText = `
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-        `;
-
-        const skull = overlay.querySelector('.death-skull');
-        skull.style.cssText = `
-            font-size: 64px;
-            opacity: 0;
-            transform: scale(0.5) rotate(-45deg);
-            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-        `;
-
-        const text = overlay.querySelector('.death-text');
-        text.style.cssText = `
-            font-size: 24px;
-            font-weight: 700;
-            color: #fc8181;
-            text-shadow: 0 0 20px rgba(252, 129, 129, 0.5);
-            opacity: 0;
-            transform: scale(0.5) translateY(20px);
-            transition: all 0.4s ease-out 0.2s;
-        `;
-
-        const killer = overlay.querySelector('.death-killer');
-        if (killerName) {
-            killer.textContent = `by ${killerName}`;
-            killer.style.cssText = `
-                font-size: 14px;
-                color: #cbd5e0;
-                opacity: 0;
-                letter-spacing: 0.5px;
-                transform: translateY(6px);
-                transition: all 0.4s ease-out 0.3s;
-            `;
-        } else {
-            killer.remove();
-        }
-
-        container.appendChild(overlay);
-
-        // Animate in
-        requestAnimationFrame(() => {
-            skull.style.opacity = '1';
-            skull.style.transform = 'scale(1) rotate(0deg)';
-            text.style.opacity = '1';
-            text.style.transform = 'scale(1) translateY(0)';
-            if (killerName) {
-                killer.style.opacity = '1';
-                killer.style.transform = 'translateY(0)';
-            }
-        });
+            showOutCard(boardContainer, createOutCard(document, {
+                cause: killerName ? `By ${killerName}` : 'Topped out',
+                note: 'Watching until the round ends',
+            }));
+            boardContainer.classList.add('eliminated');
+        }, 600);
     }
 
     /**
@@ -2267,19 +2148,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             clearTimeout(this._deathOverlayTimer);
             this._deathOverlayTimer = null;
         }
-        if (this._deathShakeTimer) {
-            clearTimeout(this._deathShakeTimer);
-            this._deathShakeTimer = null;
-        }
         this._deathShown = false;
 
         const boardContainer = document.getElementById('online-main-board');
         if (!boardContainer) return;
 
         boardContainer.classList.remove('eliminated');
-        boardContainer.classList.remove('death-shake');
         boardContainer.querySelector('.death-overlay')?.remove();
-        boardContainer.querySelector('.death-flash-overlay')?.remove();
+        this.mainBoardScene?.sharedEffects?.clearKnockout?.();
 
         // B5: revived (round restart) → back to the normal watch-while-playing view.
         this._exitDeadSpectate();

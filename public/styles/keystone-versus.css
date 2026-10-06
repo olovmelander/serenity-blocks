@@ -648,7 +648,8 @@
     align-items: center;
     justify-content: center;
     gap: calc(8px * var(--lv-u));
-    background: radial-gradient(circle at 50% 45%, rgba(9, 8, 24, 0.5) 0%, rgba(9, 8, 24, 0.84) 100%);
+    /* The board itself goes dark and grey (shared-effects.js); the card only settles it. */
+    background: radial-gradient(circle at 50% 45%, rgba(9, 8, 24, 0.22) 0%, rgba(9, 8, 24, 0.6) 100%);
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--sb-dur-3) ease;
@@ -680,6 +681,93 @@
 #multiplayer-container .lv-ko__note {
     color: var(--sb-text-muted);
     font: 600 calc(12px * var(--lv-u)) / 1.3 var(--sb-font-text);
+}
+
+/* ---- Victory: the match won, over the winner's well (until the results) -------------- */
+#multiplayer-container .lv-victory {
+    --win-color: var(--sb-gold);
+    position: absolute;
+    top: 22%;
+    left: 50%;
+    z-index: 7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: calc(6px * var(--lv-u));
+    padding: calc(18px * var(--lv-u)) calc(26px * var(--lv-u));
+    text-align: center;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translate(-50%, calc(12px * var(--lv-u))) scale(0.94);
+    transition: opacity 420ms var(--sb-ease-lock), transform 520ms var(--sb-ease-lock);
+    pointer-events: none;
+}
+
+/* A soft glow behind the words, never a box. */
+#multiplayer-container .lv-victory::before {
+    content: '';
+    position: absolute;
+    inset: -30% -40%;
+    z-index: -1;
+    background: radial-gradient(closest-side, rgba(9, 8, 24, 0.66), rgba(9, 8, 24, 0) 100%);
+}
+
+#multiplayer-container .lv-victory.is-shown {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+}
+
+#multiplayer-container .lv-victory__kicker {
+    color: var(--sb-gold);
+    font: 800 calc(11px * var(--lv-u)) / 1 var(--sb-font-text);
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+}
+
+#multiplayer-container .lv-victory__title {
+    position: relative;
+    padding-bottom: calc(10px * var(--lv-u));
+    background: linear-gradient(180deg, var(--sb-cream) 10%, var(--sb-gold) 90%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font: 800 calc(40px * var(--lv-u)) / 1 var(--sb-font-display);
+    filter: drop-shadow(0 0 calc(16px * var(--lv-u)) rgba(var(--sb-gold-rgb), 0.55));
+}
+
+/* The underline: gold light that opens out from the middle. */
+#multiplayer-container .lv-victory__title::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 10%;
+    width: 80%;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--sb-gold), transparent);
+    transform: scaleX(0);
+    transition: transform 620ms var(--sb-ease-lock) 160ms;
+}
+
+#multiplayer-container .lv-victory.is-shown .lv-victory__title::after {
+    transform: scaleX(1);
+}
+
+#multiplayer-container .lv-victory__name {
+    color: var(--win-color);
+    font: 700 calc(14px * var(--lv-u)) / 1.2 var(--sb-font-text);
+}
+
+#multiplayer-container .lv-plate.is-victor {
+    border-color: rgba(var(--sb-gold-rgb), 0.7);
+    box-shadow: 0 0 calc(22px * var(--lv-u)) rgba(var(--sb-gold-rgb), 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #multiplayer-container .lv-victory,
+    #multiplayer-container .lv-victory__title::after {
+        transition-duration: 1ms;
+    }
 }
 
 /* ---- The match, told: frags, attacks, rounds ----------------------------------------- */

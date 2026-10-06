@@ -1,7 +1,7 @@
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
-import { LocalMultiplayerMode } from '../../src/core/game-modes/LocalMultiplayerMode.js';
+import { LocalMultiplayerMode, ROUND_OUTCOME_MS } from '../../src/core/game-modes/LocalMultiplayerMode.js';
 import {
     captureLocalMultiplayerRound,
     ownsLocalMultiplayerRound,
@@ -286,7 +286,7 @@ describe('LocalMultiplayerMode loop ownership', () => {
         expect(mode._showVictoryAnimation).not.toHaveBeenCalled();
         expect(checkWinCondition).toHaveBeenCalledOnce();
 
-        await vi.advanceTimersByTimeAsync(500);
+        await vi.advanceTimersByTimeAsync(ROUND_OUTCOME_MS);
         await expect(resolution).resolves.toBe(true);
         expect(mode._startNewRound).toHaveBeenCalledOnce();
         expect(mode.handleRoundEnd).not.toHaveBeenCalled();
@@ -300,7 +300,7 @@ describe('LocalMultiplayerMode loop ownership', () => {
         mode.multiplayerState.lastAttackerIds = [1, 0];
 
         const resolution = mode._handleFixedTickTopOutBatch([1, 0], roundOwner);
-        await vi.advanceTimersByTimeAsync(500);
+        await vi.advanceTimersByTimeAsync(ROUND_OUTCOME_MS);
         await expect(resolution).resolves.toBe(true);
 
         expect(mode._showMatchEnd).toHaveBeenCalledWith('draw');
@@ -318,7 +318,7 @@ describe('LocalMultiplayerMode loop ownership', () => {
         expect(mode.multiplayerState.players.map((player) => player.isAlive))
             .toEqual([false, true]);
         expect(mode._showVictoryAnimation).toHaveBeenCalledWith(1);
-        await vi.advanceTimersByTimeAsync(500);
+        await vi.advanceTimersByTimeAsync(ROUND_OUTCOME_MS);
         await expect(resolution).resolves.toBe(true);
         expect(mode.handleRoundEnd).toHaveBeenCalledWith('player2', false);
         expect(mode._startNewRound).not.toHaveBeenCalled();
@@ -337,7 +337,7 @@ describe('LocalMultiplayerMode loop ownership', () => {
             .toEqual([false, false, true]);
         expect(mode._showVictoryAnimation).toHaveBeenCalledWith(2);
         expect(checkWinCondition).toHaveBeenCalledOnce();
-        await vi.advanceTimersByTimeAsync(500);
+        await vi.advanceTimersByTimeAsync(ROUND_OUTCOME_MS);
         await expect(resolution).resolves.toBe(true);
         expect(mode.handleRoundEnd).toHaveBeenCalledWith('player3', false);
         expect(mode._startNewRound).not.toHaveBeenCalled();
@@ -479,7 +479,7 @@ describe('LocalMultiplayerMode Phaser owners', () => {
         expect(moduleMocks.phaserGame.mock.calls[0][0].fps.limit).toBe(30);
         mode._destroySeparatePhaserGames();
         mode.isActive = false;
-        await vi.advanceTimersByTimeAsync(500);
+        await vi.advanceTimersByTimeAsync(ROUND_OUTCOME_MS);
         expect(await creating).toBe(false);
         expect(game.destroy).toHaveBeenCalledExactlyOnceWith(true);
         expect(game.scene.add).not.toHaveBeenCalled();
@@ -497,7 +497,7 @@ describe('LocalMultiplayerMode Phaser owners', () => {
             return games[created++];
         });
         const rejected = expect(mode._createSeparatePhaserGames()).rejects.toThrow('renderer failed');
-        await vi.advanceTimersByTimeAsync(500);
+        await vi.advanceTimersByTimeAsync(ROUND_OUTCOME_MS);
         await rejected;
         games.forEach((game) => expect(game.destroy).toHaveBeenCalledExactlyOnceWith(true));
         expect(mode.phaserGames).toEqual([]);
@@ -517,5 +517,50 @@ describe('LocalMultiplayerMode Phaser owners', () => {
         });
         await mode._setupMultiplayerUI();
         expect(mode._pauseSinglePlayerScene).not.toHaveBeenCalled();
+    });
+});
+
+describe('LocalMultiplayerMode victory beat', () => {
+    afterEach(() => vi.useRealTimers());
+
+    function createBeatMode() {
+        const mode = Object.create(LocalMultiplayerMode.prototype);
+        mode.isActive = true;
+        mode._startGeneration = 5;
+        mode.multiplayerState = { isPaused: false };
+        const scene = () => ({
+            sharedEffects: { playVictory: vi.fn() },
+            cameras: { main: { setAlpha: vi.fn() } },
+        });
+        mode.boardScenes = [scene(), scene(), scene()];
+        mode.versusHud = { showVictory: vi.fn(), clearVictory: vi.fn() };
+        mode._getPlayerColorScheme = (i) => ({ primary: ['#3B82F6', '#EF4444', '#10B981'][i] });
+        return mode;
+    }
+
+    it('freezes the boards, celebrates each winner in their colour and dims the rest', async () => {
+        vi.useFakeTimers();
+        const mode = createBeatMode();
+        const beat = mode._playVictoryBeat([0, 2]);
+        expect(mode.multiplayerState.isPaused).toBe(true);
+        expect(mode.boardScenes[0].sharedEffects.playVictory).toHaveBeenCalledWith({ color: '#3B82F6' });
+        expect(mode.boardScenes[2].sharedEffects.playVictory).toHaveBeenCalledWith({ color: '#10B981' });
+        expect(mode.boardScenes[1].sharedEffects.playVictory).not.toHaveBeenCalled();
+        expect(mode.boardScenes[1].cameras.main.setAlpha).toHaveBeenCalledWith(0.4);
+        expect(mode.versusHud.showVictory).toHaveBeenCalledWith([0, 2]);
+        expect(mode.versusHud.clearVictory).not.toHaveBeenCalled();
+
+        await vi.runAllTimersAsync();
+        await expect(beat).resolves.toBe(true);
+        expect(mode.versusHud.clearVictory).toHaveBeenCalled();
+    });
+
+    it('reports a lost round when the match was left during the beat', async () => {
+        vi.useFakeTimers();
+        const mode = createBeatMode();
+        const beat = mode._playVictoryBeat([1]);
+        mode._startGeneration = 6; // a new match started (or the mode was left)
+        await vi.runAllTimersAsync();
+        await expect(beat).resolves.toBe(false);
     });
 });

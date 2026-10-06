@@ -264,6 +264,39 @@ describe('local versus HUD', () => {
         vi.useRealTimers();
     });
 
+    it('crowns each winner\'s well with a Victory crest in their colour, then clears it', () => {
+        vi.useFakeTimers();
+        const { nodes, doc } = fakeDom(3);
+        doc.querySelectorAll = () => [nodes['p1-plate'], nodes['p3-plate']];
+        const hud = new LocalVersusHud({
+            config: { playerSlots: [{ name: 'Ada' }, { name: 'Bot 2', kind: 'bot' }, { name: '<b>Cy</b>' }] },
+            numPlayers: 3,
+            colorFor: (i) => ({ primary: ['#3B82F6', '#EF4444', '#10B981'][i] }),
+            doc,
+        });
+        hud.showVictory([0, 2]);
+        const crest = nodes['p1-section'].children.find((c) => c.className === 'lv-victory');
+        expect(crest.innerHTML).toContain('Victory');
+        expect(crest.innerHTML).toContain('Ada');
+        expect(crest.style.setProperty).toHaveBeenCalledWith('--win-color', '#3B82F6');
+        // Names are escaped: a player can type anything into a name.
+        const third = nodes['p3-section'].children.find((c) => c.className === 'lv-victory');
+        expect(third.innerHTML).toContain('&lt;b&gt;Cy&lt;/b&gt;');
+        expect(nodes['p2-section'].children).toHaveLength(0);
+        expect(nodes['p1-plate'].classList.contains('is-victor')).toBe(true);
+        // The light rises first, then the crest.
+        expect(crest.classList.contains('is-shown')).toBe(false);
+        vi.advanceTimersByTime(400);
+        expect(crest.classList.contains('is-shown')).toBe(true);
+
+        hud.clearVictory();
+        expect(crest.remove).toHaveBeenCalled();
+        expect(third.remove).toHaveBeenCalled();
+        expect(nodes['p1-plate'].classList.contains('is-victor')).toBe(false);
+        hud.destroy();
+        vi.useRealTimers();
+    });
+
     it('tells the round and lands an attack in the target\'s channel', () => {
         vi.useFakeTimers();
         const { nodes, doc } = fakeDom(2);

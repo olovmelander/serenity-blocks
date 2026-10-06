@@ -4263,3 +4263,104 @@ body.start-modal-open #invite-toast-container {
         animation: none !important;
     }
 }
+
+/* =================================================================================
+ * Online knock-outs (ui/keystone/out-card.js): your board goes dark, grey and comes
+ * apart in the board itself (shared-effects.js), so the card only settles it — the
+ * anatomy of local versus' card: "Out", a coral stroke, who did it, a note. An
+ * opponent's board takes a coral strike and gets the compact card. No white flashes,
+ * no skull.
+ * ================================================================================ */
+.death-overlay.sb-out {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: inherit;
+    background: radial-gradient(circle at 50% 45%, rgba(9, 8, 24, 0.24) 0%, rgba(9, 8, 24, 0.66) 100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--sb-dur-3) ease;
+}
+
+.death-overlay.sb-out.is-shown {
+    opacity: 1;
+}
+
+.sb-out__title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    color: var(--sb-text);
+    font: 700 26px / 1 var(--sb-font-display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.sb-out__title::after {
+    content: '';
+    width: 28px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--sb-coral);
+}
+
+.sb-out__cause {
+    color: var(--sb-coral);
+    font: 700 13px / 1.3 var(--sb-font-text);
+}
+
+.sb-out__note {
+    color: var(--sb-text-muted);
+    font: 600 12px / 1.3 var(--sb-font-text);
+}
+
+.death-overlay.sb-out--compact {
+    gap: 5px;
+}
+
+.sb-out--compact .sb-out__title {
+    gap: 6px;
+    font-size: 15px;
+}
+
+.sb-out--compact .sb-out__title::after {
+    width: 18px;
+    height: 2px;
+}
+
+.sb-out--compact .sb-out__cause {
+    font-size: 10px;
+}
+
+/* Your board dims and greys inside the board itself; the frame stays clear. */
+.online-game-area .online-main-board.eliminated,
+.online-main-board.eliminated,
+.online-main-board.eliminated canvas {
+    opacity: 1;
+    filter: none;
+}
+
+/* An opponent knocked out: a coral strike through the frame. */
+.opponent-grid-frame.is-struck,
+.opponent-board.is-struck {
+    animation: sb-struck 650ms var(--sb-ease-lock, ease-out);
+}
+
+@keyframes sb-struck {
+    0% { box-shadow: inset 0 0 0 0 rgba(var(--sb-coral-rgb), 0), 0 0 0 rgba(var(--sb-coral-rgb), 0); }
+    22% { box-shadow: inset 0 0 26px 2px rgba(var(--sb-coral-rgb), 0.65), 0 0 22px rgba(var(--sb-coral-rgb), 0.5); }
+    100% { box-shadow: inset 0 0 0 0 rgba(var(--sb-coral-rgb), 0), 0 0 0 rgba(var(--sb-coral-rgb), 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .opponent-grid-frame.is-struck,
+    .opponent-board.is-struck {
+        animation: none;
+    }
+}
