@@ -217,6 +217,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | The local next previews were fitted to the pieces' rotation matrices (the I piece's 4 × 4, the others' 3 × 3), so the I drew at a quarter of its room and every piece sat off-centre | They fit and centre the piece itself, with the single-player queue's trim (now shared, `trimShape` in `canvas-drawing-utils.js`) |
 | Local garbage was a slab in the attacker's own colour, so it read like a stack of their pieces | Solid slate, faintly tinted by the attacker; holes stay plain to see (§5.6) |
 | The falling piece showed faint bright lines between its cells: its gloss was drawn cell by cell with overlapping rects in additive blend, so every overlap doubled | The gloss is one exact rect per run of cells; every mode's pieces are seamless (`glossPass` in `base-board-scene.js`) |
+| The garbage meter sat inside the well as a dark channel: the stack met the right wall but stopped short of the left one, and an empty meter could not be seen | The meter stands outside the left wall as a visible track; the pieces meet both walls (§5.6) |
 | Local timed matches promised "the highest score when time runs out wins", but the standings ranked by frags and the match went to whoever won the last round | Timed matches rank, lead and are won on score, for players and teams; the clock is in the match bar and turns to "Last round" at zero |
 | In team play a frag goal counts rounds won, but the standings summed players' frags | The match bar races teams by their rule (rounds won, or the team's points or lines); each teammate's goal bar fills by the team |
 | A knock-out showed a 💀 emoji and "ELIMINATED" in red Arial | A Keystone card: "Out", the seat's colour, "Back next round" |
@@ -494,8 +495,8 @@ play, and how are they doing" at a glance, and every number lives in one place.
   goal and the clock.
 - **A station per player** (`.player-card[data-player]`, which themes read for their
   composition, keeps its name and box): a name plate, the next queue in a row over the
-  well's open top, the well (the board with its incoming-garbage channel on the left),
-  and one line of stats under the board.
+  well's open top, the well (the board between its walls) with the incoming-garbage
+  meter just outside its left wall, and one line of stats under the board.
 - **The name plate:** the seat (P1–P4) in its colour, the name, how they play ("Arrow
   keys", "WASD", "Controller 3", "Bot · Master", read from the key bindings), a team chip
   in team play, the rank once someone leads (gold, cream, coral; ties share a place;
@@ -507,12 +508,14 @@ play, and how are they doing" at a glance, and every number lives in one place.
   mouth. The tiles are wide, as pieces are, and each preview fits and centres the piece
   itself (not its rotation matrix), so it draws at about half a block.
 - **The well:** the board has no lid. Its walls rise from the floor in the seat's hue and
-  fade out toward the top, the glass is plain (no lines on the board), and the garbage
-  channel sits flush inside the left wall. Incoming garbage fills the channel (20 lines
-  fill it; from 8 it glows), and an attack lands in it with a flash and a "+n". When the
-  stack is within five rows of the top the walls turn coral and breathe, and they calm
-  only once it is three rows lower (no flicker at the line). A knocked-out well goes
-  quiet. The whole well shakes and dips with the board's juice.
+  fade out toward the top, the glass is plain (no lines on the board), and the pieces
+  meet both walls. The garbage meter stands just outside the left wall: a quiet track
+  that fades in from the open top like the walls and fills from the floor with incoming
+  garbage (20 lines fill it; from 8 it glows); an attack lands in it with a flash and a
+  "+n" on the board beside it. When the stack is within five rows of the top the walls
+  turn coral and breathe, and they calm only once it is three rows lower (no flicker at
+  the line). A knocked-out well goes quiet. The whole well, meter included, shakes and
+  dips with the board's juice.
 - **The boards' look (`src/rendering/phaser/versus-board-style.js`, local versus only):**
   pieces and the stack keep the game's solid, fused shapes. Garbage is one solid slate
   fill faintly tinted by the attacker, so it never passes for a stack of pieces and its
@@ -520,12 +523,12 @@ play, and how are they doing" at a glance, and every number lives in one place.
   outlined, where it will land. Single player and the themes keep the base look
   (`BaseBoardScene.setVersusStyle`, turned on by `local-board-hosts.js`).
 - **The match told as it happens:** a streak flies from the attacker's board to each
-  target's channel with the lines it carries; a frag pops "+1" on the plate; the
+  target's meter with the lines it carries; a frag pops "+1" on the plate; the
   knock-out card names who did it ("By Ada" in their colour) or says "Topped out"; and as
   the next round starts a banner gives the result ("Round 2 · Ada takes it", "A draw",
   "Topped out, no frag"). Reduced motion keeps the facts and drops the flight.
 - **The stats line** shows what the plate does not: level, lines, score or frags. Deaths
-  and incoming garbage left the live HUD (the results keep deaths; the channel shows
+  and incoming garbage left the live HUD (the results keep deaths; the meter shows
   garbage).
 - **Sizing (`local-versus-layout.js`):** the largest block that fits below the top row
   with the queue above every board; stations wrap onto two rows on tall windows. Plates
@@ -534,11 +537,12 @@ play, and how are they doing" at a glance, and every number lives in one place.
   `--board-width`, `--lv-next-w`, …, `data-rows`), never on `:root`, so other modes'
   boards never inherit them. Board sizes (px): with the queue above every board, two and
   three players give up about a tenth of the height the queue beside the board allowed
-  (1920 × 1080: 440 × 880 before), and four players gain, the tiles being wider than tall:
+  (1920 × 1080: 440 × 880 before), and four players gain or keep theirs, the tiles being
+  wider than tall:
 
   | Window | 2 players | 3 players | 4 players |
   |---|---|---|---|
-  | 1024 × 768 | 270 × 540 | 270 × 540 | 220 × 440 (was 210 × 420; overflowed before that) |
+  | 1024 × 768 | 270 × 540 | 270 × 540 | 210 × 420 (overflowed before the redesign) |
   | 1280 × 720 | 250 × 500 | 250 × 500 | 250 × 500 (was 240 × 480) |
   | 1366 × 768 | 270 × 540 | 270 × 540 | 270 × 540 (was 260 × 520) |
   | 1920 × 1080 | 410 × 820 | 410 × 820 | 410 × 820 (was 390 × 780) |
@@ -561,7 +565,7 @@ play, and how are they doing" at a glance, and every number lives in one place.
   `#global-standings-hud` and its CSS in four stylesheets, the per-board six-stat bars
   (`#p{n}-frags` …), the avatar header, the inline colours `_applyPlayerColors` wrote (it
   now sets the seat's hue variables only), the queue beside the board (`data-queue`), and
-  the mode's own garbage-meter writes (the HUD fills the channel from `incoming`).
+  the mode's own garbage-meter writes (the HUD fills the meter from `incoming`).
 - **Online:** the "NET" network badge (`src/ui/network-qos.js`) and its styles are gone.
 
 ## 6. Verification

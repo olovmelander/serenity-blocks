@@ -819,7 +819,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 level: playerState.level ?? 1,
                 // Filled rows from the floor: the well turns coral near the top.
                 stack: board && !this.matchConfig?.isInfinityLMS ? board.length - this._findHighestBlockRow(board) : 0,
-                // Garbage waiting to rise: the channel beside the board.
+                // Garbage waiting to rise: the meter beside the board.
                 incoming: this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0,
                 // Last Standing: rows left before this stack reaches the roof.
                 toRoof: this.matchConfig?.isInfinityLMS
@@ -1432,7 +1432,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 this[`boardJuiceP${i}`] = null;
             }
 
-            // The whole well moves: garbage channel, board and walls (keystone-versus.css).
+            // The whole well moves: garbage meter, board and walls (keystone-versus.css).
             const container = document.getElementById(`p${i}-phaser-container`);
             const well = container?.closest('.player-board-wrapper');
             if (well) {

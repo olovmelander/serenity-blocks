@@ -27,7 +27,7 @@ const ATTACK_MS = 440;
 const DANGER_ROWS = 15;
 /** ...and the rows it must clear before the well calms (no flicker at the line). */
 const DANGER_CALM = 3;
-/** Incoming garbage: the lines that fill the channel, and a heavy attack (it glows). */
+/** Incoming garbage: the lines that fill the meter, and a heavy attack (it glows). */
 const METER_LINES = 20;
 const HEAVY_LINES = 8;
 
@@ -201,7 +201,7 @@ export class LocalVersusHud {
         return this.doc.getElementById(id);
     }
 
-    /** The channel beside a board fills with the garbage waiting to rise into it. */
+    /** The meter beside a board fills with the garbage waiting to rise into it. */
     _meter(index, lines) {
         if (this._incoming[index] === lines) return;
         this._incoming[index] = lines;
@@ -485,7 +485,7 @@ export class LocalVersusHud {
 
     /**
      * An attack, drawn: a streak from the attacker's board into each target's garbage
-     * channel, which flashes and counts the lines in.
+     * meter, which flashes and counts the lines in.
      * @param {number} from attacker
      * @param {number[]} targets
      * @param {number} lines
@@ -537,7 +537,7 @@ export class LocalVersusHud {
         });
     }
 
-    /** The target's channel takes the hit: a flash and "+n" rows. */
+    /** The target's meter takes the hit: a flash and "+n" rows. */
     _hit(meter, lines, color) {
         replay(meter, 'is-hit');
         const well = meter.parentElement;
