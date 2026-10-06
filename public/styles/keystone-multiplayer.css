@@ -3269,17 +3269,47 @@ body.start-modal-open #invite-toast-container {
 /* ---- Scoreboard (src/ui/online-scoreboard.js) ---------------------------------------
  * Names take the row's free width; the number that decides the match comes first and
  * the one beside it shows where the info column has room; every row shows its status.
- * The info column (260 px at ≤1200 px windows, up to 440 px) is the size container. */
+ * The info column (260 px at ≤1200 px windows, up to 440 px) is the size container.
+ *
+ * One grid for the head and every row (subgrids): the number and status columns are as
+ * wide as their widest entry — frags or a five-figure score, "Alive" or "Waiting" — and
+ * the name takes the rest, every column still lined up under its head. */
 #online-multiplayer-container > .right-panel {
     container: sb-info / inline-size;
 }
 
-#online-multiplayer-container .scoreboard-columns-header,
-#online-multiplayer-container .scoreboard-row {
+#online-multiplayer-container .online-scoreboard {
+    /* Each number column keeps room for its usual size from a match's first second, so
+       names don't shrink as scores grow: frags two figures, a score five, lines three
+       (data-primary, set by the scoreboard for the match's deciding number). */
+    --sb-col-primary: minmax(20px, auto);
+    --sb-col-secondary: minmax(42px, auto);
     display: grid;
-    /* Rank, name, the deciding number, the second number, status (fits "Waiting"). */
-    grid-template-columns: 16px minmax(0, 1fr) 24px 42px 66px;
+    /* Rank, name, the deciding number, the second number, status. */
+    grid-template-columns: 16px minmax(0, 1fr) var(--sb-col-primary) var(--sb-col-secondary) minmax(46px, auto);
     column-gap: 5px;
+    align-content: start;
+}
+
+#online-multiplayer-container .online-scoreboard[data-primary='score'] {
+    --sb-col-primary: minmax(48px, auto);
+    --sb-col-secondary: minmax(20px, auto);
+}
+
+#online-multiplayer-container .online-scoreboard[data-primary='lines'] {
+    --sb-col-primary: minmax(28px, auto);
+    --sb-col-secondary: minmax(20px, auto);
+}
+
+#online-multiplayer-container .online-scoreboard > .scoreboard-header {
+    grid-column: 1 / -1;
+}
+
+#online-multiplayer-container .online-scoreboard > :is(.scoreboard-columns-header, .scoreboard-list),
+#online-multiplayer-container .scoreboard-list > .scoreboard-row {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
     align-items: center;
 }
 
@@ -3313,11 +3343,12 @@ body.start-modal-open #invite-toast-container {
 }
 
 #online-multiplayer-container .scoreboard-columns-header .col-status {
+    letter-spacing: 0.1em;
     text-align: right;
 }
 
 #online-multiplayer-container .scoreboard-list {
-    gap: 5px;
+    row-gap: 5px;
 }
 
 #online-multiplayer-container .scoreboard-row {
@@ -3408,6 +3439,10 @@ body.start-modal-open #invite-toast-container {
     font-weight: 700;
 }
 
+#online-multiplayer-container .online-scoreboard[data-primary='score'] .scoreboard-row .col-primary {
+    font-size: 12px;
+}
+
 #online-multiplayer-container .scoreboard-row .col-secondary {
     color: var(--sb-text-muted);
     font-size: 10px;
@@ -3417,7 +3452,7 @@ body.start-modal-open #invite-toast-container {
 /* Status: a tile on the right, in every row. */
 #online-multiplayer-container .scoreboard-row .col-status {
     justify-self: end;
-    padding: 3px 6px;
+    padding: 3px 5px;
     border: 1px solid rgba(var(--sb-success-rgb), 0.42);
     border-radius: 6px;
     background: rgba(var(--sb-success-rgb), 0.08);
@@ -3442,7 +3477,7 @@ body.start-modal-open #invite-toast-container {
 
 /* Five to eight players: tighter rows, so the battle log and chat keep their room. */
 #online-multiplayer-container .scoreboard-list:has(> .scoreboard-row:nth-child(5)) {
-    gap: 3px;
+    row-gap: 3px;
 }
 
 #online-multiplayer-container .scoreboard-list:has(> .scoreboard-row:nth-child(5)) > .scoreboard-row {
@@ -3450,11 +3485,11 @@ body.start-modal-open #invite-toast-container {
     padding-block: 3px;
 }
 
-/* Below 360 px (windows under ~1800 px) names come first: the deciding number, the name
+/* Below 310 px (windows under ~1600 px) names come first: the deciding number, the name
    and the status; the second number waits for room (the Tab scoreboard always has it). */
-@container sb-info (max-width: 359px) {
-    #online-multiplayer-container :is(.scoreboard-columns-header, .scoreboard-row) {
-        grid-template-columns: 16px minmax(0, 1fr) 24px 66px;
+@container sb-info (max-width: 309px) {
+    #online-multiplayer-container .online-scoreboard {
+        grid-template-columns: 16px minmax(0, 1fr) var(--sb-col-primary) minmax(46px, auto);
     }
 
     #online-multiplayer-container :is(.scoreboard-columns-header, .scoreboard-row) > .col-secondary {
