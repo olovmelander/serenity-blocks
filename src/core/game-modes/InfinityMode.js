@@ -793,6 +793,7 @@ export class InfinityMode extends BaseGameMode {
             this.boardJuice = null;
         }
 
+        this.boardScene?.setWellStyle?.(false);
         this.boardScene = null;
 
         // Reset exploration mode
@@ -853,9 +854,12 @@ export class InfinityMode extends BaseGameMode {
         if (enable) {
             stage.classList.add('infinity-mode-active');
             container.classList.add('infinity-mode-active');
+            // The well: an open-top board between the HUD and the tower (keystone-solo.css).
+            stage.dataset.board = 'well';
         } else {
             stage.classList.remove('infinity-mode-active');
             container.classList.remove('infinity-mode-active');
+            delete stage.dataset.board;
 
             const statsBar = document.querySelector('.single-player-stats-bar');
             if (statsBar) {
@@ -892,6 +896,8 @@ export class InfinityMode extends BaseGameMode {
         this.boardScene = phaserGame.scene.getScene('BoardScene');
 
         if (this.boardScene) {
+            // The well's look: a coloured ghost (well-board-style.js).
+            this.boardScene.setWellStyle?.(true);
             this.boardScene.scene.setVisible(true);
             if (this.boardScene.scene.isActive()) {
                 console.log('[Infinity] BoardScene already active, restarting...');
