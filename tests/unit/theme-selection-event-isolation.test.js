@@ -102,7 +102,23 @@ describe('theme selection is isolated from global game-start clicks', () => {
         },
     );
 
-    it('retains the normal background-click start behavior when the hub is closed', () => {
+    it('keeps tap-anywhere restart on the game-over screen when the hub is closed', () => {
+        const { handleClick, startGame } = setupGlobalClickHarness({
+            visibleModal: 'game-over-modal',
+        });
+
+        handleClick({
+            target: {
+                closest: vi.fn(() => null),
+            },
+        });
+
+        expect(startGame).toHaveBeenCalledOnce();
+    });
+
+    it('does not start a game from a background click on the main menu', () => {
+        // The main menu's modes are explicit list entries; a stray click on its open
+        // background used to launch whichever mode was selected last.
         const { handleClick, startGame } = setupGlobalClickHarness({
             visibleModal: 'start-modal',
         });
@@ -113,7 +129,7 @@ describe('theme selection is isolated from global game-start clicks', () => {
             },
         });
 
-        expect(startGame).toHaveBeenCalledOnce();
+        expect(startGame).not.toHaveBeenCalled();
     });
 });
 
@@ -423,6 +439,7 @@ describe('Serenity Hub owns gamepad theme confirmation', () => {
             index: 0,
         };
         const startGame = vi.fn();
+        const mainMenuClick = vi.fn();
         let hubOpen = true;
         vi.stubGlobal('window', {
             settings: {},
@@ -438,6 +455,7 @@ describe('Serenity Hub owns gamepad theme confirmation', () => {
                 },
             },
             getElementById: vi.fn((id) => {
+                if (id === 'game-over-main-menu') return { click: mainMenuClick };
                 if (id !== 'game-over-modal') return null;
                 return {
                     classList: {
@@ -470,11 +488,23 @@ describe('Serenity Hub owns gamepad theme confirmation', () => {
         controller.poll();
         expect(startGame).not.toHaveBeenCalled();
 
+        expect(mainMenuClick).not.toHaveBeenCalled();
+
         buttons[1] = { pressed: false, value: 0 };
+        controller.poll();
+        // After a neutral release, A plays again ...
+        buttons[0] = { pressed: true, value: 1 };
+        controller.poll();
+
+        expect(startGame).toHaveBeenCalledOnce();
+
+        // ... and B is Main menu, like Escape on the game-over sheet.
+        buttons[0] = { pressed: false, value: 0 };
         controller.poll();
         buttons[1] = { pressed: true, value: 1 };
         controller.poll();
 
+        expect(mainMenuClick).toHaveBeenCalledOnce();
         expect(startGame).toHaveBeenCalledOnce();
     });
 });

@@ -1,0 +1,454 @@
+/* =================================================================================
+ * KEYSTONE — the Serenity Blocks interface language
+ * ---------------------------------------------------------------------------------
+ * The logo has one signature: the coral tile that completes the O of BLOCKS. The
+ * interface is built around that gesture — a calm, cool structure completed by one
+ * warm block falling into place. Design record: docs/MENU_UI_OVERHAUL_2026-10.md.
+ *
+ *   1. One warm block.   Night ink, cream type and spectrum light everywhere; coral
+ *                        only marks the keystone: where you are, what happens next.
+ *   2. Built from tiles. Rounded squares (never pills), the logo's corner ratio,
+ *                        separators and meters made of cells.
+ *   3. Open corners.     Hero panels leave the top-right corner open, like the O;
+ *                        the keystone sits in that gap.
+ *   4. Breathe, then lock. Ambient light breathes slowly; interactions drop and lock
+ *                        (short, crisp ease-out). Reduced motion keeps only the lock.
+ *   5. Say it plainly.   Words over icons, every icon labelled, one primary action,
+ *                        input hints in the footer.
+ *
+ * This file holds the tokens and the shared primitives (sb-*). Surface layers
+ * (keystone-menu.css, keystone-settings.css, …) apply them to existing markup.
+ * ============================================================================== */
+
+:root {
+    /* ---- Brand primitives (sampled from serenity-blocks-logo.svg) ------------ */
+    --sb-cream: #fff6e9;      --sb-cream-rgb: 255, 246, 233;
+    --sb-lavender: #b8a4ff;   --sb-lavender-rgb: 184, 164, 255;
+    --sb-aqua: #9ee8ed;       --sb-aqua-rgb: 158, 232, 237;
+    --sb-mint: #c5f1cf;       --sb-mint-rgb: 197, 241, 207;
+    --sb-coral: #ffac88;      --sb-coral-rgb: 255, 172, 136;
+    /* Supporting hues for per-mode identity — pastel, tuned to sit with the logo. */
+    --sb-gold: #f3d28d;       --sb-gold-rgb: 243, 210, 141;
+    --sb-rose: #f5aed0;       --sb-rose-rgb: 245, 174, 208;
+    --sb-sky: #94c8ff;        --sb-sky-rgb: 148, 200, 255;
+    --sb-night-rgb: 9, 8, 24;
+
+    /* ---- Semantic colour --------------------------------------------------- */
+    --sb-bg: #070616;
+    --sb-surface: rgba(17, 15, 40, 0.78);
+    --sb-surface-raised: rgba(30, 27, 64, 0.66);
+    --sb-surface-hover: rgba(44, 40, 88, 0.6);
+    --sb-surface-solid: #110e29;
+    --sb-scrim: rgba(5, 4, 14, 0.62);
+    --sb-line: rgba(var(--sb-cream-rgb), 0.10);
+    --sb-line-strong: rgba(var(--sb-cream-rgb), 0.20);
+    --sb-text: var(--sb-cream);
+    --sb-text-muted: rgba(var(--sb-cream-rgb), 0.70);
+    --sb-text-faint: rgba(var(--sb-cream-rgb), 0.46);
+    --sb-keystone: var(--sb-coral);
+    --sb-keystone-rgb: var(--sb-coral-rgb);
+    --sb-keystone-strong: #ff9670;
+    --sb-keystone-ink: #2b1308;
+    --sb-spectrum: linear-gradient(90deg, #b8a4ff 0%, #9ee8ed 48%, #c5f1cf 100%);
+    --sb-success: #a6f0c6;    --sb-success-rgb: 166, 240, 198;
+    --sb-warning: #f6d58a;    --sb-warning-rgb: 246, 213, 138;
+    --sb-danger: #ff9cab;     --sb-danger-rgb: 255, 156, 171;
+
+    /* Per-surface identity: layers point these at one of the hues above. */
+    --sb-accent: var(--sb-aqua);
+    --sb-accent-rgb: var(--sb-aqua-rgb);
+
+    /* ---- Type ---------------------------------------------------------------- */
+    --sb-font-display: 'Unbounded', 'Orbitron', 'Segoe UI', system-ui, sans-serif;
+    --sb-font-text: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --sb-fs-hero: clamp(2.2rem, 3.6vw, 3.4rem);
+    --sb-fs-title: clamp(1.45rem, 2.1vw, 1.9rem);
+    --sb-fs-heading: 1.0625rem;
+    --sb-fs-body: 0.9375rem;
+    --sb-fs-small: 0.8125rem;
+    --sb-fs-label: 0.6875rem;
+    --sb-track-label: 0.2em;
+
+    /* ---- Shape (radii follow the logo: soft corners, never pills) ----------- */
+    --sb-r-xs: 6px;
+    --sb-r-sm: 10px;
+    --sb-r-md: 14px;
+    --sb-r-lg: 20px;
+    --sb-r-xl: 28px;
+    --sb-notch: 32px;           /* open-corner size on hero panels */
+    --sb-tile: 12px;            /* the keystone as a focus marker */
+
+    /* ---- Motion ---------------------------------------------------------------- */
+    --sb-ease-lock: cubic-bezier(0.2, 0.9, 0.1, 1);      /* drop, then lock */
+    --sb-ease-breathe: cubic-bezier(0.45, 0, 0.55, 1);   /* sine in-out */
+    --sb-dur-1: 140ms;
+    --sb-dur-2: 220ms;
+    --sb-dur-3: 420ms;
+    --sb-breath: 5.5s;
+
+    /* ---- Depth ----------------------------------------------------------------- */
+    /* No backdrop blur on menu shells: they sit over live WebGPU scenes and a blur
+       re-samples every frame (docs/CORE_UI_PERFORMANCE_FIXES_2026-10.md). Depth
+       comes from layered fills, hairlines and shadow instead. */
+    --sb-shadow-panel: 0 40px 100px rgba(0, 0, 0, 0.5);
+    --sb-glow-keystone: 0 0 18px rgba(var(--sb-coral-rgb), 0.5);
+}
+
+/* ==================================================================================
+ * Primitives
+ * ================================================================================ */
+
+/* ---- Eyebrow: small spaced capitals with a tile bullet -------------------------- */
+/* Line height 1.5 so an eyebrow that wraps (phones) never stacks its lines on top of
+   each other; the tile bullet stays centred on the first line. */
+.sb-eyebrow {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0;
+    font: 600 var(--sb-fs-label) / 1.5 var(--sb-font-display);
+    letter-spacing: var(--sb-track-label);
+    text-transform: uppercase;
+    color: rgba(var(--sb-accent-rgb), 0.92);
+}
+
+.sb-eyebrow::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    flex: none;
+    margin-top: calc((1.5em - 7px) / 2);
+    border-radius: 2px;
+    background: currentColor;
+}
+
+.sb-eyebrow--quiet {
+    color: var(--sb-text-faint);
+}
+
+/* ---- Panel: night glass; --open leaves the top-right corner for the keystone ---- */
+.sb-panel {
+    position: relative;
+    border-radius: var(--sb-r-xl);
+    background:
+        radial-gradient(120% 80% at 0% 0%, rgba(var(--sb-accent-rgb), 0.08), transparent 60%),
+        linear-gradient(180deg, rgba(28, 24, 62, 0.90) 0%, rgba(12, 10, 30, 0.94) 100%);
+    border: 1px solid var(--sb-line);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+}
+
+.sb-panel--open {
+    -webkit-mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
+    mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
+}
+
+/* The keystone that sits in an open corner (a sibling of the masked panel). */
+.sb-key {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: calc(var(--sb-notch) - 6px);
+    height: calc(var(--sb-notch) - 6px);
+    border-radius: 5px;
+    background: var(--sb-keystone);
+    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    pointer-events: none;
+}
+
+/* ---- Buttons ------------------------------------------------------------------- */
+.sb-btn {
+    --sb-btn-h: 48px;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: var(--sb-btn-h);
+    padding: 0 22px;
+    border-radius: 13px;
+    border: 1px solid var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+    font: 600 0.75rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock),
+        transform var(--sb-dur-1) var(--sb-ease-lock),
+        box-shadow var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+.sb-btn:hover {
+    background: rgba(var(--sb-cream-rgb), 0.09);
+    border-color: rgba(var(--sb-cream-rgb), 0.34);
+}
+
+.sb-btn:active {
+    transform: translateY(1px);
+}
+
+.sb-btn:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 3px;
+}
+
+.sb-btn--primary {
+    background: var(--sb-keystone);
+    border-color: transparent;
+    color: var(--sb-keystone-ink);
+    box-shadow: 0 12px 32px rgba(var(--sb-coral-rgb), 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.sb-btn--primary:hover {
+    background: #ffbb9c;
+    border-color: transparent;
+    box-shadow: 0 14px 40px rgba(var(--sb-coral-rgb), 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.sb-btn--quiet {
+    border-color: transparent;
+    background: transparent;
+    color: var(--sb-text-muted);
+}
+
+.sb-btn--quiet:hover {
+    color: var(--sb-text);
+    background: rgba(var(--sb-cream-rgb), 0.06);
+    border-color: transparent;
+}
+
+.sb-btn[disabled],
+.sb-btn[aria-disabled='true'] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ---- Keycap -------------------------------------------------------------------- */
+.sb-kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 6px;
+    border: 1px solid var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.07);
+    color: var(--sb-text-muted);
+    font: 700 0.6875rem / 1 var(--sb-font-text);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.sb-btn--primary .sb-kbd {
+    border-color: rgba(43, 19, 8, 0.16);
+    background: rgba(43, 19, 8, 0.12);
+    color: var(--sb-keystone-ink);
+}
+
+/* Gamepad glyph keycaps: round face buttons drawn in the brand hues. */
+.sb-kbd[data-pad] {
+    display: none;
+    min-width: 22px;
+    padding: 0 4px;
+    border-radius: 11px;
+    font-family: var(--sb-font-display);
+    font-size: 0.625rem;
+}
+
+body.sb-input-gamepad .sb-kbd[data-key] {
+    display: none;
+}
+
+body.sb-input-gamepad .sb-kbd[data-pad] {
+    display: inline-flex;
+}
+
+/* ---- Input hints footer --------------------------------------------------------- */
+.sb-hints {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 20px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--sb-text-faint);
+    font: 600 0.75rem / 1 var(--sb-font-text);
+}
+
+.sb-hints li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ---- Chip (rounded square tag, not a pill) --------------------------------------- */
+.sb-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 9px;
+    border-radius: 7px;
+    border: 1px solid var(--sb-line-strong);
+    color: var(--sb-text-muted);
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* ---- Meter: progress drawn as a row of cells ------------------------------------- */
+.sb-meter {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+}
+
+.sb-meter > i {
+    flex: 1 1 0;
+    min-width: 2px;
+    height: 9px;
+    border-radius: 2px;
+    background: rgba(var(--sb-cream-rgb), 0.09);
+}
+
+.sb-meter > i.is-filled {
+    background: rgba(var(--sb-accent-rgb), 0.85);
+}
+
+.sb-meter > i.is-current {
+    background: var(--sb-keystone);
+    box-shadow: 0 0 10px rgba(var(--sb-coral-rgb), 0.7);
+}
+
+.sb-meter > i.is-break {
+    margin-right: 4px;
+}
+
+/* ---- Divider: a cleared line of tile dots --------------------------------------- */
+.sb-divider {
+    height: 6px;
+    margin: 18px 0;
+    border: 0;
+    background: radial-gradient(circle at 3px 3px, rgba(var(--sb-cream-rgb), 0.18) 2.2px, transparent 2.5px) 0 0 / 12px 6px repeat-x;
+}
+
+/* ---- Toggle: a switch whose knob is a tile; on = a lit cream tile on the spectrum.
+   Not coral: settings stack many toggles, and coral stays for focus and the one
+   primary action. --------------------------------------------------------------- */
+input[type='checkbox'].sb-toggle {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    flex: none;
+    width: 50px;
+    height: 28px;
+    margin: 0;
+    border-radius: 9px;
+    border: 1px solid var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.05);
+    cursor: pointer;
+    transition: background var(--sb-dur-2) var(--sb-ease-lock), border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+input[type='checkbox'].sb-toggle::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1.5px solid var(--sb-text-muted);
+    box-sizing: border-box;
+    transition:
+        transform var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        box-shadow var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+input[type='checkbox'].sb-toggle:checked {
+    background: linear-gradient(90deg, rgba(var(--sb-lavender-rgb), 0.34), rgba(var(--sb-aqua-rgb), 0.34));
+    border-color: rgba(var(--sb-aqua-rgb), 0.5);
+}
+
+input[type='checkbox'].sb-toggle:checked::after {
+    transform: translateX(22px);
+    background: var(--sb-cream);
+    border-color: var(--sb-cream);
+    box-shadow: 0 0 10px rgba(var(--sb-aqua-rgb), 0.45);
+}
+
+input[type='checkbox'].sb-toggle:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 3px;
+}
+
+/* ==================================================================================
+ * The keystone focus marker
+ * One coral tile follows keyboard and gamepad focus between menu controls and locks
+ * onto the focused control's top-right corner (src/ui/keystone/keystone-focus.js,
+ * which also plays the drop with the Web Animations API).
+ * ================================================================================ */
+.sb-keystone {
+    position: fixed;
+    top: 0;
+    left: 0;
+    /* Above every menu layer, below the custom select listbox (2147483000). */
+    z-index: 2147482000;
+    width: var(--sb-tile);
+    height: var(--sb-tile);
+    border-radius: 3px;
+    background: var(--sb-keystone);
+    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    pointer-events: none;
+    opacity: 0;
+    transform: translate3d(-100px, -100px, 0);
+    transition: opacity var(--sb-dur-1) linear;
+    will-change: transform, opacity;
+}
+
+.sb-keystone.is-visible {
+    opacity: 1;
+}
+
+
+/* ---- Shared motion --------------------------------------------------------------- */
+@keyframes sb-rise-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes sb-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes sb-key-drop {
+    0% { opacity: 0; transform: translateY(-18px); }
+    70% { opacity: 1; transform: translateY(1px); }
+    100% { opacity: 1; transform: none; }
+}
+
+@keyframes sb-breathe {
+    0%, 100% { opacity: 0.55; transform: scale(0.97); }
+    50% { opacity: 1; transform: scale(1.03); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-keystone,
+    .sb-btn,
+    input[type='checkbox'].sb-toggle,
+    input[type='checkbox'].sb-toggle::after {
+        transition-duration: 1ms !important;
+    }
+}

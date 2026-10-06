@@ -3,6 +3,21 @@
  * Handles 2D navigation for gamepad/keyboard interfaces
  */
 
+/**
+ * What a controller or keyboard can land on. Links count only as `a[href]` and
+ * `area[href]`: a bare `[href]` also matches the SVG `<use href>` icons inside buttons,
+ * which take no focus and left the D-pad stuck on the pause sheet's Resume.
+ */
+export const FOCUSABLE_SELECTOR = [
+    'button:not([disabled])',
+    'a[href]',
+    'area[href]',
+    'input:not([disabled]):not([type="hidden"])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
 export class SpatialNavigation {
     /**
      * Find the best candidate element to focus in a given direction
@@ -44,8 +59,7 @@ export class SpatialNavigation {
      * @returns {HTMLElement[]}
      */
     static getFocusableElements(container) {
-        const selector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-        const elements = Array.from(container.querySelectorAll(selector));
+        const elements = Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR));
 
         return elements.filter((el) => {
             const style = window.getComputedStyle(el);

@@ -1,35 +1,23 @@
 /**
- * @fileoverview Cosmic Serenity — theme-card micro-interactions for the Serenity Hub.
+ * @fileoverview Theme-card spotlight for the Serenity Hub's Themes grid.
  *
- * Mirrors the main-menu's `menu-card-interactions.js` "feel" layer, adapted for the
- * hub's Themes grid:
- *   1. Cursor-follow spotlight → writes --mx / --my (% within the card)
- *   2. Parallax 3D tilt        → writes --rx / --ry (degrees)
+ * A soft light in the card's category hue follows the pointer, like the main menu's
+ * list items: this writes --mx / --my (% within the card) and keystone-hub.css paints
+ * `.theme-card::before` from them. Nothing tilts or moves — Keystone interactions drop
+ * and lock rather than float.
  *
- * Both are composited purely via CSS custom properties (see serenity-hub-aaa.css
- * Phase 5), so they never touch `transform` directly and can't fight the card's
- * hover/entrance transforms. Honors prefers-reduced-motion (spotlight stays, tilt
- * is skipped).
- *
- * The Themes grid re-renders its cards on search / category changes, so we bind a
- * single delegated listener to the grid container rather than per-card — it keeps
- * working across re-renders with no re-binding.
+ * The grid's cards are filtered in place, so one delegated listener on the grid
+ * container covers every card for the life of the tab. Writes are batched to one per
+ * animation frame and touch only the hovered card.
  */
 
-const MAX_TILT_DEG = 6;
-const reducedMotion = typeof window !== 'undefined' && window.matchMedia
-    ? window.matchMedia('(prefers-reduced-motion: reduce)')
-    : { matches: false };
-
 function resetCard(card) {
-    card.style.setProperty('--mx', '50%');
-    card.style.setProperty('--my', '50%');
-    card.style.setProperty('--rx', '0deg');
-    card.style.setProperty('--ry', '0deg');
+    card.style.removeProperty('--mx');
+    card.style.removeProperty('--my');
 }
 
 /**
- * Attach delegated spotlight + tilt to a Themes grid. Idempotent per grid element.
+ * Attach the delegated spotlight to a Themes grid. Idempotent per grid element.
  * @param {ParentNode} [root] Scope to search for `#themes-grid` (defaults to document).
  */
 export function initThemeCardInteractions(root) {
@@ -54,16 +42,12 @@ export function initThemeCardInteractions(root) {
     const apply = () => {
         frame = 0;
         if (!activeCard || !pending) return;
-        const { px, py } = pending;
-        activeCard.style.setProperty('--mx', `${(px * 100).toFixed(1)}%`);
-        activeCard.style.setProperty('--my', `${(py * 100).toFixed(1)}%`);
-        if (!reducedMotion.matches) {
-            activeCard.style.setProperty('--ry', `${((px - 0.5) * 2 * MAX_TILT_DEG).toFixed(2)}deg`);
-            activeCard.style.setProperty('--rx', `${((0.5 - py) * 2 * MAX_TILT_DEG).toFixed(2)}deg`);
-        }
+        activeCard.style.setProperty('--mx', `${(pending.px * 100).toFixed(1)}%`);
+        activeCard.style.setProperty('--my', `${(pending.py * 100).toFixed(1)}%`);
     };
 
     grid.addEventListener('pointermove', (event) => {
+        if (event.pointerType === 'touch') return;
         const card = event.target.closest?.('.theme-card');
         if (!card || !grid.contains(card)) {
             // Moved into a gap between cards — settle the last one.

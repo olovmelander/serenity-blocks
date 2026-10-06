@@ -24,7 +24,7 @@ const allowedInvokeChannels = new Set([
     'desktop:get-debug-tools-status', 'desktop:open-devtools',
     'desktop:open-renderer-debugger', 'desktop:get-log-paths',
     'desktop:apply-runtime-profile', 'desktop:store-performance-report',
-    'desktop:startup-mark',
+    'desktop:startup-mark', 'desktop:quit',
     // Steam
     'steam:isInitialized', 'steam:getSteamId', 'steam:getPlayerName',
     'steam:getAppId', 'steam:getConnectionStatus', 'steam:getCapabilities',

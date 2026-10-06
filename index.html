@@ -89,28 +89,26 @@
     <link rel="stylesheet" href="/styles/cinematic-loading.css">
     <link rel="stylesheet" href="/styles/next-queue.css">
     <link rel="stylesheet" href="/styles/multiplayer-ui.css">
-    <link rel="stylesheet" href="/styles/lobby-styles.css">
-    <link rel="stylesheet" href="/styles/match-config-styles.css">
     <link rel="stylesheet" href="/styles/cosmic-select.css">
     <link rel="stylesheet" href="/styles/serenity-hub.css">
     <link rel="stylesheet" href="/styles/custom-cursor.css">
     <link rel="stylesheet" href="/styles/cosmic-tokens.css">
-    <link rel="stylesheet" href="/styles/menu-aaa.css">
-    <link rel="stylesheet" href="/styles/settings-aaa.css">
-    <link rel="stylesheet" href="/styles/serenity-hub-aaa.css">
     <link rel="stylesheet" href="/styles/breathing-guide.css">
     <link rel="stylesheet" href="/styles/breathing-library.css">
     <link rel="stylesheet" href="/styles/breathwork-sessions.css">
-    <link rel="stylesheet" href="/styles/high-scores-aaa.css">
-    <link rel="stylesheet" href="/styles/demo-browser-aaa.css">
-    <link rel="stylesheet" href="/styles/match-config-aaa.css">
-    <link rel="stylesheet" href="/styles/lobby-browser-aaa.css">
-    <link rel="stylesheet" href="/styles/lobby-room-aaa.css">
     <link rel="stylesheet" href="/styles/multiplayer-hud-aaa.css">
     <link rel="stylesheet" href="/styles/single-player-hud-aaa.css">
-    <link rel="stylesheet" href="/styles/game-over-aaa.css">
     <link rel="stylesheet" href="/styles/odyssey-aaa.css">
     <link rel="stylesheet" href="/styles/overlays-aaa.css">
+    <!-- Keystone interface language (docs/MENU_UI_OVERHAUL_2026-10.md): tokens and
+         primitives, then one layer per surface. Loaded last so they own the look. -->
+    <link rel="stylesheet" href="/styles/keystone.css">
+    <link rel="stylesheet" href="/styles/keystone-menu.css">
+    <link rel="stylesheet" href="/styles/keystone-multiplayer.css">
+    <link rel="stylesheet" href="/styles/keystone-hub.css">
+    <link rel="stylesheet" href="/styles/keystone-modals.css">
+    <link rel="stylesheet" href="/styles/keystone-settings.css">
+    <link rel="stylesheet" href="/styles/keystone-overlays.css">
 </head>
 
 <body>
@@ -1291,6 +1289,10 @@
             </div>
         </div>
 
+        <!-- RIGHT, top: kept free for the game controls tray (Serenity Hub, Settings), which
+             sits in the same corner in every mode (src/ui/keystone/play-rail.js). -->
+        <div class="sb-play-room" aria-hidden="true"></div>
+
         <!-- RIGHT: Info Panel (Scoreboard, Battle Log, Chat) -->
         <div class="right-panel">
             <div class="online-scoreboard" id="online-scoreboard">
@@ -1333,150 +1335,192 @@
         </div>
     </div>
 
-    <div id="start-modal" class="modal game-mode-selection">
-        <div class="game-mode-cards-container">
-            <h1 class="main-menu-logo" aria-label="Serenity Blocks"><img src="./assets/branding/serenity-blocks-logo.svg" width="650" height="248" alt="" aria-hidden="true"></h1>
-            <div class="game-mode-card" data-mode="single" id="single-player-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--solo" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
-                        aria-hidden="true">
-                        <circle class="cs-solo-ring" cx="12" cy="12" r="9" />
-                        <circle class="cs-solo-head" cx="12" cy="8" r="2.6" />
-                        <path class="cs-solo-body" d="M6.5 19c.8-3.7 2.8-5.6 5.5-5.6s4.7 1.9 5.5 5.6" />
-                    </svg>
-                </div>
-                <h2 class="mode-card-title">Single Player</h2>
-                <p class="mode-card-desc">Classic experience with progressive difficulty</p>
-                <div class="mode-card-glow"></div>
-            </div>
+    <div id="start-modal" class="modal game-mode-selection" aria-labelledby="sb-menu-title">
+        <!-- Keystone main menu (docs/MENU_UI_OVERHAUL_2026-10.md): brand, the modes grouped by
+             the tagline's three verbs, a stage that describes the current mode, and a dock.
+             Every .game-mode-card keeps its id / data-mode hooks (game-mode-ui.js, gamepad). -->
+        <div class="sb-menu" data-current="single">
+            <header class="sb-menu__brand">
+                <h1 class="main-menu-logo" id="sb-menu-title" aria-label="Serenity Blocks"><img src="./assets/branding/serenity-blocks-logo.svg" width="650" height="248" alt="" aria-hidden="true"></h1>
+                <p class="sb-menu__tagline" aria-hidden="true">Stack <i></i> Breath <i></i> Ascend</p>
+            </header>
 
-            <div class="game-mode-card" data-mode="local-multiplayer" id="local-multiplayer-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--local-mp" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <g class="cs-local-player cs-local-player--primary">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="9" cy="7" r="4"></circle>
-                        </g>
-                        <g class="cs-local-player cs-local-player--secondary">
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                        </g>
-                        <path class="cs-local-link" pathLength="1" d="M11.7 12.4c1.5-1 3.1-1 4.6 0"></path>
-                    </svg>
-                </div>
-                <h2 class="mode-card-title">Local MP</h2>
-                <p class="mode-card-desc">Compete head-to-head with friends on the same device</p>
-                <div class="mode-card-glow"></div>
-            </div>
+            <nav class="game-mode-cards-container sb-modes" aria-label="Game modes">
+                <div class="sb-modes__group" role="group" aria-labelledby="sb-modes-stack">
+                    <p class="sb-modes__label" id="sb-modes-stack">Stack</p>
+                    <div class="game-mode-card" data-mode="single" id="single-player-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--solo" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                aria-hidden="true">
+                                <circle class="cs-solo-ring" cx="12" cy="12" r="9" />
+                                <circle class="cs-solo-head" cx="12" cy="8" r="2.6" />
+                                <path class="cs-solo-body" d="M6.5 19c.8-3.7 2.8-5.6 5.5-5.6s4.7 1.9 5.5 5.6" />
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Single Player</h2>
+                        <p class="mode-card-desc">The classic climb. Levels rise and gravity quickens.</p>
+                    </div>
 
-            <div class="game-mode-card" data-mode="online-multiplayer" id="online-multiplayer-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--online-mp" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <g class="cs-online-globe">
-                            <circle class="cs-online-outline" cx="12" cy="12" r="10"></circle>
-                            <line class="cs-online-equator" x1="2" y1="12" x2="22" y2="12"></line>
-                            <path class="cs-online-meridian"
-                                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-                            </path>
-                        </g>
-                        <ellipse class="cs-online-orbit" pathLength="1" cx="12" cy="12" rx="8.4" ry="3.1"
-                            transform="rotate(-26 12 12)"></ellipse>
-                        <circle class="cs-online-packet" cx="19.2" cy="8.1" r="1" fill="currentColor" stroke="none">
-                        </circle>
-                    </svg>
-                </div>
-                <h2 class="mode-card-title">Online MP</h2>
-                <p class="mode-card-desc">Online battles with lobby system and matchmaking</p>
-                <div class="mode-card-glow"></div>
-            </div>
+                    <div class="game-mode-card" data-mode="infinity" id="infinity-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--infinity" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <path class="cs-infinity-path" pathLength="1"
+                                    d="M12 12c-2-2.5-5-3.5-7-2-2 1.5-2 5 0 6.5 2 1.5 5 0.5 7-2 2 2.5 5 3.5 7 2 2-1.5 2-5 0-6.5-2-1.5-5-0.5-7 2z" />
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Infinity</h2>
+                        <p class="mode-card-desc">One thousand rows tall. Build upward and chain cascades.</p>
+                    </div>
 
-            <div class="game-mode-card" data-mode="serenity" id="serenity-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--serenity" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <circle class="cs-serenity-breath-ring" cx="12" cy="12" r="8.7"></circle>
-                        <path class="cs-serenity-petal cs-serenity-petal--center"
-                            d="M12 2.5c0 0-4 5.5-4 9.5 0 2.5 1.5 4.5 4 4.5 2.5 0 4-2 4-4.5 0-4-4-9.5-4-9.5z" />
-                        <path class="cs-serenity-petal cs-serenity-petal--left"
-                            d="M12 16.5c0 0-6-2-8-6 0-2.5 1.5-4.5 3.5-4.5 2 0 4.5 3.5 4.5 3.5" />
-                        <path class="cs-serenity-petal cs-serenity-petal--right"
-                            d="M12 16.5c0 0 6-2 8-6 0-2.5-1.5-4.5-3.5-4.5-2 0-4.5 3.5-4.5 3.5" />
-                    </svg>
-                </div>
-                <h2 class="mode-card-title">Serenity</h2>
-                <p class="mode-card-desc">Pure relaxation - enjoy beautiful themes, music, and optional breathing
-                    guide
-                </p>
-                <div class="mode-card-glow"></div>
-            </div>
+                    <div class="game-mode-card" data-mode="local-multiplayer" id="local-multiplayer-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--local-mp" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <g class="cs-local-player cs-local-player--primary">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="9" cy="7" r="4"></circle>
+                                </g>
+                                <g class="cs-local-player cs-local-player--secondary">
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                </g>
+                                <path class="cs-local-link" pathLength="1" d="M11.7 12.4c1.5-1 3.1-1 4.6 0"></path>
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Local Versus</h2>
+                        <p class="mode-card-desc">Up to four players on one screen, with friends or bots.</p>
+                    </div>
 
-            <div class="game-mode-card" data-mode="infinity" id="infinity-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--infinity" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path class="cs-infinity-path" pathLength="1"
-                            d="M12 12c-2-2.5-5-3.5-7-2-2 1.5-2 5 0 6.5 2 1.5 5 0.5 7-2 2 2.5 5 3.5 7 2 2-1.5 2-5 0-6.5-2-1.5-5-0.5-7 2z" />
-                    </svg>
+                    <div class="game-mode-card" data-mode="online-multiplayer" id="online-multiplayer-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--online-mp" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <g class="cs-online-globe">
+                                    <circle class="cs-online-outline" cx="12" cy="12" r="10"></circle>
+                                    <line class="cs-online-equator" x1="2" y1="12" x2="22" y2="12"></line>
+                                    <path class="cs-online-meridian"
+                                        d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+                                    </path>
+                                </g>
+                                <ellipse class="cs-online-orbit" pathLength="1" cx="12" cy="12" rx="8.4" ry="3.1"
+                                    transform="rotate(-26 12 12)"></ellipse>
+                                <circle class="cs-online-packet" cx="19.2" cy="8.1" r="1" fill="currentColor" stroke="none">
+                                </circle>
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Online Versus</h2>
+                        <p class="mode-card-desc">Free-for-all lobbies. Create a match or join one.</p>
+                    </div>
                 </div>
-                <h2 class="mode-card-title">Infinity</h2>
-                <p class="mode-card-desc">Build upward through 1000 rows and create the ultimate combo cascade</p>
-                <div class="mode-card-glow"></div>
-            </div>
 
-            <div class="game-mode-card" data-mode="odyssey" id="odyssey-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--odyssey" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <!-- Mountain path icon representing odyssey/ascent -->
-                        <path class="cs-ascent-path" pathLength="1" d="M3 20L8 10L13 15L21 4" />
-                        <polyline class="cs-ascent-arrow" points="16 4 21 4 21 9" />
-                        <circle class="cs-ascent-dot" style="--i:0" cx="8" cy="10" r="1.5" fill="currentColor" />
-                        <circle class="cs-ascent-dot" style="--i:1" cx="13" cy="15" r="1.5" fill="currentColor" />
-                        <circle class="cs-ascent-dot" style="--i:2" cx="21" cy="4" r="1.5" fill="currentColor" />
-                    </svg>
+                <div class="sb-modes__group" role="group" aria-labelledby="sb-modes-breath">
+                    <p class="sb-modes__label" id="sb-modes-breath">Breath</p>
+                    <div class="game-mode-card" data-mode="serenity" id="serenity-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--serenity" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <circle class="cs-serenity-breath-ring" cx="12" cy="12" r="8.7"></circle>
+                                <path class="cs-serenity-petal cs-serenity-petal--center"
+                                    d="M12 2.5c0 0-4 5.5-4 9.5 0 2.5 1.5 4.5 4 4.5 2.5 0 4-2 4-4.5 0-4-4-9.5-4-9.5z" />
+                                <path class="cs-serenity-petal cs-serenity-petal--left"
+                                    d="M12 16.5c0 0-6-2-8-6 0-2.5 1.5-4.5 3.5-4.5 2 0 4.5 3.5 4.5 3.5" />
+                                <path class="cs-serenity-petal cs-serenity-petal--right"
+                                    d="M12 16.5c0 0 6-2 8-6 0-2.5-1.5-4.5-3.5-4.5-2 0-4.5 3.5-4.5 3.5" />
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Serenity</h2>
+                        <p class="mode-card-desc">No score, no pressure. Living worlds, music and breath.</p>
+                    </div>
+
+                    <div class="game-mode-card" data-mode="hale" id="hale-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--hale" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <circle class="cs-hale-ring" cx="12" cy="12" r="8.2" />
+                                <path class="cs-hale-wave" d="M6.5 10.2c1.8-1.7 3.6-1.7 5.4 0s3.6 1.7 5.4 0" />
+                                <path class="cs-hale-wave cs-hale-wave--low" d="M6.5 14.2c1.8-1.7 3.6-1.7 5.4 0s3.6 1.7 5.4 0" />
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Hale Sessions</h2>
+                        <p class="mode-card-desc">Guided breathwork. Four sessions, at your own pace.</p>
+                    </div>
                 </div>
-                <h2 class="mode-card-title">Odyssey</h2>
-                <p class="mode-card-desc">Ascend through 56 levels across 7 chapters of evolving challenges and themes
-                </p>
-                <div class="mode-card-glow"></div>
-            </div>
+
+                <div class="sb-modes__group" role="group" aria-labelledby="sb-modes-ascend">
+                    <p class="sb-modes__label" id="sb-modes-ascend">Ascend</p>
+                    <div class="game-mode-card" data-mode="odyssey" id="odyssey-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--odyssey" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <path class="cs-ascent-path" pathLength="1" d="M3 20L8 10L13 15L21 4" />
+                                <polyline class="cs-ascent-arrow" points="16 4 21 4 21 9" />
+                                <circle class="cs-ascent-dot" style="--i:0" cx="8" cy="10" r="1.5" fill="currentColor" />
+                                <circle class="cs-ascent-dot" style="--i:1" cx="13" cy="15" r="1.5" fill="currentColor" />
+                                <circle class="cs-ascent-dot" style="--i:2" cx="21" cy="4" r="1.5" fill="currentColor" />
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Odyssey</h2>
+                        <p class="mode-card-desc">A journey from the Earth's core to the edge of a black hole.</p>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Stage: filled by src/ui/main-menu/main-menu.js for the current mode. -->
+            <section class="sb-stage" aria-label="Selected mode"></section>
+
+            <footer class="sb-menu__footer">
+                <nav class="sb-dock" aria-label="More">
+                    <button type="button" class="sb-dock__btn" data-proxy="serenity-hub-icon">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3"/><path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3"/><path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7"/><path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7"/><path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5"/></svg>
+                        <span>Serenity Hub</span>
+                    </button>
+                    <button type="button" class="sb-dock__btn" data-proxy="highscores-icon-btn">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5h10v4.2c0 3-2.1 5.4-5 5.4s-5-2.4-5-5.4V4.5Z"/><path d="M7 7H4.8a2.2 2.2 0 0 0 0 4.4H7M17 7h2.2a2.2 2.2 0 0 1 0 4.4H17"/><path d="M12 14.1v3.2M8.7 20h6.6M10 17.3h4"/></svg>
+                        <span>Records</span>
+                    </button>
+                    <button type="button" class="sb-dock__btn" data-proxy="open-replays-btn">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2.6"/><path d="M10.4 9.4v5.2l4.3-2.6-4.3-2.6Z"/></svg>
+                        <span>Replays</span>
+                    </button>
+                    <button type="button" class="sb-dock__btn" data-proxy="settings-btn-global">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 3.3v2.2M12 18.5v2.2M3.3 12h2.2M18.5 12h2.2"/><path d="M5.85 5.85l1.55 1.55M16.6 16.6l1.55 1.55M18.15 5.85 16.6 7.4M7.4 16.6l-1.55 1.55"/></svg>
+                        <span>Settings</span>
+                    </button>
+                </nav>
+
+                <!-- Headphone recommendation badge -->
+                <div class="headphone-badge">
+                    <svg class="headphone-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path
+                            d="M12 3C7.58 3 4 6.58 4 11v7c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-4c0-1.1-.9-2-2-2H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-3c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-7c0-4.42-3.58-8-8-8z"
+                            fill="currentColor" />
+                    </svg>
+                    <span class="headphone-text">Headphones recommended</span>
+                </div>
+
+                <ul class="sb-hints" aria-label="Controls">
+                    <li><kbd class="sb-kbd" data-key>&uarr;</kbd><kbd class="sb-kbd" data-key>&darr;</kbd><kbd class="sb-kbd" data-pad>&#9650;&#9660;</kbd>Choose</li>
+                    <li><kbd class="sb-kbd" data-key>Enter</kbd><kbd class="sb-kbd" data-pad>A</kbd>Play</li>
+                    <li><kbd class="sb-kbd" data-key>Esc</kbd><kbd class="sb-kbd" data-pad>&#9776;</kbd>Settings</li>
+                </ul>
+            </footer>
         </div>
-
-        <!-- Headphone recommendation badge -->
-        <div class="headphone-badge">
-            <svg class="headphone-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path
-                    d="M12 3C7.58 3 4 6.58 4 11v7c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-4c0-1.1-.9-2-2-2H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-3c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-7c0-4.42-3.58-8-8-8z"
-                    fill="currentColor" />
-            </svg>
-            <span class="headphone-text">Headphones recommended</span>
-        </div>
-
-
     </div>
 
-    <!-- Serenity Hub Icon - Outside modal so it's always visible -->
-    <div id="serenity-hub-icon" class="serenity-hub-icon visible" role="button" aria-label="Open Serenity Hub"
+    <!-- Serenity Hub: lives in the play rail (src/ui/keystone/play-rail.js), drawn with the
+         dock's lotus. The pulse lights while a breathing session runs (SerenityHub). -->
+    <div id="serenity-hub-icon" class="serenity-hub-icon visible" role="button" aria-label="Serenity Hub"
         tabindex="0">
-        <svg class="hub-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <!-- Lotus flower icon -->
-            <g class="lotus">
-                <!-- Center circle -->
-                <circle cx="50" cy="60" r="8" fill="currentColor" opacity="0.9"></circle>
-
-                <!-- Petals -->
-                <path d="M 50 45 Q 35 50 30 65 Q 35 60 50 60" fill="currentColor" opacity="0.7"></path>
-                <path d="M 50 45 Q 65 50 70 65 Q 65 60 50 60" fill="currentColor" opacity="0.7"></path>
-                <path d="M 50 60 Q 40 70 35 80 Q 42 72 50 70" fill="currentColor" opacity="0.6"></path>
-                <path d="M 50 60 Q 60 70 65 80 Q 58 72 50 70" fill="currentColor" opacity="0.6"></path>
-                <path d="M 50 60 Q 45 75 40 85 Q 45 77 50 75" fill="currentColor" opacity="0.5"></path>
-                <path d="M 50 60 Q 55 75 60 85 Q 55 77 50 75" fill="currentColor" opacity="0.5"></path>
-            </g>
+        <svg class="sb-play-rail__icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+            stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3" />
+            <path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3" />
+            <path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7" />
+            <path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7" />
+            <path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5" />
         </svg>
-        <div class="hub-icon-glow"></div>
         <div class="hub-icon-pulse"></div>
     </div>
 
@@ -1533,284 +1577,360 @@
         <div class="highscores-icon-glow"></div>
     </div>
 
-    <!-- Global Settings Button - Bottom Right -->
-    <button id="settings-btn-global" class="floating-settings-btn visible" aria-label="Open Settings"
-        style="position: fixed; bottom: 30px; right: 15px; z-index: 1000;">
-        <svg class="settings-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <g class="gear-assembly">
-                <circle cx="50" cy="50" r="25" fill="none" stroke="currentColor" stroke-width="8" opacity="0.9" />
-                <circle cx="50" cy="50" r="10" fill="none" stroke="currentColor" stroke-width="6" opacity="0.9" />
-                <g stroke="currentColor" stroke-width="10" stroke-linecap="round" opacity="0.9">
-                    <line x1="50" y1="5" x2="50" y2="15" />
-                    <line x1="50" y1="85" x2="50" y2="95" />
-                    <line x1="5" y1="50" x2="15" y2="50" />
-                    <line x1="85" y1="50" x2="95" y2="50" />
-                    <line x1="18" y1="18" x2="25" y2="25" />
-                    <line x1="75" y1="75" x2="82" y2="82" />
-                    <line x1="75" y1="25" x2="82" y2="18" />
-                    <line x1="18" y1="82" x2="25" y2="75" />
-                </g>
-            </g>
+    <!-- Settings (the pause sheet while a game runs): lives in the play rail
+         (src/ui/keystone/play-rail.js), drawn with the dock's gear. -->
+    <button id="settings-btn-global" class="floating-settings-btn visible" aria-label="Settings">
+        <svg class="sb-play-rail__icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+            stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="3.1" />
+            <path d="M12 3.3v2.2M12 18.5v2.2M3.3 12h2.2M18.5 12h2.2" />
+            <path d="M5.85 5.85l1.55 1.55M16.6 16.6l1.55 1.55M18.15 5.85 16.6 7.4M7.4 16.6l-1.55 1.55" />
         </svg>
     </button>
 
-    <div id="game-over-modal" class="modal">
+    <div id="game-over-modal" class="modal sb-results" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
         <div class="modal-content game-over-stats-hud">
-            <h1>The cycle ends.</h1>
-            <div class="stats-scroll-container">
+            <span class="sb-key sb-sheet__key" aria-hidden="true"></span>
+            <header class="sb-sheet__head">
+                <div class="sb-sheet__titles">
+                    <p class="sb-eyebrow" id="game-over-eyebrow">Game over</p>
+                    <h1 class="sb-sheet__title" id="game-over-title">The cycle ends.</h1>
+                </div>
+            </header>
+            <div class="stats-scroll-container sb-sheet__body">
                 <div id="final-stats"></div>
             </div>
-            <div class="game-over-buttons" id="game-over-buttons">
-                <!-- Buttons populated by JS -->
-            </div>
-            <p>Press any key or tap to restart</p>
+            <footer class="sb-sheet__foot">
+                <div class="game-over-buttons" id="game-over-buttons">
+                    <!-- Buttons populated by JS -->
+                </div>
+                <ul class="sb-hints sb-sheet__hints">
+                    <li><kbd class="sb-kbd" data-key>Enter</kbd><kbd class="sb-kbd" data-key>Space</kbd><kbd class="sb-kbd" data-pad>A</kbd>Play again</li>
+                    <li class="sb-hints__keys-only"><kbd class="sb-kbd" data-key>Esc</kbd>Main menu</li>
+                </ul>
+            </footer>
         </div>
     </div>
 
-    <!-- Demo Complete Modal - Shown after replay finishes -->
-    <div id="demo-complete-modal" class="modal">
+    <!-- Replay complete: shown when a replay finishes (modals.js showDemoCompleteModal). -->
+    <div id="demo-complete-modal" class="modal sb-results" role="dialog" aria-modal="true" aria-labelledby="demo-complete-title">
         <div class="modal-content game-over-stats-hud">
-            <h1>Replay Complete</h1>
-            <div class="stats-scroll-container">
+            <span class="sb-key sb-sheet__key" aria-hidden="true"></span>
+            <header class="sb-sheet__head">
+                <div class="sb-sheet__titles">
+                    <p class="sb-eyebrow">Replay</p>
+                    <h1 class="sb-sheet__title" id="demo-complete-title">Replay complete</h1>
+                </div>
+            </header>
+            <div class="stats-scroll-container sb-sheet__body">
                 <div id="demo-final-stats"></div>
             </div>
-            <div class="demo-complete-buttons" id="demo-complete-buttons">
-                <!-- Buttons populated by JS -->
-            </div>
+            <footer class="sb-sheet__foot">
+                <div class="demo-complete-buttons" id="demo-complete-buttons">
+                    <!-- Buttons populated by JS -->
+                </div>
+                <ul class="sb-hints sb-sheet__hints">
+                    <li><kbd class="sb-kbd" data-key>Esc</kbd><kbd class="sb-kbd" data-pad>B</kbd>Main menu</li>
+                </ul>
+            </footer>
         </div>
     </div>
 
-    <div id="settings-modal" class="modal" data-wheel-lock="true">
+    <!-- Settings — also the pause sheet: settings.js marks data-context="pause" while a
+         game is in progress (Paused strip with Resume and Main menu). Keystone layer:
+         public/styles/keystone-settings.css. -->
+    <div id="settings-modal" class="modal" data-wheel-lock="true" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-content">
-            <div class="settings-header">
-                <h1>SETTINGS</h1>
-                <button class="modal-close-btn" id="close-settings">✕</button>
+            <svg class="sb-sprite" width="0" height="0" aria-hidden="true" focusable="false">
+                <symbol id="sb-ico-sliders" viewBox="0 0 24 24"><path d="M4 7.5h9M17 7.5h3M4 16.5h3M11 16.5h9"/><rect x="13" y="5.5" width="4" height="4" rx="1.2"/><rect x="7" y="14.5" width="4" height="4" rx="1.2"/></symbol>
+                <symbol id="sb-ico-display" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="11.5" rx="2.4"/><path d="M9 20h6M12 16v4"/></symbol>
+                <symbol id="sb-ico-audio" viewBox="0 0 24 24"><path d="M11 5 6.6 8.8H3.5v6.4h3.1L11 19V5Z"/><path d="M15.4 9.4a3.7 3.7 0 0 1 0 5.2M18.3 6.8a7.4 7.4 0 0 1 0 10.4"/></symbol>
+                <symbol id="sb-ico-visual" viewBox="0 0 24 24"><path d="M11 3.5 12.9 8l4.6 1.9-4.6 1.9L11 16.4l-1.9-4.6-4.6-1.9L9.1 8 11 3.5Z"/><path d="M17.8 14.4l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1Z"/></symbol>
+                <symbol id="sb-ico-pad" viewBox="0 0 24 24"><path d="M7.2 8.6h9.6c2.4 0 3.9 1.7 4.3 4.2l.3 2.4c.2 1.6-.7 2.7-2 2.7-.8 0-1.5-.4-2.2-1.2l-1-1.1H7.8l-1 1.1c-.7.8-1.4 1.2-2.2 1.2-1.3 0-2.2-1.1-2-2.7l.3-2.4c.4-2.5 1.9-4.2 4.3-4.2Z"/><path d="M7.2 11.6v3.1M5.7 13.2h3M15.6 12.7h.01M18.1 14.1h.01"/></symbol>
+                <symbol id="sb-ico-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.5V19a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V9.5"/><path d="M9.8 20.5v-5.5h4.4v5.5"/></symbol>
+                <symbol id="sb-ico-lotus" viewBox="0 0 24 24"><path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3"/><path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3"/><path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7"/><path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7"/><path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5"/></symbol>
+            </svg>
+            <span class="sb-key sb-sheet__key" aria-hidden="true"></span>
+
+            <section class="settings-pause" id="settings-pause" aria-label="Game paused">
+                <div class="settings-pause__state">
+                    <span class="settings-pause__glyph" aria-hidden="true"><i></i><i></i></span>
+                    <div class="settings-pause__copy">
+                        <p class="settings-pause__title">Paused</p>
+                        <p class="settings-pause__note" id="settings-pause-note">Your game waits where you left it.</p>
+                    </div>
+                </div>
+                <div class="settings-pause__actions">
+                    <button type="button" id="settings-resume-btn" class="sb-btn sb-btn--primary settings-pause__resume">
+                        <span>Resume</span><kbd class="sb-kbd" data-key aria-hidden="true">Esc</kbd><kbd class="sb-kbd" data-pad aria-hidden="true">B</kbd>
+                    </button>
+                    <button type="button" id="settings-hub-btn" class="sb-btn settings-pause__hub">
+                        <svg class="sb-btn__icon" aria-hidden="true" focusable="false"><use href="#sb-ico-lotus"></use></svg><span>Serenity Hub</span>
+                    </button>
+                    <button type="button" id="change-game-mode-btn" class="sb-btn settings-pause__menu">
+                        <svg class="sb-btn__icon" aria-hidden="true" focusable="false"><use href="#sb-ico-home"></use></svg><span>Main menu</span>
+                    </button>
+                </div>
+            </section>
+
+            <header class="settings-header sb-sheet__head">
+                <div class="sb-sheet__titles">
+                    <p class="sb-eyebrow" id="settings-eyebrow">Preferences</p>
+                    <h1 class="sb-sheet__title" id="settings-title">Settings</h1>
+                </div>
+                <div class="sb-sheet__actions">
+                    <button type="button" class="sb-btn sb-btn--quiet sb-sheet__close" id="close-settings">
+                        <span>Close</span><kbd class="sb-kbd" data-key aria-hidden="true">Esc</kbd><kbd class="sb-kbd" data-pad aria-hidden="true">B</kbd>
+                    </button>
+                </div>
+            </header>
+
+            <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+                <button type="button" class="settings-tab active" data-tab="general" role="tab" id="settings-tab-general" aria-selected="true" aria-controls="settings-general">
+                    <svg class="settings-tab__icon" aria-hidden="true" focusable="false"><use href="#sb-ico-sliders"></use></svg><span>General</span>
+                </button>
+                <button type="button" class="settings-tab" data-tab="display" role="tab" id="settings-tab-display" aria-selected="false" aria-controls="settings-display" tabindex="-1">
+                    <svg class="settings-tab__icon" aria-hidden="true" focusable="false"><use href="#sb-ico-display"></use></svg><span>Display</span>
+                </button>
+                <button type="button" class="settings-tab" data-tab="audio" role="tab" id="settings-tab-audio" aria-selected="false" aria-controls="settings-audio" tabindex="-1">
+                    <svg class="settings-tab__icon" aria-hidden="true" focusable="false"><use href="#sb-ico-audio"></use></svg><span>Audio</span>
+                </button>
+                <button type="button" class="settings-tab" data-tab="visual" role="tab" id="settings-tab-visual" aria-selected="false" aria-controls="settings-visual" tabindex="-1">
+                    <svg class="settings-tab__icon" aria-hidden="true" focusable="false"><use href="#sb-ico-visual"></use></svg><span>Visual</span>
+                </button>
+                <button type="button" class="settings-tab" data-tab="controls" role="tab" id="settings-tab-controls" aria-selected="false" aria-controls="settings-controls" tabindex="-1">
+                    <svg class="settings-tab__icon" aria-hidden="true" focusable="false"><use href="#sb-ico-pad"></use></svg><span>Controls</span>
+                </button>
             </div>
-            <div class="settings-tabs">
-                <button class="settings-tab active" data-tab="general">General</button>
-                <button class="settings-tab" data-tab="display">Display</button>
-                <button class="settings-tab" data-tab="audio">Audio</button>
-                <button class="settings-tab" data-tab="visual">Visual</button>
-                <button class="settings-tab" data-tab="controls">Controls</button>
-            </div>
+
             <div class="settings-scroll-container">
-                <div class="settings-tab-content active" id="settings-general">
+                <div class="settings-tab-content active" id="settings-general" role="tabpanel" aria-labelledby="settings-tab-general">
                     <div class="settings-grid">
                         <div class="settings-section">
-                            <h3 class="settings-section-title">General</h3>
-                            <div class="setting">
-                                <label>Main Menu:</label>
-                                <button id="change-game-mode-btn" class="setting-button">Return to Main Menu</button>
-                            </div>
-                        </div>
-                        <div class="settings-section">
-                            <h3 class="settings-section-title">Input Timing</h3>
-                            <div class="setting">
-                                <label for="das-delay">DAS Delay (ms):</label>
+                            <h3 class="settings-section-title">Input timing</h3>
+                            <div class="setting setting--range">
+                                <div class="setting-text">
+                                    <label for="das-delay">DAS delay</label>
+                                    <p class="setting-help" id="das-delay-help">How long a held direction waits before the piece starts to slide. Lower is faster.</p>
+                                </div>
                                 <div class="slider-container">
-                                    <input type="range" id="das-delay" min="50" max="300" step="10"><span
-                                        id="das-delay-value">120</span>
+                                    <input type="range" id="das-delay" min="50" max="300" step="10" aria-describedby="das-delay-help"><span id="das-delay-value" class="setting-value" data-unit="ms">120</span>
                                 </div>
                             </div>
-                            <div class="setting">
-                                <label for="das-interval">DAS Interval (ms):</label>
+                            <div class="setting setting--range">
+                                <div class="setting-text">
+                                    <label for="das-interval">DAS interval</label>
+                                    <p class="setting-help" id="das-interval-help">How quickly a held piece keeps sliding once it starts. Lower is faster; 0 slides instantly.</p>
+                                </div>
                                 <div class="slider-container">
-                                    <input type="range" id="das-interval" min="0" max="100" step="5"><span
-                                        id="das-interval-value">40</span>
+                                    <input type="range" id="das-interval" min="0" max="100" step="5" aria-describedby="das-interval-help"><span id="das-interval-value" class="setting-value" data-unit="ms">40</span>
                                 </div>
                             </div>
-                            <div class="setting">
-                                <label for="soft-drop-interval">Soft Drop Interval (ms):</label>
+                            <div class="setting setting--range">
+                                <div class="setting-text">
+                                    <label for="soft-drop-interval">Soft drop interval</label>
+                                    <p class="setting-help" id="soft-drop-interval-help">How fast a piece falls while you hold soft drop. Lower is faster.</p>
+                                </div>
                                 <div class="slider-container">
-                                    <input type="range" id="soft-drop-interval" min="0" max="100" step="5"><span
-                                        id="soft-drop-interval-value">50</span>
+                                    <input type="range" id="soft-drop-interval" min="0" max="100" step="5" aria-describedby="soft-drop-interval-help"><span id="soft-drop-interval-value" class="setting-value" data-unit="ms">50</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="settings-tab-content" id="settings-display">
+
+                <div class="settings-tab-content" id="settings-display" role="tabpanel" aria-labelledby="settings-tab-display">
                     <div class="settings-grid">
                         <div class="settings-section">
-                            <h3 class="settings-section-title">Display &amp; Resolution</h3>
+                            <h3 class="settings-section-title">Screen</h3>
                             <div class="setting">
-                                <label for="display-mode">Display Mode:</label>
-                                <select id="display-mode" class="setting-select">
+                                <div class="setting-text">
+                                    <label for="display-mode">Display mode</label>
+                                    <p class="setting-help" id="display-mode-help">Borderless fills the screen without changing its resolution.</p>
+                                </div>
+                                <select id="display-mode" class="setting-select" aria-describedby="display-mode-help">
                                     <option value="windowed">Windowed</option>
                                     <option value="fullscreen">Fullscreen</option>
-                                    <option value="borderless">Borderless Window</option>
+                                    <option value="borderless">Borderless window</option>
                                 </select>
                             </div>
                             <div class="setting">
-                                <label for="graphics-quality">Graphics Quality:</label>
-                                <select id="graphics-quality" class="setting-select">
-                                    <option value="Minimal">Minimal (Lowest)</option>
-                                    <option value="Low">Low (Performance)</option>
-                                    <option value="Medium">Medium (Balanced)</option>
-                                    <option value="High">High (Quality)</option>
-                                    <option value="Ultra">Ultra (Maximum)</option>
-                                    <option value="Extreme">Extreme (Highest)</option>
-                                </select>
-                            </div>
-                            <div class="setting">
-                                <label for="render-quality">Render Quality:</label>
-                                <div class="slider-container">
-                                    <input type="range" id="render-quality" min="50" max="150" value="100" step="5">
-                                    <span id="render-quality-value">100% (Native)</span>
+                                <div class="setting-text">
+                                    <label for="graphics-quality">Graphics quality</label>
+                                    <p class="setting-help" id="graphics-quality-help">Detail in the living worlds behind the board. Lower it if the game stutters.</p>
                                 </div>
-                                <small
-                                    style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
-                                    Lower = faster<br>
-                                    Higher = sharper
-                                </small>
+                                <select id="graphics-quality" class="setting-select" aria-describedby="graphics-quality-help">
+                                    <option value="Minimal">Minimal · fastest</option>
+                                    <option value="Low">Low</option>
+                                    <option value="Medium">Medium · balanced</option>
+                                    <option value="High">High</option>
+                                    <option value="Ultra">Ultra</option>
+                                    <option value="Extreme">Extreme · most detail</option>
+                                </select>
+                            </div>
+                            <div class="setting setting--range">
+                                <div class="setting-text">
+                                    <label for="render-quality">Render quality</label>
+                                    <p class="setting-help" id="render-quality-help">Resolution of the world behind the board. Lower is faster, higher is sharper.</p>
+                                </div>
+                                <div class="slider-container">
+                                    <input type="range" id="render-quality" min="50" max="150" value="100" step="5" aria-describedby="render-quality-help">
+                                    <span id="render-quality-value" class="setting-value">100% (Native)</span>
+                                </div>
                             </div>
                         </div>
                         <div class="settings-section">
-                            <h3 class="settings-section-title">Frame Pacing</h3>
+                            <h3 class="settings-section-title">Frame pacing</h3>
                             <div class="setting">
-                                <label for="fps-target">Frame Rate Target:</label>
-                                <select id="fps-target" class="setting-select">
-                                    <option value="30">30 FPS (Battery Saver)</option>
-                                    <option value="60">60 FPS (Standard)</option>
-                                    <option value="120">120 FPS (High Refresh)</option>
-                                    <option value="144">144 FPS (Gaming)</option>
-                                    <option value="240">240 FPS (Pro)</option>
+                                <div class="setting-text">
+                                    <label for="fps-target">Frame rate target</label>
+                                    <p class="setting-help" id="fps-target-help">The most frames per second the game draws.</p>
+                                </div>
+                                <select id="fps-target" class="setting-select" aria-describedby="fps-target-help">
+                                    <option value="30">30 FPS · battery saver</option>
+                                    <option value="60">60 FPS</option>
+                                    <option value="120">120 FPS</option>
+                                    <option value="144">144 FPS</option>
+                                    <option value="240">240 FPS</option>
                                     <option value="0">Unlimited</option>
                                 </select>
                             </div>
-                            <div class="setting">
-                                <label for="vsync-toggle">Vertical Sync (VSync):</label>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="vsync-toggle">Vertical sync</label>
+                                    <p class="setting-help" id="vsync-toggle-help">Matches frames to your display so the picture never tears. Can add a little input delay.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="vsync-toggle" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="vsync-toggle" role="switch" aria-describedby="vsync-toggle-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
                         </div>
                         <div class="settings-section">
                             <h3 class="settings-section-title">Quality</h3>
-                            <div class="setting">
-                                <label for="antialiasing-toggle">Anti-Aliasing:</label>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="antialiasing-toggle">Anti-aliasing</label>
+                                    <p class="setting-help" id="antialiasing-toggle-help">Smooths jagged edges in the worlds. Turning it off helps on high-resolution displays; it applies when the world reloads.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="antialiasing-toggle" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="antialiasing-toggle" role="switch" aria-describedby="antialiasing-toggle-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
-                                <small
-                                    style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
-                                    Disabling improves performance on high-DPI displays. Requires theme reload.
-                                </small>
                             </div>
-                            <div class="setting">
-                                <label for="show-fps-counter">Show FPS Counter:</label>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="show-fps-counter">Show FPS counter</label>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="show-fps-counter" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="show-fps-counter" role="switch">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
                         </div>
                         <div class="settings-section">
-                            <h3 class="settings-section-title">Cosmic Cursor</h3>
-                            <div class="setting">
-                                <label for="custom-cursor-enabled">Cosmic Cursor:</label>
+                            <h3 class="settings-section-title">Cosmic cursor</h3>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="custom-cursor-enabled">Cosmic cursor</label>
+                                    <p class="setting-help" id="custom-cursor-enabled-help">A soft glowing cursor in place of the system pointer.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="custom-cursor-enabled" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="custom-cursor-enabled" role="switch" aria-describedby="custom-cursor-enabled-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
                             <div class="setting">
-                                <label for="custom-cursor-intensity">Cursor Intensity:</label>
-                                <select id="custom-cursor-intensity" class="setting-select">
+                                <div class="setting-text">
+                                    <label for="custom-cursor-intensity">Cursor intensity</label>
+                                    <p class="setting-help" id="custom-cursor-intensity-help">How brightly the cursor glows.</p>
+                                </div>
+                                <select id="custom-cursor-intensity" class="setting-select" aria-describedby="custom-cursor-intensity-help">
                                     <option value="low">Low</option>
                                     <option value="standard">Standard</option>
                                     <option value="high">High</option>
                                 </select>
                             </div>
                             <div class="setting">
-                                <label for="custom-cursor-visibility">Cursor Visibility:</label>
-                                <select id="custom-cursor-visibility" class="setting-select">
+                                <div class="setting-text">
+                                    <label for="custom-cursor-visibility">Cursor visibility</label>
+                                    <p class="setting-help" id="custom-cursor-visibility-help">High visibility draws a larger cursor.</p>
+                                </div>
+                                <select id="custom-cursor-visibility" class="setting-select" aria-describedby="custom-cursor-visibility-help">
                                     <option value="standard">Standard</option>
-                                    <option value="high-visibility">High Visibility</option>
+                                    <option value="high-visibility">High visibility</option>
                                 </select>
                             </div>
                             <div class="setting">
-                                <label for="custom-cursor-motion">Cursor Motion:</label>
-                                <select id="custom-cursor-motion" class="setting-select">
-                                    <option value="system">Follow System</option>
-                                    <option value="off">Full Motion</option>
-                                    <option value="on">Reduced Motion</option>
+                                <div class="setting-text">
+                                    <label for="custom-cursor-motion">Cursor motion</label>
+                                    <p class="setting-help" id="custom-cursor-motion-help">Follow system uses your device’s reduced-motion preference.</p>
+                                </div>
+                                <select id="custom-cursor-motion" class="setting-select" aria-describedby="custom-cursor-motion-help">
+                                    <option value="system">Follow system</option>
+                                    <option value="off">Full motion</option>
+                                    <option value="on">Reduced motion</option>
                                 </select>
                             </div>
                         </div>
                         <div class="settings-section">
                             <h3 class="settings-section-title">Performance</h3>
                             <div class="setting">
-                                <label for="background-tab-behavior">Background Tab Behavior:</label>
-                                <select id="background-tab-behavior" class="setting-select">
-                                    <option value="pause">Pause (Maximum Battery Savings)</option>
-                                    <option value="reduce">Reduce to 10 FPS (Balanced)</option>
-                                    <option value="continue">Continue (No Change)</option>
+                                <div class="setting-text">
+                                    <label for="background-tab-behavior">When the game is hidden</label>
+                                    <p class="setting-help" id="background-tab-behavior-help">What the game does while its window or tab is out of sight. Pause saves the most battery.</p>
+                                </div>
+                                <select id="background-tab-behavior" class="setting-select" aria-describedby="background-tab-behavior-help">
+                                    <option value="pause">Pause</option>
+                                    <option value="reduce">Slow to 10 FPS</option>
+                                    <option value="continue">Keep running</option>
                                 </select>
-                                <small
-                                    style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
-                                    Controls rendering when browser tab is hidden. "Pause" saves the most battery/CPU.
-                                </small>
                             </div>
                             <div class="setting" id="desktop-devtools-setting" hidden>
-                                <label>Developer Tools:</label>
-                                <div>
-                                    <button id="open-devtools-btn" class="setting-button">Open DevTools</button>
-                                    <small id="open-devtools-status"
-                                        style="color: rgba(255, 255, 255, 0.72); font-size: 11px; display: block; margin-top: 6px;"
-                                        hidden></small>
+                                <div class="setting-text">
+                                    <label for="open-devtools-btn">Developer tools</label>
+                                    <p class="setting-help">Desktop only. Opens DevTools docked inside the game window.</p>
+                                    <p id="open-devtools-status" class="setting-help setting-status" role="status" hidden></p>
                                 </div>
-                                <small
-                                    style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
-                                    Electron desktop only. Opens DevTools docked inside the game window.
-                                </small>
+                                <button type="button" id="open-devtools-btn" class="setting-button sb-btn">Open DevTools</button>
                             </div>
                         </div>
                     </div>
-                    <div
-                        style="margin-top: 20px; padding: 15px; background: rgba(100, 200, 255, 0.1); border-radius: 8px; border-left: 3px solid #64c8ff;">
-                        <p style="margin: 0; color: rgba(255, 255, 255, 0.9); font-size: 14px;">
-                            <strong class="settings-tip-label">
-                                <svg class="cs-settings-icon settings-tip-icon" aria-hidden="true">
-                                    <use href="#cs-settings-icon-tip"></use>
-                                </svg>
-                                Tip:
-                            </strong> Changes will apply immediately. Some settings like display mode
-                            may
-                            require a moment to take effect.
-                        </p>
-                    </div>
+                    <p class="settings-note">
+                        <svg class="cs-settings-icon settings-tip-icon" aria-hidden="true" focusable="false"><use href="#cs-settings-icon-tip"></use></svg>
+                        <span>Changes apply right away. Display mode can take a moment to settle.</span>
+                    </p>
                 </div>
-                <div class="settings-tab-content" id="settings-audio">
+
+                <div class="settings-tab-content" id="settings-audio" role="tabpanel" aria-labelledby="settings-tab-audio">
                     <div class="settings-grid">
                         <div class="settings-section">
                             <h3 class="settings-section-title">Volume</h3>
-                            <div class="setting">
-                                <label for="music-volume">Music Volume:</label>
+                            <div class="setting setting--range">
+                                <div class="setting-text">
+                                    <label for="music-volume">Music</label>
+                                </div>
                                 <div class="slider-container">
-                                    <input type="range" id="music-volume" min="0" max="100" step="1"><span
-                                        id="music-volume-value">100</span>
+                                    <input type="range" id="music-volume" min="0" max="100" step="1"><span id="music-volume-value" class="setting-value" data-unit="%">100</span>
                                 </div>
                             </div>
-                            <div class="setting">
-                                <label for="sfx-volume">SFX Volume:</label>
+                            <div class="setting setting--range">
+                                <div class="setting-text">
+                                    <label for="sfx-volume">Sound effects</label>
+                                </div>
                                 <div class="slider-container">
-                                    <input type="range" id="sfx-volume" min="0" max="100" step="1"><span
-                                        id="sfx-volume-value">100</span>
+                                    <input type="range" id="sfx-volume" min="0" max="100" step="1"><span id="sfx-volume-value" class="setting-value" data-unit="%">100</span>
                                 </div>
                             </div>
                         </div>
                         <div class="settings-section">
                             <h3 class="settings-section-title">Sound</h3>
                             <div class="setting">
-                                <label for="sfx-set">Sound Effects:</label>
-                                <select id="sfx-set" class="setting-select">
+                                <div class="setting-text">
+                                    <label for="sfx-set">Sound set</label>
+                                    <p class="setting-help" id="sfx-set-help">The voice of every move, drop and line clear.</p>
+                                </div>
+                                <select id="sfx-set" class="setting-select" aria-describedby="sfx-set-help">
                                     <option value="Zen">Zen</option>
                                     <option value="Retro">Retro</option>
                                     <option value="Pulse">Pulse</option>
@@ -1829,109 +1949,132 @@
                             </div>
                         </div>
                         <div class="settings-section">
-                            <h3 class="settings-section-title">Theme Sync</h3>
-                            <div class="setting">
-                                <label for="theme-linked-mode">Theme-Linked Music:</label>
+                            <h3 class="settings-section-title">Theme sync</h3>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="theme-linked-mode">Theme-linked music</label>
+                                    <p class="setting-help" id="theme-linked-mode-help">When the theme changes, the music changes with it.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="theme-linked-mode" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="theme-linked-mode" role="switch" aria-describedby="theme-linked-mode-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
-                            <div class="setting">
-                                <label for="theme-linked-sfx">Theme-Linked SFX:</label>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="theme-linked-sfx">Theme-linked sound set</label>
+                                    <p class="setting-help" id="theme-linked-sfx-help">Each theme brings its own sound set.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="theme-linked-sfx" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="theme-linked-sfx" role="switch" aria-describedby="theme-linked-sfx-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
-                            <div class="setting">
-                                <label for="auto-theme-change">Auto Theme on Music Change:</label>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="auto-theme-change">Theme follows the music</label>
+                                    <p class="setting-help" id="auto-theme-change-help">Changing the track moves you to the theme it belongs to. Needs theme-linked music.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="auto-theme-change" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="auto-theme-change" role="switch" aria-describedby="auto-theme-change-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="settings-tab-content" id="settings-visual">
+
+                <div class="settings-tab-content" id="settings-visual" role="tabpanel" aria-labelledby="settings-tab-visual">
                     <div class="settings-grid">
                         <div class="settings-section">
                             <h3 class="settings-section-title">Background</h3>
                             <div class="setting">
-                                <label for="background-mode">Background:</label>
-                                <select id="background-mode" class="setting-select">
-                                    <option value="Level">Level Transition</option>
-                                    <option value="Random">Random Transition</option>
-                                    <option value="Specific">Set Specific</option>
+                                <div class="setting-text">
+                                    <label for="background-mode">Theme changes</label>
+                                    <p class="setting-help" id="background-mode-help">How the world behind the board changes during a game.</p>
+                                </div>
+                                <select id="background-mode" class="setting-select" aria-describedby="background-mode-help">
+                                    <option value="Level">With each level</option>
+                                    <option value="Random">At random</option>
+                                    <option value="Specific">Keep one theme</option>
                                 </select>
                             </div>
-                            <div class="setting" id="random-theme-interval-setting">
-                                <label for="random-theme-interval">Random Theme Interval (seconds):</label>
+                            <div class="setting setting--range" id="random-theme-interval-setting">
+                                <div class="setting-text">
+                                    <label for="random-theme-interval">Random interval</label>
+                                    <p class="setting-help" id="random-theme-interval-help">How often a new theme is chosen at random.</p>
+                                </div>
                                 <div class="slider-container">
-                                    <input type="range" id="random-theme-interval" min="10" max="300" step="10"><span
-                                        id="random-theme-interval-value">60</span>
+                                    <input type="range" id="random-theme-interval" min="10" max="300" step="10" aria-describedby="random-theme-interval-help"><span id="random-theme-interval-value" class="setting-value" data-unit="s">60</span>
                                 </div>
                             </div>
                         </div>
                         <div class="settings-section">
                             <h3 class="settings-section-title">Effects</h3>
-                            <div class="setting">
-                                <label for="piece-lock-ripple">Piece Lock Ripple Effect:</label>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="piece-lock-ripple">Lock ripple</label>
+                                    <p class="setting-help" id="piece-lock-ripple-help">A ripple of light where a piece locks into place.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="piece-lock-ripple" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="piece-lock-ripple" role="switch" aria-describedby="piece-lock-ripple-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
-                            <div class="setting">
-                                <label for="combo-popup-effect">Combo Popup Effect:</label>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="combo-popup-effect">Combo callouts</label>
+                                    <p class="setting-help" id="combo-popup-effect-help">Names your combos as you chain line clears.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="combo-popup-effect" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="combo-popup-effect" role="switch" aria-describedby="combo-popup-effect-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
-                            <div class="setting">
-                                <label for="line-clear-effects">Line Clear Effects:</label>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="line-clear-effects">Line clear effects</label>
+                                    <p class="setting-help" id="line-clear-effects-help">Bursts of light when lines clear.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="line-clear-effects" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="line-clear-effects" role="switch" aria-describedby="line-clear-effects-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
-                            <div class="setting">
-                                <label for="background-combo-effects">Background Combo Effects:</label>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="background-combo-effects">Background reacts to combos</label>
+                                    <p class="setting-help" id="background-combo-effects-help">The world behind the board answers your combos.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="background-combo-effects" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="background-combo-effects" role="switch" aria-describedby="background-combo-effects-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
                         </div>
                         <div class="settings-section">
-                            <h3 class="settings-section-title">Tetrominoes</h3>
-                            <div class="setting">
-                                <label for="theme-based-tetrominos">Theme-Based Tetrominos:</label>
+                            <h3 class="settings-section-title">Pieces</h3>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="theme-based-tetrominos">Theme-colored pieces</label>
+                                    <p class="setting-help" id="theme-based-tetrominos-help">Pieces take their colors and finish from the current theme.</p>
+                                </div>
                                 <label class="cs-toggle">
-                                    <input type="checkbox" class="cs-toggle-input" id="theme-based-tetrominos" role="switch">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="theme-based-tetrominos" role="switch" aria-describedby="theme-based-tetrominos-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
-                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
                                 </label>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="settings-tab-content" id="settings-controls">
+
+                <div class="settings-tab-content" id="settings-controls" role="tabpanel" aria-labelledby="settings-tab-controls">
                     <div class="controls-layout">
-                        <aside class="controls-nav">
+                        <nav class="controls-nav" aria-label="Control sets">
                             <div class="controls-nav-group">
                                 <h3 class="controls-nav-heading">Overview</h3>
                                 <div class="controls-subtabs">
-                                    <button class="controls-subtab active" data-subtab="general">
+                                    <button type="button" class="controls-subtab active" data-subtab="general" aria-controls="controls-general" aria-current="true">
                                         <span class="controls-subtab-icon" aria-hidden="true">
                                             <svg class="cs-settings-icon"><use href="#cs-settings-icon-gear"></use></svg>
                                         </span>
@@ -1942,578 +2085,533 @@
                             <div class="controls-nav-group">
                                 <h3 class="controls-nav-heading">Keyboard</h3>
                                 <div class="controls-subtabs">
-                                    <button class="controls-subtab" data-subtab="player1">
+                                    <button type="button" class="controls-subtab" data-subtab="player1" aria-controls="controls-player1">
                                         <span class="controls-subtab-icon" aria-hidden="true">
                                             <svg class="cs-settings-icon"><use href="#cs-settings-icon-keyboard"></use></svg>
                                         </span>
-                                        <span class="controls-subtab-label">Player 1 Keys</span>
+                                        <span class="controls-subtab-label">Player 1</span>
                                     </button>
-                                    <button class="controls-subtab" data-subtab="player2">
+                                    <button type="button" class="controls-subtab" data-subtab="player2" aria-controls="controls-player2">
                                         <span class="controls-subtab-icon" aria-hidden="true">
                                             <svg class="cs-settings-icon"><use href="#cs-settings-icon-keyboard"></use></svg>
                                         </span>
-                                        <span class="controls-subtab-label">Player 2 Keys</span>
+                                        <span class="controls-subtab-label">Player 2</span>
                                     </button>
-                                    <button class="controls-subtab" data-subtab="serenity-keyboard">
+                                    <button type="button" class="controls-subtab" data-subtab="serenity-keyboard" aria-controls="controls-serenity-keyboard">
                                         <span class="controls-subtab-icon" aria-hidden="true">
                                             <svg class="cs-settings-icon"><use href="#cs-settings-icon-lotus"></use></svg>
                                         </span>
-                                        <span class="controls-subtab-label">Serenity Mode Keys</span>
+                                        <span class="controls-subtab-label">Serenity</span>
                                     </button>
                                 </div>
                             </div>
                             <div class="controls-nav-group">
                                 <h3 class="controls-nav-heading">Gamepads</h3>
                                 <div class="controls-subtabs">
-                                    <button class="controls-subtab" data-subtab="gamepad1">
+                                    <button type="button" class="controls-subtab" data-subtab="gamepad1" aria-controls="controls-gamepad1">
                                         <span class="controls-subtab-icon" aria-hidden="true">
                                             <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Player 1</span>
-                                        <span class="controls-status-dot controller-1"
-                                            data-controller-status="1"></span>
+                                        <span class="controls-status-dot controller-1" data-controller-status="1"></span>
                                     </button>
-                                    <button class="controls-subtab" data-subtab="gamepad2">
+                                    <button type="button" class="controls-subtab" data-subtab="gamepad2" aria-controls="controls-gamepad2">
                                         <span class="controls-subtab-icon" aria-hidden="true">
                                             <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Player 2</span>
-                                        <span class="controls-status-dot controller-2"
-                                            data-controller-status="2"></span>
+                                        <span class="controls-status-dot controller-2" data-controller-status="2"></span>
                                     </button>
-                                    <button class="controls-subtab" data-subtab="gamepad3">
+                                    <button type="button" class="controls-subtab" data-subtab="gamepad3" aria-controls="controls-gamepad3">
                                         <span class="controls-subtab-icon" aria-hidden="true">
                                             <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Player 3</span>
-                                        <span class="controls-status-dot controller-3"
-                                            data-controller-status="3"></span>
+                                        <span class="controls-status-dot controller-3" data-controller-status="3"></span>
                                     </button>
-                                    <button class="controls-subtab" data-subtab="gamepad4">
+                                    <button type="button" class="controls-subtab" data-subtab="gamepad4" aria-controls="controls-gamepad4">
                                         <span class="controls-subtab-icon" aria-hidden="true">
                                             <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Player 4</span>
-                                        <span class="controls-status-dot controller-4"
-                                            data-controller-status="4"></span>
+                                        <span class="controls-status-dot controller-4" data-controller-status="4"></span>
                                     </button>
-                                    <button class="controls-subtab" data-subtab="serenity-gamepad">
+                                    <button type="button" class="controls-subtab" data-subtab="serenity-gamepad" aria-controls="controls-serenity-gamepad">
                                         <span class="controls-subtab-icon" aria-hidden="true">
                                             <svg class="cs-settings-icon"><use href="#cs-settings-icon-lotus"></use></svg>
                                         </span>
-                                        <span class="controls-subtab-label">Serenity Mode</span>
-
+                                        <span class="controls-subtab-label">Serenity</span>
                                     </button>
                                 </div>
                             </div>
-                            <div class="controls-nav-footer">
-                                <button class="controls-nav-action" id="detect-controllers">Detect
-                                    Controllers</button>
-                                <button class="controls-nav-action ghost" id="reset-all-bindings">Reset All
-                                    Bindings</button>
-                            </div>
-                        </aside>
+                        </nav>
                         <div class="controls-content">
                             <div class="controls-subtab-content active" id="controls-general">
                                 <div class="controls-section">
-                                    <h4 class="controls-section-title">
-                                        <svg class="cs-settings-icon controls-title-icon" aria-hidden="true">
-                                            <use href="#cs-settings-icon-gamepad"></use>
-                                        </svg>
-                                        <span>System-Wide Control Settings</span>
-                                    </h4>
+                                    <h4 class="controls-section-title">Controllers</h4>
                                     <div class="settings-grid">
                                         <div class="setting">
-                                            <label for="gamepad-enabled">Gamepad Support:</label>
-                                            <select id="gamepad-enabled" class="setting-select">
-                                                <option value="true">Enabled</option>
-                                                <option value="false">Disabled</option>
+                                            <div class="setting-text">
+                                                <label for="gamepad-enabled">Gamepad support</label>
+                                                <p class="setting-help" id="gamepad-enabled-help">Turn it off if a connected controller sends stray input.</p>
+                                            </div>
+                                            <select id="gamepad-enabled" class="setting-select" aria-describedby="gamepad-enabled-help">
+                                                <option value="true">On</option>
+                                                <option value="false">Off</option>
                                             </select>
                                         </div>
-                                        <div class="setting">
-                                            <label for="gamepad-deadzone">Gamepad Deadzone:</label>
+                                        <div class="setting setting--range">
+                                            <div class="setting-text">
+                                                <label for="gamepad-deadzone">Stick deadzone</label>
+                                                <p class="setting-help" id="gamepad-deadzone-help">How far a stick moves before it counts. Raise it if pieces drift on their own.</p>
+                                            </div>
                                             <div class="slider-container">
-                                                <input type="range" id="gamepad-deadzone" min="0" max="50" step="5">
-                                                <span id="gamepad-deadzone-value">25</span>
+                                                <input type="range" id="gamepad-deadzone" min="0" max="50" step="5" aria-describedby="gamepad-deadzone-help">
+                                                <span id="gamepad-deadzone-value" class="setting-value" data-unit="%">25</span>
                                             </div>
                                         </div>
-                                        <div class="setting" id="gamepad-status-display">
-                                            <label>Connected Controllers:</label>
-                                            <div id="gamepad-status"
-                                                style="color: rgba(224, 231, 255, 0.7); font-size: 14px;">
-                                                <div id="controller-1-status">Controller 1: Not connected</div>
-                                                <div id="controller-2-status">Controller 2: Not connected</div>
-                                                <div id="controller-3-status">Controller 3: Not connected</div>
-                                                <div id="controller-4-status">Controller 4: Not connected</div>
+                                        <div class="setting setting--status" id="gamepad-status-display">
+                                            <div class="setting-text">
+                                                <p class="setting-label">Connected controllers</p>
+                                                <p class="setting-help">Plugged in a pad or woke a wireless one? Detect controllers looks again.</p>
                                             </div>
+                                            <div class="controls-status">
+                                                <div id="gamepad-status" class="controls-status-list" role="status">
+                                                    <div id="controller-1-status">Controller 1: Not connected</div>
+                                                    <div id="controller-2-status">Controller 2: Not connected</div>
+                                                    <div id="controller-3-status">Controller 3: Not connected</div>
+                                                    <div id="controller-4-status">Controller 4: Not connected</div>
+                                                </div>
+                                                <button type="button" class="controls-nav-action sb-btn" id="detect-controllers">Detect controllers</button>
+                                            </div>
+                                        </div>
+                                        <div class="setting">
+                                            <div class="setting-text">
+                                                <p class="setting-label">Controller bindings</p>
+                                                <p class="setting-help">Puts the buttons of every gamepad, players 1 to 4, back to the defaults.</p>
+                                            </div>
+                                            <button type="button" class="controls-nav-action sb-btn sb-btn--quiet ghost" id="reset-all-bindings">Reset controller bindings</button>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="controls-helper-card" id="controls-binding-helper">
                                     <h5>How rebinding works</h5>
-                                    <p>Focus any binding tile, then press a key or button to remap instantly.
-                                        Conflicts
-                                        will prompt you to confirm or choose a different input.</p>
+                                    <p>Choose a set of controls, then a binding — click it or press Enter — and press the new key or button. A key that another action already uses is not assigned. Esc cancels; after ten seconds the binding stays as it was.</p>
                                 </div>
                                 <div class="controls-helper-card">
                                     <h5>Overlay shortcuts</h5>
-                                    <p>Steam Overlay: <strong>Shift+Tab</strong><br>NVIDIA Overlay:
-                                        <strong>Alt+Z</strong>
+                                    <p class="controls-shortcuts">
+                                        <span>Steam overlay</span><span><kbd class="sb-kbd">Shift</kbd> + <kbd class="sb-kbd">Tab</kbd></span>
+                                        <span>NVIDIA overlay</span><span><kbd class="sb-kbd">Alt</kbd> + <kbd class="sb-kbd">Z</kbd></span>
                                     </p>
-                                </div>
-                                <div class="controls-info-box">
-                                    <strong>
-                                        <svg class="cs-settings-icon controls-tip-icon" aria-hidden="true">
-                                            <use href="#cs-settings-icon-tip"></use>
-                                        </svg>
-                                        Tip:
-                                    </strong> Use Detect Controllers whenever you plug in a new pad
-                                    or
-                                    wake a wireless controller to refresh status indicators.
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-serenity-gamepad">
+                                <h4 class="controls-section-title">Serenity on a gamepad</h4>
                                 <div class="settings-grid">
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-toggleHub">Toggle Serenity Hub:</label>
-                                        <div id="gamepad-serenity-toggleHub" class="gamepad-input key-input"
-                                            tabindex="0">Y (Triangle)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-toggleHub">Open or close the Hub</label>
+                                        <div id="gamepad-serenity-toggleHub" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-toggleBreathing">Toggle Breathing Guide:</label>
-                                        <div id="gamepad-serenity-toggleBreathing" class="gamepad-input key-input"
-                                            tabindex="0">X (Square)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-toggleBreathing">Breathing guide</label>
+                                        <div id="gamepad-serenity-toggleBreathing" class="gamepad-input key-input" tabindex="0">X (Square)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-randomTheme">Random Theme:</label>
-                                        <div id="gamepad-serenity-randomTheme" class="gamepad-input key-input"
-                                            tabindex="0">L3</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-randomTheme">Random theme</label>
+                                        <div id="gamepad-serenity-randomTheme" class="gamepad-input key-input" tabindex="0">L3</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-toggleFullscreen">Toggle Fullscreen:</label>
-                                        <div id="gamepad-serenity-toggleFullscreen" class="gamepad-input key-input"
-                                            tabindex="0">R3</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-toggleFullscreen">Fullscreen</label>
+                                        <div id="gamepad-serenity-toggleFullscreen" class="gamepad-input key-input" tabindex="0">R3</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-previousTrack">Previous Track / Tab Left:</label>
-                                        <div id="gamepad-serenity-previousTrack" class="gamepad-input key-input"
-                                            tabindex="0">LB (L1)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-previousTrack">Previous track · tab left</label>
+                                        <div id="gamepad-serenity-previousTrack" class="gamepad-input key-input" tabindex="0">LB (L1)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-nextTrack">Next Track / Tab Right:</label>
-                                        <div id="gamepad-serenity-nextTrack" class="gamepad-input key-input"
-                                            tabindex="0">RB (R1)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-nextTrack">Next track · tab right</label>
+                                        <div id="gamepad-serenity-nextTrack" class="gamepad-input key-input" tabindex="0">RB (R1)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-volumeDown">Volume Down:</label>
-                                        <div id="gamepad-serenity-volumeDown" class="gamepad-input key-input"
-                                            tabindex="0">LT (L2)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-volumeDown">Volume down</label>
+                                        <div id="gamepad-serenity-volumeDown" class="gamepad-input key-input" tabindex="0">LT (L2)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-volumeUp">Volume Up:</label>
-                                        <div id="gamepad-serenity-volumeUp" class="gamepad-input key-input"
-                                            tabindex="0">RT (R2)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-volumeUp">Volume up</label>
+                                        <div id="gamepad-serenity-volumeUp" class="gamepad-input key-input" tabindex="0">RT (R2)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-toggleControlHints">Toggle Button Hints:</label>
-                                        <div id="gamepad-serenity-toggleControlHints" class="gamepad-input key-input"
-                                            tabindex="0">Select (Share)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-toggleControlHints">Button hints</label>
+                                        <div id="gamepad-serenity-toggleControlHints" class="gamepad-input key-input" tabindex="0">Select (Share)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-openSettings">Open Settings Menu:</label>
-                                        <div id="gamepad-serenity-openSettings" class="gamepad-input key-input"
-                                            tabindex="0">Start (Options)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-openSettings">Settings</label>
+                                        <div id="gamepad-serenity-openSettings" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-previousBreathingTechnique">Prev Technique /
-                                            Up:</label>
-                                        <div id="gamepad-serenity-previousBreathingTechnique"
-                                            class="gamepad-input key-input" tabindex="0">D-Up</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-previousBreathingTechnique">Previous technique · up</label>
+                                        <div id="gamepad-serenity-previousBreathingTechnique" class="gamepad-input key-input" tabindex="0">D-Up</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-nextBreathingTechnique">Next Technique / Down:</label>
-                                        <div id="gamepad-serenity-nextBreathingTechnique"
-                                            class="gamepad-input key-input" tabindex="0">D-Down</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-nextBreathingTechnique">Next technique · down</label>
+                                        <div id="gamepad-serenity-nextBreathingTechnique" class="gamepad-input key-input" tabindex="0">D-Down</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-navigateLeft">Navigate Left:</label>
-                                        <div id="gamepad-serenity-navigateLeft" class="gamepad-input key-input"
-                                            tabindex="0">D-Left</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-navigateLeft">Move left</label>
+                                        <div id="gamepad-serenity-navigateLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-navigateRight">Navigate Right:</label>
-                                        <div id="gamepad-serenity-navigateRight" class="gamepad-input key-input"
-                                            tabindex="0">D-Right</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-navigateRight">Move right</label>
+                                        <div id="gamepad-serenity-navigateRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-confirmSelection">Confirm Selection:</label>
-                                        <div id="gamepad-serenity-confirmSelection" class="gamepad-input key-input"
-                                            tabindex="0">A (Cross)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-confirmSelection">Confirm</label>
+                                        <div id="gamepad-serenity-confirmSelection" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-serenity-closeHub">Close Hub:</label>
-                                        <div id="gamepad-serenity-closeHub" class="gamepad-input key-input"
-                                            tabindex="0">B (Circle)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-serenity-closeHub">Close the Hub</label>
+                                        <div id="gamepad-serenity-closeHub" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
                                     </div>
                                 </div>
-
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="gamepad-serenity">Reset
-                                        Serenity Gamepad</button>
+                                    <button type="button" class="controls-subtab-action sb-btn sb-btn--quiet" data-reset-target="gamepad-serenity">Reset to defaults</button>
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-serenity-keyboard">
+                                <h4 class="controls-section-title">Serenity on a keyboard</h4>
                                 <div class="settings-grid">
-                                    <div class="setting">
-                                        <label for="key-serenity-toggleHub">Toggle Serenity Hub:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-serenity-toggleHub">Open or close the Hub</label>
                                         <div id="key-serenity-toggleHub" class="key-input" tabindex="0">h</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-serenity-toggleBreathing">Toggle Breathing Guide:</label>
-                                        <div id="key-serenity-toggleBreathing" class="key-input" tabindex="0">Space
-                                        </div>
+                                    <div class="setting setting--binding">
+                                        <label for="key-serenity-toggleBreathing">Breathing guide</label>
+                                        <div id="key-serenity-toggleBreathing" class="key-input" tabindex="0">Space</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-serenity-cycleBreathingTechnique">Cycle Breathing
-                                            Technique:</label>
-                                        <div id="key-serenity-cycleBreathingTechnique" class="key-input" tabindex="0">t
-                                        </div>
+                                    <div class="setting setting--binding">
+                                        <label for="key-serenity-cycleBreathingTechnique">Next breathing technique</label>
+                                        <div id="key-serenity-cycleBreathingTechnique" class="key-input" tabindex="0">t</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-serenity-randomTheme">Random Theme:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-serenity-randomTheme">Random theme</label>
                                         <div id="key-serenity-randomTheme" class="key-input" tabindex="0">b</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-serenity-toggleFullscreen">Toggle Fullscreen:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-serenity-toggleFullscreen">Fullscreen</label>
                                         <div id="key-serenity-toggleFullscreen" class="key-input" tabindex="0">f</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-serenity-toggleControlHints">Toggle Control Hints:</label>
-                                        <div id="key-serenity-toggleControlHints" class="key-input" tabindex="0">/
-                                        </div>
+                                    <div class="setting setting--binding">
+                                        <label for="key-serenity-toggleControlHints">Control hints</label>
+                                        <div id="key-serenity-toggleControlHints" class="key-input" tabindex="0">/</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-serenity-exitToMenu">Exit to Menu:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-serenity-exitToMenu">Leave to the menu</label>
                                         <div id="key-serenity-exitToMenu" class="key-input" tabindex="0">Escape</div>
                                     </div>
                                 </div>
-
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="keyboard-serenity">Reset
-                                        Serenity Keys</button>
+                                    <button type="button" class="controls-subtab-action sb-btn sb-btn--quiet" data-reset-target="keyboard-serenity">Reset to defaults</button>
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-player1">
+                                <h4 class="controls-section-title">Player 1 · keyboard</h4>
                                 <div class="settings-grid">
-                                    <div class="setting">
-                                        <label for="key-moveLeft">Move Left:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-moveLeft">Move left</label>
                                         <div id="key-moveLeft" class="key-input" tabindex="0">ArrowLeft</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-moveRight">Move Right:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-moveRight">Move right</label>
                                         <div id="key-moveRight" class="key-input" tabindex="0">ArrowRight</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-rotateRight">Rotate Right:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-rotateRight">Rotate right</label>
                                         <div id="key-rotateRight" class="key-input" tabindex="0">ArrowUp</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-rotateLeft">Rotate Left:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-rotateLeft">Rotate left</label>
                                         <div id="key-rotateLeft" class="key-input" tabindex="0">z</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-flip">Flip (180°):</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-flip">Flip 180°</label>
                                         <div id="key-flip" class="key-input" tabindex="0">a</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-softDrop">Soft Drop:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-softDrop">Soft drop</label>
                                         <div id="key-softDrop" class="key-input" tabindex="0">ArrowDown</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-hardDrop">Hard Drop:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-hardDrop">Hard drop</label>
                                         <div id="key-hardDrop" class="key-input" tabindex="0">Space</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="keyboard-player1">Reset
-                                        Player 1 Keys</button>
+                                    <button type="button" class="controls-subtab-action sb-btn sb-btn--quiet" data-reset-target="keyboard-player1">Reset to defaults</button>
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-player2">
+                                <h4 class="controls-section-title">Player 2 · keyboard</h4>
                                 <div class="settings-grid">
-                                    <div class="setting">
-                                        <label for="key-p2-moveLeft">Move Left:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-p2-moveLeft">Move left</label>
                                         <div id="key-p2-moveLeft" class="key-input" tabindex="0">a</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-p2-moveRight">Move Right:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-p2-moveRight">Move right</label>
                                         <div id="key-p2-moveRight" class="key-input" tabindex="0">d</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-p2-rotateRight">Rotate Right:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-p2-rotateRight">Rotate right</label>
                                         <div id="key-p2-rotateRight" class="key-input" tabindex="0">w</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-p2-rotateLeft">Rotate Left:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-p2-rotateLeft">Rotate left</label>
                                         <div id="key-p2-rotateLeft" class="key-input" tabindex="0">q</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-p2-flip">Flip (180°):</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-p2-flip">Flip 180°</label>
                                         <div id="key-p2-flip" class="key-input" tabindex="0">e</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-p2-softDrop">Soft Drop:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-p2-softDrop">Soft drop</label>
                                         <div id="key-p2-softDrop" class="key-input" tabindex="0">s</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="key-p2-hardDrop">Hard Drop:</label>
+                                    <div class="setting setting--binding">
+                                        <label for="key-p2-hardDrop">Hard drop</label>
                                         <div id="key-p2-hardDrop" class="key-input" tabindex="0">Shift</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="keyboard-player2">Reset
-                                        Player 2 Keys</button>
+                                    <button type="button" class="controls-subtab-action sb-btn sb-btn--quiet" data-reset-target="keyboard-player2">Reset to defaults</button>
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-gamepad1">
+                                <h4 class="controls-section-title">Player 1 · gamepad</h4>
                                 <div class="settings-grid">
-                                    <div class="setting">
-                                        <label for="gamepad-moveLeft">Move Left:</label>
-                                        <div id="gamepad-moveLeft" class="gamepad-input key-input" tabindex="0">
-                                            D-Left
-                                        </div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-moveLeft">Move left</label>
+                                        <div id="gamepad-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-moveRight">Move Right:</label>
-                                        <div id="gamepad-moveRight" class="gamepad-input key-input" tabindex="0">
-                                            D-Right
-                                        </div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-moveRight">Move right</label>
+                                        <div id="gamepad-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-rotateRight">Rotate Right:</label>
-                                        <div id="gamepad-rotateRight" class="gamepad-input key-input" tabindex="0">A
-                                            (Cross)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-rotateRight">Rotate right</label>
+                                        <div id="gamepad-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-rotateLeft">Rotate Left:</label>
-                                        <div id="gamepad-rotateLeft" class="gamepad-input key-input" tabindex="0">Y
-                                            (Triangle)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-rotateLeft">Rotate left</label>
+                                        <div id="gamepad-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-flip">Flip (180°):</label>
-                                        <div id="gamepad-flip" class="gamepad-input key-input" tabindex="0">X
-                                            (Square)
-                                        </div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-flip">Flip 180°</label>
+                                        <div id="gamepad-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-softDrop">Soft Drop:</label>
-                                        <div id="gamepad-softDrop" class="gamepad-input key-input" tabindex="0">
-                                            D-Down
-                                        </div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-softDrop">Soft drop</label>
+                                        <div id="gamepad-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-hardDrop">Hard Drop:</label>
-                                        <div id="gamepad-hardDrop" class="gamepad-input key-input" tabindex="0">B
-                                            (Circle)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-hardDrop">Hard drop</label>
+                                        <div id="gamepad-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-pause">Pause:</label>
-                                        <div id="gamepad-pause" class="gamepad-input key-input" tabindex="0">Start
-                                            (Options)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-pause">Pause</label>
+                                        <div id="gamepad-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="gamepad-player1">Reset
-                                        Player 1 Gamepad</button>
+                                    <button type="button" class="controls-subtab-action sb-btn sb-btn--quiet" data-reset-target="gamepad-player1">Reset to defaults</button>
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-gamepad2">
+                                <h4 class="controls-section-title">Player 2 · gamepad</h4>
                                 <div class="settings-grid">
-                                    <div class="setting">
-                                        <label for="gamepad-p2-moveLeft">Move Left:</label>
-                                        <div id="gamepad-p2-moveLeft" class="gamepad-input key-input" tabindex="0">
-                                            D-Left</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p2-moveLeft">Move left</label>
+                                        <div id="gamepad-p2-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p2-moveRight">Move Right:</label>
-                                        <div id="gamepad-p2-moveRight" class="gamepad-input key-input" tabindex="0">
-                                            D-Right</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p2-moveRight">Move right</label>
+                                        <div id="gamepad-p2-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p2-rotateRight">Rotate Right:</label>
-                                        <div id="gamepad-p2-rotateRight" class="gamepad-input key-input" tabindex="0">A
-                                            (Cross)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p2-rotateRight">Rotate right</label>
+                                        <div id="gamepad-p2-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p2-rotateLeft">Rotate Left:</label>
-                                        <div id="gamepad-p2-rotateLeft" class="gamepad-input key-input" tabindex="0">Y
-                                            (Triangle)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p2-rotateLeft">Rotate left</label>
+                                        <div id="gamepad-p2-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p2-flip">Flip (180°):</label>
-                                        <div id="gamepad-p2-flip" class="gamepad-input key-input" tabindex="0">X
-                                            (Square)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p2-flip">Flip 180°</label>
+                                        <div id="gamepad-p2-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p2-softDrop">Soft Drop:</label>
-                                        <div id="gamepad-p2-softDrop" class="gamepad-input key-input" tabindex="0">
-                                            D-Down</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p2-softDrop">Soft drop</label>
+                                        <div id="gamepad-p2-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p2-hardDrop">Hard Drop:</label>
-                                        <div id="gamepad-p2-hardDrop" class="gamepad-input key-input" tabindex="0">B
-                                            (Circle)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p2-hardDrop">Hard drop</label>
+                                        <div id="gamepad-p2-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p2-pause">Pause:</label>
-                                        <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">
-                                            Start
-                                            (Options)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p2-pause">Pause</label>
+                                        <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="gamepad-player2">Reset
-                                        Player 2 Gamepad</button>
+                                    <button type="button" class="controls-subtab-action sb-btn sb-btn--quiet" data-reset-target="gamepad-player2">Reset to defaults</button>
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-gamepad3">
+                                <h4 class="controls-section-title">Player 3 · gamepad</h4>
                                 <div class="settings-grid">
-                                    <div class="setting">
-                                        <label for="gamepad-p3-moveLeft">Move Left:</label>
-                                        <div id="gamepad-p3-moveLeft" class="gamepad-input key-input" tabindex="0">
-                                            D-Left</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p3-moveLeft">Move left</label>
+                                        <div id="gamepad-p3-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p3-moveRight">Move Right:</label>
-                                        <div id="gamepad-p3-moveRight" class="gamepad-input key-input" tabindex="0">
-                                            D-Right</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p3-moveRight">Move right</label>
+                                        <div id="gamepad-p3-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p3-rotateRight">Rotate Right:</label>
-                                        <div id="gamepad-p3-rotateRight" class="gamepad-input key-input" tabindex="0">A
-                                            (Cross)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p3-rotateRight">Rotate right</label>
+                                        <div id="gamepad-p3-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p3-rotateLeft">Rotate Left:</label>
-                                        <div id="gamepad-p3-rotateLeft" class="gamepad-input key-input" tabindex="0">Y
-                                            (Triangle)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p3-rotateLeft">Rotate left</label>
+                                        <div id="gamepad-p3-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p3-flip">Flip (180°):</label>
-                                        <div id="gamepad-p3-flip" class="gamepad-input key-input" tabindex="0">X
-                                            (Square)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p3-flip">Flip 180°</label>
+                                        <div id="gamepad-p3-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p3-softDrop">Soft Drop:</label>
-                                        <div id="gamepad-p3-softDrop" class="gamepad-input key-input" tabindex="0">
-                                            D-Down</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p3-softDrop">Soft drop</label>
+                                        <div id="gamepad-p3-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p3-hardDrop">Hard Drop:</label>
-                                        <div id="gamepad-p3-hardDrop" class="gamepad-input key-input" tabindex="0">B
-                                            (Circle)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p3-hardDrop">Hard drop</label>
+                                        <div id="gamepad-p3-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p3-pause">Pause:</label>
-                                        <div id="gamepad-p3-pause" class="gamepad-input key-input" tabindex="0">
-                                            Start
-                                            (Options)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p3-pause">Pause</label>
+                                        <div id="gamepad-p3-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="gamepad-player3">Reset
-                                        Player 3 Gamepad</button>
+                                    <button type="button" class="controls-subtab-action sb-btn sb-btn--quiet" data-reset-target="gamepad-player3">Reset to defaults</button>
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-gamepad4">
+                                <h4 class="controls-section-title">Player 4 · gamepad</h4>
                                 <div class="settings-grid">
-                                    <div class="setting">
-                                        <label for="gamepad-p4-moveLeft">Move Left:</label>
-                                        <div id="gamepad-p4-moveLeft" class="gamepad-input key-input" tabindex="0">
-                                            D-Left</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p4-moveLeft">Move left</label>
+                                        <div id="gamepad-p4-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p4-moveRight">Move Right:</label>
-                                        <div id="gamepad-p4-moveRight" class="gamepad-input key-input" tabindex="0">
-                                            D-Right</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p4-moveRight">Move right</label>
+                                        <div id="gamepad-p4-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p4-rotateRight">Rotate Right:</label>
-                                        <div id="gamepad-p4-rotateRight" class="gamepad-input key-input" tabindex="0">A
-                                            (Cross)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p4-rotateRight">Rotate right</label>
+                                        <div id="gamepad-p4-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p4-rotateLeft">Rotate Left:</label>
-                                        <div id="gamepad-p4-rotateLeft" class="gamepad-input key-input" tabindex="0">Y
-                                            (Triangle)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p4-rotateLeft">Rotate left</label>
+                                        <div id="gamepad-p4-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p4-flip">Flip (180°):</label>
-                                        <div id="gamepad-p4-flip" class="gamepad-input key-input" tabindex="0">X
-                                            (Square)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p4-flip">Flip 180°</label>
+                                        <div id="gamepad-p4-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p4-softDrop">Soft Drop:</label>
-                                        <div id="gamepad-p4-softDrop" class="gamepad-input key-input" tabindex="0">
-                                            D-Down</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p4-softDrop">Soft drop</label>
+                                        <div id="gamepad-p4-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p4-hardDrop">Hard Drop:</label>
-                                        <div id="gamepad-p4-hardDrop" class="gamepad-input key-input" tabindex="0">B
-                                            (Circle)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p4-hardDrop">Hard drop</label>
+                                        <div id="gamepad-p4-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
                                     </div>
-                                    <div class="setting">
-                                        <label for="gamepad-p4-pause">Pause:</label>
-                                        <div id="gamepad-p4-pause" class="gamepad-input key-input" tabindex="0">
-                                            Start
-                                            (Options)</div>
+                                    <div class="setting setting--binding">
+                                        <label for="gamepad-p4-pause">Pause</label>
+                                        <div id="gamepad-p4-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="gamepad-player4">Reset
-                                        Player 4 Gamepad</button>
+                                    <button type="button" class="controls-subtab-action sb-btn sb-btn--quiet" data-reset-target="gamepad-player4">Reset to defaults</button>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <footer class="sb-sheet__foot settings-foot">
+                <ul class="sb-hints sb-sheet__hints">
+                    <li><kbd class="sb-kbd" data-key>Q</kbd><kbd class="sb-kbd" data-key>E</kbd><kbd class="sb-kbd" data-pad>LB</kbd><kbd class="sb-kbd" data-pad>RB</kbd>Switch section</li>
+                    <li><kbd class="sb-kbd" data-key>Enter</kbd><kbd class="sb-kbd" data-pad>A</kbd>Change</li>
+                    <li><kbd class="sb-kbd" data-key>Esc</kbd><kbd class="sb-kbd" data-pad>B</kbd><span class="settings-foot__close">Close</span><span class="settings-foot__resume">Resume</span></li>
+                </ul>
+            </footer>
         </div>
     </div>
-    <div id="high-scores-modal" class="modal">
+    <div id="high-scores-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="high-scores-title">
         <div class="modal-content">
-            <h1>HIGH SCORES</h1>
-            <div class="settings-scroll-container">
+            <span class="sb-key sb-sheet__key" aria-hidden="true"></span>
+            <header class="sb-sheet__head">
+                <div class="sb-sheet__titles">
+                    <p class="sb-eyebrow">Your best</p>
+                    <h1 class="sb-sheet__title" id="high-scores-title">Records</h1>
+                </div>
+                <div class="sb-sheet__actions">
+                    <button type="button" id="close-high-scores" class="sb-btn sb-btn--quiet sb-sheet__close">
+                        <span>Close</span><kbd class="sb-kbd" data-key aria-hidden="true">Esc</kbd><kbd class="sb-kbd" data-pad aria-hidden="true">B</kbd>
+                    </button>
+                </div>
+            </header>
+            <div class="sb-sheet__body hs-body">
                 <div id="high-scores-list" class="hs-list"></div>
                 <div id="statistics-section" class="hs-stats"></div>
             </div>
-            <button id="close-high-scores" class="action-btn">Close</button>
         </div>
     </div>
 
-    <div id="demo-browser-modal" class="modal">
+    <div id="demo-browser-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="demo-browser-title">
         <div class="modal-content demo-browser-content">
-            <div class="settings-header">
-                <h1>REPLAYS</h1>
-                <button class="modal-close-btn" id="close-demo-browser">✕</button>
-            </div>
-
-            <div class="demo-browser-toolbar">
-                <button id="import-demo-btn" class="action-btn">Import File</button>
-                <input type="file" id="import-demo-input" accept=".json" style="display: none;">
-            </div>
-
-            <div class="settings-scroll-container">
+            <span class="sb-key sb-sheet__key" aria-hidden="true"></span>
+            <header class="sb-sheet__head">
+                <div class="sb-sheet__titles">
+                    <p class="sb-eyebrow">Watch again</p>
+                    <h1 class="sb-sheet__title" id="demo-browser-title">Replays</h1>
+                </div>
+                <div class="sb-sheet__actions demo-browser-toolbar">
+                    <button type="button" id="import-demo-btn" class="sb-btn demo-browser-import">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4.5 12.5 6.4 5.5h11.2l1.9 7v5.2a1.8 1.8 0 0 1-1.8 1.8H6.3a1.8 1.8 0 0 1-1.8-1.8v-5.2Z"/><path d="M4.8 12.5h4.1l1.2 2.3h3.8l1.2-2.3h4.1"/><path d="M12 4.2v6.2M9.4 8l2.6 2.6L14.6 8"/></svg>
+                        <span>Import file</span>
+                    </button>
+                    <input type="file" id="import-demo-input" accept=".json" hidden>
+                    <button type="button" id="close-demo-browser" class="sb-btn sb-btn--quiet sb-sheet__close">
+                        <span>Close</span><kbd class="sb-kbd" data-key aria-hidden="true">Esc</kbd><kbd class="sb-kbd" data-pad aria-hidden="true">B</kbd>
+                    </button>
+                </div>
+            </header>
+            <p class="demo-browser-status" id="demo-browser-status" role="status" aria-live="polite"></p>
+            <div class="sb-sheet__body">
                 <div id="demo-list" class="demo-list">
-                    <!-- Demos will be populated here -->
+                    <!-- Replays are listed here by demo-browser.js -->
                 </div>
             </div>
         </div>

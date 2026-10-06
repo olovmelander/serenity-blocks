@@ -1,118 +1,21 @@
 /**
  * PlayerCard Component
  *
- * Reusable Steam avatar + player info component with:
+ * Reusable Steam avatar + player name, used by the online waiting room:
  * - 3 sizes: small (32px), medium (64px), large (184px)
  * - Loading skeleton state
- * - Fallback to colored letter placeholder
- * - Color-coded border matching player game color
+ * - Fallback to a letter tile in the player's colour
+ * - Rounded-square avatar framed in the player's colour
+ *
+ * Class names are `mp-avatar*` — the board cards own `.player-card` (themes style
+ * `.player-card[data-player]`), so this component never shares it. Styles live in
+ * public/styles/keystone-multiplayer.css; the player colour arrives as `--avatar-color`.
  */
 
 import steamService from '../../core/steam/steam-service.js';
-import { AVATAR_SIZES } from '../../core/steam/steam-config.js';
 import { sanitizeCssColor } from '../../utils/dom-safety.js';
 
-// CSS for player card (injected once)
-const PLAYER_CARD_STYLES = `
-.player-card {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.player-card.vertical {
-    flex-direction: column;
-    text-align: center;
-}
-
-.player-avatar-container {
-    position: relative;
-    border-radius: 50%;
-    overflow: hidden;
-    flex-shrink: 0;
-}
-
-.player-avatar-container.small {
-    width: 32px;
-    height: 32px;
-}
-
-.player-avatar-container.medium {
-    width: 64px;
-    height: 64px;
-}
-
-.player-avatar-container.large {
-    width: 184px;
-    height: 184px;
-}
-
-.player-avatar-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 50%;
-}
-
-.player-avatar-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    color: white;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    border-radius: 50%;
-}
-
-.player-avatar-placeholder.small { font-size: 14px; }
-.player-avatar-placeholder.medium { font-size: 24px; }
-.player-avatar-placeholder.large { font-size: 72px; }
-
-.player-avatar-skeleton {
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, rgba(255,255,255,0.1) 25%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.1) 75%);
-    background-size: 200% 100%;
-    animation: skeleton-shimmer 1.5s infinite;
-    border-radius: 50%;
-}
-
-@keyframes skeleton-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
-
-.player-card-info {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.player-card-name {
-    font-weight: 700;
-    color: white;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.player-card-subtitle {
-    font-size: 0.85em;
-    color: rgba(255,255,255,0.6);
-}
-`;
-
-// Inject styles once
-let stylesInjected = false;
-function injectStyles() {
-    if (stylesInjected) return;
-    const style = document.createElement('style');
-    style.textContent = PLAYER_CARD_STYLES;
-    document.head.appendChild(style);
-    stylesInjected = true;
-}
+const SIZES = new Set(['small', 'medium', 'large']);
 
 /**
  * Create a PlayerCard element
@@ -129,8 +32,6 @@ function injectStyles() {
  * @returns {HTMLElement}
  */
 export function createPlayerCard(options = {}) {
-    injectStyles();
-
     const {
         steamId = null,
         name = 'Player',
@@ -142,27 +43,25 @@ export function createPlayerCard(options = {}) {
         onClick = null,
     } = options;
 
-    const sizeClass = size;
-    const sizePx = AVATAR_SIZES[size.toUpperCase()] || 64;
+    const sizeClass = SIZES.has(size) ? size : 'medium';
     const safeColor = sanitizeCssColor(color, '#8b5cf6');
 
     // Create card container
     const card = document.createElement('div');
-    card.className = `player-card ${vertical ? 'vertical' : ''}`;
+    card.className = `mp-avatar-card mp-avatar-card--${sizeClass}${vertical ? ' mp-avatar-card--vertical' : ''}`;
+    card.style.setProperty('--avatar-color', safeColor);
     if (onClick) {
-        card.style.cursor = 'pointer';
+        card.classList.add('is-clickable');
         card.addEventListener('click', onClick);
     }
 
-    // Avatar container with border
+    // Avatar tile framed in the player's colour
     const avatarContainer = document.createElement('div');
-    avatarContainer.className = `player-avatar-container ${sizeClass}`;
-    avatarContainer.style.border = `3px solid ${safeColor}`;
-    avatarContainer.style.boxShadow = `0 0 ${sizePx / 4}px ${safeColor}80`;
+    avatarContainer.className = `mp-avatar mp-avatar--${sizeClass}`;
 
     // Skeleton placeholder (shown during loading)
     const skeleton = document.createElement('div');
-    skeleton.className = 'player-avatar-skeleton';
+    skeleton.className = 'mp-avatar__skeleton';
     avatarContainer.appendChild(skeleton);
 
     card.appendChild(avatarContainer);
@@ -170,17 +69,16 @@ export function createPlayerCard(options = {}) {
     // Info section
     if (showName) {
         const info = document.createElement('div');
-        info.className = 'player-card-info';
+        info.className = 'mp-avatar-card__info';
 
         const nameEl = document.createElement('div');
-        nameEl.className = 'player-card-name';
+        nameEl.className = 'mp-avatar-card__name';
         nameEl.textContent = name;
-        nameEl.style.fontSize = size === 'small' ? '12px' : size === 'large' ? '18px' : '14px';
         info.appendChild(nameEl);
 
         if (subtitle) {
             const subtitleEl = document.createElement('div');
-            subtitleEl.className = 'player-card-subtitle';
+            subtitleEl.className = 'mp-avatar-card__subtitle';
             subtitleEl.textContent = subtitle;
             info.appendChild(subtitleEl);
         }
@@ -189,7 +87,7 @@ export function createPlayerCard(options = {}) {
     }
 
     // Load avatar asynchronously
-    loadAvatarAsync(avatarContainer, steamId, name, safeColor, size);
+    loadAvatarAsync(avatarContainer, steamId, name, sizeClass);
 
     return card;
 }
@@ -197,48 +95,44 @@ export function createPlayerCard(options = {}) {
 /**
  * Load avatar asynchronously and update the container
  */
-async function loadAvatarAsync(container, steamId, name, color, size) {
-    const sizeClass = size;
-
+async function loadAvatarAsync(container, steamId, name, size) {
     try {
         const avatarUrl = await steamService.getAvatar(steamId, size);
 
         // Remove skeleton
-        const skeleton = container.querySelector('.player-avatar-skeleton');
-        if (skeleton) skeleton.remove();
+        container.querySelector('.mp-avatar__skeleton')?.remove();
 
         if (avatarUrl) {
             // Show actual avatar
             const img = document.createElement('img');
-            img.className = 'player-avatar-img';
+            img.className = 'mp-avatar__img';
             img.src = avatarUrl;
-            img.alt = name;
+            img.alt = '';
             img.onerror = () => {
                 // Fallback to placeholder on error
                 img.remove();
-                showPlaceholder(container, name, color, sizeClass);
+                showPlaceholder(container, name);
             };
             container.appendChild(img);
         } else {
             // Show placeholder
-            showPlaceholder(container, name, color, sizeClass);
+            showPlaceholder(container, name);
         }
     } catch (err) {
         // Remove skeleton and show placeholder
-        const skeleton = container.querySelector('.player-avatar-skeleton');
-        if (skeleton) skeleton.remove();
-        showPlaceholder(container, name, color, sizeClass);
+        container.querySelector('.mp-avatar__skeleton')?.remove();
+        showPlaceholder(container, name);
     }
 }
 
 /**
- * Show letter placeholder
+ * Show letter placeholder (tinted by the card's --avatar-color)
  */
-function showPlaceholder(container, name, color, sizeClass) {
+function showPlaceholder(container, name) {
     const placeholder = document.createElement('div');
-    placeholder.className = `player-avatar-placeholder ${sizeClass}`;
-    placeholder.textContent = name.charAt(0).toUpperCase();
-    placeholder.style.background = color;
+    placeholder.className = 'mp-avatar__placeholder';
+    placeholder.setAttribute('aria-hidden', 'true');
+    placeholder.textContent = (name || 'P').charAt(0).toUpperCase();
     container.appendChild(placeholder);
 }
 
@@ -246,23 +140,21 @@ function showPlaceholder(container, name, color, sizeClass) {
  * Update an existing player card's avatar
  */
 export async function updatePlayerCardAvatar(cardElement, steamId, size = 'medium') {
-    const container = cardElement.querySelector('.player-avatar-container');
+    const container = cardElement.querySelector('.mp-avatar');
     if (!container) return;
 
-    // Get current color from border
-    const color = container.style.borderColor || '#8b5cf6';
-    const name = cardElement.querySelector('.player-card-name')?.textContent || 'P';
+    const name = cardElement.querySelector('.mp-avatar-card__name')?.textContent || 'P';
 
     // Clear current content
     container.innerHTML = '';
 
     // Add skeleton
     const skeleton = document.createElement('div');
-    skeleton.className = 'player-avatar-skeleton';
+    skeleton.className = 'mp-avatar__skeleton';
     container.appendChild(skeleton);
 
     // Load new avatar
-    await loadAvatarAsync(container, steamId, name, color, size);
+    await loadAvatarAsync(container, steamId, name, SIZES.has(size) ? size : 'medium');
 }
 
 export default { createPlayerCard, updatePlayerCardAvatar };

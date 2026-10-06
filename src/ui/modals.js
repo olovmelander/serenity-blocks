@@ -1,6 +1,8 @@
 /**
  * @fileoverview Modal Management for Serenity Blocks
- * Handles start modal, game-over modal, settings modal, and high scores modal
+ * Handles start modal, game-over modal, settings modal, and high scores modal.
+ * The game-over, replay-complete and Records sheets are Keystone sheets
+ * (public/styles/keystone-modals.css; docs/MENU_UI_OVERHAUL_2026-10.md).
  */
 
 import { STEAM_LEADERBOARDS } from '../core/steam/steam-config.js';
@@ -12,8 +14,9 @@ import {
 } from './components/steam-leaderboard-panel.js';
 import { csIcon } from './components/cosmic-icons.js';
 import { normalizeWheelDeltaToPixels } from '../utils/wheel-routing.js';
+import { installSheetInput } from './sheet-input.js';
 
-const MENU_SURFACES = '.modal, .serenity-hub-panel, .match-config-modal, #lobby-browser';
+const MENU_SURFACES = '.modal, .serenity-hub-panel, .match-config-modal, #lobby-browser, .hale-flow, #breathing-guide';
 
 /** Suspend decoration only on menu surfaces covered by a higher menu. */
 export function updateMenuCoverage(documentRoot = document) {
@@ -21,6 +24,8 @@ export function updateMenuCoverage(documentRoot = document) {
     const visible = surfaces.filter((surface) => {
         if (surface.classList.contains('modal')) return surface.classList.contains('visible');
         if (surface.id === 'serenity-hub-panel') return surface.classList.contains('open');
+        // The Hale flow and the breathing guide hide with the `hidden` attribute.
+        if (surface.id === 'breathing-guide' || surface.classList.contains('hale-flow')) return !surface.hidden;
         return !surface.classList.contains('hidden');
     });
     const view = documentRoot.defaultView || globalThis.window;
@@ -208,6 +213,129 @@ export function showStartModal(modalManager) {
     // Menu navigation is enabled in show() method
 }
 
+/* ---- Results (game over, replay complete) -------------------------------------
+ * Both sheets share one layout: a score hero with rank chips, then four fact tiles
+ * (keystone-modals.css). Copy and class names that tests pin are kept: final-stats,
+ * "Experimental Session · Unranked", "Not added to legacy rankings", "Career Best",
+ * "Rank #N". */
+
+const LEVEL_SPEEDS = [
+    1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60,
+    50,
+];
+
+const MEDALS = ['gold', 'silver', 'bronze'];
+
+/** Keycaps for a sheet's primary button: Enter, or A on a controller. */
+const PRIMARY_KEYS = '<kbd class="sb-kbd" data-key aria-hidden="true">Enter</kbd>'
+    + '<kbd class="sb-kbd" data-pad aria-hidden="true">A</kbd>';
+
+function formatDuration(durationMs) {
+    const minutes = Math.floor(durationMs / 60000);
+    const seconds = Math.floor((durationMs % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+/** Score, pace and efficiency figures shared by game over and replay complete. */
+function computeResultFigures({
+    score, lines, piecesPlaced, dropInterval,
+}, durationMs) {
+    const totalMinutes = durationMs / 60000;
+    return {
+        speed: (LEVEL_SPEEDS[0] / dropInterval).toFixed(1),
+        duration: formatDuration(durationMs),
+        piecesPerMinute: durationMs > 0 ? Math.round((piecesPlaced / durationMs) * 60000) : 0,
+        pointsPerMinute: totalMinutes > 0 ? Math.round(score / totalMinutes) : 0,
+        linesPerPiece: piecesPlaced > 0 ? (lines / piecesPlaced).toFixed(2) : '0.00',
+        efficiency: piecesPlaced > 0 ? Math.min(100, Math.round((lines / piecesPlaced) * 100)) : 0,
+    };
+}
+
+function resultRow(label, value, className = '') {
+    return `<div class="stat-row"><dt class="stat-label">${label}</dt>`
+        + `<dd class="stat-value${className ? ` ${className}` : ''}">${value}</dd></div>`;
+}
+
+function resultCard(tone, title, rows) {
+    return `<section class="stat-card stat-card-${tone}"><h3 class="stat-card-header">${title}</h3>`
+        + `<dl class="stat-list">${rows.join('')}</dl></section>`;
+}
+
+/** A signed difference, drawn as a gain or a quiet shortfall (never alarm red). */
+function comparisonRow(label, difference) {
+    const sign = difference >= 0 ? '+' : '−';
+    const tone = difference >= 0 ? 'is-up' : 'is-down';
+    return resultRow(label, `${sign}${Math.abs(difference).toLocaleString()}`, `stat-comparison ${tone}`);
+}
+
+function rankChips(rank, score, { emptyLabel = '' } = {}) {
+    // A game of 0 points tops an empty table, but it is not a record.
+    if (!(score > 0)) return emptyLabel ? `<span class="ranking-display sb-chip">${emptyLabel}</span>` : '';
+    if (rank === 1) {
+        return `<span class="ranking-display sb-chip sb-chip--gold">${csIcon('trophy', 12, 'ranking-icon-svg')}`
+            + '<span>New record</span></span>';
+    }
+    if (rank > 1 && rank <= 10) {
+        return `<span class="ranking-display sb-chip sb-chip--accent">Rank #${rank}</span>`
+            + '<span class="stat-badge sb-chip">Top 10</span>';
+    }
+    if (rank > 0) return `<span class="ranking-display sb-chip">Rank #${rank}</span>`;
+    return emptyLabel ? `<span class="ranking-display sb-chip">${emptyLabel}</span>` : '';
+}
+
+function resultsHero(score, chips, label = 'Final score') {
+    return `<div class="stats-header">
+                <div class="results-score">
+                    <p class="sb-eyebrow sb-eyebrow--quiet results-score__label">${label}</p>
+                    <div class="score-display">${score.toLocaleString()}</div>
+                </div>
+                <div class="results-chips">${chips}</div>
+            </div>`;
+}
+
+function performanceCard({ level, lines, piecesPlaced }, figures) {
+    return resultCard('purple', 'Performance', [
+        resultRow('Level', level),
+        resultRow('Speed', `${figures.speed}×`),
+        resultRow('Lines', lines),
+        resultRow('Pieces', piecesPlaced),
+    ]);
+}
+
+function paceCard(figures) {
+    return resultCard('cyan', 'Pace', [
+        resultRow('Points per minute', figures.pointsPerMinute.toLocaleString()),
+        resultRow('Pieces per minute', figures.piecesPerMinute),
+        resultRow('Lines per piece', figures.linesPerPiece),
+        resultRow('Efficiency', `${figures.efficiency}%`),
+    ]);
+}
+
+function careerCard(stats) {
+    return resultCard('gold', 'Career Best', [
+        resultRow('Best score', stats.highestScore.toLocaleString()),
+        resultRow('Highest level', stats.highestLevel),
+        resultRow('Games', stats.totalGames),
+        resultRow('Lines cleared', stats.totalLines.toLocaleString()),
+    ]);
+}
+
+function sessionCard(title, score, stats) {
+    const personalBest = stats.highestScore > score ? stats.highestScore : null;
+    const averageScore = stats.totalGames > 0 ? Math.round(stats.totalScore / stats.totalGames) : 0;
+    return resultCard('green', title, [
+        resultRow('Score', score.toLocaleString()),
+        personalBest ? comparisonRow('Versus best', score - personalBest) : '',
+        comparisonRow('Versus average', score - averageScore),
+        resultRow('Average score', averageScore.toLocaleString()),
+    ]);
+}
+
+function setText(id, text) {
+    const element = typeof document !== 'undefined' ? document.getElementById(id) : null;
+    if (element) element.textContent = text;
+}
+
 /**
  * Shows the game over modal with final stats
  * @param {ModalManager} modalManager - Modal manager instance
@@ -227,7 +355,7 @@ export async function showGameOverModal(
     options = {},
 ) {
     const {
-        score, lines, level, dropInterval, startTime, piecesPlaced,
+        score, lines, level, startTime,
     } = gameState;
     const includeLegacyResults = options.includeLegacyResults !== false;
     const shouldPresent = typeof options.shouldPresent === 'function'
@@ -240,88 +368,23 @@ export async function showGameOverModal(
     modalManager.gameOverLeaderboardPanel?.destroy();
     modalManager.gameOverLeaderboardPanel = null;
 
-    // Calculate speed multiplier
-    const LEVEL_SPEEDS = [
-        1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60,
-        50,
-    ];
-    const speedMultiplier = (LEVEL_SPEEDS[0] / dropInterval).toFixed(1);
-
-    // Calculate game duration
-    const duration = Date.now() - startTime;
-    const minutes = Math.floor(duration / 60000);
-    const seconds = Math.floor((duration % 60000) / 1000);
-    const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    const totalMinutes = duration / 60000;
-
-    // Calculate PPM metrics
-    const piecesPPM = duration > 0 ? Math.round((piecesPlaced / duration) * 60000) : 0;
-    const pointsPPM = totalMinutes > 0 ? Math.round(score / totalMinutes) : 0;
-
-    // Calculate efficiency metrics
-    const linesPerPiece = piecesPlaced > 0 ? (lines / piecesPlaced).toFixed(2) : '0.00';
-    const efficiency = piecesPlaced > 0 ? Math.min(100, Math.round((lines / piecesPlaced) * 100)) : 0;
+    const figures = computeResultFigures(gameState, Date.now() - startTime);
+    const modeName = gameState?.isInfinityMode ? 'Infinity' : 'Single Player';
+    setText('game-over-eyebrow', `${modeName} · Game over`);
 
     if (!includeLegacyResults) {
+        const unrankedChips = '<span class="ranking-display sb-chip sb-chip--accent">'
+            + 'Experimental Session · Unranked</span><span class="stat-badge sb-chip">Separate ruleset</span>';
+        const unrankedSession = resultCard('green', `Session · ${figures.duration}`, [
+            resultRow('Score', score.toLocaleString()),
+            resultRow('Status', 'Not added to legacy rankings', 'stat-value--text'),
+        ]);
         document.getElementById('final-stats').innerHTML = `
-            <div class="stats-header">
-                <div class="score-display">${score.toLocaleString()}</div>
-                <div class="ranking-display">Experimental Session · Unranked</div>
-                <div class="stat-badge stat-badge-purple">Separate Ruleset</div>
-            </div>
-
+            ${resultsHero(score, unrankedChips)}
             <div class="stats-grid">
-                <div class="stat-card stat-card-purple">
-                    <div class="stat-card-header">Performance</div>
-                    <div class="stat-row">
-                        <span class="stat-label">Level</span>
-                        <span class="stat-value">${level}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Speed</span>
-                        <span class="stat-value">${speedMultiplier}x</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Lines</span>
-                        <span class="stat-value">${lines}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Pieces</span>
-                        <span class="stat-value">${piecesPlaced}</span>
-                    </div>
-                </div>
-
-                <div class="stat-card stat-card-cyan">
-                    <div class="stat-card-header">Rates (Per Min)</div>
-                    <div class="stat-row">
-                        <span class="stat-label">Points/Min</span>
-                        <span class="stat-value">${pointsPPM.toLocaleString()}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Pieces/Min</span>
-                        <span class="stat-value">${piecesPPM}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Lines/Piece</span>
-                        <span class="stat-value">${linesPerPiece}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Efficiency</span>
-                        <span class="stat-value">${efficiency}%</span>
-                    </div>
-                </div>
-
-                <div class="stat-card stat-card-green">
-                    <div class="stat-card-header">Session (${durationStr})</div>
-                    <div class="stat-row">
-                        <span class="stat-label">Score</span>
-                        <span class="stat-value">${score.toLocaleString()}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Status</span>
-                        <span class="stat-value">Not added to legacy rankings</span>
-                    </div>
-                </div>
+                ${performanceCard(gameState, figures)}
+                ${paceCard(figures)}
+                ${unrankedSession}
             </div>
         `;
         return presentGameOverModal(modalManager, callbacks, shouldPresent);
@@ -336,120 +399,13 @@ export async function showGameOverModal(
             return false;
         }
 
-        // Build ranking HTML
-        let rankingHTML = '';
-        let rankingBadge = '';
-        if (rank === 1) {
-            rankingHTML = `<span class="ranking-line">${csIcon('trophy', 16, 'ranking-icon-svg')}<span>New High Score!</span></span>`;
-            rankingBadge = '<div class="stat-badge stat-badge-gold">New Record</div>';
-        } else if (rank <= 10) {
-            rankingHTML = `Rank #${rank}`;
-            rankingBadge = '<div class="stat-badge stat-badge-purple">Top 10</div>';
-        } else {
-            rankingHTML = `Rank #${rank}`;
-        }
-
-        // Personal best comparison
-        const personalBest = stats.highestScore > score ? stats.highestScore : null;
-
-        // Calculate averages
-        const avgScore = stats.totalGames > 0 ? Math.round(stats.totalScore / stats.totalGames) : 0;
-        const avgLines = stats.totalGames > 0 ? Math.round(stats.totalLines / stats.totalGames) : 0;
-
-        // Update final stats display with 2x2 grid
         document.getElementById('final-stats').innerHTML = `
-            <div class="stats-header">
-                <div class="score-display">${score.toLocaleString()}</div>
-                <div class="ranking-display">${rankingHTML}</div>
-                ${rankingBadge}
-            </div>
-
+            ${resultsHero(score, rankChips(rank, score))}
             <div class="stats-grid">
-                <!-- Performance Section (Purple) -->
-                <div class="stat-card stat-card-purple">
-                    <div class="stat-card-header">Performance</div>
-                    <div class="stat-row">
-                        <span class="stat-label">Level</span>
-                        <span class="stat-value">${level}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Speed</span>
-                        <span class="stat-value">${speedMultiplier}x</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Lines</span>
-                        <span class="stat-value">${lines}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Pieces</span>
-                        <span class="stat-value">${piecesPlaced}</span>
-                    </div>
-                </div>
-
-                <!-- Rate Stats Section (Cyan) -->
-                <div class="stat-card stat-card-cyan">
-                    <div class="stat-card-header">Rates (Per Min)</div>
-                    <div class="stat-row">
-                        <span class="stat-label">Points/Min</span>
-                        <span class="stat-value">${pointsPPM.toLocaleString()}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Pieces/Min</span>
-                        <span class="stat-value">${piecesPPM}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Lines/Piece</span>
-                        <span class="stat-value">${linesPerPiece}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Efficiency</span>
-                        <span class="stat-value">${efficiency}%</span>
-                    </div>
-                </div>
-
-                <!-- Career Stats Section (Gold) -->
-                <div class="stat-card stat-card-gold">
-                    <div class="stat-card-header">Career Best</div>
-                    <div class="stat-row">
-                        <span class="stat-label">High Score</span>
-                        <span class="stat-value">${stats.highestScore.toLocaleString()}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">High Level</span>
-                        <span class="stat-value">${stats.highestLevel}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Total Games</span>
-                        <span class="stat-value">${stats.totalGames}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Total Lines</span>
-                        <span class="stat-value">${stats.totalLines.toLocaleString()}</span>
-                    </div>
-                </div>
-
-                <!-- Comparison Section (Green) -->
-                <div class="stat-card stat-card-green">
-                    <div class="stat-card-header">Session (${durationStr})</div>
-                    <div class="stat-row">
-                        <span class="stat-label">Score</span>
-                        <span class="stat-value">${score.toLocaleString()}</span>
-                    </div>
-                    ${personalBest ? `
-                    <div class="stat-row">
-                        <span class="stat-label">vs Best</span>
-                        <span class="stat-value stat-comparison">${score > personalBest ? '+' : ''}${(score - personalBest).toLocaleString()}</span>
-                    </div>
-                    ` : ''}
-                    <div class="stat-row">
-                        <span class="stat-label">vs Avg</span>
-                        <span class="stat-value stat-comparison">${score > avgScore ? '+' : ''}${(score - avgScore).toLocaleString()}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Avg Score</span>
-                        <span class="stat-value">${avgScore.toLocaleString()}</span>
-                    </div>
-                </div>
+                ${performanceCard(gameState, figures)}
+                ${paceCard(figures)}
+                ${careerCard(stats)}
+                ${sessionCard(`Session · ${figures.duration}`, score, stats)}
             </div>
             <div class="steam-leaderboard-host" id="steam-leaderboard-host"></div>
         `;
@@ -460,8 +416,8 @@ export async function showGameOverModal(
         const leaderboardHost = document.getElementById('steam-leaderboard-host');
         if (leaderboardHost && steamService.capabilities?.leaderboards && shouldPresent()) {
             const isInfinity = !!gameState?.isInfinityMode;
-            const startTime = gameState?.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
-            const durationSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+            const sessionStart = gameState?.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
+            const durationSeconds = Math.max(1, Math.round((Date.now() - sessionStart) / 1000));
             const bestCascade = gameState?.infinityStats?.maxComboDepth || 0;
 
             const boards = isInfinity
@@ -506,7 +462,7 @@ export async function showGameOverModal(
                 ];
 
             const leaderboardPanel = new SteamLeaderboardPanel({
-                title: isInfinity ? 'Infinity Leaderboards' : 'Single Player Leaderboards',
+                title: isInfinity ? 'Infinity leaderboards' : 'Single Player leaderboards',
                 boards,
                 defaultBoardId: boards[0]?.id,
             });
@@ -520,31 +476,32 @@ export async function showGameOverModal(
         }
         console.error('Error displaying game over stats:', error);
         // Fallback display
+        const thisGame = resultCard('purple', 'This game', [
+            resultRow('Level', level),
+            resultRow('Speed', `${figures.speed}×`),
+            resultRow('Lines', lines),
+        ]);
         document.getElementById('final-stats').innerHTML = `
-            <div class="stats-header">
-                <div class="score-display">${score.toLocaleString()}</div>
-            </div>
-            <div class="stats-grid">
-                <div class="stat-card stat-card-purple">
-                    <div class="stat-card-header">Game Stats</div>
-                    <div class="stat-row">
-                        <span class="stat-label">Level</span>
-                        <span class="stat-value">${level}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Speed</span>
-                        <span class="stat-value">${speedMultiplier}x</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Lines</span>
-                        <span class="stat-value">${lines}</span>
-                    </div>
-                </div>
-            </div>
-            `;
+            ${resultsHero(score, '')}
+            <div class="stats-grid">${thisGame}</div>
+        `;
     }
 
     return presentGameOverModal(modalManager, callbacks, shouldPresent);
+}
+
+/**
+ * Keep clicks inside a results sheet from reaching the document-level "tap anywhere
+ * to restart" handler (controls.js): reading the stats or a leaderboard must not start
+ * a new game. Tapping the dimmed area around the sheet still does.
+ */
+function containSheetClicks(modalId) {
+    const sheet = typeof document !== 'undefined'
+        ? document.getElementById(modalId)?.querySelector?.('.modal-content')
+        : null;
+    if (!sheet || sheet.dataset.clicksContained === 'true') return;
+    sheet.dataset.clicksContained = 'true';
+    sheet.addEventListener('click', (event) => event.stopPropagation());
 }
 
 /**
@@ -561,11 +518,22 @@ function presentGameOverModal(modalManager, callbacks, shouldPresent) {
     const buttonsContainer = document.getElementById('game-over-buttons');
     if (buttonsContainer) {
         buttonsContainer.innerHTML = `
-            <button id="game-over-main-menu" class="demo-btn tertiary">
-                <svg class="btn-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
-                <span>Main Menu</span>
+            <button type="button" id="game-over-play-again" class="sb-btn sb-btn--primary">
+                ${csIcon('play', 16, 'btn-icon-svg')}<span>Play again</span>
+                ${PRIMARY_KEYS}
+            </button>
+            <button type="button" id="game-over-main-menu" class="sb-btn">
+                ${csIcon('home', 16, 'btn-icon-svg')}<span>Main menu</span>
             </button>
         `;
+
+        // The same restart Space, Enter and a controller face button trigger.
+        document.getElementById('game-over-play-again')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (callbacks.onRestart) callbacks.onRestart();
+            else globalThis.window?.startGame?.();
+        });
 
         // Wire up button event listeners
         const mainMenuBtn = document.getElementById('game-over-main-menu');
@@ -579,6 +547,7 @@ function presentGameOverModal(modalManager, callbacks, shouldPresent) {
             });
         }
     }
+    containSheetClicks('game-over-modal');
 
     if (!shouldPresent()) {
         return false;
@@ -614,30 +583,14 @@ export async function showDemoCompleteModal(
     const {
         score = 0, lines = 0, level = 1, dropInterval = 1000, startTime, piecesPlaced = 0,
     } = gameState || {};
+    const state = {
+        score, lines, level, dropInterval, piecesPlaced,
+    };
 
-    // Calculate speed multiplier (same logic as Game Over)
-    const LEVEL_SPEEDS = [
-        1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60,
-        50,
-    ];
-    const speedMultiplier = (LEVEL_SPEEDS[0] / dropInterval).toFixed(1);
-
-    // Calculate duration
-    const duration = Number.isFinite(gameState?.simTimeMs)
-        ? gameState.simTimeMs
-        : startTime ? Date.now() - startTime : 0;
-    const minutes = Math.floor(duration / 60000);
-    const seconds = Math.floor((duration % 60000) / 1000);
-    const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    const totalMinutes = duration / 60000;
-
-    // Calculate PPM metrics
-    const piecesPPM = duration > 0 ? Math.round((piecesPlaced / duration) * 60000) : 0;
-    const pointsPPM = totalMinutes > 0 ? Math.round(score / totalMinutes) : 0;
-
-    // Calculate efficiency metrics
-    const linesPerPiece = piecesPlaced > 0 ? (lines / piecesPlaced).toFixed(2) : '0.00';
-    const efficiency = piecesPlaced > 0 ? Math.min(100, Math.round((lines / piecesPlaced) * 100)) : 0;
+    let duration = 0;
+    if (Number.isFinite(gameState?.simTimeMs)) duration = gameState.simTimeMs;
+    else if (startTime) duration = Date.now() - startTime;
+    const figures = computeResultFigures(state, duration);
 
     // Fetch stats
     let rank = 0;
@@ -658,121 +611,13 @@ export async function showDemoCompleteModal(
         return false;
     }
 
-    // Ranking Logic
-    let rankingHTML = '';
-    let rankingBadge = '';
-    if (rank === 1) {
-        rankingHTML = `<span class="ranking-line">${csIcon('trophy', 16, 'ranking-icon-svg')}<span>New High Score!</span></span>`;
-        rankingBadge = '<div class="stat-badge stat-badge-gold">New Record</div>';
-    } else if (rank > 0 && rank <= 10) {
-        rankingHTML = `Rank #${rank}`;
-        rankingBadge = '<div class="stat-badge stat-badge-purple">Top 10</div>';
-    } else if (rank > 0) {
-        rankingHTML = `Rank #${rank}`;
-    } else {
-        rankingHTML = 'Replay';
-    }
-
-    // Personal best comparison
-    const personalBest = stats.highestScore > score ? stats.highestScore : null;
-
-    // Calculate averages
-    const avgScore = stats.totalGames > 0 ? Math.round(stats.totalScore / stats.totalGames) : 0;
-
-    // Update final stats display with 2x2 grid
     document.getElementById('demo-final-stats').innerHTML = `
-        <div class="stats-header">
-            <div class="score-display">${score.toLocaleString()}</div>
-            <div class="ranking-display">${rankingHTML}</div>
-            ${rankingBadge}
-        </div>
-
+        ${resultsHero(score, rankChips(rank, score), 'Replay score')}
         <div class="stats-grid">
-            <!-- Performance Section (Purple) -->
-            <div class="stat-card stat-card-purple">
-                <div class="stat-card-header">Performance</div>
-                <div class="stat-row">
-                    <span class="stat-label">Level</span>
-                    <span class="stat-value">${level}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Speed</span>
-                    <span class="stat-value">${speedMultiplier}x</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Lines</span>
-                    <span class="stat-value">${lines}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Pieces</span>
-                    <span class="stat-value">${piecesPlaced}</span>
-                </div>
-            </div>
-
-            <!-- Rate Stats Section (Cyan) -->
-            <div class="stat-card stat-card-cyan">
-                <div class="stat-card-header">Rates (Per Min)</div>
-                <div class="stat-row">
-                    <span class="stat-label">Points/Min</span>
-                    <span class="stat-value">${pointsPPM.toLocaleString()}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Pieces/Min</span>
-                    <span class="stat-value">${piecesPPM}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Lines/Piece</span>
-                    <span class="stat-value">${linesPerPiece}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Efficiency</span>
-                    <span class="stat-value">${efficiency}%</span>
-                </div>
-            </div>
-
-            <!-- Career Stats Section (Gold) -->
-            <div class="stat-card stat-card-gold">
-                <div class="stat-card-header">Career Best</div>
-                <div class="stat-row">
-                    <span class="stat-label">High Score</span>
-                    <span class="stat-value">${stats.highestScore.toLocaleString()}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">High Level</span>
-                    <span class="stat-value">${stats.highestLevel}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Total Games</span>
-                    <span class="stat-value">${stats.totalGames}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Total Lines</span>
-                    <span class="stat-value">${stats.totalLines.toLocaleString()}</span>
-                </div>
-            </div>
-
-            <!-- Comparison Section (Green) -->
-            <div class="stat-card stat-card-green">
-                <div class="stat-card-header">Replay (${durationStr})</div>
-                <div class="stat-row">
-                    <span class="stat-label">Score</span>
-                    <span class="stat-value">${score.toLocaleString()}</span>
-                </div>
-                ${personalBest ? `
-                <div class="stat-row">
-                    <span class="stat-label">vs Best</span>
-                    <span class="stat-value stat-comparison">${score > personalBest ? '+' : ''}${(score - personalBest).toLocaleString()}</span>
-                </div>
-                ` : ''}
-                <div class="stat-row">
-                    <span class="stat-label">vs Avg</span>
-                    <span class="stat-value stat-comparison">${score > avgScore ? '+' : ''}${(score - avgScore).toLocaleString()}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Avg Score</span>
-                    <span class="stat-value">${avgScore.toLocaleString()}</span>
-                </div>
-            </div>
+            ${performanceCard(state, figures)}
+            ${paceCard(figures)}
+            ${careerCard(stats)}
+            ${sessionCard(`Replay · ${figures.duration}`, score, stats)}
         </div>
     `;
 
@@ -780,17 +625,15 @@ export async function showDemoCompleteModal(
     const buttonsContainer = document.getElementById('demo-complete-buttons');
     if (buttonsContainer) {
         buttonsContainer.innerHTML = `
-            <button id="demo-watch-again" class="demo-btn primary">
-                ${csIcon('play', 16, 'btn-icon-svg')}
-                <span>Watch Again</span>
+            <button type="button" id="demo-watch-again" class="sb-btn sb-btn--primary">
+                ${csIcon('play', 16, 'btn-icon-svg')}<span>Watch again</span>
+                ${PRIMARY_KEYS}
             </button>
-            <button id="demo-browse-replays" class="demo-btn secondary">
-                ${csIcon('folder', 16, 'btn-icon-svg')}
-                <span>Browse Replays</span>
+            <button type="button" id="demo-browse-replays" class="sb-btn">
+                ${csIcon('folder', 16, 'btn-icon-svg')}<span>Browse replays</span>
             </button>
-            <button id="demo-main-menu" class="demo-btn tertiary">
-                ${csIcon('home', 16, 'btn-icon-svg')}
-                <span>Main Menu</span>
+            <button type="button" id="demo-main-menu" class="sb-btn sb-btn--quiet">
+                ${csIcon('home', 16, 'btn-icon-svg')}<span>Main menu</span>
             </button>
         `;
 
@@ -828,6 +671,40 @@ export function showSettingsModal(modalManager) {
     // Menu navigation is enabled in show() method
 }
 
+function formatRecordDate(timestamp) {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function recordRow(score, index, { showReplay, canPlay }) {
+    const medal = MEDALS[index] || '';
+    const points = score.score.toLocaleString();
+    const lineWord = score.lines === 1 ? 'line' : 'lines';
+    let replay = '';
+    if (showReplay) {
+        replay = score.demoId && canPlay
+            ? `<button type="button" class="play-demo-btn hs-play sb-btn" data-demo-id="${score.demoId}"
+                    aria-label="Watch the replay of ${points}">
+                    ${csIcon('play', 12, 'btn-icon-svg')}<span>Watch</span>
+                </button>`
+            : '<span class="hs-play hs-play--empty" aria-hidden="true"></span>';
+    }
+    const stamp = score.timestamp ? new Date(score.timestamp) : null;
+    const iso = stamp && !Number.isNaN(stamp.getTime()) ? stamp.toISOString() : '';
+    return `
+        <li class="hs-row${medal ? ` hs-row--${medal}` : ''}">
+            <span class="hs-rank">${index + 1}</span>
+            <div class="hs-main">
+                <div class="hs-score">${points}</div>
+                <div class="hs-meta">Level ${score.level} · ${score.lines} ${lineWord}</div>
+            </div>
+            <time class="hs-date"${iso ? ` datetime="${iso}"` : ''}>${formatRecordDate(score.timestamp)}</time>
+            ${replay}
+        </li>`;
+}
+
 /**
  * Shows the high scores modal with scores and statistics
  * @param {ModalManager} modalManager - Modal manager instance
@@ -835,92 +712,63 @@ export function showSettingsModal(modalManager) {
  * @param {Function} [onPlayDemo] - Optional callback to play a demo by ID: (demoId) => void
  */
 export async function showHighScoresModal(modalManager, highScoreManager, onPlayDemo = null) {
+    const list = document.getElementById('high-scores-list');
+    const statistics = document.getElementById('statistics-section');
     try {
         const topScores = await highScoreManager.getTopScores(10);
         const stats = await highScoreManager.getStatistics();
 
-        // Check if any scores have linked demos
-        const hasAnyDemos = topScores.some((score) => score.demoId);
-
-        // Build leaderboard (cosmic glass row-cards)
-        const leaderboardClass = hasAnyDemos ? 'hs-leaderboard hs-leaderboard--demos' : 'hs-leaderboard';
-        let scoresHTML = '<h2 class="hs-section-title">Top 10 Scores</h2>';
         if (topScores.length === 0) {
-            scoresHTML += '<p class="hs-empty">No scores yet. Start playing!</p>';
-        } else {
-            const rowsHTML = topScores.map((score, index) => {
-                const date = new Date(score.timestamp);
-                const dateStr = date.toLocaleDateString();
-                const medal = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : '';
-                const rankIcon = index === 0 ? 'crown' : index === 1 ? 'trophy' : index === 2 ? 'gem' : '';
-                const rankLabel = rankIcon ? csIcon(rankIcon, 18, `hs-rank-icon hs-rank-icon--${medal}`) : `${index + 1}`;
-                const rowClass = `hs-row${medal ? ` hs-row--${medal}` : ''}`;
-
-                // Play button for scores with linked demos (placeholder keeps rows aligned)
-                let playHTML = '';
-                if (hasAnyDemos) {
-                    if (score.demoId && onPlayDemo) {
-                        playHTML = `<button class="play-demo-btn hs-play" data-demo-id="${score.demoId}" title="Watch replay" aria-label="Watch replay">${csIcon('play', 16, 'btn-icon-svg')}</button>`;
-                    } else {
-                        playHTML = '<span class="hs-play hs-play--empty" aria-hidden="true">—</span>';
-                    }
-                }
-
-                return `
-                    <div class="${rowClass}">
-                        <div class="hs-rank">${rankLabel}</div>
-                        <div class="hs-main">
-                            <div class="hs-score">${score.score.toLocaleString()}</div>
-                            <div class="hs-meta">Lv ${score.level} · ${score.lines} lines</div>
-                        </div>
-                        <div class="hs-date">${dateStr}</div>
-                        ${playHTML}
-                    </div>
-                `;
-            }).join('');
-
-            scoresHTML += `<div class="${leaderboardClass}">${rowsHTML}</div>`;
-        }
-
-        document.getElementById('high-scores-list').innerHTML = scoresHTML;
-
-        // Attach event listeners to play buttons (hover handled in CSS)
-        if (onPlayDemo) {
-            document.querySelectorAll('.play-demo-btn').forEach((btn) => {
-                btn.addEventListener('click', (e) => {
-                    const demoId = parseInt(e.currentTarget.dataset.demoId, 10);
-                    modalManager.hide('highScores');
-                    onPlayDemo(demoId);
-                });
+            list.innerHTML = `
+                <div class="sb-empty hs-empty">
+                    <span class="sb-empty__icon" aria-hidden="true">${csIcon('trophy', 26)}</span>
+                    <p class="sb-empty__title">No records yet — your first game will set one.</p>
+                    <button type="button" class="sb-btn hs-empty__close">Close</button>
+                </div>`;
+            statistics.innerHTML = '';
+            list.querySelector('.hs-empty__close')?.addEventListener('click', () => {
+                document.getElementById('close-high-scores')?.click();
             });
+        } else {
+            const showReplay = topScores.some((score) => score.demoId);
+            const rows = topScores
+                .map((score, index) => recordRow(score, index, { showReplay, canPlay: Boolean(onPlayDemo) }))
+                .join('');
+            list.innerHTML = `
+                <h2 class="sb-sheet__section-title">Top scores</h2>
+                <ol class="hs-leaderboard${showReplay ? ' hs-leaderboard--demos' : ''}">${rows}</ol>`;
+
+            if (onPlayDemo) {
+                list.querySelectorAll('.play-demo-btn').forEach((btn) => {
+                    btn.addEventListener('click', (e) => {
+                        const demoId = parseInt(e.currentTarget.dataset.demoId, 10);
+                        modalManager.hide('highScores');
+                        onPlayDemo(demoId);
+                    });
+                });
+            }
+
+            const games = stats.totalGames;
+            const facts = [
+                ['Games', games.toLocaleString()],
+                ['Best score', stats.highestScore.toLocaleString()],
+                ['Highest level', stats.highestLevel],
+                ['Lines cleared', stats.totalLines.toLocaleString()],
+                ['Average score', games > 0 ? Math.round(stats.totalScore / games).toLocaleString() : '0'],
+                ['Average lines', games > 0 ? Math.round(stats.totalLines / games).toLocaleString() : '0'],
+            ];
+            statistics.innerHTML = `
+                <h2 class="sb-sheet__section-title">Statistics</h2>
+                <dl class="hs-stats-grid">${facts.map(([label, value]) => `
+                    <div class="hs-stat">
+                        <dt class="hs-stat-label">${label}</dt><dd class="hs-stat-value">${value}</dd>
+                    </div>`).join('')}
+                </dl>`;
         }
-
-        // Build statistics (cosmic glass stat cards)
-        const statCards = [
-            { label: 'Total Games', value: stats.totalGames.toLocaleString() },
-            { label: 'Highest Score', value: stats.highestScore.toLocaleString() },
-            { label: 'Total Lines', value: stats.totalLines.toLocaleString() },
-            { label: 'Highest Level', value: stats.highestLevel },
-        ];
-        if (stats.totalGames > 0) {
-            statCards.push({ label: 'Avg Score', value: Math.round(stats.totalScore / stats.totalGames).toLocaleString() });
-            statCards.push({ label: 'Avg Lines', value: Math.round(stats.totalLines / stats.totalGames).toLocaleString() });
-        }
-
-        let statsHTML = '<h2 class="hs-section-title">Statistics</h2>';
-        statsHTML += '<div class="hs-stats-grid">';
-        statsHTML += statCards.map((s) => `
-            <div class="hs-stat">
-                <div class="hs-stat-value">${s.value}</div>
-                <div class="hs-stat-label">${s.label}</div>
-            </div>
-        `).join('');
-        statsHTML += '</div>';
-
-        document.getElementById('statistics-section').innerHTML = statsHTML;
     } catch (error) {
         console.error('Error loading high scores:', error);
-        document.getElementById('high-scores-list').innerHTML = '<p class="hs-error">Error loading scores</p>';
+        list.innerHTML = '<p class="hs-error">Records could not be loaded. Close this and try again.</p>';
+        statistics.innerHTML = '';
     }
 
     modalManager.show('highScores');
@@ -1087,9 +935,8 @@ export function setupSettingsScrollPerformanceMode(modalManager) {
  * Sets up UI button listeners
  * @param {ModalManager} modalManager - Modal manager instance
  * @param {Object} callbacks - Callback functions
- * @param {Object} gameModeManager - Optional game mode manager for Serenity Hub icon
  */
-export function setupModalUI(modalManager, callbacks, gameModeManager = null) {
+export function setupModalUI(modalManager, callbacks) {
     const {
         onSettingsOpen,
         onSettingsClose,
@@ -1101,6 +948,8 @@ export function setupModalUI(modalManager, callbacks, gameModeManager = null) {
     } = callbacks;
 
     setupSettingsScrollPerformanceMode(modalManager);
+    // Escape as the way back, focus on open, Tab kept inside the open sheet.
+    installSheetInput();
 
     // Settings button (single player)
     // Global Settings button
@@ -1127,7 +976,8 @@ export function setupModalUI(modalManager, callbacks, gameModeManager = null) {
 
     // Close settings modal with Escape key
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && modalManager.isVisible('settings')) {
+        // defaultPrevented: an open option list took this Escape (sheet-input.js).
+        if (event.key === 'Escape' && modalManager.isVisible('settings') && !event.defaultPrevented) {
             event.preventDefault();
             event.stopImmediatePropagation(); // Stop other handlers on same element
             console.log('[Modals] Escape pressed, closing settings modal');

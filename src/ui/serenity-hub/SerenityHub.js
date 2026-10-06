@@ -1,10 +1,10 @@
 /**
- * SerenityHub - Unified control panel for Serenity Mode
+ * SerenityHub - the sheet that holds themes, music, breathing and Hale sessions.
  *
- * Provides a beautiful, minimal interface for:
- * - Breathing technique selection
- * - Music player controls
- * - Theme browsing and switching
+ * Keystone layout (public/styles/keystone-hub.css, docs/MENU_UI_OVERHAUL_2026-10.md): an
+ * eyebrow and title, a labelled close control, a tab strip, the scrolling content, and an
+ * input-hint footer. The sheet's top-right corner is open and holds the keystone.
+ * Each tab is its own module and builds its content on first use.
  */
 
 import { BreathingTab } from './BreathingTab.js';
@@ -21,6 +21,89 @@ import {
     scrollHubScrollContainerFromWheelEvent,
 } from './hub-scroll-utils.js';
 import { csIcon } from '../components/cosmic-icons.js';
+
+/** The Hub's sections in strip order. The eyebrow follows the main menu's "Breath · …" voice. */
+const HUB_TABS = Object.freeze([
+    {
+        id: 'themes', label: 'Themes', eyebrow: 'Breath · The world you play in', icon: 'galaxy',
+    },
+    {
+        id: 'music', label: 'Music', eyebrow: 'Breath · What you hear', icon: 'note',
+    },
+    {
+        id: 'breathing', label: 'Breathing', eyebrow: 'Breath · Rhythms to follow', icon: 'breath',
+    },
+    {
+        id: 'sessions',
+        label: 'Hale sessions',
+        eyebrow: 'Breath · Guided journeys',
+        icon: 'hale-base',
+        ariaLabel: 'Hale sessions · guided breathwork',
+    },
+]);
+const HUB_TAB_IDS = HUB_TABS.map((tab) => tab.id);
+
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[char]);
+
+/** One keycap; `kind` 'key' or 'pad' lets the body's input class choose which one shows. */
+const keycap = (label, kind = '') => `<kbd class="sb-kbd"${kind ? ` data-${kind}` : ''}>${label}</kbd>`;
+
+/** Serenity's default bindings; the player's own (settings) are laid over them. */
+const DEFAULT_PAD_BINDINGS = Object.freeze({
+    toggleHub: 3,
+    toggleBreathing: 2,
+    randomTheme: 10,
+    toggleFullscreen: 11,
+    previousTrack: 4,
+    nextTrack: 5,
+    volumeDown: 6,
+    volumeUp: 7,
+    toggleControlHints: 8,
+    openSettings: 9,
+    previousBreathingTechnique: 12,
+    nextBreathingTechnique: 13,
+    confirmSelection: 0,
+    closeHub: 1,
+    navigateLeft: 14,
+    navigateRight: 15,
+});
+const DEFAULT_KEY_BINDINGS = Object.freeze({
+    toggleHub: 'h',
+    toggleBreathing: 'Space',
+    cycleBreathingTechnique: 't',
+    randomTheme: 'b',
+    toggleFullscreen: 'f',
+    toggleControlHints: '/',
+    exitToMenu: 'Escape',
+});
+const PAD_BUTTON_NAMES = Object.freeze({
+    0: 'A',
+    1: 'B',
+    2: 'X',
+    3: 'Y',
+    4: 'LB',
+    5: 'RB',
+    6: 'LT',
+    7: 'RT',
+    8: 'Select',
+    9: 'Start',
+    10: 'L3',
+    11: 'R3',
+    12: 'D-Up',
+    13: 'D-Down',
+    14: 'D-Left',
+    15: 'D-Right',
+    16: 'Home',
+});
+
+function formatKeyName(key = '') {
+    const name = String(key);
+    if (name === ' ' || name.toLowerCase() === 'space') return 'Space';
+    if (name === 'Escape') return 'Esc';
+    return name.length === 1 ? name.toUpperCase() : name;
+}
 
 export class SerenityHub {
     constructor(serenityMode) {
@@ -91,8 +174,9 @@ export class SerenityHub {
     }
 
     /**
-   * Create the floating hub icon (top-right corner)
-   * If icon already exists in DOM (from index.html), use it instead of creating new one
+   * The Hub's in-game tile. index.html provides it and the play rail
+   * (src/ui/keystone/play-rail.js) gives it its place; this only recreates it, with the
+   * same line lotus, if the page lacks one.
    */
     createHubIcon() {
         // Check if icon already exists in the DOM (added via index.html)
@@ -104,26 +188,19 @@ export class SerenityHub {
             this.hubIcon.id = 'serenity-hub-icon';
             this.hubIcon.className = 'serenity-hub-icon visible';
             this.hubIcon.setAttribute('role', 'button');
-            this.hubIcon.setAttribute('aria-label', 'Open Serenity Hub');
+            this.hubIcon.setAttribute('aria-label', 'Serenity Hub');
             this.hubIcon.setAttribute('tabindex', '0');
 
             this.hubIcon.innerHTML = `
-        <svg class="hub-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-          <!-- Lotus flower icon -->
-          <g class="lotus">
-            <!-- Center circle -->
-            <circle cx="50" cy="60" r="8" fill="currentColor" opacity="0.9"/>
-
-            <!-- Petals -->
-            <path d="M 50 45 Q 35 50 30 65 Q 35 60 50 60" fill="currentColor" opacity="0.7"/>
-            <path d="M 50 45 Q 65 50 70 65 Q 65 60 50 60" fill="currentColor" opacity="0.7"/>
-            <path d="M 50 60 Q 40 70 35 80 Q 42 72 50 70" fill="currentColor" opacity="0.6"/>
-            <path d="M 50 60 Q 60 70 65 80 Q 58 72 50 70" fill="currentColor" opacity="0.6"/>
-            <path d="M 50 60 Q 45 75 40 85 Q 45 77 50 75" fill="currentColor" opacity="0.5"/>
-            <path d="M 50 60 Q 55 75 60 85 Q 55 77 50 75" fill="currentColor" opacity="0.5"/>
-          </g>
+        <svg class="sb-play-rail__icon" viewBox="0 0 24 24" width="20" height="20" fill="none"
+          stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+          aria-hidden="true" focusable="false">
+          <path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3"/>
+          <path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3"/>
+          <path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7"/>
+          <path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7"/>
+          <path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5"/>
         </svg>
-        <div class="hub-icon-glow"></div>
         <div class="hub-icon-pulse"></div>
       `;
 
@@ -165,7 +242,8 @@ export class SerenityHub {
         this.hubIcon.addEventListener('mouseleave', this.hubIconMouseLeaveHandler, { signal });
     }
 
-    /** A labelled route to guided sessions beside the permanent lotus control. */
+    /** The Hub's programmatic route to guided sessions (not shown: Hale lives in the Hub's
+     * own tab, one tap on the lotus in the play rail, and in the main menu's list). */
     createHaleSessionsEntry() {
         if (this.haleSessionsEntry) return;
         const button = document.getElementById('hale-sessions-btn') || document.createElement('button');
@@ -176,7 +254,9 @@ export class SerenityHub {
         button.setAttribute('aria-haspopup', 'dialog');
         button.setAttribute('aria-controls', 'serenity-hub-panel');
         button.setAttribute('aria-expanded', 'false');
-        button.innerHTML = `${csIcon('hale-base', 19)}<span><strong>Hale sessions</strong><small>Guided breathwork</small></span>`;
+        button.innerHTML = `<span class="hale-sessions-entry__icon">${csIcon('hale-base', 20)}</span>`
+            + '<span class="hale-sessions-entry__text">'
+            + '<strong>Hale sessions</strong><small>Guided breathwork</small></span>';
         const { signal } = this.abortController;
         button.addEventListener('click', (event) => {
             event.stopPropagation();
@@ -285,83 +365,52 @@ export class SerenityHub {
         this.panel.setAttribute('aria-labelledby', 'hub-title');
         this.panel.setAttribute('tabindex', '-1');
         this.panel.dataset.wheelLock = 'true';
+        this.panel.dataset.tab = this.currentTab;
 
+        const current = HUB_TABS.find((tab) => tab.id === this.currentTab) || HUB_TABS[0];
+        const tabs = HUB_TABS.map((tab) => {
+            const selected = tab.id === current.id;
+            return `<button type="button" id="hub-tab-${tab.id}" class="hub-tab${selected ? ' active' : ''}"
+                    data-tab="${tab.id}" role="tab" aria-selected="${selected}" aria-controls="tab-${tab.id}"
+                    tabindex="${selected ? 0 : -1}"${tab.ariaLabel ? ` aria-label="${escapeHtml(tab.ariaLabel)}"` : ''}>
+                <span class="hub-tab__icon" aria-hidden="true">${csIcon(tab.icon, 16)}</span>
+                <span class="hub-tab__label">${escapeHtml(tab.label)}</span>
+            </button>`;
+        }).join('');
+        const panels = HUB_TABS.map((tab) => `
+            <div id="tab-${tab.id}" class="tab-panel${tab.id === current.id ? ' active' : ''}" role="tabpanel"
+                aria-labelledby="hub-tab-${tab.id}">
+                <div class="tab-loading">Loading ${escapeHtml(tab.label.toLowerCase())}…</div>
+            </div>`).join('');
+
+        // The keystone sits in the sheet's open top-right corner (the fill is masked, not this).
         this.panel.innerHTML = `
-      <div class="hub-panel-header">
-        <h2 id="hub-title" class="hub-title">Serenity Hub</h2>
-        <button class="hub-close-btn" aria-label="Close Serenity Hub">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-
-      <nav class="hub-tabs" role="tablist">
-        <button class="hub-tab active"
-                data-tab="themes"
-                role="tab"
-                aria-selected="true"
-                aria-controls="tab-themes">
-          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <circle cx="12" cy="12" r="4"></circle>
-            <path d="M12 2v4m0 12v4M2 12h4m12 0h4"></path>
-          </svg>
-          <span>Themes</span>
-        </button>
-        <button class="hub-tab"
-                data-tab="music"
-                role="tab"
-                aria-selected="false"
-                aria-controls="tab-music">
-          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 18V5l12-2v13"></path>
-            <circle cx="6" cy="18" r="3"></circle>
-            <circle cx="18" cy="16" r="3"></circle>
-          </svg>
-          <span>Music</span>
-        </button>
-        <button class="hub-tab"
-                data-tab="breathing"
-                role="tab"
-                aria-selected="false"
-                aria-controls="tab-breathing">
-          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <path d="M12 6v12M6 12h12"></path>
-          </svg>
-          <span>Breathing</span>
-        </button>
-        <button id="hub-tab-sessions" class="hub-tab"
-                data-tab="sessions"
-                aria-label="Hale sessions · guided breathwork"
-                role="tab"
-                aria-selected="false"
-                aria-controls="tab-sessions">
-          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path>
-            <path d="M12 6v6l4 2"></path>
-          </svg>
-          <span>Hale sessions</span>
-        </button>
-      </nav>
-
-      <div class="hub-tab-content" data-wheel-lock="true">
-        <div id="tab-themes" class="tab-panel active" role="tabpanel" aria-labelledby="tab-themes">
-          <div class="tab-loading">Loading themes...</div>
-        </div>
-        <div id="tab-music" class="tab-panel" role="tabpanel" aria-labelledby="tab-music">
-          <div class="tab-loading">Loading music player...</div>
-        </div>
-        <div id="tab-breathing" class="tab-panel" role="tabpanel" aria-labelledby="tab-breathing">
-          <div class="tab-loading">Loading breathing techniques...</div>
-        </div>
-        <div id="tab-sessions" class="tab-panel" role="tabpanel" aria-labelledby="hub-tab-sessions">
-          <div class="tab-loading">Loading Hale sessions...</div>
-        </div>
-      </div>
-    `;
+            <span class="hub-key" aria-hidden="true"></span>
+            <header class="hub-panel-header">
+                <div class="hub-heading">
+                    <p class="sb-eyebrow hub-eyebrow">${escapeHtml(current.eyebrow)}</p>
+                    <h2 id="hub-title" class="hub-title" tabindex="-1" data-keystone="none">Serenity Hub</h2>
+                </div>
+                <button type="button" class="hub-close-btn" aria-label="Close Serenity Hub" aria-keyshortcuts="Escape">
+                    <svg class="hub-close-btn__icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                        <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path>
+                    </svg>
+                    <span class="hub-close-btn__label">Close</span>
+                    ${keycap('Esc', 'key')}${keycap('B', 'pad')}
+                </button>
+            </header>
+            <nav class="hub-tabs" role="tablist" aria-label="Serenity Hub sections">${tabs}</nav>
+            <div class="hub-tab-content" data-wheel-lock="true">${panels}</div>
+            <footer class="hub-footer">
+                <ul class="sb-hints" aria-label="Controls">
+                    <li>${keycap('&larr;', 'key')}${keycap('&rarr;', 'key')}${keycap('LB', 'pad')}${keycap('RB', 'pad')}
+                        Switch tabs</li>
+                    <li>${keycap('Enter', 'key')}${keycap('A', 'pad')}Choose</li>
+                    <li>${keycap('Esc', 'key')}${keycap('B', 'pad')}Close</li>
+                </ul>
+            </footer>
+        `;
 
         // Store handler references
         this.closeBtnClickHandler = () => this.hide();
@@ -469,13 +518,16 @@ export class SerenityHub {
                 this.switchTab(tabName);
             };
 
-            // Keyboard navigation for tabs
+            // Keyboard navigation for tabs: Enter/Space choose, arrows and Home/End walk the strip.
             const keydownHandler = (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     e.stopPropagation();
                     const tabName = tab.dataset.tab;
                     this.switchTab(tabName);
+                } else if (this.stepTab(e.key, tab.dataset.tab, { focus: true })) {
+                    e.preventDefault();
+                    e.stopPropagation();
                 }
             };
 
@@ -497,9 +549,21 @@ export class SerenityHub {
                 // panel and stop/deactivate the current game mode.
                 e.stopImmediatePropagation();
                 this.hide();
+            } else if (this.isOpen && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+                && this.isSheetFocused() && this.stepTab(e.key, this.currentTab, { focus: true })) {
+                // Just opened (focus on the title or the sheet): the arrows switch tabs at once.
+                e.preventDefault();
             }
         };
         document.addEventListener('keydown', this.documentKeydownHandler, { signal });
+        // Native activation inside the sheet must not also reach a mode's global shortcuts
+        // (Serenity Mode binds Space to the breathing guide).
+        this.panel.addEventListener('keydown', (e) => {
+            if ((e.key === ' ' || e.key === 'Enter')
+                && e.target?.closest?.('button, input, select, textarea, [role="button"], [role="slider"]')) {
+                e.stopPropagation();
+            }
+        }, { signal });
         document.addEventListener('visibilitychange', () => {
             const visible = this.isOpen && !document.hidden;
             this.themesTab?.setActive(visible && this.currentTab === 'themes');
@@ -639,14 +703,25 @@ export class SerenityHub {
         this.musicTab?.setActive(false);
         this.themesTab?.setActive(false);
         this.sessionsTab?.setActive(false);
+        // The tabs share one scroll container: each keeps its own place.
+        const scroller = this.getScrollContainer?.();
+        if (scroller) {
+            this.tabScrollPositions ||= new Map();
+            this.tabScrollPositions.set(this.currentTab, scroller.scrollTop);
+        }
         this.currentTab = tabName;
+        if (this.panel.dataset) this.panel.dataset.tab = tabName;
+        const eyebrow = this.panel.querySelector?.('.hub-eyebrow');
+        const spec = HUB_TABS.find((tab) => tab.id === tabName);
+        if (eyebrow && spec) eyebrow.textContent = spec.eyebrow;
 
-        // Update tab buttons
+        // Update tab buttons (roving tabindex: only the selected tab is in the Tab order)
         const tabs = this.panel.querySelectorAll('.hub-tab');
         tabs.forEach((tab) => {
             const isActive = tab.dataset.tab === tabName;
             tab.classList.toggle('active', isActive);
             tab.setAttribute('aria-selected', isActive);
+            tab.tabIndex = isActive ? 0 : -1;
         });
         this.revealActiveTab();
 
@@ -656,11 +731,35 @@ export class SerenityHub {
             const isActive = panel.id === `tab-${tabName}`;
             panel.classList.toggle('active', isActive);
         });
+        if (scroller) scroller.scrollTop = this.tabScrollPositions.get(tabName) || 0;
 
         // Load tab content if needed
         this.loadTabContent(tabName);
 
         console.log(`Switched to ${tabName} tab`);
+    }
+
+    /** Focus rests on the sheet itself or its title (where it lands when the Hub opens). */
+    isSheetFocused() {
+        const active = typeof document !== 'undefined' ? document.activeElement : null;
+        return Boolean(active) && (active === this.panel || active.id === 'hub-title');
+    }
+
+    /**
+     * Arrow keys and Home/End walk the tab strip (the ARIA tabs pattern, choosing as they go).
+     * @returns {boolean} true when the key chose another tab
+     */
+    stepTab(key, fromTab = this.currentTab, { focus = false } = {}) {
+        const count = HUB_TAB_IDS.length;
+        const index = Math.max(0, HUB_TAB_IDS.indexOf(fromTab));
+        const target = {
+            ArrowRight: (index + 1) % count, ArrowLeft: (index - 1 + count) % count, Home: 0, End: count - 1,
+        }[key];
+        if (target === undefined) return false;
+        const tabName = HUB_TAB_IDS[target];
+        this.switchTab(tabName);
+        if (focus) this.panel?.querySelector?.(`#hub-tab-${tabName}`)?.focus?.({ preventScroll: true });
+        return true;
     }
 
     /** Keep a selected tab visible without scrolling the Hub's dialog content. */
@@ -818,8 +917,11 @@ export class SerenityHub {
         // Load current tab content if not loaded
         this.loadTabContent(this.currentTab);
 
-        // Focus the panel for accessibility
-        this.panel.focus();
+        // Focus lands on the title: a screen reader hears the dialog's name, and the arrow
+        // keys switch tabs from here (the keystone marker skips it: data-keystone="none").
+        const title = this.panel.querySelector?.('#hub-title');
+        if (title?.focus) title.focus({ preventScroll: true });
+        else this.panel.focus();
 
         // Update icon state
         this.hubIcon.classList.add('active');
@@ -930,19 +1032,9 @@ export class SerenityHub {
             closeHub: () => this.hide(),
             isHubOpen: () => this.isOpen,
 
-            // Tab navigation
-            switchTabLeft: () => {
-                const tabs = ['themes', 'music', 'breathing', 'sessions'];
-                const currentIndex = tabs.indexOf(this.currentTab);
-                const newIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-                this.switchTab(tabs[newIndex]);
-            },
-            switchTabRight: () => {
-                const tabs = ['themes', 'music', 'breathing', 'sessions'];
-                const currentIndex = tabs.indexOf(this.currentTab);
-                const newIndex = (currentIndex + 1) % tabs.length;
-                this.switchTab(tabs[newIndex]);
-            },
+            // Tab navigation (LB / RB)
+            switchTabLeft: () => this.stepTab('ArrowLeft'),
+            switchTabRight: () => this.stepTab('ArrowRight'),
 
             // Item navigation
             navigate: (direction) => this.handleNavigation(direction),
@@ -1056,184 +1148,89 @@ export class SerenityHub {
     }
 
     /**
-   * Toggle button hints overlay
-   */
+     * Show or hide the controls overlay (/ on a keyboard, Select on a pad). It lists the
+     * player's own bindings as Keystone keycaps and steps away by itself after ten seconds.
+     */
     toggleButtonHints() {
-        let hintsOverlay = document.getElementById('gamepad-hints-overlay');
-
-        if (!hintsOverlay) {
-            const settings = this.serenityMode.deps?.settingsManager?.get?.() || {};
-            const gamepadBindings = {
-                toggleHub: 3,
-                toggleBreathing: 2,
-                randomTheme: 10,
-                toggleFullscreen: 11,
-                previousTrack: 4,
-                nextTrack: 5,
-                volumeDown: 6,
-                volumeUp: 7,
-                toggleControlHints: 8,
-                openSettings: 9,
-                previousBreathingTechnique: 12,
-                nextBreathingTechnique: 13,
-                confirmSelection: 0,
-                closeHub: 1,
-                navigateLeft: 14,
-                navigateRight: 15,
-                ...(settings.serenityGamepadBindings || {}),
-            };
-            const keyboardBindings = {
-                toggleHub: 'h',
-                toggleBreathing: 'Space',
-                cycleBreathingTechnique: 't',
-                randomTheme: 'b',
-                toggleFullscreen: 'f',
-                toggleControlHints: '/',
-                exitToMenu: 'Escape',
-                ...(settings.serenityKeyBindings || {}),
-            };
-            const gamepadButtonNames = {
-                0: 'A',
-                1: 'B',
-                2: 'X',
-                3: 'Y',
-                4: 'LB',
-                5: 'RB',
-                6: 'LT',
-                7: 'RT',
-                8: 'Select',
-                9: 'Start',
-                10: 'L3',
-                11: 'R3',
-                12: 'D-Up',
-                13: 'D-Down',
-                14: 'D-Left',
-                15: 'D-Right',
-                16: 'Home',
-            };
-            const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#39;',
-            })[char]);
-            const gamepadLabel = (action) => escapeHtml(
-                gamepadButtonNames[gamepadBindings[action]] || `Button ${gamepadBindings[action]}`,
-            );
-            const keyLabel = (action) => escapeHtml(keyboardBindings[action] || '');
-
-            // Detect if gamepad is connected
-            const gamepadController = this.serenityMode.deps?.gamepadController;
-            const connectionStatus = gamepadController?.getConnectionStatus?.();
-            const hasGamepad = connectionStatus?.controller1?.connected
-                || connectionStatus?.controller2?.connected
-                || false;
-
-            // Create hints overlay
-            hintsOverlay = document.createElement('div');
-            hintsOverlay.id = 'gamepad-hints-overlay';
-            hintsOverlay.className = 'gamepad-hints visible';
-
-            if (hasGamepad) {
-                // Show gamepad controls
-                hintsOverlay.innerHTML = `
-          <div class="hint-title"><span class="hint-title-icon">${csIcon('gamepad', 18)}</span> Serenity Mode Controls</div>
-          <div class="hint-grid">
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('toggleHub')}</span> Toggle Hub</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('toggleBreathing')}</span> Breathing</div>
-            <div class="hint-item"><span class="hint-button">D▲</span> Prev Technique</div>
-            <div class="hint-item"><span class="hint-button">D▼</span> Next Technique</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('randomTheme')}</span> Random Theme</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('toggleFullscreen')}</span> Fullscreen</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('previousTrack')}</span> Prev Track</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('nextTrack')}</span> Next Track</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('volumeDown')}</span> Volume Down</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('volumeUp')}</span> Volume Up</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('openSettings')}</span> Settings</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('toggleControlHints')}</span> Hide Hints</div>
-          </div>
-          <div class="hint-title" style="margin-top: 15px;">When Hub is Open</div>
-          <div class="hint-grid">
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('confirmSelection')}</span> Confirm</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('closeHub')}</span> Close Hub</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('navigateLeft')} / ${gamepadLabel('navigateRight')}</span> Navigate</div>
-            <div class="hint-item"><span class="hint-button">${gamepadLabel('previousTrack')} / ${gamepadLabel('nextTrack')}</span> Switch Tab</div>
-            <div class="hint-item"><span class="hint-button">R-Stick</span> Scroll</div>
-          </div>
-          <div class="hint-footer">Press ${gamepadLabel('toggleControlHints')} again to hide</div>
-        `;
-                const gamepadItems = hintsOverlay.querySelectorAll('.hint-item');
-                if (gamepadItems[2]) {
-                    gamepadItems[2].innerHTML = `<span class="hint-button">${gamepadLabel('previousBreathingTechnique')}</span> Prev Technique`;
-                }
-                if (gamepadItems[3]) {
-                    gamepadItems[3].innerHTML = `<span class="hint-button">${gamepadLabel('nextBreathingTechnique')}</span> Next Technique`;
-                }
-            } else {
-                // Show keyboard controls
-                hintsOverlay.innerHTML = `
-          <div class="hint-title">⌨️ Serenity Mode Controls</div>
-          <div class="hint-grid">
-            <div class="hint-item"><span class="hint-button">H</span> Toggle Hub</div>
-            <div class="hint-item"><span class="hint-button">Space</span> Breathing Guide</div>
-            <div class="hint-item"><span class="hint-button">T</span> Cycle Technique</div>
-            <div class="hint-item"><span class="hint-button">B</span> Random Theme</div>
-            <div class="hint-item"><span class="hint-button">F</span> Fullscreen</div>
-            <div class="hint-item"><span class="hint-button">/</span> Toggle Hints</div>
-            <div class="hint-item"><span class="hint-button">ESC</span> Exit to Menu</div>
-          </div>
-          <div class="hint-title" style="margin-top: 15px;">When Hub is Open</div>
-          <div class="hint-grid">
-            <div class="hint-item"><span class="hint-button">Click</span> Select Item</div>
-            <div class="hint-item"><span class="hint-button">H/ESC</span> Close Hub</div>
-            <div class="hint-item"><span class="hint-button">Mouse</span> Navigate</div>
-            <div class="hint-item"><span class="hint-button">Scroll</span> Browse Lists</div>
-          </div>
-          <div class="hint-footer">Press / again to hide</div>
-        `;
-                const keyboardTitle = hintsOverlay.querySelector('.hint-title');
-                if (keyboardTitle) {
-                    keyboardTitle.innerHTML = `<span class="hint-title-icon">${csIcon('square', 18)}</span> Serenity Mode Controls`;
-                }
-                const keyboardItems = hintsOverlay.querySelectorAll('.hint-item');
-                const keyboardRows = [
-                    ['toggleHub', 'Toggle Hub'],
-                    ['toggleBreathing', 'Breathing Guide'],
-                    ['cycleBreathingTechnique', 'Cycle Technique'],
-                    ['randomTheme', 'Random Theme'],
-                    ['toggleFullscreen', 'Fullscreen'],
-                    ['toggleControlHints', 'Toggle Hints'],
-                    ['exitToMenu', 'Exit to Menu'],
-                ];
-                keyboardRows.forEach(([action, label], index) => {
-                    if (keyboardItems[index]) {
-                        keyboardItems[index].innerHTML = `<span class="hint-button">${keyLabel(action)}</span> ${label}`;
-                    }
-                });
-                if (keyboardItems[8]) {
-                    keyboardItems[8].innerHTML = `<span class="hint-button">${keyLabel('toggleHub')} / ${keyLabel('exitToMenu')}</span> Close Hub`;
-                }
-                const keyboardFooter = hintsOverlay.querySelector('.hint-footer');
-                if (keyboardFooter) {
-                    keyboardFooter.textContent = `Press ${keyLabel('toggleControlHints')} again to hide`;
-                }
+        const existing = document.getElementById('gamepad-hints-overlay');
+        if (existing) {
+            if (existing.classList.contains('visible')) {
+                existing.classList.remove('visible');
+                setTimeout(() => existing.remove(), 300);
             }
-
-            document.body.appendChild(hintsOverlay);
-
-            // Auto-hide after 10 seconds
-            setTimeout(() => {
-                if (hintsOverlay && hintsOverlay.parentNode) {
-                    hintsOverlay.classList.remove('visible');
-                    setTimeout(() => hintsOverlay.remove(), 300);
-                }
-            }, 10000);
-        } else if (hintsOverlay.classList.contains('visible')) {
-            // Toggle visibility
-            hintsOverlay.classList.remove('visible');
-            setTimeout(() => hintsOverlay.remove(), 300);
+            return;
         }
+
+        const settings = this.serenityMode.deps?.settingsManager?.get?.() || {};
+        const pad = { ...DEFAULT_PAD_BINDINGS, ...(settings.serenityGamepadBindings || {}) };
+        const keys = { ...DEFAULT_KEY_BINDINGS, ...(settings.serenityKeyBindings || {}) };
+        const padName = (action) => escapeHtml(PAD_BUTTON_NAMES[pad[action]] || `Button ${pad[action]}`);
+        const keyName = (action) => escapeHtml(formatKeyName(keys[action]));
+        const status = this.serenityMode.deps?.gamepadController?.getConnectionStatus?.();
+        const hasGamepad = Boolean(status?.controller1?.connected || status?.controller2?.connected);
+
+        const play = hasGamepad ? [
+            [[padName('toggleHub')], 'Open the hub'],
+            [[padName('toggleBreathing')], 'Breathing guide'],
+            [[padName('previousBreathingTechnique'), padName('nextBreathingTechnique')], 'Breathing world'],
+            [[padName('randomTheme')], 'Random theme'],
+            [[padName('toggleFullscreen')], 'Full screen'],
+            [[padName('previousTrack'), padName('nextTrack')], 'Change track'],
+            [[padName('volumeDown'), padName('volumeUp')], 'Music volume'],
+            [[padName('openSettings')], 'Settings'],
+        ] : [
+            [[keyName('toggleHub')], 'Open the hub'],
+            [[keyName('toggleBreathing')], 'Breathing guide'],
+            [[keyName('cycleBreathingTechnique')], 'Next breathing world'],
+            [[keyName('randomTheme')], 'Random theme'],
+            [[keyName('toggleFullscreen')], 'Full screen'],
+            [[keyName('exitToMenu')], 'Back to the menu'],
+        ];
+        const inHub = hasGamepad ? [
+            [[padName('navigateLeft'), padName('navigateRight')], 'Move'],
+            [[padName('confirmSelection')], 'Choose'],
+            [[padName('previousTrack'), padName('nextTrack')], 'Switch tabs'],
+            [['R-stick'], 'Scroll'],
+            [[padName('closeHub')], 'Close the hub'],
+        ] : [
+            [['&larr;', '&rarr;'], 'Switch tabs'],
+            [['Tab'], 'Move between controls'],
+            [['Enter'], 'Choose'],
+            [[keyName('toggleHub'), keyName('exitToMenu')], 'Close the hub'],
+        ];
+        const capsOf = (caps) => caps.map((cap) => `<kbd class="sb-kbd hint-button">${cap}</kbd>`).join('');
+        const rows = (list) => list.map(([caps, label]) => `<li class="hint-item">
+                <span class="hint-keys">${capsOf(caps)}</span><span class="hint-label">${label}</span></li>`).join('');
+        const hideKey = hasGamepad ? padName('toggleControlHints') : keyName('toggleControlHints');
+
+        const overlay = document.createElement('div');
+        overlay.id = 'gamepad-hints-overlay';
+        // .serenity-hub: a click on the overlay is not a click on the game (SerenityMode).
+        overlay.className = 'gamepad-hints serenity-hub visible';
+        overlay.setAttribute('role', 'region');
+        overlay.setAttribute('aria-label', 'Serenity controls');
+        overlay.innerHTML = `
+            <header class="hint-head">
+                <p class="sb-eyebrow">${hasGamepad ? 'Controller' : 'Keyboard'}</p>
+                <h2 class="hint-heading">Serenity controls</h2>
+            </header>
+            <section class="hint-section">
+                <h3 class="hint-title">While you play</h3>
+                <ul class="hint-grid">${rows(play)}</ul>
+            </section>
+            <section class="hint-section">
+                <h3 class="hint-title">With the hub open</h3>
+                <ul class="hint-grid">${rows(inHub)}</ul>
+            </section>
+            <p class="hint-footer">Press <kbd class="sb-kbd">${hideKey}</kbd> again to hide</p>`;
+        document.body.appendChild(overlay);
+
+        // Steps away by itself after ten seconds.
+        setTimeout(() => {
+            if (!overlay.parentNode) return;
+            overlay.classList.remove('visible');
+            setTimeout(() => overlay.remove(), 300);
+        }, 10000);
     }
 
     /**

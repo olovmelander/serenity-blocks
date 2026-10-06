@@ -249,7 +249,7 @@ export class InfinityMinimap {
         title.textContent = 'OVERVIEW';
         title.style.cssText = `
             text-align: center;
-            font-family: 'Orbitron', monospace;
+            font-family: 'Unbounded', 'Orbitron', sans-serif;
             text-align: center;
             font-size: 10px;
             font-weight: 600;
@@ -269,7 +269,7 @@ export class InfinityMinimap {
         this.instructionLabel.textContent = 'Drag to explore';
         this.instructionLabel.style.cssText = `
             text-align: center;
-            font-family: 'Orbitron', monospace;
+            font-family: 'Unbounded', 'Orbitron', sans-serif;
             font-size: 9px;
             font-weight: 400;
             color: rgba(167, 139, 250, 0.5);

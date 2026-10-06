@@ -5,7 +5,10 @@
  */
 
 import { performanceMonitor } from '../utils/performance-monitor.js';
-import { SpatialNavigation } from './spatial-navigation.js';
+import { FOCUSABLE_SELECTOR, SpatialNavigation } from './spatial-navigation.js';
+import { getInputMode, hasGamepadActivity, markInputMode } from './keystone/input-mode.js';
+import { getOpenSheet, getSheetFocusables, getSheetInitialFocus } from './sheet-input.js';
+import { getTopLayerElement, goBackFromTopLayer } from './components/mp-sheet.js';
 import { COLS, ROWS } from '../core/constants.js';
 import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
@@ -644,6 +647,9 @@ export class GamepadController {
             // Get fresh gamepad state
             const freshGamepad = gamepads[gamepad.index];
             if (!freshGamepad) continue;
+            if (getInputMode() !== 'gamepad' && hasGamepadActivity(freshGamepad, this.deadzone)) {
+                markInputMode('gamepad');
+            }
 
             // The Serenity Hub is a top-layer input owner. Start/game-over
             // modals and game-mode cards can remain visible underneath it, so
@@ -670,6 +676,7 @@ export class GamepadController {
                 previousState.gameOverButton = mainButtons.some(
                     (buttonIndex) => freshGamepad.buttons[buttonIndex]?.pressed,
                 );
+                previousState.gameOverBack = freshGamepad.buttons[BUTTON_MAP.B]?.pressed;
                 previousState.gameModeSelect = freshGamepad.buttons[BUTTON_MAP.A]?.pressed;
                 continue;
             }
@@ -687,12 +694,15 @@ export class GamepadController {
                     this.processGameOverInput(freshGamepad, slot);
                     continue; // Don't process other input while game over modal is visible
                 }
+                this.previousStates[slot].gameOverArmed = false;
             }
 
-            // Process game mode selection, menu navigation, or game input
-            if (this.gameModeSelectionEnabled) {
+            // Process game mode selection, menu navigation, or game input. A sheet open
+            // over the main menu (Settings, Records, Replays) owns the pad: without this
+            // the D-pad walked the mode list behind it and A could start a game.
+            if (this.gameModeSelectionEnabled && !this.getMenuSheet()) {
                 this.processGameModeSelection(freshGamepad, slot);
-            } else if (this.menuNavigationEnabled) {
+            } else if (this.menuNavigationEnabled || this.getMenuSheet()) {
                 this.processMenuNavigation(freshGamepad, slot);
             } else {
                 // Always check for Start button to open settings, even without gameActions
@@ -715,15 +725,14 @@ export class GamepadController {
     }
 
     /**
-     * Process gamepad input when game over modal is visible
-     * Any button press will restart the game
+     * Process gamepad input when game over modal is visible.
+     * B goes to the main menu (like Escape on the sheet); A, X, Y or Start play again.
      */
     processGameOverInput(gamepad, slot) {
         const prevState = this.previousStates[slot];
 
-        // Check if any main button is pressed (A, B, X, Y, Start)
         const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
-        const bPressed = gamepad.buttons[BUTTON_MAP.B]?.pressed;
+        const bPressed = Boolean(gamepad.buttons[BUTTON_MAP.B]?.pressed);
         const xPressed = gamepad.buttons[BUTTON_MAP.X]?.pressed;
         const yPressed = gamepad.buttons[BUTTON_MAP.Y]?.pressed;
         const startPressed = gamepad.buttons[BUTTON_MAP.START]?.pressed;
@@ -731,8 +740,25 @@ export class GamepadController {
         const anyButtonPressed = aPressed || bPressed || xPressed || yPressed || startPressed;
         const wasAnyButtonPressed = prevState.gameOverButton;
 
+        // The first poll with the sheet up only latches: a button still held from play
+        // (rotate is often B) must be released and pressed again.
+        if (!prevState.gameOverArmed) {
+            prevState.gameOverArmed = true;
+            prevState.gameOverBack = bPressed;
+            prevState.gameOverButton = anyButtonPressed;
+            return;
+        }
+
+        if (bPressed && !prevState.gameOverBack && !wasAnyButtonPressed) {
+            prevState.gameOverBack = true;
+            prevState.gameOverButton = anyButtonPressed;
+            document.getElementById('game-over-main-menu')?.click();
+            return;
+        }
+        prevState.gameOverBack = bPressed;
+
         // Trigger restart on button press (rising edge)
-        if (anyButtonPressed && !wasAnyButtonPressed) {
+        if (anyButtonPressed && !bPressed && !wasAnyButtonPressed) {
             console.log('[Gamepad] Button pressed on game over screen - restarting');
 
             // Call the global startGame function if available
@@ -1155,34 +1181,16 @@ export class GamepadController {
         }
 
         // Use Spatial Navigation to find the best next element
-        // We restrict the search to the visible modal if one exists
-        let container = document.body;
-        const settingsModal = document.getElementById('settings-modal');
-        const highScoresModal = document.getElementById('high-scores-modal');
-
-        if (settingsModal && settingsModal.classList.contains('visible')) {
-            container = settingsModal.querySelector('.modal-content');
-        } else if (highScoresModal && highScoresModal.classList.contains('visible')) {
-            container = highScoresModal.querySelector('.modal-content');
-        }
+        // We restrict the search to the open sheet if there is one
+        const sheet = this.getMenuSheet();
+        const container = sheet?.element.querySelector('.modal-content') || document.body;
 
         const nextElement = SpatialNavigation.findNextElement(current, direction, container);
 
+        // Nothing further that way: stay put. Tabs change with LB/RB (switchMainTab).
         if (nextElement) {
             nextElement.focus();
             nextElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        } else {
-            // If no element found in that direction, check if we should switch tabs (only for Left/Right)
-            // But only if we are NOT in a slider or special control
-            if (direction === 'left') {
-                // Try to navigate to previous tab if at the edge
-                // this.navigateTab(-1);
-                // Actually, let's keep tab navigation on LB/RB to avoid confusion,
-                // or only allow it if we are explicitly on the tab bar.
-                // For now, let's rely on LB/RB for tabs as requested.
-            } else if (direction === 'right') {
-                // this.navigateTab(1);
-            }
         }
     }
 
@@ -1291,24 +1299,42 @@ export class GamepadController {
      * Navigate back / close menu
      */
     navigateMenuBack() {
-        // Check if settings modal is open
-        const settingsModal = document.getElementById('settings-modal');
-        if (settingsModal && settingsModal.classList.contains('active')) {
-            const closeBtn = document.getElementById('close-settings');
-            if (closeBtn) {
-                closeBtn.click();
-            }
+        const sheet = this.getMenuSheet();
+        if (!sheet) return;
+
+        // Multiplayer surfaces share one back stack with Escape (mp-sheet.js).
+        if (sheet.name === 'multiplayer') {
+            goBackFromTopLayer();
             return;
         }
 
-        // Check if high scores modal is open
-        const highScoresModal = document.getElementById('high-scores-modal');
-        if (highScoresModal && highScoresModal.classList.contains('active')) {
-            const closeBtn = document.getElementById('close-high-scores');
-            if (closeBtn) {
-                closeBtn.click();
-            }
+        if (sheet.name === 'settings') {
+            // B while a binding listens is the answer to the capture, not a way out — and
+            // so is the B that a capture took a moment ago.
+            const settingsModal = sheet.element;
+            const endedAt = Number(settingsModal.getAttribute?.('data-capture-ended')) || 0;
+            if (settingsModal.querySelector?.('.listening') || Date.now() - endedAt < 300) return;
+            document.getElementById('close-settings')?.click();
+            return;
         }
+
+        // Records and Replays close; replay complete goes back to the main menu.
+        if (sheet.sheet.back) document.getElementById(sheet.sheet.back)?.click();
+    }
+
+    /**
+     * The open Keystone sheet that menu navigation is scoped to (game over keeps its
+     * own any-button restart in processGameOverInput).
+     * @returns {{name: string, element: HTMLElement, sheet: Object}|null}
+     */
+    getMenuSheet() {
+        if (typeof document === 'undefined') return null;
+        const sheet = getOpenSheet(document, { exclude: ['gameOver'] });
+        if (sheet) return sheet;
+        // Local setup, the lobby screens and match results: the pad stays inside them.
+        const layer = getTopLayerElement();
+        if (!layer || !layer.getClientRects?.().length) return null;
+        return { name: 'multiplayer', element: layer, sheet: {} };
     }
 
     /**
@@ -1363,8 +1389,9 @@ export class GamepadController {
      * Get all focusable elements in the current view
      */
     getFocusableElements() {
-        const selector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-        const elements = Array.from(document.querySelectorAll(selector));
+        const sheet = this.getMenuSheet();
+        if (sheet) return getSheetFocusables(sheet.element);
+        const elements = Array.from(document.querySelectorAll(FOCUSABLE_SELECTOR));
 
         // Filter out hidden elements
         return elements.filter((el) => {
@@ -1379,6 +1406,13 @@ export class GamepadController {
      * Get the first focusable element
      */
     getFirstFocusableElement() {
+        // Inside an open sheet: keep the focus it already placed, or its primary control.
+        const sheet = this.getMenuSheet();
+        if (sheet) {
+            const active = document.activeElement;
+            if (active && active !== document.body && sheet.element.contains(active)) return active;
+            return getSheetInitialFocus(sheet.sheet, sheet.element);
+        }
         const focusable = this.getFocusableElements();
         return focusable.length > 0 ? focusable[0] : null;
     }
@@ -1682,7 +1716,7 @@ export class GamepadController {
         // Handle START button for settings (for player 1 only)
         // BUT skip if menu navigation is enabled (menus handle their own START button)
         if (slot === 0 && !this.menuNavigationEnabled) {
-            const settingsButton = this.serenityModeActive
+            const settingsButton = this.serenityShortcutsLive()
                 ? this.getSerenityGamepadBindings().openSettings
                 : BUTTON_MAP.START;
             const startPressed = Number.isInteger(settingsButton) && gamepad.buttons[settingsButton]?.pressed;
@@ -1697,12 +1731,10 @@ export class GamepadController {
             prevState.menuStart = startPressed;
         }
 
-        // If in Serenity Mode AND the hub is open, use Serenity Mode input handling exclusively
-        // Otherwise, process both Serenity shortcuts (SELECT to open hub) AND game input
-        if (this.serenityModeActive && this.serenityModeCallbacks) {
-            // Always process Serenity Mode input for hub toggle (SELECT button) and other shortcuts
+        // In Serenity Mode its shortcuts (Hub, breathing, music...) run alongside game input;
+        // with the hub open, the early return above already gave it every button.
+        if (this.serenityShortcutsLive()) {
             this.processSerenityModeInput(gamepad, slot);
-            // If hub is closed, continue to process game input below
         }
 
         // Handle Exploration Input (Right Stick Button Hold + Axis Scroll)
@@ -2154,6 +2186,18 @@ export class GamepadController {
         this.serenityModeActive = true;
         this.serenityModeCallbacks = callbacks;
         console.log('[Gamepad] Serenity Mode enabled');
+    }
+
+    /**
+     * Whether Serenity's pad shortcuts apply during play. The always-loaded Hub registers
+     * them at startup, but they belong to Serenity Mode: everywhere else those buttons
+     * play the game (Y rotates left, and used to open the Hub mid-run as well).
+     * @returns {boolean}
+     */
+    serenityShortcutsLive() {
+        if (!this.serenityModeActive || !this.serenityModeCallbacks) return false;
+        const body = typeof document !== 'undefined' ? document.body : null;
+        return Boolean(body?.classList?.contains?.('serenity-mode'));
     }
 
     getSerenityGamepadBindings() {
