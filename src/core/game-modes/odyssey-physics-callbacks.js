@@ -108,7 +108,7 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
         triggerFlash: (fullLines) => {
             effectHandlers.clearFlashBeat(fullLines);
         },
-        onLineClearImpact: (lineCount) => {
+        onLineClearImpact: (lineCount, cascadeCount) => {
             // Timing stays at the call site (fixed-tick lane reads no settings).
             if (usesFixedTiming) {
                 applyFixedLineImpactHitStop(gameState, lineCount);
@@ -117,7 +117,7 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
                 const hitStop = tier?.hitStop || (lineCount >= 4 ? 70 : 0);
                 if (hitStop > 0) gameState.hitStopRemaining = hitStop;
             }
-            effectHandlers.clearImpactBeat(lineCount);
+            effectHandlers.clearImpactBeat(lineCount, cascadeCount);
         },
         // Parity with local MP: no background pulse.
         triggerBackgroundPulse: () => {},

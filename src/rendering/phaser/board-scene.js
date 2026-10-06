@@ -143,9 +143,10 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
         /**
          * Play a subtle camera shake and intensify particle bursts based on line count
          * @param {number} lineCount - Number of lines cleared simultaneously
+         * @param {number} [cascadeCount=1] - This wave's depth in its cascade
          */
-        playLineClearImpact(lineCount = 1) {
-            this.sharedEffects?.playLineClearImpact(lineCount);
+        playLineClearImpact(lineCount = 1, cascadeCount = 1) {
+            this.sharedEffects?.playLineClearImpact(lineCount, cascadeCount);
         }
 
         /**

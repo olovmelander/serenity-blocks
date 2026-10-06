@@ -43,6 +43,10 @@ import {
 } from './local-multiplayer-loop.js';
 
 const MATCH_START_LOADING_MIN_VISIBLE_MS = 2000;
+/** How long a knock-out and a round won hold the boards before the round ends. */
+export const ROUND_OUTCOME_MS = 1500;
+/** The match won, on the boards, before the results. */
+const VICTORY_BEAT_MS = 2400;
 
 /**
  * LocalMultiplayerMode - Local 2-4 player competitive mode
@@ -1167,7 +1171,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         });
 
         const waitForOutcome = async () => {
-            await new Promise((resolve) => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, ROUND_OUTCOME_MS));
             return ownsLocalMultiplayerRound(this, roundOwner);
         };
         const matchResult = resolveLocalMultiplayerMatchResult(this.multiplayerState);
@@ -1330,12 +1334,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     this._showVictoryAnimation(winnerIndex);
                 });
 
-                await new Promise((resolve) => setTimeout(resolve, 500));
+                await new Promise((resolve) => setTimeout(resolve, ROUND_OUTCOME_MS));
                 if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
                 await this.handleRoundEnd({ type: 'team', teamId: teamOutcome.winnerTeamId });
             } else {
                 console.log('[LocalMultiplayer] Round ended in a draw (no teams remaining)');
-                await new Promise((resolve) => setTimeout(resolve, 500));
+                await new Promise((resolve) => setTimeout(resolve, ROUND_OUTCOME_MS));
                 if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
                 await this._startNewRound();
             }
@@ -1353,7 +1357,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             this._showVictoryAnimation(winnerIndex);
 
             // Wait for victory animation before showing round end
-            await new Promise((resolve) => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, ROUND_OUTCOME_MS));
             if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
 
             // Pass isSelfKill flag to handleRoundEnd
@@ -1375,7 +1379,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     this._showVictoryAnimation(winnerIndex);
 
                     // Wait a bit for victory animation before showing round end
-                    await new Promise((resolve) => setTimeout(resolve, 500));
+                    await new Promise((resolve) => setTimeout(resolve, ROUND_OUTCOME_MS));
                     if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
 
                     await this.handleRoundEnd(winnerKey, isSelfKill);
@@ -2297,11 +2301,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
         console.log(`[LocalMultiplayer] Match ended! Winner: ${winnerName}`);
 
         const clockBeforeStop = captureLocalMultiplayerClock(this);
+        const winners = teamWin
+            ? this.multiplayerState.players.map((_, i) => i).filter((i) => this._getResolvedTeamId(i) === winner.teamId)
+            : [winnerIndex].filter((i) => i >= 0);
+        if (winners.length && !(await this._playVictoryBeat(winners))) return;
         await this.onStop();
         const resultGeneration = this._startGeneration;
-        const resultClock = clockBeforeStop.usesFixedTiming
-            ? clockBeforeStop
-            : captureLocalMultiplayerClock(this);
+        // Captured before the victory beat and the teardown, in both lanes: a match's
+        // rates count its play, not the celebration (ADR-0012).
+        const resultClock = clockBeforeStop;
         this.lastMatchResultClock = resultClock;
 
         const currentDuration = resultClock.roundMs;
@@ -2400,213 +2408,63 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Show death animation when a player is eliminated
+     * A knock-out: the stack goes dark, loses its colour and comes apart
+     * (shared-effects.js playKnockout), and the knock-out card rises over it.
      * @private
      */
     _showPlayerDeathAnimation(playerIndex, by = null) {
         const boardScene = this.boardScenes[playerIndex];
-        if (!boardScene) {
-            console.warn(`[LocalMultiplayer] No board scene found for Player ${playerIndex + 1}`);
-            return;
-        }
-
-        // The board fades out (Phaser), dims, and the knock-out card rises over it.
-        this._createEliminationExplosion(boardScene, playerIndex);
-        boardScene.cameras?.main?.setAlpha(0.3);
+        if (boardScene?.sharedEffects) boardScene.sharedEffects.playKnockout();
+        else boardScene?.cameras?.main?.setAlpha(0.3);
         this.versusHud?.showKnockout(playerIndex, by);
         if (!this.knockedOut) this.knockedOut = new Set();
         this.knockedOut.add(playerIndex);
     }
 
     /**
-     * Clear the knock-out cards and restore the boards (when a new round starts)
+     * Clear the knock-out cards and bring every board's colour and light back
+     * (a new round or match).
      * @private
      */
     _clearDeathAnimations() {
-        this.knockedOut?.forEach((index) => this.boardScenes[index]?.cameras?.main?.setAlpha(1.0));
+        this.boardScenes.forEach((scene, index) => {
+            if (this.knockedOut?.has(index)) scene?.sharedEffects?.clearKnockout?.();
+            scene?.cameras?.main?.setAlpha?.(1.0);
+        });
         this.knockedOut = new Set();
         this.versusHud?.clearKnockouts();
     }
 
     /**
-     * Create simple gentle fade out elimination effect - covers entire player canvas
+     * The match's last beat on the boards: each winner's well celebrates (light
+     * from the floor, fireworks, a glow behind it), the others dim, and the HUD
+     * crowns the winner. Then the results.
+     * @param {number[]} winners
+     * @returns {Promise<boolean>} false when the match was left meanwhile
      * @private
      */
-    _createEliminationExplosion(boardScene, playerIndex) {
-        const playerNum = playerIndex + 1;
-        console.log(`[LocalMultiplayer] Creating gentle fade out for Player ${playerNum}`);
-
-        try {
-            // Get the entire player container (includes board, stats, next pieces, etc.)
-            const playerContainer = document.getElementById(`player${playerNum}-container`)
-                || document.getElementById(`p${playerNum}-container`)
-                || document.getElementById(`player-${playerNum}-card`); // Fallback to card ID
-
-            if (!playerContainer) {
-                console.warn(`[LocalMultiplayer] Player ${playerNum} container not found`);
-                return;
-            }
-
-            // Create full-canvas fade overlay
-            const fadeOverlay = document.createElement('div');
-            fadeOverlay.className = 'elimination-fade-overlay';
-            fadeOverlay.style.cssText = `
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: white;
-                opacity: 0;
-                z-index: 50;
-                pointer-events: none;
-                transition: opacity 0.6s ease-in-out;
-            `;
-
-            // Ensure container has position relative
-            if (playerContainer.style.position !== 'relative' && playerContainer.style.position !== 'absolute') {
-                playerContainer.style.position = 'relative';
-            }
-
-            playerContainer.appendChild(fadeOverlay);
-
-            // Animate fade in
-            requestAnimationFrame(() => {
-                fadeOverlay.style.opacity = '0.8';
-            });
-
-            // Hold briefly then fade out
-            setTimeout(() => {
-                fadeOverlay.style.transition = 'opacity 0.4s ease-out';
-                fadeOverlay.style.opacity = '0';
-
-                // Remove overlay after fade completes
-                setTimeout(() => {
-                    if (fadeOverlay.parentElement) {
-                        fadeOverlay.remove();
-                    }
-                }, 400);
-            }, 800); // Hold for 800ms (600ms fade in + 200ms hold)
-
-            // Also add camera flash to Phaser board if available
-            if (boardScene && boardScene.cameras && boardScene.cameras.main) {
-                boardScene.cameras.main.flash(400, 255, 255, 255, false);
-            }
-
-            console.log('[LocalMultiplayer] Full-canvas gentle fade out created successfully');
-        } catch (error) {
-            console.error('[LocalMultiplayer] Error creating elimination effect:', error);
-        }
+    async _playVictoryBeat(winners) {
+        const generation = this._startGeneration;
+        // The match is decided: the boards hold still under the celebration (a
+        // timed or points match ends with every player still playing).
+        if (this.multiplayerState) this.multiplayerState.isPaused = true;
+        this.boardScenes.forEach((scene, i) => {
+            if (winners.includes(i)) scene?.sharedEffects?.playVictory?.({ color: this._getPlayerColorScheme(i)?.primary });
+            else scene?.cameras?.main?.setAlpha?.(0.4);
+        });
+        this.versusHud?.showVictory?.(winners);
+        await new Promise((resolve) => { setTimeout(resolve, VICTORY_BEAT_MS); });
+        this.versusHud?.clearVictory?.();
+        return this.isActive && this._startGeneration === generation;
     }
 
     /**
-     * Show victory animation for last player standing
+     * A round won: the winner's well lights from the floor and fireworks go up
+     * (shared-effects.js playRoundWin).
      * @private
      */
     _showVictoryAnimation(winnerIndex) {
-        const boardScene = this.boardScenes[winnerIndex];
-        if (!boardScene || !boardScene.add) {
-            console.warn('[LocalMultiplayer] Cannot create victory animation - scene not ready');
-            return;
-        }
-
-        const PhaserRef = window.Phaser;
-        if (!PhaserRef) {
-            console.warn('[LocalMultiplayer] Phaser not available');
-            return;
-        }
-
-        console.log(`[LocalMultiplayer] Showing victory animation for Player ${winnerIndex + 1}`);
-
-        const width = boardScene.cols * boardScene.blockSize;
-        const height = boardScene.rows * boardScene.blockSize;
-        const particleKey = boardScene.commonParticleKey || 'common-circle-4px';
-
-        try {
-            // 1. GOLDEN FLASH
-            if (boardScene.cameras && boardScene.cameras.main) {
-                boardScene.cameras.main.flash(400, 255, 215, 0, false);
-            }
-
-            // 2. FIREWORKS - Multiple bursts
-            if (boardScene.textures && boardScene.textures.exists(particleKey)) {
-                const fireworkColors = [0xFFD700, 0xFFA500, 0xFF69B4, 0x00FF00, 0x00FFFF];
-
-                // Launch 5 fireworks at different times and positions
-                for (let i = 0; i < 5; i++) {
-                    setTimeout(() => {
-                        const x = (width * (0.2 + i * 0.15)) + (Math.random() - 0.5) * 30;
-                        const y = height * (0.2 + Math.random() * 0.3);
-                        const color = fireworkColors[i % fireworkColors.length];
-
-                        // Firework burst
-                        const firework = boardScene.add.particles(x, y, particleKey, {
-                            speed: { min: 100, max: 200 },
-                            angle: { min: 0, max: 360 },
-                            scale: { start: 1.5, end: 0 },
-                            tint: color,
-                            lifespan: 1000,
-                            gravityY: 150,
-                            quantity: 30,
-                            blendMode: 'ADD',
-                        });
-
-                        setTimeout(() => firework.destroy(), 1200);
-                    }, i * 200);
-                }
-
-                // 3. CONTINUOUS CONFETTI from top
-                const confetti = boardScene.add.particles(0, 0, particleKey, {
-                    x: { min: 0, max: width },
-                    y: -10,
-                    speedY: { min: 100, max: 200 },
-                    speedX: { min: -30, max: 30 },
-                    scale: { start: 1.0, end: 0.5 },
-                    tint: fireworkColors,
-                    lifespan: 3000,
-                    gravityY: 100,
-                    frequency: 50,
-                    blendMode: 'NORMAL',
-                });
-
-                // Stop confetti after 2.5 seconds
-                setTimeout(() => {
-                    confetti.stop();
-                    setTimeout(() => confetti.destroy(), 3000);
-                }, 2500);
-
-                // 4. SPARKLE EFFECTS around the board
-                for (let i = 0; i < 8; i++) {
-                    setTimeout(() => {
-                        const edge = Math.floor(Math.random() * 4);
-                        let x; let
-                            y;
-
-                        switch (edge) {
-                        case 0: x = Math.random() * width; y = 0; break; // Top
-                        case 1: x = width; y = Math.random() * height; break; // Right
-                        case 2: x = Math.random() * width; y = height; break; // Bottom
-                        case 3: x = 0; y = Math.random() * height; break; // Left
-                        }
-
-                        const sparkle = boardScene.add.particles(x, y, particleKey, {
-                            speed: { min: 50, max: 100 },
-                            angle: { min: 0, max: 360 },
-                            scale: { start: 1.0, end: 0 },
-                            tint: 0xFFFFFF,
-                            lifespan: 600,
-                            quantity: 15,
-                            blendMode: 'ADD',
-                        });
-
-                        setTimeout(() => sparkle.destroy(), 800);
-                    }, i * 150);
-                }
-            }
-
-            console.log('[LocalMultiplayer] Victory animation created successfully');
-        } catch (error) {
-            console.error('[LocalMultiplayer] Error creating victory animation:', error);
-        }
+        const color = this._getPlayerColorScheme(winnerIndex)?.primary;
+        this.boardScenes[winnerIndex]?.sharedEffects?.playRoundWin?.({ color });
     }
 }

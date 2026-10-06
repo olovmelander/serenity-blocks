@@ -3321,14 +3321,14 @@ class SerenityBlocks {
                 }
             },
             triggerBackgroundPulse: (lineCount) => triggerBackgroundPulse(lineCount),
-            onLineClearImpact: (lineCount) => {
+            onLineClearImpact: (lineCount, cascadeCount) => {
                 const settings = this.settingsManager.get();
                 if (
                     settings.lineClearEffects
                     && this.boardScene
                     && typeof this.boardScene.playLineClearImpact === 'function'
                 ) {
-                    this.boardScene.playLineClearImpact(lineCount);
+                    this.boardScene.playLineClearImpact(lineCount, cascadeCount);
                 }
             },
             triggerCombo: (comboCount) => {
@@ -4586,10 +4586,8 @@ class SerenityBlocks {
             triggerFlash: (clearedRows) => {
                 effectHandlers.clearFlashBeat(clearedRows);
             },
-            triggerBackgroundPulse: (lineCount) => {
-                // Optional: could add background pulse per player
-            },
-            onLineClearImpact: (lineCount) => {
+            triggerBackgroundPulse: () => {}, // no per-player background pulse
+            onLineClearImpact: (lineCount, cascadeCount) => {
                 const settings = this.settingsManager.get();
                 const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
                 if (!prefersReducedMotion && playerState) {
@@ -4605,7 +4603,7 @@ class SerenityBlocks {
                         playerState.hitStopRemaining = hitStop;
                     }
                 }
-                effectHandlers.clearImpactBeat(lineCount);
+                effectHandlers.clearImpactBeat(lineCount, cascadeCount);
             },
             triggerCombo: (comboCount) => {
                 effectHandlers.comboBeat(comboCount);
@@ -4617,6 +4615,7 @@ class SerenityBlocks {
                 // Mega-only inside SharedEffects; silent below 10.
                 effectHandlers.cascadeWaveBeat(cascadeCount);
             },
+            onPerfectClear: (depth) => sceneRef()?.sharedEffects?.playPerfectClear(depth),
             onPieceLock: (piece) => {
                 effectHandlers.lockBeat(piece);
 
@@ -4690,7 +4689,7 @@ class SerenityBlocks {
                     }
 
                     if (result && result.garbagePieces) {
-                        // Mark board as dirty to trigger re-render
+                        sceneRef()?.sharedEffects?.playGarbageArrival?.(queuedEntries.length); // the stack heaves up
                         markBoardDirty(playerState);
                         rebuildBoardGridFromPieces(playerState.lockedPieces, playerState.boardGrid);
 

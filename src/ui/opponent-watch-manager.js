@@ -3,6 +3,7 @@ import { drawPieceSolid, drawPieceStyledUnified } from '../rendering/canvas/canv
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import { createOutCard, showOutCard } from './keystone/out-card.js';
 
 const DEFAULT_EFFECTS = {
     glowRadius: 0,
@@ -1661,6 +1662,10 @@ export class OpponentWatchManager {
         });
     }
 
+    /**
+     * An opponent knocked out: their board takes a coral strike and shakes, then the
+     * compact Out card settles over it (ui/keystone/out-card.js).
+     */
     _showOpponentDeathAnimation(board, killerName = null) {
         const container = board?.frame || board?.element;
         if (!container) return;
@@ -1670,33 +1675,8 @@ export class OpponentWatchManager {
         }
 
         board.deathAnimationActive = true;
-        container.classList.add('death-shake');
-        setTimeout(() => container.classList.remove('death-shake'), 450);
-
-        const flashOverlay = document.createElement('div');
-        flashOverlay.className = 'death-flash-overlay';
-        flashOverlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: white;
-            opacity: 0;
-            z-index: 50;
-            pointer-events: none;
-            transition: opacity 0.4s ease-in-out;
-            border-radius: inherit;
-        `;
-        container.appendChild(flashOverlay);
-
-        requestAnimationFrame(() => {
-            flashOverlay.style.opacity = '0.8';
-            setTimeout(() => {
-                flashOverlay.style.opacity = '0';
-                setTimeout(() => flashOverlay.remove(), 400);
-            }, 200);
-        });
+        container.classList.add('death-shake', 'is-struck');
+        setTimeout(() => container.classList.remove('death-shake', 'is-struck'), 650);
 
         setTimeout(() => {
             this._createOpponentDeathOverlay(container, killerName);
@@ -1708,89 +1688,10 @@ export class OpponentWatchManager {
         if (container.querySelector('.death-overlay')) {
             return;
         }
-        const overlay = document.createElement('div');
-        overlay.className = 'death-overlay';
-        overlay.innerHTML = `
-            <div class="death-content">
-                <div class="death-skull">💀</div>
-                <div class="death-text">ELIMINATED</div>
-                <div class="death-killer"></div>
-            </div>
-        `;
-        overlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.75);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-            pointer-events: none;
-            border-radius: inherit;
-        `;
-
-        const content = overlay.querySelector('.death-content');
-        content.style.cssText = `
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-        `;
-
-        const skull = overlay.querySelector('.death-skull');
-        skull.style.cssText = `
-            font-size: 64px;
-            opacity: 0;
-            transform: scale(0.5) rotate(-45deg);
-            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-        `;
-
-        const text = overlay.querySelector('.death-text');
-        text.style.cssText = `
-            font-size: 24px;
-            font-weight: 700;
-            color: #fc8181;
-            text-shadow: 0 0 20px rgba(252, 129, 129, 0.5);
-            opacity: 0;
-            transform: scale(0.5) translateY(20px);
-            transition: all 0.4s ease-out 0.2s;
-        `;
-
-        const killer = overlay.querySelector('.death-killer');
-        if (killerName) {
-            killer.textContent = `by ${killerName}`;
-            killer.style.cssText = `
-                font-size: 14px;
-                color: #cbd5e0;
-                opacity: 0;
-                letter-spacing: 0.5px;
-                transform: translateY(6px);
-                transition: all 0.4s ease-out 0.3s;
-            `;
-        } else {
-            killer.remove();
-        }
-
-        if (getComputedStyle(container).position === 'static') {
-            container.style.position = 'relative';
-        }
-
-        container.appendChild(overlay);
-
-        requestAnimationFrame(() => {
-            skull.style.opacity = '1';
-            skull.style.transform = 'scale(1) rotate(0deg)';
-            text.style.opacity = '1';
-            text.style.transform = 'scale(1) translateY(0)';
-            if (killerName) {
-                killer.style.opacity = '1';
-                killer.style.transform = 'translateY(0)';
-            }
-        });
+        showOutCard(container, createOutCard(document, {
+            cause: killerName ? `By ${killerName}` : null,
+            compact: true,
+        }));
     }
 
     _ensureOpponentDeathOverlay(board) {
@@ -1924,10 +1825,7 @@ export class OpponentWatchManager {
             deathOverlay.remove();
         }
 
-        const flashOverlay = container.querySelector('.death-flash-overlay');
-        if (flashOverlay) {
-            flashOverlay.remove();
-        }
+        container.classList.remove('death-shake', 'is-struck');
         board.deathAnimationActive = false;
     }
 

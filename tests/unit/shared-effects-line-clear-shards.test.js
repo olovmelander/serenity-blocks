@@ -92,8 +92,18 @@ describe('spawnLineClearShards', () => {
             // centre of a 40px cell on the bottom visible row (23 - 4 hidden = 19)
             expect((e.x - 20) % 40).toBe(0);
             expect(e.y).toBe(19 * 40 + 20);
-            expect(e.n).toBe(3);
+            expect(e.n).toBe(2);
         });
+    });
+
+    it('breaks the row from the middle: each half flies out to its own side', () => {
+        fx.spawnLineClearShards([23]);
+        const { angle } = scene.emitters[0].config;
+        const left = Array.from({ length: 20 }, () => angle({ x: 60 }));
+        const right = Array.from({ length: 20 }, () => angle({ x: 340 }));
+        // Phaser angles: 0 is right, -90 up, ±180 left.
+        expect(left.every((a) => a <= -120 && a >= -180)).toBe(true);
+        expect(right.every((a) => a >= -60 && a <= 0)).toBe(true);
     });
 
     it('renders debris opaque, not additive — the cell colour must read true', () => {
@@ -133,7 +143,7 @@ describe('spawnLineClearShards', () => {
         f._reducedMotion = () => true;
         f.spawnLineClearShards([23]);
         s.emitters.forEach((e) => e.emitted.forEach((x) => expect(x.n).toBe(1)));
-        expect(s.emitters[0].config.speed.max).toBeLessThan(230);
+        expect(s.emitters[0].config.speed.max).toBeLessThan(200);
     });
 
     it('skips rows that are above the visible playfield', () => {

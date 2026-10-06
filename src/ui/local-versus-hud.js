@@ -173,6 +173,7 @@ export class LocalVersusHud {
         this._plateSigs = [];
         this._barSig = '';
         this._knockouts = new Map();
+        this._victories = [];
         this._coachTimer = null;
         this._lastValues = [];
         this._danger = [];
@@ -416,6 +417,38 @@ export class LocalVersusHud {
         this.doc.querySelectorAll('.lv-ko').forEach((card) => card.remove());
     }
 
+    /**
+     * The match won: a crest over each winner's well — "Victory", their name in their
+     * colour — while the well celebrates, until the results.
+     * @param {number[]} winners
+     */
+    showVictory(winners = []) {
+        this.clearVictory();
+        winners.forEach((index) => {
+            const section = this._el(`p${index + 1}-phaser-container`)?.closest('.player-board-section');
+            if (!section) return;
+            const crest = this.doc.createElement('div');
+            crest.className = 'lv-victory';
+            crest.setAttribute('role', 'status');
+            crest.style.setProperty('--win-color', this._color(index));
+            crest.innerHTML = '<span class="lv-victory__kicker">Match won</span>'
+                + '<span class="lv-victory__title">Victory</span>'
+                + `<span class="lv-victory__name">${escapeHtml(this._name(index))}</span>`;
+            section.appendChild(crest);
+            this._victories.push(crest);
+            this._el(`p${index + 1}-plate`)?.classList.add('is-victor');
+            // The light rises first, then the crest.
+            this._later(() => crest.classList.add('is-shown'), 380);
+        });
+    }
+
+    clearVictory() {
+        this._victories.forEach((crest) => crest.remove());
+        this._victories = [];
+        this.doc.querySelectorAll('#multiplayer-container .lv-plate.is-victor')
+            .forEach((plate) => plate.classList.remove('is-victor'));
+    }
+
     /** Each human board shows its controls for a few seconds at the start. */
     showCoach() {
         this.hideCoach();
@@ -561,6 +594,7 @@ export class LocalVersusHud {
             .forEach((node) => node.remove());
         this.hideCoach();
         this.clearKnockouts();
+        this.clearVictory();
         for (let n = 1; n <= 4; n++) {
             const plate = this._el(`p${n}-plate`);
             if (plate) plate.innerHTML = '';

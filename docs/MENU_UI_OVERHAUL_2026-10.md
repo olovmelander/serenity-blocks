@@ -252,6 +252,10 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | The Steam player card said "Offline" twice (status line and pill) in Orbitron with pill chips | One "Offline" with the reason in its tooltip; Keystone type and tile chips |
 | Replay controls were emoji glyphs named only by `title`, and the speed menu kept showing the last speed after a new replay reset to 1× | SVG buttons with labels; the speed row follows the player |
 | Odyssey results, failure, navigator and board views each injected a `<style>` block at runtime | Styles live in `keystone-overlays.css` |
+| Additive light darkened other light on the transparent board canvas (Phaser's `ADD` is `[ONE, DST_ALPHA]`): dark bands beside a clear's blade, a dark square behind the perfect-clear ring | A true additive blend, `[ONE, ONE]`, for every light (§5.8) |
+| Single player stopped the board scene before the results, so a top-out's effect never showed: the well went blank at once | The board stays up for the death; the next start or leaving the mode stops it |
+| A cascade's later waves looked exactly like its first (the depth physics passes with each impact was dropped) | Each wave reads its depth |
+| Garbage arriving on a local versus board had no effect on the board | The stack heaves, as online |
 
 ---
 
@@ -647,6 +651,61 @@ window allows, with every number in one place beside it.
   the tower a slim rail beside the board (`display: grid !important`, since the mode
   sets the container's display inline).
 
+### 5.8 Board effects (`src/rendering/phaser/shared-effects.js`, `fx/`)
+
+Every board event — single player, Infinity, local versus and online — speaks one
+language: **light, weight, grace**. The boards run on Phaser 4.2.1 (npm's latest when
+this was written); the knock-out and top-out drains use its camera colour filter.
+
+**Rules**
+
+1. Light, never paint: additive light from soft textures, in the piece's colour or the
+   event's tone; no opaque fill and no flat full-board flash.
+2. No vertical lines: speed is a short tapered smear and sparks, never a beam down the
+   well; the walls glow as a wide haze, not a line.
+3. Grounded: an effect starts where the event happened (the contact edge, the cleared
+   rows, the roof, the floor).
+4. One vocabulary that escalates: the same marks get brighter, wider and longer with
+   the lines cleared, the combo, back-to-back and a cascade's depth.
+5. Keystone type: callouts in Unbounded with a Manrope kicker, cream with a glow in the
+   tone and a light underline; no skewed bands, no Orbitron.
+6. Tones: cream (impact), gold (achievement), aqua (a chain), lavender (a spin, a level),
+   coral (danger, loss).
+7. Cheap: soft textures drawn once per game on a canvas, tinted sprites tweened (no
+   Graphics redrawn every frame for the lit path), particle and object caps per board.
+8. Reduced motion: no shake, no flying particles, no fireworks; fades and light stay.
+
+**The kit (`fx/fx-kit.js`).** Nine textures (glow, ember, band, slab, flare, smear,
+ring, rise, shard), the tones, `addLight()`, and the light blend. Phaser's `ADD` is
+`[ONE, DST_ALPHA]`, additive only on an opaque canvas; the board canvas is transparent
+(the well shows through), so every light laid over another light dimmed it across its
+whole quad — dark bands beside a clear's blade, a dark square behind the perfect-clear
+ring, dark boxes around embers. `lightBlend()` registers `[ONE, ONE]` once per renderer
+(premultiplied, valid on either canvas) and every light, emitter and fallback uses it.
+Phaser 4.2's `addBlendMode` returns the index before the new mode, so the kit reads the
+index back from the renderer.
+
+| Event | Before | Now |
+|---|---|---|
+| Hard drop | A rectangle 1.6× the piece wide down the whole drop, white core, shrinking to a hairline; an ellipse ring at the foot | The piece flashes in its colour; one short smear per run of top cells; where it rests (the floor or the stack, not its own cells) a pool of light and a bright edge that spread further the further it fell; sparks kick out sideways from the ends and fall |
+| Lock | Silhouette stamp plus a three-cell ring every lock | The stamp only |
+| Single–triple | A stripe in the theme tint, three square shards per cell, an upward fountain of streaks | The rows turn to light the instant they clear: one even slab per run of rows (a quad is one block, not four stripes), held, then bloomed away; a bright blade across it; chunks of the cells burst outward and fall; embers drift up |
+| Quad | + a full-board white wash, green dashes over the whole well | + a gold bloom from the rows and a "Four lines / Quad" callout (once per 1.2 s, however a cascade repeats it) |
+| Perfect clear | White supernova, three rings, "PERFECT / CLEAR" in Orbitron on a skewed band | "Board clear / Perfect" first, a gold bloom, dawn rising from the floor, two soft rings, gold motes |
+| Cascade | Only the popup counted the depth (wave 5 lit like wave 1); a hundred streaks at 5+ that began as a white disc | Each wave reads its depth (physics passes it with the impact): more of the chain's tone (aqua → gold → coral → hot pink), a longer hold, a bigger blade, more embers and weight; from wave 3 the walls haze and the rows bloom in the tone; at 5+ a soft ring in the tone; "Chain ×n / Cascade" at 10 |
+| Combo, T-spin, back-to-back | Orbitron with red/cyan fringes on skewed bands | The depth's number in Unbounded with "COMBO" under it, in the tone; "T-spin / Double" with a lavender ring; "Back to back" in gold |
+| Level up | A flat cyan box sweeping up | A band of lavender light sweeps up the well, the walls glow, "Level up / 5" |
+| Garbage in | An orange rail and dust; local versus showed nothing on the board | The stack heaves: light rises from the floor with a coral edge, dust is forced up, the walls flare; local versus now calls it too |
+| Top-out | A red flash; the board scene was stopped before the results, so the well went blank at once | The roof flares coral, a dark tide wipes down the well on a coral seam while its colour drains (camera filter), the longest hit-stop in the game; the board stays up for the beat (0.76 s, 0.32 s reduced) and the results arrive over it |
+| Knock-out (versus) | A white DOM overlay over the card, the board at 0.3 alpha; online, a red card | The same tide and drain, pieces break off the stack and fall out of the well in slate, the board settles dim; the "Out" card (who did it) rises over it, local and online (`ui/keystone/out-card.js`); a new round undoes the filter |
+| Round won (versus) | `camera.flash` (a solid gold board), blob fireworks for a second, confetti | Gold light rises from the floor of the winner's well and two fireworks climb as one bright mote each and burst (flash, ring, embers in the winner's colour); the round waits 1.5 s on the outcome |
+| Match won (versus) | Nothing on the boards; the results faded in | A 2.4 s beat before the results: the boards hold still, the winner's well lights, a halo breathes behind it, five shells go up, a "Match won / Victory / name" crest rises in their colour (`local-versus-hud.js` `showVictory`), the other wells dim |
+
+**Recipes.** Instant beats appear at full strength when created, since a tween can
+start a frame late on a slow device. Bright-edged textures keep their last rows clear,
+so a wrapping sampler never carries the bright foot to the top. Light that crosses
+cells stays a shade under white so the cells' colours read through it.
+
 ## 6. Verification
 
 - Every surface captured with Playwright (Chromium, WebGPU) at 1600 × 900 and 390 × 844,
@@ -684,9 +743,30 @@ window allows, with every number in one place beside it.
   (square cells, zoom, row picking, off-floor), `tests/unit/infinity-hud.test.js`, and
   the ledger's grouping, level bar and danger in
   `tests/unit/hud-stat-pulse-batching.test.js`.
+- Board effects (§5.8): every event recorded frame by frame at 1600 × 900 with the CDP
+  screencast, before and after, and replayed in slow motion (the page's clocks — rAF,
+  `performance.now`, `Date.now` and timers — dilated 2–4× before boot, since Phaser and
+  its tween manager keep their own references): a hard drop from the top, single,
+  quad and perfect clears, a five-wave cascade (a board found by searching with the
+  game's own `resolveCascade`), back-to-back clears, a level up, a top-out, Infinity's
+  quad and perfect clear, and local versus with 2 and 3 players (incoming garbage, a
+  knock-out, a round won, the match won); the T-spin, back-to-back and chain callouts
+  shot on their own. Pixel profiles confirmed the dark bands and square came from the
+  blend. The online knock-out needs two clients and was not run live; its card and the
+  shared knock-out are unit tested. Unit tests: `tests/unit/fx-kit.test.js`,
+  `fx-moments.test.js`, `shared-effects-cascade-depth.test.js`, `out-card.test.js`, the
+  victory crest in `local-versus-hud.test.js`, the victory beat in
+  `local-multiplayer-loop-ownership.test.js`, and the updated shared-effects suites.
 - No `backdrop-filter` remains on any Keystone surface.
 
 ## 7. Open follow-ups
+
+- **Board effects.** Run an online match with two clients to see the knock-out card and
+  drain live. Odyssey still plays the top-out on a board its own flow tears down; give
+  it the same beat. A consecutive-clear combo (one clear per piece) is shown only by the
+  light's tone, by design (local versus's read); a popup for it is a product call. The
+  blocks that fall between a cascade's waves have no landing light, also by design
+  (earlier "settle beats" were dropped as noise).
 
 - **One sheet primitive.** `keystone-modals.css` (`#… .sb-sheet`-style rules for
   Settings, Records, Replays, results), `mp-sheet.js` and `keystone-sheet.js` grew the
