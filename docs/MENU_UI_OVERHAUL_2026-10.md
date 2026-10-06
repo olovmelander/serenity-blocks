@@ -178,6 +178,10 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | `.modal p` made every paragraph in every menu pulse and turn violet | Scoped to the game-over restart prompt |
 | Font URLs were absolute (`/fonts/...`) | Relative to the stylesheet |
 | Odyssey copy promised 56 levels in 7 chapters | Read from the level registry (59 in 8) |
+| Tabbing to "Back to Map" in the Odyssey failure sheet and pressing Enter retried the level | A focused button owns Enter/Space; Retry takes focus when the sheet opens |
+| The Odyssey HUD progress fill filled its whole section (an unscoped absolute `.progress-fill` in `serenity-hub.css`) | The HUD keeps its fill in flow inside the track |
+| The countdown plate, Odyssey HUD and single-player stat rail blurred the live scene every frame | Opaque layered fills |
+| Odyssey results, failure, navigator and board views each injected a `<style>` block at runtime | Styles live in `keystone-overlays.css` |
 
 ---
 
@@ -189,4 +193,44 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Settings (also the pause sheet), Records, Replays, game over, replay complete | `keystone-settings.css`, `keystone-modals.css` | See below |
 | Serenity Hub (Themes, Music, Breathing, Hale sessions, Hale flow) | `keystone-hub.css` | See below |
 | Multiplayer (local setup, lobby browser, create match, waiting room, results) | `keystone-multiplayer.css` | See below |
-| Odyssey overlays, loading and countdown, toasts | `keystone-overlays.css` | See below |
+| Loading, countdown, Odyssey overlays and HUD, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
+
+### 5.1 In-game overlays (`keystone-overlays.css`)
+
+**Before:** Orbitron and Space Mono over violet glass; every Odyssey view injected its
+own styles from JavaScript; the countdown was a traffic light (green, amber, red, then
+a gold "GO!") on a plate blurring the scene at 24 px; "VICTORY LAP" / "COMPLETE!"
+shouted from the HUD.
+
+**After:**
+
+- **Countdown** walks down the spectrum: 3 lavender, 2 aqua, 1 mint, then **GO** in
+  coral as the keystone tile drops into the plate's open corner (one Web Animations
+  drop per count; `data-count="high|two|one|go"` on the layer drives the CSS). The plate
+  is opaque; nothing blurs the scene that is about to start.
+- **Odyssey results and failure** are Keystone sheets built by
+  `src/ui/odyssey/keystone-sheet.js` (`createKeystoneSheet`, `appendKeyHint`): the
+  level's name is the hero, earned stars land in gold one beat apart, score / lines /
+  time are fact tiles, and there is one coral action (Continue, Retry) with key and
+  controller hints. The unranked notice ("Experimental Session · Unranked") is kept.
+- **Goal complete** is a quiet banner at the top with the keystone and an
+  `Enter Finish` hint; play continues underneath.
+- **Navigator** (`#odyssey-level-select`): chapters as panels, levels as tiles, the next
+  level carries the keystone, Odyssey's gold identity, and the real star total
+  (`★ earned / max` from the progress summary).
+- **Board view** (`#odyssey-board-overlay`): header bar, chapter arrival card and level
+  panel restyled; the level panel's tip is a `.level-tip` line, not inline styles.
+- **Odyssey HUD**: Unbounded numbers, Manrope text, a gold chapter label, a spectrum
+  bar in a tile-cornered track, sentence-case copy ("Clear 32 lines", "Victory lap",
+  "Complete") and a keycap for Enter. READY / GO cues use the same type (READY aqua,
+  GO coral).
+- **Single-player stat rail and Infinity HUD**: Unbounded numbers, Manrope labels, no
+  backdrop blur. The rail keeps its sizes — themes read its rect for composition.
+
+Kept for JavaScript and tests: `#odyssey-results-modal`, `#odyssey-failure-modal`,
+`#goal-complete-overlay`, `#odyssey-level-select` and its `#odyssey-*` value ids,
+`data-odyssey-wheel-lock`, `.steam-leaderboard-panel`, the "Back to Map" label.
+
+`odyssey-aaa.css` went from 1,317 to about 400 lines: the preview, results and
+level-card rules left with the markup they styled. What remains is the navigator's
+show/hide base and the HUD layout.

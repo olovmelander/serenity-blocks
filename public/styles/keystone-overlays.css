@@ -980,14 +980,44 @@
     font-weight: 600;
 }
 
+/* A thin tile-cornered bar. The fill stays in flow: serenity-hub.css has an unscoped
+   absolute .progress-fill that otherwise stretches it to the whole section. */
+#odyssey-hud .progress-track {
+    position: relative;
+    height: 6px;
+    margin: 10px 0 6px;
+    border-radius: 3px;
+    background: rgba(var(--sb-cream-rgb), 0.08);
+    box-shadow: none;
+}
+
 #odyssey-hud .progress-fill {
+    position: relative;
+    top: auto;
+    height: 100%;
+    border-radius: inherit;
     background: var(--sb-spectrum);
+    box-shadow: none;
 }
 
 #odyssey-hud .progress-fill.is-complete,
 #odyssey-hud.is-victory-lap .progress-fill {
     background: linear-gradient(90deg, var(--sb-gold), #ffe9b8, var(--sb-gold));
     background-size: 200% 100%;
+    box-shadow: 0 0 12px rgba(var(--sb-gold-rgb), 0.45);
+}
+
+#odyssey-hud .finish-hint {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-top-color: var(--sb-line);
+    color: var(--sb-text-muted);
+}
+
+#odyssey-hud .finish-hint.is-visible {
+    display: flex;
 }
 
 /* ---- Serenity mode notices --------------------------------------------------------- */

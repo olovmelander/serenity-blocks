@@ -100,7 +100,7 @@ export class OdysseyHUD {
 
         this.objectiveDisplay = document.createElement('div');
         this.objectiveDisplay.className = 'objective-text';
-        this.objectiveDisplay.textContent = 'Clear 40 Lines';
+        this.objectiveDisplay.textContent = 'Clear 40 lines';
         section.appendChild(this.objectiveDisplay);
 
         this.progressValue = document.createElement('div');
@@ -200,7 +200,7 @@ export class OdysseyHUD {
     _createFinishHint() {
         this.finishHint = document.createElement('div');
         this.finishHint.className = 'finish-hint';
-        this.finishHint.innerHTML = 'Press <kbd>Enter</kbd> to finish';
+        this.finishHint.innerHTML = '<kbd class="sb-kbd">Enter</kbd> Finish';
         this.container.appendChild(this.finishHint);
     }
 
@@ -315,22 +315,22 @@ export class OdysseyHUD {
 
         switch (type) {
         case 'lines':
-            objectiveText = `Clear ${target} Lines`;
+            objectiveText = `Clear ${target} lines`;
             break;
         case 'score':
-            objectiveText = `Score ${target.toLocaleString()} Points`;
+            objectiveText = `Score ${target.toLocaleString()} points`;
             break;
         case 'cascade':
-            objectiveText = `Trigger ${target} Cascades`;
+            objectiveText = `Trigger ${target} cascades`;
             break;
         case 'time':
-            objectiveText = `Survive ${target} Seconds`;
+            objectiveText = `Survive ${target} seconds`;
             break;
         case 'height':
-            objectiveText = `Build to ${target} Rows`;
+            objectiveText = `Build to ${target} rows`;
             break;
         default:
-            objectiveText = 'Complete Objective';
+            objectiveText = 'Complete the objective';
         }
 
         this.objectiveDisplay.textContent = objectiveText;
@@ -520,14 +520,14 @@ export class OdysseyHUD {
         this.container.classList.add('is-victory-lap');
 
         if (this.objectiveDisplay) {
-            this.objectiveDisplay.textContent = 'VICTORY LAP';
+            this.objectiveDisplay.textContent = 'Victory lap';
         }
         if (this.progressBar) {
             this.progressBar.style.width = '100%';
             this.progressBar.classList.add('is-complete');
         }
         if (this.progressValue) {
-            this.progressValue.textContent = 'COMPLETE!';
+            this.progressValue.textContent = 'Complete';
         }
 
         this._showFinishHint();
