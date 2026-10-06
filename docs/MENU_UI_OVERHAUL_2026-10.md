@@ -216,6 +216,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Four-player local versus overflowed a 1024 px window (the stage had `min-width: 1200px`) and its standings bar ran under the tray | The boards are sized to the window for 2–4 players, 1024 px to 4K, the next queue in a row above each board (§5.6) |
 | The local next previews were fitted to the pieces' rotation matrices (the I piece's 4 × 4, the others' 3 × 3), so the I drew at a quarter of its room and every piece sat off-centre | They fit and centre the piece itself, with the single-player queue's trim (now shared, `trimShape` in `canvas-drawing-utils.js`) |
 | Local garbage was a slab in the attacker's own colour, so it read like a stack of their pieces | Solid slate, faintly tinted by the attacker; holes stay plain to see (§5.6) |
+| The falling piece showed faint bright lines between its cells: its gloss was drawn cell by cell with overlapping rects in additive blend, so every overlap doubled | The gloss is one exact rect per run of cells; every mode's pieces are seamless (`glossPass` in `base-board-scene.js`) |
 | Local timed matches promised "the highest score when time runs out wins", but the standings ranked by frags and the match went to whoever won the last round | Timed matches rank, lead and are won on score, for players and teams; the clock is in the match bar and turns to "Last round" at zero |
 | In team play a frag goal counts rounds won, but the standings summed players' frags | The match bar races teams by their rule (rounds won, or the team's points or lines); each teammate's goal bar fills by the team |
 | A knock-out showed a 💀 emoji and "ELIMINATED" in red Arial | A Keystone card: "Out", the seat's colour, "Back next round" |
@@ -506,7 +507,7 @@ play, and how are they doing" at a glance, and every number lives in one place.
   mouth. The tiles are wide, as pieces are, and each preview fits and centres the piece
   itself (not its rotation matrix), so it draws at about half a block.
 - **The well:** the board has no lid. Its walls rise from the floor in the seat's hue and
-  fade out toward the top, faint column guides run down the glass, and the garbage
+  fade out toward the top, the glass is plain (no lines on the board), and the garbage
   channel sits flush inside the left wall. Incoming garbage fills the channel (20 lines
   fill it; from 8 it glows), and an attack lands in it with a flash and a "+n". When the
   stack is within five rows of the top the walls turn coral and breathe, and they calm

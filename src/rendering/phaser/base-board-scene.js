@@ -1590,7 +1590,9 @@ export function createBaseBoardScene(
         /**
          * Gloss sheen — a continuous white vertical highlight, brightest at the
          * top of the shape, fading to nothing by the vertical midpoint. ADD blend.
-         * Continuous across cells (no seams).
+         * Continuous across cells (no seams): one exact rect per horizontal run of
+         * cells, because ADD doubles wherever rects overlap — overlapping per-cell
+         * rects drew a bright line between every pair of cells.
          */
         glossPass(graphics, presentSet, originX, originY, glossAlpha, cachedCells = null, cachedGeometry = null) {
             if (!graphics || presentSet.size === 0 || glossAlpha <= 0) return;
@@ -1606,14 +1608,17 @@ export function createBaseBoardScene(
                 graphics.setBlendMode(PhaserRef.BlendModes.ADD);
             }
             cells.forEach(([lx, ly]) => {
+                // Each run is drawn from its leftmost cell.
+                if (presentSet.has(`${lx - 1},${ly}`)) return;
                 const aTop = alphaAt(ly);
                 const aBot = alphaAt(ly + 1);
                 if (aTop <= 0 && aBot <= 0) return;
-                const {
-                    px, py, w, h,
-                } = this._cellRect(originX, originY, lx, ly, this._cellRectScratch);
+                let last = lx;
+                while (presentSet.has(`${last + 1},${ly}`)) last++;
+                const { px, py, h } = this._cellRect(originX, originY, lx, ly, this._cellRectScratch);
+                const right = Math.round((originX + last + 1) * this.blockSize);
                 graphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, aTop, aTop, aBot, aBot);
-                graphics.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
+                graphics.fillRect(px, py, right - px, h);
             });
             if (graphics.setBlendMode && PhaserRef?.BlendModes?.NORMAL !== undefined) {
                 graphics.setBlendMode(PhaserRef.BlendModes.NORMAL);
