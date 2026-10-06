@@ -1372,25 +1372,32 @@
 /* ==================================================================================
  * Play rail (#sb-play-rail, src/ui/keystone/play-rail.js): the in-game controls —
  * Levels (Odyssey's board view), the Serenity Hub and Settings, Settings outermost —
- * with one home in every mode: the top-right. The bottom of the screen belongs to the
- * game: boards, chat, stats, touch controls and toasts.
+ * as one tray in the top-right corner, identical in every mode: the same place, size,
+ * icons, names and keys. The bottom of the screen belongs to the game: boards, chat,
+ * stats, touch controls and toasts.
  *
- * The tray: a small night tile in the corner that rests dimmed while you play and wakes
- * under the pointer or focus (in Serenity it leaves with the cursor). Names and keys
- * show beneath it on hover or focus; a mode's first runs unroll them inside the tray for
- * a moment (.is-peek, and .is-folding on the way in and out).
+ * The tray is a small night tile that rests dimmed while you play and wakes under the
+ * pointer or focus (in Serenity it leaves with the cursor). Names and keys show beneath
+ * it on hover or focus; a mode's first runs unroll them inside the tray for a moment
+ * (.is-peek, and .is-folding on the way in and out).
  *
- * Docked ([data-dock]): where a mode has chrome up there the rail joins it. In an online
- * match it is the first panel of the info column, level with the spectator toolbar, so
- * the chat keeps the bottom corner. Local versus centres the tray on the standings bar;
- * Odyssey's board view ends its header chips before it.
+ * The modes keep the corner free rather than moving the tray: online versus reserves
+ * the top of its info column (level with the spectator toolbar), local versus centres
+ * its standings bar on the tray's line, Odyssey's board header ends its chips before it.
+ * Only these differ, on purpose: Levels shows on the Odyssey map alone, touch screens
+ * get larger tiles, phones a tighter corner.
  * ================================================================================ */
+:root {
+    --sb-play-tile: 40px;
+    --sb-play-inset: 16px;
+    /* Tile + 3px padding and 1px border each side: 48px on a desktop. */
+    --sb-play-tray: calc(var(--sb-play-tile) + 8px);
+}
+
 #sb-play-rail {
-    --play-tile: 40px;
-    --play-inset: 16px;
     position: fixed;
-    top: max(var(--play-inset), env(safe-area-inset-top));
-    right: max(var(--play-inset), env(safe-area-inset-right));
+    top: max(var(--sb-play-inset), env(safe-area-inset-top));
+    right: max(var(--sb-play-inset), env(safe-area-inset-right));
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -1432,8 +1439,8 @@ body.serenity-mode.cursor-hidden #sb-play-rail:not(:focus-within, .is-peek) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--play-tile);
-    height: var(--play-tile);
+    width: var(--sb-play-tile);
+    height: var(--sb-play-tile);
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -1589,83 +1596,16 @@ body:not(.sb-input-pointer) #sb-play-rail > :focus > .sb-play-rail__label {
     opacity: 1;
 }
 
-/* ---- Docked: the online match's info column opens with the controls -------------- */
-.sb-play-dock {
-    display: flex;
-    min-width: 0;
-    container-type: inline-size;
-}
-
-#sb-play-rail[data-dock] {
-    position: static;
-    inset: auto;
-    z-index: auto;
-    flex: 1 1 auto;
-    gap: 8px;
-    min-width: 0;
-    padding: 8px;
-    border-radius: 10px;
-    background: linear-gradient(180deg, rgba(25, 21, 56, 0.9) 0%, rgba(12, 10, 30, 0.93) 100%);
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
-    opacity: 1;
-}
-
-#sb-play-rail[data-dock] > :is(#serenity-hub-icon, #settings-btn-global) {
-    flex: 1 1 0;
-    gap: 8px;
-    width: auto;
-    min-width: 0;
-    height: 32px;
-    padding: 0 12px;
-    border: 1px solid var(--sb-line-strong);
-    border-radius: 8px;
-    background: rgba(var(--sb-cream-rgb), 0.04);
-    color: var(--sb-text);
-}
-
-#sb-play-rail[data-dock] > :is(#serenity-hub-icon, #settings-btn-global):hover {
-    border-color: rgba(var(--sb-cream-rgb), 0.34);
-    background: rgba(var(--sb-cream-rgb), 0.08);
-}
-
-#sb-play-rail[data-dock] .sb-play-rail__icon {
-    width: 16px;
-    height: 16px;
-}
-
-#sb-play-rail[data-dock] .sb-play-rail__label {
-    position: static;
-    gap: 7px;
-    min-width: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    box-shadow: none;
-    font-size: 9px;
-    letter-spacing: 0.08em;
-    opacity: 1;
-    translate: none;
-    transition: none;
-}
-
-#sb-play-rail[data-dock] .sb-play-rail__label .sb-kbd {
-    height: 17px;
-    min-width: 17px;
-}
-
-/* Keys only where both names still fit beside them. */
-@container (max-width: 359px) {
-    #sb-play-rail[data-dock] .sb-kbd {
-        display: none;
-    }
-}
-
-/* Both side columns open with a toolbar row: the spectator controls on the left, the
-   game controls on the right. The chat runs to the bottom corner again. */
+/* ---- Online versus: the info column keeps the corner ------------------------------ */
+/* Both side columns open with a toolbar row: the spectator controls on the left, and on
+   the right the room the tray floats in (.sb-play-room), so the scoreboard starts below
+   it and the chat runs to the bottom corner. */
 @media (min-width: 901px) {
+    /* Edges on the tray's inset at every width, so the column lines up under it. */
     #online-multiplayer-container.online-game-area {
         grid-template-rows: auto minmax(0, 1fr);
         row-gap: 12px;
+        padding: var(--sb-play-inset);
     }
 
     #online-multiplayer-container > .opponents-panel {
@@ -1681,9 +1621,10 @@ body:not(.sb-input-pointer) #sb-play-rail > :focus > .sb-play-rail__label {
         grid-row: 1 / span 2;
     }
 
-    #online-multiplayer-container > .sb-play-dock {
+    #online-multiplayer-container > .sb-play-room {
         grid-column: 3;
         grid-row: 1;
+        min-height: var(--sb-play-tray);
     }
 
     #online-multiplayer-container > .right-panel {
@@ -1692,10 +1633,9 @@ body:not(.sb-input-pointer) #sb-play-rail > :focus > .sb-play-rail__label {
     }
 }
 
-/* Stacked online layout: no column to dock in. The tray floats in the corner and the
-   spectator row ends before it. */
+/* Stacked online layout: the spectator row ends before the tray. */
 @media (max-width: 900px) {
-    #online-multiplayer-container > .sb-play-dock {
+    #online-multiplayer-container > .sb-play-room {
         display: none;
     }
 
@@ -1705,17 +1645,18 @@ body:not(.sb-input-pointer) #sb-play-rail > :focus > .sb-play-rail__label {
 }
 
 /* ---- Per mode ---------------------------------------------------------------------- */
-/* Local versus: level with the standings bar (20px down, 60px tall). */
-#sb-play-rail[data-mode='local-multiplayer'] {
-    top: max(26px, env(safe-area-inset-top));
+/* Local versus: the standings bar (60px tall) shares the tray's centre line. */
+#multiplayer-container #global-standings-hud.global-standings-hud {
+    top: calc(var(--sb-play-inset) + var(--sb-play-tray) / 2 - 30px);
 }
 
 /* Odyssey's board view: the header lines up with the tray and its chips end before it.
    The tray sits above the board overlay (1001), whose header takes the pointer, and the
    level list (1002) that Levels opens and closes. */
 body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #odyssey-board-overlay .odyssey-header-bar {
-    padding-top: 26px;
-    padding-right: 164px;
+    /* The chips (27px) centred on the tray's line; three tiles, the tray's edges, a gap. */
+    padding-top: calc(var(--sb-play-inset) + var(--sb-play-tray) / 2 - 14px);
+    padding-right: calc(var(--sb-play-inset) + 3 * var(--sb-play-tile) + 28px);
 }
 
 body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #sb-play-rail {
@@ -1724,23 +1665,22 @@ body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #sb-play-rail {
 
 /* Phones: a tighter corner. Touch screens: larger tiles, and no keyboard keys to show. */
 @media (max-width: 640px) {
-    #sb-play-rail {
-        --play-inset: 6px;
+    :root {
+        --sb-play-inset: 6px;
     }
 
     /* The tray takes the top band; the board starts beneath it. */
     #single-player-card.single-player-card {
         margin-top: 34px;
     }
-
-    #sb-play-rail[data-mode='local-multiplayer'] {
-        top: max(16px, env(safe-area-inset-top));
-    }
 }
 
 @media (hover: none) and (pointer: coarse) {
+    :root {
+        --sb-play-tile: 44px;
+    }
+
     #sb-play-rail {
-        --play-tile: 44px;
         opacity: 0.86;
     }
 

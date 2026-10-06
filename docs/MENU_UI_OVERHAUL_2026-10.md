@@ -201,7 +201,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | On game over every controller face button restarted, B included, and a button still held from play fired at once | B is Main menu (like Escape); A, X, Y or Start play again; the sheet arms only after a neutral release |
 | Controller B ignored the multiplayer back stack | B goes back like Escape, and pad navigation stays inside the top multiplayer surface |
 | The floating Hale sessions pill crowded every mode (Serenity most), and with the corner tiles covered the online chat and, on phones, the board | One play rail; Hale lives in the Hub (§5.5) |
-| The controls took the online chat's corner (the chat column was shortened for them) and sat on player 4's board in 4-player local versus | The controls live at the top-right in every mode; online they are the first panel of the info column (§5.5) |
+| The controls took the online chat's corner (the chat column was shortened for them) and sat on player 4's board in 4-player local versus | One identical tray at the top-right in every mode; the layouts keep that corner free (§5.5) |
 | Rotating left with Y opened the Serenity Hub mid-run in every mode; LB/RB, LT/RT, L3 and R3 reached the Hub's music, volume, random-theme and fullscreen shortcuts during play | Serenity's pad shortcuts apply in Serenity Mode (and in the open Hub) only |
 | A controller could not reach the Hub outside Serenity | Serenity Hub on the pause sheet (Start, then the button) |
 | The D-pad stuck on the pause sheet's Resume: the focus finder's `[href]` matched the buttons' SVG `<use href>` icons | One `FOCUSABLE_SELECTOR` (`a[href]`, not `[href]`) for spatial navigation and the sheets' Tab trap |
@@ -401,8 +401,9 @@ idea in the wrong place: online versus shortened its chat column to make room, t
 on player 4's board in 4-player local versus, the lotus and gear were the old filled
 drawings with an idle blurred glow, and nothing named them.
 
-**After:** one home in every mode, the top-right, in one of two forms. The bottom of the
-screen belongs to the game: boards, chat, stats, touch controls and toasts.
+**After:** one tray at the top-right, identical in every mode — the same place (16 px
+from the top and right edges), size, icons, names and keys. The bottom of the screen
+belongs to the game: boards, chat, stats, touch controls and toasts.
 
 | Control | Shown | Name and keys |
 |---|---|---|
@@ -410,8 +411,7 @@ screen belongs to the game: boards, chat, stats, touch controls and toasts.
 | Serenity Hub | every mode | "Serenity Hub"; H in every mode (the Hub key, rebindable), Y on a pad in Serenity |
 | Settings | every mode, outermost | "Settings"; Esc / ☰ (no Esc in Serenity, where Escape goes back to the menu). While a game runs it opens the pause sheet |
 
-- **The tray** (solo modes, local versus, Odyssey, phones): a small night tile in the
-  corner holding the main-menu dock's line icons. It rests at 72 % opacity and wakes under
+- **The tray:** a small night tile in the corner holding the main-menu dock's line icons. It rests at 72 % opacity and wakes under
   the pointer or focus; names and keys appear beneath it on hover or focus. No idle motion
   (the lotus glow is gone); a mint ring breathes in the Hub tile only while a breathing
   session runs. In Serenity the tray leaves with the cursor (`cursor-hidden`).
@@ -419,18 +419,20 @@ screen belongs to the game: boards, chat, stats, touch controls and toasts.
   the tray for 3.6 s once the tray is actually in view (after the loading veil and the
   countdown), then fold them back (`serenity.playRail.peeks`). Not on touch screens, not
   in Odyssey's board view.
-- **Docked** where a mode has its own chrome at the top: an on-screen `[data-play-dock]`
-  receives the rail (moved there by a ResizeObserver and the mode events). Online versus
-  has one as the first panel of its info column, the spectator toolbar's twin: the grid
-  gains a toolbar row (`auto 1fr`, the opponents column a subgrid) so both toolbars share
-  one height, the buttons are labelled and show their keys when the column is wide enough
-  (container query), and the chat runs to the bottom corner again. Below 901 px the dock
-  hides, the tray floats and the stacked spectator row ends before it.
-- **Per mode:** local versus centres the tray on the standings bar. Odyssey's board view
-  lines its header up with the tray and ends the chips before it; there the tray sits
-  above the board overlay (whose header takes the pointer) and the level list it opens
-  (z-index 1003). Phones get a 6 px corner and the single-player board starts beneath the
-  tray; touch screens get 44 px tiles and no keyboard keys.
+- **The layouts make room, the tray never moves.** Online versus gives its grid a toolbar
+  row (`auto 1fr`, the opponents column a subgrid): the spectator toolbar on the left and,
+  on the right, `.sb-play-room`, an empty slot the tray floats in, so the scoreboard starts
+  below it and the chat runs to the bottom corner; below 901 px the stacked spectator row
+  ends before the tray. Local versus moves its standings bar onto the tray's centre line
+  (10 px from the top). Odyssey's board header lines up with the tray and ends its chips
+  before it; there the tray sits above the board overlay (whose header takes the
+  pointer) and the level list it opens (z-index 1003). The metrics are tokens on `:root`
+  (`--sb-play-tile`, `--sb-play-inset`, `--sb-play-tray`) so every reservation follows
+  the tray.
+- **Differences kept on purpose:** Levels shows on the Odyssey map alone (it does nothing
+  elsewhere); touch screens get 44 px tiles and no keyboard keys; phones a 6 px corner,
+  with the single-player board starting beneath the tray; Serenity fades the tray while
+  the cursor rests.
 - **Every input reaches both:** pointer and touch through the tiles; keyboard Esc and H;
   a controller through Start, then the pause sheet's **Serenity Hub** (it closes the sheet
   as Resume does and opens the Hub as its tile does, in one task, so no frame of play runs
