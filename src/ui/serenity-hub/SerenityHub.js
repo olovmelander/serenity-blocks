@@ -174,8 +174,9 @@ export class SerenityHub {
     }
 
     /**
-   * Create the floating hub icon (top-right corner)
-   * If icon already exists in DOM (from index.html), use it instead of creating new one
+   * The Hub's in-game tile. index.html provides it and the play rail
+   * (src/ui/keystone/play-rail.js) gives it its place; this only recreates it, with the
+   * same line lotus, if the page lacks one.
    */
     createHubIcon() {
         // Check if icon already exists in the DOM (added via index.html)
@@ -187,26 +188,19 @@ export class SerenityHub {
             this.hubIcon.id = 'serenity-hub-icon';
             this.hubIcon.className = 'serenity-hub-icon visible';
             this.hubIcon.setAttribute('role', 'button');
-            this.hubIcon.setAttribute('aria-label', 'Open Serenity Hub');
+            this.hubIcon.setAttribute('aria-label', 'Serenity Hub');
             this.hubIcon.setAttribute('tabindex', '0');
 
             this.hubIcon.innerHTML = `
-        <svg class="hub-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-          <!-- Lotus flower icon -->
-          <g class="lotus">
-            <!-- Center circle -->
-            <circle cx="50" cy="60" r="8" fill="currentColor" opacity="0.9"/>
-
-            <!-- Petals -->
-            <path d="M 50 45 Q 35 50 30 65 Q 35 60 50 60" fill="currentColor" opacity="0.7"/>
-            <path d="M 50 45 Q 65 50 70 65 Q 65 60 50 60" fill="currentColor" opacity="0.7"/>
-            <path d="M 50 60 Q 40 70 35 80 Q 42 72 50 70" fill="currentColor" opacity="0.6"/>
-            <path d="M 50 60 Q 60 70 65 80 Q 58 72 50 70" fill="currentColor" opacity="0.6"/>
-            <path d="M 50 60 Q 45 75 40 85 Q 45 77 50 75" fill="currentColor" opacity="0.5"/>
-            <path d="M 50 60 Q 55 75 60 85 Q 55 77 50 75" fill="currentColor" opacity="0.5"/>
-          </g>
+        <svg class="sb-play-rail__icon" viewBox="0 0 24 24" width="20" height="20" fill="none"
+          stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+          aria-hidden="true" focusable="false">
+          <path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3"/>
+          <path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3"/>
+          <path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7"/>
+          <path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7"/>
+          <path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5"/>
         </svg>
-        <div class="hub-icon-glow"></div>
         <div class="hub-icon-pulse"></div>
       `;
 

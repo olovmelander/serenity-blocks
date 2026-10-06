@@ -2400,7 +2400,7 @@ class SerenityBlocks {
             this.serenityHub.setPauseResumeCallbacks(
                 () => {
                     const currentMode = this.gameModeManager?.getCurrentModeId();
-                    const pausableModes = ['single', 'local-multiplayer', 'infinity'];
+                    const pausableModes = ['single', 'local-multiplayer', 'infinity', 'odyssey'];
 
                     if (pausableModes.includes(currentMode)) {
                         console.log('[SerenityHub] Pausing game for mode:', currentMode);
@@ -2411,7 +2411,7 @@ class SerenityBlocks {
                 },
                 () => {
                     const currentMode = this.gameModeManager?.getCurrentModeId();
-                    const pausableModes = ['single', 'local-multiplayer', 'infinity'];
+                    const pausableModes = ['single', 'local-multiplayer', 'infinity', 'odyssey'];
 
                     if (pausableModes.includes(currentMode)) {
                         console.log('[SerenityHub] Resuming game for mode:', currentMode);

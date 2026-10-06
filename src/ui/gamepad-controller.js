@@ -5,7 +5,7 @@
  */
 
 import { performanceMonitor } from '../utils/performance-monitor.js';
-import { SpatialNavigation } from './spatial-navigation.js';
+import { FOCUSABLE_SELECTOR, SpatialNavigation } from './spatial-navigation.js';
 import { getInputMode, hasGamepadActivity, markInputMode } from './keystone/input-mode.js';
 import { getOpenSheet, getSheetFocusables, getSheetInitialFocus } from './sheet-input.js';
 import { getTopLayerElement, goBackFromTopLayer } from './components/mp-sheet.js';
@@ -1391,8 +1391,7 @@ export class GamepadController {
     getFocusableElements() {
         const sheet = this.getMenuSheet();
         if (sheet) return getSheetFocusables(sheet.element);
-        const selector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-        const elements = Array.from(document.querySelectorAll(selector));
+        const elements = Array.from(document.querySelectorAll(FOCUSABLE_SELECTOR));
 
         // Filter out hidden elements
         return elements.filter((el) => {
@@ -1717,7 +1716,7 @@ export class GamepadController {
         // Handle START button for settings (for player 1 only)
         // BUT skip if menu navigation is enabled (menus handle their own START button)
         if (slot === 0 && !this.menuNavigationEnabled) {
-            const settingsButton = this.serenityModeActive
+            const settingsButton = this.serenityShortcutsLive()
                 ? this.getSerenityGamepadBindings().openSettings
                 : BUTTON_MAP.START;
             const startPressed = Number.isInteger(settingsButton) && gamepad.buttons[settingsButton]?.pressed;
@@ -1732,12 +1731,10 @@ export class GamepadController {
             prevState.menuStart = startPressed;
         }
 
-        // If in Serenity Mode AND the hub is open, use Serenity Mode input handling exclusively
-        // Otherwise, process both Serenity shortcuts (SELECT to open hub) AND game input
-        if (this.serenityModeActive && this.serenityModeCallbacks) {
-            // Always process Serenity Mode input for hub toggle (SELECT button) and other shortcuts
+        // In Serenity Mode its shortcuts (Hub, breathing, music...) run alongside game input;
+        // with the hub open, the early return above already gave it every button.
+        if (this.serenityShortcutsLive()) {
             this.processSerenityModeInput(gamepad, slot);
-            // If hub is closed, continue to process game input below
         }
 
         // Handle Exploration Input (Right Stick Button Hold + Axis Scroll)
@@ -2189,6 +2186,18 @@ export class GamepadController {
         this.serenityModeActive = true;
         this.serenityModeCallbacks = callbacks;
         console.log('[Gamepad] Serenity Mode enabled');
+    }
+
+    /**
+     * Whether Serenity's pad shortcuts apply during play. The always-loaded Hub registers
+     * them at startup, but they belong to Serenity Mode: everywhere else those buttons
+     * play the game (Y rotates left, and used to open the Hub mid-run as well).
+     * @returns {boolean}
+     */
+    serenityShortcutsLive() {
+        if (!this.serenityModeActive || !this.serenityModeCallbacks) return false;
+        const body = typeof document !== 'undefined' ? document.body : null;
+        return Boolean(body?.classList?.contains?.('serenity-mode'));
     }
 
     getSerenityGamepadBindings() {
